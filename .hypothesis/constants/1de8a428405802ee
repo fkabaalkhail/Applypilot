@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/bot/ats_greenhouse.py
+# hypothesis_version: 6.151.10
+
+[130, 3000, '  Uploaded resume', '#submit_app', ',', ', ', '.field__label', '.postings-btn', 'Apply', 'Email', 'First Name', 'Last Name', 'Phone', 'Submit', '_resume_text', 'aria-label', 'boards.greenhouse', 'cover letter', 'cover_letter', 'curriculum', 'cv', 'done', 'email', 'failed', 'fieldset, .field', 'first_name', 'greenhouse.io', 'grnh.se', 'id', 'input[type="file"]', 'input[type="radio"]', 'input[type="submit"]', 'input[type="text"]', 'label:first-child', 'last_name', 'legend', 'linkedin', 'linkedin_url', 'name', 'option', 'options', 'phone', 'placeholder', 'question', 'radio', 'resume', 'resume_file_path', 'select', 'success', 'text', 'textarea', 'thank', 'type', 'value', 'waiting', 'website']

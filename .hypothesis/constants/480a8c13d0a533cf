@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/routers/jobs.py
+# hypothesis_version: 6.151.10
+
+[200, 400, 404, '/analyze', '/connect', '/logs/{task_id}', '/scrape', '/{job_id}/apply', '/{job_id}/questions', 'Cache-Control', 'Job not found.', 'Question not found.', 'X-Accel-Buffering', 'analyzing', 'applying', 'domcontentloaded', 'job_id', 'message', 'no', 'no-cache', 'opening', 'resuming', 'scraping', 'status', 'task_id', 'text/event-stream']

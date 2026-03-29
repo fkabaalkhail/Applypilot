@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/routers/applications.py
+# hypothesis_version: 6.151.10
+
+[200, 404, '/stats', '/{app_id}', 'value']

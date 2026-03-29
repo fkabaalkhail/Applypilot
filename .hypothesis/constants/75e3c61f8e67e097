@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/services/resume_parser.py
+# hypothesis_version: 6.151.10
+
+['.docx', '.pdf']

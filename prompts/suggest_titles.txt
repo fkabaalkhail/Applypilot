@@ -1,0 +1,15 @@
+# Prompt: suggest_titles
+# Purpose: Suggest relevant job titles based on a resume profile.
+# Expected JSON response shape:
+# ["Job Title 1", "Job Title 2", "Job Title 3", ...]
+
+You are a career advisor. Based on the candidate's resume profile below,
+suggest 8-12 relevant job titles they should search for.
+
+Candidate profile:
+{{RESUME_JSON}}
+
+Guidelines:
+- Include a mix of exact-match and adjacent/aspirational titles
+- Consider the candidate's skills, experience level, and industry
+- Return ONLY a JSON array of strings, no additional text

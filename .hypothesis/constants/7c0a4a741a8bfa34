@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/bot/form_filler.py
+# hypothesis_version: 6.151.10
+
+['RESUME_FILE_PATH', 'Uploaded resume', 'address', 'aria-label', 'cell', 'city', 'e-mail', 'email', 'email or phone', 'fieldset', 'first name', 'first_name', 'full name', 'github', 'id', 'input[type="file"]', 'input[type="radio"]', 'last name', 'last_name', 'legend', 'linkedin', 'linkedin profile', 'linkedin url', 'linkedin_email', 'linkedin_password', 'linkedin_url', 'location', 'mobile', 'name', 'option', 'options', 'password', 'personal website', 'phone', 'placeholder', 'portfolio', 'preferred first name', 'prefilled_answers', 'question', 'radio', 'resume_file_path', 'select', 'telephone', 'text', 'textarea', 'type', 'value', 'website']

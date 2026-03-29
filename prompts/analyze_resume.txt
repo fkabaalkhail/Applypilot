@@ -1,0 +1,26 @@
+# Prompt: analyze_resume
+# Purpose: Extract structured profile data from raw resume text.
+# Expected JSON response shape:
+# {
+#   "name": "string",
+#   "email": "string",
+#   "phone": "string",
+#   "location": "string",
+#   "linkedin_url": "string",
+#   "skills": ["string"],
+#   "experience": [{"title": "string", "company": "string", "duration": "string", "bullets": ["string"]}],
+#   "education": [{"degree": "string", "school": "string", "year": "string"}]
+# }
+
+You are a resume parsing assistant. Analyze the following resume text and extract structured data.
+
+Return ONLY valid JSON with no additional text or explanation.
+
+Resume text:
+{{RESUME_TEXT}}
+
+Return JSON with these exact keys: name, email, phone, location, linkedin_url, skills, experience, education.
+- skills: array of skill strings
+- experience: array of objects with keys: title, company, duration, bullets (array of strings)
+- education: array of objects with keys: degree, school, year
+- If a field is not found, use an empty string or empty array as appropriate.

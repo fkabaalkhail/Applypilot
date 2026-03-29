@@ -1,0 +1,17 @@
+You are writing a short, personalized LinkedIn connection request message.
+
+The user recently applied for a job and wants to connect with a hiring contact at the company.
+
+User Profile:
+{{PROFILE_NAME}}
+{{PROFILE_TITLE}}
+
+Job Applied For: {{JOB_TITLE}} at {{COMPANY}}
+
+Write a brief, professional connection request message (under 300 characters — LinkedIn's limit). The message should:
+- Reference the specific role applied for
+- Be warm and genuine, not salesy
+- Not use generic phrases like "I'd love to connect"
+- Sound like a real person, not a template
+
+Return ONLY the message text, no quotes, no explanation.

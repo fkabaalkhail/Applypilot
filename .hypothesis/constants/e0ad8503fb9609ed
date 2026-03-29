@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/bot/ats_lever.py
+# hypothesis_version: 6.151.10
+
+[130, 3000, '  Uploaded resume', ',', ', ', '.application-label', 'Apply', 'Company', 'Email', 'Full Name', 'Phone', 'Submit', 'Submit application', '_resume_text', 'a.postings-btn', 'a[href*="apply"]', 'aria-label', 'button.postings-btn', 'cover', 'cv', 'done', 'email', 'failed', 'github', 'id', 'input[name^="urls["]', 'input[type="file"]', 'input[type="radio"]', 'jobs.lever', 'label:first-child', 'legend', 'lever.co', 'linkedin', 'linkedin_url', 'name', 'option', 'options', 'phone', 'placeholder', 'portfolio', 'question', 'radio', 'resume', 'resume_file_path', 'select', 'submitted', 'success', 'text', 'textarea', 'thank', 'type', 'value', 'waiting', 'website']

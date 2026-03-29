@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/main.py
+# hypothesis_version: 6.151.10
+
+[200, '\n🔍 Startup checks:', '\x1b[91m✘\x1b[0m', '\x1b[92m✔\x1b[0m', '*', ',', '/applications', '/debug/before-submit', '/debug/login', '/debug/screenshot', '/debug/search', '/jobs', '/resumes', '/settings', '0.1.0', 'Auto Apply Bot', 'CORS_ORIGINS', 'DATABASE_URL', 'DB directory exists', 'DB path configured', 'OLLAMA_BASE_URL', 'Ollama reachable', 'REDIS_URL', 'Redis reachable', 'applications', 'error', 'health', 'image/png', 'jobs', 'resumes', 'settings', 'sqlite:///']

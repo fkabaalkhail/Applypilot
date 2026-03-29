@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/services/crypto.py
+# hypothesis_version: 6.151.10
+
+['ENCRYPTION_SECRET', 'data/secret.key']

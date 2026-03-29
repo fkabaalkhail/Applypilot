@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=sqlite:///./data/autoapply.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Worker runs LOCALLY (not in Docker) to use the user's real Chrome.
+  # Start it with: celery -A backend.worker worker --loglevel=info --pool=solo
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"

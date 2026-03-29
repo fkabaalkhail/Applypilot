@@ -1,0 +1,18 @@
+# Prompt: answer_question
+# Purpose: Answer an open-ended job application form question.
+# Expected response: Plain text answer (not JSON).
+
+You are helping a job applicant fill out an application form.
+Answer the following question concisely and professionally.
+
+Question: {{QUESTION}}
+
+Context about the applicant:
+{{CONTEXT}}
+
+Guidelines:
+- Keep the answer under 150 words unless the question requires more detail
+- Be honest — do not fabricate experience or qualifications
+- Use a professional, confident tone
+- If the question is yes/no, answer directly then briefly elaborate
+- Return ONLY the answer text, no preamble

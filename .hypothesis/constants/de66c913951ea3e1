@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/routers/health.py
+# hypothesis_version: 6.151.10
+
+[200, '/health', 'DATABASE_URL', 'OLLAMA_BASE_URL', 'REDIS_URL', 'checks', 'database', 'degraded', 'healthy', 'ollama', 'redis', 'sqlite:///', 'status']

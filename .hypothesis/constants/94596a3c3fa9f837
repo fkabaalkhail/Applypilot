@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/bot/form_filler_selenium.py
+# hypothesis_version: 6.151.10
+
+[130, 3000, ', ', "AI filled '%s'", "Filled '%s'", 'Uploaded resume', '_radios_name', 'aria-label', 'city', 'e-mail', 'email', 'email or phone', 'first name', 'first_name', 'full name', 'id', 'iframe', 'input[type="file"]', 'input[type="radio"]', 'last name', 'last_name', 'linkedin', 'linkedin profile', 'linkedin url', 'linkedin_email', 'linkedin_password', 'linkedin_url', 'location', 'mobile', 'name', 'option', 'options', 'password', 'phone', 'placeholder', 'portfolio', 'question', 'radio', 'resume_file_path', 'select', 'text', 'textarea', 'type', 'value', 'website']

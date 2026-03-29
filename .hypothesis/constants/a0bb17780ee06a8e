@@ -1,0 +1,4 @@
+# file: /Users/fahad/ApplyPilot/backend/bot/ats_workday.py
+# hypothesis_version: 6.151.10
+
+[130, 3000, '  Uploaded resume', ', ', 'Continue', 'Next', 'Save and Continue', 'Submit', 'Submit Application', '_resume_text', 'address', 'aria-label', 'city', 'create account', 'create an account', 'create your account', 'done', 'email', 'email address', 'failed', 'first name', 'first_name', 'id', 'input[type="file"]', 'input[type="radio"]', 'last name', 'last_name', 'legal name', 'linkedin', 'linkedin_url', 'mobile', 'myworkdayjobs', 'name', 'option', 'options', 'phone', 'phone number', 'placeholder', 'question', 'radio', 'register to apply', 'resume_file_path', 'select', 'sign up', 'skipped', 'submitted', 'success', 'text', 'textarea', 'thank', 'type', 'value', 'waiting', 'workday.com']

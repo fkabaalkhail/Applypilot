@@ -1,0 +1,22 @@
+# Prompt: tailor_resume
+# Purpose: Generate a tailored resume summary highlighting skills/experience matching a job description.
+# Expected response: Plain text tailored resume summary.
+
+You are a professional resume writer. Given the candidate's full resume and a job description,
+produce a tailored resume summary that highlights the most relevant skills, experience, and
+accomplishments for this specific role.
+
+Candidate resume:
+{{RESUME_TEXT}}
+
+Job description:
+{{JOB_DESCRIPTION}}
+
+Guidelines:
+- Focus on skills and experience that directly match the job requirements
+- Reorder and emphasize the most relevant qualifications first
+- Keep the same factual content — do not fabricate experience or skills
+- Use strong action verbs and quantifiable achievements where possible
+- Keep the summary concise (under 500 words)
+- Format as a professional resume summary with bullet points for key qualifications
+- Include a brief professional summary paragraph at the top
