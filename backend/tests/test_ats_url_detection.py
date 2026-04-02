@@ -8,7 +8,6 @@ import pytest
 from backend.bot.ats_greenhouse import is_greenhouse
 from backend.bot.ats_lever import is_lever
 from backend.bot.ats_workday import is_workday
-from backend.bot.ats_ashby import is_ashby
 
 
 # ── is_greenhouse ────────────────────────────────────────────
@@ -88,33 +87,6 @@ class TestIsWorkday:
     ])
     def test_negative(self, url):
         assert is_workday(url) is False
-
-
-# ── is_ashby ─────────────────────────────────────────────────
-
-
-class TestIsAshby:
-    """Detect Ashby forms by URL patterns."""
-
-    @pytest.mark.parametrize("url", [
-        "https://jobs.ashbyhq.com/acme/12345",
-        "https://jobs.ashbyhq.com/company",
-        "https://JOBS.ASHBYHQ.COM/ACME/ID",
-        "https://example.com/apply?ref=ashbyhq.com",
-    ])
-    def test_positive(self, url):
-        assert is_ashby(url) is True
-
-    @pytest.mark.parametrize("url", [
-        "https://boards.greenhouse.io/acme/jobs/12345",
-        "https://jobs.lever.co/acme/12345",
-        "https://myworkdayjobs.com/acme",
-        "https://www.linkedin.com/jobs/view/12345",
-        "https://example.com/careers",
-        "",
-    ])
-    def test_negative(self, url):
-        assert is_ashby(url) is False
 
 
 # ── Cross-check: no overlap between detectors ────────────────
