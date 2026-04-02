@@ -977,8 +977,11 @@ async function fetchPendingJobs() {
 
     showToast('Fetching pending jobs...', 'info', 2000);
 
+    // Get max jobs setting
+    const maxJobs = parseInt(settings.maxJobsPerRun) || 10;
+
     // Build URL with job type filter
-    let url = `${backendUrl}/api/extension/jobs?limit=10`;
+    let url = `${backendUrl}/api/extension/jobs?limit=${maxJobs}`;
     if (jobTypeFilter === 'easy_apply') {
       url += '&easy_apply_only=true';
     } else if (jobTypeFilter === 'external') {
