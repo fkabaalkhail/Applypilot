@@ -725,12 +725,12 @@ async function clearAllData() {
       'isRunning'
     ]);
     
-    // Clear backend database
+    // Clear backend database - endpoint is /api/extension/jobs/clear
     const settings = await chrome.storage.local.get(['settings']);
     const backendUrl = (settings.settings && settings.settings.backendUrl) || 'http://localhost:8000';
     
     try {
-      await fetch(`${backendUrl}/api/jobs/clear`, {
+      await fetch(`${backendUrl}/api/extension/jobs/clear`, {
         method: 'DELETE',
       });
       console.log('[AutoApplyBot] Backend jobs cleared');
@@ -1122,7 +1122,9 @@ async function scrapeJobsFromBackend() {
     const backendUrl = (data.settings && data.settings.backendUrl) || 'http://localhost:8000';
     const settings = data.settings || {};
 
-    // First, update backend settings with current filters
+    // Map extension settings (camelCase) to backend settings (snake_case)
+    // Extension uses: jobTitle, searchLocation, experienceLevel, workType, maxJobsPerRun
+    // Backend expects: job_title, location, experience_levels, work_type, max_applications_per_run
     const filterSettings = {
       job_title: settings.jobTitle || 'Software Engineer',
       location: settings.searchLocation || 'Canada',
@@ -1131,9 +1133,10 @@ async function scrapeJobsFromBackend() {
       max_applications_per_run: parseInt(settings.maxJobsPerRun) || 25,
     };
 
+    console.log('[AutoApplyBot] Sending filter settings to backend:', filterSettings);
     showToast('Updating filters...', 'info', 2000);
 
-    // Update backend settings
+    // Update backend settings - endpoint is /settings (not /api/settings)
     const settingsResp = await fetch(`${backendUrl}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1141,12 +1144,17 @@ async function scrapeJobsFromBackend() {
     });
     
     if (!settingsResp.ok) {
-      console.warn('Settings update failed:', settingsResp.status);
+      const errText = await settingsResp.text();
+      console.warn('[AutoApplyBot] Settings update failed:', settingsResp.status, errText);
+      showToast('Warning: Could not update filters on backend', 'warning', 3000);
+    } else {
+      const updatedSettings = await settingsResp.json();
+      console.log('[AutoApplyBot] Backend settings updated:', updatedSettings);
     }
 
     showToast(`Scraping "${filterSettings.job_title}" in ${filterSettings.location}...`, 'info', 30000);
 
-    // Trigger scrape (sync=true means it waits for completion)
+    // Trigger scrape - endpoint is /jobs/scrape (not /api/jobs/scrape)
     const response = await fetch(`${backendUrl}/jobs/scrape?sync=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

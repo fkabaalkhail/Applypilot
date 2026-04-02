@@ -380,6 +380,10 @@ const FIELD_MAP = {
   "street address": "address",
   "address": "address",
   "city": "city",
+  "location": "city",
+  "location (city)": "city",
+  "current city": "city",
+  "current location": "city",
   "state": "state",
   "province": "state",
   "state/province": "state",
@@ -613,6 +617,18 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
   
   // Drug test
   if (q.match(/drug.*test|drug.*screen|substance.*test/i)) {
+    return matchOptionOrReturn('yes', options);
+  }
+  
+  // Privacy acknowledgement / consent
+  if (q.match(/privacy.*acknowledge|acknowledge.*privacy|privacy.*policy|data.*privacy|consent.*data|agree.*privacy|applicant.*privacy/i)) {
+    console.log('[AutoApplyBot] Privacy acknowledgement question, answering: yes/agree');
+    return matchOptionOrReturn('yes', options);
+  }
+  
+  // SMS/WhatsApp contact consent
+  if (q.match(/sms|whatsapp|text.*message|contact.*via|updates.*progress|agree.*contact/i)) {
+    console.log('[AutoApplyBot] Contact consent question, answering: yes');
     return matchOptionOrReturn('yes', options);
   }
   
@@ -964,6 +980,19 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
     const website = profile.website || settings.website || '';
     // Return empty string if not set - field will be left blank
     return website;
+  }
+  
+  // ─── City / Location ───
+  if (q.match(/^city$|^location$|location.*city|city.*location|current.*city|current.*location|where.*located|where.*live/i)) {
+    const city = profile.city || settings.city || '';
+    if (city) {
+      console.log('[AutoApplyBot] City/location question, answering:', city);
+      // If options provided, try to match
+      if (options && options.length > 0) {
+        return matchOptionOrReturn(city, options);
+      }
+      return city;
+    }
   }
   
   // ─── AI Fallback for unknown questions ───
@@ -3307,29 +3336,196 @@ log('Content script loaded on ' + window.location.hostname);
 // ─── Auto-detect and fill external ATS pages ─────────────────────────
 
 /**
+ * Try multiple click strategies on an element.
+ * Some frameworks (React, Angular) need specific event dispatching.
+ * @param {HTMLElement} element
+ * @returns {Promise<boolean>}
+ */
+async function multiClickStrategy(element) {
+  log(`Trying multi-click strategy on: ${element.tagName} "${(element.textContent || element.value || '').substring(0, 30)}"`);
+  
+  // Strategy 1: Standard click
+  try {
+    element.click();
+    log('Strategy 1: Standard click executed');
+    await wait(500);
+  } catch (e) {
+    log('Strategy 1 failed: ' + e.message);
+  }
+  
+  // Strategy 2: MouseEvent dispatch (more realistic)
+  try {
+    const mouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window });
+    const mouseUp = new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window });
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+    element.dispatchEvent(mouseDown);
+    await wait(50);
+    element.dispatchEvent(mouseUp);
+    await wait(50);
+    element.dispatchEvent(click);
+    log('Strategy 2: MouseEvent dispatch executed');
+    await wait(500);
+  } catch (e) {
+    log('Strategy 2 failed: ' + e.message);
+  }
+  
+  // Strategy 3: Focus + Enter key (for keyboard-accessible buttons)
+  try {
+    element.focus();
+    await wait(100);
+    const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true });
+    element.dispatchEvent(enterEvent);
+    const enterUp = new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true });
+    element.dispatchEvent(enterUp);
+    log('Strategy 3: Focus + Enter executed');
+    await wait(500);
+  } catch (e) {
+    log('Strategy 3 failed: ' + e.message);
+  }
+  
+  // Strategy 4: If button is inside a form, try form.submit()
+  try {
+    const form = element.closest('form');
+    if (form) {
+      // Check if form has a submit handler - try requestSubmit first (triggers validation)
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit(element.type === 'submit' ? element : null);
+        log('Strategy 4: form.requestSubmit() executed');
+      } else {
+        form.submit();
+        log('Strategy 4: form.submit() executed');
+      }
+      await wait(500);
+    }
+  } catch (e) {
+    log('Strategy 4 failed: ' + e.message);
+  }
+  
+  return true;
+}
+
+/**
+ * Check if there's a reCAPTCHA on the page that needs solving.
+ * Returns true only if there's a VISIBLE captcha that needs user interaction.
+ * Invisible reCAPTCHA (enterprise) doesn't need user action - it runs automatically.
+ * @returns {boolean}
+ */
+function hasUnsolvedRecaptcha() {
+  // Check for reCAPTCHA iframe
+  const recaptchaFrame = document.querySelector('iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"]');
+  if (recaptchaFrame) {
+    const src = recaptchaFrame.src || '';
+    
+    // Check if it's an INVISIBLE reCAPTCHA (enterprise or size=invisible)
+    // These don't require user interaction - they run automatically
+    if (src.includes('size=invisible') || src.includes('enterprise')) {
+      log('Invisible reCAPTCHA detected (no user action needed)');
+      return false; // Don't wait for invisible captcha
+    }
+    
+    log('Visible reCAPTCHA detected on page');
+    // Check if it's been solved (look for checkmark or response token)
+    const recaptchaResponse = document.querySelector('[name="g-recaptcha-response"]');
+    if (recaptchaResponse && recaptchaResponse.value) {
+      log('reCAPTCHA appears to be solved');
+      return false;
+    }
+    return true;
+  }
+  
+  // Check for hCaptcha
+  const hcaptchaFrame = document.querySelector('iframe[src*="hcaptcha"]');
+  if (hcaptchaFrame) {
+    log('hCaptcha detected on page');
+    const hcaptchaResponse = document.querySelector('[name="h-captcha-response"]');
+    if (hcaptchaResponse && hcaptchaResponse.value) {
+      log('hCaptcha appears to be solved');
+      return false;
+    }
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Find and click submit/apply button on external ATS pages.
+ * Uses multiple click strategies for better compatibility with React/Angular forms.
  * @returns {Promise<boolean>}
  */
 async function findAndClickSubmitButton() {
+  // Check for unsolved CAPTCHA first
+  if (hasUnsolvedRecaptcha()) {
+    log('⚠️ CAPTCHA detected - waiting for user to solve it...');
+    // Wait up to 60 seconds for user to solve CAPTCHA
+    for (let i = 0; i < 60; i++) {
+      await wait(1000);
+      if (!hasUnsolvedRecaptcha()) {
+        log('CAPTCHA solved! Continuing with submission...');
+        break;
+      }
+      if (i === 59) {
+        log('CAPTCHA timeout - user may need to solve manually');
+        return false;
+      }
+    }
+  }
+  
+  // Priority order for submit button text (most specific first)
   const submitTexts = [
-    'submit', 'apply', 'send', 'soumettre', 'envoyer', 'postuler',
-    'submit application', 'submit my application', 'apply now',
-    'complete application', 'finish', 'continue', 'next'
+    'submit application', 'submit my application', 'soumettre ma candidature',
+    'submit', 'soumettre', 'apply now', 'apply', 'postuler',
+    'send application', 'send', 'envoyer',
+    'complete application', 'finish', 'terminer'
   ];
   
-  // Try buttons first
+  // Secondary texts (less specific, might match non-submit buttons)
+  const secondaryTexts = ['continue', 'next', 'suivant'];
+  
+  // Greenhouse-specific: Look for the main submit button by ID or data attributes
+  const greenhouseSubmit = document.querySelector('#submit_app, [data-qa="submit-application"], button[type="submit"]');
+  if (greenhouseSubmit && greenhouseSubmit.offsetParent !== null) {
+    log(`Found Greenhouse submit button: ${greenhouseSubmit.id || greenhouseSubmit.className}`);
+    greenhouseSubmit.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    await wait(300);
+    await multiClickStrategy(greenhouseSubmit);
+    return true;
+  }
+  
+  // Try primary submit texts first
   const buttons = document.querySelectorAll('button, input[type="submit"], input[type="button"]');
-  for (const btn of buttons) {
-    if (btn.offsetParent === null) continue;
-    const text = (btn.textContent || btn.value || '').trim().toLowerCase();
-    const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-    
-    for (const submitText of submitTexts) {
+  for (const submitText of submitTexts) {
+    for (const btn of buttons) {
+      if (btn.offsetParent === null) continue;
+      if (btn.disabled) continue; // Skip disabled buttons
+      
+      const text = (btn.textContent || btn.value || '').trim().toLowerCase();
+      const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+      
       if (text.includes(submitText) || ariaLabel.includes(submitText)) {
         log(`Found submit button: "${text || ariaLabel}"`);
         btn.scrollIntoView({ block: 'center', behavior: 'smooth' });
         await wait(300);
-        btn.click();
+        await multiClickStrategy(btn);
+        return true;
+      }
+    }
+  }
+  
+  // Try secondary texts (continue/next) only if no primary found
+  for (const submitText of secondaryTexts) {
+    for (const btn of buttons) {
+      if (btn.offsetParent === null) continue;
+      if (btn.disabled) continue;
+      
+      const text = (btn.textContent || btn.value || '').trim().toLowerCase();
+      const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+      
+      if (text.includes(submitText) || ariaLabel.includes(submitText)) {
+        log(`Found secondary button: "${text || ariaLabel}"`);
+        btn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        await wait(300);
+        await multiClickStrategy(btn);
         return true;
       }
     }
@@ -3340,12 +3536,24 @@ async function findAndClickSubmitButton() {
   for (const link of links) {
     if (link.offsetParent === null) continue;
     const text = link.textContent.trim().toLowerCase();
-    for (const submitText of submitTexts) {
+    for (const submitText of [...submitTexts, ...secondaryTexts]) {
       if (text.includes(submitText)) {
         log(`Found submit link: "${text}"`);
         link.click();
         return true;
       }
+    }
+  }
+  
+  // Last resort: Find any visible submit-type input
+  const submitInputs = document.querySelectorAll('input[type="submit"]');
+  for (const input of submitInputs) {
+    if (input.offsetParent !== null && !input.disabled) {
+      log(`Found submit input: "${input.value}"`);
+      input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      await wait(300);
+      await multiClickStrategy(input);
+      return true;
     }
   }
   
@@ -4066,10 +4274,11 @@ async function handleExternalSelects(profile, settings) {
       
       console.log('[AutoApplyBot] React-Select options for', label + ':', options.slice(0, 10));
       
-      // For searchable dropdowns with many options (School, Country), we need to type to filter
+      // For searchable dropdowns with many options (School, Country, City), we need to type to filter
       // then click the filtered result
       const isSearchableField = labelLower.includes('school') || labelLower.includes('university') || 
-                                 labelLower === 'country' || labelLower.includes('country code');
+                                 labelLower === 'country' || labelLower.includes('country code') ||
+                                 labelLower.includes('location') || labelLower.includes('city');
       
       // Get the value we want to search for
       let searchValue = '';
@@ -4081,6 +4290,10 @@ async function handleExternalSelects(profile, settings) {
           await wait(200);
           continue;
         }
+      } else if (labelLower.includes('location') || labelLower.includes('city')) {
+        // For city/location dropdown, use user's city
+        searchValue = profile.city || settings.city || 'Ottawa';
+        console.log('[AutoApplyBot] Location/City field - searching for:', searchValue);
       } else if (labelLower === 'country' || labelLower.includes('country code')) {
         // For phone country code dropdown, use user's country
         searchValue = profile.country || settings.country || 'Canada';
@@ -4138,6 +4351,32 @@ async function handleExternalSelects(profile, settings) {
                   await wait(300);
                   break;
                 }
+              }
+            }
+            
+            // For location/city dropdown, look for match with city name
+            if ((labelLower.includes('location') || labelLower.includes('city')) && !searchClicked) {
+              const cityLower = searchValue.toLowerCase();
+              for (const optEl of optionEls) {
+                const optText = optEl.textContent.trim();
+                const optTextLower = optText.toLowerCase();
+                // Match city name - could be "Ottawa", "Ottawa, ON", "Ottawa, Ontario, Canada", etc.
+                if (optTextLower.includes(cityLower) || cityLower.includes(optTextLower.split(',')[0].trim())) {
+                  optEl.click();
+                  log(`React-Select: ${label} = ${optText.substring(0, 30)}`);
+                  handled++;
+                  searchClicked = true;
+                  await wait(300);
+                  break;
+                }
+              }
+              // If no match found, click first option if available
+              if (!searchClicked && options.length > 0) {
+                optionEls[0].click();
+                log(`React-Select (first option): ${label} = ${options[0].substring(0, 30)}`);
+                handled++;
+                searchClicked = true;
+                await wait(300);
               }
             }
             
@@ -4233,8 +4472,9 @@ async function handleExternalSelects(profile, settings) {
     }
   }
   
-  // ─── Strategy 2: Find dropdowns by field wrapper pattern ───
+  // ─── Strategy 2: Find fields by field wrapper pattern ───
   // Greenhouse wraps fields in divs with specific patterns
+  // This handles BOTH dropdowns AND plain text inputs
   const fieldWrappers = document.querySelectorAll(
     '[class*="field-wrapper"], [class*="FieldWrapper"], ' +
     '[class*="form-field"], [class*="FormField"], ' +
@@ -4246,10 +4486,22 @@ async function handleExternalSelects(profile, settings) {
   for (const wrapper of fieldWrappers) {
     if (wrapper.offsetParent === null) continue;
     
-    // Skip if we already handled this (has a React-Select we processed)
-    if (wrapper.querySelector('[class*="single-value"]')?.textContent?.trim()) continue;
+    // Skip if we already handled this (has a React-Select we processed with a value)
+    const existingSingleValue = wrapper.querySelector('[class*="single-value"]');
+    if (existingSingleValue?.textContent?.trim() && 
+        !existingSingleValue.textContent.toLowerCase().includes('select')) {
+      continue;
+    }
     
-    // Look for any clickable dropdown trigger
+    // Get label first - we need it for both dropdown and text input handling
+    const labelEl = wrapper.querySelector('label, legend, [class*="label"]:not([class*="select"])');
+    let label = labelEl ? labelEl.textContent.trim().replace(/\*$/, '').trim() : '';
+    
+    if (!label || label.length < 2) continue;
+    
+    const labelLower = label.toLowerCase();
+    
+    // Look for any clickable dropdown trigger INSIDE this wrapper only
     const trigger = wrapper.querySelector(
       '[aria-haspopup="listbox"], [aria-haspopup="true"], ' +
       '[role="combobox"], [role="button"][aria-expanded], ' +
@@ -4257,7 +4509,50 @@ async function handleExternalSelects(profile, settings) {
       '[class*="select-trigger"], button[class*="select"]'
     );
     
-    if (!trigger || trigger.offsetParent === null) continue;
+    // ─── Case A: Plain text input (no dropdown trigger) ───
+    if (!trigger || trigger.offsetParent === null) {
+      // Check if there's a plain text input in this wrapper
+      const textInput = wrapper.querySelector('input[type="text"], input:not([type]), textarea');
+      
+      if (textInput && textInput.offsetParent !== null && !textInput.dataset.autoApplyProcessed) {
+        // Skip if already has value
+        if (textInput.value && textInput.value.trim()) continue;
+        
+        // Skip if it's part of a React-Select (has select classes in parent)
+        if (textInput.closest('[class*="select__"]')) continue;
+        
+        textInput.dataset.autoApplyProcessed = 'true';
+        
+        console.log('[AutoApplyBot] Field wrapper text input:', label);
+        
+        // Get answer for this field
+        const answer = await getSmartAnswer(label, [], settings, profile);
+        
+        if (answer) {
+          textInput.focus();
+          await wait(100);
+          
+          // Use native setter for React compatibility
+          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+          if (nativeInputValueSetter) {
+            nativeInputValueSetter.call(textInput, answer);
+          } else {
+            textInput.value = answer;
+          }
+          
+          textInput.dispatchEvent(new Event('input', { bubbles: true }));
+          textInput.dispatchEvent(new Event('change', { bubbles: true }));
+          textInput.dispatchEvent(new Event('blur', { bubbles: true }));
+          
+          log(`Field wrapper text: ${label} = ${answer.substring(0, 30)}`);
+          handled++;
+          await wait(300);
+        }
+      }
+      continue;
+    }
+    
+    // ─── Case B: Dropdown trigger found ───
     
     // Check if already has value
     const hasValue = trigger.querySelector('[class*="single-value"], [class*="value"]');
@@ -4265,15 +4560,9 @@ async function handleExternalSelects(profile, settings) {
       continue;
     }
     
-    // Get label
-    const labelEl = wrapper.querySelector('label, legend, [class*="label"]:not([class*="select"])');
-    let label = labelEl ? labelEl.textContent.trim().replace(/\*$/, '').trim() : '';
-    
     if (!label) {
       label = trigger.getAttribute('aria-label') || '';
     }
-    
-    if (!label || label.length < 2) continue;
     
     // Skip if already processed
     if (trigger.dataset.autoApplyProcessed) continue;
@@ -4285,17 +4574,36 @@ async function handleExternalSelects(profile, settings) {
     trigger.click();
     await wait(600);
     
-    // Find menu
-    let menu = document.querySelector(
-      '[role="listbox"]:not([hidden]), ' +
-      '[class*="select__menu"]:not([style*="display: none"]), ' +
-      '[class*="dropdown-menu"]:not([hidden]), ' +
-      '[class*="menu-list"]:not([hidden])'
-    );
+    // Find menu - IMPORTANT: Look inside the wrapper first, then check for portals
+    // But make sure we're getting the RIGHT menu for THIS field
+    let menu = wrapper.querySelector('[role="listbox"], [class*="menu"]');
     
+    // If not in wrapper, look for a portal menu that appeared after our click
+    // But be careful not to grab a menu from a different field
     if (!menu) {
-      // Check inside wrapper
-      menu = wrapper.querySelector('[role="listbox"], [class*="menu"]');
+      // Get all visible menus
+      const allMenus = document.querySelectorAll(
+        '[role="listbox"]:not([hidden]), ' +
+        '[class*="select__menu"]:not([style*="display: none"]), ' +
+        '[class*="dropdown-menu"]:not([hidden]), ' +
+        '[class*="menu-list"]:not([hidden])'
+      );
+      
+      // Find the menu that's closest to our trigger (likely the one we just opened)
+      for (const m of allMenus) {
+        if (m.offsetParent !== null) {
+          // Check if this menu is related to our wrapper by checking position
+          const triggerRect = trigger.getBoundingClientRect();
+          const menuRect = m.getBoundingClientRect();
+          
+          // Menu should be near the trigger (within 300px vertically)
+          if (Math.abs(menuRect.top - triggerRect.bottom) < 300 ||
+              Math.abs(menuRect.bottom - triggerRect.top) < 300) {
+            menu = m;
+            break;
+          }
+        }
+      }
     }
     
     if (!menu) {
@@ -4306,13 +4614,61 @@ async function handleExternalSelects(profile, settings) {
     }
     
     const optionEls = menu.querySelectorAll('[role="option"], [class*="option"], li');
-    const options = Array.from(optionEls)
+    let options = Array.from(optionEls)
       .map(o => o.textContent.trim())
-      .filter(t => t && t.length < 200);
+      .filter(t => t && t.length < 200 && !t.toLowerCase().includes('no options'));
     
     console.log('[AutoApplyBot] Field wrapper options:', options.slice(0, 5));
     
+    // Validate that options make sense for this field
+    // If we're looking for a city but got country codes, skip this
+    if ((labelLower.includes('city') || labelLower.includes('location')) && 
+        options.length > 0 && options[0].includes('+')) {
+      console.log('[AutoApplyBot] Got country codes for city field - wrong menu, skipping');
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(200);
+      continue;
+    }
+    
     if (options.length === 0) {
+      // For searchable fields like city, try typing to get options
+      if (labelLower.includes('city') || labelLower.includes('location')) {
+        const cityValue = profile.city || settings.city || 'Ottawa';
+        const input = wrapper.querySelector('input');
+        if (input) {
+          console.log('[AutoApplyBot] Typing city to search:', cityValue);
+          input.focus();
+          input.value = '';
+          for (const char of cityValue) {
+            input.value += char;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(30);
+          }
+          await wait(800);
+          
+          // Check for options again
+          menu = wrapper.querySelector('[role="listbox"], [class*="menu"]') ||
+                 document.querySelector('[class*="select__menu"]:not([style*="display: none"])');
+          
+          if (menu) {
+            const newOptionEls = menu.querySelectorAll('[role="option"], [class*="option"], li');
+            if (newOptionEls.length > 0) {
+              // Click first matching option
+              for (const optEl of newOptionEls) {
+                const optText = optEl.textContent.trim().toLowerCase();
+                if (optText.includes(cityValue.toLowerCase()) || cityValue.toLowerCase().includes(optText.split(',')[0])) {
+                  optEl.click();
+                  log(`Field dropdown (city): ${label} = ${optEl.textContent.trim().substring(0, 30)}`);
+                  handled++;
+                  await wait(400);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await wait(200);
       continue;
@@ -4554,9 +4910,11 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
     graduationYear: settings.graduationYear || profile.graduationYear || '',
     linkedinUrl: profile.linkedinUrl || settings.linkedinUrl || '',
     website: profile.website || settings.website || '',
+    city: profile.city || settings.city || 'Ottawa',
+    country: profile.country || settings.country || 'Canada',
   };
   
-  console.log('[AutoApplyBot] Merged profile - school:', mergedProfile.school, 'degree:', mergedProfile.degree);
+  console.log('[AutoApplyBot] Merged profile - school:', mergedProfile.school, 'degree:', mergedProfile.degree, 'city:', mergedProfile.city);
   
   // Step 1: Fill text fields using autofill
   const result = await autofill(mergedProfile, settings, prefilledAnswers);
@@ -4593,6 +4951,8 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
   await wait(1000);
   
   // Check for unfilled required fields before submitting
+  // NOTE: This is informational only - React-Select fields often show as "unfilled" 
+  // because the hidden input doesn't get the value, but the UI shows the selection
   const unfilledRequired = [];
   const requiredFields = document.querySelectorAll('[required], [aria-required="true"]');
   for (const field of requiredFields) {
@@ -4606,11 +4966,29 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
       hasValue = field.value && field.selectedIndex > 0;
     }
     
-    // Also check for React-Select - look for single-value element
-    const reactSelectContainer = field.closest('[class*="select__container"], [class*="-container"]');
-    if (reactSelectContainer) {
-      const singleValue = reactSelectContainer.querySelector('[class*="single-value"]');
-      hasValue = singleValue && singleValue.textContent.trim() && !singleValue.textContent.includes('Select');
+    // For React-Select fields, check the visible UI instead of hidden input
+    // React-Select uses a hidden input but displays value in a separate element
+    if (!hasValue && field.tagName === 'INPUT') {
+      // Look for React-Select container - could be parent or ancestor
+      const reactSelectContainer = field.closest('[class*="select__"], [class*="Select"], [class*="-container"]');
+      if (reactSelectContainer) {
+        // Check for single-value element which shows the selected value
+        const singleValue = reactSelectContainer.querySelector('[class*="single-value"], [class*="singleValue"]');
+        if (singleValue) {
+          const valueText = singleValue.textContent.trim().toLowerCase();
+          // Has value if there's text and it's not a placeholder
+          hasValue = valueText && 
+                     !valueText.includes('select') && 
+                     !valueText.includes('choose') &&
+                     !valueText.includes('pick');
+        }
+        
+        // Also check if there's a multi-value (for multi-select)
+        const multiValue = reactSelectContainer.querySelector('[class*="multi-value"], [class*="multiValue"]');
+        if (multiValue) {
+          hasValue = true;
+        }
+      }
     }
     
     if (!hasValue) {
@@ -4620,7 +4998,11 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
   }
   
   if (unfilledRequired.length > 0) {
-    log(`⚠️ Unfilled required fields: ${unfilledRequired.join(', ')}`);
+    // Only log as warning, don't block submission
+    // React-Select validation can have false positives
+    log(`ℹ️ Potentially unfilled fields (may be false positive): ${unfilledRequired.join(', ')}`);
+  } else {
+    log('✓ All required fields appear to be filled');
   }
   
   // Step 7: Try to submit the form
