@@ -978,7 +978,7 @@ async function fetchPendingJobs() {
     showToast('Fetching pending jobs...', 'info', 2000);
 
     // Get max jobs setting
-    const maxJobs = parseInt(settings.maxJobsPerRun) || 10;
+    const maxJobs = parseInt((data.settings && data.settings.maxJobsPerRun) || 10);
 
     // Build URL with job type filter
     let url = `${backendUrl}/api/extension/jobs?limit=${maxJobs}`;
