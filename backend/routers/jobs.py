@@ -31,10 +31,22 @@ router = APIRouter()
 
 
 @router.post("/scrape")
-def scrape_jobs(db: Session = Depends(get_db)):
+def scrape_jobs(db: Session = Depends(get_db), sync: bool = Query(False, description="Run synchronously without Celery")):
     """Kick off a scrape task — bot searches LinkedIn and saves job listings."""
-    task_id = start_scrape_task()
-    return {"task_id": task_id, "status": "scraping"}
+    if sync:
+        # Run synchronously without Celery/Redis
+        import uuid
+        from backend.bot.linkedin_bot import scrape_jobs as do_scrape
+        task_id = str(uuid.uuid4())[:8]
+        try:
+            do_scrape(task_id)
+            return {"task_id": task_id, "status": "completed"}
+        except Exception as e:
+            logger.error("Sync scrape failed: %s", e)
+            raise HTTPException(status_code=500, detail=str(e))
+    else:
+        task_id = start_scrape_task()
+        return {"task_id": task_id, "status": "scraping"}
 
 
 @router.post("/analyze")

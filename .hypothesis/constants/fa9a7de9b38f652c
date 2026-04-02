@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\dialects\sqlite\__init__.py
+# hypothesis_version: 6.151.10
+
+['BLOB', 'BOOLEAN', 'CHAR', 'DATE', 'DATETIME', 'DECIMAL', 'FLOAT', 'INTEGER', 'Insert', 'JSON', 'NUMERIC', 'REAL', 'SMALLINT', 'TEXT', 'TIME', 'TIMESTAMP', 'VARCHAR', 'dialect', 'insert']

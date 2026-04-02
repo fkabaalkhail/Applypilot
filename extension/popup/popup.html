@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto Apply Bot</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V5C21 3.89543 20.1046 3 19 3Z" stroke="currentColor" stroke-width="2"/>
+          <path d="M9 11V17M9 9V9.01M15 17V13.5C15 12.1193 13.8807 11 12.5 11C11.1193 11 10 12.1193 10 13.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <div class="title-group">
+          <h1>Auto Apply Bot</h1>
+          <span class="version-badge">v1.0.0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="tabs">
+      <button class="tab active" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="personal">Personal Info</button>
+      <button class="tab" data-tab="settings">Settings</button>
+      <button class="tab" data-tab="applied">Applied Jobs</button>
+    </div>
+
+    <!-- Tab Content Areas -->
+    <div id="dashboard-tab" class="tab-content active">
+      <!-- Status Card -->
+      <div class="status-card">
+        <div class="status-row">
+          <span class="status-label">ATS</span>
+          <span id="ats-badge" class="ats-badge">—</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Status</span>
+          <span id="running-status" class="status-value stopped">Stopped</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Applied</span>
+          <span id="applied-count" class="stat-value">0</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Skipped</span>
+          <span id="skipped-count" class="stat-value">0</span>
+        </div>
+      </div>
+
+      <!-- Fill Result Display -->
+      <div id="fill-result" class="fill-result" style="display: none;">
+        <div class="fill-result-header">Last Fill Result</div>
+        <div class="fill-result-stats">
+          <span class="fill-stat filled"><span id="fill-filled">0</span> filled</span>
+          <span class="fill-stat skipped"><span id="fill-skipped">0</span> skipped</span>
+          <span class="fill-stat failed"><span id="fill-failed">0</span> failed</span>
+        </div>
+        <div id="fill-unfilled" class="fill-unfilled"></div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-buttons">
+        <button id="autofill-btn" class="btn btn-primary" title="Fill form fields only">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Autofill
+        </button>
+        <button id="autoapply-btn" class="btn btn-accent" title="Fill and submit applications">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          Autoapply
+        </button>
+        <button id="stop-btn" class="btn btn-danger" disabled title="Stop the bot">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+          Stop
+        </button>
+      </div>
+    </div>
+
+    <div id="personal-tab" class="tab-content">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="firstName">First Name</label>
+          <input type="text" id="firstName" data-field="firstName" placeholder="John">
+        </div>
+        <div class="form-group">
+          <label for="lastName">Last Name</label>
+          <input type="text" id="lastName" data-field="lastName" placeholder="Doe">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" data-field="email" placeholder="john.doe@example.com">
+      </div>
+
+      <div class="form-row phone-row">
+        <div class="form-group">
+          <label for="phoneCountryCode">Country Code</label>
+          <select id="phoneCountryCode" data-field="phoneCountryCode">
+            <optgroup label="🌎 North America">
+              <option value="+1">United States (+1)</option>
+              <option value="+1-CA">Canada (+1)</option>
+            </optgroup>
+            <optgroup label="🌍 Europe">
+              <option value="+355">Albania (+355)</option>
+              <option value="+376">Andorra (+376)</option>
+              <option value="+43">Austria (+43)</option>
+              <option value="+375">Belarus (+375)</option>
+              <option value="+32">Belgium (+32)</option>
+              <option value="+387">Bosnia &amp; Herzegovina (+387)</option>
+              <option value="+359">Bulgaria (+359)</option>
+              <option value="+385">Croatia (+385)</option>
+              <option value="+357">Cyprus (+357)</option>
+              <option value="+420">Czech Republic (+420)</option>
+              <option value="+45">Denmark (+45)</option>
+              <option value="+372">Estonia (+372)</option>
+              <option value="+358">Finland (+358)</option>
+              <option value="+33">France (+33)</option>
+              <option value="+995">Georgia (+995)</option>
+              <option value="+49">Germany (+49)</option>
+              <option value="+30">Greece (+30)</option>
+              <option value="+36">Hungary (+36)</option>
+              <option value="+354">Iceland (+354)</option>
+              <option value="+353">Ireland (+353)</option>
+              <option value="+39">Italy (+39)</option>
+              <option value="+383">Kosovo (+383)</option>
+              <option value="+371">Latvia (+371)</option>
+              <option value="+370">Lithuania (+370)</option>
+              <option value="+352">Luxembourg (+352)</option>
+              <option value="+356">Malta (+356)</option>
+              <option value="+373">Moldova (+373)</option>
+              <option value="+377">Monaco (+377)</option>
+              <option value="+382">Montenegro (+382)</option>
+              <option value="+31">Netherlands (+31)</option>
+              <option value="+389">North Macedonia (+389)</option>
+              <option value="+47">Norway (+47)</option>
+              <option value="+48">Poland (+48)</option>
+              <option value="+351">Portugal (+351)</option>
+              <option value="+40">Romania (+40)</option>
+              <option value="+381">Serbia (+381)</option>
+              <option value="+421">Slovakia (+421)</option>
+              <option value="+386">Slovenia (+386)</option>
+              <option value="+34">Spain (+34)</option>
+              <option value="+46">Sweden (+46)</option>
+              <option value="+41">Switzerland (+41)</option>
+              <option value="+380">Ukraine (+380)</option>
+              <option value="+44">United Kingdom (+44)</option>
+            </optgroup>
+            <optgroup label="🌏 Asia">
+              <option value="+93">Afghanistan (+93)</option>
+              <option value="+374">Armenia (+374)</option>
+              <option value="+994">Azerbaijan (+994)</option>
+              <option value="+880">Bangladesh (+880)</option>
+              <option value="+855">Cambodia (+855)</option>
+              <option value="+86">China (+86)</option>
+              <option value="+852">Hong Kong (+852)</option>
+              <option value="+91">India (+91)</option>
+              <option value="+62">Indonesia (+62)</option>
+              <option value="+972">Israel (+972)</option>
+              <option value="+81">Japan (+81)</option>
+              <option value="+7">Kazakhstan (+7)</option>
+              <option value="+996">Kyrgyzstan (+996)</option>
+              <option value="+856">Laos (+856)</option>
+              <option value="+60">Malaysia (+60)</option>
+              <option value="+976">Mongolia (+976)</option>
+              <option value="+95">Myanmar (+95)</option>
+              <option value="+977">Nepal (+977)</option>
+              <option value="+92">Pakistan (+92)</option>
+              <option value="+63">Philippines (+63)</option>
+              <option value="+65">Singapore (+65)</option>
+              <option value="+82">South Korea (+82)</option>
+              <option value="+94">Sri Lanka (+94)</option>
+              <option value="+886">Taiwan (+886)</option>
+              <option value="+992">Tajikistan (+992)</option>
+              <option value="+66">Thailand (+66)</option>
+              <option value="+90">Turkey (+90)</option>
+              <option value="+993">Turkmenistan (+993)</option>
+              <option value="+998">Uzbekistan (+998)</option>
+              <option value="+84">Vietnam (+84)</option>
+            </optgroup>
+            <optgroup label="🏜️ Middle East">
+              <option value="+973">Bahrain (+973)</option>
+              <option value="+20">Egypt (+20)</option>
+              <option value="+98">Iran (+98)</option>
+              <option value="+964">Iraq (+964)</option>
+              <option value="+962">Jordan (+962)</option>
+              <option value="+965">Kuwait (+965)</option>
+              <option value="+961">Lebanon (+961)</option>
+              <option value="+968">Oman (+968)</option>
+              <option value="+970">Palestine (+970)</option>
+              <option value="+974">Qatar (+974)</option>
+              <option value="+966">Saudi Arabia (+966)</option>
+              <option value="+963">Syria (+963)</option>
+              <option value="+971">UAE (+971)</option>
+              <option value="+967">Yemen (+967)</option>
+            </optgroup>
+            <optgroup label="🌍 Africa">
+              <option value="+213">Algeria (+213)</option>
+              <option value="+244">Angola (+244)</option>
+              <option value="+229">Benin (+229)</option>
+              <option value="+267">Botswana (+267)</option>
+              <option value="+226">Burkina Faso (+226)</option>
+              <option value="+237">Cameroon (+237)</option>
+              <option value="+243">DR Congo (+243)</option>
+              <option value="+225">Ivory Coast (+225)</option>
+              <option value="+251">Ethiopia (+251)</option>
+              <option value="+241">Gabon (+241)</option>
+              <option value="+233">Ghana (+233)</option>
+              <option value="+224">Guinea (+224)</option>
+              <option value="+254">Kenya (+254)</option>
+              <option value="+231">Liberia (+231)</option>
+              <option value="+218">Libya (+218)</option>
+              <option value="+261">Madagascar (+261)</option>
+              <option value="+223">Mali (+223)</option>
+              <option value="+222">Mauritania (+222)</option>
+              <option value="+230">Mauritius (+230)</option>
+              <option value="+212">Morocco (+212)</option>
+              <option value="+258">Mozambique (+258)</option>
+              <option value="+264">Namibia (+264)</option>
+              <option value="+227">Niger (+227)</option>
+              <option value="+234">Nigeria (+234)</option>
+              <option value="+250">Rwanda (+250)</option>
+              <option value="+221">Senegal (+221)</option>
+              <option value="+27">South Africa (+27)</option>
+              <option value="+249">Sudan (+249)</option>
+              <option value="+255">Tanzania (+255)</option>
+              <option value="+228">Togo (+228)</option>
+              <option value="+216">Tunisia (+216)</option>
+              <option value="+256">Uganda (+256)</option>
+              <option value="+260">Zambia (+260)</option>
+              <option value="+263">Zimbabwe (+263)</option>
+            </optgroup>
+            <optgroup label="🌊 Oceania">
+              <option value="+61">Australia (+61)</option>
+              <option value="+679">Fiji (+679)</option>
+              <option value="+64">New Zealand (+64)</option>
+              <option value="+675">Papua New Guinea (+675)</option>
+            </optgroup>
+            <optgroup label="🌎 Latin America &amp; Caribbean">
+              <option value="+54">Argentina (+54)</option>
+              <option value="+591">Bolivia (+591)</option>
+              <option value="+55">Brazil (+55)</option>
+              <option value="+56">Chile (+56)</option>
+              <option value="+57">Colombia (+57)</option>
+              <option value="+506">Costa Rica (+506)</option>
+              <option value="+53">Cuba (+53)</option>
+              <option value="+1-809">Dominican Republic (+1-809)</option>
+              <option value="+593">Ecuador (+593)</option>
+              <option value="+503">El Salvador (+503)</option>
+              <option value="+502">Guatemala (+502)</option>
+              <option value="+509">Haiti (+509)</option>
+              <option value="+504">Honduras (+504)</option>
+              <option value="+1-876">Jamaica (+1-876)</option>
+              <option value="+52">Mexico (+52)</option>
+              <option value="+505">Nicaragua (+505)</option>
+              <option value="+507">Panama (+507)</option>
+              <option value="+595">Paraguay (+595)</option>
+              <option value="+51">Peru (+51)</option>
+              <option value="+1-787">Puerto Rico (+1-787)</option>
+              <option value="+1-868">Trinidad &amp; Tobago (+1-868)</option>
+              <option value="+598">Uruguay (+598)</option>
+              <option value="+58">Venezuela (+58)</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="phone">Phone Number</label>
+          <input type="tel" id="phone" data-field="phone" placeholder="1234567890">
+          <small>Without country code or leading zero</small>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="city">City</label>
+          <input type="text" id="city" data-field="city" placeholder="Ottawa">
+        </div>
+        <div class="form-group">
+          <label for="state">State / Province</label>
+          <input type="text" id="state" data-field="state" placeholder="Ontario">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="postal">Postal / Zip Code</label>
+          <input type="text" id="postal" data-field="postal" placeholder="K1A 0A6">
+        </div>
+        <div class="form-group">
+          <label for="country">Country</label>
+          <input type="text" id="country" data-field="country" placeholder="Canada">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="linkedinUrl">LinkedIn URL</label>
+        <input type="url" id="linkedinUrl" data-field="linkedinUrl" placeholder="https://linkedin.com/in/yourprofile">
+      </div>
+
+      <div class="form-group">
+        <label for="website">Website / Portfolio</label>
+        <input type="url" id="website" data-field="website" placeholder="https://yoursite.com">
+      </div>
+
+      <div class="form-group">
+        <label>Resume / CV Upload</label>
+        <div class="file-upload-wrapper">
+          <input type="file" id="resumeFile" accept=".pdf,.doc,.docx" style="display: none;">
+          <button type="button" id="uploadResumeBtn" class="btn-upload">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Choose File
+          </button>
+          <span id="resumeFileName" class="file-name">No file chosen</span>
+          <button type="button" id="removeResumeBtn" class="btn-remove" style="display: none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <small>PDF, DOC, or DOCX (max 5MB). Used for LinkedIn applications requiring CV upload.</small>
+      </div>
+    </div>
+
+    <div id="settings-tab" class="tab-content">
+      <!-- Backend Sync -->
+      <div class="form-group">
+        <label>Backend Integration</label>
+        <div class="sync-row">
+          <button type="button" id="sync-backend-btn" class="btn btn-primary btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"/></svg>
+            Sync Profile
+          </button>
+          <button type="button" id="scrape-jobs-btn" class="btn btn-secondary btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            Scrape Jobs
+          </button>
+          <button type="button" id="fetch-jobs-btn" class="btn btn-accent btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+            Fetch & Apply
+          </button>
+        </div>
+        <small>Sync profile from dashboard, scrape new jobs from LinkedIn, or fetch jobs to apply</small>
+      </div>
+
+      <!-- Job Type Filter -->
+      <div class="form-group">
+        <label for="jobTypeFilter">Job Type Filter</label>
+        <select id="jobTypeFilter" data-setting="jobTypeFilter">
+          <option value="easy_apply" selected>Easy Apply Only</option>
+          <option value="all">All Jobs (Easy Apply + External)</option>
+          <option value="external">External ATS Only</option>
+        </select>
+        <small>Easy Apply jobs can be auto-filled. External jobs redirect to company sites.</small>
+      </div>
+
+      <!-- Backend API -->
+      <div class="form-group">
+        <label for="backendUrl">Backend API URL</label>
+        <input type="url" id="backendUrl" data-setting="backendUrl" placeholder="http://localhost:8000" value="http://localhost:8000">
+        <small>URL of the FastAPI backend for AI answers</small>
+      </div>
+
+      <!-- AI Toggle -->
+      <div class="form-group">
+        <label>AI-Powered Answers</label>
+        <div class="toggle-row">
+          <span class="toggle-label">Enable AI fallback for unknown questions</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="aiEnabled" data-setting="aiEnabled" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Prefilled Q&A Editor -->
+      <div class="form-group">
+        <label>Prefilled Q&amp;A</label>
+        <small>Pre-answer common application questions</small>
+        <div id="qa-list" class="qa-list"></div>
+        <button type="button" id="add-qa-btn" class="btn btn-primary btn-sm">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Q&amp;A
+        </button>
+      </div>
+
+      <!-- Common Application Questions -->
+      <div class="settings-section">
+        <label class="section-label">Common Questions</label>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="basedInUS">Based in United States</label>
+            <select id="basedInUS" data-setting="basedInUS">
+              <option value="yes">Yes</option>
+              <option value="no" selected>No</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="startupReady">Ready for Startup</label>
+            <select id="startupReady" data-setting="startupReady">
+              <option value="yes" selected>Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="visaSponsorship">Visa Sponsorship</label>
+            <select id="visaSponsorship" data-setting="visaSponsorship">
+              <option value="yes">Yes</option>
+              <option value="no" selected>No</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="legallyAuthorized">Work Authorization</label>
+            <select id="legallyAuthorized" data-setting="legallyAuthorized">
+              <option value="yes" selected>Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="willingToRelocate">Willing to Relocate</label>
+            <select id="willingToRelocate" data-setting="willingToRelocate">
+              <option value="yes" selected>Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="driversLicense">Driver's License</label>
+            <select id="driversLicense" data-setting="driversLicense">
+              <option value="yes" selected>Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Education Info (for Greenhouse forms) -->
+      <div class="settings-section">
+        <label class="section-label">Education (for ATS forms)</label>
+
+        <div class="form-group">
+          <label for="school">School / University</label>
+          <input type="text" id="school" data-setting="school" placeholder="e.g. University of Ottawa">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="degree">Degree</label>
+            <input type="text" id="degree" data-setting="degree" placeholder="e.g. Bachelor's in Computer Science">
+          </div>
+          <div class="form-group">
+            <label for="discipline">Discipline / Major</label>
+            <input type="text" id="discipline" data-setting="discipline" placeholder="e.g. Computer Science">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="educationStartYear">Start Year</label>
+            <input type="number" id="educationStartYear" data-setting="educationStartYear" min="1980" max="2030" placeholder="e.g. 2020">
+          </div>
+          <div class="form-group">
+            <label for="graduationYear">Graduation Year</label>
+            <input type="number" id="graduationYear" data-setting="graduationYear" min="1980" max="2035" placeholder="e.g. 2024">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="yearsOfExperience">Years of Experience</label>
+          <input type="number" id="yearsOfExperience" data-setting="yearsOfExperience" min="0" max="50" placeholder="5">
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="settings-section">
+        <label class="section-label">Filters</label>
+
+        <div class="form-group">
+          <label for="blacklistKeywords">Blacklist Keywords</label>
+          <input type="text" id="blacklistKeywords" data-setting="blacklistKeywords" placeholder="e.g. senior, staff, principal">
+          <small>Comma-separated. Jobs with these words are skipped.</small>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="maxYearsRequired">Max Years Required</label>
+            <input type="number" id="maxYearsRequired" data-setting="maxYearsRequired" min="0" max="30" placeholder="3">
+          </div>
+          <div class="form-group">
+            <label for="expectedSalary">Expected Salary</label>
+            <input type="text" id="expectedSalary" data-setting="expectedSalary" placeholder="e.g. 80000">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="applied-tab" class="tab-content">
+      <!-- Action bar -->
+      <div class="applied-actions">
+        <button id="export-csv-btn" class="btn btn-primary btn-sm" title="Export applied jobs as CSV">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export CSV
+        </button>
+        <button id="clear-all-btn" class="btn btn-danger btn-sm" title="Clear all applied jobs">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          Clear All
+        </button>
+      </div>
+
+      <!-- Job list (scrollable) -->
+      <div id="applied-jobs-list" class="applied-jobs-list"></div>
+
+      <!-- Empty state -->
+      <div id="applied-empty-state" class="applied-empty-state" style="display: none;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+          <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+          <line x1="12" y1="12" x2="12" y2="12.01"/>
+        </svg>
+        <p>No applications yet</p>
+        <small>Applied jobs will appear here as you use Autoapply</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

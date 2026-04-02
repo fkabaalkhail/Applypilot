@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\remote\client_config.py
+# hypothesis_version: 6.151.10
+
+[0.1, 30.0, '*', ',', 'Authorization', 'Basic', 'Bearer', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'REQUESTS_CA_BUNDLE', 'X-API-Key', '_auth_type', '_ca_certs', '_extra_headers', '_ignore_certificates', '_keep_alive', '_password', '_proxy', '_remote_server_addr', '_timeout', '_token', '_user_agent', '_username', '_websocket_interval', '_websocket_timeout', 'http_proxy', 'https://', 'https_proxy', 'no_proxy', 'proxyType', 'utf-8']

@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db.database import engine, Base
-from backend.routers import applications, jobs, resumes, health, settings
+from backend.routers import applications, jobs, resumes, health, settings, extension
 
 
 def _check(label: str, ok: bool) -> bool:
@@ -91,6 +91,7 @@ app.include_router(resumes.router, prefix="/resumes", tags=["resumes"])
 app.include_router(applications.router, prefix="/applications", tags=["applications"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(settings.router, prefix="/settings", tags=["settings"])
+app.include_router(extension.router, prefix="/api/extension", tags=["extension"])
 
 
 @app.get("/debug/screenshot")

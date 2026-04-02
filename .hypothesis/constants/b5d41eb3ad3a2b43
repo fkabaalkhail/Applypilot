@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfplumber\utils\text.py
+# hypothesis_version: 6.151.10
+
+[7.25, ' *([^\\n]+?) *(\\n|$)', '([^\\n]+)', '_render', '_rotated', 'bottom', 'btt', 'char_dir_render', 'chars', 'direction', 'doctop', 'ff', 'ffi', 'ffl', 'fi', 'fl', 'fontname', 'groups', 'height', 'layout', 'layout_bbox', 'line_dir_render', 'ltr', 'presorted', 'rtl', 'size', 'st', 'text', 'top', 'ttb', 'upright', 'width', 'x0', 'x1', 'x_tolerance', 'y_tolerance', 'ﬀ', 'ﬁ', 'ﬂ', 'ﬃ', 'ﬄ', 'ﬅ', 'ﬆ']

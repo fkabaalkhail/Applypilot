@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfminer\cmapdb.py
+# hypothesis_version: 6.151.10
+
+[b'beginbfchar', b'beginbfrange', b'begincidchar', b'begincidrange', b'begincmap', b'begincodespacerange', b'beginnotdefrange', b'def', b'endbfchar', b'endbfrange', b'endcidchar', b'endcidrange', b'endcmap', b'endcodespacerange', b'endnotdefrange', b'usecmap', '\x00', '/usr/share/pdfminer/', '<CMap: {}>', '<UnicodeMap: {}>', '>L', 'CID2UNICHR_H', 'CID2UNICHR_V', 'CMAP_PATH', 'CMapBase', 'CMapName', 'CODE2CID', 'Identity-H', 'Identity-V', 'OneByteIdentityH', 'OneByteIdentityV', 'UTF-16BE', 'WMode', 'cmap', 'decode: %r, %r', 'get_unichr: %r, %r', 'ignore', 'loading JSON: %r', 'loading: %r', 'rt', 'utf-8']

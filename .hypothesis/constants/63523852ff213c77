@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\by.py
+# hypothesis_version: 6.151.10
+
+['class name', 'css selector', 'id', 'link text', 'name', 'partial link text', 'tag name', 'xpath']

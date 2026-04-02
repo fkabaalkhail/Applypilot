@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\Desktop\Applypilot\backend\routers\resumes.py
+# hypothesis_version: 6.151.10
+
+[400, 422, 502, '/upload', 'application/pdf', 'resume']

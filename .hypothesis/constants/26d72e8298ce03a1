@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\docx\oxml\document.py
+# hypothesis_version: 6.151.10
+
+['./w:p | ./w:tbl', 'w:body', 'w:p', 'w:sectPr', 'w:tbl']

@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfminer\ascii85.py
+# hypothesis_version: 6.151.10
+
+[b'0', b'>', b'\\s', b'\\s*~\\s*>?\\s*$', b'^\\s*<?\\s*~\\s*']

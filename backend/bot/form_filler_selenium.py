@@ -11,9 +11,11 @@ import asyncio
 import os
 import logging
 import random
+import time
 from typing import TYPE_CHECKING
 
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 
@@ -35,32 +37,42 @@ class FormFillerSelenium:
     def _set_react_value(self, driver: WebDriver, element: WebElement, value: str) -> None:
         """Set a value on an input/textarea with React compatibility.
 
-        Primary approach: clear + send_keys (simulates real typing).
+        Primary approach: click to focus, clear, send_keys, then TAB to
+        trigger blur/validation — matching smart_form_filler.py::_fill_field.
         Fallback: JS native setter that bypasses React's synthetic event
-        system, then dispatches input/change/blur so React picks up the
-        new value.
+        system using tag-name-aware prototype resolution, then dispatches
+        input/change/blur so React picks up the new value.
         """
         try:
+            element.click()
+            time.sleep(0.2)
             element.clear()
+            time.sleep(0.1)
             element.send_keys(value)
+            time.sleep(0.5)
+            # Handle LinkedIn typeahead/autocomplete dropdowns
+            self._try_select_typeahead(driver, element)
             # Verify the value stuck
             if element.get_attribute("value") == value:
+                element.send_keys(Keys.TAB)
+                time.sleep(0.2)
+                return
+            # Value might have changed due to typeahead selection — that's OK
+            if element.get_attribute("value"):
+                element.send_keys(Keys.TAB)
+                time.sleep(0.2)
                 return
         except Exception:
             pass
 
-        # Fallback — JS native setter + event dispatch
+        # Fallback — JS native setter + event dispatch (tag-name-aware)
         js = """
         var el = arguments[0];
         var val = arguments[1];
-        var nativeSetter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype, 'value'
-        );
-        if (!nativeSetter) {
-            nativeSetter = Object.getOwnPropertyDescriptor(
-                window.HTMLTextAreaElement.prototype, 'value'
-            );
-        }
+        var proto = (el.tagName.toLowerCase() === 'textarea')
+            ? window.HTMLTextAreaElement.prototype
+            : window.HTMLInputElement.prototype;
+        var nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value');
         if (nativeSetter && nativeSetter.set) {
             nativeSetter.set.call(el, val);
         } else {
@@ -71,6 +83,62 @@ class FormFillerSelenium:
         el.dispatchEvent(new Event('blur', {bubbles: true}));
         """
         driver.execute_script(js, element, value)
+        try:
+            element.send_keys(Keys.TAB)
+            time.sleep(0.2)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # LinkedIn typeahead/autocomplete handler
+    # ------------------------------------------------------------------
+
+    def _try_select_typeahead(self, driver: WebDriver, element: WebElement) -> None:
+        """Handle LinkedIn's typeahead/autocomplete dropdowns.
+
+        After typing a value, LinkedIn shows a dropdown list for fields like
+        City, State, Postal. Click the first matching option to make the
+        value stick.
+        """
+        try:
+            time.sleep(0.8)  # Wait for dropdown to appear
+
+            dropdown_selectors = [
+                "div[role='listbox'] div[role='option']",
+                "ul[role='listbox'] li",
+                ".basic-typeahead__selectable",
+                ".typeahead-multiselect__option",
+                "[data-test-basic-typeahead-option]",
+                ".artdeco-typeahead__results-list li",
+                ".artdeco-typeahead__result",
+            ]
+
+            for sel in dropdown_selectors:
+                try:
+                    options = driver.find_elements(By.CSS_SELECTOR, sel)
+                    if options:
+                        for opt in options:
+                            if opt.is_displayed():
+                                opt_text = opt.text.strip()
+                                if opt_text:
+                                    opt.click()
+                                    logger.info("Selected typeahead: %s", opt_text[:50])
+                                    time.sleep(0.3)
+                                    return
+                except Exception:
+                    continue
+
+            # Fallback: Down arrow + Enter
+            try:
+                element.send_keys(Keys.ARROW_DOWN)
+                time.sleep(0.3)
+                element.send_keys(Keys.ENTER)
+                time.sleep(0.3)
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.debug("Typeahead selection failed: %s", e)
 
     # ------------------------------------------------------------------
     # Core field filling (updated to use _set_react_value)
@@ -549,6 +617,15 @@ class FormFillerSelenium:
             "mobile": s.get("phone", ""),
             "city": s.get("city", ""),
             "location": s.get("city", ""),
+            "state": s.get("state", ""),
+            "province": s.get("state", ""),
+            "postal": s.get("postal", ""),
+            "postal code": s.get("postal", ""),
+            "zip": s.get("postal", ""),
+            "zip code": s.get("postal", ""),
+            "address": s.get("address", ""),
+            "street": s.get("address", ""),
+            "country": s.get("country", ""),
             "linkedin": s.get("linkedin_url", ""),
             "linkedin profile": s.get("linkedin_url", ""),
             "linkedin url": s.get("linkedin_url", ""),

@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfminer\pdftypes.py
+# hypothesis_version: 6.151.10
+
+[0.0, 'A85', 'AHx', 'ASCII85Decode', 'ASCIIHexDecode', 'BitsPerComponent', 'CCF', 'CCITTFaxDecode', 'Colors', 'Columns', 'Crypt', 'DCT', 'DCTDecode', 'DP', 'DecodeParms', 'F', 'FDecodeParms', 'Filter', 'Fl', 'FlateDecode', 'JBIG2Decode', 'JPXDecode', 'LZW', 'LZWDecode', 'PDFDocument', 'PDFStream', 'Predictor', 'RL', 'RunLengthDecode']

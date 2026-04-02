@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\chromium\service.py
+# hypothesis_version: 6.151.10
+
+['--verbose', 'SE_CHROMEDRIVER', 'SE_DEBUG', 'log-level', 'log-path', 'silent']

@@ -1,0 +1,108 @@
+# Implementation Plan
+
+- [x] 1. Write bug condition exploration test
+  - **Property 1: Bug Condition** — React Value Persistence & Iframe Button Search
+  - **CRITICAL**: This test MUST FAIL on unfixed code — failure confirms the bugs exist
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior — it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate both bugs exist
+  - **Scoped PBT Approach**: Scope properties to concrete failing cases for reproducibility
+  - **Bug 1 — `_set_react_value` missing click/focus + TAB**:
+    - Create a mock WebDriver and WebElement simulating a React-controlled input inside an iframe
+    - Call `_set_react_value(driver, element, "test_value")`
+    - Assert `element.click()` was called before `element.clear()` and `element.send_keys()` (will FAIL — click is never called)
+    - Assert `Keys.TAB` was sent after `send_keys()` (will FAIL — TAB is never sent)
+  - **Bug 1 — `_set_react_value` wrong textarea prototype in JS fallback**:
+    - Create a mock where `send_keys` raises an exception (forcing JS fallback)
+    - Mock `element.tag_name` as `"textarea"`
+    - Call `_set_react_value(driver, element, "cover letter text")`
+    - Assert the executed JS contains `HTMLTextAreaElement.prototype` for textarea elements (will FAIL — always uses `HTMLInputElement.prototype` first without tag-name check)
+  - **Bug 2 — `_do_easy_apply` top-level-only button search**:
+    - Create a mock driver where `driver.find_element(By.CSS_SELECTOR, "button[aria-label='Submit application']")` raises `NoSuchElementException` on default content
+    - Place a mock Submit button inside a mock iframe
+    - Call `_do_easy_apply(...)` and assert the Submit button inside the iframe was found and clicked (will FAIL — `_do_easy_apply` never searches iframes for buttons)
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests FAIL (this is correct — it proves the bugs exist)
+  - Document counterexamples found:
+    - `element.click()` never called in `_set_react_value`
+    - `Keys.TAB` never sent after `send_keys`
+    - JS fallback uses `HTMLInputElement.prototype` even for `<textarea>` elements
+    - Submit/Review/Next buttons inside iframes are never found
+  - Mark task complete when tests are written, run, and failures are documented
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
+
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** — Non-Iframe Field Filling & Top-Level Button Search
+  - **IMPORTANT**: Follow observation-first methodology
+  - **Observe on UNFIXED code**:
+    - Observe: `_set_react_value(driver, input_element, "hello")` where `send_keys` succeeds on first try — value is set correctly via `clear()` + `send_keys()`, returns normally
+    - Observe: `fill_visible_fields` skips fields that already have a value (`.get_attribute("value")` returns non-empty string)
+    - Observe: `fill_in_iframe` switches to default content after each iframe via `driver.switch_to.default_content()`
+    - Observe: `_do_easy_apply` finds Submit button in default content when it exists there — `driver.find_element(By.CSS_SELECTOR, "button[aria-label='Submit application']")` succeeds
+    - Observe: `_do_easy_apply` returns `"waiting"` and creates PendingQuestion records when unknown fields exist
+  - **Property-based tests** (using Hypothesis):
+    - For all string values, `_set_react_value` with a mock element where `send_keys` succeeds should call `clear()` then `send_keys(value)` and the element's value attribute should equal the input value
+    - For all prefilled dictionaries and field configurations, `fill_visible_fields` should skip already-filled fields and return unknown fields for unmatched labels
+    - For all button aria-labels in `{"Submit application", "Review your application", "Continue to next step"}`, when the button exists in default content, `_do_easy_apply` should find and interact with it without needing iframe search
+  - Verify all preservation tests PASS on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
+
+- [x] 3. Fix for Easy Apply E2E — React value persistence and iframe button search
+
+  - [x] 3.1 Fix `_set_react_value` in `backend/bot/form_filler_selenium.py`
+    - Add `element.click()` with `time.sleep(0.2)` before `element.clear()` to focus the element (matching `smart_form_filler.py::_fill_field` line 437)
+    - Add `time.sleep(0.1)` between `clear()` and `send_keys()` for React timing
+    - Add `element.send_keys(Keys.TAB)` after value verification to trigger blur/validation (matching `smart_form_filler.py::_fill_field` line 443)
+    - Fix JS fallback to use tag-name-aware prototype resolution: `HTMLTextAreaElement.prototype` for `<textarea>`, `HTMLInputElement.prototype` for `<input>`
+    - Add `element.send_keys(Keys.TAB)` after JS fallback event dispatch
+    - Add `time.sleep(0.2)` after TAB for React state propagation
+    - _Bug_Condition: isBugCondition_ReactValue(X) where element is React-controlled and no click/TAB cycle is performed_
+    - _Expected_Behavior: element.click() called before typing, Keys.TAB sent after typing, JS fallback uses correct prototype per tag name_
+    - _Preservation: Non-iframe fields continue to work via same send_keys path; already-filled fields still skipped_
+    - _Requirements: 2.1, 2.2, 2.3, 3.1_
+
+  - [x] 3.2 Add `_find_nav_button` helper and fix `_do_easy_apply` in `backend/bot/linkedin_bot.py`
+    - Create `_find_nav_button(driver, aria_label)` helper that searches default content first, then iterates all iframes via `driver.switch_to.frame(iframe)` to find the button
+    - Helper returns `(button_element, found_in_iframe: bool)` or `(None, False)` if not found
+    - After finding button in iframe, ensure `driver.switch_to.default_content()` is called after clicking
+    - Replace the three direct `driver.find_element(By.CSS_SELECTOR, "button[aria-label='...']")` calls for Submit, Review, and Next with calls to `_find_nav_button`
+    - Maintain search priority: default content first (fast path), then iframes
+    - _Bug_Condition: isBugCondition_ButtonSearch(X) where button exists inside iframe and only default content is searched_
+    - _Expected_Behavior: _find_nav_button searches default content then all iframes, returns button when found_
+    - _Preservation: Buttons in default content still found on first try without iframe iteration_
+    - _Requirements: 2.4, 2.5, 2.6, 3.4, 3.5_
+
+  - [x] 3.3 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** — React Value Persistence & Iframe Button Search
+    - **IMPORTANT**: Re-run the SAME test from task 1 — do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied:
+      - `element.click()` is called before `send_keys`
+      - `Keys.TAB` is sent after `send_keys`
+      - JS fallback uses `HTMLTextAreaElement.prototype` for textareas
+      - Navigation buttons are found inside iframes
+    - Run bug condition exploration test from step 1
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bugs are fixed)
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
+
+  - [x] 3.4 Verify preservation tests still pass
+    - **Property 2: Preservation** — Non-Iframe Field Filling & Top-Level Button Search
+    - **IMPORTANT**: Re-run the SAME tests from task 2 — do NOT write new tests
+    - Run preservation property tests from step 2
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Confirm all tests still pass after fix:
+      - `_set_react_value` still works for top-level fields
+      - `fill_visible_fields` still skips already-filled fields
+      - `fill_in_iframe` still switches back to default content
+      - `_do_easy_apply` still finds buttons in default content
+      - PendingQuestion creation unchanged
+      - Discard modal unchanged
+
+- [x] 4. Checkpoint — Ensure all tests pass
+  - Run full test suite: `pytest backend/tests/ -v`
+  - Ensure all bug condition exploration tests pass (confirming fix works)
+  - Ensure all preservation property tests pass (confirming no regressions)
+  - Ensure existing tests in `test_easy_apply_helpers.py` still pass
+  - Ask the user if questions arise

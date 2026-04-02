@@ -95,10 +95,11 @@ def _load_settings() -> dict:
                 "email": s.email or "",
                 "phone": s.phone or "",
                 "city": s.city or "",
+                "country": getattr(s, "country", "") or "",  # For location filtering
                 "linkedin_url": s.linkedin_url or "",
                 "website": s.website or "",
                 "job_title": s.job_title or "Software Engineer",
-                "location": s.location or "United States",
+                "location": s.location or "Canada",  # Default to Canada instead of US
                 "experience_levels": [x for x in (s.experience_levels or "").split(",") if x],
                 "work_type": s.work_type or "",
                 "regions": [x for x in (s.regions or "").split(",") if x],
@@ -125,8 +126,8 @@ def _load_settings() -> dict:
         "linkedin_email": os.getenv("LINKEDIN_EMAIL", ""),
         "linkedin_password": os.getenv("LINKEDIN_PASSWORD", ""),
         "first_name": "", "last_name": "", "email": "", "phone": "",
-        "city": "", "linkedin_url": "", "website": "",
-        "job_title": "Software Engineer", "location": "United States",
+        "city": "", "country": "", "linkedin_url": "", "website": "",
+        "job_title": "Software Engineer", "location": "Canada",  # Default to Canada
         "experience_levels": [], "work_type": "", "regions": [],
         "resume_file_path": "", "max_applications_per_run": 25,
         "prefilled_answers": {},
@@ -230,12 +231,18 @@ def scrape_jobs(task_id: str) -> None:
         if new_ids:
             _publish(task_id, f"Fetching descriptions for {len(new_ids)} jobs...")
             # Keep session alive during long scrape runs (Req 17.6)
-            maybe_keep_alive(BrowserSession.get())
+            try:
+                maybe_keep_alive(BrowserSession.get())
+            except Exception:
+                pass  # Browser not needed for guest API scraping
             _fetch_descriptions(db, new_ids, task_id)
 
         if new_ids:
             _publish(task_id, f"Analyzing {len(new_ids)} jobs against your resume...")
-            maybe_keep_alive(BrowserSession.get())
+            try:
+                maybe_keep_alive(BrowserSession.get())
+            except Exception:
+                pass  # Browser not needed for analysis
             _analyze_matches(db, new_ids, task_id)
 
     finally:
@@ -1001,6 +1008,43 @@ def _detect_and_fill_cover_letter(
     return cover_letter or ""
 
 
+def _find_nav_button(driver, aria_label):
+    """Search for a navigation button by aria-label in default content, then iframes.
+
+    Returns (button_element, found_in_iframe: bool) or (None, False) if not found.
+    Always switches back to default content after searching iframes.
+    """
+    from selenium.webdriver.common.by import By
+
+    selector = f"button[aria-label='{aria_label}']"
+
+    # Fast path: check default content first
+    try:
+        btn = driver.find_element(By.CSS_SELECTOR, selector)
+        if btn.is_displayed():
+            return (btn, False)
+    except Exception:
+        pass
+
+    # Slow path: iterate all iframes
+    try:
+        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        for iframe in iframes:
+            try:
+                driver.switch_to.frame(iframe)
+                btn = driver.find_element(By.CSS_SELECTOR, selector)
+                if btn.is_displayed():
+                    return (btn, True)
+            except Exception:
+                pass
+            finally:
+                driver.switch_to.default_content()
+    except Exception:
+        driver.switch_to.default_content()
+
+    return (None, False)
+
+
 def _do_easy_apply(task_id, driver, job, settings, db) -> str:
     """Handle LinkedIn Easy Apply multi-step form.
 
@@ -1164,107 +1208,98 @@ def _do_easy_apply(task_id, driver, job, settings, db) -> str:
                 return "waiting"
 
             # Try Submit
-            try:
-                submit = driver.find_element(
-                    By.CSS_SELECTOR, "button[aria-label='Submit application']"
-                )
-                if submit.is_displayed():
-                    # Pre-submit screenshot
-                    screenshot_path = _take_pre_submit_screenshot(driver, job.id)
+            submit, submit_in_iframe = _find_nav_button(driver, "Submit application")
+            if submit is not None:
+                # Pre-submit screenshot
+                screenshot_path = _take_pre_submit_screenshot(driver, job.id)
 
-                    # Pause before submit if enabled
-                    if settings.get("pause_before_submit"):
-                        _publish(task_id, "Paused for review — check Dashboard to approve or cancel")
+                # Pause before submit if enabled
+                if settings.get("pause_before_submit"):
+                    _publish(task_id, "Paused for review — check Dashboard to approve or cancel")
 
-                        # Build screenshot URL for the frontend
-                        screenshot_url = ""
-                        if screenshot_path:
-                            screenshot_url = f"/data/screenshots/{screenshot_path.split('/')[-1]}" if "/" in screenshot_path else f"/data/screenshots/{screenshot_path}"
+                    # Build screenshot URL for the frontend
+                    screenshot_url = ""
+                    if screenshot_path:
+                        screenshot_url = f"/data/screenshots/{screenshot_path.split('/')[-1]}" if "/" in screenshot_path else f"/data/screenshots/{screenshot_path}"
 
-                        publish_log(
-                            task_id,
-                            "__WAITING__",
-                            pause_review={
-                                "screenshot_url": screenshot_url,
-                                "job_title": getattr(job, "title", ""),
-                                "company": getattr(job, "company", ""),
-                            },
-                        )
+                    publish_log(
+                        task_id,
+                        "__WAITING__",
+                        pause_review={
+                            "screenshot_url": screenshot_url,
+                            "job_title": getattr(job, "title", ""),
+                            "company": getattr(job, "company", ""),
+                        },
+                    )
 
-                        # Create a PendingQuestion for approval
-                        pq = PendingQuestion(
-                            job_id=job.id, task_id=task_id,
-                            question="Review and approve this application before submitting.",
-                            field_type="approval",
-                            options=["approve", "cancel"],
-                            answer=None,
-                        )
-                        db.add(pq)
-                        db.commit()
-                        db.refresh(pq)
+                    # Create a PendingQuestion for approval
+                    pq = PendingQuestion(
+                        job_id=job.id, task_id=task_id,
+                        question="Review and approve this application before submitting.",
+                        field_type="approval",
+                        options=["approve", "cancel"],
+                        answer=None,
+                    )
+                    db.add(pq)
+                    db.commit()
+                    db.refresh(pq)
 
-                        # Poll for user approval (up to 10 minutes)
-                        approved = False
-                        for _ in range(120):
-                            time.sleep(5)
-                            db.expire_all()
-                            pq = db.query(PendingQuestion).filter(
-                                PendingQuestion.id == pq.id
-                            ).first()
-                            if pq and pq.answer:
-                                if pq.answer.strip().lower() == "approve":
-                                    approved = True
-                                break
+                    # Poll for user approval (up to 10 minutes)
+                    approved = False
+                    for _ in range(120):
+                        time.sleep(5)
+                        db.expire_all()
+                        pq = db.query(PendingQuestion).filter(
+                            PendingQuestion.id == pq.id
+                        ).first()
+                        if pq and pq.answer:
+                            if pq.answer.strip().lower() == "approve":
+                                approved = True
+                            break
 
-                        if not approved:
-                            _publish(task_id, "Application cancelled by user")
-                            _discard_modal(driver, job, db, reason="user_cancelled")
-                            return "done"
+                    if not approved:
+                        _publish(task_id, "Application cancelled by user")
+                        _discard_modal(driver, job, db, reason="user_cancelled")
+                        return "done"
 
-                    submit.click()
-                    _publish(task_id, "Application submitted!")
-                    human_delay(2, 4)
-                    smooth_scroll(driver, settings)
+                submit.click()
+                if submit_in_iframe:
+                    driver.switch_to.default_content()
+                _publish(task_id, "Application submitted!")
+                human_delay(2, 4)
+                smooth_scroll(driver, settings)
 
-                    # Store metadata on the job object for apply_to_job to use
-                    job._apply_meta = {
-                        "screenshot_path": screenshot_path,
-                        "cover_letter_text": cover_letter_text,
-                        "questions_answered": questions_answered,
-                        "resume_version": resume_version,
-                    }
-                    return "done"
-            except Exception:
-                pass
+                # Store metadata on the job object for apply_to_job to use
+                job._apply_meta = {
+                    "screenshot_path": screenshot_path,
+                    "cover_letter_text": cover_letter_text,
+                    "questions_answered": questions_answered,
+                    "resume_version": resume_version,
+                }
+                return "done"
 
             # Try Review
-            try:
-                review = driver.find_element(
-                    By.CSS_SELECTOR, "button[aria-label='Review your application']"
-                )
-                if review.is_displayed():
-                    review.click()
-                    _publish(task_id, "Reviewing application...")
-                    human_delay(2, 4)
-                    smooth_scroll(driver, settings)
-                    continue
-            except Exception:
-                pass
+            review, review_in_iframe = _find_nav_button(driver, "Review your application")
+            if review is not None:
+                review.click()
+                if review_in_iframe:
+                    driver.switch_to.default_content()
+                _publish(task_id, "Reviewing application...")
+                human_delay(2, 4)
+                smooth_scroll(driver, settings)
+                continue
 
             # Try Continue/Next
-            try:
-                next_btn = driver.find_element(
-                    By.CSS_SELECTOR, "button[aria-label='Continue to next step']"
-                )
-                if next_btn.is_displayed():
-                    next_btn.click()
-                    _publish(task_id, f"Step {step + 1} completed")
-                    human_delay(2, 4)
-                    smooth_scroll(driver, settings)
-                    _choose_resume(driver)
-                    continue
-            except Exception:
-                pass
+            next_btn, next_in_iframe = _find_nav_button(driver, "Continue to next step")
+            if next_btn is not None:
+                next_btn.click()
+                if next_in_iframe:
+                    driver.switch_to.default_content()
+                _publish(task_id, f"Step {step + 1} completed")
+                human_delay(2, 4)
+                smooth_scroll(driver, settings)
+                _choose_resume(driver)
+                continue
 
             _publish(task_id, "No next/submit button found")
             # Capture failure screenshot (Req 18.1–18.3)

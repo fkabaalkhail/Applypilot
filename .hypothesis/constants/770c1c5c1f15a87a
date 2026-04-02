@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\service.py
+# hypothesis_version: 6.151.10
+
+[0.01, 0.05, 0.5, 'a+', 'close_fds', 'creation_flags', 'popen_kw', 'utf-8', 'win32']

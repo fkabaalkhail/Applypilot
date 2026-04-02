@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfminer\pdfdocument.py
+# hypothesis_version: 6.151.10
+
+[b'\x00', b' ', b'(\xbfN^Nu\x8aAd\x00NV\xff\xfa\x01\x08..\x00\xb6\xd0h>\x80/\x0c\xa9\xfedSiz', b'n', b'obj', b'sAlT', b'startxref', b'trailer', b'\xff\xff\xff\xff', 127, 128, 256, ', ', '<L', 'A', 'AESV2', 'AESV3', 'CF', 'CFM', 'Catalog', 'Catalog not found!', 'D', 'Dest', 'Dests', 'Encrypt', 'EncryptMetadata', 'Filter', 'First', 'ID', 'Identity', 'Index', 'Info', 'Invalid index number', 'Kids', 'Last', 'Length', 'Limits', 'Metadata', 'N', 'Names', 'Next', 'O', 'OE', 'ObjStm', 'Outlines', 'P', 'PageLabels', 'Prev', 'R', 'Root', 'S', 'SE', 'Size', 'St', 'Standard', 'StmF', 'StrF', 'Title', 'Type', 'U', 'UE', 'Unexpected EOF', 'V', 'V2', 'W', 'XRef', 'XRefStm', 'a', 'find_xref: %r', 'getobj: objid=%r', 'latin-1', 'latin1', 'r', 'trailer: %r', 'trailer=%r', 'utf-8', 'xref found: pos=%r', 'xref objects: %r']

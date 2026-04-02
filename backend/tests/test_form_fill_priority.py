@@ -99,7 +99,14 @@ class FakeElement:
     def clear(self):
         self._value = ""
 
+    def click(self):
+        pass  # Focus action — no-op for testing
+
     def send_keys(self, value: str):
+        from selenium.webdriver.common.keys import Keys
+        # Ignore special keys like TAB that don't set a value
+        if value == Keys.TAB:
+            return
         self._value = value
 
     @property

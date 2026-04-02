@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\bidi\browser.py
+# hypothesis_version: 6.151.10
+
+['ClientWindowInfo', 'acceptInsecureCerts', 'active', 'allowed', 'clientWindow', 'clientWindows', 'default', 'denied', 'destinationFolder', 'downloadBehavior', 'fullscreen', 'height', 'maximized', 'minimized', 'normal', 'proxy', 'state', 'type', 'userContext', 'userContexts', 'width', 'x', 'y']

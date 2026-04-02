@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\bidi\log.py
+# hypothesis_version: 6.151.10
+
+['args', 'console', 'debug', 'error', 'info', 'javascript', 'level', 'log.entryAdded', 'method', 'stackTrace', 'text', 'timestamp', 'type', 'warn']

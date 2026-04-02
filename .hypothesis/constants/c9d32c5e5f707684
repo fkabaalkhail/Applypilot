@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfminer\pdfcolor.py
+# hypothesis_version: 6.151.10
+
+['CMYK', 'CalGray', 'CalRGB', 'DeviceCMYK', 'DeviceGray', 'DeviceRGB', 'G', 'Indexed', 'Lab', 'Pattern', 'RGB', 'Separation']

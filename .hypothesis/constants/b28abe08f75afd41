@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfminer\pdfinterp.py
+# hypothesis_version: 6.151.10
+
+[b'(\\x0d\\x0a|[\\x0d\\x0a])$', b'BI', b'EI', b'ID', b'ID ', b'~>', 0.5, 100, 180, 270, '"', "'", '*', 'BBox', 'CIDFontType0', 'CIDFontType2', 'ColorSpace', 'DescendantFonts', 'DeviceCMYK', 'DeviceGray', 'DeviceN', 'DeviceRGB', 'Encoding', 'F', 'Font', 'Form', 'H', 'Height', 'ICCBased', 'Image', 'MMType1', 'Matrix', 'N', 'No font specified!', 'PDF', 'PDFGraphicState', 'PDFPageInterpreter', 'PDFTextState', 'Pattern', 'ProcSet', 'Processing page: %r', 'Processing xobj: %r', 'Resource: %r: %r', 'Resources', 'Subtype', 'Text', 'ToUnicode', 'TrueType', 'Type', 'Type is not /Font', 'Type0', 'Type1', 'Type3', 'W', 'Width', 'XObject', '_a', '_q', '_w', 'c', 'do_{}', 'exec: %s', 'exec: %s %r', 'h', 'inline', 'l', 'm', 'non-stroke', 'stroke', 'v', 'y']

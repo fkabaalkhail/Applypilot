@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\bidi\storage.py
+# hypothesis_version: 6.151.10
+
+['base64', 'context', 'cookie', 'cookies', 'default', 'domain', 'expiry', 'filter', 'httpOnly', 'lax', 'name', 'none', 'partition', 'partitionKey', 'path', 'sameSite', 'secure', 'size', 'sourceOrigin', 'storage.getCookies', 'storage.setCookie', 'storageKey', 'strict', 'string', 'type', 'userContext', 'value']

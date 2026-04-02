@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\bidi\emulation.py
+# hypothesis_version: 6.151.10
+
+[-180.0, -90.0, 0.0, 1.0, 90.0, 180.0, 360.0, 'E', 'accuracy', 'altitude', 'altitudeAccuracy', 'contexts', 'coordinates', 'enabled', 'error', 'heading', 'height', 'landscape', 'landscape-primary', 'landscape-secondary', 'latitude', 'locale', 'longitude', 'natural', 'networkConditions', 'offline', 'portrait', 'portrait-primary', 'portrait-secondary', 'positionUnavailable', 'screenArea', 'screenOrientation', 'speed', 'speed must be >= 0.0', 'timezone', 'type', 'userAgent', 'userContexts', 'width']

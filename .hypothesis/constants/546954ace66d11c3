@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfplumber\structure.py
+# hypothesis_version: 6.151.10
+
+['A', 'ActualText', 'Alt', 'BBox', 'C', 'ClassMap', 'ID', 'K', 'Lang', 'MCID', 'No objects found', 'Obj', 'P', 'PDF', 'PDF has no structure', 'PDFStructElement', 'Page', 'ParentTree', 'Pg', 'R', 'RoleMap', 'S', 'StructParents', 'StructTreeRoot', 'T', 'Type', 'Uncaught MCR: %s', 'Uncaught OBJR: %s', 'Unparsed element', 'children', 'mcid']

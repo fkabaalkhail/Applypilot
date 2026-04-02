@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\options.py
+# hypothesis_version: 6.151.10
+
+['accept', 'accept and notify', 'acceptInsecureCerts', 'androidActivity', 'androidDeviceSerial', 'androidPackage', 'browserVersion', 'dismiss', 'dismiss and notify', 'eager', 'enableBidi', 'fedcm:accounts', 'ignore', 'implicit', 'none', 'normal', 'pageLoad', 'pageLoadStrategy', 'platformName', 'proxy', 'script', 'se:downloadsEnabled', 'setWindowRect', 'timeouts', 'webSocketUrl']

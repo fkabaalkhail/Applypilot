@@ -322,6 +322,11 @@ def do_easy_apply(driver, already_in_iframe=False):
     for step in range(10):
         time.sleep(random.uniform(2, 3))
 
+        # Debug screenshot
+        os.makedirs("data/debug", exist_ok=True)
+        driver.save_screenshot(f"data/debug/step_{step}.png")
+        print(f"📸 Step {step} screenshot saved")
+
         choose_resume(driver)
 
         # Smart form filler — try all iframes to find the form
@@ -347,7 +352,14 @@ def do_easy_apply(driver, already_in_iframe=False):
                     driver.switch_to.default_content()
                     driver.switch_to.frame(iframe)
                     unfilled = fill_form_fields(driver, DEFAULT_PROFILE)
-                    print(f"   📋 iframe #{idx}: filled fields")
+                    print(f"   📋 iframe #{idx}: filled fields (JS)")
+                    
+                    # Also fill with Selenium send_keys for fields JS missed
+                    from smart_form_filler import fill_form_fields_sendkeys
+                    count = fill_form_fields_sendkeys(driver, DEFAULT_PROFILE)
+                    if count:
+                        print(f"   📝 iframe #{idx}: typed {count} fields (send_keys)")
+                    
                     filled_any = True
 
                     # Also check nested iframes

@@ -34,16 +34,17 @@ FIELD_MAP = {
     "last name": "last_name",
     "full name": lambda p: f"{p['first_name']} {p['last_name']}",
     "name": lambda p: f"{p['first_name']} {p['last_name']}",
+    "email address": "email",
+    "e-mail address": "email",
     "email": "email",
     "e-mail": "email",
-    "email address": "email",
     "phone": "phone",
     "mobile phone": "phone",
     "mobile phone number": "phone",
     "phone number": "phone",
     "phone country code": "phone_country_code",
-    "address": "address",
     "street address": "address",
+    "address": "address",
     "city": "city",
     "state": "state",
     "province": "state",
@@ -62,13 +63,37 @@ FIELD_MAP = {
 
 
 def get_profile_value(label: str, profile: dict) -> str | None:
-    """Match a form field label to a profile value."""
+    """Match a form field label to a profile value.
+    
+    Prefers exact matches, then longer key matches to avoid
+    'address' matching 'email address' before 'address'.
+    """
     label_lower = label.lower().strip().rstrip("*").strip()
+    
+    # Pass 1: exact match
     for key, val in FIELD_MAP.items():
-        if key in label_lower or label_lower in key:
+        if key == label_lower:
             if callable(val):
                 return val(profile)
             return profile.get(val, "")
+    
+    # Pass 2: key in label (longer keys first to prefer specific matches)
+    sorted_keys = sorted(FIELD_MAP.keys(), key=len, reverse=True)
+    for key in sorted_keys:
+        if key in label_lower:
+            val = FIELD_MAP[key]
+            if callable(val):
+                return val(profile)
+            return profile.get(val, "")
+    
+    # Pass 3: label in key (for partial labels like "zip" matching "zip code")
+    for key in sorted_keys:
+        if label_lower in key:
+            val = FIELD_MAP[key]
+            if callable(val):
+                return val(profile)
+            return profile.get(val, "")
+    
     return None
 
 
@@ -110,12 +135,19 @@ Answer (be concise):"""
 
 
 # JavaScript to extract all form fields from the current page/iframe
+# Scoped to the Easy Apply modal when present, falls back to full page
 EXTRACT_FIELDS_JS = """
     const fields = [];
 
+    // Scope to the Easy Apply modal if it exists, otherwise full document
+    const modal = document.querySelector('.jobs-easy-apply-modal, .artdeco-modal, [role="dialog"], .jobs-easy-apply-content');
+    const root = modal || document;
+
     // Text inputs, email, tel, number
-    document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input[type="url"], input:not([type])').forEach(inp => {
-        if (inp.offsetParent === null) return;  // hidden
+    root.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input[type="url"], input:not([type])').forEach(inp => {
+        // Use getBoundingClientRect instead of offsetParent for modal elements
+        const rect = inp.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return;
         const label = _getLabel(inp);
         fields.push({
             type: 'input',
@@ -129,8 +161,9 @@ EXTRACT_FIELDS_JS = """
     });
 
     // Textareas
-    document.querySelectorAll('textarea').forEach(ta => {
-        if (ta.offsetParent === null) return;
+    root.querySelectorAll('textarea').forEach(ta => {
+        const rect = ta.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return;
         const label = _getLabel(ta);
         fields.push({
             type: 'textarea',
@@ -143,8 +176,9 @@ EXTRACT_FIELDS_JS = """
     });
 
     // Selects
-    document.querySelectorAll('select').forEach(sel => {
-        if (sel.offsetParent === null) return;
+    root.querySelectorAll('select').forEach(sel => {
+        const rect = sel.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return;
         const label = _getLabel(sel);
         const options = Array.from(sel.options).map(o => o.text.trim()).filter(t => t);
         fields.push({
@@ -160,12 +194,12 @@ EXTRACT_FIELDS_JS = """
 
     // Radio groups
     const radioGroups = {};
-    document.querySelectorAll('input[type="radio"]').forEach(r => {
-        if (r.offsetParent === null) return;
+    root.querySelectorAll('input[type="radio"]').forEach(r => {
+        const rect = r.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return;
         const name = r.name;
         if (!radioGroups[name]) {
             radioGroups[name] = {options: [], checked: null, label: ''};
-            // Find group label
             const fieldset = r.closest('fieldset');
             if (fieldset) {
                 const legend = fieldset.querySelector('legend');
@@ -189,6 +223,34 @@ EXTRACT_FIELDS_JS = """
         });
     }
 
+    // Checkboxes (LinkedIn uses these for "I agree" type fields)
+    root.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        const rect = cb.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return;
+        const label = _getLabel(cb);
+        if (label) {
+            fields.push({
+                type: 'checkbox',
+                label: label,
+                value: cb.checked ? 'true' : '',
+                id: cb.id,
+                name: cb.name,
+            });
+        }
+    });
+
+    // File upload inputs
+    root.querySelectorAll('input[type="file"]').forEach(fi => {
+        const label = _getLabel(fi);
+        fields.push({
+            type: 'file',
+            label: label || 'Resume upload',
+            value: fi.value,
+            id: fi.id,
+            name: fi.name,
+        });
+    });
+
     function _getLabel(el) {
         // By for attribute
         if (el.id) {
@@ -197,11 +259,22 @@ EXTRACT_FIELDS_JS = """
         }
         // By aria-label
         if (el.getAttribute('aria-label')) return el.getAttribute('aria-label');
+        // By aria-labelledby
+        if (el.getAttribute('aria-labelledby')) {
+            const lblEl = document.getElementById(el.getAttribute('aria-labelledby'));
+            if (lblEl) return lblEl.textContent.trim();
+        }
         // By placeholder
         if (el.placeholder) return el.placeholder;
         // By parent label
         const parentLabel = el.closest('label');
         if (parentLabel) return parentLabel.textContent.trim();
+        // By closest form group div with a label/span child
+        const formGroup = el.closest('.fb-dash-form-element, .jobs-easy-apply-form-section__grouping, [data-test-form-element]');
+        if (formGroup) {
+            const lbl = formGroup.querySelector('label, span.fb-dash-form-element__label, .artdeco-text-input--label');
+            if (lbl && lbl.textContent.trim()) return lbl.textContent.trim();
+        }
         // By preceding sibling or nearby text
         const prev = el.previousElementSibling;
         if (prev && (prev.tagName === 'LABEL' || prev.tagName === 'SPAN' || prev.tagName === 'DIV')) {
@@ -446,7 +519,12 @@ def _fill_field(driver, field: dict, value: str):
                 time.sleep(0.1)
                 # Type character by character for React compatibility
                 el.send_keys(value)
-                time.sleep(0.3)
+                time.sleep(0.5)
+
+                # Handle LinkedIn typeahead/autocomplete dropdowns
+                # These appear for City, State, Postal fields
+                _try_select_typeahead(driver, el, value)
+
                 # Tab out to trigger validation
                 el.send_keys(Keys.TAB)
                 time.sleep(0.2)
@@ -463,6 +541,59 @@ def _fill_field(driver, field: dict, value: str):
 
     elif ftype == "select":
         _select_option(driver, field, value)
+
+
+def _try_select_typeahead(driver, element, value):
+    """Handle LinkedIn's typeahead/autocomplete dropdowns.
+    
+    After typing a value, LinkedIn shows a dropdown list. We need to
+    click the first matching option to make the value stick.
+    """
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+
+    try:
+        time.sleep(0.8)  # Wait for dropdown to appear
+
+        # LinkedIn typeahead uses various selectors for the dropdown
+        dropdown_selectors = [
+            "div[role='listbox'] div[role='option']",
+            "ul[role='listbox'] li",
+            ".basic-typeahead__selectable",
+            ".typeahead-multiselect__option",
+            "[data-test-basic-typeahead-option]",
+            ".artdeco-typeahead__results-list li",
+            ".artdeco-typeahead__result",
+        ]
+
+        for sel in dropdown_selectors:
+            try:
+                options = driver.find_elements(By.CSS_SELECTOR, sel)
+                if options:
+                    # Click the first visible option
+                    for opt in options:
+                        if opt.is_displayed():
+                            opt_text = opt.text.strip()
+                            if opt_text:
+                                opt.click()
+                                logger.info("Selected typeahead option: %s", opt_text[:50])
+                                print(f"      ↳ Selected typeahead: '{opt_text[:50]}'")
+                                time.sleep(0.3)
+                                return
+            except Exception:
+                continue
+
+        # Fallback: try pressing Down arrow + Enter to select first option
+        try:
+            element.send_keys(Keys.ARROW_DOWN)
+            time.sleep(0.3)
+            element.send_keys(Keys.ENTER)
+            time.sleep(0.3)
+        except Exception:
+            pass
+
+    except Exception as e:
+        logger.debug("Typeahead selection failed: %s", e)
 
 
 def _select_option(driver, field: dict, value: str):

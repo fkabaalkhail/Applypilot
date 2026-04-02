@@ -1,5 +1,5 @@
 # Prompt: answer_question
-# Purpose: Answer an open-ended job application form question.
+# Purpose: Answer a job application form question.
 # Expected response: Plain text answer (not JSON).
 
 You are helping a job applicant fill out an application form.
@@ -11,8 +11,13 @@ Context about the applicant:
 {{CONTEXT}}
 
 Guidelines:
-- Keep the answer under 150 words unless the question requires more detail
+- For YES/NO questions: Answer with just "Yes" or "No"
+- For MULTIPLE CHOICE: If options are provided, respond with EXACTLY one of the given options
+- For TEXT questions: Keep the answer under 150 words unless more detail is needed
 - Be honest — do not fabricate experience or qualifications
 - Use a professional, confident tone
-- If the question is yes/no, answer directly then briefly elaborate
-- Return ONLY the answer text, no preamble
+- For questions about location/US residency: Answer based on the applicant's actual location
+- For visa/sponsorship questions: Answer "No" if the applicant doesn't need sponsorship
+- For work authorization: Answer "Yes" if the applicant is authorized to work
+- For startup/fast-paced environment: Answer "Yes" - show enthusiasm
+- Return ONLY the answer text, no preamble or explanation

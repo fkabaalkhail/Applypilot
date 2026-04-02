@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\Desktop\Applypilot\backend\routers\jobs.py
+# hypothesis_version: 6.151.10
+
+[200, 400, 404, '/analyze', '/autopilot/start', '/autopilot/status', '/autopilot/stop', '/connect', '/connections', '/logs/{task_id}', '/scrape', '/{job_id}/apply', '/{job_id}/connect', '/{job_id}/questions', 'Cache-Control', 'Job not found.', 'Question not found.', 'X-Accel-Buffering', 'action', 'analyzing', 'applied_this_week', 'applied_today', 'applying', 'approval', 'approve', 'approved', 'cancel', 'cancelled', 'connecting', 'current_run', 'domcontentloaded', 'job_id', 'message', 'no', 'no-cache', 'opening', 'resuming', 'running', 'scraping', 'started_at', 'status', 'stopped', 'stopped_at', 'task_id', 'text/event-stream', 'total_applied', 'total_failed', 'total_skipped', 'total_waiting']

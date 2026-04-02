@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfminer\psparser.py
+# hypothesis_version: 6.151.10
+
+[b'\x00', b'\n', b'\r', b'#', b'%', b'(', b')', b'-+', b'.', b'/', b'<', b'<<', b'>', b'>>', b'[', b'[#/%\\[\\]()<>{}\\s]', b'[()\\134]', b'[0-7]', b'[0-9a-fA-F]', b'[0-9a-fA-F]{2}|.', b'[\\r\\n]', b'[^0-9]', b'[^\\s0-9a-fA-F]', b'\\', b'\\S', b'\\s', b']', b'b', b'f', b'false', b'n', b'r', b't', b'true', b'{', b'}', 256, 4096, 'ExtraT', 'Unexpected EOF', '_SymbolT', 'a', 'd', 'ignore', 'p', 'utf-8']

@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\support\relative_locator.py
+# hypothesis_version: 6.151.10
+
+['NoReturn', 'RelativeBy', 'above', 'args', 'below', 'filters', 'kind', 'left', 'near', 'relative', 'right', 'root', 'straightAbove', 'straightBelow', 'straightLeft', 'straightRight']

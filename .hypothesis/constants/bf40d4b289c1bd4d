@@ -1,0 +1,4 @@
+# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\remote\errorhandler.py
+# hypothesis_version: 6.151.10
+
+[405, '    at %s (%s)', '<anonymous>', '__', 'alert', 'className', 'data', 'detached shadow root', 'element not visible', 'error', 'fileName', 'ime not available', 'insecure certificate', 'invalid argument', 'invalid coordinates', 'invalid selector', 'invalid session id', 'javascript error', 'lineNumber', 'message', 'methodName', 'no such alert', 'no such cookie', 'no such element', 'no such frame', 'no such shadow root', 'no such window', 'screen', 'script timeout', 'session not created', 'stackTrace', 'stacktrace', 'status', 'text', 'timeout', 'unable to set cookie', 'unknown command', 'unknown error', 'value']
