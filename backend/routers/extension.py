@@ -82,10 +82,13 @@ class PendingJobOut(BaseModel):
 
 
 def _get_settings(db: Session) -> UserSettings:
-    """Get the singleton settings row."""
+    """Get the singleton settings row, or create it if it doesn't exist."""
     settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
     if not settings:
-        raise HTTPException(status_code=404, detail="Settings not configured")
+        settings = UserSettings(id=1)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
     return settings
 
 
