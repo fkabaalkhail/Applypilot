@@ -1108,7 +1108,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Trigger job scraping on the backend.
+ * Trigger job scraping on the backend with current filter settings.
  */
 async function scrapeJobsFromBackend() {
   const scrapeBtn = document.getElementById('scrape-jobs-btn');
@@ -1117,9 +1117,27 @@ async function scrapeJobsFromBackend() {
   try {
     const data = await chrome.storage.local.get(['settings']);
     const backendUrl = (data.settings && data.settings.backendUrl) || 'http://localhost:8000';
+    const settings = data.settings || {};
 
-    showToast('Scraping jobs from LinkedIn...', 'info', 5000);
+    // First, update backend settings with current filters
+    const filterSettings = {
+      job_title: settings.jobTitle || 'Software Engineer',
+      location: settings.searchLocation || 'Canada',
+      experience_levels: settings.experienceLevel ? [settings.experienceLevel] : [],
+      work_type: settings.workType || '',
+      max_applications_per_run: parseInt(settings.maxJobsPerRun) || 25,
+    };
 
+    showToast('Updating filters and scraping jobs...', 'info', 5000);
+
+    // Update backend settings
+    await fetch(`${backendUrl}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(filterSettings),
+    });
+
+    // Trigger scrape
     const response = await fetch(`${backendUrl}/jobs/scrape?sync=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1130,7 +1148,7 @@ async function scrapeJobsFromBackend() {
     }
 
     const result = await response.json();
-    showToast(`Scrape complete! Task: ${result.task_id}`, 'success');
+    showToast(`Scraping started! Searching for "${filterSettings.job_title}" in ${filterSettings.location}`, 'success');
   } catch (err) {
     console.error('Scrape error:', err);
     showToast('Scrape failed: ' + err.message, 'error');

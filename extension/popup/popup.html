@@ -328,6 +328,53 @@
     </div>
 
     <div id="settings-tab" class="tab-content">
+      <!-- Job Search Filters -->
+      <div class="settings-section">
+        <label class="section-label">Job Search Filters</label>
+
+        <div class="form-group">
+          <label for="jobTitle">Job Title / Keywords</label>
+          <input type="text" id="jobTitle" data-setting="jobTitle" placeholder="e.g. Software Engineer">
+          <small>Search keywords for LinkedIn job scraping</small>
+        </div>
+
+        <div class="form-group">
+          <label for="searchLocation">Location</label>
+          <input type="text" id="searchLocation" data-setting="searchLocation" placeholder="e.g. Canada, Ottawa, Remote">
+          <small>Where to search for jobs</small>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="experienceLevel">Experience Level</label>
+            <select id="experienceLevel" data-setting="experienceLevel">
+              <option value="">Any</option>
+              <option value="intern">Internship</option>
+              <option value="entry">Entry Level</option>
+              <option value="mid">Mid-Senior</option>
+              <option value="senior">Senior</option>
+              <option value="director">Director</option>
+              <option value="executive">Executive</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="workType">Work Type</label>
+            <select id="workType" data-setting="workType">
+              <option value="">Any</option>
+              <option value="remote">Remote</option>
+              <option value="onsite">On-site</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="maxJobsPerRun">Max Jobs Per Scrape</label>
+          <input type="number" id="maxJobsPerRun" data-setting="maxJobsPerRun" min="5" max="100" placeholder="25">
+          <small>How many jobs to scrape at once (default: 25)</small>
+        </div>
+      </div>
+
       <!-- Backend Sync -->
       <div class="form-group">
         <label>Backend Integration</label>
