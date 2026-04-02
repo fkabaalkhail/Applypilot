@@ -5,12 +5,45 @@ A Chrome extension that auto-applies to LinkedIn Easy Apply jobs. It scrapes job
 
 ---
 
+## First Time Setup
+
+### Prerequisites
+- Python 3.10+ installed
+- Chrome browser
+- Git
+
+### 1. Clone the Repo
+```bash
+git clone https://github.com/fkabaalkhail/Applypilot.git
+cd Applypilot
+```
+
+### 2. Install Python Dependencies
+```bash
+pip install -r backend/requirements.txt
+```
+
+### 3. Create Environment File (Optional)
+Copy the example and edit if needed:
+```bash
+cp .env.example .env
+```
+
+---
+
 ## Quick Start
 
 ### 1. Start the Backend
-Open PowerShell in the project root (`C:\Users\fahad\Desktop\Applypilot`):
+Open terminal in the project root:
+
+**Windows (PowerShell):**
 ```powershell
 py -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Mac/Linux:**
+```bash
+python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 **IMPORTANT**: Run from project root, NOT from inside the `backend` folder.
