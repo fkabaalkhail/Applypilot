@@ -1128,30 +1128,43 @@ async function scrapeJobsFromBackend() {
       max_applications_per_run: parseInt(settings.maxJobsPerRun) || 25,
     };
 
-    showToast('Updating filters and scraping jobs...', 'info', 5000);
+    showToast('Updating filters...', 'info', 2000);
 
     // Update backend settings
-    await fetch(`${backendUrl}/settings`, {
+    const settingsResp = await fetch(`${backendUrl}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(filterSettings),
     });
+    
+    if (!settingsResp.ok) {
+      console.warn('Settings update failed:', settingsResp.status);
+    }
 
-    // Trigger scrape
+    showToast(`Scraping "${filterSettings.job_title}" in ${filterSettings.location}...`, 'info', 30000);
+
+    // Trigger scrape (sync=true means it waits for completion)
     const response = await fetch(`${backendUrl}/jobs/scrape?sync=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
 
     if (!response.ok) {
-      throw new Error(`Backend error: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Backend error ${response.status}: ${errorText}`);
     }
 
     const result = await response.json();
-    showToast(`Scraping started! Searching for "${filterSettings.job_title}" in ${filterSettings.location}`, 'success');
+    console.log('[AutoApplyBot] Scrape result:', result);
+    
+    if (result.status === 'completed') {
+      showToast('Scrape complete! Click "Fetch & Apply" to start applying.', 'success', 5000);
+    } else {
+      showToast(`Scrape started (task: ${result.task_id})`, 'success');
+    }
   } catch (err) {
     console.error('Scrape error:', err);
-    showToast('Scrape failed: ' + err.message, 'error');
+    showToast('Scrape failed: ' + err.message, 'error', 5000);
   } finally {
     if (scrapeBtn) scrapeBtn.disabled = false;
   }
