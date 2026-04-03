@@ -1750,6 +1750,7 @@ def _do_external_apply(task_id, driver, job, settings, db, apply_url) -> str:
     from backend.bot.ats_greenhouse import is_greenhouse, apply_greenhouse
     from backend.bot.ats_lever import is_lever, apply_lever
     from backend.bot.ats_workday import is_workday, apply_workday
+    from backend.bot.ats_ashby import is_ashby, apply_ashby
     from backend.services.ollama_service import OllamaService
     from backend.services.task_runner import publish_log
 
@@ -1840,6 +1841,10 @@ def _do_external_apply(task_id, driver, job, settings, db, apply_url) -> str:
             )
         elif is_workday(url):
             result, unknowns = apply_workday(
+                driver, enriched_settings, prefilled, task_id, _publish, ollama=ollama
+            )
+        elif is_ashby(url):
+            result, unknowns = apply_ashby(
                 driver, enriched_settings, prefilled, task_id, _publish, ollama=ollama
             )
         else:
