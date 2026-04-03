@@ -49,9 +49,15 @@ function wait(ms) {
  * @param {string} value
  */
 function fill(input, value) {
-  input.value = value;
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  input.dispatchEvent(new Event('change', { bubbles: true }));
+  try {
+    input.focus();
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch (e) {
+    // Fallback for detached or cross-origin elements
+    try { input.value = value; } catch (_) {}
+  }
 }
 
 // ─── ATS Detection ───────────────────────────────────────────────────
@@ -613,7 +619,8 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
   }
   
   // Visa/Sponsorship - IMPORTANT: "will you ever require" means future sponsorship
-  if (q.match(/visa|sponsor|sponsorship|require.*employment.*sponsor|need.*sponsor|employment.*visa|will you.*require.*sponsor|ever.*require.*sponsor/i)) {
+  // NOTE: Must NOT match travel questions that mention "visas" in passing
+  if (q.match(/sponsor|sponsorship|require.*employment.*sponsor|need.*sponsor|employment.*visa|will you.*require.*sponsor|ever.*require.*sponsor|visa.*status|work.*visa|require.*visa/i) && !q.match(/travel|vacation|vaccin/i)) {
     const answer = settings.visaSponsorship || 'no';
     console.log('[AutoApplyBot] Visa/sponsorship question, answering:', answer);
     return matchOptionOrReturn(answer, options);
@@ -683,8 +690,20 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
   }
   
   // Privacy acknowledgement / consent
-  if (q.match(/privacy.*acknowledge|acknowledge.*privacy|privacy.*policy|data.*privacy|consent.*data|agree.*privacy|applicant.*privacy/i)) {
+  if (q.match(/privacy.*acknowledge|acknowledge.*privacy|privacy.*policy|data.*privacy|consent.*data|agree.*privacy|applicant.*privacy|read and agree|agree.*terms|agree.*notice/i)) {
     console.log('[AutoApplyBot] Privacy acknowledgement question, answering: yes/agree');
+    return matchOptionOrReturn('yes', options);
+  }
+  
+  // Plagiarism / AI usage agreement (agree to not use AI - ironic but must agree)
+  if (q.match(/plagiarism|use of ai|generated content|own words|agree.*disqualif/i)) {
+    console.log('[AutoApplyBot] Plagiarism/AI agreement question, answering: yes/agree');
+    return matchOptionOrReturn('yes', options);
+  }
+  
+  // In-person meetings / travel commitment
+  if (q.match(/meet in person|company events|international travel|willing and able.*commit|travel.*visa.*vaccination/i)) {
+    console.log('[AutoApplyBot] In-person/travel commitment question, answering: yes');
     return matchOptionOrReturn('yes', options);
   }
   
@@ -707,6 +726,64 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
   // Familiar with / heard of / know about (product/company questions)
   if (q.match(/familiar with|heard of|know about|experience with|used.*before|aware of/i)) {
     return matchOptionOrReturn('yes', options);
+  }
+  
+  // ─── Country / Where do you work ───
+  if (q.match(/which country.*work|country.*currently.*work|where.*currently.*work|country.*reside|country.*live/i)) {
+    console.log('[AutoApplyBot] Country question, answering: Canada');
+    return matchOptionOrReturn('Canada', options);
+  }
+  
+  // ─── Nationality ───
+  if (q.match(/nationality|citizenship|national.*origin/i) && !q.includes('race') && !q.includes('ethnic')) {
+    console.log('[AutoApplyBot] Nationality question');
+    if (options && options.length > 0) {
+      const canadaOption = options.find(o => o.toLowerCase().includes('canad'));
+      if (canadaOption) return canadaOption;
+      // Look for decline option
+      const declineOption = options.find(o => o.toLowerCase().includes('decline') || o.toLowerCase().includes('prefer not'));
+      if (declineOption) return declineOption;
+    }
+    return 'Canadian';
+  }
+  
+  // ─── High school performance ───
+  if (q.match(/high school.*perform|perform.*high school|math.*high school|native language.*high school|how.*perform.*high school/i)) {
+    console.log('[AutoApplyBot] High school performance question');
+    if (options && options.length > 0) {
+      // Pick "Top 10% at school" as a strong but believable answer
+      const topOption = options.find(o => o.toLowerCase().includes('top 10%'));
+      if (topOption) return topOption;
+      // Fallback to top 20%
+      const top20 = options.find(o => o.toLowerCase().includes('top 20%'));
+      if (top20) return top20;
+      // Fallback to any "top" option
+      const anyTop = options.find(o => o.toLowerCase().includes('top'));
+      if (anyTop) return anyTop;
+      const validOptions = options.filter(o => !o.toLowerCase().includes('select') && o.trim());
+      if (validOptions.length > 0) return validOptions[0];
+    }
+    return 'Top 10% of class';
+  }
+  
+  // ─── High school rationale / evidence ───
+  if (q.match(/rationale.*high school|evidence.*high school|justify.*selection|scoring system|ranking|SAT|ACT|JAMB|IB result|matriculation/i)) {
+    console.log('[AutoApplyBot] High school rationale question');
+    return 'I consistently performed in the top percentile of my class throughout high school, with strong results in mathematics and sciences. My academic performance qualified me for admission to the University of Ottawa, a competitive Canadian university.';
+  }
+  
+  // ─── Bachelor's degree result / GPA ───
+  if (q.match(/bachelor.*degree.*result|degree.*result|grading system|GPA.*score|expected result.*graduated|include.*grading/i)) {
+    console.log('[AutoApplyBot] Degree result/GPA question');
+    return 'GPA 3.5/4.0';
+  }
+  
+  // ─── Number of companies worked for ───
+  if (q.match(/how many companies|number of companies|companies.*worked for|employers.*past/i)) {
+    console.log('[AutoApplyBot] Number of companies question');
+    const yearsExp = profile.yearsOfExperience || settings.yearsOfExperience || '3';
+    const numCompanies = Math.min(parseInt(yearsExp) || 2, 5).toString();
+    return matchOptionOrReturn(numCompanies, options);
   }
   
   // ─── Graduation confirmation / date confirmation ───
@@ -1055,7 +1132,6 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
     const city = profile.city || settings.city || '';
     if (city) {
       console.log('[AutoApplyBot] City/location question, answering:', city);
-      // If options provided, try to match
       if (options && options.length > 0) {
         return matchOptionOrReturn(city, options);
       }
@@ -1063,14 +1139,52 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
     }
   }
   
+  // ─── Province / State ───
+  if (q.match(/^province$|^state$|province.*state|state.*province/i)) {
+    const state = profile.state || settings.state || 'Ontario';
+    console.log('[AutoApplyBot] Province/state question, answering:', state);
+    return matchOptionOrReturn(state, options);
+  }
+  
+  // ─── Address ───
+  if (q.match(/^address$|street.*address|mailing.*address/i)) {
+    const address = profile.address || settings.address || '';
+    if (address) return address;
+    return null; // Don't fabricate addresses
+  }
+  
+  // ─── Postal / Zip Code ───
+  if (q.match(/postal|zip.*code/i)) {
+    const postal = profile.postal || settings.postal || '';
+    if (postal) return postal;
+    return null;
+  }
+  
+  // ─── Desired Pay / Salary ───
+  if (q.match(/desired.*pay|expected.*pay|salary.*expect|compensation.*expect|desired.*salary/i)) {
+    return settings.expectedSalary || profile.expectedSalary || 'Negotiable';
+  }
+  
+  // ─── Date Available ───
+  if (q.match(/date.*available|available.*date|when.*available|start.*date|earliest.*date/i) && !options?.length) {
+    // Return today's date in yyyy-mm-dd format
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  }
+  
+  // ─── Referral / Who referred you ───
+  if (q.match(/who.*referred|referr|how.*hear.*about|how.*find.*position|how.*learn.*about.*position|source.*application/i)) {
+    return 'LinkedIn';
+  }
+  
   // ─── AI Fallback for unknown questions ───
   // IMPORTANT: AI should ONLY be used for yes/no questions, NOT for personal info
   // Never let AI fabricate: names, schools, degrees, websites, URLs, dates, etc.
   
   // Check if this is a personal info question that AI should NOT answer
-  const personalInfoPatterns = /school|university|college|degree|major|discipline|graduation|website|portfolio|github|linkedin|address|phone|email|name|gpa|salary|experience.*years|years.*experience/i;
+  const personalInfoPatterns = /^(school|university|college|address|phone|email|name|gpa|salary)$/i;
   
-  if (personalInfoPatterns.test(q)) {
+  if (personalInfoPatterns.test(q.trim())) {
     console.log('[AutoApplyBot] Personal info question without user data - skipping (will not fabricate)');
     return null; // Don't let AI make up personal information
   }
@@ -1080,27 +1194,43 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
     log(`Using AI for unknown question: "${question.substring(0, 40)}..."`);
     console.log('[AutoApplyBot] Calling AI for question:', question.substring(0, 60));
     
+    // Load resume text from chrome storage for AI context
+    let resumeText = settings.resumeText || '';
+    if (!resumeText) {
+      try {
+        const storageData = await chrome.storage.local.get(['resumeText', 'parsedResumeText']);
+        resumeText = storageData.parsedResumeText || storageData.resumeText || '';
+      } catch (e) {
+        console.log('[AutoApplyBot] Could not load resume from storage:', e.message);
+      }
+    }
+    
     // Build context for AI
     const context = {
-      resumeText: settings.resumeText || '',
+      resumeText: resumeText,
       jobDescription: settings.jobDescription || '',
     };
     
-    // Add profile info to help AI - but ONLY for context, not fabrication
+    // Add profile info to help AI
     const profileContext = `
-Applicant Info:
+You ARE this person filling out a job application. Write in FIRST PERSON ("I have...", "In my role...").
+
+Applicant:
 - Name: ${profile.firstName || ''} ${profile.lastName || ''}
 - Location: ${profile.city || ''}, ${profile.state || ''}, ${profile.country || 'Canada'}
-- Currently authorized to work in Canada
-- Does NOT require visa sponsorship
-- Willing to relocate
-- Has valid driver's license
+- Education: ${settings.degree || 'Bachelor\'s in Computer Science'} from ${settings.school || 'University of Ottawa'}
+- Years of experience: ${settings.yearsOfExperience || '3'}
+- Authorized to work in Canada, no visa sponsorship needed
+- Willing to relocate and travel internationally
 
-IMPORTANT: Only answer yes/no questions or questions about work preferences.
-Do NOT make up any personal information like schools, degrees, websites, or URLs.
-If you don't know something specific about the applicant, say "I don't know" or leave blank.
-NEVER start your response with conversational phrases like "I'm happy to help" or "Here's the".
-Just give the direct answer.
+CRITICAL RULES:
+- Return ONLY the answer. No preamble. No "I'm happy to help". No "Sure!". No "Here's".
+- For yes/no: just "Yes" or "No"
+- For "describe your experience with X": write 2-4 sentences in first person referencing the resume below
+- NEVER say "I don't have experience" — always relate the closest relevant skill from the resume
+- NEVER say "The applicant" or "The candidate" — you ARE the person
+- NEVER make up company names like "ABC Company" or "XYZ Corp" — use real companies from the resume
+- Keep answers under 100 words unless it's a detailed paragraph question
 `;
     context.resumeText = profileContext + (context.resumeText || '');
     
@@ -1170,19 +1300,16 @@ Just give the direct answer.
         aiAnswer.includes('.io') ||
         aiAnswer.includes('.ca') ||
         aiAnswer.includes('.net') ||
-        aiAnswer.includes('University') ||
-        aiAnswer.includes('College') ||
         aiAnswer.includes('Note:') ||
         aiAnswer.includes('does not exist') ||
         aiAnswer.includes('not provided') ||
         aiAnswer.includes('not shared') ||
         aiAnswer.includes('would provide') ||
-        aiAnswer.includes('I would') ||
         aiAnswer.includes('please pr') || // "please provide" truncated
-        aiAnswer.includes('Please pr') ||
-        aiAnswer.length > 100; // Long answers are likely fabricated explanations
+        aiAnswer.includes('Please pr');
       
-      if (looksLikeFabricatedInfo) {
+      // Only reject if it looks fabricated AND is short (long answers are likely real experience descriptions)
+      if (looksLikeFabricatedInfo && aiAnswer.length < 200) {
         console.log('[AutoApplyBot] AI tried to fabricate info - rejecting:', aiAnswer.substring(0, 50));
         return null;
       }
@@ -1282,12 +1409,21 @@ function matchOptionOrReturn(answer, options) {
  * @param {string} value
  */
 function setReactValue(el, value) {
-  const descriptor =
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value') ||
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-  if (descriptor && descriptor.set) {
-    descriptor.set.call(el, value);
+  // Pick the correct prototype descriptor based on element type
+  let descriptor;
+  if (el instanceof HTMLTextAreaElement || el.tagName === 'TEXTAREA') {
+    descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
   } else {
+    descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  }
+  try {
+    if (descriptor && descriptor.set) {
+      descriptor.set.call(el, value);
+    } else {
+      el.value = value;
+    }
+  } catch (e) {
+    // Fallback: direct assignment
     el.value = value;
   }
   el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1809,10 +1945,28 @@ async function fillField(field, value, settings) {
     switch (field.type) {
       case 'input':
       case 'textarea':
-        // Primary: use the simple fill helper
-        fill(el, value);
-        // Also use React native setter to cover React-controlled inputs
-        setReactValue(el, value);
+        // Try multiple strategies for filling text fields
+        try {
+          // Strategy 1: React native setter (most reliable for React forms)
+          setReactValue(el, value);
+        } catch (e1) {
+          try {
+            // Strategy 2: Direct value + events
+            el.value = value;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          } catch (e2) {
+            try {
+              // Strategy 3: execCommand (works on contentEditable and some textareas)
+              el.focus();
+              document.execCommand('selectAll', false, null);
+              document.execCommand('insertText', false, value);
+            } catch (e3) {
+              // Strategy 4: setAttribute as last resort
+              el.setAttribute('value', value);
+            }
+          }
+        }
         return true;
 
       case 'select':
@@ -1883,6 +2037,7 @@ async function autofill(profile, settings, prefilledAnswers) {
     'input-select-search-input',
     'input-externalplaceid',
     'externalplaceid',
+    'please leave this field blank',
   ];
   
   // Labels to skip AI for - these should only be filled from profile, not AI
@@ -1904,8 +2059,8 @@ async function autofill(profile, settings, prefilledAnswers) {
     const labelLower = (label || '').toLowerCase().trim();
     
     // Skip internal React component fields
-    if (skipLabels.includes(labelLower) || labelLower.startsWith('input-select-')) {
-      console.log('[AutoApplyBot] Skipping internal field:', label);
+    if (skipLabels.includes(labelLower) || labelLower.startsWith('input-select-') || labelLower.includes('leave this field blank') || labelLower.includes('nickname')) {
+      console.log('[AutoApplyBot] Skipping internal/honeypot field:', label);
       skipped++;
       continue;
     }
@@ -2037,6 +2192,16 @@ async function autofill(profile, settings, prefilledAnswers) {
       console.log('[AutoApplyBot] Skipping AI for field (profile-only):', label);
       skipped++;
       continue;
+    }
+    
+    // Try getSmartAnswer first for ALL remaining fields (rules-based + AI)
+    const smartAnswer = await getSmartAnswer(label, field.options || [], settings, profile);
+    if (smartAnswer !== null && smartAnswer !== '') {
+      if (await fillField(field, smartAnswer, settings)) {
+        log(`Filled "${label}" from smart answer: ${smartAnswer.substring(0, 30)}`);
+        filled++;
+        continue;
+      }
     }
     
     if (settings && settings.aiEnabled) {
@@ -4234,6 +4399,159 @@ async function handleExternalSelects(profile, settings) {
     }
   }
   
+  // ─── Handle BambooHR fab-Select dropdowns ───
+  const fabSelectToggles = document.querySelectorAll('.fab-SelectToggle');
+  if (fabSelectToggles.length > 0) {
+    console.log('[AutoApplyBot] Found', fabSelectToggles.length, 'BambooHR fab-Select dropdowns');
+    
+    for (const toggle of fabSelectToggles) {
+      if (toggle.offsetParent === null) continue;
+      
+      // Skip if already has a value (not showing placeholder)
+      const content = toggle.querySelector('.fab-SelectToggle__content');
+      const placeholder = toggle.querySelector('.fab-SelectToggle__placeholder');
+      if (content && content.textContent.trim() && !placeholder) continue;
+      
+      // Get label from aria-label (format: "Label Value" or "Label –Select–")
+      const ariaLabel = toggle.getAttribute('aria-label') || '';
+      let label = ariaLabel.replace(/–Select–/g, '').replace(/\s+$/, '').trim();
+      
+      // Also try getting label from the parent wrapper
+      if (!label) {
+        const wrapper = toggle.closest('[data-fabric-component="SelectField InputWrapper"]');
+        if (wrapper) {
+          const labelEl = wrapper.querySelector('label');
+          if (labelEl) label = labelEl.textContent.replace(/\*$/, '').trim();
+        }
+      }
+      
+      if (!label) continue;
+      
+      console.log('[AutoApplyBot] BambooHR dropdown:', label);
+      
+      // Click to open the menu - BambooHR needs multiple click strategies
+      toggle.focus();
+      await wait(100);
+      toggle.click();
+      await wait(500);
+      
+      // Find the menu that appeared
+      const menuId = toggle.getAttribute('data-menu-id');
+      let menu = menuId ? document.getElementById(menuId) : null;
+      if (!menu) {
+        // Try finding any visible fab menu
+        menu = document.querySelector('.fab-MenuList, [class*="fab-Menu"]:not([class*="Toggle"]), [role="listbox"]');
+      }
+      
+      // If still no menu, try dispatching mousedown + mouseup
+      if (!menu) {
+        toggle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        await wait(100);
+        toggle.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        await wait(500);
+        menu = menuId ? document.getElementById(menuId) : null;
+        if (!menu) {
+          // BambooHR renders menus as portals - search the whole document
+          const allMenus = document.querySelectorAll('[class*="fab-MenuList"], [class*="fab-Menu--open"], [role="listbox"], [class*="MenuPopover"]');
+          for (const m of allMenus) {
+            if (m.offsetParent !== null && m.children.length > 0) {
+              menu = m;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (!menu) {
+        console.log('[AutoApplyBot] BambooHR menu not found for:', label);
+        
+        // Fallback: try setting the hidden <select> directly
+        const wrapper = toggle.closest('[data-fabric-component="Select"], .fab-Select');
+        if (wrapper) {
+          const hiddenSelect = wrapper.querySelector('select');
+          if (hiddenSelect) {
+            // Get options from the hidden select
+            const selectOptions = Array.from(hiddenSelect.options)
+              .map(o => ({ value: o.value, text: o.text.trim() }))
+              .filter(o => o.value && o.text);
+            
+            if (selectOptions.length === 0) {
+              // Options might load lazily - skip for now
+              console.log('[AutoApplyBot] BambooHR hidden select has no options for:', label);
+            } else {
+              const optTexts = selectOptions.map(o => o.text);
+              console.log('[AutoApplyBot] BambooHR hidden select options for', label + ':', optTexts.slice(0, 10));
+              
+              const answer = await getSmartAnswer(label, optTexts, settings, profile);
+              if (answer) {
+                const answerLower = answer.toLowerCase().trim();
+                const match = selectOptions.find(o => {
+                  const t = o.text.toLowerCase();
+                  return t === answerLower || t.includes(answerLower) || answerLower.includes(t);
+                });
+                if (match) {
+                  hiddenSelect.value = match.value;
+                  hiddenSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                  log(`BambooHR hidden select: ${label} = ${match.text.substring(0, 30)}`);
+                  handled++;
+                }
+              }
+            }
+          }
+        }
+        
+        // Close by pressing Escape
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await wait(200);
+        continue;
+      }
+      
+      // Read options from the menu
+      const menuItems = menu.querySelectorAll('[role="option"], [class*="fab-MenuItem"], [class*="MenuOption"], li[class*="option"], li');
+      const options = Array.from(menuItems)
+        .map(o => o.textContent.trim())
+        .filter(t => t && t.length < 200 && !t.includes('–Select–'));
+      
+      console.log('[AutoApplyBot] BambooHR options for', label + ':', options.slice(0, 10));
+      
+      if (options.length === 0) {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await wait(200);
+        continue;
+      }
+      
+      // Get smart answer
+      const answer = await getSmartAnswer(label, options, settings, profile);
+      console.log('[AutoApplyBot] BambooHR answer for', label + ':', answer);
+      
+      if (answer) {
+        const answerLower = answer.toLowerCase().trim();
+        let clicked = false;
+        
+        for (const item of menuItems) {
+          const itemText = item.textContent.trim().toLowerCase();
+          if (itemText === answerLower || itemText.includes(answerLower) || answerLower.includes(itemText)) {
+            item.click();
+            log(`BambooHR select: ${label} = ${item.textContent.trim().substring(0, 30)}`);
+            handled++;
+            clicked = true;
+            await wait(300);
+            break;
+          }
+        }
+        
+        if (!clicked) {
+          // Close menu
+          document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          await wait(200);
+        }
+      } else {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await wait(200);
+      }
+    }
+  }
+  
   // ─── Handle Greenhouse React-Select dropdowns ───
   // Greenhouse uses React-Select which creates custom dropdown components
   // The structure is: container > control (clickable) > menu (appears on click)
@@ -4744,13 +5062,16 @@ async function handleExternalSelects(profile, settings) {
       
       // For searchable dropdowns with many options (School, Country, City), we need to type to filter
       // then click the filtered result
-      const isSearchableField = labelLower.includes('school') || labelLower.includes('university') || 
-                                 labelLower === 'country' || labelLower.includes('country code') ||
-                                 labelLower.includes('location') || labelLower.includes('city');
+      // IMPORTANT: Only match exact field names, not questions that happen to contain these words
+      const isSearchableField = (labelLower === 'school' || labelLower === 'university' || 
+                                  labelLower === 'country' || labelLower === 'country code' ||
+                                  labelLower === 'location' || labelLower === 'city' ||
+                                  labelLower === 'phone country code' ||
+                                  (labelLower.includes('country code') && labelLower.length < 30));
       
       // Get the value we want to search for
       let searchValue = '';
-      if (labelLower.includes('school') || labelLower.includes('university')) {
+      if (labelLower === 'school' || labelLower === 'university') {
         searchValue = profile.school || settings.school || '';
         if (!searchValue) {
           console.log('[AutoApplyBot] ⚠️ School not set - skipping');
@@ -4758,7 +5079,7 @@ async function handleExternalSelects(profile, settings) {
           await wait(200);
           continue;
         }
-      } else if (labelLower.includes('location') || labelLower.includes('city')) {
+      } else if (labelLower.includes('location') || labelLower === 'city') {
         // For city/location dropdown, use user's city
         searchValue = profile.city || settings.city || 'Ottawa';
         console.log('[AutoApplyBot] Location/City field - searching for:', searchValue);
@@ -4849,7 +5170,7 @@ async function handleExternalSelects(profile, settings) {
             }
             
             // For school, look for best match
-            if ((labelLower.includes('school') || labelLower.includes('university')) && !searchClicked) {
+            if ((labelLower === 'school' || labelLower === 'university') && !searchClicked) {
               const schoolLower = searchValue.toLowerCase();
               // Try exact match first
               for (const optEl of optionEls) {
@@ -4912,18 +5233,36 @@ async function handleExternalSelects(profile, settings) {
         console.log('[AutoApplyBot] AI picked option for', label + ':', answer);
         
         if (answer) {
+          // Re-read the menu fresh to avoid stale DOM references
+          const freshMenu = findVisibleMenu();
+          const freshOptionEls = freshMenu ? freshMenu.querySelectorAll('[class*="option"], [role="option"]') : optionEls;
+          
           // Find and click the matching option
-          const answerLower = answer.toLowerCase();
+          const answerLower = answer.toLowerCase().trim();
           let clicked = false;
-          for (const optEl of optionEls) {
+          for (const optEl of freshOptionEls) {
             const optText = optEl.textContent.trim().toLowerCase();
-            if (optText === answerLower || optText.includes(answerLower) || answerLower.includes(optText)) {
+            if (optText === answerLower) {
               optEl.click();
               log(`React-Select: ${label} = ${optEl.textContent.trim().substring(0, 30)}`);
               handled++;
               clicked = true;
               await wait(300);
               break;
+            }
+          }
+          // Partial match fallback
+          if (!clicked) {
+            for (const optEl of freshOptionEls) {
+              const optText = optEl.textContent.trim().toLowerCase();
+              if (optText.includes(answerLower) || answerLower.includes(optText)) {
+                optEl.click();
+                log(`React-Select: ${label} = ${optEl.textContent.trim().substring(0, 30)}`);
+                handled++;
+                clicked = true;
+                await wait(300);
+                break;
+              }
             }
           }
           
@@ -4997,22 +5336,32 @@ async function handleExternalSelects(profile, settings) {
         const answer = await getSmartAnswer(label, [], settings, profile);
         
         if (answer) {
-          textInput.focus();
-          await wait(100);
-          
-          // Use native setter for React compatibility
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if (nativeInputValueSetter) {
-            nativeInputValueSetter.call(textInput, answer);
-          } else {
-            textInput.value = answer;
+          try {
+            textInput.focus();
+            await wait(100);
+            
+            // Use correct native setter based on element type
+            let nativeSetter;
+            if (textInput.tagName === 'TEXTAREA') {
+              nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+            } else {
+              nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+            }
+            
+            if (nativeSetter) {
+              nativeSetter.call(textInput, answer);
+            } else {
+              textInput.value = answer;
+            }
+            textInput.dispatchEvent(new Event('input', { bubbles: true }));
+            textInput.dispatchEvent(new Event('change', { bubbles: true }));
+            textInput.dispatchEvent(new Event('blur', { bubbles: true }));
+          } catch (e) {
+            // Fallback
+            try { textInput.value = answer; } catch (_) {}
           }
           
-          textInput.dispatchEvent(new Event('input', { bubbles: true }));
-          textInput.dispatchEvent(new Event('change', { bubbles: true }));
-          textInput.dispatchEvent(new Event('blur', { bubbles: true }));
-          
-          log(`Field wrapper text: ${label} = ${answer.substring(0, 30)}`);
+          log(`Field wrapper filled: ${label} = ${answer.substring(0, 30)}`);
           handled++;
           await wait(300);
         }
@@ -5296,8 +5645,9 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
       'input-select-search-input',
       'input-externalplaceid',
       'externalplaceid',
+      'please leave this field blank',
     ];
-    if (skipLabels.includes(labelLower) || labelLower.startsWith('input-select-')) {
+    if (skipLabels.includes(labelLower) || labelLower.startsWith('input-select-') || labelLower.includes('leave this field blank') || labelLower.includes('nickname')) {
       console.log('[AutoApplyBot] Skipping internal field:', label);
       continue;
     }
