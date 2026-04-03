@@ -2456,8 +2456,31 @@ async function handleUnfollowBeforeSubmit(modal) {
 
 /** Check if the Easy Apply modal is currently open and visible. */
 function isModalOpen() {
-  const modal = document.querySelector('.jobs-easy-apply-modal');
-  return modal && modal.offsetParent !== null;
+  // LinkedIn old UI
+  const oldModal = document.querySelector('.jobs-easy-apply-modal');
+  if (oldModal && oldModal.offsetParent !== null) return true;
+  
+  // LinkedIn new SDUI — apply page (not a modal, full page navigation)
+  // URL contains /apply/ or openSDUIApplyFlow
+  const url = window.location.href;
+  if (url.includes('/apply/') || url.includes('openSDUIApplyFlow')) {
+    return true;
+  }
+  
+  // LinkedIn new UI — uses role="dialog" or artdeco-modal
+  const dialogs = document.querySelectorAll('[role="dialog"], .artdeco-modal, [class*="easy-apply"], [class*="application-modal"]');
+  for (const d of dialogs) {
+    if (d.offsetParent === null) continue;
+    const text = d.textContent || '';
+    if (text.includes('Submit application') || text.includes('Next') || 
+        text.includes('Review') || text.includes('Contact info') ||
+        text.includes('Email address') || text.includes('Phone') ||
+        text.includes('Resume') || text.includes('Apply to') ||
+        text.includes('Easy Apply') || text.includes('application')) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -2735,7 +2758,10 @@ async function fillAndNavigateSteps(profile, settings, prefilledAnswers) {
       }
     }
 
-    const modal = document.querySelector('.jobs-easy-apply-modal');
+    const modal = document.querySelector('.jobs-easy-apply-modal') || 
+                   document.querySelector('[role="dialog"]') ||
+                   document.querySelector('.artdeco-modal') ||
+                   (window.location.href.includes('/apply/') ? document.querySelector('main, [role="main"], #workspace, body') : null);
     if (!modal) { log('Modal closed unexpectedly'); return { status: 'no-modal' }; }
 
     // Check for validation errors before filling
@@ -3132,7 +3158,7 @@ function findEasyApplyButton() {
   btn = document.querySelector('button[aria-label*="Easy Apply"]');
   if (btn && btn.offsetParent !== null) return btn;
   
-  // Strategy 3: Find by text content
+  // Strategy 3: Find by text content — "Easy Apply" or just "Apply"
   const allButtons = document.querySelectorAll('button');
   for (const b of allButtons) {
     if (b.offsetParent === null) continue;
@@ -3155,6 +3181,42 @@ function findEasyApplyButton() {
         if (el.tagName === 'BUTTON' && el.offsetParent !== null) {
           log('Found Easy Apply button via span parent');
           return el;
+        }
+      }
+    }
+  }
+  
+  // Strategy 5: LinkedIn new UI — button just says "Apply" (not "Easy Apply")
+  // but it's the primary action button near the job title, not a link
+  // Look for a visible button whose text is exactly "Apply" and is near the job header
+  for (const b of allButtons) {
+    if (b.offsetParent === null) continue;
+    const btnText = b.textContent.trim();
+    if (btnText === 'Apply') {
+      // Make sure it's not a nav button or generic button
+      // Check if it's in the job details area (not in the nav bar)
+      const rect = b.getBoundingClientRect();
+      if (rect.top > 50 && rect.top < 500) { // In the main content area
+        log('Found Apply button (new LinkedIn UI)');
+        return b;
+      }
+    }
+  }
+  
+  // Strategy 6: Find span with just "Apply" text and walk up to button
+  for (const span of spans) {
+    const text = span.textContent.trim();
+    if (text === 'Apply') {
+      let el = span;
+      for (let i = 0; i < 10; i++) {
+        el = el.parentElement;
+        if (!el) break;
+        if (el.tagName === 'BUTTON' && el.offsetParent !== null) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top > 50 && rect.top < 500) {
+            log('Found Apply button via span parent (new UI)');
+            return el;
+          }
         }
       }
     }
@@ -3323,12 +3385,24 @@ function findAnyApplyButton() {
  * Handles BOTH Easy Apply (LinkedIn native) AND external Apply buttons.
  */
 async function processJobQueue(profile, settings, prefilledAnswers) {
-  // Prevent duplicate processing
+  // Prevent duplicate processing — use both local var and storage
   if (isProcessingQueue) {
     console.log('[AutoApplyBot] Already processing queue, skipping duplicate call');
     return;
   }
   isProcessingQueue = true;
+  
+  // Double-check with storage (handles cross-script-load races)
+  const lockCheck = await chrome.storage.local.get(['queueProcessingLock']);
+  if (lockCheck.queueProcessingLock) {
+    const lockAge = Date.now() - (lockCheck.queueProcessingLock || 0);
+    if (lockAge < 30000) { // Lock is less than 30 seconds old
+      console.log('[AutoApplyBot] Queue processing locked by another instance, skipping');
+      isProcessingQueue = false;
+      return;
+    }
+  }
+  await chrome.storage.local.set({ queueProcessingLock: Date.now() });
   
   console.log('[AutoApplyBot] ========================================');
   console.log('[AutoApplyBot] processJobQueue() STARTING');
@@ -3395,6 +3469,32 @@ async function processJobQueue(profile, settings, prefilledAnswers) {
                       currentJob.atsType === 'easy_apply' || 
                       currentJob.atsType === 'linkedin';
   console.log('[AutoApplyBot] isEasyApply:', isEasyApply, 'atsType:', currentJob.atsType);
+  
+  // Check if Easy Apply modal is already open (from a previous click)
+  if (isEasyApply && isModalOpen()) {
+    console.log('[AutoApplyBot] Easy Apply modal already open! Skipping button search, going straight to fill...');
+    log('Easy Apply modal already open, filling form...');
+    const result = await fillAndNavigateSteps(profile, settings, prefilledAnswers);
+    
+    if (result.status === 'submitted') {
+      appliedCount++;
+      const appliedJob = {
+        title: currentJob.title, company: currentJob.company, url: currentJob.url,
+        timestamp: new Date().toISOString(), status: 'filled',
+        atsType: currentJob.atsType || 'linkedin',
+        fieldsFilled: result.filled || 0, fieldsSkipped: result.skipped || 0, fieldsFailed: result.failed || 0,
+      };
+      appliedJobs.push(appliedJob);
+      updateAppliedCount(); saveAppliedJobsToStorage(); reportAppliedJobToBackend(appliedJob);
+      log(`Applied: ${currentJob.title} @ ${currentJob.company}`);
+    } else {
+      skippedCount++; updateSkippedCount();
+      log(`Skipped (${result.status}): ${currentJob.title}`);
+    }
+    await moveToNextJob(pendingJobs, currentIndex);
+    return;
+  }
+  
   log(`Looking for ${isEasyApply ? 'Easy Apply' : 'External Apply'} button...`);
 
   let applyBtn = null;
@@ -3559,6 +3659,7 @@ async function processJobQueue(profile, settings, prefilledAnswers) {
 async function moveToNextJob(pendingJobs, currentIndex) {
   // Reset processing flag before navigation
   isProcessingQueue = false;
+  await chrome.storage.local.remove(['queueProcessingLock']);
   
   const nextIndex = currentIndex + 1;
 
@@ -3662,16 +3763,21 @@ console.log('[AutoApplyBot] Setting up queue check...');
 function extractJobIdFromUrl(url) {
   if (!url) return null;
   
-  // Try /jobs/view/ID format
+  // Try /jobs/view/ID format (numeric only)
   const viewMatch = url.match(/\/jobs\/view\/(\d+)/);
   if (viewMatch) return viewMatch[1];
+  
+  // Try /jobs/view/slug-with-ID-at-end format (LinkedIn guest API URLs)
+  // e.g. /jobs/view/junior-software-developer-at-nf-software-inc-4393487644
+  const slugMatch = url.match(/\/jobs\/view\/[a-z0-9-]+-(\d{8,})/i);
+  if (slugMatch) return slugMatch[1];
   
   // Try currentJobId query param
   const paramMatch = url.match(/currentJobId=(\d+)/);
   if (paramMatch) return paramMatch[1];
   
-  // Try any numeric ID at the end of the path
-  const pathMatch = url.match(/\/(\d{8,})(?:[/?]|$)/);
+  // Try any numeric ID (8+ digits) anywhere in the URL
+  const pathMatch = url.match(/(\d{8,})/);
   if (pathMatch) return pathMatch[1];
   
   return null;
