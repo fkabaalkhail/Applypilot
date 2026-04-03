@@ -193,17 +193,70 @@ def _publish(task_id: str, msg: str):
 # SCRAPE — uses public guest API, no browser needed
 # ============================================================
 
-def scrape_jobs(task_id: str) -> None:
-    """Scrape jobs using LinkedIn's public guest API."""
-    settings = _load_settings()
-    title = settings.get("job_title", "Software Engineer")
-    regions = settings.get("regions") or [settings.get("location", "United States")]
+def _save_scraped_job(db, j: dict, new_ids: list, platform: str = "linkedin", easy_apply: int = 0) -> bool:
+    """Save a single scraped job to DB. Returns True if new job was saved."""
+    if db.query(ScrapedJob).filter(ScrapedJob.url == j["url"]).first():
+        return False
 
-    # Log the settings being used for debugging
-    _publish(task_id, f"Using settings: job_title='{title}', regions={regions}")
-    logger.info("Scrape settings: job_title=%s, location=%s, regions=%s", 
-                title, settings.get("location"), regions)
+    # Parse posted date
+    posted_date = None
+    if j.get("posted_date"):
+        try:
+            posted_date = datetime.datetime.fromisoformat(j["posted_date"].replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            pass
+    if not posted_date and j.get("posted_text"):
+        posted_date = _parse_relative_time(j["posted_text"])
 
+    job = ScrapedJob(
+        title=j.get("title", ""),
+        company=j.get("company", ""),
+        location=j.get("location", ""),
+        url=j["url"],
+        description=j.get("description", ""),
+        easy_apply=easy_apply,
+        platform=platform,
+        company_logo=j.get("logo", ""),
+        posted_date=posted_date,
+        ats_type="easy_apply" if easy_apply else "external",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    new_ids.append(job.id)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Multi-source job scrapers
+# ---------------------------------------------------------------------------
+
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+}
+
+
+def _fetch_with_retry(url: str, task_id: str, timeout: int = 15) -> httpx.Response | None:
+    """GET with exponential backoff on 429."""
+    for attempt in range(3):
+        try:
+            r = httpx.get(url, timeout=timeout, headers=_HEADERS, follow_redirects=True)
+            if r.status_code == 429:
+                wait = min(2 * (2 ** attempt), 60)
+                _publish(task_id, f"  Rate-limited (429), retrying in {wait:.0f}s...")
+                time.sleep(wait)
+                continue
+            return r
+        except Exception as e:
+            _publish(task_id, f"  Request error: {e}")
+            return None
+    return None
+
+
+def _scrape_linkedin(title: str, regions: list, settings: dict,
+                     db, new_ids: list, max_new: int, task_id: str) -> int:
+    """Scrape LinkedIn guest API with pagination. Returns count of new jobs."""
+    total = 0
     exp_param = ""
     exp_levels = settings.get("experience_levels", [])
     if exp_levels:
@@ -216,85 +269,301 @@ def scrape_jobs(task_id: str) -> None:
     if wt and wt in WORK_TYPE_CODES:
         wt_param = f"&f_WT={WORK_TYPE_CODES[wt]}"
 
+    for region in regions:
+        if total >= max_new:
+            break
+        _publish(task_id, f"[LinkedIn] Searching: {title} in {region}...")
+
+        # Paginate through multiple pages (25 results per page)
+        for page_start in range(0, 200, 25):
+            if total >= max_new:
+                break
+
+            # f_TPR=r86400 = past 24h, r604800 = past week, r2592000 = past month
+            url = (
+                f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+                f"?keywords={title.replace(' ', '%20')}"
+                f"&location={region.replace(' ', '%20')}"
+                f"&f_AL=true&f_TPR=r604800{exp_param}{wt_param}&start={page_start}"
+            )
+            resp = _fetch_with_retry(url, task_id)
+            if resp is None or resp.status_code != 200:
+                break  # No more pages or error
+
+            jobs = _parse_guest_html(resp.text)
+            if not jobs:
+                break  # No more results
+
+            _publish(task_id, f"  Page {page_start // 25 + 1}: {len(jobs)} jobs")
+
+            page_new = 0
+            for j in jobs:
+                if total >= max_new:
+                    break
+                if _save_scraped_job(db, j, new_ids, platform="linkedin", easy_apply=1):
+                    total += 1
+                    page_new += 1
+
+            if page_new == 0:
+                break  # All duplicates, stop paginating
+            time.sleep(random.uniform(1.5, 3.0))  # Be polite between pages
+
+    return total
+
+
+def _scrape_indeed(title: str, location: str, db, new_ids: list,
+                   max_new: int, task_id: str) -> int:
+    """Scrape Indeed job listings via their public search page."""
+    total = 0
+    _publish(task_id, f"[Indeed] Searching: {title} in {location}...")
+
+    for page_start in range(0, 100, 10):
+        if total >= max_new:
+            break
+
+        url = (
+            f"https://www.indeed.com/jobs"
+            f"?q={title.replace(' ', '+')}"
+            f"&l={location.replace(' ', '+')}"
+            f"&start={page_start}"
+        )
+        resp = _fetch_with_retry(url, task_id)
+        if resp is None or resp.status_code != 200:
+            _publish(task_id, f"  Indeed returned {resp.status_code if resp else 'no response'}")
+            break
+
+        jobs = _parse_indeed_html(resp.text)
+        if not jobs:
+            break
+
+        _publish(task_id, f"  Page {page_start // 10 + 1}: {len(jobs)} jobs")
+
+        page_new = 0
+        for j in jobs:
+            if total >= max_new:
+                break
+            if _save_scraped_job(db, j, new_ids, platform="indeed", easy_apply=0):
+                total += 1
+                page_new += 1
+
+        if page_new == 0:
+            break
+        time.sleep(random.uniform(2.0, 4.0))
+
+    return total
+
+
+def _parse_indeed_html(html: str) -> list[dict]:
+    """Parse Indeed search results HTML into job dicts."""
+    jobs = []
+    # Indeed uses data attributes and JSON-LD for job data
+    # Try JSON-LD first (most reliable)
+    import json as _json
+    for match in re.finditer(r'<script type="application/ld\+json">(.*?)</script>', html, re.DOTALL):
+        try:
+            data = _json.loads(match.group(1))
+            if isinstance(data, dict) and data.get("@type") == "JobPosting":
+                jobs.append({
+                    "title": data.get("title", ""),
+                    "company": data.get("hiringOrganization", {}).get("name", ""),
+                    "location": data.get("jobLocation", [{}])[0].get("address", {}).get("addressLocality", "") if isinstance(data.get("jobLocation"), list) else "",
+                    "url": data.get("url", ""),
+                    "posted_date": data.get("datePosted", ""),
+                    "description": (data.get("description", "") or "")[:500],
+                })
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and item.get("@type") == "JobPosting":
+                        loc = ""
+                        jl = item.get("jobLocation")
+                        if isinstance(jl, list) and jl:
+                            loc = jl[0].get("address", {}).get("addressLocality", "")
+                        elif isinstance(jl, dict):
+                            loc = jl.get("address", {}).get("addressLocality", "")
+                        jobs.append({
+                            "title": item.get("title", ""),
+                            "company": item.get("hiringOrganization", {}).get("name", ""),
+                            "location": loc,
+                            "url": item.get("url", ""),
+                            "posted_date": item.get("datePosted", ""),
+                            "description": (item.get("description", "") or "")[:500],
+                        })
+        except (_json.JSONDecodeError, TypeError, KeyError, IndexError):
+            continue
+
+    # Fallback: parse HTML links with job card patterns
+    if not jobs:
+        for match in re.finditer(
+            r'<a[^>]*href="(/rc/clk\?jk=[^"]+)"[^>]*>.*?<span[^>]*>(.*?)</span>',
+            html, re.DOTALL
+        ):
+            href = match.group(1)
+            title_text = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+            if title_text and href:
+                jobs.append({
+                    "title": title_text,
+                    "company": "",
+                    "location": "",
+                    "url": f"https://www.indeed.com{href}",
+                })
+
+    # Deduplicate by URL
+    seen = set()
+    unique = []
+    for j in jobs:
+        if j.get("url") and j["url"] not in seen:
+            seen.add(j["url"])
+            unique.append(j)
+    return unique
+
+
+def _scrape_remoteok(title: str, db, new_ids: list,
+                     max_new: int, task_id: str) -> int:
+    """Scrape RemoteOK API (returns JSON)."""
+    total = 0
+    _publish(task_id, f"[RemoteOK] Searching: {title}...")
+
+    url = f"https://remoteok.com/api?tag={title.replace(' ', '+')}"
+    resp = _fetch_with_retry(url, task_id, timeout=20)
+    if resp is None or resp.status_code != 200:
+        _publish(task_id, f"  RemoteOK returned {resp.status_code if resp else 'no response'}")
+        return 0
+
+    try:
+        data = resp.json()
+    except Exception:
+        _publish(task_id, "  RemoteOK returned invalid JSON")
+        return 0
+
+    # First item is metadata, skip it
+    for item in data[1:] if len(data) > 1 else []:
+        if total >= max_new:
+            break
+        if not isinstance(item, dict):
+            continue
+
+        job_url = item.get("url", "")
+        if not job_url:
+            slug = item.get("slug", "")
+            if slug:
+                job_url = f"https://remoteok.com/remote-jobs/{slug}"
+        if not job_url:
+            continue
+
+        j = {
+            "title": item.get("position", ""),
+            "company": item.get("company", ""),
+            "location": item.get("location", "Remote"),
+            "url": job_url,
+            "posted_date": item.get("date", ""),
+            "description": (item.get("description", "") or "")[:500],
+            "logo": item.get("company_logo", ""),
+        }
+        if _save_scraped_job(db, j, new_ids, platform="remoteok", easy_apply=0):
+            total += 1
+
+    _publish(task_id, f"  Found {total} new jobs")
+    return total
+
+
+def _scrape_jobicy(title: str, db, new_ids: list,
+                   max_new: int, task_id: str) -> int:
+    """Scrape Jobicy remote jobs API."""
+    total = 0
+    _publish(task_id, f"[Jobicy] Searching: {title}...")
+
+    url = f"https://jobicy.com/api/v2/remote-jobs?count=50&tag={title.replace(' ', '+')}"
+    resp = _fetch_with_retry(url, task_id, timeout=20)
+    if resp is None or resp.status_code != 200:
+        _publish(task_id, f"  Jobicy returned {resp.status_code if resp else 'no response'}")
+        return 0
+
+    try:
+        data = resp.json()
+        job_list = data.get("jobs", [])
+    except Exception:
+        _publish(task_id, "  Jobicy returned invalid JSON")
+        return 0
+
+    for item in job_list:
+        if total >= max_new:
+            break
+        job_url = item.get("url", "")
+        if not job_url:
+            continue
+
+        j = {
+            "title": item.get("jobTitle", ""),
+            "company": item.get("companyName", ""),
+            "location": item.get("jobGeo", "Remote"),
+            "url": job_url,
+            "posted_date": item.get("pubDate", ""),
+            "description": (item.get("jobExcerpt", "") or "")[:500],
+            "logo": item.get("companyLogo", ""),
+        }
+        if _save_scraped_job(db, j, new_ids, platform="jobicy", easy_apply=0):
+            total += 1
+
+    _publish(task_id, f"  Found {total} new jobs")
+    return total
+
+
+# All available job sources
+JOB_SOURCES = [
+    {"id": "linkedin", "name": "LinkedIn", "enabled": True},
+    {"id": "indeed", "name": "Indeed", "enabled": True},
+    {"id": "remoteok", "name": "RemoteOK", "enabled": True},
+    {"id": "jobicy", "name": "Jobicy", "enabled": True},
+]
+
+
+def scrape_jobs(task_id: str) -> None:
+    """Scrape jobs from multiple sources: LinkedIn, Indeed, RemoteOK, Jobicy."""
+    settings = _load_settings()
+    title = settings.get("job_title", "Software Engineer")
+    regions = settings.get("regions") or [settings.get("location", "United States")]
+    location = regions[0] if regions else "Canada"
+
+    _publish(task_id, f"Using settings: job_title='{title}', regions={regions}")
+    logger.info("Scrape settings: job_title=%s, location=%s, regions=%s",
+                title, settings.get("location"), regions)
+
     db = SessionLocal()
     total = 0
     new_ids = []
     max_new = settings.get("max_applications_per_run", 25)
 
     try:
-        for region in regions:
-            if total >= max_new:
-                break
-            _publish(task_id, f"Searching: {title} in {region}...")
+        # --- LinkedIn (with pagination) ---
+        linkedin_count = _scrape_linkedin(title, regions, settings, db, new_ids, max_new, task_id)
+        total += linkedin_count
+        _publish(task_id, f"LinkedIn: {linkedin_count} new jobs")
 
-            url = (
-                f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-                f"?keywords={title.replace(' ', '%20')}"
-                f"&location={region.replace(' ', '%20')}"
-                f"&f_AL=true{exp_param}{wt_param}&start=0"
-            )
-            try:
-                # Exponential backoff on HTTP 429 (Req 21.7)
-                resp = None
-                for _attempt in range(3):  # initial + 2 retries
-                    r = httpx.get(url, timeout=15, headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                    })
-                    if r.status_code == 429:
-                        wait = min(2 * (2 ** _attempt), 60)
-                        _publish(task_id, f"Rate-limited (429), retrying in {wait:.0f}s...")
-                        time.sleep(wait)
-                        continue
-                    resp = r
-                    break
-                if resp is None or resp.status_code != 200:
-                    continue
+        # --- Indeed ---
+        if total < max_new:
+            indeed_count = _scrape_indeed(title, location, db, new_ids, max_new - total, task_id)
+            total += indeed_count
+            _publish(task_id, f"Indeed: {indeed_count} new jobs")
 
-                jobs = _parse_guest_html(resp.text)
-                _publish(task_id, f"Found {len(jobs)} jobs")
+        # --- RemoteOK ---
+        if total < max_new:
+            remoteok_count = _scrape_remoteok(title, db, new_ids, max_new - total, task_id)
+            total += remoteok_count
+            _publish(task_id, f"RemoteOK: {remoteok_count} new jobs")
 
-                for j in jobs:
-                    if total >= max_new:
-                        break
-                    if db.query(ScrapedJob).filter(ScrapedJob.url == j["url"]).first():
-                        continue
-                    
-                    # Parse posted date
-                    posted_date = None
-                    if j.get("posted_date"):
-                        try:
-                            # LinkedIn datetime format: "2024-01-15"
-                            posted_date = datetime.datetime.fromisoformat(j["posted_date"].replace("Z", "+00:00"))
-                        except (ValueError, AttributeError):
-                            pass
-                    if not posted_date and j.get("posted_text"):
-                        # Parse relative time like "2 days ago", "1 week ago"
-                        posted_date = _parse_relative_time(j["posted_text"])
-                    
-                    job = ScrapedJob(
-                        title=j["title"], company=j["company"],
-                        location=j["location"], url=j["url"],
-                        description="", easy_apply=1,
-                        company_logo=j.get("logo", ""),
-                        posted_date=posted_date,
-                    )
-                    db.add(job)
-                    db.commit()
-                    db.refresh(job)
-                    new_ids.append(job.id)
-                    total += 1
-                    _publish(task_id, f"  Saved: {j['title']} at {j['company']}")
-            except Exception as e:
-                _publish(task_id, f"Error: {e}")
-            time.sleep(1)
+        # --- Jobicy ---
+        if total < max_new:
+            jobicy_count = _scrape_jobicy(title, db, new_ids, max_new - total, task_id)
+            total += jobicy_count
+            _publish(task_id, f"Jobicy: {jobicy_count} new jobs")
 
+        # --- Fetch descriptions & analyze ---
         if new_ids:
             _publish(task_id, f"Fetching descriptions for {len(new_ids)} jobs...")
-            # Keep session alive during long scrape runs (Req 17.6)
             try:
                 maybe_keep_alive(BrowserSession.get())
             except Exception:
-                pass  # Browser not needed for guest API scraping
+                pass
             _fetch_descriptions(db, new_ids, task_id)
 
         if new_ids:
@@ -302,13 +571,13 @@ def scrape_jobs(task_id: str) -> None:
             try:
                 maybe_keep_alive(BrowserSession.get())
             except Exception:
-                pass  # Browser not needed for analysis
+                pass
             _analyze_matches(db, new_ids, task_id)
 
     finally:
         db.close()
 
-    _publish(task_id, f"Done! {total} new jobs found")
+    _publish(task_id, f"Done! {total} new jobs found across all sources")
 
 
 def _parse_guest_html(html: str) -> list[dict]:
