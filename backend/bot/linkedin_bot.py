@@ -300,7 +300,11 @@ def _scrape_linkedin(title: str, regions: list, settings: dict,
             for j in jobs:
                 if total >= max_new:
                     break
-                if _save_scraped_job(db, j, new_ids, platform="linkedin", easy_apply=1):
+                # f_AL=true filter means most results should be Easy Apply
+                # Per-job badge detection from HTML is used when available
+                # _fetch_descriptions will do the final correction based on actual job page
+                is_easy = 1 if j.get("is_easy_apply", True) else 0
+                if _save_scraped_job(db, j, new_ids, platform="linkedin", easy_apply=is_easy):
                     total += 1
                     page_new += 1
 
@@ -611,6 +615,9 @@ def _parse_guest_html(html: str) -> list[dict]:
                 self.in_company = True
             if "job-search-card__location" in cls:
                 self.in_loc = True
+            # Detect Easy Apply badge on the job card
+            if "easy-apply" in cls.lower() or "job-search-card__easy-apply" in cls:
+                self.cur["is_easy_apply"] = True
             # Capture posted date from <time> tag
             if tag == "time" and d.get("datetime"):
                 self.cur["posted_date"] = d.get("datetime")
@@ -630,6 +637,9 @@ def _parse_guest_html(html: str) -> list[dict]:
             if self.in_time:
                 # Fallback: parse relative time like "2 days ago", "1 week ago"
                 self.cur["posted_text"] = t; self.in_time = False
+            # Detect "Easy Apply" text in the card
+            if t == "Easy Apply" or t == "EasyApply":
+                self.cur["is_easy_apply"] = True
 
         def handle_endtag(self, tag):
             if tag == "div" and self.cur.get("url") and self.cur.get("title"):
@@ -694,6 +704,12 @@ def _fetch_descriptions(db, job_ids, task_id):
                     # Detect ATS type by following the apply URL redirect
                     ats_type = _detect_ats_from_apply_url(job.url, html)
                     job.ats_type = ats_type
+                    
+                    # Sync easy_apply flag with detected ATS type
+                    if ats_type == "easy_apply":
+                        job.easy_apply = 1
+                    else:
+                        job.easy_apply = 0
 
                     db.commit()
             except Exception:

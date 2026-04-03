@@ -567,11 +567,10 @@ def get_pending_jobs(
     
     # Filter by job type
     if easy_apply_only:
-        # Easy Apply jobs: ats_type is "easy_apply" OR ats_type is empty/null with easy_apply=1
+        # Easy Apply jobs: ats_type must be "easy_apply"
+        # This is the authoritative field — set by _detect_ats_from_apply_url
         query = query.filter(
-            (ScrapedJob.ats_type == "easy_apply") | 
-            ((ScrapedJob.ats_type == "") & (ScrapedJob.easy_apply == 1)) |
-            ((ScrapedJob.ats_type.is_(None)) & (ScrapedJob.easy_apply == 1))
+            ScrapedJob.ats_type == "easy_apply"
         )
     elif external_only:
         # External jobs: ats_type is set and not "easy_apply"
