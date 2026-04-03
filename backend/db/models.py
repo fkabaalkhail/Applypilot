@@ -52,6 +52,7 @@ class ScrapedJob(Base):
     easy_apply = Column(Integer, default=1)
     status = Column(Enum(JobStatus, values_callable=lambda x: [e.value for e in x]), default=JobStatus.NEW)
     scraped_at = Column(DateTime, default=datetime.datetime.utcnow)
+    posted_date = Column(DateTime, nullable=True)  # When the job was posted on LinkedIn
 
     # AI match analysis (populated after scrape via Ollama)
     match_score = Column(Integer, default=0)  # 0-100

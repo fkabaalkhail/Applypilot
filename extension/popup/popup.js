@@ -991,13 +991,14 @@ async function fetchPendingJobs() {
     const data = await chrome.storage.local.get(['settings']);
     const backendUrl = (data.settings && data.settings.backendUrl) || 'http://localhost:8000';
     const jobTypeFilter = (data.settings && data.settings.jobTypeFilter) || 'easy_apply';
+    const postedWithin = (data.settings && data.settings.postedWithin) || '';
 
     showToast('Fetching pending jobs...', 'info', 2000);
 
     // Get max jobs setting
     const maxJobs = parseInt((data.settings && data.settings.maxJobsPerRun) || 10);
 
-    // Build URL with job type filter
+    // Build URL with job type filter and posted date filter
     let url = `${backendUrl}/api/extension/jobs?limit=${maxJobs}`;
     if (jobTypeFilter === 'easy_apply') {
       url += '&easy_apply_only=true';
@@ -1005,6 +1006,11 @@ async function fetchPendingJobs() {
       url += '&easy_apply_only=false&external_only=true';
     } else {
       url += '&easy_apply_only=false';
+    }
+    
+    // Add posted date filter
+    if (postedWithin) {
+      url += `&posted_within=${postedWithin}`;
     }
 
     console.log('[AutoApplyBot] Fetching jobs from:', url);

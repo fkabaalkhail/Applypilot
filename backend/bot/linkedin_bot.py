@@ -33,6 +33,44 @@ logger = logging.getLogger(__name__)
 _last_keep_alive: float = 0.0  # epoch timestamp of last keep_alive call
 
 
+def _parse_relative_time(text: str) -> datetime.datetime | None:
+    """Parse relative time strings like '2 days ago', '1 week ago' into datetime."""
+    if not text:
+        return None
+    
+    text = text.lower().strip()
+    now = datetime.datetime.utcnow()
+    
+    # Match patterns like "2 days ago", "1 week ago", "3 hours ago"
+    match = re.match(r'(\d+)\s*(second|minute|hour|day|week|month)s?\s*ago', text)
+    if match:
+        num = int(match.group(1))
+        unit = match.group(2)
+        
+        if unit == 'second':
+            return now - datetime.timedelta(seconds=num)
+        elif unit == 'minute':
+            return now - datetime.timedelta(minutes=num)
+        elif unit == 'hour':
+            return now - datetime.timedelta(hours=num)
+        elif unit == 'day':
+            return now - datetime.timedelta(days=num)
+        elif unit == 'week':
+            return now - datetime.timedelta(weeks=num)
+        elif unit == 'month':
+            return now - datetime.timedelta(days=num * 30)
+    
+    # Handle "just now", "today", "yesterday"
+    if 'just now' in text or 'moment' in text:
+        return now
+    if 'today' in text:
+        return now
+    if 'yesterday' in text:
+        return now - datetime.timedelta(days=1)
+    
+    return None
+
+
 def human_delay(lo: float = 2.0, hi: float = 8.0) -> None:
     """Sleep for a random duration between *lo* and *hi* seconds.
 
@@ -220,11 +258,25 @@ def scrape_jobs(task_id: str) -> None:
                         break
                     if db.query(ScrapedJob).filter(ScrapedJob.url == j["url"]).first():
                         continue
+                    
+                    # Parse posted date
+                    posted_date = None
+                    if j.get("posted_date"):
+                        try:
+                            # LinkedIn datetime format: "2024-01-15"
+                            posted_date = datetime.datetime.fromisoformat(j["posted_date"].replace("Z", "+00:00"))
+                        except (ValueError, AttributeError):
+                            pass
+                    if not posted_date and j.get("posted_text"):
+                        # Parse relative time like "2 days ago", "1 week ago"
+                        posted_date = _parse_relative_time(j["posted_text"])
+                    
                     job = ScrapedJob(
                         title=j["title"], company=j["company"],
                         location=j["location"], url=j["url"],
                         description="", easy_apply=1,
                         company_logo=j.get("logo", ""),
+                        posted_date=posted_date,
                     )
                     db.add(job)
                     db.commit()
@@ -260,14 +312,14 @@ def scrape_jobs(task_id: str) -> None:
 
 
 def _parse_guest_html(html: str) -> list[dict]:
-    """Parse LinkedIn guest API HTML into job dicts with company logos."""
+    """Parse LinkedIn guest API HTML into job dicts with company logos and posted dates."""
     jobs = []
 
     class P(HTMLParser):
         def __init__(self):
             super().__init__()
             self.cur = {}
-            self.in_title = self.in_company = self.in_loc = False
+            self.in_title = self.in_company = self.in_loc = self.in_time = False
 
         def handle_starttag(self, tag, attrs):
             d = dict(attrs)
@@ -290,6 +342,11 @@ def _parse_guest_html(html: str) -> list[dict]:
                 self.in_company = True
             if "job-search-card__location" in cls:
                 self.in_loc = True
+            # Capture posted date from <time> tag
+            if tag == "time" and d.get("datetime"):
+                self.cur["posted_date"] = d.get("datetime")
+            if "job-search-card__listdate" in cls:
+                self.in_time = True
 
         def handle_data(self, data):
             t = data.strip()
@@ -301,6 +358,9 @@ def _parse_guest_html(html: str) -> list[dict]:
                 self.cur["company"] = t; self.in_company = False
             if self.in_loc:
                 self.cur["location"] = t; self.in_loc = False
+            if self.in_time:
+                # Fallback: parse relative time like "2 days ago", "1 week ago"
+                self.cur["posted_text"] = t; self.in_time = False
 
         def handle_endtag(self, tag):
             if tag == "div" and self.cur.get("url") and self.cur.get("title"):

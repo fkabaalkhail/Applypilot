@@ -299,6 +299,7 @@ def get_pending_jobs(
     min_score: int = 0,
     easy_apply_only: bool = True,
     external_only: bool = False,
+    posted_within: str = "",
     db: Session = Depends(get_db),
 ):
     """
@@ -309,11 +310,34 @@ def get_pending_jobs(
     - easy_apply_only=true: Only LinkedIn Easy Apply jobs
     - external_only=true: Only external ATS jobs (Greenhouse, Lever, etc.)
     - Both false: All jobs
+    - posted_within: Filter by posting date ("24h", "week", "month", or empty for all)
     """
+    import datetime
+    
     query = db.query(ScrapedJob).filter(
         ScrapedJob.status == JobStatus.NEW,
         ScrapedJob.match_score >= min_score,
     )
+    
+    # Filter by posting date
+    if posted_within:
+        now = datetime.datetime.utcnow()
+        if posted_within == "24h":
+            cutoff = now - datetime.timedelta(hours=24)
+        elif posted_within == "week":
+            cutoff = now - datetime.timedelta(days=7)
+        elif posted_within == "month":
+            cutoff = now - datetime.timedelta(days=30)
+        else:
+            cutoff = None
+        
+        if cutoff:
+            # Filter jobs that have posted_date >= cutoff OR posted_date is null (include jobs without date)
+            # For jobs without posted_date, fall back to scraped_at
+            query = query.filter(
+                (ScrapedJob.posted_date >= cutoff) | 
+                ((ScrapedJob.posted_date.is_(None)) & (ScrapedJob.scraped_at >= cutoff))
+            )
     
     # Filter by job type
     if easy_apply_only:
@@ -336,9 +360,9 @@ def get_pending_jobs(
         ScrapedJob.match_score.desc()
     ).limit(limit).all()
     
-    logger.info(f"Found {len(jobs)} pending jobs (easy_apply_only={easy_apply_only}, external_only={external_only})")
+    logger.info(f"Found {len(jobs)} pending jobs (easy_apply_only={easy_apply_only}, external_only={external_only}, posted_within={posted_within})")
     for j in jobs:
-        logger.info(f"  - {j.title} at {j.company}, ats_type={j.ats_type}, easy_apply={j.easy_apply}")
+        logger.info(f"  - {j.title} at {j.company}, ats_type={j.ats_type}, easy_apply={j.easy_apply}, posted_date={j.posted_date}")
     
     return [
         PendingJobOut(
