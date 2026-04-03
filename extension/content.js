@@ -4174,6 +4174,185 @@ async function handleExternalRadioButtons(settings, profile) {
 }
 
 /**
+ * Handle toggle-style Yes/No buttons (Ashby and similar ATS).
+ * These are NOT <input type="radio"> — they're custom <div> or <button>
+ * elements styled as a segmented control with "Yes" | "No" text.
+ *
+ * Strategy: Find all visible elements whose text is exactly "Yes" or "No",
+ * group them by proximity (same row), find the question label above them,
+ * get an answer from the backend, and click the right one.
+ */
+async function handleToggleButtons(settings, profile) {
+  console.log('[AutoApplyBot] handleToggleButtons() starting...');
+  let handled = 0;
+
+  // Find all elements with exact text "Yes" or "No" that are NOT radio inputs
+  const candidates = [];
+  const allEls = document.querySelectorAll('*');
+  for (const el of allEls) {
+    if (el.tagName === 'INPUT') continue;
+    if (el.offsetParent === null) continue;
+    if (el.children.length > 1) continue;
+
+    const text = (el.innerText || el.textContent || '').trim();
+    if (text !== 'Yes' && text !== 'No') continue;
+
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) continue;
+
+    candidates.push({ el, text, rect });
+  }
+
+  console.log('[AutoApplyBot] Toggle candidates (Yes/No elements):', candidates.length);
+  if (candidates.length === 0) return 0;
+
+  // Group by vertical position (same row = same toggle group)
+  const used = new Set();
+  const groups = [];
+
+  for (let i = 0; i < candidates.length; i++) {
+    if (used.has(i)) continue;
+    const a = candidates[i];
+    const group = [a];
+    used.add(i);
+
+    for (let j = i + 1; j < candidates.length; j++) {
+      if (used.has(j)) continue;
+      const b = candidates[j];
+      const yDiff = Math.abs(a.rect.top - b.rect.top);
+      const areSiblings = a.el.parentElement === b.el.parentElement;
+      if (yDiff < 15 || areSiblings) {
+        group.push(b);
+        used.add(j);
+      }
+    }
+
+    if (group.length >= 2) {
+      groups.push(group);
+    }
+  }
+
+  console.log('[AutoApplyBot] Toggle groups found:', groups.length);
+
+  for (const group of groups) {
+    // Check if already selected
+    let alreadySelected = false;
+    for (const item of group) {
+      const cls = (item.el.className || '').toLowerCase();
+      const ariaPressed = item.el.getAttribute('aria-pressed');
+      const dataState = item.el.getAttribute('data-state');
+      const fontWeight = window.getComputedStyle(item.el).fontWeight;
+
+      if (ariaPressed === 'true' || dataState === 'on' || dataState === 'active' ||
+          cls.includes('selected') || cls.includes('active') || cls.includes('checked') ||
+          parseInt(fontWeight) >= 600) {
+        const otherItem = group.find(g => g !== item);
+        if (otherItem) {
+          const bgColor = window.getComputedStyle(item.el).backgroundColor;
+          const otherBg = window.getComputedStyle(otherItem.el).backgroundColor;
+          if (bgColor !== otherBg || ariaPressed === 'true' || dataState === 'on') {
+            alreadySelected = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (alreadySelected) {
+      console.log('[AutoApplyBot] Toggle group already answered, skipping');
+      continue;
+    }
+
+    // Find the question label above the toggle group
+    const groupTop = Math.min(...group.map(g => g.rect.top));
+    const groupLeft = Math.min(...group.map(g => g.rect.left));
+    let questionText = '';
+
+    // Walk up from the first element's parent
+    let searchEl = group[0].el.parentElement;
+    for (let up = 0; up < 10 && searchEl; up++) {
+      let prev = searchEl.previousElementSibling;
+      while (prev) {
+        const t = (prev.innerText || '').trim();
+        if (t && t.length > 10 && t.length < 500 && t !== 'Yes' && t !== 'No') {
+          questionText = t;
+          break;
+        }
+        prev = prev.previousElementSibling;
+      }
+      if (questionText) break;
+
+      const parent = searchEl.parentElement;
+      if (parent) {
+        for (const child of parent.children) {
+          if (child === searchEl || child.contains(searchEl)) break;
+          const ct = (child.innerText || '').trim();
+          if (ct && ct.length > 10 && ct.length < 500 && ct !== 'Yes' && ct !== 'No') {
+            questionText = ct;
+          }
+        }
+        if (questionText) break;
+      }
+      searchEl = parent;
+    }
+
+    // Fallback: find closest text element above by screen position
+    if (!questionText) {
+      let bestDist = 999999;
+      for (const te of document.querySelectorAll('label, p, span, div, h3, h4, h5')) {
+        const t = (te.innerText || '').trim();
+        if (!t || t.length < 10 || t.length > 500 || t === 'Yes' || t === 'No') continue;
+        const tr = te.getBoundingClientRect();
+        if (tr.bottom > groupTop + 5) continue;
+        if (Math.abs(tr.left - groupLeft) > 300) continue;
+        const dist = groupTop - tr.bottom;
+        if (dist < bestDist && dist >= 0) {
+          bestDist = dist;
+          questionText = t;
+        }
+      }
+    }
+
+    console.log('[AutoApplyBot] Toggle question:', questionText?.substring(0, 80));
+    const options = group.map(g => g.text);
+
+    if (!questionText) {
+      console.log('[AutoApplyBot] No question found for toggle group, skipping');
+      continue;
+    }
+
+    // Get answer from backend (rule-based + AI fallback)
+    const answer = await getSmartAnswer(questionText, options, settings, profile);
+    console.log('[AutoApplyBot] Toggle answer:', answer);
+
+    if (!answer) continue;
+
+    // Click the matching option
+    const answerLower = answer.toLowerCase().trim();
+    for (const item of group) {
+      if (item.text.toLowerCase().trim() === answerLower) {
+        try {
+          item.el.click();
+          item.el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          item.el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          item.el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          log('Toggle answered: ' + questionText.substring(0, 50) + ' = ' + answer);
+          console.log('[AutoApplyBot] Clicked toggle:', item.text);
+          handled++;
+        } catch (e) {
+          console.log('[AutoApplyBot] Toggle click failed:', e);
+        }
+        break;
+      }
+    }
+
+    await wait(300);
+  }
+
+  return handled;
+}
+
+/**
  * Handle select dropdowns on external ATS with AI support.
  * Handles both native <select> and custom dropdowns (Greenhouse, Lever, etc.)
  */
@@ -5796,6 +5975,10 @@ async function handleRipplingDropdowns(settings, profile) {
   // Step 3: Handle radio buttons / multiple choice (with AI support)
   const radiosHandled = await handleExternalRadioButtons(settings, mergedProfile);
   log(`Radio buttons handled: ${radiosHandled}`);
+  
+  // Step 3.5: Handle toggle-style Yes/No buttons (Ashby, etc.)
+  const togglesHandled = await handleToggleButtons(settings, mergedProfile);
+  log(`Toggle buttons handled: ${togglesHandled}`);
   
   // Step 4: Handle select dropdowns (with AI support)
   const selectsHandled = await handleExternalSelects(mergedProfile, settings);

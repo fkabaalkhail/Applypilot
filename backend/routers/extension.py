@@ -88,6 +88,135 @@ def _get_settings(db: Session) -> UserSettings:
         settings = UserSettings(id=1)
         db.add(settings)
         db.commit()
+
+
+def _rule_based_answer(question: str, options: list[str], settings) -> str | None:
+    """Answer common screening questions without AI.
+
+    Returns the answer string if matched, or None to fall through to AI.
+    """
+    q = question.lower().strip()
+    opt_lower = [o.lower().strip() for o in options]
+
+    # Helper to find a matching option
+    def pick(target: str) -> str | None:
+        for orig, low in zip(options, opt_lower):
+            if low == target:
+                return orig
+        return None
+
+    yes = pick("yes")
+    no = pick("no")
+
+    # If not a Yes/No question, check other common patterns
+    if not (yes and no):
+        # "How did you hear about us?" type questions
+        if any(kw in q for kw in ["how did you hear", "where did you hear", "how did you find"]):
+            if options:
+                for o in options:
+                    if any(kw in o.lower() for kw in ["linkedin", "job board", "online"]):
+                        return o
+                return options[0]
+            return "LinkedIn"
+
+        # "What is your expected salary?" — skip, let AI handle
+        # "Years of experience" with numeric options
+        if "experience" in q and "year" in q and options:
+            # Pick the highest reasonable option
+            for o in reversed(options):
+                if any(c.isdigit() for c in o):
+                    return o
+
+        return None  # Not a recognized pattern
+
+    # ── Yes/No questions below ──
+
+    city = (getattr(settings, 'city', '') or '').lower() if settings else ''
+    country = (getattr(settings, 'country', '') or '').lower() if settings else ''
+
+    # Detect user's country
+    canadian_cities = [
+        "ottawa", "toronto", "vancouver", "montreal", "calgary",
+        "edmonton", "winnipeg", "halifax", "victoria", "kitchener",
+        "waterloo", "mississauga", "brampton", "hamilton", "london",
+        "quebec", "saskatoon", "regina",
+    ]
+    is_canadian = (
+        "canada" in country or
+        any(c in city for c in canadian_cities) or
+        any(c in country for c in ["ontario", "quebec", "british columbia", "alberta"])
+    )
+    is_us = any(kw in country for kw in ["united states", "usa", "u.s."])
+
+    # "Are you based in the United States?"
+    if any(kw in q for kw in ["based in", "located in", "reside in", "live in", "currently in"]):
+        if "united states" in q or "u.s." in q or " us?" in q or "usa" in q:
+            return yes if is_us else no
+        if "canada" in q:
+            return yes if is_canadian else no
+
+    # "Do you require sponsorship?" / "Will you need visa sponsorship?"
+    if any(kw in q for kw in ["sponsorship", "sponsor", "require employment",
+                               "require work authorization"]):
+        return no  # Default: no sponsorship needed
+
+    # "Are you legally authorized to work?"
+    if any(kw in q for kw in ["legally authorized", "authorized to work",
+                               "eligible to work", "right to work",
+                               "legally eligible", "work authorization"]):
+        return yes
+
+    # "Are you 18 years or older?"
+    if any(kw in q for kw in ["18 years", "18 or older", "legal age", "age of majority"]):
+        return yes
+
+    # "Are you willing to relocate?"
+    if "relocat" in q:
+        return yes
+
+    # "Do you have a valid driver's license?"
+    if "driver" in q and "licen" in q:
+        return yes
+
+    # "Have you previously worked at [company]?"
+    if "previously worked" in q or "worked at" in q or "former employee" in q:
+        return no
+
+    # "Are you comfortable working remote/onsite/hybrid?"
+    if "comfortable" in q and any(kw in q for kw in ["remote", "onsite", "hybrid", "office"]):
+        return yes
+
+    # "Do you have experience with...?" — let AI handle
+    # "Can you commute to...?" — let AI handle
+
+    # "Do you agree to background check?"
+    if "background check" in q or "drug test" in q or "drug screen" in q:
+        return yes
+
+    # "Are you a US citizen or permanent resident?"
+    if ("citizen" in q or "permanent resident" in q) and ("us" in q or "u.s." in q or "united states" in q):
+        if is_canadian:
+            return no
+        return yes
+
+    # "Do you have a disability?" — prefer not to answer, but if forced Yes/No
+    if "disability" in q or "disabled" in q:
+        return no
+
+    # "Are you a veteran?"
+    if "veteran" in q or "military" in q:
+        return no
+
+    return None  # Unknown — fall through to AI
+
+
+def _get_settings(db: Session) -> UserSettings:
+    """Get the singleton settings row, or create it if it doesn't exist."""
+    settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
+    if not settings:
+        settings = UserSettings(id=1)
+        db.add(settings)
+        db.commit()
         db.refresh(settings)
     return settings
 
@@ -144,14 +273,21 @@ async def get_ai_answer(request: AIQuestionRequest, db: Session = Depends(get_db
     """
     Get an AI-powered answer for an unknown application question.
     
-    Uses the Ollama service to generate contextual answers based on
-    the user's resume and the job description.
+    First tries rule-based answers for common screening questions,
+    then falls back to Ollama AI if available.
     """
     try:
-        from backend.services.ollama_service import OllamaService
-        
         # Get user settings for profile info
         settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
+
+        # ── Rule-based answers for common questions (no AI needed) ──
+        rule_answer = _rule_based_answer(request.question, request.options, settings)
+        if rule_answer is not None:
+            logger.info("Rule-based answer for '%s': %s", request.question[:60], rule_answer)
+            return AIAnswerResponse(answer=rule_answer)
+
+        # ── AI-powered answer via Ollama ──
+        from backend.services.ollama_service import OllamaService
         
         # Get resume text if not provided
         resume_text = request.resumeText
