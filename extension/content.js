@@ -62,6 +62,7 @@ const ATS_PATTERNS = {
   greenhouse:     /greenhouse\.io|grnh\.se/i,
   lever:          /lever\.co/i,
   workday:        /myworkdayjobs\.com|workday\.com/i,
+  rippling:       /rippling\.com/i,
   jazzhr:         /applytojob\.com|jazz\.co/i,
   icims:          /icims\.com/i,
   smartrecruiters:/smartrecruiters\.com/i,
@@ -101,6 +102,53 @@ function detectATS(url) {
  * @returns {string}
  */
 function getLabel(el) {
+  // 0. Rippling-specific: data-testid or data-input attribute (e.g., "input-first_name" → "first_name")
+  // ONLY use this for Rippling ATS to avoid affecting other ATS like Greenhouse
+  const dataTestId = el.getAttribute('data-testid') || el.getAttribute('data-input');
+  if (dataTestId) {
+    // Check if this looks like a Rippling field (starts with "input-" or "customQuestions.")
+    // This prevents affecting Greenhouse and other ATS that may use data-testid differently
+    const isRipplingPattern = dataTestId.startsWith('input-') || 
+                              dataTestId.startsWith('customQuestions.') ||
+                              dataTestId === 'Apply now' ||
+                              dataTestId === 'Apply';
+    
+    if (isRipplingPattern) {
+      // Skip internal field names that look like IDs or hashes (but NOT customQuestions)
+      // customQuestions fields are real questions - we'll find the label from the DOM
+      if (/^[a-f0-9]{8}-[a-f0-9]{4}-/.test(dataTestId) ||
+          /^[a-f0-9]{24,}$/.test(dataTestId)) {
+        return ''; // Return empty to skip this field
+      }
+      
+      // For customQuestions fields, try to find the actual label from the DOM
+      if (dataTestId.startsWith('customQuestions.') || dataTestId.startsWith('input-customQuestions.')) {
+        // Look for a label in the parent container
+        let parent = el.parentElement;
+        for (let i = 0; i < 10 && parent; i++) {
+          const labelEl = parent.querySelector('label, legend, [class*="label"], [class*="Label"], h3, h4, p');
+          if (labelEl) {
+            const labelText = labelEl.textContent.trim().replace(/\*$/, '').trim();
+            if (labelText && labelText.length > 3 && labelText.length < 200) {
+              return labelText;
+            }
+          }
+          parent = parent.parentElement;
+        }
+        // If no label found, return a generic name based on the field
+        return 'custom question';
+      }
+      
+      // Extract field name from data-testid like "input-first_name" → "first_name"
+      const match = dataTestId.match(/^(?:input-)?(.+)$/);
+      if (match) {
+        const fieldName = match[1].replace(/_/g, ' ');  // "first_name" → "first name"
+        return fieldName;
+      }
+    }
+    // If not a Rippling pattern, fall through to standard label detection strategies
+  }
+  
   // 1. label[for=id]
   if (el.id) {
     const lbl = document.querySelector('label[for="' + el.id + '"]');
@@ -120,11 +168,11 @@ function getLabel(el) {
   if (parentLabel) return parentLabel.textContent.trim();
   // 6. closest form group div with a label/span child
   const formGroup = el.closest(
-    '.fb-dash-form-element, .jobs-easy-apply-form-section__grouping, [data-test-form-element]'
+    '.fb-dash-form-element, .jobs-easy-apply-form-section__grouping, [data-test-form-element], [data-testid="field"]'
   );
   if (formGroup) {
     const lbl = formGroup.querySelector(
-      'label, span.fb-dash-form-element__label, .artdeco-text-input--label'
+      'label, span.fb-dash-form-element__label, .artdeco-text-input--label, [class*="eun831x3"]'
     );
     if (lbl && lbl.textContent.trim()) return lbl.textContent.trim();
   }
@@ -150,6 +198,7 @@ function getFormRoot(atsType) {
     greenhouse: '#application_form, #main_fields, #application',
     lever: '.application-form, .postings-form, .posting-page',
     workday: '[data-automation-id="jobApplicationPage"], .css-1q2dra3, [data-automation-id="applicationContainer"]',
+    rippling: 'form, [data-testid="application-form"], .application-container, main',
     jazzhr: null, // JazzHR uses iframes — handled by extractFieldsFromIframes
     generic: null, // Generic fallback — use full document
   };
@@ -202,16 +251,19 @@ function extractFields(root, atsType) {
     const rect = inp.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return;
     
-    // Skip inputs that are part of React-Select components
-    // These have a parent with class containing "select__" or "Select__"
-    const isReactSelectInput = inp.closest('[class*="select__"], [class*="Select__"], [class*="-container"]');
-    if (isReactSelectInput) {
-      // Check if this is actually a React-Select input (has specific class patterns)
-      const parentClasses = isReactSelectInput.className || '';
-      if (parentClasses.includes('select__') || parentClasses.includes('Select__') || 
-          parentClasses.includes('css-') && parentClasses.includes('-container')) {
-        // This is a React-Select input - skip it, will be handled by handleExternalSelects
-        return;
+    // Rippling: Don't skip inputs with data-testid or data-input - these are real form fields
+    const hasDataTestId = inp.hasAttribute('data-testid') || inp.hasAttribute('data-input');
+    
+    // Skip inputs that are part of React-Select components (but not Rippling form fields)
+    if (!hasDataTestId) {
+      const isReactSelectInput = inp.closest('[class*="select__"], [class*="Select__"]');
+      if (isReactSelectInput) {
+        // Check if this is actually a React-Select input (has specific class patterns)
+        const parentClasses = isReactSelectInput.className || '';
+        if (parentClasses.includes('select__') || parentClasses.includes('Select__')) {
+          // This is a React-Select input - skip it, will be handled by handleExternalSelects
+          return;
+        }
       }
     }
     
@@ -365,7 +417,9 @@ function extractFieldsFromIframes(atsType) {
  */
 const FIELD_MAP = {
   "first name": "firstName",
+  "first_name": "firstName",  // Rippling data-testid format
   "last name": "lastName",
+  "last_name": "lastName",  // Rippling data-testid format
   "full name": (p) => `${p.firstName} ${p.lastName}`,
   "name": (p) => `${p.firstName} ${p.lastName}`,
   "email address": "email",
@@ -376,6 +430,7 @@ const FIELD_MAP = {
   "mobile phone": "phone",
   "mobile phone number": "phone",
   "phone number": "phone",
+  "phone_number": "phone",  // Rippling data-testid format
   "phone country code": "phoneCountryCode",
   "street address": "address",
   "address": "address",
@@ -384,6 +439,8 @@ const FIELD_MAP = {
   "location (city)": "city",
   "current city": "city",
   "current location": "city",
+  "current_company": "currentCompany",  // Rippling data-testid format
+  "current company": "currentCompany",
   "state": "state",
   "province": "state",
   "state/province": "state",
@@ -397,6 +454,11 @@ const FIELD_MAP = {
   "linkedin profile": "linkedinUrl",
   "website": "website",
   "portfolio": "website",
+  // Rippling-specific fields
+  "résumé": "resume",
+  "resume": "resume",
+  "cover_letter": "coverLetter",
+  "cover letter": "coverLetter",
   // Education fields
   "school": "school",
   "university": "school",
@@ -724,7 +786,8 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
   }
   
   // Start date / availability
-  if (q.match(/start.*date|when.*start|available.*start|earliest.*start|notice.*period/i)) {
+  if (q.match(/start.*date|when.*start|available.*start|earliest.*start|notice.*period|when.*available|available.*new.*role|available.*begin/i)) {
+    console.log('[AutoApplyBot] Start date/availability question');
     // Look for "Immediately" or similar in options
     if (options && options.length > 0) {
       const immediateOption = options.find(o => 
@@ -737,8 +800,13 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
       // Look for 2 weeks option
       const twoWeeksOption = options.find(o => o.toLowerCase().includes('2 week'));
       if (twoWeeksOption) return twoWeeksOption;
+      
+      // Look for 1 week option
+      const oneWeekOption = options.find(o => o.toLowerCase().includes('1 week') || o.toLowerCase().includes('one week'));
+      if (oneWeekOption) return oneWeekOption;
     }
-    return '2 weeks';
+    // Default answer for text fields
+    return 'Immediately';
   }
   
   // Salary expectations (return from profile or a reasonable default)
@@ -1031,14 +1099,68 @@ Applicant Info:
 IMPORTANT: Only answer yes/no questions or questions about work preferences.
 Do NOT make up any personal information like schools, degrees, websites, or URLs.
 If you don't know something specific about the applicant, say "I don't know" or leave blank.
+NEVER start your response with conversational phrases like "I'm happy to help" or "Here's the".
+Just give the direct answer.
 `;
     context.resumeText = profileContext + (context.resumeText || '');
     
     const aiAnswer = await askAI(question, options, context);
     console.log('[AutoApplyBot] AI returned:', aiAnswer);
     
-    // Reject AI answers that look like fabricated personal info
+    // Reject AI answers that look like fabricated personal info or conversational responses
     if (aiAnswer) {
+      // Filter out conversational AI responses
+      const conversationalPatterns = [
+        "I'm happy to help",
+        "I'd be happy to help",
+        "I am happy to help",
+        "I would be happy",
+        "Here's the",
+        "Here is the",
+        "Please provide",
+        "Could you please",
+        "I don't have",
+        "I cannot",
+        "I'm not sure",
+        "I am not sure",
+        "Based on the",
+        "According to",
+        "The answer is",
+        "Let me",
+        "I would",
+        "I'll",
+        "I will",
+        "Sure!",
+        "Sure,",
+        "Of course",
+        "Certainly",
+        "Absolutely",
+        "Happy to",
+        "Glad to",
+        "Current company:",
+        "Company:",
+        "Name:",
+        "Email:",
+        "Phone:",
+        "Address:",
+      ];
+      
+      const isConversational = conversationalPatterns.some(pattern => 
+        aiAnswer.toLowerCase().includes(pattern.toLowerCase())
+      );
+      
+      if (isConversational) {
+        console.log('[AutoApplyBot] AI gave conversational response - rejecting:', aiAnswer.substring(0, 50));
+        return null;
+      }
+      
+      // Reject answers that look like "label: value" format (AI explaining instead of answering)
+      const colonPattern = /^[A-Za-z\s]+:\s*.+/;
+      if (colonPattern.test(aiAnswer.trim()) && !aiAnswer.includes('://')) {
+        console.log('[AutoApplyBot] AI gave label:value format - rejecting:', aiAnswer.substring(0, 50));
+        return null;
+      }
+      
       const looksLikeFabricatedInfo = 
         aiAnswer.includes('www.') || 
         aiAnswer.includes('http') ||
@@ -1056,6 +1178,8 @@ If you don't know something specific about the applicant, say "I don't know" or 
         aiAnswer.includes('not shared') ||
         aiAnswer.includes('would provide') ||
         aiAnswer.includes('I would') ||
+        aiAnswer.includes('please pr') || // "please provide" truncated
+        aiAnswer.includes('Please pr') ||
         aiAnswer.length > 100; // Long answers are likely fabricated explanations
       
       if (looksLikeFabricatedInfo) {
@@ -1750,9 +1874,48 @@ async function autofill(profile, settings, prefilledAnswers) {
   let skipped = 0;
   let failed = 0;
   const unfilled = [];
+  
+  // Labels to skip - these are internal React component names, not real fields
+  const skipLabels = [
+    'select-search-input',
+    'undefined',
+    'input-undefined',
+    'input-select-search-input',
+    'input-externalplaceid',
+    'externalplaceid',
+  ];
+  
+  // Labels to skip AI for - these should only be filled from profile, not AI
+  const skipAILabels = [
+    'current company',
+    'current_company',
+  ];
+  
+  // Patterns to skip - internal field IDs that look like UUIDs or hashes
+  // NOTE: We do NOT skip customQuestions fields - they are real questions that need answers
+  const skipPatterns = [
+    /^[a-f0-9]{8}-[a-f0-9]{4}-/i,  // UUID-like patterns
+    /^[a-f0-9]{24,}$/i,  // MongoDB-like IDs (only if ENTIRE label is the ID)
+    /^input-[a-f0-9]{8,}/i,  // Input with hash ID
+  ];
 
   for (const field of fields) {
     const label = field.label;
+    const labelLower = (label || '').toLowerCase().trim();
+    
+    // Skip internal React component fields
+    if (skipLabels.includes(labelLower) || labelLower.startsWith('input-select-')) {
+      console.log('[AutoApplyBot] Skipping internal field:', label);
+      skipped++;
+      continue;
+    }
+    
+    // Skip fields with internal ID patterns (customQuestions.xxx, UUIDs, etc.)
+    if (skipPatterns.some(pattern => pattern.test(label))) {
+      console.log('[AutoApplyBot] Skipping internal ID field:', label);
+      skipped++;
+      continue;
+    }
 
     // ── Checkboxes: handle regardless of label ──
     if (field.type === 'checkbox') {
@@ -1869,6 +2032,13 @@ async function autofill(profile, settings, prefilledAnswers) {
       continue;
     }
     
+    // Skip AI for certain fields that should only come from profile
+    if (skipAILabels.includes(labelLower)) {
+      console.log('[AutoApplyBot] Skipping AI for field (profile-only):', label);
+      skipped++;
+      continue;
+    }
+    
     if (settings && settings.aiEnabled) {
       try {
         const aiRequest = {
@@ -1900,6 +2070,66 @@ async function autofill(profile, settings, prefilledAnswers) {
           
           if (looksLikeFabricatedInfo) {
             log(`Rejected fabricated AI answer for "${label}"`);
+            failed++;
+            unfilled.push({ label: field.label, type: field.type });
+            continue;
+          }
+          
+          // Reject conversational AI responses
+          const conversationalPatterns = [
+            "I'm happy to help",
+            "I'd be happy to help",
+            "I am happy to help",
+            "I would be happy",
+            "Here's the",
+            "Here is the",
+            "Please provide",
+            "Could you please",
+            "I don't have",
+            "I cannot",
+            "I'm not sure",
+            "I am not sure",
+            "Based on the",
+            "According to",
+            "The answer is",
+            "Let me",
+            "I would",
+            "I'll",
+            "I will",
+            "Sure!",
+            "Sure,",
+            "Of course",
+            "Certainly",
+            "Absolutely",
+            "Happy to",
+            "Glad to",
+            "Current company:",
+            "Company:",
+            "Name:",
+            "Email:",
+            "Phone:",
+            "Address:",
+            "What's the",
+            "What is the",
+            "please pr",
+            "Please pr",
+          ];
+          
+          const isConversational = conversationalPatterns.some(pattern => 
+            aiResponse.answer.toLowerCase().includes(pattern.toLowerCase())
+          );
+          
+          if (isConversational) {
+            log(`Rejected conversational AI answer for "${label}": ${aiResponse.answer.substring(0, 30)}`);
+            failed++;
+            unfilled.push({ label: field.label, type: field.type });
+            continue;
+          }
+          
+          // Reject answers that look like "label: value" format
+          const colonPattern = /^[A-Za-z\s]+:\s*.+/;
+          if (colonPattern.test(aiResponse.answer.trim()) && !aiResponse.answer.includes('://')) {
+            log(`Rejected label:value AI answer for "${label}": ${aiResponse.answer.substring(0, 30)}`);
             failed++;
             unfilled.push({ label: field.label, type: field.type });
             continue;
@@ -2772,6 +3002,13 @@ function findEasyApplyButton() {
 function findExternalApplyButton() {
   console.log('[AutoApplyBot] Searching for External Apply button...');
   
+  // Strategy 0: Rippling-specific - look for their Apply button with data-testid
+  const ripplingBtn = document.querySelector('button[data-testid="Apply now"], button[data-testid*="Apply"]');
+  if (ripplingBtn && ripplingBtn.offsetParent !== null) {
+    log('Found Rippling Apply button via data-testid');
+    return ripplingBtn;
+  }
+  
   // Strategy 1: jobs-apply-button class (LinkedIn's standard apply button)
   let btn = document.querySelector('button.jobs-apply-button');
   if (btn && btn.offsetParent !== null) {
@@ -2797,14 +3034,15 @@ function findExternalApplyButton() {
   }
 
   // Strategy 3: Find by text content - "Apply" but NOT "Easy Apply"
-  const allButtons = document.querySelectorAll('button');
+  const allButtons = document.querySelectorAll('button, a[role="button"], a.btn, a.button');
   console.log('[AutoApplyBot] Checking', allButtons.length, 'buttons for Apply text...');
   for (const b of allButtons) {
     if (b.offsetParent === null) continue;
     const btnText = b.textContent.trim();
     const btnTextLower = btnText.toLowerCase();
-    // Match "Apply", "Apply now", "Postuler", etc. but NOT "Easy Apply"
+    // Match "Apply", "Apply now", "Apply for this job", "Postuler", etc. but NOT "Easy Apply"
     if ((btnTextLower === 'apply' || btnTextLower === 'apply now' || 
+         btnTextLower === 'apply for this job' || btnTextLower === 'apply to this job' ||
          btnTextLower === 'postuler' || btnTextLower === 'postuler maintenant' ||
          btnTextLower.startsWith('apply ')) && 
         !btnTextLower.includes('easy')) {
@@ -2823,7 +3061,7 @@ function findExternalApplyButton() {
       for (let i = 0; i < 10; i++) {
         el = el.parentElement;
         if (!el) break;
-        if (el.tagName === 'BUTTON' && el.offsetParent !== null) {
+        if ((el.tagName === 'BUTTON' || el.tagName === 'A') && el.offsetParent !== null) {
           log('Found external Apply button via span parent');
           return el;
         }
@@ -2836,7 +3074,8 @@ function findExternalApplyButton() {
   for (const el of clickables) {
     if (el.offsetParent === null) continue;
     const text = el.textContent.trim().toLowerCase();
-    if ((text === 'apply' || text === 'apply now' || text.includes('apply to')) && 
+    if ((text === 'apply' || text === 'apply now' || text.includes('apply to') ||
+         text.includes('apply for')) && 
         !text.includes('easy')) {
       log(`Found external Apply element: ${el.tagName}`);
       return el;
@@ -3405,12 +3644,41 @@ async function multiClickStrategy(element) {
 }
 
 /**
- * Check if there's a reCAPTCHA on the page that needs solving.
+ * Check if there's a reCAPTCHA or Cloudflare Turnstile on the page that needs solving.
  * Returns true only if there's a VISIBLE captcha that needs user interaction.
  * Invisible reCAPTCHA (enterprise) doesn't need user action - it runs automatically.
  * @returns {boolean}
  */
 function hasUnsolvedRecaptcha() {
+  // Check for Cloudflare Turnstile
+  const turnstileFrame = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
+  if (turnstileFrame) {
+    log('Cloudflare Turnstile detected on page');
+    // Check if it's been solved (look for response token)
+    const turnstileResponse = document.querySelector('[name="cf-turnstile-response"]');
+    if (turnstileResponse && turnstileResponse.value) {
+      log('Cloudflare Turnstile appears to be solved');
+      return false;
+    }
+    // Also check for success indicator
+    const turnstileSuccess = document.querySelector('[data-turnstile-success="true"], .cf-turnstile-success');
+    if (turnstileSuccess) {
+      log('Cloudflare Turnstile success indicator found');
+      return false;
+    }
+    return true;
+  }
+  
+  // Check for "Verify you are human" button/text
+  const verifyHumanBtn = document.querySelector('button[data-action="verify"], [class*="turnstile"], [id*="turnstile"]');
+  if (verifyHumanBtn && verifyHumanBtn.offsetParent !== null) {
+    const text = verifyHumanBtn.textContent.toLowerCase();
+    if (text.includes('verify') || text.includes('human')) {
+      log('Verify human button detected');
+      return true;
+    }
+  }
+  
   // Check for reCAPTCHA iframe
   const recaptchaFrame = document.querySelector('iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"]');
   if (recaptchaFrame) {
@@ -3481,6 +3749,31 @@ async function findAndClickSubmitButton() {
   
   // Secondary texts (less specific, might match non-submit buttons)
   const secondaryTexts = ['continue', 'next', 'suivant'];
+  
+  // Rippling-specific: Look for submit button by data-testid
+  const ripplingSubmit = document.querySelector('button[data-testid="Apply"], button[data-testid="Submit"], button[data-testid="submit"]');
+  if (ripplingSubmit && ripplingSubmit.offsetParent !== null && !ripplingSubmit.disabled) {
+    log(`Found Rippling submit button: ${ripplingSubmit.getAttribute('data-testid')}`);
+    ripplingSubmit.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    await wait(300);
+    await multiClickStrategy(ripplingSubmit);
+    return true;
+  }
+  
+  // Rippling: Also look for Apply now button by span text (job description page)
+  const ripplingApplyNow = document.querySelector('button[data-testid="Apply now"]') ||
+                           document.querySelector('button:has(span.css-1d5eng1)') ||
+                           Array.from(document.querySelectorAll('button')).find(b => {
+                             const span = b.querySelector('span');
+                             return span && span.textContent.trim() === 'Apply now';
+                           });
+  if (ripplingApplyNow && ripplingApplyNow.offsetParent !== null && !ripplingApplyNow.disabled) {
+    log(`Found Rippling Apply now button: "${ripplingApplyNow.textContent.trim()}"`);
+    ripplingApplyNow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    await wait(300);
+    await multiClickStrategy(ripplingApplyNow);
+    return true;
+  }
   
   // Greenhouse-specific: Look for the main submit button by ID or data attributes
   const greenhouseSubmit = document.querySelector('#submit_app, [data-qa="submit-application"], button[type="submit"]');
@@ -3667,9 +3960,10 @@ async function handleExternalRadioButtons(settings, profile) {
   console.log('[AutoApplyBot] handleExternalRadioButtons() starting...');
   
   const radioGroups = {};
-  const radios = document.querySelectorAll('input[type="radio"]');
   
-  console.log('[AutoApplyBot] Found', radios.length, 'radio buttons');
+  // Standard HTML radio buttons
+  const radios = document.querySelectorAll('input[type="radio"]');
+  console.log('[AutoApplyBot] Found', radios.length, 'standard radio buttons');
   
   radios.forEach(radio => {
     if (radio.offsetParent === null) return;
@@ -3680,8 +3974,26 @@ async function handleExternalRadioButtons(settings, profile) {
     radioGroups[name].push(radio);
   });
   
+  // Rippling uses role="radio" for custom radio buttons
+  const ripplingRadios = document.querySelectorAll('[role="radio"]');
+  console.log('[AutoApplyBot] Found', ripplingRadios.length, 'Rippling role="radio" elements');
+  
+  // Group Rippling radios by their parent container
+  const ripplingGroups = {};
+  ripplingRadios.forEach(radio => {
+    if (radio.offsetParent === null) return;
+    // Find the parent group (usually a fieldset or div with role="radiogroup")
+    const group = radio.closest('[role="radiogroup"]') || radio.closest('fieldset') || radio.parentElement;
+    const groupId = group ? (group.id || group.getAttribute('aria-labelledby') || 'rippling-group-' + Object.keys(ripplingGroups).length) : 'default';
+    if (!ripplingGroups[groupId]) {
+      ripplingGroups[groupId] = { radios: [], group };
+    }
+    ripplingGroups[groupId].radios.push(radio);
+  });
+  
   let handled = 0;
   
+  // Handle standard radio groups
   for (const [name, radios] of Object.entries(radioGroups)) {
     // Skip if already answered
     if (radios.some(r => r.checked)) {
@@ -3763,6 +4075,97 @@ async function handleExternalRadioButtons(settings, profile) {
       radios[0].click();
       radios[0].dispatchEvent(new Event('change', { bubbles: true }));
       console.log('[AutoApplyBot] Clicked first radio option as fallback');
+      handled++;
+    }
+  }
+  
+  // Handle Rippling role="radio" groups
+  for (const [groupId, groupData] of Object.entries(ripplingGroups)) {
+    const { radios, group } = groupData;
+    
+    // Skip if already answered (check aria-checked)
+    if (radios.some(r => r.getAttribute('aria-checked') === 'true')) {
+      console.log('[AutoApplyBot] Rippling radio group already answered:', groupId);
+      continue;
+    }
+    
+    // Get the question text
+    let questionText = '';
+    if (group) {
+      const labelledBy = group.getAttribute('aria-labelledby');
+      if (labelledBy) {
+        const labelEl = document.getElementById(labelledBy);
+        if (labelEl) questionText = labelEl.textContent;
+      }
+      if (!questionText) {
+        const legend = group.querySelector('legend');
+        if (legend) questionText = legend.textContent;
+      }
+      if (!questionText) {
+        const nearbyLabel = group.previousElementSibling;
+        if (nearbyLabel && (nearbyLabel.tagName === 'LABEL' || nearbyLabel.tagName === 'P' || nearbyLabel.tagName === 'SPAN')) {
+          questionText = nearbyLabel.textContent;
+        }
+      }
+    }
+    
+    questionText = questionText.trim();
+    console.log('[AutoApplyBot] Rippling radio question:', questionText.substring(0, 60));
+    
+    // Get available options from the radio labels
+    const options = radios.map(r => {
+      // Rippling radios have the label text inside them
+      return r.textContent.trim() || r.getAttribute('aria-label') || '';
+    }).filter(Boolean);
+    
+    console.log('[AutoApplyBot] Rippling radio options:', options);
+    
+    // Get smart answer
+    const answer = await getSmartAnswer(questionText, options, settings, profile);
+    console.log('[AutoApplyBot] Smart answer for Rippling radio:', answer);
+    
+    if (!answer) {
+      // Click first option as fallback
+      radios[0].click();
+      handled++;
+      continue;
+    }
+    
+    // Find and click the matching radio
+    const answerLower = answer.toLowerCase().trim();
+    let clicked = false;
+    
+    for (const radio of radios) {
+      const radioLabel = (radio.textContent || radio.getAttribute('aria-label') || '').toLowerCase().trim();
+      
+      // Check for match
+      if (radioLabel === answerLower || radioLabel.includes(answerLower) || answerLower.includes(radioLabel)) {
+        radio.click();
+        log(`Rippling radio answered: ${questionText.substring(0, 40)} = ${answer}`);
+        console.log('[AutoApplyBot] Clicked Rippling radio:', radioLabel);
+        handled++;
+        clicked = true;
+        break;
+      }
+      
+      // Yes/No matching
+      const yesPattern = /^(yes|oui|sí|si|ja|y|true)$/i;
+      const noPattern = /^(no|non|nein|n|false)$/i;
+      
+      if ((yesPattern.test(answerLower) && yesPattern.test(radioLabel)) ||
+          (noPattern.test(answerLower) && noPattern.test(radioLabel))) {
+        radio.click();
+        log(`Rippling radio answered: ${questionText.substring(0, 40)} = ${answer}`);
+        handled++;
+        clicked = true;
+        break;
+      }
+    }
+    
+    // If no match, click first option as fallback
+    if (!clicked && radios.length > 0) {
+      radios[0].click();
+      console.log('[AutoApplyBot] Clicked first Rippling radio option as fallback');
       handled++;
     }
   }
@@ -4032,7 +4435,72 @@ async function handleExternalSelects(profile, settings) {
     console.log('[AutoApplyBot] Options for "' + label + '":', options);
     
     if (options.length === 0) {
+      // Rippling-specific: Try to find options with different selectors
+      console.log('[AutoApplyBot] No options found, trying Rippling-specific selectors...');
+      
+      // Wait a bit more for options to render
+      await wait(500);
+      
+      // Try to find options in the menu with more selectors
+      const ripplingOptions = menu.querySelectorAll(
+        '[data-testid*="option"], [class*="option"], [role="option"], ' +
+        'div[tabindex], li, [class*="menu-item"], [class*="MenuItem"]'
+      );
+      
+      console.log('[AutoApplyBot] Rippling options found:', ripplingOptions.length);
+      
+      // Also try to find options by looking at all children of the menu
+      if (ripplingOptions.length === 0) {
+        const allChildren = menu.querySelectorAll('*');
+        console.log('[AutoApplyBot] Menu has', allChildren.length, 'total children');
+        
+        // Log the menu HTML for debugging
+        console.log('[AutoApplyBot] Menu HTML preview:', menu.innerHTML.substring(0, 500));
+      }
+      
+      const ripplingOptionTexts = Array.from(ripplingOptions)
+        .map(o => o.textContent.trim())
+        .filter(t => t && t.length > 0 && t.length < 200 && t.toLowerCase() !== 'select...');
+      
+      if (ripplingOptionTexts.length > 0) {
+        console.log('[AutoApplyBot] Found Rippling options:', ripplingOptionTexts);
+        options.push(...ripplingOptionTexts);
+      }
+    }
+    
+    if (options.length === 0) {
       console.log('[AutoApplyBot] No options found in menu for:', label);
+      
+      // For work authorization and sponsorship questions, try to answer directly
+      // by typing in the input and pressing Enter
+      const labelLower = label.toLowerCase();
+      if (labelLower.includes('authorized') || labelLower.includes('sponsorship')) {
+        console.log('[AutoApplyBot] Trying direct input for:', label);
+        
+        // Find the input inside the trigger
+        const input = trigger.querySelector('input') || trigger.closest('[class*="select"]')?.querySelector('input');
+        if (input) {
+          const answer = labelLower.includes('authorized') ? 'Yes' : 'No';
+          input.focus();
+          await wait(100);
+          input.value = answer;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          await wait(300);
+          
+          // Press Enter to select
+          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+          await wait(300);
+          
+          // Check if it worked
+          const newMenu = findVisibleMenu();
+          if (!newMenu) {
+            console.log('[AutoApplyBot] Direct input worked for:', label);
+            handled++;
+            continue;
+          }
+        }
+      }
+      
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await wait(200);
       continue;
@@ -4819,6 +5287,33 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
       continue;
     }
     
+    // Skip internal React component field names
+    const labelLower = label.toLowerCase().trim();
+    const skipLabels = [
+      'select-search-input',
+      'undefined',
+      'input-undefined',
+      'input-select-search-input',
+      'input-externalplaceid',
+      'externalplaceid',
+    ];
+    if (skipLabels.includes(labelLower) || labelLower.startsWith('input-select-')) {
+      console.log('[AutoApplyBot] Skipping internal field:', label);
+      continue;
+    }
+    
+    // Skip fields with internal ID patterns (UUIDs, etc.) but NOT customQuestions
+    // customQuestions are real questions that need answers
+    const skipPatterns = [
+      /^[a-f0-9]{8}-[a-f0-9]{4}-/i,  // UUID-like patterns
+      /^[a-f0-9]{24,}$/i,  // MongoDB-like IDs (only if ENTIRE label is the ID)
+      /^input-[a-f0-9]{8,}/i,  // Input with hash ID
+    ];
+    if (skipPatterns.some(pattern => pattern.test(label))) {
+      console.log('[AutoApplyBot] Skipping internal ID field:', label);
+      continue;
+    }
+    
     console.log('[AutoApplyBot] Unfilled text field:', label.substring(0, 50), 'required:', isRequired, 'type:', fieldType);
     
     // First try profile mapping
@@ -4849,6 +5344,238 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
 }
 
 /**
+ * Handle Rippling-specific dropdown components.
+ * Rippling uses custom select components that don't respond to standard click events.
+ * This function specifically handles work authorization and sponsorship dropdowns.
+ */
+async function handleRipplingDropdowns(settings, profile) {
+  let handled = 0;
+  
+  console.log('[AutoApplyBot] handleRipplingDropdowns() starting...');
+  
+  // Rippling dropdowns have a specific structure:
+  // - The label is in a parent container
+  // - The dropdown trigger shows "Select" text
+  // - Clicking opens a listbox with options
+  
+  // Find all elements that show "Select" text - these are dropdown triggers
+  const allElements = document.querySelectorAll('*');
+  const dropdownTriggers = [];
+  
+  for (const el of allElements) {
+    if (el.offsetParent === null) continue;
+    if (el.children.length > 5) continue; // Skip containers with many children
+    
+    const text = el.textContent?.trim();
+    if (text === 'Select' || text === 'Select...') {
+      // Find the clickable parent
+      let clickable = el.closest('[role="combobox"], [class*="select"], [class*="Select"], button, [tabindex]');
+      if (clickable && !dropdownTriggers.includes(clickable)) {
+        dropdownTriggers.push({ trigger: clickable, textEl: el });
+      }
+    }
+  }
+  
+  console.log('[AutoApplyBot] Rippling: Found', dropdownTriggers.length, 'dropdown triggers with Select text');
+  
+  for (const { trigger, textEl } of dropdownTriggers) {
+    if (trigger.dataset.ripplingProcessed) continue;
+    trigger.dataset.ripplingProcessed = 'true';
+    
+    // Find the label by looking at parent containers
+    let label = '';
+    let searchEl = trigger.parentElement;
+    for (let i = 0; i < 10 && searchEl; i++) {
+      // Look for label text in this container
+      const labelEl = searchEl.querySelector('label, legend, [class*="label"], [class*="Label"], h3, h4, p');
+      if (labelEl) {
+        const labelText = labelEl.textContent.trim().replace(/\*$/, '').replace(/Select$/, '').trim();
+        if (labelText && labelText !== 'Select' && labelText.length > 5 && labelText.length < 100) {
+          label = labelText;
+          break;
+        }
+      }
+      
+      // Also check the container's own text (excluding child elements)
+      const containerText = Array.from(searchEl.childNodes)
+        .filter(n => n.nodeType === Node.TEXT_NODE)
+        .map(n => n.textContent.trim())
+        .join(' ')
+        .trim();
+      if (containerText && containerText.length > 5 && containerText.length < 100 && !containerText.includes('Select')) {
+        label = containerText;
+        break;
+      }
+      
+      searchEl = searchEl.parentElement;
+    }
+    
+    if (!label) {
+      console.log('[AutoApplyBot] Rippling: No label found for dropdown trigger');
+      continue;
+    }
+    
+    const labelLower = label.toLowerCase();
+    console.log('[AutoApplyBot] Rippling dropdown found:', label.substring(0, 60));
+    
+    // Check if this is a work authorization or sponsorship question
+    const isWorkAuth = labelLower.includes('authorized') || 
+                       labelLower.includes('legally') ||
+                       labelLower.includes('eligible to work') ||
+                       labelLower.includes('right to work');
+    const isSponsorship = labelLower.includes('sponsorship') || 
+                          labelLower.includes('sponsor') ||
+                          labelLower.includes('visa');
+    
+    // Determine the answer
+    let desiredAnswer;
+    if (isSponsorship) {
+      desiredAnswer = settings.visaSponsorship || 'no';
+      console.log('[AutoApplyBot] Rippling: Sponsorship question, answering:', desiredAnswer);
+    } else if (isWorkAuth) {
+      desiredAnswer = settings.legallyAuthorized || 'yes';
+      console.log('[AutoApplyBot] Rippling: Work auth question, answering:', desiredAnswer);
+    } else {
+      // For other dropdowns, use AI
+      console.log('[AutoApplyBot] Rippling: Non-auth dropdown, will use AI');
+      continue; // Let handleExternalSelects handle it
+    }
+    
+    // Try to open the dropdown
+    console.log('[AutoApplyBot] Rippling: Attempting to open dropdown...');
+    
+    // Method 1: Click the trigger
+    trigger.click();
+    await wait(600);
+    
+    // Look for the menu
+    let menu = document.querySelector('[role="listbox"]:not([hidden])');
+    if (!menu || menu.offsetParent === null) {
+      // Method 2: Focus and click
+      trigger.focus();
+      await wait(100);
+      trigger.click();
+      await wait(600);
+      menu = document.querySelector('[role="listbox"]:not([hidden])');
+    }
+    
+    if (!menu || menu.offsetParent === null) {
+      // Method 3: Click the text element directly
+      textEl.click();
+      await wait(600);
+      menu = document.querySelector('[role="listbox"]:not([hidden])');
+    }
+    
+    if (!menu || menu.offsetParent === null) {
+      // Method 4: Try keyboard
+      trigger.focus();
+      await wait(100);
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
+      await wait(600);
+      menu = document.querySelector('[role="listbox"]:not([hidden])');
+    }
+    
+    if (!menu || menu.offsetParent === null) {
+      // Method 5: Try Space key
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', keyCode: 32, bubbles: true }));
+      await wait(600);
+      menu = document.querySelector('[role="listbox"]:not([hidden])');
+    }
+    
+    if (!menu || menu.offsetParent === null) {
+      // Method 6: Try mousedown/mouseup
+      trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      await wait(100);
+      trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      await wait(600);
+      menu = document.querySelector('[role="listbox"]:not([hidden])');
+    }
+    
+    if (!menu || menu.offsetParent === null) {
+      console.log('[AutoApplyBot] Rippling: Could not open dropdown menu for:', label.substring(0, 40));
+      
+      // Fallback: Try typing directly into any input in the container
+      const container = trigger.closest('[class*="field"], [class*="Field"], [class*="question"], [class*="Question"]') || trigger.parentElement?.parentElement;
+      const input = container?.querySelector('input:not([type="hidden"])');
+      if (input) {
+        console.log('[AutoApplyBot] Rippling: Trying direct input fallback');
+        input.focus();
+        await wait(100);
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        nativeInputValueSetter.call(input, desiredAnswer);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        await wait(300);
+        
+        // Press Enter to confirm
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+        await wait(500);
+        
+        // Check if a menu appeared after typing
+        menu = document.querySelector('[role="listbox"]:not([hidden])');
+        if (menu && menu.offsetParent !== null) {
+          // Find and click the matching option
+          const options = menu.querySelectorAll('[role="option"]');
+          for (const opt of options) {
+            const optText = opt.textContent.trim().toLowerCase();
+            if (optText === desiredAnswer.toLowerCase() || optText.includes(desiredAnswer.toLowerCase())) {
+              opt.click();
+              console.log('[AutoApplyBot] Rippling: Selected option after typing:', optText);
+              log(`Rippling dropdown: ${label.substring(0, 40)} = ${desiredAnswer}`);
+              handled++;
+              await wait(400);
+              break;
+            }
+          }
+        } else {
+          // No menu, but input might have worked
+          console.log('[AutoApplyBot] Rippling: Direct input may have worked for:', label.substring(0, 40));
+          handled++;
+        }
+      }
+      
+      // Close any open menu
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(200);
+      continue;
+    }
+    
+    // Menu is open - find and click the correct option
+    console.log('[AutoApplyBot] Rippling: Menu opened, looking for options...');
+    const options = menu.querySelectorAll('[role="option"]');
+    console.log('[AutoApplyBot] Rippling: Found', options.length, 'options');
+    
+    let clicked = false;
+    const desiredLower = desiredAnswer.toLowerCase();
+    
+    for (const opt of options) {
+      const optText = opt.textContent.trim().toLowerCase();
+      console.log('[AutoApplyBot] Rippling: Checking option:', optText);
+      
+      if (optText === desiredLower || optText.includes(desiredLower) || desiredLower.includes(optText)) {
+        opt.click();
+        console.log('[AutoApplyBot] Rippling: Clicked option:', optText);
+        log(`Rippling dropdown: ${label.substring(0, 40)} = ${desiredAnswer}`);
+        handled++;
+        clicked = true;
+        await wait(400);
+        break;
+      }
+    }
+    
+    if (!clicked) {
+      console.log('[AutoApplyBot] Rippling: Could not find matching option for:', desiredAnswer);
+      // Close the menu
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(200);
+    }
+  }
+  
+  console.log('[AutoApplyBot] handleRipplingDropdowns() completed, handled:', handled);
+  return handled;
+}
+
+/**
  * Main function to auto-fill and submit external ATS application forms.
  */
 (async function autoFillExternalATS() {
@@ -4872,6 +5599,54 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
   
   log(`External ATS detected: ${atsType}`);
   
+  // Rippling-specific: Check if we're on job description page vs application form
+  if (atsType === 'rippling') {
+    // Check for Apply now button (job description page)
+    const applyNowBtn = document.querySelector('button[data-testid="Apply now"]') ||
+                        document.querySelector('button:has(span.css-1d5eng1)') ||
+                        Array.from(document.querySelectorAll('button')).find(b => 
+                          b.textContent.trim() === 'Apply now' || 
+                          b.querySelector('span')?.textContent.trim() === 'Apply now'
+                        );
+    
+    // Check if form is already loaded
+    let formLoaded = document.querySelector('input[data-testid="input-first_name"]') ||
+                     document.querySelector('input[data-testid="input-email"]');
+    
+    if (!formLoaded && applyNowBtn) {
+      console.log('[AutoApplyBot] Rippling: On job description page, clicking Apply now...');
+      applyNowBtn.click();
+      
+      // Rippling is a SPA - wait for form to appear after clicking Apply now
+      // Poll for form to load (up to 15 seconds)
+      console.log('[AutoApplyBot] Rippling: Waiting for application form to load after click...');
+      for (let i = 0; i < 30; i++) {
+        await wait(500);
+        formLoaded = document.querySelector('input[data-testid="input-first_name"]') ||
+                     document.querySelector('input[data-testid="input-email"]');
+        if (formLoaded) {
+          console.log('[AutoApplyBot] Rippling: Form loaded after', (i + 1) * 500, 'ms');
+          break;
+        }
+      }
+      
+      if (!formLoaded) {
+        console.log('[AutoApplyBot] Rippling: Form did not load after 15s, may need manual intervention');
+        log('Rippling form did not load - please click Apply now manually');
+        return;
+      }
+    }
+    
+    // If we're on the form page, wait a bit more for all fields to render
+    if (formLoaded) {
+      console.log('[AutoApplyBot] Rippling: Form detected, waiting for all fields to render...');
+      await wait(2000);
+    } else {
+      console.log('[AutoApplyBot] Rippling: No form and no Apply button found');
+      return;
+    }
+  }
+  
   // Check if we should auto-fill
   const stored = await chrome.storage.local.get(['isRunning', 'profile', 'settings', 'pendingJobs']);
   
@@ -4889,10 +5664,32 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
     return;
   }
   
+  // Check for Cloudflare Turnstile or other CAPTCHA before filling
+  if (hasUnsolvedRecaptcha()) {
+    log('⚠️ CAPTCHA/Turnstile detected - waiting for user to solve it...');
+    // Wait up to 60 seconds for user to solve CAPTCHA
+    for (let i = 0; i < 60; i++) {
+      await wait(1000);
+      if (!hasUnsolvedRecaptcha()) {
+        log('CAPTCHA/Turnstile solved! Continuing with form fill...');
+        await wait(1000); // Extra wait after solving
+        break;
+      }
+      if (i === 59) {
+        log('CAPTCHA timeout - please solve manually and click Autofill again');
+        return;
+      }
+    }
+  }
+  
   log(`Auto-filling ${atsType} application form...`);
   
-  // Wait for page to fully load
-  await wait(3000);
+  // Wait for page to fully load (shorter wait since we already waited for Rippling form)
+  if (atsType !== 'rippling') {
+    await wait(3000);
+  } else {
+    await wait(1000); // Shorter wait for Rippling since we already waited for form
+  }
   
   const profile = stored.profile || {};
   const settings = stored.settings || {};
@@ -4915,6 +5712,79 @@ async function handleUnfilledTextFieldsWithAI(profile, settings) {
   };
   
   console.log('[AutoApplyBot] Merged profile - school:', mergedProfile.school, 'degree:', mergedProfile.degree, 'city:', mergedProfile.city);
+  console.log('[AutoApplyBot] Merged profile - firstName:', mergedProfile.firstName, 'lastName:', mergedProfile.lastName, 'email:', mergedProfile.email);
+  
+  // Rippling-specific: Fill fields by data-testid directly
+  if (atsType === 'rippling') {
+    console.log('[AutoApplyBot] Rippling: Using direct data-testid field filling...');
+    
+    // Log all inputs with data-testid for debugging
+    const allTestIdInputs = document.querySelectorAll('input[data-testid]');
+    console.log('[AutoApplyBot] Rippling: Found', allTestIdInputs.length, 'inputs with data-testid');
+    allTestIdInputs.forEach(inp => {
+      console.log('[AutoApplyBot] Rippling input:', inp.getAttribute('data-testid'), 'value:', inp.value || '(empty)');
+    });
+    
+    const ripplingFieldMap = {
+      'input-first_name': mergedProfile.firstName,
+      'input-last_name': mergedProfile.lastName,
+      'input-email': mergedProfile.email,
+      'input-phone_number': mergedProfile.phone,
+      'input-current_company': mergedProfile.currentCompany || '',
+    };
+    
+    let ripplingFilled = 0;
+    for (const [testId, value] of Object.entries(ripplingFieldMap)) {
+      if (!value) {
+        console.log(`[AutoApplyBot] Rippling: Skipping ${testId} - no value in profile`);
+        continue;
+      }
+      const input = document.querySelector(`input[data-testid="${testId}"]`);
+      if (!input) {
+        console.log(`[AutoApplyBot] Rippling: Field ${testId} not found on page`);
+        continue;
+      }
+      if (input.value && input.value.trim()) {
+        console.log(`[AutoApplyBot] Rippling: Field ${testId} already has value: ${input.value}`);
+        continue;
+      }
+      console.log(`[AutoApplyBot] Rippling: Filling ${testId} with "${value.substring(0, 20)}..."`);
+      input.focus();
+      await wait(100);
+      // Use React-compatible value setting
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      nativeInputValueSetter.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.dispatchEvent(new Event('blur', { bubbles: true }));
+      ripplingFilled++;
+      await wait(200);
+    }
+    console.log(`[AutoApplyBot] Rippling: Direct field filling complete - ${ripplingFilled} fields filled`);
+    
+    // Handle Location field (typeahead)
+    const locationInput = document.querySelector('input[aria-labelledby*="Location"], input[id*="location"]');
+    if (locationInput && !locationInput.value && mergedProfile.city) {
+      console.log('[AutoApplyBot] Rippling: Filling location with', mergedProfile.city);
+      locationInput.focus();
+      await wait(100);
+      locationInput.value = `${mergedProfile.city}, ${mergedProfile.country || 'Canada'}`;
+      locationInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await wait(500);
+      // Try to select first suggestion
+      const suggestion = document.querySelector('[role="option"], [class*="suggestion"], [class*="option"]');
+      if (suggestion) {
+        suggestion.click();
+        await wait(200);
+      }
+    }
+    
+    // Handle Rippling-specific dropdowns (work authorization, sponsorship, etc.)
+    // These use custom components with role="combobox" or custom select elements
+    console.log('[AutoApplyBot] Rippling: Handling custom dropdowns...');
+    const ripplingDropdownsHandled = await handleRipplingDropdowns(settings, mergedProfile);
+    console.log(`[AutoApplyBot] Rippling: Custom dropdowns handled: ${ripplingDropdownsHandled}`);
+  }
   
   // Step 1: Fill text fields using autofill
   const result = await autofill(mergedProfile, settings, prefilledAnswers);

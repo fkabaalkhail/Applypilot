@@ -85,7 +85,8 @@ def _load_settings() -> dict:
     db = SessionLocal()
     try:
         s = db.query(UserSettings).filter(UserSettings.id == 1).first()
-        if s and s.linkedin_email:
+        if s:
+            # Load settings from DB - don't require linkedin_email to be set
             return {
                 "linkedin_email": s.linkedin_email or "",
                 "linkedin_password": decrypt(s.linkedin_password_encrypted) if s.linkedin_password_encrypted else "",
@@ -122,6 +123,8 @@ def _load_settings() -> dict:
             }
     finally:
         db.close()
+    # No settings in DB - return defaults
+    logger.warning("No settings found in database, using defaults")
     return {
         "linkedin_email": os.getenv("LINKEDIN_EMAIL", ""),
         "linkedin_password": os.getenv("LINKEDIN_PASSWORD", ""),
@@ -157,6 +160,11 @@ def scrape_jobs(task_id: str) -> None:
     settings = _load_settings()
     title = settings.get("job_title", "Software Engineer")
     regions = settings.get("regions") or [settings.get("location", "United States")]
+
+    # Log the settings being used for debugging
+    _publish(task_id, f"Using settings: job_title='{title}', regions={regions}")
+    logger.info("Scrape settings: job_title=%s, location=%s, regions=%s", 
+                title, settings.get("location"), regions)
 
     exp_param = ""
     exp_levels = settings.get("experience_levels", [])
@@ -376,6 +384,7 @@ _ATS_DOMAIN_MAP: list[tuple[list[str], str]] = [
     (["greenhouse.io", "boards.greenhouse", "grnh.se"], "greenhouse"),
     (["lever.co", "jobs.lever"], "lever"),
     (["myworkdayjobs", "workday.com"], "workday"),
+    (["rippling.com"], "rippling"),
     (["icims.com", "icims."], "icims"),
     (["smartrecruiters.com", "smartrecruiters."], "smartrecruiters"),
     (["ashbyhq.com"], "ashby"),

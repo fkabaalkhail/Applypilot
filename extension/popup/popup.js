@@ -165,6 +165,19 @@ function setupValidation() {
 // --- Initialization ---
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Clear any stale pending jobs from previous sessions on popup open
+  // This ensures fresh data when user opens the extension
+  try {
+    const data = await chrome.storage.local.get(['isRunning']);
+    if (!data.isRunning) {
+      // Only clear if not currently running - don't interrupt active session
+      await chrome.storage.local.remove(['pendingJobs', 'currentJobIndex']);
+      console.log('[AutoApplyBot] Cleared stale pending jobs on popup open');
+    }
+  } catch (e) {
+    console.log('[AutoApplyBot] Could not clear stale data:', e.message);
+  }
+  
   await loadConfig();
   setupTabs();
   setupAutoSave();
@@ -971,6 +984,10 @@ async function fetchPendingJobs() {
   if (fetchBtn) fetchBtn.disabled = true;
 
   try {
+    // ALWAYS clear old pending jobs from extension storage first
+    await chrome.storage.local.remove(['pendingJobs', 'currentJobIndex']);
+    console.log('[AutoApplyBot] Cleared old pending jobs before fetching new ones');
+    
     const data = await chrome.storage.local.get(['settings']);
     const backendUrl = (data.settings && data.settings.backendUrl) || 'http://localhost:8000';
     const jobTypeFilter = (data.settings && data.settings.jobTypeFilter) || 'easy_apply';
@@ -1118,16 +1135,41 @@ async function scrapeJobsFromBackend() {
   if (scrapeBtn) scrapeBtn.disabled = true;
 
   try {
+    // Force save current settings before scraping
+    await saveConfig();
+    
+    // Clear ALL old job data from extension storage before scraping new ones
+    await chrome.storage.local.remove([
+      'pendingJobs', 
+      'currentJobIndex', 
+      'isRunning'
+    ]);
+    console.log('[AutoApplyBot] Cleared old pending jobs from extension storage');
+    
     const data = await chrome.storage.local.get(['settings']);
     const backendUrl = (data.settings && data.settings.backendUrl) || 'http://localhost:8000';
     const settings = data.settings || {};
+    
+    // Also clear jobs from backend database to ensure fresh scrape
+    try {
+      await fetch(`${backendUrl}/api/extension/jobs/clear`, { method: 'DELETE' });
+      console.log('[AutoApplyBot] Cleared old jobs from backend database');
+    } catch (e) {
+      console.log('[AutoApplyBot] Could not clear backend jobs:', e.message);
+    }
+
+    console.log('[AutoApplyBot] Current extension settings:', settings);
+    console.log('[AutoApplyBot] jobTitle:', settings.jobTitle);
+    console.log('[AutoApplyBot] searchLocation:', settings.searchLocation);
 
     // Map extension settings (camelCase) to backend settings (snake_case)
     // Extension uses: jobTitle, searchLocation, experienceLevel, workType, maxJobsPerRun
     // Backend expects: job_title, location, experience_levels, work_type, max_applications_per_run
+    // IMPORTANT: Also set regions to match location, as backend uses regions first if set
     const filterSettings = {
       job_title: settings.jobTitle || 'Software Engineer',
       location: settings.searchLocation || 'Canada',
+      regions: [settings.searchLocation || 'Canada'],  // Backend uses regions first, so set it too
       experience_levels: settings.experienceLevel ? [settings.experienceLevel] : [],
       work_type: settings.workType || '',
       max_applications_per_run: parseInt(settings.maxJobsPerRun) || 25,
@@ -1150,6 +1192,8 @@ async function scrapeJobsFromBackend() {
     } else {
       const updatedSettings = await settingsResp.json();
       console.log('[AutoApplyBot] Backend settings updated:', updatedSettings);
+      console.log('[AutoApplyBot] Backend job_title:', updatedSettings.job_title);
+      console.log('[AutoApplyBot] Backend location:', updatedSettings.location);
     }
 
     showToast(`Scraping "${filterSettings.job_title}" in ${filterSettings.location}...`, 'info', 30000);

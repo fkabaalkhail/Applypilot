@@ -64,9 +64,10 @@ const { JSDOM } = require('jsdom');
 
 const ATS_PATTERNS = {
   linkedin:   /linkedin\.com/i,
-  greenhouse: /boards\.greenhouse\.io|greenhouse\.io\/embed/i,
-  lever:      /jobs\.lever\.co/i,
-  workday:    /myworkdayjobs\.com|workday\.com\/.*\/job/i,
+  greenhouse: /boards\.greenhouse\.io|greenhouse\.io\/embed|greenhouse\.io/i,
+  lever:      /jobs\.lever\.co|lever\.co/i,
+  workday:    /myworkdayjobs\.com|workday\.com\/.*\/job|workday\.com/i,
+  rippling:   /rippling\.com/i,
   jazzhr:     /applytojob\.com|app\.jazz\.co/i,
 };
 
