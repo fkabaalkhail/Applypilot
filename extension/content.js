@@ -1147,10 +1147,14 @@ async function getSmartAnswer(question, options = [], settings = {}, profile = {
   }
   
   // ─── Address ───
-  if (q.match(/^address$|street.*address|mailing.*address/i)) {
+  if (q.match(/^address|street.*address|mailing.*address/i) && !q.includes('email')) {
     const address = profile.address || settings.address || '';
     if (address) return address;
-    return null; // Don't fabricate addresses
+    // Return city + province as fallback, not null (prevents AI from dumping profile)
+    const city = profile.city || settings.city || '';
+    const state = profile.state || settings.state || 'Ontario';
+    if (city) return `${city}, ${state}`;
+    return 'Ottawa, Ontario';
   }
   
   // ─── Postal / Zip Code ───
@@ -3912,6 +3916,11 @@ async function findAndClickSubmitButton() {
     'complete application', 'finish', 'terminer'
   ];
   
+  // BambooHR: Don't treat "Apply for This Job" as submit if the actual form isn't visible
+  const isBambooPreForm = detectATS(window.location.href) === 'bamboohr' && 
+    !document.querySelector('#job-application-form, form[id*="application"]') &&
+    document.querySelectorAll('input[name="firstName"], input[id="firstName"]').length === 0;
+  
   // Secondary texts (less specific, might match non-submit buttons)
   const secondaryTexts = ['continue', 'next', 'suivant'];
   
@@ -3959,6 +3968,11 @@ async function findAndClickSubmitButton() {
       
       const text = (btn.textContent || btn.value || '').trim().toLowerCase();
       const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+      
+      // Skip "Apply for This Job" on BambooHR pre-form page
+      if (isBambooPreForm && (text.includes('apply for this job') || text.includes('apply to this job'))) {
+        continue;
+      }
       
       if (text.includes(submitText) || ariaLabel.includes(submitText)) {
         log(`Found submit button: "${text || ariaLabel}"`);
@@ -4046,21 +4060,50 @@ async function handleExternalResumeUpload(settings) {
   const fileInputs = document.querySelectorAll('input[type="file"]');
   console.log('[AutoApplyBot] Found', fileInputs.length, 'file inputs');
   
-  for (const input of fileInputs) {
-    // Check if this looks like a resume upload
+  // Sort file inputs: resume/cv inputs first, then others
+  const sortedInputs = Array.from(fileInputs).sort((a, b) => {
+    const aLabel = (getLabel(a) + ' ' + (a.name || '') + ' ' + (a.id || '') + ' ' + (a.parentElement?.textContent || '')).toLowerCase();
+    const bLabel = (getLabel(b) + ' ' + (b.name || '') + ' ' + (b.id || '') + ' ' + (b.parentElement?.textContent || '')).toLowerCase();
+    const aIsResume = aLabel.includes('resume') || aLabel.includes('cv ') || aLabel.includes('cv*') || aLabel.match(/\bcv\b/);
+    const bIsResume = bLabel.includes('resume') || bLabel.includes('cv ') || bLabel.includes('cv*') || bLabel.match(/\bcv\b/);
+    const aIsCover = aLabel.includes('cover') || aLabel.includes('letter');
+    const bIsCover = bLabel.includes('cover') || bLabel.includes('letter');
+    // Resume inputs first, cover letter inputs last
+    if (aIsResume && !bIsResume) return -1;
+    if (!aIsResume && bIsResume) return 1;
+    if (aIsCover && !bIsCover) return 1;
+    if (!aIsCover && bIsCover) return -1;
+    return 0;
+  });
+  
+  let resumeUploaded = false;
+  
+  for (const input of sortedInputs) {
+    // Check if this looks like a resume upload vs cover letter
     const label = getLabel(input).toLowerCase();
     const name = (input.name || '').toLowerCase();
     const id = (input.id || '').toLowerCase();
     const accept = (input.accept || '').toLowerCase();
     const parentText = (input.parentElement?.textContent || '').toLowerCase();
+    const allText = label + ' ' + name + ' ' + id + ' ' + parentText;
     
     console.log('[AutoApplyBot] File input - label:', label, 'name:', name, 'id:', id);
     
-    const isResume = label.includes('resume') || label.includes('cv') || 
-                     name.includes('resume') || name.includes('cv') ||
-                     id.includes('resume') || id.includes('cv') ||
-                     parentText.includes('resume') || parentText.includes('cv') ||
+    // Skip cover letter inputs — only upload to resume/cv inputs
+    const isCoverLetter = allText.includes('cover') || allText.includes('letter');
+    if (isCoverLetter) {
+      console.log('[AutoApplyBot] Skipping cover letter file input');
+      continue;
+    }
+    
+    const isResume = allText.includes('resume') || allText.includes('cv') ||
                      accept.includes('pdf') || accept.includes('doc');
+    
+    // If we already uploaded to a resume input, skip remaining inputs
+    if (resumeUploaded) {
+      console.log('[AutoApplyBot] Resume already uploaded, skipping additional file input');
+      continue;
+    }
     
     // Check if already has a file
     if (input.files && input.files.length > 0) {
@@ -4107,14 +4150,15 @@ async function handleExternalResumeUpload(settings) {
       
       // Wait for any upload processing
       await wait(1000);
-      return true;
+      resumeUploaded = true;
+      continue; // Continue to check if there are more inputs but skip them
     } catch (e) {
       log(`Resume upload error: ${e.message}`);
       console.error('[AutoApplyBot] Resume upload error:', e);
     }
   }
   
-  return false;
+  return resumeUploaded;
 }
 
 /**
@@ -4407,150 +4451,92 @@ async function handleExternalSelects(profile, settings) {
     for (const toggle of fabSelectToggles) {
       if (toggle.offsetParent === null) continue;
       
-      // Skip if already has a value (not showing placeholder)
+      // Skip if already has a value (showing content, not placeholder)
       const content = toggle.querySelector('.fab-SelectToggle__content');
-      const placeholder = toggle.querySelector('.fab-SelectToggle__placeholder');
-      if (content && content.textContent.trim() && !placeholder) continue;
+      if (content && content.textContent.trim()) continue;
       
-      // Get label from aria-label (format: "Label Value" or "Label –Select–")
+      // Get label
       const ariaLabel = toggle.getAttribute('aria-label') || '';
       let label = ariaLabel.replace(/–Select–/g, '').replace(/\s+$/, '').trim();
-      
-      // Also try getting label from the parent wrapper
       if (!label) {
-        const wrapper = toggle.closest('[data-fabric-component="SelectField InputWrapper"]');
+        const wrapper = toggle.closest('[data-fabric-component*="SelectField"], [data-fabric-component*="InputWrapper"]');
         if (wrapper) {
           const labelEl = wrapper.querySelector('label');
-          if (labelEl) label = labelEl.textContent.replace(/\*$/, '').trim();
+          if (labelEl) label = labelEl.textContent.replace(/\s*\*\s*$/, '').trim();
         }
       }
-      
       if (!label) continue;
       
       console.log('[AutoApplyBot] BambooHR dropdown:', label);
       
-      // Click to open the menu - BambooHR needs multiple click strategies
-      toggle.focus();
-      await wait(100);
-      toggle.click();
-      await wait(500);
-      
-      // Find the menu that appeared
-      const menuId = toggle.getAttribute('data-menu-id');
-      let menu = menuId ? document.getElementById(menuId) : null;
-      if (!menu) {
-        // Try finding any visible fab menu
-        menu = document.querySelector('.fab-MenuList, [class*="fab-Menu"]:not([class*="Toggle"]), [role="listbox"]');
+      // Get smart answer first (rules-based, no options since we can't read them yet)
+      const answer = await getSmartAnswer(label, [], settings, profile);
+      if (!answer) {
+        console.log('[AutoApplyBot] No answer for BambooHR dropdown:', label, '- skipping');
+        continue;
       }
       
-      // If still no menu, try dispatching mousedown + mouseup
-      if (!menu) {
-        toggle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        await wait(100);
-        toggle.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-        await wait(500);
-        menu = menuId ? document.getElementById(menuId) : null;
-        if (!menu) {
-          // BambooHR renders menus as portals - search the whole document
-          const allMenus = document.querySelectorAll('[class*="fab-MenuList"], [class*="fab-Menu--open"], [role="listbox"], [class*="MenuPopover"]');
-          for (const m of allMenus) {
-            if (m.offsetParent !== null && m.children.length > 0) {
-              menu = m;
-              break;
-            }
-          }
-        }
-      }
+      console.log('[AutoApplyBot] BambooHR using MAIN world for:', label, '→', answer);
       
-      if (!menu) {
-        console.log('[AutoApplyBot] BambooHR menu not found for:', label);
+      // Scroll into view first
+      toggle.scrollIntoView({ block: 'center' });
+      await wait(300);
+      
+      // Use MAIN world execution — content script isolated world clicks don't trigger
+      // BambooHR's Fabric UI React event handlers
+      try {
+        const resp = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({
+            action: 'executeInMainWorld',
+            label: label,
+            answer: answer
+          }, (resp) => {
+            resolve(resp);
+          });
+        });
         
-        // Fallback: try setting the hidden <select> directly
-        const wrapper = toggle.closest('[data-fabric-component="Select"], .fab-Select');
-        if (wrapper) {
-          const hiddenSelect = wrapper.querySelector('select');
-          if (hiddenSelect) {
-            // Get options from the hidden select
-            const selectOptions = Array.from(hiddenSelect.options)
-              .map(o => ({ value: o.value, text: o.text.trim() }))
-              .filter(o => o.value && o.text);
-            
-            if (selectOptions.length === 0) {
-              // Options might load lazily - skip for now
-              console.log('[AutoApplyBot] BambooHR hidden select has no options for:', label);
-            } else {
-              const optTexts = selectOptions.map(o => o.text);
-              console.log('[AutoApplyBot] BambooHR hidden select options for', label + ':', optTexts.slice(0, 10));
-              
-              const answer = await getSmartAnswer(label, optTexts, settings, profile);
-              if (answer) {
-                const answerLower = answer.toLowerCase().trim();
-                const match = selectOptions.find(o => {
-                  const t = o.text.toLowerCase();
-                  return t === answerLower || t.includes(answerLower) || answerLower.includes(t);
+        await wait(1000);
+        
+        if (resp && resp.success) {
+          log(`BambooHR select: ${label} = ${resp.result?.selected || answer}`);
+          handled++;
+        } else {
+          console.log('[AutoApplyBot] MAIN world result for', label + ':', resp?.result?.error || 'unknown error');
+          
+          // If menu opened but no match, try with options from the result
+          if (resp?.result?.options && resp.result.options.length > 0) {
+            console.log('[AutoApplyBot] Retrying with actual options:', resp.result.options.slice(0, 5));
+            const betterAnswer = await getSmartAnswer(label, resp.result.options, settings, profile);
+            if (betterAnswer && betterAnswer !== answer) {
+              console.log('[AutoApplyBot] Got better answer:', betterAnswer, '- retrying MAIN world');
+              const resp2 = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({
+                  action: 'executeInMainWorld',
+                  label: label,
+                  answer: betterAnswer
+                }, (resp) => {
+                  resolve(resp);
                 });
-                if (match) {
-                  hiddenSelect.value = match.value;
-                  hiddenSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                  log(`BambooHR hidden select: ${label} = ${match.text.substring(0, 30)}`);
-                  handled++;
-                }
+              });
+              await wait(1000);
+              if (resp2 && resp2.success) {
+                log(`BambooHR select (retry): ${label} = ${resp2.result?.selected || betterAnswer}`);
+                handled++;
               }
             }
           }
         }
-        
-        // Close by pressing Escape
-        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        await wait(200);
-        continue;
+      } catch (e) {
+        console.log('[AutoApplyBot] MAIN world execution failed:', e.message);
       }
       
-      // Read options from the menu
-      const menuItems = menu.querySelectorAll('[role="option"], [class*="fab-MenuItem"], [class*="MenuOption"], li[class*="option"], li');
-      const options = Array.from(menuItems)
-        .map(o => o.textContent.trim())
-        .filter(t => t && t.length < 200 && !t.includes('–Select–'));
-      
-      console.log('[AutoApplyBot] BambooHR options for', label + ':', options.slice(0, 10));
-      
-      if (options.length === 0) {
-        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        await wait(200);
-        continue;
-      }
-      
-      // Get smart answer
-      const answer = await getSmartAnswer(label, options, settings, profile);
-      console.log('[AutoApplyBot] BambooHR answer for', label + ':', answer);
-      
-      if (answer) {
-        const answerLower = answer.toLowerCase().trim();
-        let clicked = false;
-        
-        for (const item of menuItems) {
-          const itemText = item.textContent.trim().toLowerCase();
-          if (itemText === answerLower || itemText.includes(answerLower) || answerLower.includes(itemText)) {
-            item.click();
-            log(`BambooHR select: ${label} = ${item.textContent.trim().substring(0, 30)}`);
-            handled++;
-            clicked = true;
-            await wait(300);
-            break;
-          }
-        }
-        
-        if (!clicked) {
-          // Close menu
-          document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-          await wait(200);
-        }
-      } else {
-        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        await wait(200);
-      }
+      // Clean up any stale state
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(200);
     }
   }
+  
+  // ─── Handle Greenhouse React-Select dropdowns ───
   
   // ─── Handle Greenhouse React-Select dropdowns ───
   // Greenhouse uses React-Select which creates custom dropdown components
@@ -6225,7 +6211,39 @@ async function handleRipplingDropdowns(settings, profile) {
     log('✓ All required fields appear to be filled');
   }
   
-  // Step 7: Try to submit the form
+  // Step 7: BambooHR pre-form check - if we're on the job description page,
+  // click "Apply for This Job" to reveal the actual form, then re-run autofill
+  if (atsType === 'bamboohr') {
+    const applyBtn = Array.from(document.querySelectorAll('button')).find(b => {
+      const t = b.textContent.trim().toLowerCase();
+      return t === 'apply for this job' || t === 'apply to this job';
+    });
+    const hasForm = document.querySelector('#job-application-form, form[id*="application"]');
+    const formFields = document.querySelectorAll('input[name="firstName"], input[name="email"], input[id="firstName"]');
+    
+    if (applyBtn && !hasForm && formFields.length === 0) {
+      log('BambooHR: On job description page, clicking "Apply for This Job" to reveal form...');
+      applyBtn.click();
+      
+      // Wait for the form to appear (BambooHR renders it dynamically)
+      log('BambooHR: Waiting for application form to load...');
+      for (let i = 0; i < 15; i++) {
+        await wait(1000);
+        const formNow = document.querySelector('#job-application-form, form[id*="application"]');
+        const fieldsNow = document.querySelectorAll('input[name="firstName"], input[id="firstName"]');
+        if (formNow || fieldsNow.length > 0) {
+          log('BambooHR: Application form detected! Re-running autofill...');
+          // Re-run the entire autofill on the now-visible form
+          await autoFillExternalATS();
+          return;
+        }
+      }
+      log('BambooHR: Form did not appear after 15s - page may need manual interaction');
+      return;
+    }
+  }
+  
+  // Step 8: Try to submit the form
   log('Looking for submit button...');
   const submitted = await findAndClickSubmitButton();
   
