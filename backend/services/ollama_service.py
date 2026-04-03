@@ -63,7 +63,7 @@ class OllamaService:
                     "Make sure Ollama is running (ollama serve)."
                 ) from e
 
-    async def _generate(self, prompt: str, retries: int = 1, system: str = None) -> str:
+    async def _generate(self, prompt: str, retries: int = 1) -> str:
         """
         Send a prompt to Ollama and return the response text.
 
@@ -78,12 +78,9 @@ class OllamaService:
         async with httpx.AsyncClient() as client:
             for attempt in range(1 + retries):
                 try:
-                    payload = {"model": self.model, "prompt": prompt, "stream": False}
-                    if system:
-                        payload["system"] = system
                     r = await client.post(
                         f"{self.base_url}/api/generate",
-                        json=payload,
+                        json={"model": self.model, "prompt": prompt, "stream": False},
                         timeout=self.timeout,
                     )
                     r.raise_for_status()
@@ -161,16 +158,7 @@ class OllamaService:
             .replace("{{QUESTION}}", question)
             .replace("{{CONTEXT}}", context)
         )
-        
-        # Use system prompt for better instruction following
-        system = (
-            "You are a job applicant filling out an application form. "
-            "You write in first person. You give direct answers only. "
-            "Never start with conversational phrases. Never explain yourself. "
-            "Just answer the question."
-        )
-        
-        return await self._generate(prompt, system=system)
+        return await self._generate(prompt)
 
     async def suggest_job_titles(self, profile: ResumeProfile) -> list[str]:
         """

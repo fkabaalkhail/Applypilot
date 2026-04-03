@@ -464,30 +464,6 @@ function setupResumeUpload() {
         }
         if (removeBtn) removeBtn.style.display = 'inline-flex';
         console.log('Resume uploaded:', file.name);
-        
-        // Also upload to backend for AI context (text extraction + parsing)
-        try {
-          const storageData = await chrome.storage.local.get(['settings']);
-          const backendUrl = (storageData.settings && storageData.settings.backendUrl) || 'http://localhost:8000';
-          
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          const resp = await fetch(`${backendUrl}/resumes/upload`, {
-            method: 'POST',
-            body: formData,
-          });
-          
-          if (resp.ok) {
-            const result = await resp.json();
-            console.log('Resume parsed by backend:', result);
-            showToast('Resume uploaded and parsed!', 'success');
-          } else {
-            console.log('Backend resume parse failed:', resp.status);
-          }
-        } catch (backendErr) {
-          console.log('Could not send resume to backend:', backendErr.message);
-        }
       } catch (err) {
         console.error('Error saving resume:', err);
       }
@@ -1020,7 +996,7 @@ async function fetchPendingJobs() {
     showToast('Fetching pending jobs...', 'info', 2000);
 
     // Get max jobs setting
-    const maxJobs = parseInt((data.settings && data.settings.maxJobsPerRun) || 50);
+    const maxJobs = parseInt((data.settings && data.settings.maxJobsPerRun) || 10);
 
     // Build URL with job type filter and posted date filter
     let url = `${backendUrl}/api/extension/jobs?limit=${maxJobs}`;
