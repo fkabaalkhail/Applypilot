@@ -86,8 +86,14 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [breakdown, setBreakdown] = useState<MatchBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [applyUrl, setApplyUrl] = useState(job.url);
+  const [description, setDescription] = useState(job.description || "");
+  const [fetchingDetails, setFetchingDetails] = useState(false);
 
   useEffect(() => {
+    // Fetch actual job URL and description on mount
+    fetchJobDetails();
+
     if (job.match_score > 0 && job.experience_score > 0) {
       setBreakdown({
         experience_score: job.experience_score,
@@ -100,6 +106,23 @@ export default function JobDetailView({ job, onClose }: Props) {
       triggerAnalysis();
     }
   }, [job.id]);
+
+  async function fetchJobDetails() {
+    if (description && description.length > 50) return; // Already have description
+    setFetchingDetails(true);
+    try {
+      const res = await fetch(`${API_BASE}/jobs/${job.id}/fetch-details`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.apply_url) setApplyUrl(data.apply_url);
+        if (data.description) setDescription(data.description);
+      }
+    } catch {
+      // Silently fail — keep original URL
+    } finally {
+      setFetchingDetails(false);
+    }
+  }
 
   async function triggerAnalysis() {
     setLoading(true);
@@ -139,13 +162,23 @@ export default function JobDetailView({ job, onClose }: Props) {
       {/* Header section */}
       <div className="job-detail-header-section">
         <div className="job-detail-company-row">
-          {job.company_logo ? (
-            <img src={job.company_logo} alt={`${job.company} logo`} className="detail-company-logo" />
-          ) : (
-            <div className="detail-company-logo-placeholder" aria-label={`${job.company} logo`}>
-              {job.company.charAt(0).toUpperCase()}
-            </div>
-          )}
+          {(() => {
+            const cleaned = job.company.toLowerCase().replace(/[^a-z0-9]/g, "");
+            const logoUrl = job.company_logo && job.company_logo.startsWith("http")
+              ? job.company_logo
+              : cleaned.length >= 2 ? `https://logo.clearbit.com/${cleaned}.com` : null;
+            return logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={`${job.company} logo`}
+                className="detail-company-logo"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden-logo"); }}
+              />
+            ) : null;
+          })()}
+          <div className={`detail-company-logo-placeholder ${(job.company_logo || job.company.length >= 2) ? "hidden-logo" : ""}`} aria-label={`${job.company} logo`}>
+            {job.company.charAt(0).toUpperCase()}
+          </div>
           <div className="detail-company-info">
             <span className="job-detail-company">{job.company}</span>
             <span className="job-detail-posted">{timeAgo(job.scraped_at)}</span>
@@ -199,10 +232,10 @@ export default function JobDetailView({ job, onClose }: Props) {
 
         {/* Action buttons */}
         <div className="job-detail-actions">
-          <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply-detail">
+          <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-apply-detail">
             <i className="fa-solid fa-paper-plane"></i> Apply Now
           </a>
-          <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-outline-detail">
+          <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-outline-detail">
             <i className="fa-solid fa-arrow-up-right-from-square"></i> View Original Post
           </a>
         </div>
@@ -214,8 +247,13 @@ export default function JobDetailView({ job, onClose }: Props) {
         <div className="job-detail-main">
           <div className="job-detail-description">
             <h2 className="detail-section-title">Overview</h2>
-            {job.description ? (
-              <div className="description-content">{job.description}</div>
+            {fetchingDetails ? (
+              <div className="description-loading">
+                <div className="spinner" />
+                <span>Loading job details...</span>
+              </div>
+            ) : description ? (
+              <div className="description-content">{description}</div>
             ) : (
               <div className="description-empty">
                 <div className="description-empty-icon">

@@ -50,6 +50,7 @@ class ParsedJob:
     url: str
     posted_date: Optional[datetime.datetime] = None
     company_logo: Optional[str] = None
+    company_url: Optional[str] = None  # company website URL (e.g., https://www.tiktok.com)
     section_category: Optional[str] = None  # from section headers (mega-repo)
 
 
@@ -301,6 +302,20 @@ class MarkdownParser:
                 text, link = self._extract_markdown_link(cell)
                 if text is not None:
                     data[field] = text
+                    # Store company URL (e.g., https://www.tiktok.com)
+                    if link and not link.startswith("https://jobright.ai"):
+                        data["company_url"] = link
+                        # Generate logo from company domain using Clearbit
+                        if not logo_url:
+                            try:
+                                from urllib.parse import urlparse
+                                domain = urlparse(link).netloc
+                                if domain:
+                                    if domain.startswith("www."):
+                                        domain = domain[4:]
+                                    data["company_logo"] = f"https://logo.clearbit.com/{domain}"
+                            except Exception:
+                                pass
                 else:
                     # Remove image syntax to get plain company name
                     clean = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", cell).strip()

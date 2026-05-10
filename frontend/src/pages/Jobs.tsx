@@ -65,6 +65,15 @@ function getLogoColor(company: string): string {
   return LOGO_COLORS[letter] || "#6B7280";
 }
 
+function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
+  // If we already have a logo URL from the parser, use it
+  if (companyLogo && companyLogo.startsWith("http")) return companyLogo;
+  // Generate from company name using Clearbit (works for well-known companies)
+  const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (cleaned.length < 2) return null;
+  return `https://logo.clearbit.com/${cleaned}.com`;
+}
+
 function timeAgo(dateStr: string): string {
   if (!dateStr) return "";
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -350,20 +359,23 @@ export default function Jobs() {
             <div className="job-card-body">
               {/* Header: Logo + Info + Bookmark */}
               <div className="job-card-header">
-                {job.company_logo ? (
-                  <img
-                    src={job.company_logo}
-                    alt={`${job.company} logo`}
-                    className="company-logo company-logo-img"
-                  />
-                ) : (
-                  <div
-                    className="company-logo"
-                    style={{ backgroundColor: getLogoColor(job.company) }}
-                  >
-                    {job.company.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                {(() => {
+                  const logoUrl = getCompanyLogoUrl(job.company, job.company_logo);
+                  return logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt={`${job.company} logo`}
+                      className="company-logo company-logo-img"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden-logo"); }}
+                    />
+                  ) : null;
+                })()}
+                <div
+                  className={`company-logo ${getCompanyLogoUrl(job.company, job.company_logo) ? "hidden-logo" : ""}`}
+                  style={{ backgroundColor: getLogoColor(job.company) }}
+                >
+                  {job.company.charAt(0).toUpperCase()}
+                </div>
                 <div className="job-card-info">
                   <div className="job-card-badges">
                     <span className="badge-time">

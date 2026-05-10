@@ -1267,3 +1267,18 @@ body {
   border: 1px solid var(--border);
   padding: 4px;
 }
+
+/* Hidden logo fallback */
+.hidden-logo {
+  display: none !important;
+}
+
+.description-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
