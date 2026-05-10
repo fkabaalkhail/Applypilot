@@ -5,33 +5,29 @@ export default function App() {
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <span className="logo-icon">⚡</span>
-          <span className="logo-text">ApplyPilot</span>
+          <img src="/logo-icon.png" alt="Resumate" className="sidebar-logo-img" />
+          <span className="logo-text">Resumate</span>
         </div>
         <nav className="sidebar-nav">
-          <NavLink to="/" className="nav-item">
+          <NavLink to="/app" end className="nav-item">
             <span className="nav-icon">💼</span>
             <span>Jobs</span>
           </NavLink>
-          <NavLink to="/resume" className="nav-item">
+          <NavLink to="/app/resume" className="nav-item">
             <span className="nav-icon">📄</span>
             <span>Resume</span>
           </NavLink>
-          <NavLink to="/profile" className="nav-item">
+          <NavLink to="/app/profile" className="nav-item">
             <span className="nav-icon">👤</span>
             <span>Profile</span>
           </NavLink>
-          <NavLink to="/agent" className="nav-item">
-            <span className="nav-icon">🤖</span>
-            <span>Agent</span>
-          </NavLink>
-          <NavLink to="/applications" className="nav-item">
+          <NavLink to="/app/applications" className="nav-item">
             <span className="nav-icon">📋</span>
             <span>Applied</span>
           </NavLink>
         </nav>
         <div className="sidebar-bottom">
-          <NavLink to="/settings" className="nav-item">
+          <NavLink to="/app/settings" className="nav-item">
             <span className="nav-icon">⚙️</span>
             <span>Settings</span>
           </NavLink>

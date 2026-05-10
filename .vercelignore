@@ -1,6 +1,10 @@
-__pycache__
-*.pyc
-.hypothesis
-node_modules
+frontend/node_modules
 extension/node_modules
+applypilot-extension
+jobright-extension-ref
+__pycache__
+.hypothesis
 .git
+tmp
+reference
+backend/tests
