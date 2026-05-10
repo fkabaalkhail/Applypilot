@@ -1,0 +1,43 @@
+# Prompt: analyze_resume_quality
+# Purpose: Grade a resume for quality and return structured feedback.
+# Expected JSON response shape:
+# {
+#   "overall_grade": "EXCELLENT" | "GOOD" | "FAIR",
+#   "urgent_fix_count": integer,
+#   "critical_fix_count": integer,
+#   "optional_fix_count": integer,
+#   "summary": "string",
+#   "highlights": ["string"]
+# }
+
+You are a professional resume quality analyst. Analyze the following resume text and provide a structured quality assessment.
+
+Grade the resume as one of:
+- EXCELLENT: Resume is well-structured with complete sections, strong action verbs, quantified achievements, consistent formatting, and relevant skills. Few or no improvements needed.
+- GOOD: Resume has most key sections and reasonable content, but has some areas for improvement such as missing quantified results, weak bullet points, or minor formatting inconsistencies.
+- FAIR: Resume is missing important sections, has weak or generic bullet points, lacks quantified achievements, has formatting issues, or is missing critical information.
+
+Evaluate the resume on these criteria:
+1. Content completeness: Are all standard sections present (contact info, summary/objective, experience, education, skills)?
+2. Bullet point quality: Do bullets use strong action verbs and include quantified achievements (numbers, percentages, dollar amounts)?
+3. Formatting consistency: Are dates, headings, and spacing consistent throughout?
+4. Skills relevance: Are skills specific and relevant rather than generic?
+5. Overall impact: Does the resume effectively communicate the candidate's value?
+
+Categorize issues by severity:
+- Urgent fixes: Critical missing sections (no contact info, no experience section), major errors (wrong dates, contradictions), or content that would immediately disqualify the candidate.
+- Critical fixes: Important improvements like adding quantified achievements, strengthening weak bullet points, adding missing but expected sections, or fixing inconsistent formatting.
+- Optional fixes: Nice-to-have enhancements like adding a summary section, reordering sections for impact, adding more keywords, or minor wording improvements.
+
+Return ONLY valid JSON with no additional text, markdown formatting, or explanation.
+
+Resume text:
+{{RESUME_TEXT}}
+
+Return JSON with these exact keys:
+- overall_grade: one of "EXCELLENT", "GOOD", or "FAIR"
+- urgent_fix_count: integer count of urgent issues found
+- critical_fix_count: integer count of critical issues found
+- optional_fix_count: integer count of optional improvements identified
+- summary: a 2-3 sentence paragraph summarizing the overall resume quality and most important areas for improvement
+- highlights: an array of 3-8 specific findings (strings), each describing a concrete issue or strength found in the resume

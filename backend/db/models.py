@@ -70,6 +70,17 @@ class ScrapedJob(Base):
     experience_years_required = Column(Integer, nullable=True)  # AI-extracted from description
     skip_reason = Column(String, default="")
 
+    # Multi-source tracking & dashboard enhancements
+    source_platform = Column(String, default="linkedin")  # linkedin, github, other
+    saved = Column(Integer, default=0)  # 1 = user saved this job
+    experience_score = Column(Integer, default=0)  # 0-100 breakdown
+    skill_score = Column(Integer, default=0)  # 0-100 breakdown
+    industry_score = Column(Integer, default=0)  # 0-100 breakdown
+    match_label = Column(String, default="")  # STRONG/GOOD/FAIR MATCH
+    applicant_count = Column(Integer, nullable=True)
+    github_source_id = Column(Integer, nullable=True)  # FK to github_sources
+    last_viewed_at = Column(DateTime, nullable=True)
+
 
 class PendingQuestion(Base):
     """A question the bot got stuck on during an application. User must answer."""
@@ -90,16 +101,35 @@ class ResumeProfileDB(Base):
     __tablename__ = "resume_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=True)
+    name = Column(String, default="Untitled Resume")  # user-given name
+    target_job_title = Column(String, nullable=True)
+    is_primary = Column(Integer, default=0)  # 0 or 1
+    status = Column(String, default="analyzed")  # "analyzed" | "pending"
+
+    # Personal info
+    profile_name = Column(String, nullable=True)  # person's name from resume
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     location = Column(String, nullable=True)
     linkedin_url = Column(String, nullable=True)
-    skills = Column(JSON, default=list)
-    experience = Column(JSON, default=list)
-    education = Column(JSON, default=list)
+    github_url = Column(String, nullable=True)
+    other_link = Column(String, nullable=True)
+
+    # Structured sections (JSON)
+    skills = Column(JSON, default=list)          # flat list for compat
+    experience = Column(JSON, default=list)      # list of ExperienceItem dicts
+    education = Column(JSON, default=list)       # list of EducationItem dicts
+    projects = Column(JSON, default=list)        # list of ProjectItem dicts
+    technologies = Column(JSON, default=dict)    # {category: [skills]}
+
+    # Raw text and analysis
     raw_text = Column(Text, nullable=True)
+    analysis_report = Column(JSON, nullable=True)  # AnalysisReport dict
+
+    # Timestamps
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                        onupdate=datetime.datetime.utcnow)
 
 
 class ApplicationRecord(Base):
@@ -239,3 +269,48 @@ class AutopilotRun(Base):
     total_failed = Column(Integer, default=0)
     total_waiting = Column(Integer, default=0)
     status = Column(String, default="running")  # running, stopped, limit_reached
+
+
+class GitHubSource(Base):
+    """A configured GitHub repository job source."""
+    __tablename__ = "github_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    repo_url = Column(String, nullable=False, unique=True)
+    repo_owner = Column(String, nullable=False)
+    repo_name = Column(String, nullable=False)
+    file_path = Column(String, default="README.md")  # path to markdown file
+    poll_interval_minutes = Column(Integer, default=60)
+    last_polled_at = Column(DateTime, nullable=True)
+    last_commit_sha = Column(String, nullable=True)  # track changes
+    status = Column(String, default="active")  # active, error, disabled
+    error_message = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class TailoredResume(Base):
+    """A resume version tailored for a specific job."""
+    __tablename__ = "tailored_resumes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, nullable=False)  # FK to scraped_jobs
+    original_text = Column(Text, nullable=False)
+    tailored_text = Column(Text, nullable=False)
+    diff_summary = Column(Text, default="")  # human-readable diff
+    status = Column(String, default="draft")  # draft, accepted, rejected
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class InsiderConnection(Base):
+    """A connection at a target company."""
+    __tablename__ = "insider_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    title = Column(String, default="")
+    linkedin_url = Column(String, default="")
+    relationship_type = Column(String, default="beyond_network")
+    # beyond_network, previous_company, school
+    source = Column(String, default="linkedin")
+    discovered_at = Column(DateTime, default=datetime.datetime.utcnow)

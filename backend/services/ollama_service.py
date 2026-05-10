@@ -17,7 +17,7 @@ from pathlib import Path
 
 import httpx
 
-from backend.schemas.resume import ResumeProfile, ExperienceItem, EducationItem
+from backend.schemas.resume import ResumeProfile, ExperienceItem, EducationItem, AnalysisReport
 from backend.schemas.application import JobPosting
 
 logger = logging.getLogger(__name__)
@@ -127,6 +127,56 @@ class OllamaService:
             skills=data.get("skills", []),
             experience=[ExperienceItem(**e) for e in data.get("experience", [])],
             education=[EducationItem(**e) for e in data.get("education", [])],
+        )
+
+    async def analyze_resume_quality(self, raw_text: str) -> AnalysisReport:
+        """
+        Analyze raw resume text and return a structured quality assessment.
+
+        Uses the analyze_resume_quality.txt prompt template.
+        Returns an AnalysisReport with grade, fix counts, summary, and highlights.
+        """
+        await self._ping()
+        template = _load_prompt("analyze_resume_quality.txt")
+        prompt = template.replace("{{RESUME_TEXT}}", raw_text)
+        response = await self._generate(prompt)
+
+        # Parse JSON from response (handle markdown code fences and preamble text)
+        json_str = response.strip()
+
+        # Method 1: Look for code fence
+        if "```" in json_str:
+            parts = json_str.split("```")
+            for part in parts:
+                part = part.strip()
+                if part.startswith("json"):
+                    part = part[4:].strip()
+                if part.startswith("{"):
+                    json_str = part
+                    break
+
+        # Method 2: Find first { and last }
+        if not json_str.startswith("{"):
+            start = json_str.find("{")
+            end = json_str.rfind("}")
+            if start >= 0 and end > start:
+                json_str = json_str[start:end + 1]
+
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            logger.warning("Failed to parse quality analysis response: %s", response[:300])
+            raise ValueError(
+                f"AI quality analysis returned invalid JSON: {e}"
+            ) from e
+
+        return AnalysisReport(
+            overall_grade=data.get("overall_grade", "FAIR"),
+            urgent_fix_count=data.get("urgent_fix_count", 0),
+            critical_fix_count=data.get("critical_fix_count", 0),
+            optional_fix_count=data.get("optional_fix_count", 0),
+            summary=data.get("summary", ""),
+            highlights=data.get("highlights", []),
         )
 
     async def generate_cover_letter(

@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 test.db
+test_*.db
+.hypothesis/
 node_modules/
 dist/
 .vite/
