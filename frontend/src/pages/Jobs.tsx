@@ -76,13 +76,18 @@ function getCompanyLogoUrl(company: string, companyLogo: string): string | null 
 
 function timeAgo(dateStr: string): string {
   if (!dateStr) return "";
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const date = new Date(dateStr);
+  const diff = Date.now() - date.getTime();
   const hours = Math.floor(diff / 3600000);
+  if (hours < 0) return "Today"; // future date (timezone issue)
   if (hours < 1) return "Just now";
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days === 1) return "1 day ago";
-  return `${days} days ago`;
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  // For older dates, show the actual date
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function MatchBadge({ score }: { score: number }) {
@@ -359,27 +364,29 @@ export default function Jobs() {
             <div className="job-card-body">
               {/* Header: Logo + Info + Bookmark */}
               <div className="job-card-header">
-                {(() => {
-                  const logoUrl = getCompanyLogoUrl(job.company, job.company_logo);
-                  return logoUrl ? (
-                    <img
-                      src={logoUrl}
-                      alt={`${job.company} logo`}
-                      className="company-logo company-logo-img"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden-logo"); }}
-                    />
-                  ) : null;
-                })()}
-                <div
-                  className={`company-logo ${getCompanyLogoUrl(job.company, job.company_logo) ? "hidden-logo" : ""}`}
-                  style={{ backgroundColor: getLogoColor(job.company) }}
-                >
-                  {job.company.charAt(0).toUpperCase()}
+                <div className="company-logo-wrapper">
+                  <div
+                    className="company-logo"
+                    style={{ backgroundColor: getLogoColor(job.company) }}
+                  >
+                    {job.company.charAt(0).toUpperCase()}
+                  </div>
+                  {(() => {
+                    const logoUrl = getCompanyLogoUrl(job.company, job.company_logo);
+                    return logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt=""
+                        className="company-logo-img-overlay"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : null;
+                  })()}
                 </div>
                 <div className="job-card-info">
                   <div className="job-card-badges">
                     <span className="badge-time">
-                      <i className="fa-regular fa-clock"></i> {timeAgo(job.scraped_at)}
+                      <i className="fa-regular fa-clock"></i> {job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}
                     </span>
                     {job.source_platform && (
                       <span className="badge-source">

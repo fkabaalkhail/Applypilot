@@ -1258,6 +1258,31 @@ body {
 }
 
 /* Company logo in job cards */
+.company-logo-wrapper {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+}
+
+.company-logo-wrapper .company-logo {
+  position: absolute;
+  inset: 0;
+}
+
+.company-logo-img-overlay {
+  position: absolute;
+  inset: 0;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--border);
+  padding: 4px;
+  z-index: 1;
+}
+
 .company-logo-img {
   width: 64px;
   height: 64px;
