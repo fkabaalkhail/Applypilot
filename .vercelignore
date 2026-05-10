@@ -5,6 +5,8 @@ jobright-extension-ref
 __pycache__
 .hypothesis
 .git
+.env
 tmp
 reference
 backend/tests
+logos

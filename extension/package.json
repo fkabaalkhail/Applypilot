@@ -26,7 +26,13 @@
     "typescript": "5.5.4"
   },
   "manifest": {
-    "permissions": ["activeTab", "storage"],
-    "host_permissions": ["http://localhost:8000/*"]
+    "permissions": ["activeTab", "storage", "tabs", "scripting"],
+    "host_permissions": [
+      "http://localhost:8000/*",
+      "https://www.linkedin.com/*",
+      "https://jobs.lever.co/*",
+      "https://boards.greenhouse.io/*",
+      "https://*.myworkdayjobs.com/*"
+    ]
   }
 }

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import UserSettings, ResumeProfileDB
-from backend.services.ollama_service import OllamaService
+from backend.services.llm import get_llm_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -123,7 +123,7 @@ async def fill_form(request: FillRequest, db: Session = Depends(get_db)):
     errors: list[str] = []
     if ai_fields:
         try:
-            ollama = OllamaService()
+            ollama = get_llm_service()
             context_parts = []
             if settings:
                 context_parts.append(

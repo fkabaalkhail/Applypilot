@@ -318,5 +318,10 @@ class AggregatorService:
             company_logo=job.company_logo or "",
         )
         self.db.add(scraped_job)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            # Duplicate URL or other constraint violation — rollback and skip
+            self.db.rollback()
+            return False
         return True

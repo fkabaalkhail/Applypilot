@@ -36,9 +36,9 @@ interface Job {
 }
 
 function getMatchColor(score: number): string {
-  if (score >= 80) return "var(--accent)";
-  if (score >= 60) return "var(--accent-muted)";
-  return "var(--text-muted)";
+  if (score >= 80) return "#ea580c";
+  if (score >= 60) return "#f59e0b";
+  return "#6b7280";
 }
 
 function getMatchLabel(score: number): string {
@@ -129,114 +129,130 @@ export default function JobDetailView({ job, onClose }: Props) {
 
   return (
     <div className="job-detail-view">
-      {/* Top bar with close and actions */}
-      <div className="job-detail-topbar">
-        {onClose && (
-          <button className="btn-close-detail" onClick={onClose} aria-label="Close detail view">
-            <i className="fa-solid fa-xmark"></i>
-          </button>
-        )}
-        <div className="job-detail-topbar-meta">
-          {job.role_category && <span className="tag tag-category">{job.role_category}</span>}
-          {job.applicant_count != null && job.applicant_count > 0 && (
-            <span className="tag tag-applicants">{job.applicant_count}+ applicants</span>
+      {/* Close button */}
+      {onClose && (
+        <button className="btn-close-detail" onClick={onClose} aria-label="Close detail view">
+          <i className="fa-solid fa-xmark"></i>
+        </button>
+      )}
+
+      {/* Header section */}
+      <div className="job-detail-header-section">
+        <div className="job-detail-company-row">
+          {job.company_logo ? (
+            <img src={job.company_logo} alt={`${job.company} logo`} className="detail-company-logo" />
+          ) : (
+            <div className="detail-company-logo-placeholder" aria-label={`${job.company} logo`}>
+              {job.company.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="detail-company-info">
+            <span className="job-detail-company">{job.company}</span>
+            <span className="job-detail-posted">{timeAgo(job.scraped_at)}</span>
+          </div>
+        </div>
+
+        <h1 className="job-detail-title">{job.title}</h1>
+
+        {/* Tags row */}
+        <div className="job-detail-tags">
+          {job.location && (
+            <span className="detail-tag">
+              <i className="fa-solid fa-location-dot"></i> {job.location}
+            </span>
+          )}
+          {job.work_type && (
+            <span className="detail-tag">
+              <i className="fa-solid fa-laptop-house"></i> {formatWorkType(job.work_type)}
+            </span>
+          )}
+          {job.country && (
+            <span className="detail-tag">
+              <i className="fa-solid fa-flag"></i> {formatCountry(job.country)}
+            </span>
+          )}
+          {job.experience_level && (
+            <span className="detail-tag detail-tag-highlight">
+              <i className="fa-solid fa-graduation-cap"></i> {formatExperienceLevel(job.experience_level)}
+            </span>
+          )}
+          {job.salary_range && (
+            <span className="detail-tag detail-tag-salary">
+              <i className="fa-solid fa-dollar-sign"></i> {job.salary_range}
+            </span>
+          )}
+          {job.role_category && (
+            <span className="detail-tag detail-tag-category">
+              {job.role_category}
+            </span>
+          )}
+          {job.source_platform && (
+            <span className="detail-tag">
+              {job.source_platform === "github" ? (
+                <><i className="fa-brands fa-github"></i> GitHub</>
+              ) : (
+                <><i className="fa-brands fa-linkedin"></i> LinkedIn</>
+              )}
+            </span>
           )}
         </div>
-        <div className="job-detail-topbar-actions">
-          <button className="btn-icon" title="Share"><i className="fa-solid fa-share-nodes"></i></button>
-          <button className="btn-icon" title="Report"><i className="fa-solid fa-flag"></i></button>
+
+        {/* Action buttons */}
+        <div className="job-detail-actions">
           <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply-detail">
-            APPLY WITH AUTOFILL <i className="fa-solid fa-arrow-up-right-from-square"></i>
+            <i className="fa-solid fa-paper-plane"></i> Apply Now
+          </a>
+          <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-outline-detail">
+            <i className="fa-solid fa-arrow-up-right-from-square"></i> View Original Post
           </a>
         </div>
       </div>
 
+      {/* Content area */}
       <div className="job-detail-content">
-        {/* Left: Overview */}
+        {/* Main content */}
         <div className="job-detail-main">
-          {/* Company header */}
-          <div className="job-detail-company-row">
-            {job.company_logo ? (
-              <img src={job.company_logo} alt={`${job.company} logo`} className="detail-company-logo" />
-            ) : (
-              <div className="detail-company-logo-placeholder" aria-label={`${job.company} logo`}>
-                {job.company.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div className="detail-company-info">
-              <span className="job-detail-company">{job.company}</span>
-              <span className="job-detail-posted">{timeAgo(job.scraped_at)}</span>
-            </div>
-          </div>
-
-          <h1 className="job-detail-title">{job.title}</h1>
-
-          {/* Tags row */}
-          <div className="job-detail-tags">
-            {job.location && (
-              <span className="tag"><i className="fa-solid fa-location-dot"></i> {job.location}</span>
-            )}
-            {job.work_type && (
-              <span className="tag"><i className="fa-solid fa-laptop-house"></i> {formatWorkType(job.work_type)}</span>
-            )}
-            {job.country && (
-              <span className="tag"><i className="fa-solid fa-flag"></i> {formatCountry(job.country)}</span>
-            )}
-            {job.experience_level && (
-              <span className="tag"><i className="fa-solid fa-graduation-cap"></i> {formatExperienceLevel(job.experience_level)}</span>
-            )}
-            {job.salary_range && (
-              <span className="tag"><i className="fa-solid fa-dollar-sign"></i> {job.salary_range}</span>
-            )}
-            {job.source_platform && (
-              <span className="tag">
-                {job.source_platform === "github" ? (
-                  <><i className="fa-brands fa-github"></i> GitHub</>
-                ) : (
-                  <><i className="fa-brands fa-linkedin"></i> LinkedIn</>
-                )}
-              </span>
-            )}
-          </div>
-
-          {/* Description */}
           <div className="job-detail-description">
-            <h2>Overview</h2>
+            <h2 className="detail-section-title">Overview</h2>
             {job.description ? (
               <div className="description-content">{job.description}</div>
             ) : (
               <div className="description-empty">
-                <p>Job description not available from the source repository.</p>
-                <p>Click below to view the full posting on the original site.</p>
+                <div className="description-empty-icon">
+                  <i className="fa-regular fa-file-lines"></i>
+                </div>
+                <p className="description-empty-title">No description available</p>
+                <p className="description-empty-subtitle">
+                  This job was sourced from a GitHub repository listing. Visit the original post for full details.
+                </p>
               </div>
             )}
-            <a
-              href={job.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-outline btn-original-post"
-            >
-              <i className="fa-solid fa-arrow-up-right-from-square"></i> Original Job Post
-            </a>
           </div>
+
+          {job.applicant_count != null && job.applicant_count > 0 && (
+            <div className="job-detail-meta-row">
+              <i className="fa-solid fa-users"></i>
+              <span>{job.applicant_count}+ applicants</span>
+            </div>
+          )}
         </div>
 
-        {/* Right: Match Score Panel */}
+        {/* Sidebar: Match Score */}
         <div className="job-detail-sidebar">
           {loading && (
-            <div className="match-loading">
+            <div className="match-loading-card">
               <div className="spinner" />
               <span>Analyzing match...</span>
             </div>
           )}
 
-          {error && <div className="match-error">{error}</div>}
+          {error && <div className="match-error-card">{error}</div>}
 
           {score > 0 && !loading && (
             <div className="match-score-card">
               <div className="match-circle-large">
                 <svg viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" strokeWidth="6" />
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#e5e7eb" strokeWidth="6" />
                   <circle
                     cx="50" cy="50" r="42"
                     fill="none" stroke={color} strokeWidth="6"
@@ -265,7 +281,7 @@ export default function JobDetailView({ job, onClose }: Props) {
                 <span className="breakdown-value">{breakdown.experience_score}%</span>
               </div>
               <div className="breakdown-item">
-                <span className="breakdown-label">Skill Match</span>
+                <span className="breakdown-label">Skills</span>
                 <div className="breakdown-bar">
                   <div
                     className="breakdown-fill"
@@ -275,7 +291,7 @@ export default function JobDetailView({ job, onClose }: Props) {
                 <span className="breakdown-value">{breakdown.skill_score}%</span>
               </div>
               <div className="breakdown-item">
-                <span className="breakdown-label">Industry Exp.</span>
+                <span className="breakdown-label">Industry</span>
                 <div className="breakdown-bar">
                   <div
                     className="breakdown-fill"

@@ -71,41 +71,59 @@ async def seed_sources(db: Session = Depends(get_db)):
     Creates GitHubSource records for all configured repositories.
     Skips any that already exist. Returns counts of created vs existing.
     """
-    from backend.services.aggregator import AggregatorService
-    aggregator = AggregatorService(db)
-    result = await aggregator.seed_sources()
-    return {
-        "status": "seeded",
-        "created": result["created"],
-        "existing": result["existing"],
-        "total": result["created"] + result["existing"],
-    }
+    try:
+        from backend.services.aggregator import AggregatorService
+        aggregator = AggregatorService(db)
+        result = await aggregator.seed_sources()
+        return {
+            "status": "seeded",
+            "created": result["created"],
+            "existing": result["existing"],
+            "total": result["created"] + result["existing"],
+        }
+    except Exception as e:
+        import traceback
+        logger.error(f"Seed failed: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Seed failed: {str(e)}")
 
 
 @router.api_route("/cron-poll", methods=["GET", "POST"])
 async def cron_poll(db: Session = Depends(get_db)):
-    """Seed sources (if needed) and poll all active sources.
+    """Seed sources (if needed) and poll the next overdue source.
 
     Designed to be called by Vercel Cron Jobs on a schedule.
-    Seeds first (idempotent), then polls all repos for new jobs.
+    Seeds first (idempotent), then polls ONE source (the most overdue).
+    Call multiple times to poll all sources.
     """
-    from backend.services.aggregator import AggregatorService
-    aggregator = AggregatorService(db)
+    try:
+        from backend.services.aggregator import AggregatorService
+        aggregator = AggregatorService(db)
 
-    # Seed first (idempotent — no-op if already seeded)
-    seed_result = await aggregator.seed_sources()
+        # Seed first (idempotent — no-op if already seeded)
+        seed_result = await aggregator.seed_sources()
 
-    # Poll all active sources
-    poll_results = await aggregator.poll_all_sources()
+        # Poll just the most overdue source (to stay within Vercel timeout)
+        source = (
+            db.query(GitHubSource)
+            .filter(GitHubSource.status == "active")
+            .order_by(GitHubSource.last_polled_at.asc().nullsfirst())
+            .first()
+        )
 
-    total_new = sum(poll_results.values())
-    return {
-        "status": "completed",
-        "sources_seeded": seed_result["created"],
-        "sources_polled": len(poll_results),
-        "new_jobs_total": total_new,
-        "per_source": poll_results,
-    }
+        if not source:
+            return {"status": "no_sources", "sources_seeded": seed_result["created"]}
+
+        new_count = await aggregator.poll_source(source)
+        return {
+            "status": "completed",
+            "sources_seeded": seed_result["created"],
+            "source_polled": source.repo_name,
+            "new_jobs": new_count,
+        }
+    except Exception as e:
+        import traceback
+        logger.error(f"Cron poll failed: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Cron poll failed: {str(e)}")
 
 
 @router.put("/{source_id}", response_model=GitHubSourceOut)

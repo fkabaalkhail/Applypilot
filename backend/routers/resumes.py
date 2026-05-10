@@ -23,7 +23,7 @@ from backend.schemas.resume import (
     AnalysisReport,
 )
 from backend.services.resume_parser import extract_text
-from backend.services.ollama_service import OllamaService
+from backend.services.llm import get_llm_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -103,7 +103,7 @@ async def analyze_resume(resume_id: int, db: Session = Depends(get_db)):
     if not record.raw_text:
         raise HTTPException(status_code=422, detail="Resume has no extracted text to analyze.")
 
-    ollama = OllamaService()
+    ollama = get_llm_service()
     try:
         report = await ollama.analyze_resume_quality(record.raw_text)
     except Exception as e:
@@ -254,7 +254,7 @@ async def upload_resume(
         raise HTTPException(status_code=422, detail="Extracted text is empty.")
 
     # Analyze with Ollama
-    ollama = OllamaService()
+    ollama = get_llm_service()
     try:
         profile = await ollama.analyze_resume(raw_text)
     except Exception as e:

@@ -693,12 +693,13 @@ def test_analysis_report_persistence(report_data, prop11_db_session, prop11_clie
     # Step 2: Create the expected AnalysisReport from generated data
     expected_report = AnalysisReportSchema(**report_data)
 
-    # Step 3: Mock OllamaService.analyze_resume_quality to return the generated report
+    # Step 3: Mock the LLM service's analyze_resume_quality to return the generated report
     with patch(
-        "backend.routers.resumes.OllamaService.analyze_resume_quality",
-        new_callable=AsyncMock,
-        return_value=expected_report,
-    ) as mock_analyze:
+        "backend.routers.resumes.get_llm_service",
+    ) as mock_factory:
+        mock_llm = AsyncMock()
+        mock_llm.analyze_resume_quality = AsyncMock(return_value=expected_report)
+        mock_factory.return_value = mock_llm
         # Step 4: Call POST /resumes/{id}/analyze
         analyze_response = prop11_client.post(f"/resumes/{resume_id}/analyze")
         assert analyze_response.status_code == 200, (
@@ -707,7 +708,7 @@ def test_analysis_report_persistence(report_data, prop11_db_session, prop11_clie
         )
 
         # Verify the mock was called exactly once
-        mock_analyze.assert_called_once()
+        mock_llm.analyze_resume_quality.assert_called_once()
 
         # Step 5: Verify returned report has all required fields
         returned_report = analyze_response.json()

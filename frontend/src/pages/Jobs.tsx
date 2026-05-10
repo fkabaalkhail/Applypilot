@@ -448,7 +448,7 @@ export default function Jobs() {
                   >
                     ASK ORION
                   </a>
-                  <button className="btn-apply">APPLY NOW</button>
+                  <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply">APPLY NOW</a>
                 </div>
               </div>
             </div>
