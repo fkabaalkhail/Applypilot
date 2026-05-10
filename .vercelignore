@@ -1,0 +1,6 @@
+__pycache__
+*.pyc
+.hypothesis
+node_modules
+extension/node_modules
+.git
