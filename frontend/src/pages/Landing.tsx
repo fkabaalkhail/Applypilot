@@ -90,7 +90,7 @@ export default function Landing() {
                     </div>
                     <div className="mockup-card">
                       <div className="mockup-card-icon">
-                        <img src="/logo-icon.png" alt="" />
+                        <img src="https://www.google.com/s2/favicons?domain=google.com&sz=32" alt="Google" />
                       </div>
                       <div className="mockup-card-content">
                         <div className="mockup-card-title">Senior Software Engineer</div>
@@ -105,7 +105,7 @@ export default function Landing() {
                     </div>
                     <div className="mockup-card">
                       <div className="mockup-card-icon mini">
-                        <div className="mockup-icon-placeholder"></div>
+                        <img src="https://www.google.com/s2/favicons?domain=meta.com&sz=32" alt="Meta" />
                       </div>
                       <div className="mockup-card-content">
                         <div className="mockup-card-title">Backend Engineer</div>
@@ -119,7 +119,7 @@ export default function Landing() {
                     </div>
                     <div className="mockup-card">
                       <div className="mockup-card-icon mini">
-                        <div className="mockup-icon-placeholder green"></div>
+                        <img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=32" alt="Shopify" />
                       </div>
                       <div className="mockup-card-content">
                         <div className="mockup-card-title">Full Stack Developer</div>
@@ -152,64 +152,58 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Social Proof Bar */}
-      <section className="social-proof">
-        <div className="social-proof-inner">
-          <div className="proof-badge">
-            <div className="proof-laurel">🏆</div>
-            <span className="proof-label">Product of the Month</span>
-            <strong>1st</strong>
-          </div>
-          <div className="proof-divider"></div>
-          <div className="proof-badge">
-            <div className="proof-laurel">⭐</div>
-            <span className="proof-label">Featured by</span>
-            <strong>TOP PICK</strong>
-          </div>
-          <div className="proof-divider"></div>
-          <div className="proof-badge">
-            <div className="proof-laurel">★★★★★</div>
-            <span className="proof-label">Trustpilot Reviews</span>
-            <strong>4.8/5.0</strong>
-          </div>
-        </div>
-      </section>
-
       {/* Stats Section */}
       <div ref={revealStats.ref} className={`reveal ${revealStats.visible ? "revealed" : ""}`}>
-        <section className="section stats-section" id="stats">
-          <div className="stats-content">
-            <div className="stats-left">
-              <h2 className="stats-headline">REAL RESULTS, NOT<br />JUST PROMISES</h2>
+        <section className="stats-section-light" id="stats">
+          <div className="stats-content-light">
+            <div className="stats-left-light">
+              <span className="stats-eyebrow-light">OUR TRACK RECORD</span>
+              <h2 className="stats-headline-light">Real results,<br />not just promises.</h2>
+              <p className="stats-sub-light">
+                Trusted by over a million job seekers to land interviews faster
+                and cut the time spent searching.
+              </p>
+              <button className="btn-dark" onClick={() => navigate("#features")}>
+                See how it works ↗
+              </button>
             </div>
-            <div className="stats-right">
-              <div className="stat-row">
-                <div className="stat-info">
-                  <span className="stat-number">1,250,000</span>
-                  <span className="stat-label">trusted users</span>
+            <div className="stats-right-light">
+              <div className="stat-card-light">
+                <div className="stat-icon-light">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
                 </div>
-                <div className="stat-icon">😊</div>
+                <div className="stat-info-light">
+                  <span className="stat-number-light">3× more interviews</span>
+                  <span className="stat-label-light">compared to manual applications</span>
+                </div>
               </div>
-              <div className="stat-row">
-                <div className="stat-info">
-                  <span className="stat-number">3x</span>
-                  <span className="stat-label">interviews landed</span>
+              <div className="stat-card-light">
+                <div className="stat-icon-light">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
                 </div>
-                <div className="stat-icon">�</div>
+                <div className="stat-info-light">
+                  <span className="stat-number-light">80% time saved</span>
+                  <span className="stat-label-light">on the average job search</span>
+                </div>
               </div>
-              <div className="stat-row">
-                <div className="stat-info">
-                  <span className="stat-number">80%</span>
-                  <span className="stat-label">time saved on job search</span>
+              <div className="stat-card-light">
+                <div className="stat-icon-light">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
                 </div>
-                <div className="stat-icon">⏱️</div>
-              </div>
-              <div className="stat-row">
-                <div className="stat-info">
-                  <span className="stat-number">No.1 Choice</span>
-                  <span className="stat-label">for 80% of job seekers after their first use</span>
+                <div className="stat-info-light">
+                  <span className="stat-number-light">No. 1 choice</span>
+                  <span className="stat-label-light">for 80% of users after first use</span>
                 </div>
-                <div className="stat-icon">✓</div>
               </div>
             </div>
           </div>
@@ -333,6 +327,12 @@ export default function Landing() {
                 Get a perfectly tailored, professional resume that passes ATS
                 and highlights your strengths in just 6 seconds.
               </p>
+              <ul className="showcase-bullets">
+                <li>✓ ATS-optimized formatting</li>
+                <li>✓ Keyword matching from job description</li>
+                <li>✓ Quantified achievements highlighted</li>
+                <li>✓ Industry-specific language</li>
+              </ul>
               <button className="btn-dark" onClick={() => navigate("/app")}>Upgrade My Resume</button>
             </div>
             <div className="showcase-visual">
@@ -345,6 +345,10 @@ export default function Landing() {
                     <span className="resume-score-label">EXCELLENT</span>
                   </div>
                 </div>
+                <div className="resume-target-job">
+                  <span className="resume-target-label">Tailored for:</span>
+                  <span className="resume-target-value">Senior Software Engineer at Google</span>
+                </div>
                 <div className="resume-section">
                   <div className="resume-section-title">PROFESSIONAL SUMMARY</div>
                   <div className="resume-lines">
@@ -353,22 +357,51 @@ export default function Landing() {
                   </div>
                 </div>
                 <div className="resume-section">
-                  <div className="resume-section-title">SKILL</div>
-                  <div className="resume-lines">
-                    <div className="resume-line"></div>
+                  <div className="resume-section-title">SKILLS</div>
+                  <div className="resume-skill-tags">
+                    <span className="resume-skill-tag highlighted">Python</span>
+                    <span className="resume-skill-tag highlighted">React</span>
+                    <span className="resume-skill-tag highlighted">AWS</span>
+                    <span className="resume-skill-tag">Docker</span>
+                    <span className="resume-skill-tag">TypeScript</span>
+                    <span className="resume-skill-tag highlighted">System Design</span>
                   </div>
                 </div>
                 <div className="resume-section">
                   <div className="resume-section-title">EXPERIENCE</div>
+                  <div className="resume-exp-item">
+                    <div className="resume-exp-header">
+                      <span className="resume-exp-role">Lead Engineer</span>
+                      <span className="resume-exp-date">2022 - Present</span>
+                    </div>
+                    <div className="resume-exp-company">TechCorp Inc.</div>
+                    <div className="resume-lines">
+                      <div className="resume-line"></div>
+                      <div className="resume-line short"></div>
+                    </div>
+                  </div>
+                  <div className="resume-exp-item">
+                    <div className="resume-exp-header">
+                      <span className="resume-exp-role">Software Engineer</span>
+                      <span className="resume-exp-date">2019 - 2022</span>
+                    </div>
+                    <div className="resume-exp-company">StartupXYZ</div>
+                    <div className="resume-lines">
+                      <div className="resume-line"></div>
+                      <div className="resume-line short"></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="resume-section">
+                  <div className="resume-section-title">EDUCATION</div>
                   <div className="resume-lines">
-                    <div className="resume-line"></div>
-                    <div className="resume-line short"></div>
                     <div className="resume-line"></div>
                   </div>
                 </div>
                 <div className="resume-enhancements">
                   <span className="enhancement-tag">✦ Summary Enhanced</span>
                   <span className="enhancement-tag">✦ Relevant Skills Highlighted</span>
+                  <span className="enhancement-tag">✦ Keywords Optimized</span>
                   <span className="enhancement-tag">✦ Recent Work Experience Enhanced</span>
                 </div>
               </div>
@@ -382,16 +415,78 @@ export default function Landing() {
         <section className="companies-section">
           <p className="companies-label">Trusted by job seekers applying to</p>
           <div className="companies-logos">
-            <span className="company-logo">Google</span>
-            <span className="company-logo">Meta</span>
-            <span className="company-logo">Amazon</span>
-            <span className="company-logo">Microsoft</span>
-            <span className="company-logo">Apple</span>
-            <span className="company-logo">Netflix</span>
-            <span className="company-logo">Shopify</span>
+            <span className="company-logo">
+              <img src="https://www.google.com/s2/favicons?domain=google.com&sz=32" alt="Google" className="company-favicon" />
+              Google
+            </span>
+            <span className="company-logo">
+              <img src="https://www.google.com/s2/favicons?domain=meta.com&sz=32" alt="Meta" className="company-favicon" />
+              Meta
+            </span>
+            <span className="company-logo">
+              <img src="https://www.google.com/s2/favicons?domain=amazon.com&sz=32" alt="Amazon" className="company-favicon" />
+              Amazon
+            </span>
+            <span className="company-logo">
+              <img src="https://www.google.com/s2/favicons?domain=microsoft.com&sz=32" alt="Microsoft" className="company-favicon" />
+              Microsoft
+            </span>
+            <span className="company-logo">
+              <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=32" alt="Apple" className="company-favicon" />
+              Apple
+            </span>
+            <span className="company-logo">
+              <img src="https://www.google.com/s2/favicons?domain=netflix.com&sz=32" alt="Netflix" className="company-favicon" />
+              Netflix
+            </span>
+            <span className="company-logo">
+              <img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=32" alt="Shopify" className="company-favicon" />
+              Shopify
+            </span>
           </div>
         </section>
       </div>
+
+      {/* Testimonials */}
+      <section className="testimonials-section">
+        <h2 className="section-title">What Our Users Say</h2>
+        <p className="section-sub">Join thousands who landed their dream jobs</p>
+        <div className="testimonials-grid">
+          <div className="testimonial-card">
+            <div className="testimonial-stars">★★★★★</div>
+            <p className="testimonial-text">"I went from applying to 5 jobs a day to 50+. Got 3 interviews in my first week. This tool is a game changer."</p>
+            <div className="testimonial-author">
+              <div className="testimonial-avatar">S</div>
+              <div>
+                <div className="testimonial-name">Sarah K.</div>
+                <div className="testimonial-role">Software Engineer → Google</div>
+              </div>
+            </div>
+          </div>
+          <div className="testimonial-card">
+            <div className="testimonial-stars">★★★★★</div>
+            <p className="testimonial-text">"The AI-tailored resume feature alone is worth it. My response rate went from 2% to 15% overnight."</p>
+            <div className="testimonial-author">
+              <div className="testimonial-avatar">M</div>
+              <div>
+                <div className="testimonial-name">Marcus T.</div>
+                <div className="testimonial-role">Data Analyst → Amazon</div>
+              </div>
+            </div>
+          </div>
+          <div className="testimonial-card">
+            <div className="testimonial-stars">★★★★★</div>
+            <p className="testimonial-text">"Saved me hours every day. The screening question answers are surprisingly accurate and personalized."</p>
+            <div className="testimonial-author">
+              <div className="testimonial-avatar">A</div>
+              <div>
+                <div className="testimonial-name">Aisha R.</div>
+                <div className="testimonial-role">Product Manager → Shopify</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Pricing */}
       <div ref={revealPricing.ref} className={`reveal ${revealPricing.visible ? "revealed" : ""}`}>
