@@ -3,16 +3,14 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  // Use relative paths in production so the build works inside Electron (file://)
-  base: process.env.ELECTRON === "true" ? "./" : "/",
   server: {
     port: 5173,
     proxy: {
-      "/api": {
-        target: "http://localhost:8000",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ""),
-      },
+      "/api": "http://localhost:8000",
+      "/health": "http://localhost:8000",
+      "/resumes": "http://localhost:8000",
+      "/jobs": "http://localhost:8000",
+      "/settings": "http://localhost:8000",
     },
   },
 });

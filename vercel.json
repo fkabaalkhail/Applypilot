@@ -1,0 +1,22 @@
+{
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
+  "framework": null,
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.py" },
+    { "source": "/health", "destination": "/api/index.py" },
+    { "source": "/resumes/(.*)", "destination": "/api/index.py" },
+    { "source": "/jobs/(.*)", "destination": "/api/index.py" },
+    { "source": "/jobs", "destination": "/api/index.py" },
+    { "source": "/settings/(.*)", "destination": "/api/index.py" },
+    { "source": "/settings", "destination": "/api/index.py" },
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/index.py": {
+      "runtime": "@vercel/python@4.3.1",
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  }
+}

@@ -1,87 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-const MOCK_JOBS = [
-  {
-    id: 1,
-    title: "Full Stack Developer",
-    company: "TechNova",
-    industry: "SaaS · Series B",
-    location: "Toronto, ON",
-    workMode: "Hybrid",
-    type: "Full-time",
-    level: "Mid Level",
-    salary: "CA$95K - CA$120K/yr",
-    posted: "2 hours ago",
-    applicants: "50+ applicants",
-    matchScore: 91,
-    matchLabel: "STRONG MATCH",
-    connection: "1 school alumnus works here",
-  },
-  {
-    id: 2,
-    title: "Backend Engineer",
-    company: "DataStream",
-    industry: "Data Analytics · Growth Stage",
-    location: "Vancouver, BC",
-    workMode: "Remote",
-    type: "Full-time",
-    level: "Entry, Mid Level",
-    salary: "CA$85K - CA$105K/yr",
-    posted: "5 hours ago",
-    applicants: "120+ applicants",
-    matchScore: 72,
-    matchLabel: "GOOD MATCH",
-    connection: null,
-  },
-  {
-    id: 3,
-    title: "Software Engineer Intern",
-    company: "CloudBase",
-    industry: "Cloud Infrastructure · Startup",
-    location: "Ottawa, ON",
-    workMode: "Onsite",
-    type: "Internship",
-    level: "Intern",
-    salary: "$22/hr - $28/hr",
-    posted: "8 hours ago",
-    applicants: "30 applicants",
-    matchScore: 85,
-    matchLabel: "STRONG MATCH",
-    connection: "2 former colleagues work here",
-  },
-  {
-    id: 4,
-    title: "React Developer",
-    company: "FinEdge",
-    industry: "Fintech · Public Company",
-    location: "Montreal, QC",
-    workMode: "Hybrid",
-    type: "Full-time",
-    level: "Senior",
-    salary: "CA$110K - CA$140K/yr",
-    posted: "12 hours ago",
-    applicants: "200+ applicants",
-    matchScore: 58,
-    matchLabel: "FAIR MATCH",
-    connection: null,
-  },
-];
+const API_BASE = "";
 
-const FILTERS = [
-  { label: "Canada", active: true },
-  { label: "Full Stack Engineer", count: 4, active: true },
-  { label: "Remote", count: 2, active: true },
-  { label: "Full-time", count: 2, active: true },
-];
+interface Job {
+  id: number;
+  title: string;
+  company: string;
+  location: string;
+  url: string;
+  description: string;
+  match_score: number;
+  match_summary: string;
+  salary_range: string;
+  company_size: string;
+  status: string;
+  easy_apply: boolean;
+  ats_type: string;
+  scraped_at: string;
+}
 
-const TABS = [
-  { label: "Recommended", count: null },
-  { label: "Liked", count: 0 },
-  { label: "Applied", count: 12 },
-  { label: "External", count: 3 },
-];
+interface Stats {
+  total: number;
+  applied: number;
+  new: number;
+}
 
-function MatchBadge({ score, label }: { score: number; label: string }) {
+function MatchBadge({ score }: { score: number }) {
+  const label = score >= 80 ? "STRONG MATCH" : score >= 60 ? "GOOD MATCH" : "FAIR MATCH";
   const color = score >= 80 ? "var(--accent)" : score >= 60 ? "var(--accent-muted)" : "var(--text-muted)";
   return (
     <div className="match-badge">
@@ -104,7 +49,35 @@ function MatchBadge({ score, label }: { score: number; label: string }) {
 }
 
 export default function Jobs() {
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [stats, setStats] = useState<Stats>({ total: 0, applied: 0, new: 0 });
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Recommended");
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`${API_BASE}/jobs?page_size=50`).then((r) => r.ok ? r.json() : []),
+      fetch(`${API_BASE}/jobs/stats`).then((r) => r.ok ? r.json() : { total: 0, applied: 0, new: 0 }),
+    ])
+      .then(([jobsData, statsData]) => {
+        setJobs(jobsData);
+        setStats(statsData);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const TABS = [
+    { label: "Recommended", count: null },
+    { label: "Applied", count: stats.applied },
+    { label: "New", count: stats.new },
+  ];
+
+  const filteredJobs = jobs.filter((j) => {
+    if (activeTab === "Applied") return j.status === "applied";
+    if (activeTab === "New") return j.status === "new";
+    return true;
+  });
 
   return (
     <div className="jobs-page">
@@ -123,69 +96,45 @@ export default function Jobs() {
               </button>
             ))}
           </div>
-          <div className="header-right">
-            <input type="text" placeholder="Search by title or company" className="search-input" />
-          </div>
-        </div>
-        <div className="filter-row">
-          {FILTERS.map((f) => (
-            <button key={f.label} className={`filter-pill ${f.active ? "active" : ""}`}>
-              {f.label}
-              {f.count && <span className="filter-count">+{f.count}</span>}
-              <span className="filter-arrow">▾</span>
-            </button>
-          ))}
-          <button className="filter-pill outline">Past 24 hours ▾</button>
-          <button className="filter-pill outline">Industry ▾</button>
-          <button className="filter-pill accent">••• All Filters</button>
         </div>
       </header>
 
       <div className="jobs-content">
         <div className="jobs-list">
-          {MOCK_JOBS.map((job) => (
+          {loading && <p className="loading-text">Loading jobs...</p>}
+          {!loading && filteredJobs.length === 0 && (
+            <p className="empty-text">No jobs found. Start the scraper or check your backend.</p>
+          )}
+          {filteredJobs.map((job) => (
             <div key={job.id} className="job-card">
               <div className="job-card-body">
-                <div className="job-card-top">
-                  <span className="job-posted">{job.posted}</span>
-                  {job.connection && <span className="job-connection">{job.connection}</span>}
-                </div>
                 <h2 className="job-title">{job.title}</h2>
-                <p className="job-company">{job.company} / <span>{job.industry}</span></p>
+                <p className="job-company">{job.company}</p>
                 <div className="job-meta">
                   <span>{job.location}</span>
-                  <span>{job.type}</span>
-                  <span>{job.salary}</span>
+                  {job.salary_range && <span>{job.salary_range}</span>}
+                  {job.ats_type && <span className="ats-badge">{job.ats_type}</span>}
                 </div>
-                <div className="job-meta secondary">
-                  <span>{job.workMode}</span>
-                  <span>{job.level}</span>
-                </div>
+                {job.match_summary && (
+                  <p className="job-summary">{job.match_summary}</p>
+                )}
                 <div className="job-footer">
-                  <span className="job-applicants">{job.applicants}</span>
-                  <div className="job-actions">
-                    <button className="btn-outline">Ask AI</button>
-                    <button className="btn-primary">Apply Now</button>
-                  </div>
+                  <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-outline">
+                    View
+                  </a>
                 </div>
               </div>
-              <MatchBadge score={job.matchScore} label={job.matchLabel} />
+              {job.match_score > 0 && <MatchBadge score={job.match_score} />}
             </div>
           ))}
         </div>
 
         <aside className="jobs-sidebar">
           <div className="sidebar-card">
-            <div className="user-badge">F</div>
-            <span className="user-name">Fahad</span>
-            <span className="plan-badge">Pro Plan</span>
-          </div>
-          <div className="sidebar-card">
-            <h3>Your Saved Filters</h3>
-            <div className="saved-filter">
-              <div className="saved-filter-bar"></div>
-              <span>Full Stack Engineer + 2 roles, CA</span>
-            </div>
+            <h3>Stats</h3>
+            <div className="stat-row"><span>Total Jobs</span><strong>{stats.total}</strong></div>
+            <div className="stat-row"><span>Applied</span><strong>{stats.applied}</strong></div>
+            <div className="stat-row"><span>New</span><strong>{stats.new}</strong></div>
           </div>
         </aside>
       </div>
