@@ -152,11 +152,13 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{job_id}/fetch-details")
 async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
-    """Fetch job description and actual apply URL by following the jobright redirect.
+    """Fetch job description from the jobright page on-demand.
 
-    This is called on-demand when a user clicks a job card.
-    Caches the result in the database so subsequent calls are instant.
+    Scrapes the schema.org structured data from the jobright page to get
+    the full job description. Caches the result in the database.
     """
+    import re
+    import json
     import httpx
 
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
@@ -172,23 +174,56 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
             "company_logo": job.company_logo,
         }
 
-    # Follow the jobright redirect to get the actual job posting URL
+    # Fetch the jobright page and extract structured data
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
-            response = await client.head(job.url)
-            actual_url = str(response.url)
+            response = await client.get(job.url)
+            text = response.text
 
-            # If we got a different URL (redirect resolved), store it
-            if actual_url != job.url and "jobright.ai" not in actual_url:
-                # Update the job URL to the actual company posting
-                job.url = actual_url
-                db.commit()
+        # Extract schema.org JobPosting description
+        schema_match = re.search(
+            r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+            text, re.DOTALL
+        )
+        if schema_match:
+            try:
+                schema_data = json.loads(schema_match.group(1))
+                if schema_data.get("@type") == "JobPosting":
+                    desc_html = schema_data.get("description", "")
+                    # Strip HTML tags for plain text display
+                    desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                    desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                    if desc_text:
+                        job.description = desc_text
+                        db.commit()
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        # Try to get company logo from __NEXT_DATA__
+        if not job.company_logo:
+            next_match = re.search(
+                r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                text, re.DOTALL
+            )
+            if next_match:
+                try:
+                    next_data = json.loads(next_match.group(1))
+                    job_result = (next_data.get("props", {})
+                                  .get("pageProps", {})
+                                  .get("dataSource", {})
+                                  .get("jobResult", {}))
+                    logo = job_result.get("jdLogo", "")
+                    if logo and logo.startswith("http"):
+                        job.company_logo = logo
+                        db.commit()
+                except (json.JSONDecodeError, KeyError):
+                    pass
 
         return {
             "id": job.id,
             "description": job.description or "",
             "apply_url": job.url,
-            "company_logo": job.company_logo,
+            "company_logo": job.company_logo or "",
         }
     except Exception as e:
         logger.warning(f"Failed to fetch details for job {job_id}: {e}")
@@ -196,7 +231,7 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
             "id": job.id,
             "description": job.description or "",
             "apply_url": job.url,
-            "company_logo": job.company_logo,
+            "company_logo": job.company_logo or "",
         }
 
 

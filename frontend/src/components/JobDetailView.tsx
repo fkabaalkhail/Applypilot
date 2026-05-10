@@ -88,6 +88,7 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [error, setError] = useState("");
   const [applyUrl, setApplyUrl] = useState(job.url);
   const [description, setDescription] = useState(job.description || "");
+  const [companyLogo, setCompanyLogo] = useState(job.company_logo || "");
   const [fetchingDetails, setFetchingDetails] = useState(false);
 
   useEffect(() => {
@@ -116,6 +117,7 @@ export default function JobDetailView({ job, onClose }: Props) {
         const data = await res.json();
         if (data.apply_url) setApplyUrl(data.apply_url);
         if (data.description) setDescription(data.description);
+        if (data.company_logo) setCompanyLogo(data.company_logo);
       }
     } catch {
       // Silently fail — keep original URL
@@ -164,8 +166,8 @@ export default function JobDetailView({ job, onClose }: Props) {
         <div className="job-detail-company-row">
           {(() => {
             const cleaned = job.company.toLowerCase().replace(/[^a-z0-9]/g, "");
-            const logoUrl = job.company_logo && job.company_logo.startsWith("http")
-              ? job.company_logo
+            const logoUrl = companyLogo && companyLogo.startsWith("http")
+              ? companyLogo
               : cleaned.length >= 2 ? `https://logo.clearbit.com/${cleaned}.com` : null;
             return logoUrl ? (
               <img
