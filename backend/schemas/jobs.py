@@ -31,6 +31,22 @@ class ScrapedJobOut(BaseModel):
     company_logo: str = ""
     ats_type: str = ""
 
+    # Multi-source and match breakdown fields
+    source_platform: str = "linkedin"
+    saved: int = 0
+    experience_score: int = 0
+    skill_score: int = 0
+    industry_score: int = 0
+    match_label: str = ""
+    applicant_count: Optional[int] = None
+
+    # Job aggregator classification fields
+    work_type: str = "onsite"
+    role_category: str = ""
+    country: str = ""
+    experience_level: str = ""
+    posted_date: Optional[datetime.datetime] = None
+
     model_config = {"from_attributes": True}
 
 

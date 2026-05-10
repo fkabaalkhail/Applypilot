@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
+import JobDetailView from "../components/JobDetailView";
 
 const API_BASE = "";
 
@@ -11,34 +13,93 @@ interface Job {
   description: string;
   match_score: number;
   match_summary: string;
+  match_label: string;
   salary_range: string;
   company_size: string;
   status: string;
   easy_apply: boolean;
   ats_type: string;
   scraped_at: string;
+  source_platform: string;
+  saved: boolean;
+  experience_score: number;
+  skill_score: number;
+  industry_score: number;
+  applicant_count: number | null;
+  company_logo: string;
+  work_type: string;
+  role_category: string;
+  country: string;
+  experience_level: string;
+  posted_date: string | null;
 }
 
 interface Stats {
   total: number;
   applied: number;
   new: number;
+  avg_match_score: number;
+  saved_count: number;
+}
+
+interface Filters {
+  source: string;
+  min_match_score: number;
+  location: string;
+  experience_level: string;
+}
+
+// Company logo colors based on first letter
+const LOGO_COLORS: Record<string, string> = {
+  A: "#FF6B35", B: "#4ECDC4", C: "#45B7D1", D: "#96CEB4",
+  E: "#FFEAA7", F: "#2D3436", G: "#4285F4", H: "#E17055",
+  I: "#6C5CE7", J: "#00B894", K: "#FDCB6E", L: "#E84393",
+  M: "#0984E3", N: "#E50914", O: "#FF9F43", P: "#6C5CE7",
+  Q: "#00CEC9", R: "#D63031", S: "#C0392B", T: "#2ECC71",
+  U: "#3498DB", V: "#1ABC9C", W: "#9B59B6", X: "#34495E",
+  Y: "#F39C12", Z: "#1ABC9C",
+};
+
+function getLogoColor(company: string): string {
+  const letter = company.charAt(0).toUpperCase();
+  return LOGO_COLORS[letter] || "#6B7280";
+}
+
+function timeAgo(dateStr: string): string {
+  if (!dateStr) return "";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const hours = Math.floor(diff / 3600000);
+  if (hours < 1) return "Just now";
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
 }
 
 function MatchBadge({ score }: { score: number }) {
   const label = score >= 80 ? "STRONG MATCH" : score >= 60 ? "GOOD MATCH" : "FAIR MATCH";
-  const color = score >= 80 ? "var(--accent)" : score >= 60 ? "var(--accent-muted)" : "var(--text-muted)";
+  const bgClass = score >= 60 ? "strong" : "fair";
+  const circumference = 2 * Math.PI * 40;
+  const dashOffset = circumference - (score / 100) * circumference;
+
   return (
-    <div className="match-badge">
+    <div className={`match-badge ${bgClass}`}>
       <div className="match-circle">
-        <svg viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="42" fill="none" stroke="var(--bg-dark)" strokeWidth="6" />
+        <svg viewBox="0 0 100 100" style={{ transform: "rotate(-90deg)" }}>
           <circle
-            cx="50" cy="50" r="42"
-            fill="none" stroke={color} strokeWidth="6"
-            strokeDasharray={`${score * 2.64} 264`}
+            cx="50" cy="50" r="40"
+            fill="none"
+            stroke="rgba(255,255,255,0.1)"
+            strokeWidth="7"
+          />
+          <circle
+            cx="50" cy="50" r="40"
+            fill="none"
+            stroke="#ea580c"
+            strokeWidth="7"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
             strokeLinecap="round"
-            transform="rotate(-90 50 50)"
           />
         </svg>
         <span className="match-number">{score}<small>%</small></span>
@@ -48,27 +109,120 @@ function MatchBadge({ score }: { score: number }) {
   );
 }
 
+const FILTER_STORAGE_KEY = "job-aggregator-filters";
+
 export default function Jobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [stats, setStats] = useState<Stats>({ total: 0, applied: 0, new: 0 });
+  const [stats, setStats] = useState<Stats>({ total: 0, applied: 0, new: 0, avg_match_score: 0, saved_count: 0 });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Recommended");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const pageSize = 50;
+  const [search, setSearch] = useState("");
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+
+  const [filters, setFilters] = useState<Filters>({
+    source: "",
+    min_match_score: 0,
+    location: "",
+    experience_level: "",
+  });
+  const [showFilters, setShowFilters] = useState(false);
+
+  const [aggFilters, setAggFilters] = useState<JobFilters>(() => {
+    try {
+      const saved = localStorage.getItem(FILTER_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          country: parsed.country || "",
+          work_type: Array.isArray(parsed.work_type) ? parsed.work_type : [],
+          role_category: Array.isArray(parsed.role_category) ? parsed.role_category : [],
+          experience_level: parsed.experience_level || "",
+        };
+      }
+    } catch {
+      // Ignore parse errors, use defaults
+    }
+    return { country: "", work_type: [], role_category: [], experience_level: "" };
+  });
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${API_BASE}/jobs?page_size=50`).then((r) => r.ok ? r.json() : []),
-      fetch(`${API_BASE}/jobs/stats`).then((r) => r.ok ? r.json() : { total: 0, applied: 0, new: 0 }),
-    ])
-      .then(([jobsData, statsData]) => {
-        setJobs(jobsData);
-        setStats(statsData);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+    try {
+      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(aggFilters));
+    } catch {
+      // Ignore storage errors (e.g., quota exceeded)
+    }
+  }, [aggFilters]);
+
+  useEffect(() => {
+    fetchJobs();
+    fetchStats();
+  }, [page, activeTab, filters, aggFilters]);
+
+  async function fetchJobs() {
+    setLoading(true);
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("page_size", String(pageSize));
+
+    if (activeTab === "Saved" || activeTab === "Liked") params.set("saved", "1");
+    if (filters.source) params.set("source", filters.source);
+    if (filters.min_match_score > 0) params.set("min_score", String(filters.min_match_score));
+    if (filters.location) params.set("location", filters.location);
+
+    if (aggFilters.country) params.set("country", aggFilters.country);
+    if (aggFilters.work_type.length > 0) params.set("work_type", aggFilters.work_type.join(","));
+    if (aggFilters.role_category.length > 0) params.set("role_category", aggFilters.role_category.join(","));
+    if (aggFilters.experience_level) params.set("experience_level", aggFilters.experience_level);
+
+    try {
+      const res = await fetch(`${API_BASE}/jobs?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setJobs(data);
+        setHasMore(data.length === pageSize);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchStats() {
+    try {
+      const res = await fetch(`${API_BASE}/jobs/stats`);
+      if (res.ok) {
+        setStats(await res.json());
+      }
+    } catch {
+      // Silently fail
+    }
+  }
+
+  async function toggleSave(job: Job) {
+    const endpoint = job.saved
+      ? `${API_BASE}/jobs/${job.id}/unsave`
+      : `${API_BASE}/jobs/${job.id}/save`;
+
+    try {
+      const res = await fetch(endpoint, { method: "POST" });
+      if (res.ok) {
+        setJobs((prev) =>
+          prev.map((j) => (j.id === job.id ? { ...j, saved: !j.saved } : j))
+        );
+        fetchStats();
+      }
+    } catch {
+      // Silently fail
+    }
+  }
 
   const TABS = [
     { label: "Recommended", count: null },
+    { label: "Liked", count: stats.saved_count },
     { label: "Applied", count: stats.applied },
     { label: "New", count: stats.new },
   ];
@@ -76,68 +230,264 @@ export default function Jobs() {
   const filteredJobs = jobs.filter((j) => {
     if (activeTab === "Applied") return j.status === "applied";
     if (activeTab === "New") return j.status === "new";
+    if (activeTab === "Liked") return j.saved;
+    if (search) {
+      const q = search.toLowerCase();
+      return j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q);
+    }
     return true;
   });
 
   return (
     <div className="jobs-page">
+      {/* Header Bar */}
       <header className="jobs-header">
-        <div className="jobs-title-row">
-          <h1>JOBS</h1>
-          <div className="jobs-tabs">
-            {TABS.map((tab) => (
-              <button
-                key={tab.label}
-                className={`tab-btn ${activeTab === tab.label ? "active" : ""}`}
-                onClick={() => setActiveTab(tab.label)}
-              >
-                {tab.label}
-                {tab.count !== null && <span className="tab-count">{tab.count}</span>}
-              </button>
-            ))}
+        <h1>JOBS</h1>
+        <div className="jobs-tabs">
+          {TABS.map((tab) => (
+            <button
+              key={tab.label}
+              className={`tab-btn ${activeTab === tab.label ? "active" : ""}`}
+              onClick={() => { setActiveTab(tab.label); setPage(1); }}
+            >
+              {tab.label}
+              {tab.count !== null && tab.count > 0 && (
+                <span className="tab-count">{tab.count}</span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="header-right">
+          <div className="search-wrapper">
+            <i className="fa-solid fa-magnifying-glass"></i>
+            <input
+              type="text"
+              placeholder="Search by title or company"
+              className="search-input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
         </div>
       </header>
 
-      <div className="jobs-content">
-        <div className="jobs-list">
-          {loading && <p className="loading-text">Loading jobs...</p>}
-          {!loading && filteredJobs.length === 0 && (
-            <p className="empty-text">No jobs found. Start the scraper or check your backend.</p>
-          )}
-          {filteredJobs.map((job) => (
-            <div key={job.id} className="job-card">
-              <div className="job-card-body">
-                <h2 className="job-title">{job.title}</h2>
-                <p className="job-company">{job.company}</p>
-                <div className="job-meta">
-                  <span>{job.location}</span>
-                  {job.salary_range && <span>{job.salary_range}</span>}
-                  {job.ats_type && <span className="ats-badge">{job.ats_type}</span>}
-                </div>
-                {job.match_summary && (
-                  <p className="job-summary">{job.match_summary}</p>
+      {/* Filter Bar */}
+      <div className="filter-bar">
+        <button
+          className={`filter-pill ${filters.source === "linkedin" ? "active" : ""}`}
+          onClick={() => setFilters({ ...filters, source: filters.source === "linkedin" ? "" : "linkedin" })}
+        >
+          <i className="fa-brands fa-linkedin"></i> LinkedIn
+        </button>
+        <button
+          className={`filter-pill ${filters.source === "github" ? "active" : ""}`}
+          onClick={() => setFilters({ ...filters, source: filters.source === "github" ? "" : "github" })}
+        >
+          <i className="fa-brands fa-github"></i> GitHub
+        </button>
+        <button
+          className={`filter-pill ${filters.min_match_score === 80 ? "active" : ""}`}
+          onClick={() => setFilters({ ...filters, min_match_score: filters.min_match_score === 80 ? 0 : 80 })}
+        >
+          <i className="fa-solid fa-fire"></i> 80%+ Match
+        </button>
+        <button
+          className={`filter-pill ${filters.min_match_score === 60 ? "active" : ""}`}
+          onClick={() => setFilters({ ...filters, min_match_score: filters.min_match_score === 60 ? 0 : 60 })}
+        >
+          <i className="fa-solid fa-chart-simple"></i> 60%+ Match
+        </button>
+        <button
+          className="filter-pill all-filters"
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          <i className="fa-solid fa-sliders"></i> All Filters
+        </button>
+        <span className="filter-sort">
+          <i className="fa-solid fa-arrow-down-wide-short"></i> Recommended
+        </span>
+      </div>
+
+      {/* Expanded Filters */}
+      {showFilters && (
+        <div className="filters-expanded">
+          <input
+            type="text"
+            value={filters.location}
+            onChange={(e) => setFilters({ ...filters, location: e.target.value })}
+            placeholder="Filter by location..."
+            className="filter-input"
+          />
+          <select
+            value={filters.experience_level}
+            onChange={(e) => setFilters({ ...filters, experience_level: e.target.value })}
+            className="filter-select"
+          >
+            <option value="">Any Level</option>
+            <option value="entry">Entry Level</option>
+            <option value="mid">Mid Level</option>
+            <option value="senior">Senior</option>
+          </select>
+        </div>
+      )}
+
+      {/* Aggregator Filter Bar */}
+      <JobFilterBar
+        filters={aggFilters}
+        onChange={(newFilters) => { setAggFilters(newFilters); setPage(1); }}
+        totalCount={stats.total}
+      />
+
+      {/* Job Feed */}
+      <div className="jobs-feed">
+        {loading && <p className="loading-text">Loading jobs...</p>}
+        {!loading && filteredJobs.length === 0 && (
+          <p className="empty-text">No jobs found. Start the scraper or adjust your filters.</p>
+        )}
+
+        {filteredJobs.map((job) => (
+          <div key={job.id} className="job-card" onClick={() => setSelectedJob(job)} style={{ cursor: "pointer" }}>
+            <div className="job-card-body">
+              {/* Header: Logo + Info + Bookmark */}
+              <div className="job-card-header">
+                {job.company_logo ? (
+                  <img
+                    src={job.company_logo}
+                    alt={`${job.company} logo`}
+                    className="company-logo company-logo-img"
+                  />
+                ) : (
+                  <div
+                    className="company-logo"
+                    style={{ backgroundColor: getLogoColor(job.company) }}
+                  >
+                    {job.company.charAt(0).toUpperCase()}
+                  </div>
                 )}
-                <div className="job-footer">
-                  <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-outline">
-                    View
+                <div className="job-card-info">
+                  <div className="job-card-badges">
+                    <span className="badge-time">
+                      <i className="fa-regular fa-clock"></i> {timeAgo(job.scraped_at)}
+                    </span>
+                    {job.source_platform && (
+                      <span className="badge-source">
+                        {job.source_platform === "github" ? (
+                          <><i className="fa-brands fa-github"></i> GitHub</>
+                        ) : (
+                          <><i className="fa-brands fa-linkedin"></i> {job.source_platform}</>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="job-title">{job.title}</h2>
+                  <p className="job-company">
+                    {job.company}
+                    <span className="company-meta"> · {job.company_size || "Technology"}</span>
+                  </p>
+                </div>
+                <button
+                  className={`btn-bookmark ${job.saved ? "saved" : ""}`}
+                  onClick={(e) => { e.stopPropagation(); toggleSave(job); }}
+                  aria-label={job.saved ? "Unsave job" : "Save job"}
+                >
+                  <i className={job.saved ? "fa-solid fa-bookmark" : "fa-regular fa-bookmark"}></i>
+                </button>
+              </div>
+
+              {/* Details Grid */}
+              <div className="job-details-grid">
+                <div className="job-detail-item">
+                  <i className="fa-solid fa-location-dot"></i>
+                  <span>{job.location || "Remote"}</span>
+                </div>
+                <div className="job-detail-item">
+                  <i className="fa-solid fa-briefcase"></i>
+                  <span>Full-time</span>
+                </div>
+                <div className="job-detail-item">
+                  <i className="fa-solid fa-building"></i>
+                  <span>{job.easy_apply ? "Easy Apply" : "External"}</span>
+                </div>
+                <div className="job-detail-item">
+                  <i className="fa-solid fa-layer-group"></i>
+                  <span>{job.match_label || "Mid Level"}</span>
+                </div>
+                {job.salary_range && (
+                  <div className="job-detail-item">
+                    <i className="fa-solid fa-dollar-sign"></i>
+                    <span className="salary">{job.salary_range}</span>
+                  </div>
+                )}
+                {job.experience_score > 0 && (
+                  <div className="job-detail-item">
+                    <i className="fa-solid fa-star"></i>
+                    <span>{job.experience_score}+ yrs exp</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="job-card-footer" onClick={(e) => e.stopPropagation()}>
+                <span className="applicant-text">
+                  {job.applicant_count
+                    ? <><i className="fa-solid fa-users"></i> {job.applicant_count}+ applicants</>
+                    : ""}
+                </span>
+                <div className="job-actions">
+                  <button className="btn-icon" title="Not interested">
+                    <i className="fa-solid fa-thumbs-down"></i>
+                  </button>
+                  <button className="btn-icon" title="Share">
+                    <i className="fa-solid fa-share-nodes"></i>
+                  </button>
+                  <a
+                    href={job.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-outline"
+                  >
+                    ASK ORION
                   </a>
+                  <button className="btn-apply">APPLY NOW</button>
                 </div>
               </div>
-              {job.match_score > 0 && <MatchBadge score={job.match_score} />}
             </div>
-          ))}
-        </div>
 
-        <aside className="jobs-sidebar">
-          <div className="sidebar-card">
-            <h3>Stats</h3>
-            <div className="stat-row"><span>Total Jobs</span><strong>{stats.total}</strong></div>
-            <div className="stat-row"><span>Applied</span><strong>{stats.applied}</strong></div>
-            <div className="stat-row"><span>New</span><strong>{stats.new}</strong></div>
+            {/* Match Score Panel */}
+            {job.match_score > 0 && <MatchBadge score={job.match_score} />}
           </div>
-        </aside>
+        ))}
+
+        {/* Pagination */}
+        {!loading && filteredJobs.length > 0 && (
+          <div className="pagination">
+            <button
+              className="btn-outline"
+              disabled={page === 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <i className="fa-solid fa-chevron-left"></i> Previous
+            </button>
+            <span className="page-indicator">Page {page}</span>
+            <button
+              className="btn-outline"
+              disabled={!hasMore}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next <i className="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Job Detail Panel */}
+      {selectedJob && (
+        <div className="job-detail-overlay" onClick={() => setSelectedJob(null)}>
+          <div className="job-detail-panel" onClick={(e) => e.stopPropagation()}>
+            <JobDetailView job={selectedJob} onClose={() => setSelectedJob(null)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

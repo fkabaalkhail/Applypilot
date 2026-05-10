@@ -81,6 +81,12 @@ class ScrapedJob(Base):
     github_source_id = Column(Integer, nullable=True)  # FK to github_sources
     last_viewed_at = Column(DateTime, nullable=True)
 
+    # Job aggregator classification fields
+    work_type = Column(String, default="onsite")  # remote, hybrid, onsite
+    role_category = Column(String, default="")  # e.g. "Software Engineering"
+    country = Column(String, default="")  # "US" or "CA"
+    experience_level = Column(String, default="")  # "new_grad" or "internship"
+
 
 class PendingQuestion(Base):
     """A question the bot got stuck on during an application. User must answer."""
@@ -286,6 +292,10 @@ class GitHubSource(Base):
     status = Column(String, default="active")  # active, error, disabled
     error_message = Column(String, default="")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    # Aggregator classification defaults
+    role_category = Column(String, default="")  # default category for jobs from this source
+    experience_level = Column(String, default="")  # "new_grad" or "internship"
 
 
 class TailoredResume(Base):
