@@ -2,6 +2,7 @@
 SQLAlchemy ORM models for the Auto Apply Bot.
 
 Models:
+    - User: authenticated user synced from Clerk
     - ScrapedJob: jobs found by the scraper, shown on dashboard
     - ApplicationRecord: tracked job applications
     - UserSettings: all client config (creds, profile, filters, prefilled answers)
@@ -17,6 +18,25 @@ from sqlalchemy import (
 )
 from backend.db.database import Base
 
+
+# ─── User (synced from Clerk) ───────────────────────────────────────────────
+
+class User(Base):
+    """Authenticated user synced from Clerk. Links all user-specific data."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    clerk_user_id = Column(String, unique=True, nullable=False, index=True)
+    email = Column(String, nullable=True)
+    first_name = Column(String, default="")
+    last_name = Column(String, default="")
+    profile_image_url = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                        onupdate=datetime.datetime.utcnow)
+
+
+# ─── Enums ───────────────────────────────────────────────────────────────────
 
 class JobStatus(str, enum.Enum):
     """Status of a scraped job listing."""
@@ -38,11 +58,14 @@ class ApplicationStatus(str, enum.Enum):
     OFFER = "offer"
 
 
+# ─── Jobs ────────────────────────────────────────────────────────────────────
+
 class ScrapedJob(Base):
     """A job listing found by the scraper. Shown on dashboard for user to act on."""
     __tablename__ = "scraped_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=True, index=True)  # clerk_user_id (nullable for migration)
     platform = Column(String, default="linkedin")
     title = Column(String, nullable=False)
     company = Column(String, nullable=False)
@@ -52,40 +75,40 @@ class ScrapedJob(Base):
     easy_apply = Column(Integer, default=1)
     status = Column(Enum(JobStatus, values_callable=lambda x: [e.value for e in x]), default=JobStatus.NEW)
     scraped_at = Column(DateTime, default=datetime.datetime.utcnow)
-    posted_date = Column(DateTime, nullable=True)  # When the job was posted on LinkedIn
+    posted_date = Column(DateTime, nullable=True)
 
-    # AI match analysis (populated after scrape via Gemini)
-    match_score = Column(Integer, default=0)  # 0-100
+    # AI match analysis
+    match_score = Column(Integer, default=0)
     requirements_met = Column(Integer, default=0)
     requirements_total = Column(Integer, default=0)
-    match_summary = Column(Text, default="")  # AI-generated summary
-    requirements_detail = Column(JSON, default=list)  # [{req: str, met: bool}]
+    match_summary = Column(Text, default="")
+    requirements_detail = Column(JSON, default=list)
     salary_range = Column(String, default="")
     company_size = Column(String, default="")
     company_description = Column(Text, default="")
     company_logo = Column(String, default="")
-    ats_type = Column(String, default="")  # easy_apply, greenhouse, lever, workday, other
+    ats_type = Column(String, default="")
 
     # Smart filter fields
-    experience_years_required = Column(Integer, nullable=True)  # AI-extracted from description
+    experience_years_required = Column(Integer, nullable=True)
     skip_reason = Column(String, default="")
 
     # Multi-source tracking & dashboard enhancements
-    source_platform = Column(String, default="linkedin")  # linkedin, github, other
-    saved = Column(Integer, default=0)  # 1 = user saved this job
-    experience_score = Column(Integer, default=0)  # 0-100 breakdown
-    skill_score = Column(Integer, default=0)  # 0-100 breakdown
-    industry_score = Column(Integer, default=0)  # 0-100 breakdown
-    match_label = Column(String, default="")  # STRONG/GOOD/FAIR MATCH
+    source_platform = Column(String, default="linkedin")
+    saved = Column(Integer, default=0)
+    experience_score = Column(Integer, default=0)
+    skill_score = Column(Integer, default=0)
+    industry_score = Column(Integer, default=0)
+    match_label = Column(String, default="")
     applicant_count = Column(Integer, nullable=True)
-    github_source_id = Column(Integer, nullable=True)  # FK to github_sources
+    github_source_id = Column(Integer, nullable=True)
     last_viewed_at = Column(DateTime, nullable=True)
 
     # Job aggregator classification fields
-    work_type = Column(String, default="onsite")  # remote, hybrid, onsite
-    role_category = Column(String, default="")  # e.g. "Software Engineering"
-    country = Column(String, default="")  # "US" or "CA"
-    experience_level = Column(String, default="")  # "new_grad" or "internship"
+    work_type = Column(String, default="onsite")
+    role_category = Column(String, default="")
+    country = Column(String, default="")
+    experience_level = Column(String, default="")
 
 
 class PendingQuestion(Base):
@@ -93,12 +116,12 @@ class PendingQuestion(Base):
     __tablename__ = "pending_questions"
 
     id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, nullable=False)  # FK to scraped_jobs
+    job_id = Column(Integer, nullable=False)
     task_id = Column(String, nullable=True)
     question = Column(Text, nullable=False)
-    field_type = Column(String, default="text")  # text, select, radio, checkbox
-    options = Column(JSON, default=list)  # for select/radio: list of option strings
-    answer = Column(Text, nullable=True)  # user's answer, null until answered
+    field_type = Column(String, default="text")
+    options = Column(JSON, default=list)
+    answer = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -107,13 +130,14 @@ class ResumeProfileDB(Base):
     __tablename__ = "resume_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, default="Untitled Resume")  # user-given name
+    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    name = Column(String, default="Untitled Resume")
     target_job_title = Column(String, nullable=True)
-    is_primary = Column(Integer, default=0)  # 0 or 1
-    status = Column(String, default="analyzed")  # "analyzed" | "pending"
+    is_primary = Column(Integer, default=0)
+    status = Column(String, default="analyzed")
 
     # Personal info
-    profile_name = Column(String, nullable=True)  # person's name from resume
+    profile_name = Column(String, nullable=True)
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     location = Column(String, nullable=True)
@@ -122,15 +146,15 @@ class ResumeProfileDB(Base):
     other_link = Column(String, nullable=True)
 
     # Structured sections (JSON)
-    skills = Column(JSON, default=list)          # flat list for compat
-    experience = Column(JSON, default=list)      # list of ExperienceItem dicts
-    education = Column(JSON, default=list)       # list of EducationItem dicts
-    projects = Column(JSON, default=list)        # list of ProjectItem dicts
-    technologies = Column(JSON, default=dict)    # {category: [skills]}
+    skills = Column(JSON, default=list)
+    experience = Column(JSON, default=list)
+    education = Column(JSON, default=list)
+    projects = Column(JSON, default=list)
+    technologies = Column(JSON, default=dict)
 
     # Raw text and analysis
     raw_text = Column(Text, nullable=True)
-    analysis_report = Column(JSON, nullable=True)  # AnalysisReport dict
+    analysis_report = Column(JSON, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -143,6 +167,7 @@ class ApplicationRecord(Base):
     __tablename__ = "application_records"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
     platform = Column(String, nullable=False, default="linkedin")
     company = Column(String, nullable=False)
     role = Column(String, nullable=False)
@@ -150,25 +175,23 @@ class ApplicationRecord(Base):
     status = Column(Enum(ApplicationStatus, values_callable=lambda x: [e.value for e in x]), default=ApplicationStatus.APPLIED)
     applied_at = Column(DateTime, default=datetime.datetime.utcnow)
     notes = Column(Text, nullable=True)
-    resume_version = Column(String, default="original")  # original or tailored
-    job_id = Column(Integer, nullable=True)  # FK to scraped_jobs
+    resume_version = Column(String, default="original")
+    job_id = Column(Integer, nullable=True)
 
     # Enhanced tracking fields
-    screenshot_path = Column(String, default="")          # Pre-submit screenshot
-    failure_screenshot_path = Column(String, default="")   # Failure debug screenshot
-    cover_letter_text = Column(Text, default="")           # Generated cover letter
-    questions_answered = Column(JSON, default=list)        # [{question, answer, source}]
+    screenshot_path = Column(String, default="")
+    failure_screenshot_path = Column(String, default="")
+    cover_letter_text = Column(Text, default="")
+    questions_answered = Column(JSON, default=list)
     ats_type = Column(String, default="")
 
 
 class UserSettings(Base):
-    """
-    All client-configurable settings stored in DB.
-    Includes prefilled answers for common application questions.
-    """
+    """All client-configurable settings stored in DB."""
     __tablename__ = "user_settings"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=True, unique=True, index=True)  # clerk_user_id
 
     # LinkedIn credentials
     linkedin_email = Column(String, default="")
@@ -200,13 +223,12 @@ class UserSettings(Base):
     work_type = Column(String, default="")
     regions = Column(String, default="")
 
-    # Prefilled answers for common application questions (JSON dict)
-    # e.g. {"Are you a veteran?": "No", "Citizenship": "US Citizen", ...}
+    # Prefilled answers
     prefilled_answers = Column(JSON, default=dict)
 
     # Smart filter settings
-    company_blacklist = Column(JSON, default=list)       # ["Company A", "Company B"]
-    keyword_blacklist = Column(JSON, default=list)       # ["unpaid", "intern only"]
+    company_blacklist = Column(JSON, default=list)
+    keyword_blacklist = Column(JSON, default=list)
     min_salary = Column(Integer, nullable=True)
     max_salary = Column(Integer, nullable=True)
     min_experience_years = Column(Integer, nullable=True)
@@ -216,7 +238,7 @@ class UserSettings(Base):
     autopilot_enabled = Column(Integer, default=0)
     daily_apply_limit = Column(Integer, default=50)
     weekly_apply_limit = Column(Integer, default=200)
-    apply_delay_min = Column(Float, default=30.0)        # Seconds between apps
+    apply_delay_min = Column(Float, default=30.0)
     apply_delay_max = Column(Float, default=120.0)
 
     # UX toggles
@@ -258,7 +280,7 @@ class ConnectionRequest(Base):
     company = Column(String, nullable=False)
     role_applied = Column(String, default="")
     message_sent = Column(Text, default="")
-    status = Column(String, default="sent")  # sent, accepted, pending
+    status = Column(String, default="sent")
     sent_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -274,7 +296,7 @@ class AutopilotRun(Base):
     total_skipped = Column(Integer, default=0)
     total_failed = Column(Integer, default=0)
     total_waiting = Column(Integer, default=0)
-    status = Column(String, default="running")  # running, stopped, limit_reached
+    status = Column(String, default="running")
 
 
 class GitHubSource(Base):
@@ -285,17 +307,17 @@ class GitHubSource(Base):
     repo_url = Column(String, nullable=False, unique=True)
     repo_owner = Column(String, nullable=False)
     repo_name = Column(String, nullable=False)
-    file_path = Column(String, default="README.md")  # path to markdown file
+    file_path = Column(String, default="README.md")
     poll_interval_minutes = Column(Integer, default=60)
     last_polled_at = Column(DateTime, nullable=True)
-    last_commit_sha = Column(String, nullable=True)  # track changes
-    status = Column(String, default="active")  # active, error, disabled
+    last_commit_sha = Column(String, nullable=True)
+    status = Column(String, default="active")
     error_message = Column(String, default="")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     # Aggregator classification defaults
-    role_category = Column(String, default="")  # default category for jobs from this source
-    experience_level = Column(String, default="")  # "new_grad" or "internship"
+    role_category = Column(String, default="")
+    experience_level = Column(String, default="")
 
 
 class TailoredResume(Base):
@@ -303,11 +325,12 @@ class TailoredResume(Base):
     __tablename__ = "tailored_resumes"
 
     id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, nullable=False)  # FK to scraped_jobs
+    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    job_id = Column(Integer, nullable=False)
     original_text = Column(Text, nullable=False)
     tailored_text = Column(Text, nullable=False)
-    diff_summary = Column(Text, default="")  # human-readable diff
-    status = Column(String, default="draft")  # draft, accepted, rejected
+    diff_summary = Column(Text, default="")
+    status = Column(String, default="draft")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -321,6 +344,5 @@ class InsiderConnection(Base):
     title = Column(String, default="")
     linkedin_url = Column(String, default="")
     relationship_type = Column(String, default="beyond_network")
-    # beyond_network, previous_company, school
     source = Column(String, default="linkedin")
     discovered_at = Column(DateTime, default=datetime.datetime.utcnow)

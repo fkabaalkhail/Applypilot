@@ -218,8 +218,8 @@ export default function Landing() {
             <a href="#faq">FAQ</a>
           </div>
           <div className="landing-nav-actions">
-            <button className="btn-ghost" onClick={() => navigate("/app")}>Sign In</button>
-            <button className="btn-cta" onClick={() => navigate("/app")}>Get Started</button>
+            <button className="btn-ghost" onClick={() => navigate("/sign-in")}>Sign In</button>
+            <button className="btn-cta" onClick={() => navigate("/sign-up")}>Get Started</button>
           </div>
         </div>
       </nav>

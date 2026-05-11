@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { UserButton } from "@clerk/clerk-react";
 
 export default function App() {
   return (
@@ -31,6 +32,9 @@ export default function App() {
             <span className="nav-icon">⚙️</span>
             <span>Settings</span>
           </NavLink>
+          <div className="nav-item user-button-wrapper">
+            <UserButton afterSignOutUrl="/" />
+          </div>
         </div>
       </aside>
       <main className="main-content">
