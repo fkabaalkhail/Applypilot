@@ -1,40 +1,197 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import TypewriterText from "../components/ui/typewriter-text";
+import AnimatedSection, {
+  StaggerContainer,
+  StaggerItem,
+  FloatingElement,
+  AnimatedCounter,
+} from "../components/ui/animated-section";
 import "./Landing.css";
 
-function useScrollReveal() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
+const TESTIMONIALS = [
+  {
+    stars: 5,
+    text: "I went from applying to 5 jobs a day to 50+. Got 3 interviews in my first week. This tool is a game changer.",
+    name: "Sarah K.",
+    role: "Software Engineer → Google",
+    avatar: "S",
+    photo: "",
+  },
+  {
+    stars: 5,
+    text: "The AI-tailored resume feature alone is worth it. My response rate went from 2% to 15% overnight.",
+    name: "Marcus T.",
+    role: "Data Analyst → Amazon",
+    avatar: "M",
+    photo: "",
+  },
+  {
+    stars: 5,
+    text: "Saved me hours every day. The screening question answers are surprisingly accurate and personalized.",
+    name: "Wissam E.",
+    role: "Software Developer → Ottawa",
+    avatar: "W",
+    photo: "/Wissam_Elmasry_testimonial.jpg",
+  },
+  {
+    stars: 5,
+    text: "Applied to 200+ jobs in a week without lifting a finger. Landed two offers. Absolutely worth it.",
+    name: "James L.",
+    role: "Frontend Developer → Meta",
+    avatar: "J",
+    photo: "",
+  },
+  {
+    stars: 5,
+    text: "The cover letter generation is scarily good. Recruiters actually commented on how tailored my applications were.",
+    name: "Priya N.",
+    role: "UX Designer → Airbnb",
+    avatar: "P",
+    photo: "",
+  },
+];
+
+function TestimonialsCarousel() {
+  const [current, setCurrent] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const [direction, setDirection] = useState<"left" | "right">("right");
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentRef = useRef(current);
+  const animatingRef = useRef(animating);
+
+  // Keep refs in sync so the interval always sees latest values
+  useEffect(() => { currentRef.current = current; }, [current]);
+  useEffect(() => { animatingRef.current = animating; }, [animating]);
+
+  const goTo = (index: number, dir: "left" | "right" = "right") => {
+    if (animatingRef.current) return;
+    setDirection(dir);
+    setAnimating(true);
+    setTimeout(() => {
+      setCurrent(index);
+      setAnimating(false);
+    }, 350);
+  };
+
+  const prev = () => {
+    const idx = (currentRef.current - 1 + TESTIMONIALS.length) % TESTIMONIALS.length;
+    goTo(idx, "left");
+  };
+
+  const next = () => {
+    const idx = (currentRef.current + 1) % TESTIMONIALS.length;
+    goTo(idx, "right");
+  };
+
+  const startTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      const idx = (currentRef.current + 1) % TESTIMONIALS.length;
+      goTo(idx, "right");
+    }, 3000);
+  };
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.15 }
-    );
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
+    startTimer();
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
-  return { ref, visible };
+  const resetTimer = () => startTimer();
+
+  const t = TESTIMONIALS[current];
+
+  return (
+    <section className="testimonials-section">
+      <div className="testimonials-carousel-inner">
+        {/* Left: heading + controls */}
+        <div className="testimonials-left">
+          <span className="testimonials-badge">★ Trusted by job seekers</span>
+          <h2 className="testimonials-heading">Loved by the community</h2>
+          <p className="testimonials-sub">
+            Don't just take our word for it. See what job seekers have to say about ApplyPilot.
+          </p>
+          <div className="testimonials-controls">
+            <button
+              className="testimonials-arrow"
+              onClick={() => { prev(); resetTimer(); }}
+              aria-label="Previous"
+            >
+              ‹
+            </button>
+            <div className="testimonials-dots">
+              {TESTIMONIALS.map((_, i) => (
+                <button
+                  key={i}
+                  className={`testimonials-dot${i === current ? " active" : ""}`}
+                  onClick={() => { goTo(i, i > current ? "right" : "left"); resetTimer(); }}
+                  aria-label={`Go to testimonial ${i + 1}`}
+                />
+              ))}
+            </div>
+            <button
+              className="testimonials-arrow"
+              onClick={() => { next(); resetTimer(); }}
+              aria-label="Next"
+            >
+              ›
+            </button>
+          </div>
+        </div>
+
+        {/* Right: card stack */}
+        <div className="testimonials-right">
+          {/* Ghost cards behind for depth */}
+          <div className="testimonial-ghost testimonial-ghost-2" />
+          <div className="testimonial-ghost testimonial-ghost-1" />
+
+          {/* Active card */}
+          <div
+            className={`testimonial-card-carousel${animating ? ` slide-out-${direction}` : " slide-in"}`}
+          >
+            <div className="testimonial-stars">
+              {Array.from({ length: t.stars }).map((_, i) => (
+                <span key={i}>★</span>
+              ))}
+            </div>
+            <p className="testimonial-text">"{t.text}"</p>
+            <div className="testimonial-author">
+              <div className="testimonial-avatar">
+                {t.photo ? (
+                  <img
+                    src={t.photo}
+                    alt={t.name}
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      el.style.display = "none";
+                      const fallback = el.nextElementSibling as HTMLElement;
+                      if (fallback) fallback.style.display = "flex";
+                    }}
+                  />
+                ) : null}
+                <span
+                  className="testimonial-avatar-fallback"
+                  style={{ display: t.photo ? "none" : "flex" }}
+                >
+                  {t.avatar}
+                </span>
+              </div>
+              <div>
+                <div className="testimonial-name">{t.name}</div>
+                <div className="testimonial-role">{t.role}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default function Landing() {
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-
-  const revealStats = useScrollReveal();
-  const reveal1 = useScrollReveal();
-  const reveal2 = useScrollReveal();
-  const reveal3 = useScrollReveal();
-  const revealCompanies = useScrollReveal();
-  const revealPricing = useScrollReveal();
-  const revealFaq = useScrollReveal();
-  const revealBanner = useScrollReveal();
 
   const faqs = [
     { q: "How is Resumate different from other job platforms like LinkedIn?", a: "Resumate uses AI to automatically fill out applications for you, match you with jobs based on your real skills, and tailor your resume for each role — all running locally on your machine for maximum privacy." },
@@ -70,8 +227,17 @@ export default function Landing() {
       {/* Hero — Full viewport height */}
       <section className="hero">
         <div className="hero-bg"></div>
+        {/* Floating decorative orbs */}
+        <FloatingElement className="hero-orb hero-orb-1" duration={4} distance={15} />
+        <FloatingElement className="hero-orb hero-orb-2" duration={5} distance={12} />
+        <FloatingElement className="hero-orb hero-orb-3" duration={6} distance={8} />
         <div className="hero-content">
-          <div className="hero-left">
+          <motion.div
+            className="hero-left"
+            initial={{ opacity: 0, x: -80 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.9, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          >
             <div className="hero-mockup">
               <div className="mockup-window">
                 <div className="mockup-dots">
@@ -88,7 +254,12 @@ export default function Landing() {
                     <div className="mockup-header">
                       <div className="mockup-search"></div>
                     </div>
-                    <div className="mockup-card">
+                    <motion.div
+                      className="mockup-card"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.6, duration: 0.5 }}
+                    >
                       <div className="mockup-card-icon">
                         <img src="https://www.google.com/s2/favicons?domain=google.com&sz=32" alt="Google" />
                       </div>
@@ -102,8 +273,13 @@ export default function Landing() {
                         </div>
                       </div>
                       <div className="mockup-match">95%</div>
-                    </div>
-                    <div className="mockup-card">
+                    </motion.div>
+                    <motion.div
+                      className="mockup-card"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.9, duration: 0.5 }}
+                    >
                       <div className="mockup-card-icon mini">
                         <img src="https://www.google.com/s2/favicons?domain=meta.com&sz=32" alt="Meta" />
                       </div>
@@ -116,8 +292,13 @@ export default function Landing() {
                         </div>
                       </div>
                       <div className="mockup-match">88%</div>
-                    </div>
-                    <div className="mockup-card">
+                    </motion.div>
+                    <motion.div
+                      className="mockup-card"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 1.2, duration: 0.5 }}
+                    >
                       <div className="mockup-card-icon mini">
                         <img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=32" alt="Shopify" />
                       </div>
@@ -130,35 +311,73 @@ export default function Landing() {
                         </div>
                       </div>
                       <div className="mockup-match">91%</div>
-                    </div>
+                    </motion.div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div className="hero-right">
-            <p className="hero-eyebrow">No More Solo Job Hunting</p>
-            <h1 className="hero-headline">Do it with <span className="hero-accent">AI</span></h1>
-            <p className="hero-sub">
+          </motion.div>
+          <motion.div
+            className="hero-right"
+            initial={{ opacity: 0, x: 80 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.9, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <motion.p
+              className="hero-eyebrow"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 0.6 }}
+            >
+              No More Solo Job Hunting
+            </motion.p>
+            <h1 className="hero-headline">
+              <TypewriterText
+                text="Do it with AI"
+                speed={90}
+                delay={800}
+                showCursor={true}
+                className="hero-headline-typed"
+              />
+            </h1>
+            <motion.p
+              className="hero-sub"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 2.2, duration: 0.6 }}
+            >
               Get matched jobs, autofill applications, tailored resume, and
               AI-powered answers to screening questions — in less than 1 min!
-            </p>
-            <div className="hero-actions">
+            </motion.p>
+            <motion.div
+              className="hero-actions"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 2.6, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            >
               <button className="btn-cta-hero" onClick={() => navigate("/app")}>
                 TRY FOR FREE
               </button>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </div>
       </section>
 
       {/* Stats Section */}
-      <div ref={revealStats.ref} className={`reveal ${revealStats.visible ? "revealed" : ""}`}>
+      <AnimatedSection animation="fadeUp">
         <section className="stats-section-light" id="stats">
           <div className="stats-content-light">
-            <div className="stats-left-light">
+            <AnimatedSection className="stats-left-light" animation="fadeLeft" delay={0.1}>
               <span className="stats-eyebrow-light">OUR TRACK RECORD</span>
-              <h2 className="stats-headline-light">Real results,<br />not just promises.</h2>
+              <h2 className="stats-headline-light">
+                <TypewriterText
+                  text="Real results, not just promises."
+                  speed={50}
+                  triggerOnView={true}
+                  showCursor={false}
+                  className=""
+                />
+              </h2>
               <p className="stats-sub-light">
                 Trusted by over a million job seekers to land interviews faster
                 and cut the time spent searching.
@@ -166,63 +385,77 @@ export default function Landing() {
               <button className="btn-dark" onClick={() => navigate("#features")}>
                 See how it works ↗
               </button>
-            </div>
-            <div className="stats-right-light">
-              <div className="stat-card-light">
-                <div className="stat-icon-light">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                  </svg>
+            </AnimatedSection>
+            <StaggerContainer className="stats-right-light" staggerDelay={0.15}>
+              <StaggerItem>
+                <div className="stat-card-light">
+                  <div className="stat-icon-light">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                      <circle cx="9" cy="7" r="4"/>
+                      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                  </div>
+                  <div className="stat-info-light">
+                    <span className="stat-number-light"><AnimatedCounter value={3} suffix="× more interviews" /></span>
+                    <span className="stat-label-light">compared to manual applications</span>
+                  </div>
                 </div>
-                <div className="stat-info-light">
-                  <span className="stat-number-light">3× more interviews</span>
-                  <span className="stat-label-light">compared to manual applications</span>
+              </StaggerItem>
+              <StaggerItem>
+                <div className="stat-card-light">
+                  <div className="stat-icon-light">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                  </div>
+                  <div className="stat-info-light">
+                    <span className="stat-number-light"><AnimatedCounter value={80} suffix="% time saved" /></span>
+                    <span className="stat-label-light">on the average job search</span>
+                  </div>
                 </div>
-              </div>
-              <div className="stat-card-light">
-                <div className="stat-icon-light">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                  </svg>
+              </StaggerItem>
+              <StaggerItem>
+                <div className="stat-card-light">
+                  <div className="stat-icon-light">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                  </div>
+                  <div className="stat-info-light">
+                    <span className="stat-number-light">No. 1 choice</span>
+                    <span className="stat-label-light">for <AnimatedCounter value={80} suffix="%" /> of users after first use</span>
+                  </div>
                 </div>
-                <div className="stat-info-light">
-                  <span className="stat-number-light">80% time saved</span>
-                  <span className="stat-label-light">on the average job search</span>
-                </div>
-              </div>
-              <div className="stat-card-light">
-                <div className="stat-icon-light">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                  </svg>
-                </div>
-                <div className="stat-info-light">
-                  <span className="stat-number-light">No. 1 choice</span>
-                  <span className="stat-label-light">for 80% of users after first use</span>
-                </div>
-              </div>
-            </div>
+              </StaggerItem>
+            </StaggerContainer>
           </div>
         </section>
-      </div>
+      </AnimatedSection>
 
       {/* Feature Showcase 1: AI Job Matches */}
-      <div ref={reveal1.ref} className={`reveal ${reveal1.visible ? "revealed" : ""}`}>
+      <AnimatedSection animation="fadeUp">
         <section className="showcase-section" id="features">
           <div className="showcase-content">
-            <div className="showcase-text">
-              <h2 className="showcase-title">Personalized AI<br />Job Matches</h2>
+            <AnimatedSection className="showcase-text" animation="fadeLeft" delay={0.2}>
+              <h2 className="showcase-title">
+                <TypewriterText
+                  text="Personalized AI Job Matches"
+                  speed={45}
+                  triggerOnView={true}
+                  showCursor={false}
+                  className=""
+                />
+              </h2>
               <p className="showcase-desc">
                 See jobs you're truly qualified for, matched to your real skills,
                 with no fake listings and early alerts.
               </p>
               <button className="btn-dark" onClick={() => navigate("/app")}>Find My Matches</button>
-            </div>
-            <div className="showcase-visual">
+            </AnimatedSection>
+            <AnimatedSection className="showcase-visual" animation="fadeRight" delay={0.3}>
               <div className="showcase-card match-card">
                 <div className="match-card-header">
                   <span className="match-time">1 hour ago</span>
@@ -260,24 +493,32 @@ export default function Landing() {
                   <div className="match-fit-tag warn">✕ Education</div>
                 </div>
               </div>
-            </div>
+            </AnimatedSection>
           </div>
         </section>
-      </div>
+      </AnimatedSection>
 
       {/* Feature Showcase 2: 1-Click Autofill */}
-      <div ref={reveal2.ref} className={`reveal ${reveal2.visible ? "revealed" : ""}`}>
+      <AnimatedSection animation="fadeUp">
         <section className="showcase-section showcase-reverse">
           <div className="showcase-content">
-            <div className="showcase-text">
-              <h2 className="showcase-title">1-Click Application<br />Autofill</h2>
+            <AnimatedSection className="showcase-text" animation="fadeRight" delay={0.2}>
+              <h2 className="showcase-title">
+                <TypewriterText
+                  text="1-Click Application Autofill"
+                  speed={45}
+                  triggerOnView={true}
+                  showCursor={false}
+                  className=""
+                />
+              </h2>
               <p className="showcase-desc">
                 Apply to hundreds of jobs daily across all major ATS platforms.
                 Skip repetitive data entry and save 80% of your time.
               </p>
               <button className="btn-dark" onClick={() => navigate("/app")}>Start Autofilling</button>
-            </div>
-            <div className="showcase-visual">
+            </AnimatedSection>
+            <AnimatedSection className="showcase-visual" animation="fadeLeft" delay={0.3}>
               <div className="showcase-card autofill-card">
                 <div className="autofill-header">
                   <img src="/logo-icon.png" alt="Resumate" className="autofill-logo" />
@@ -312,17 +553,25 @@ export default function Landing() {
                   <div className="autofill-field"><span className="field-dash">—</span> Cover Letter</div>
                 </div>
               </div>
-            </div>
+            </AnimatedSection>
           </div>
         </section>
-      </div>
+      </AnimatedSection>
 
       {/* Feature Showcase 3: Resume Tailoring */}
-      <div ref={reveal3.ref} className={`reveal ${reveal3.visible ? "revealed" : ""}`}>
+      <AnimatedSection animation="fadeUp">
         <section className="showcase-section">
           <div className="showcase-content">
-            <div className="showcase-text">
-              <h2 className="showcase-title">Job Specific<br />Tailored Resume</h2>
+            <AnimatedSection className="showcase-text" animation="fadeLeft" delay={0.2}>
+              <h2 className="showcase-title">
+                <TypewriterText
+                  text="Job Specific Tailored Resume"
+                  speed={45}
+                  triggerOnView={true}
+                  showCursor={false}
+                  className=""
+                />
+              </h2>
               <p className="showcase-desc">
                 Get a perfectly tailored, professional resume that passes ATS
                 and highlights your strengths in just 6 seconds.
@@ -334,8 +583,8 @@ export default function Landing() {
                 <li>✓ Industry-specific language</li>
               </ul>
               <button className="btn-dark" onClick={() => navigate("/app")}>Upgrade My Resume</button>
-            </div>
-            <div className="showcase-visual">
+            </AnimatedSection>
+            <AnimatedSection className="showcase-visual" animation="fadeRight" delay={0.3}>
               <div className="showcase-card resume-card">
                 <div className="resume-header">
                   <div className="resume-star">✦</div>
@@ -405,166 +654,182 @@ export default function Landing() {
                   <span className="enhancement-tag">✦ Recent Work Experience Enhanced</span>
                 </div>
               </div>
-            </div>
+            </AnimatedSection>
           </div>
         </section>
-      </div>
+      </AnimatedSection>
 
       {/* Trusted By Companies */}
-      <div ref={revealCompanies.ref} className={`reveal ${revealCompanies.visible ? "revealed" : ""}`}>
+      <AnimatedSection animation="fadeUp">
         <section className="companies-section">
           <p className="companies-label">Trusted by job seekers applying to</p>
-          <div className="companies-logos">
-            <span className="company-logo">
-              <img src="https://www.google.com/s2/favicons?domain=google.com&sz=32" alt="Google" className="company-favicon" />
-              Google
-            </span>
-            <span className="company-logo">
-              <img src="https://www.google.com/s2/favicons?domain=meta.com&sz=32" alt="Meta" className="company-favicon" />
-              Meta
-            </span>
-            <span className="company-logo">
-              <img src="https://www.google.com/s2/favicons?domain=amazon.com&sz=32" alt="Amazon" className="company-favicon" />
-              Amazon
-            </span>
-            <span className="company-logo">
-              <img src="https://www.google.com/s2/favicons?domain=microsoft.com&sz=32" alt="Microsoft" className="company-favicon" />
-              Microsoft
-            </span>
-            <span className="company-logo">
-              <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=32" alt="Apple" className="company-favicon" />
-              Apple
-            </span>
-            <span className="company-logo">
-              <img src="https://www.google.com/s2/favicons?domain=netflix.com&sz=32" alt="Netflix" className="company-favicon" />
-              Netflix
-            </span>
-            <span className="company-logo">
-              <img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=32" alt="Shopify" className="company-favicon" />
-              Shopify
-            </span>
-          </div>
+          <StaggerContainer className="companies-logos" staggerDelay={0.08}>
+            <StaggerItem animation="scale">
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=google.com&sz=32" alt="Google" className="company-favicon" />
+                Google
+              </span>
+            </StaggerItem>
+            <StaggerItem animation="scale">
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=meta.com&sz=32" alt="Meta" className="company-favicon" />
+                Meta
+              </span>
+            </StaggerItem>
+            <StaggerItem animation="scale">
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=amazon.com&sz=32" alt="Amazon" className="company-favicon" />
+                Amazon
+              </span>
+            </StaggerItem>
+            <StaggerItem animation="scale">
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=microsoft.com&sz=32" alt="Microsoft" className="company-favicon" />
+                Microsoft
+              </span>
+            </StaggerItem>
+            <StaggerItem animation="scale">
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=32" alt="Apple" className="company-favicon" />
+                Apple
+              </span>
+            </StaggerItem>
+            <StaggerItem animation="scale">
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=netflix.com&sz=32" alt="Netflix" className="company-favicon" />
+                Netflix
+              </span>
+            </StaggerItem>
+            <StaggerItem animation="scale">
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=32" alt="Shopify" className="company-favicon" />
+                Shopify
+              </span>
+            </StaggerItem>
+          </StaggerContainer>
         </section>
-      </div>
+      </AnimatedSection>
 
       {/* Testimonials */}
-      <section className="testimonials-section">
-        <h2 className="section-title">What Our Users Say</h2>
-        <p className="section-sub">Join thousands who landed their dream jobs</p>
-        <div className="testimonials-grid">
-          <div className="testimonial-card">
-            <div className="testimonial-stars">★★★★★</div>
-            <p className="testimonial-text">"I went from applying to 5 jobs a day to 50+. Got 3 interviews in my first week. This tool is a game changer."</p>
-            <div className="testimonial-author">
-              <div className="testimonial-avatar">S</div>
-              <div>
-                <div className="testimonial-name">Sarah K.</div>
-                <div className="testimonial-role">Software Engineer → Google</div>
-              </div>
-            </div>
-          </div>
-          <div className="testimonial-card">
-            <div className="testimonial-stars">★★★★★</div>
-            <p className="testimonial-text">"The AI-tailored resume feature alone is worth it. My response rate went from 2% to 15% overnight."</p>
-            <div className="testimonial-author">
-              <div className="testimonial-avatar">M</div>
-              <div>
-                <div className="testimonial-name">Marcus T.</div>
-                <div className="testimonial-role">Data Analyst → Amazon</div>
-              </div>
-            </div>
-          </div>
-          <div className="testimonial-card">
-            <div className="testimonial-stars">★★★★★</div>
-            <p className="testimonial-text">"Saved me hours every day. The screening question answers are surprisingly accurate and personalized."</p>
-            <div className="testimonial-author">
-              <div className="testimonial-avatar">A</div>
-              <div>
-                <div className="testimonial-name">Aisha R.</div>
-                <div className="testimonial-role">Product Manager → Shopify</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <TestimonialsCarousel />
 
       {/* Pricing */}
-      <div ref={revealPricing.ref} className={`reveal ${revealPricing.visible ? "revealed" : ""}`}>
+      <AnimatedSection animation="fadeUp">
         <section className="section" id="pricing">
           <h2 className="section-title">Simple Pricing</h2>
           <p className="section-sub">Start free, upgrade when you're ready</p>
-          <div className="pricing-grid">
-            <div className="pricing-card">
-              <h3>Free</h3>
-              <div className="pricing-price">$0<span>/month</span></div>
-              <ul className="pricing-features">
-                <li>✓ 10 auto-applies per day</li>
-                <li>✓ Basic job matching</li>
-                <li>✓ Application tracker</li>
-                <li>✓ 1 resume profile</li>
-              </ul>
-              <button className="btn-outline-lg w-full" onClick={() => navigate("/app")}>Get Started</button>
-            </div>
-            <div className="pricing-card pricing-featured">
-              <div className="pricing-badge">Most Popular</div>
-              <h3>Pro</h3>
-              <div className="pricing-price">$29<span>/month</span></div>
-              <ul className="pricing-features">
-                <li>✓ Unlimited auto-applies</li>
-                <li>✓ AI screening answers</li>
-                <li>✓ Resume tailoring per job</li>
-                <li>✓ Cover letter generation</li>
-                <li>✓ Priority AI processing</li>
-                <li>✓ Advanced match scoring</li>
-              </ul>
-              <button className="btn-cta btn-lg w-full" onClick={() => navigate("/app")}>Start Pro Trial</button>
-            </div>
-            <div className="pricing-card">
-              <h3>Lifetime</h3>
-              <div className="pricing-price">$149<span>one-time</span></div>
-              <ul className="pricing-features">
-                <li>✓ Everything in Pro</li>
-                <li>✓ Lifetime updates</li>
-                <li>✓ Priority support</li>
-                <li>✓ Early access to features</li>
-                <li>✓ No recurring fees</li>
-              </ul>
-              <button className="btn-outline-lg w-full" onClick={() => navigate("/app")}>Get Lifetime</button>
-            </div>
-          </div>
+          <StaggerContainer className="pricing-grid" staggerDelay={0.15}>
+            <StaggerItem animation="fadeUp">
+              <div className="pricing-card">
+                <h3>Free</h3>
+                <div className="pricing-price">$0<span>/month</span></div>
+                <ul className="pricing-features">
+                  <li>✓ 10 auto-applies per day</li>
+                  <li>✓ Basic job matching</li>
+                  <li>✓ Application tracker</li>
+                  <li>✓ 1 resume profile</li>
+                </ul>
+                <button className="btn-outline-lg w-full" onClick={() => navigate("/app")}>Get Started</button>
+              </div>
+            </StaggerItem>
+            <StaggerItem animation="fadeUp">
+              <div className="pricing-card pricing-featured">
+                <div className="pricing-badge">Most Popular</div>
+                <h3>Pro</h3>
+                <div className="pricing-price">$29<span>/month</span></div>
+                <ul className="pricing-features">
+                  <li>✓ Unlimited auto-applies</li>
+                  <li>✓ AI screening answers</li>
+                  <li>✓ Resume tailoring per job</li>
+                  <li>✓ Cover letter generation</li>
+                  <li>✓ Priority AI processing</li>
+                  <li>✓ Advanced match scoring</li>
+                </ul>
+                <button className="btn-cta btn-lg w-full" onClick={() => navigate("/app")}>Start Pro Trial</button>
+              </div>
+            </StaggerItem>
+            <StaggerItem animation="fadeUp">
+              <div className="pricing-card">
+                <h3>Lifetime</h3>
+                <div className="pricing-price">$149<span>one-time</span></div>
+                <ul className="pricing-features">
+                  <li>✓ Everything in Pro</li>
+                  <li>✓ Lifetime updates</li>
+                  <li>✓ Priority support</li>
+                  <li>✓ Early access to features</li>
+                  <li>✓ No recurring fees</li>
+                </ul>
+                <button className="btn-outline-lg w-full" onClick={() => navigate("/app")}>Get Lifetime</button>
+              </div>
+            </StaggerItem>
+          </StaggerContainer>
         </section>
-      </div>
+      </AnimatedSection>
 
       {/* FAQ */}
-      <div ref={revealFaq.ref} className={`reveal ${revealFaq.visible ? "revealed" : ""}`}>
+      <AnimatedSection animation="fadeUp">
         <section className="faq-section" id="faq">
-          <h2 className="faq-title">Frequently Asked<br />Questions</h2>
-          <div className="faq-list">
+          <h2 className="faq-title">
+            <TypewriterText
+              text="Frequently Asked Questions"
+              speed={40}
+              triggerOnView={true}
+              showCursor={false}
+              className=""
+            />
+          </h2>
+          <StaggerContainer className="faq-list" staggerDelay={0.1}>
             {faqs.map((faq, i) => (
-              <div key={i} className={`faq-item ${openFaq === i ? "open" : ""}`}>
-                <button className="faq-question" onClick={() => setOpenFaq(openFaq === i ? null : i)}>
-                  <span>{faq.q}</span>
-                  <span className="faq-toggle">{openFaq === i ? "−" : "+"}</span>
-                </button>
-                {openFaq === i && <div className="faq-answer">{faq.a}</div>}
-              </div>
+              <StaggerItem key={i}>
+                <div className={`faq-item ${openFaq === i ? "open" : ""}`}>
+                  <button className="faq-question" onClick={() => setOpenFaq(openFaq === i ? null : i)}>
+                    <span>{faq.q}</span>
+                    <span className="faq-toggle">{openFaq === i ? "−" : "+"}</span>
+                  </button>
+                  {openFaq === i && (
+                    <motion.div
+                      className="faq-answer"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      {faq.a}
+                    </motion.div>
+                  )}
+                </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerContainer>
         </section>
-      </div>
+      </AnimatedSection>
 
       {/* Bottom Banner */}
-      <div ref={revealBanner.ref} className={`reveal ${revealBanner.visible ? "revealed" : ""}`}>
+      <AnimatedSection animation="scale">
         <section className="bottom-banner">
           <div className="bottom-banner-inner">
             <div className="bottom-banner-text">
-              <h2>Start applying smarter today.</h2>
+              <h2>
+                <TypewriterText
+                  text="Start applying smarter today."
+                  speed={50}
+                  triggerOnView={true}
+                  showCursor={false}
+                  className=""
+                />
+              </h2>
               <p>Join 1.25M+ job seekers who landed their dream roles with AI.</p>
             </div>
-            <button className="btn-cta-hero" onClick={() => navigate("/app")}>GET STARTED FREE</button>
+            <motion.button
+              className="btn-cta-hero"
+              onClick={() => navigate("/app")}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              GET STARTED FREE
+            </motion.button>
           </div>
         </section>
-      </div>
+      </AnimatedSection>
 
       {/* Footer */}
       <footer className="landing-footer">
