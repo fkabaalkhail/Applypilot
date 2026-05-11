@@ -3,6 +3,10 @@
     {
       "path": "/github-sources/cron-poll",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/github-sources/cron-ats",
+      "schedule": "0 */6 * * *"
     }
   ],
   "buildCommand": "cd frontend && npm install && npm run build",
