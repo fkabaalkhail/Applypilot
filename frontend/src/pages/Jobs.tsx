@@ -68,10 +68,10 @@ function getLogoColor(company: string): string {
 function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
   // If we already have a logo URL from the parser, use it
   if (companyLogo && companyLogo.startsWith("http")) return companyLogo;
-  // Generate from company name using Clearbit (works for well-known companies)
+  // Generate from company name using Google's favicon service
   const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (cleaned.length < 2) return null;
-  return `https://logo.clearbit.com/${cleaned}.com`;
+  return `https://www.google.com/s2/favicons?domain=${cleaned}.com&sz=128`;
 }
 
 function timeAgo(dateStr: string): string {

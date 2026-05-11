@@ -28,7 +28,7 @@ class AggregatorService:
     """Orchestrates scraping, classification, and storage of jobs from GitHub sources."""
 
     REPOS: list[dict] = [
-        # === Repos with DIRECT company apply links ===
+        # === Repos with DIRECT company apply links only ===
         {
             "url": "https://github.com/Ouckah/Summer2025-Internships",
             "category": "Software Engineering",
@@ -59,72 +59,15 @@ class AggregatorService:
             "category": "",
             "level": "internship",
         },
-        # === Jobright repos (links go through jobright.ai) ===
-        {
-            "url": "https://github.com/jobright-ai/2026-Software-Engineer-New-Grad",
-            "category": "Software Engineering",
-            "level": "new_grad",
-        },
-        {
-            "url": "https://github.com/jobright-ai/2026-Data-Analysis-New-Grad",
-            "category": "Data Analysis",
-            "level": "new_grad",
-        },
-        {
-            "url": "https://github.com/jobright-ai/2026-Engineering-New-Grad",
-            "category": "Engineering and Development",
-            "level": "new_grad",
-        },
-        {
-            "url": "https://github.com/jobright-ai/2026-Account-New-Grad",
-            "category": "Accounting and Finance",
-            "level": "new_grad",
-        },
-        {
-            "url": "https://github.com/jobright-ai/2026-Consultant-New-Grad",
-            "category": "Consultant",
-            "level": "new_grad",
-        },
-        {
-            "url": "https://github.com/jobright-ai/2026-Design-New-Grad",
-            "category": "Creatives and Design",
-            "level": "new_grad",
-        },
-        {
-            "url": "https://github.com/jobright-ai/2026-Product-Management-New-Grad",
-            "category": "Product Management",
-            "level": "new_grad",
-        },
-        {
-            "url": "https://github.com/jobright-ai/2026-Management-New-Grad",
-            "category": "Management and Executive",
-            "level": "new_grad",
-        },
-        {
-            "url": "https://github.com/jobright-ai/2026-Internship",
-            "category": "",
-            "level": "internship",
-        },
     ]
 
     REPO_CATEGORY_MAP: dict[str, str] = {
-        # Direct-link repos
         "Summer2025-Internships": "Software Engineering",
         "New-Grad-2027": "Software Engineering",
         "New-Grad-Jobs-2026": "",
         "New-Grad-Software-Engineering-Jobs-2026": "Software Engineering",
         "New-Grad-Data-Science-Jobs-2026": "Data Analysis",
         "Internships-2026": "",
-        # Jobright repos
-        "2026-Software-Engineer-New-Grad": "Software Engineering",
-        "2026-Data-Analysis-New-Grad": "Data Analysis",
-        "2026-Engineering-New-Grad": "Engineering and Development",
-        "2026-Account-New-Grad": "Accounting and Finance",
-        "2026-Consultant-New-Grad": "Consultant",
-        "2026-Design-New-Grad": "Creatives and Design",
-        "2026-Product-Management-New-Grad": "Product Management",
-        "2026-Management-New-Grad": "Management and Executive",
-        "2026-Internship": "",
     }
 
     def __init__(self, db: Session):
@@ -315,6 +258,10 @@ class AggregatorService:
 
         Returns True if the job was stored, False if skipped (duplicate or excluded).
         """
+        # Reject jobright redirect URLs — we only want direct company links
+        if "jobright.ai" in job.url:
+            return False
+
         # Classify country
         country = self.country_filter.classify(job.location)
         if country is None:

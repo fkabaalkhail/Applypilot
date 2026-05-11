@@ -66,7 +66,7 @@ def create_source(source: GitHubSourceCreate, db: Session = Depends(get_db)):
 
 @router.post("/seed")
 async def seed_sources(db: Session = Depends(get_db)):
-    """Seed all 9 jobright-ai repositories. Idempotent.
+    """Seed all jobright-ai repositories. Idempotent.
 
     Creates GitHubSource records for all configured repositories.
     Skips any that already exist. Returns counts of created vs existing.
@@ -85,6 +85,20 @@ async def seed_sources(db: Session = Depends(get_db)):
         import traceback
         logger.error(f"Seed failed: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Seed failed: {str(e)}")
+
+
+@router.post("/cleanup-jobright")
+def cleanup_jobright_jobs(db: Session = Depends(get_db)):
+    """Remove all jobs with jobright.ai URLs from the database.
+
+    One-time cleanup to remove redirect-only jobs.
+    """
+    from backend.db.models import ScrapedJob as SJ
+    count = db.query(SJ).filter(SJ.url.like("%jobright.ai%")).delete(synchronize_session=False)
+    # Also remove jobright sources
+    source_count = db.query(GitHubSource).filter(GitHubSource.repo_url.like("%jobright-ai%")).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted_jobs": count, "deleted_sources": source_count}
 
 
 @router.api_route("/cron-poll", methods=["GET", "POST"])
