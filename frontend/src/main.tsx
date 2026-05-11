@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import App from "./App";
 import Landing from "./pages/Landing";
 import Jobs from "./pages/Jobs";
+import JobsList from "./pages/JobsList";
 import Resume from "./pages/Resume";
 import ResumeDetail from "./pages/ResumeDetail";
 import Profile from "./pages/Profile";
@@ -15,6 +16,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/list" element={<JobsList />} />
         <Route path="/app" element={<App />}>
           <Route index element={<Jobs />} />
           <Route path="resume" element={<Resume />} />
