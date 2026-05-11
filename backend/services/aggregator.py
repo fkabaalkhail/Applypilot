@@ -28,6 +28,38 @@ class AggregatorService:
     """Orchestrates scraping, classification, and storage of jobs from GitHub sources."""
 
     REPOS: list[dict] = [
+        # === Repos with DIRECT company apply links ===
+        {
+            "url": "https://github.com/Ouckah/Summer2025-Internships",
+            "category": "Software Engineering",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/vanshb03/New-Grad-2027",
+            "category": "Software Engineering",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/zapplyjobs/New-Grad-Jobs-2026",
+            "category": "",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/zapplyjobs/New-Grad-Software-Engineering-Jobs-2026",
+            "category": "Software Engineering",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/zapplyjobs/New-Grad-Data-Science-Jobs-2026",
+            "category": "Data Analysis",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/zapplyjobs/Internships-2026",
+            "category": "",
+            "level": "internship",
+        },
+        # === Jobright repos (links go through jobright.ai) ===
         {
             "url": "https://github.com/jobright-ai/2026-Software-Engineer-New-Grad",
             "category": "Software Engineering",
@@ -76,6 +108,14 @@ class AggregatorService:
     ]
 
     REPO_CATEGORY_MAP: dict[str, str] = {
+        # Direct-link repos
+        "Summer2025-Internships": "Software Engineering",
+        "New-Grad-2027": "Software Engineering",
+        "New-Grad-Jobs-2026": "",
+        "New-Grad-Software-Engineering-Jobs-2026": "Software Engineering",
+        "New-Grad-Data-Science-Jobs-2026": "Data Analysis",
+        "Internships-2026": "",
+        # Jobright repos
         "2026-Software-Engineer-New-Grad": "Software Engineering",
         "2026-Data-Analysis-New-Grad": "Data Analysis",
         "2026-Engineering-New-Grad": "Engineering and Development",

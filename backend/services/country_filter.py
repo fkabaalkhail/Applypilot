@@ -62,6 +62,12 @@ class CountryFilter:
 
         location = location.strip()
 
+        # Check for emoji flags first
+        if "🇺🇸" in location:
+            return "US"
+        if "🇨🇦" in location:
+            return "CA"
+
         # Check Canada first (important: must come before USA check
         # because "CA" is ambiguous — California vs Canada)
         if self._is_canada(location):

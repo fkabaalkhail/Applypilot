@@ -198,14 +198,30 @@ class MarkdownParser:
         return ""
 
     def _extract_markdown_link(self, cell: str) -> tuple[Optional[str], Optional[str]]:
-        """Extract (text, url) from markdown link syntax [text](url).
+        """Extract (text, url) from markdown link syntax [text](url) or HTML <a href="url">.
 
         Skips image syntax ![alt](url). Returns (None, None) if no link found.
+        Also handles [<img>](url) pattern used by some repos for apply buttons.
         """
         # Match [text](url) but NOT ![alt](url) — use negative lookbehind for !
         match = re.search(r"(?<!!)\[([^\]]*)\]\(([^)]+)\)", cell)
         if match:
-            return match.group(1), match.group(2)
+            text = match.group(1)
+            url = match.group(2)
+            # If text contains <img>, it's an apply button — still return the URL
+            if "<img" in text:
+                text = "Apply"
+            return text, url
+
+        # Match HTML <a href="url">text</a>
+        html_match = re.search(r'<a\s+href="([^"]+)"[^>]*>', cell)
+        if html_match:
+            url = html_match.group(1)
+            # Try to get text content
+            text_match = re.search(r'<a[^>]*>([^<]*)</a>', cell)
+            text = text_match.group(1).strip() if text_match else "Apply"
+            return text, url
+
         return None, None
 
     def _extract_image_url(self, cell: str) -> Optional[str]:
@@ -256,8 +272,10 @@ class MarkdownParser:
                 column_map[i] = "location"
             elif any(kw in lower for kw in ["link", "apply", "application", "url"]):
                 column_map[i] = "url"
-            elif any(kw in lower for kw in ["date", "posted"]):
+            elif any(kw in lower for kw in ["date", "posted", "age"]):
                 column_map[i] = "posted_date"
+            elif any(kw in lower for kw in ["work model", "model", "type"]):
+                column_map[i] = "work_model"
             elif any(kw in lower for kw in ["logo", "image", "img"]):
                 column_map[i] = "company_logo"
         return column_map
@@ -335,7 +353,10 @@ class MarkdownParser:
                 if logo_url:
                     data[field] = logo_url
             else:
-                data[field] = cell
+                # For location and other text fields, strip HTML tags
+                clean = re.sub(r'<[^>]+>', ' ', cell).strip()
+                clean = re.sub(r'\s{2,}', ' ', clean)
+                data[field] = clean
 
         if not data.get("url") or not data.get("title"):
             return None
