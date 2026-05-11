@@ -38,22 +38,26 @@ class ATSJob:
 # Built from jobright-ai repos + manual verification
 
 ATS_COMPANIES: list[tuple[str, str, str]] = [
-    # === Greenhouse companies ===
+    # === Greenhouse companies (69) ===
     ("greenhouse", "affirm", "Affirm"),
     ("greenhouse", "airbnb", "Airbnb"),
     ("greenhouse", "airtable", "Airtable"),
+    ("greenhouse", "amplitude", "Amplitude"),
     ("greenhouse", "anthropic", "Anthropic"),
     ("greenhouse", "applovin", "AppLovin"),
     ("greenhouse", "asana", "Asana"),
     ("greenhouse", "astranis", "Astranis"),
+    ("greenhouse", "block", "Block"),
     ("greenhouse", "boxinc", "Box"),
     ("greenhouse", "brex", "Brex"),
     ("greenhouse", "chime", "Chime"),
     ("greenhouse", "cloudflare", "Cloudflare"),
     ("greenhouse", "cockroachlabs", "CockroachDB"),
+    ("greenhouse", "contentful", "Contentful"),
     ("greenhouse", "databricks", "Databricks"),
     ("greenhouse", "datadog", "Datadog"),
     ("greenhouse", "discord", "Discord"),
+    ("greenhouse", "doximity", "Doximity"),
     ("greenhouse", "dropbox", "Dropbox"),
     ("greenhouse", "duolingo", "Duolingo"),
     ("greenhouse", "elastic", "Elastic"),
@@ -61,34 +65,56 @@ ATS_COMPANIES: list[tuple[str, str, str]] = [
     ("greenhouse", "faire", "Faire"),
     ("greenhouse", "figma", "Figma"),
     ("greenhouse", "flexport", "Flexport"),
+    ("greenhouse", "gitlab", "GitLab"),
     ("greenhouse", "gusto", "Gusto"),
     ("greenhouse", "instacart", "Instacart"),
+    ("greenhouse", "janestreet", "Jane Street"),
+    ("greenhouse", "jetbrains", "JetBrains"),
     ("greenhouse", "labelbox", "Labelbox"),
     ("greenhouse", "lattice", "Lattice"),
     ("greenhouse", "lucidmotors", "Lucid Motors"),
     ("greenhouse", "lyft", "Lyft"),
     ("greenhouse", "marqeta", "Marqeta"),
+    ("greenhouse", "mixpanel", "Mixpanel"),
     ("greenhouse", "mongodb", "MongoDB"),
+    ("greenhouse", "netlify", "Netlify"),
+    ("greenhouse", "newrelic", "New Relic"),
+    ("greenhouse", "nuro", "Nuro"),
+    ("greenhouse", "okta", "Okta"),
+    ("greenhouse", "oscar", "Oscar Health"),
+    ("greenhouse", "pagerduty", "PagerDuty"),
+    ("greenhouse", "peloton", "Peloton"),
     ("greenhouse", "pinterest", "Pinterest"),
     ("greenhouse", "reddit", "Reddit"),
+    ("greenhouse", "relativity", "Relativity"),
+    ("greenhouse", "riotgames", "Riot Games"),
     ("greenhouse", "robinhood", "Robinhood"),
     ("greenhouse", "roblox", "Roblox"),
+    ("greenhouse", "roku", "Roku"),
     ("greenhouse", "samsara", "Samsara"),
+    ("greenhouse", "scaleai", "Scale AI"),
     ("greenhouse", "sofi", "SoFi"),
     ("greenhouse", "spacex", "SpaceX"),
     ("greenhouse", "squarespace", "Squarespace"),
     ("greenhouse", "stripe", "Stripe"),
     ("greenhouse", "toast", "Toast"),
     ("greenhouse", "twilio", "Twilio"),
+    ("greenhouse", "twitch", "Twitch"),
+    ("greenhouse", "unity3d", "Unity"),
     ("greenhouse", "vercel", "Vercel"),
     ("greenhouse", "verkada", "Verkada"),
     ("greenhouse", "waymo", "Waymo"),
     ("greenhouse", "webflow", "Webflow"),
-    # === Lever companies ===
+    ("greenhouse", "zscaler", "Zscaler"),
+    # === Lever companies (8) ===
     ("lever", "anyscale", "Anyscale"),
     ("lever", "gopuff", "GoPuff"),
     ("lever", "neon", "Neon"),
+    ("lever", "palantir", "Palantir"),
+    ("lever", "shieldai", "Shield AI"),
     ("lever", "spotify", "Spotify"),
+    ("lever", "veeva", "Veeva Systems"),
+    ("lever", "zoox", "Zoox"),
 ]
 
 
@@ -103,16 +129,33 @@ ENTRY_LEVEL_KEYWORDS = [
     r"\bentry-level\b",
     r"\bjunior\b",
     r"\bassociate\b",
-    r"\b(i|1)\b",  # Level I/1
+    r"\b(i|1|I)\b",  # Level I/1
     r"\bearly career\b",
     r"\brecent grad\b",
     r"\bgraduate\b",
     r"\brotational\b",
     r"\buniversity\b",
     r"\bcampus\b",
+    r"\bfresh\b",
+    r"\b0-2 years\b",
+    r"\b0-1 years\b",
+    r"\b1-2 years\b",
+    r"\bnew college\b",
+    r"\bstarter\b",
+    r"\bapprentice\b",
+    r"\btrainee\b",
+    r"\banalyst\b",
 ]
 
 ENTRY_LEVEL_PATTERN = re.compile("|".join(ENTRY_LEVEL_KEYWORDS), re.IGNORECASE)
+
+# Title patterns that indicate senior roles (to EXCLUDE)
+SENIOR_KEYWORDS = re.compile(
+    r"\bsenior\b|\bsr\.?\b|\bstaff\b|\bprincipal\b|\blead\b|\bmanager\b"
+    r"|\bdirector\b|\bvp\b|\bhead of\b|\barchitect\b|\bfellow\b"
+    r"|\biii\b|\biv\b|\b[3-9]\+?\s*years\b|\b[5-9]\b|\b10\+\b",
+    re.IGNORECASE
+)
 
 
 # Location keywords for US/Canada filtering
@@ -293,9 +336,18 @@ class ATSScraper:
         return True
 
     def _is_entry_level(self, job: ATSJob) -> bool:
-        """Check if a job is intern/new-grad/entry-level."""
+        """Check if a job is intern/new-grad/entry-level.
+
+        Matches entry-level keywords AND excludes senior-level titles.
+        """
         text = f"{job.title} {job.department}".lower()
-        return bool(ENTRY_LEVEL_PATTERN.search(text))
+        # Must match entry-level keywords
+        if not ENTRY_LEVEL_PATTERN.search(text):
+            return False
+        # Must NOT match senior keywords
+        if SENIOR_KEYWORDS.search(job.title):
+            return False
+        return True
 
     def _is_north_america(self, location: str) -> bool:
         """Check if location is in US or Canada."""

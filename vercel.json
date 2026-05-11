@@ -6,7 +6,7 @@
     },
     {
       "path": "/github-sources/cron-ats",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 * * * *"
     }
   ],
   "buildCommand": "cd frontend && npm install && npm run build",
