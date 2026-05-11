@@ -40,6 +40,16 @@ class AggregatorService:
             "level": "new_grad",
         },
         {
+            "url": "https://github.com/speedyapply/2026-SWE-College-Jobs",
+            "category": "Software Engineering",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/negarprh/Canadian-Tech-Internships-2026",
+            "category": "Software Engineering",
+            "level": "internship",
+        },
+        {
             "url": "https://github.com/zapplyjobs/New-Grad-Jobs-2026",
             "category": "",
             "level": "new_grad",
@@ -64,6 +74,8 @@ class AggregatorService:
     REPO_CATEGORY_MAP: dict[str, str] = {
         "Summer2025-Internships": "Software Engineering",
         "New-Grad-2027": "Software Engineering",
+        "2026-SWE-College-Jobs": "Software Engineering",
+        "Canadian-Tech-Internships-2026": "Software Engineering",
         "New-Grad-Jobs-2026": "",
         "New-Grad-Software-Engineering-Jobs-2026": "Software Engineering",
         "New-Grad-Data-Science-Jobs-2026": "Data Analysis",
