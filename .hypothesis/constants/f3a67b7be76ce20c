@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\event\registry.py
-# hypothesis_version: 6.151.10
-
-['EventTarget', '_ET', '_sa_warn', 'dispatch_target', 'fn', 'fn_key', 'fn_wrap', 'identifier', 'named', 'once', 'target']

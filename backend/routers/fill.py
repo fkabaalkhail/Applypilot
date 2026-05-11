@@ -97,7 +97,7 @@ async def fill_form(request: FillRequest, db: Session = Depends(get_db)):
     """
     Generate AI answers for a batch of form fields.
 
-    Tries rule-based answers first, falls back to Ollama for complex questions.
+    Tries rule-based answers first, falls back to Gemini for complex questions.
     """
     settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
 
@@ -123,7 +123,7 @@ async def fill_form(request: FillRequest, db: Session = Depends(get_db)):
     errors: list[str] = []
     if ai_fields:
         try:
-            ollama = get_llm_service()
+            llm = get_llm_service()
             context_parts = []
             if settings:
                 context_parts.append(
@@ -143,7 +143,7 @@ async def fill_form(request: FillRequest, db: Session = Depends(get_db)):
                     q = field.label
                     if field.options:
                         q += f"\nOptions: {', '.join(field.options)}"
-                    raw = await ollama.answer_question(question=q, context=context)
+                    raw = await llm.answer_question(question=q, context=context)
                     answer = raw.strip().strip('"')
 
                     # Match to options if applicable
@@ -159,7 +159,7 @@ async def fill_form(request: FillRequest, db: Session = Depends(get_db)):
                     logger.warning("AI failed for field '%s': %s", field.label, e)
                     errors.append(f"Failed: {field.label}")
         except Exception as e:
-            logger.error("Ollama connection failed: %s", e)
+            logger.error("AI connection failed: %s", e)
             errors.append(f"AI unavailable: {e}")
 
     return FillResponse(answers=answers, errors=errors)

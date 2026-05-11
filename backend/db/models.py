@@ -54,7 +54,7 @@ class ScrapedJob(Base):
     scraped_at = Column(DateTime, default=datetime.datetime.utcnow)
     posted_date = Column(DateTime, nullable=True)  # When the job was posted on LinkedIn
 
-    # AI match analysis (populated after scrape via Ollama)
+    # AI match analysis (populated after scrape via Gemini)
     match_score = Column(Integer, default=0)  # 0-100
     requirements_met = Column(Integer, default=0)
     requirements_total = Column(Integer, default=0)

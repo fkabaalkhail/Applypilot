@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\docx\oxml\ns.py
-# hypothesis_version: 6.151.10
-
-['%s:%s', ':', 'a', 'c', 'cp', 'dc', 'dcmitype', 'dcterms', 'dgm', 'm', 'pic', 'r', 'sl', 'w', 'w14', 'wp', 'xml', 'xmlns:%s="%s"', 'xsi', '{%s}%s', '}']

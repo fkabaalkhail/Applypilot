@@ -1,4 +1,0 @@
-# file: /Users/fahad/ApplyPilot/backend/bot/smart_filter.py
-# hypothesis_version: 6.151.10
-
-[1000, ',', '\\$?([\\d,]+)\\s*[kK]?', 'company_blacklist', 'duplicate_job_id', 'duplicate_url', 'keyword_blacklist', 'max_experience_years', 'max_salary', 'min_experience_years', 'min_salary', 'salary_range']

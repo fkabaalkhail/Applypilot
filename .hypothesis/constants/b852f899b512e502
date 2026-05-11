@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\Desktop\Applypilot\backend\services\ollama_service.py
-# hypothesis_version: 6.151.10
-
-[300, 3000, 4000, '120', 'OLLAMA_BASE_URL', 'OLLAMA_MODEL', 'OLLAMA_TIMEOUT', '\\d+', '```', 'analyze_resume.txt', 'answer_question.txt', 'company_description', 'company_size', 'cover_letter.txt', 'education', 'email', 'experience', 'json', 'linkedin_url', 'llama3', 'location', 'match_job.txt', 'match_score', 'model', 'name', 'none', 'phone', 'prompt', 'prompts', 'requirements', 'response', 'salary_range', 'skills', 'stream', 'suggest_titles.txt', 'summary', 'tailor_resume.txt', 'utf-8', '{', '{{COMPANY}}', '{{CONTEXT}}', '{{JOB_COMPANY}}', '{{JOB_DESCRIPTION}}', '{{JOB_TITLE}}', '{{PROFILE_NAME}}', '{{PROFILE_TITLE}}', '{{QUESTION}}', '{{RESUME_JSON}}', '{{RESUME_TEXT}}', '}']

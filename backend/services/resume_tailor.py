@@ -1,7 +1,7 @@
 """
 ResumeTailor — generates tailored resume versions for specific job postings.
 
-Uses Ollama to rewrite/reorder resume content to emphasize skills and experience
+Uses Gemini to rewrite/reorder resume content to emphasize skills and experience
 relevant to the target job. Stores tailored versions linked to specific jobs.
 """
 
@@ -21,20 +21,20 @@ class ResumeTailor:
 
     def __init__(self, db: Session):
         self.db = db
-        self.ollama = get_llm_service()
+        self.llm = get_llm_service()
 
     async def tailor_resume(
         self, resume_text: str, job_description: str, job_id: int
     ) -> TailoredResume:
         """Generate a tailored resume for a specific job.
 
-        Uses Ollama to rewrite the resume emphasizing relevant skills/experience.
+        Uses Gemini to rewrite the resume emphasizing relevant skills/experience.
         Stores the result in the TailoredResume table.
 
         Returns the TailoredResume database record.
         """
-        # Generate tailored version via Ollama
-        tailored_text = await self.ollama.tailor_resume(resume_text, job_description)
+        # Generate tailored version via Gemini
+        tailored_text = await self.llm.tailor_resume(resume_text, job_description)
 
         # Compute diff summary
         diff_summary = self.compute_diff(resume_text, tailored_text)

@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfminer\converter.py
-# hypothesis_version: 6.151.10
-
-[1.0, ' wmode="vertical"', '+', '</body></html>\n', '</div>', '</div>\n', '</figure>\n', '</head>\n', '</head><body>\n', '</layout>\n', '</page>\n', '</pages>\n', '</span>', '</span>\n', '</text>\n', '</textbox>\n', '</textgroup>\n', '</textline>\n', '<body>\n', '<br>', '<head>\n', '<html><head>\n', '<layout>\n', '<pages>\n', '<title></title>\n', 'Bold', 'False', 'IOType', 'Italic', 'Unhandled', '[\x00-\x08\x0b-\x0c\x0e-\x1f]', 'b', 'black', 'blue', 'char', 'curve', 'cyan', 'exact', 'figure', 'font-style: italic; ', 'font-weight: bold; ', 'gray', 'h', 'ignore', 'lh', 'loose', 'm', 'm[^m]+', 'magenta', 'ml', 'mlh', 'mlllh', 'mllll', 'mode', 'normal', 'page', 'red', 'textbox', 'textgroup', 'textline', 'utf-8', 'utf8', 'yellow']

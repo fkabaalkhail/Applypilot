@@ -4,7 +4,7 @@ Unit tests for the AI router endpoints.
 Tests cover:
 - 404 for non-existent jobs on all endpoints
 - 400 when no resume profile exists
-- 503 when Ollama is unreachable
+- 503 when AI is unreachable
 
 Requirements: 3.7
 """
@@ -90,8 +90,8 @@ class TestMatchBreakdown:
         assert response.status_code == 400
         assert "No resume profile found" in response.json()["detail"]
 
-    def test_returns_503_when_ollama_unreachable(self, client, db_session):
-        """Should return 503 when Ollama service is unreachable."""
+    def test_returns_503_when_ai_unreachable(self, client, db_session):
+        """Should return 503 when AI service is unreachable."""
         # Create job and resume profile
         job = ScrapedJob(
             title="Software Engineer",
@@ -117,7 +117,7 @@ class TestMatchBreakdown:
         ):
             response = client.post(f"/ai/match-breakdown/{job.id}")
             assert response.status_code == 503
-            assert "Ollama service unavailable" in response.json()["detail"]
+            assert "AI service unavailable" in response.json()["detail"]
 
 
 class TestCoverLetter:

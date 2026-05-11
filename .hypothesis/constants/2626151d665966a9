@@ -1,4 +1,0 @@
-# file: /Users/fahad/ApplyPilot/backend/db/models.py
-# hypothesis_version: 6.151.10
-
-[30.0, 120.0, 200, 'Software Engineer', 'United States', 'application_records', 'applied', 'applying', 'autopilot_runs', 'bot_runs', 'connection_requests', 'failed', 'idle', 'interviewing', 'linkedin', 'new', 'offer', 'original', 'pending_questions', 'rejected', 'resume_profiles', 'running', 'scraped_jobs', 'sent', 'skipped', 'text', 'user_settings', 'waiting_answer']

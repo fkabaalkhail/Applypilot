@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\docx\oxml\comments.py
-# hypothesis_version: 6.151.10
-
-['./w:comment/@w:id', './w:p | ./w:tbl', 'w:author', 'w:comment', 'w:date', 'w:id', 'w:initials', 'w:p', 'w:tbl']

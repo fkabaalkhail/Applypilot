@@ -1,5 +1,5 @@
 """
-GeminiService — drop-in replacement for OllamaService using Google Gemini API.
+GeminiService — Google Gemini API client for AI-powered features.
 
 Same interface: analyze_resume, generate_cover_letter, answer_question,
 suggest_job_titles, tailor_resume, extract_experience_years,
@@ -53,7 +53,7 @@ def _extract_json(response: str) -> str:
 
 
 class GeminiService:
-    """Async client for Google Gemini API. Same interface as OllamaService."""
+    """Async client for Google Gemini API."""
 
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY", "")

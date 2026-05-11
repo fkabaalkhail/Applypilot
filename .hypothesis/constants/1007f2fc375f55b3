@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfplumber\table.py
-# hypothesis_version: 6.151.10
-
-['Page', 'TableSettings', '_lines', '_strategy', 'bottom', 'edge_min_length', 'explicit', 'explicit_', 'h', 'height', 'horizontal', 'join_tolerance', 'join_x_tolerance', 'join_y_tolerance', 'layout', 'layout_bbox', 'layout_height', 'layout_width', 'line', 'lines', 'lines_strict', 'min_words_horizontal', 'min_words_vertical', 'orientation', 'snap_tolerance', 'snap_x_tolerance', 'snap_y_tolerance', 'text', 'text_', 'text_settings', 'tolerance', 'top', 'v', 'vertical', 'width', 'x0', 'x1', 'x_tolerance', 'y_tolerance']

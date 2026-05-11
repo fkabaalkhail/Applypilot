@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\fedcm\account.py
-# hypothesis_version: 6.151.10
-
-['SignIn', 'SignUp', 'accountId', 'email', 'givenName', 'idpConfigUrl', 'loginState', 'name', 'pictureUrl', 'privacyPolicyUrl', 'termsOfServiceUrl']

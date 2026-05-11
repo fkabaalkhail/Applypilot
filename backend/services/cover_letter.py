@@ -1,7 +1,7 @@
 """
 CoverLetterGenerator — generates tailored cover letters for job applications.
 
-Uses Ollama to create personalized cover letters based on the user's resume
+Uses Gemini to create personalized cover letters based on the user's resume
 and the target job description.
 """
 
@@ -34,7 +34,7 @@ class CoverLetterGenerator:
     """Generates tailored cover letters for job applications."""
 
     def __init__(self):
-        self.ollama = get_llm_service()
+        self.llm = get_llm_service()
 
     async def generate(
         self, resume_text: str, job_description: str, company: str
@@ -55,4 +55,4 @@ class CoverLetterGenerator:
             job_description=job_description[:3000],
         )
 
-        return await self.ollama._generate(prompt)
+        return await self.llm._generate(prompt)

@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\docx\oxml\numbering.py
-# hypothesis_version: 6.151.10
-
-['./w:num/@w:numId', 'w:abstractNumId', 'w:ilvl', 'w:ins', 'w:lvl', 'w:lvlOverride', 'w:num', 'w:numId', 'w:numIdMacAtCleanup', 'w:numberingChange', 'w:startOverride']

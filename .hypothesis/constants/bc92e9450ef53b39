@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\virtual_authenticator.py
-# hypothesis_version: 6.151.10
-
-['Credential', 'ble', 'browserName', 'credentialId', 'ctap1/u2f', 'ctap2', 'firefox', 'hasResidentKey', 'hasUserVerification', 'internal', 'isResidentCredential', 'isUserConsenting', 'isUserVerified', 'nfc', 'privateKey', 'protocol', 'rpId', 'safari', 'signCount', 'transport', 'usb', 'userHandle']

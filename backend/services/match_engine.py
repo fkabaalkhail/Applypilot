@@ -1,7 +1,7 @@
 """
-MatchEngine — computes detailed match score breakdowns via Ollama.
+MatchEngine — computes detailed match score breakdowns via Gemini.
 
-Extends the existing OllamaService.match_job with breakdown scores
+Extends the existing GeminiService.match_job with breakdown scores
 for experience, skills, and industry.
 """
 
@@ -75,11 +75,11 @@ Job Posting:
 
 
 class MatchEngine:
-    """Computes detailed match score breakdowns via Ollama."""
+    """Computes detailed match score breakdowns via Gemini."""
 
     def __init__(self, db: Session):
         self.db = db
-        self.ollama = get_llm_service()
+        self.llm = get_llm_service()
 
     async def compute_breakdown(
         self, resume_text: str, job_description: str
@@ -95,7 +95,7 @@ class MatchEngine:
             job_description=job_description[:3000],
         )
 
-        response = await self.ollama._generate(prompt)
+        response = await self.llm._generate(prompt)
         data = self._parse_json_response(response)
 
         overall = data.get("overall_score", 0)
@@ -118,7 +118,7 @@ class MatchEngine:
             job_description=job_description[:3000],
         )
 
-        response = await self.ollama._generate(prompt)
+        response = await self.llm._generate(prompt)
         data = self._parse_json_response(response)
 
         overall = data.get("overall_score", 0)
@@ -174,7 +174,7 @@ class MatchEngine:
             logger.error(f"Failed to analyze job {job_id}: {e}")
 
     def _parse_json_response(self, response: str) -> dict:
-        """Parse JSON from Ollama response, handling code fences."""
+        """Parse JSON from LLM response, handling code fences."""
         json_str = response.strip()
 
         # Handle markdown code fences

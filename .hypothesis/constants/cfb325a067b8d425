@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\proxy.py
-# hypothesis_version: 6.151.10
-
-[',', 'AUTODETECT', 'DIRECT', 'MANUAL', 'PAC', 'RESERVED1', 'SYSTEM', 'UNSPECIFIED', 'autodetect', 'ff_value', 'httpProxy', 'manual', 'noProxy', 'pac', 'proxyAutoconfigUrl', 'proxyType', 'socksPassword', 'socksProxy', 'socksUsername', 'socksVersion', 'sslProxy', 'string']

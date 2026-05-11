@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\Desktop\Applypilot\backend\services\browser_pool.py
-# hypothesis_version: 6.151.10
-
-[200, 300, '%Y%m%d_%H%M%S', '--disable-extensions', '--disable-gpu', '--lang=en-US', '--no-sandbox', '.linkedin.com', '/', '/feed', '/in/', '/jobs', '/messaging', '/mynetwork', '/usr/bin/chromium', 'BrowserSession', 'Google Inc.', 'Intel Inc.', 'Login successful!', 'Screenshot saved: %s', 'Session still valid', 'Stealth mode applied', 'Win32', 'challenge', 'checkpoint', 'data', 'data/cookies', 'domain', 'en', 'en-US', 'enable-automation', 'excludeSwitches', "input[name='pin']", "input[type='text']", 'li_at', 'linkedin_cookie', 'linkedin_email', 'linkedin_password', 'login_2fa_challenge', 'login_failure', 'login_failure_2fa', 'name', 'password', 'path', 'pin', 'rb', 'text', 'username', 'utf-8', 'value', 'wb']

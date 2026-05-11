@@ -25,7 +25,7 @@ from backend.services.cover_letter import CoverLetterGenerator
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-OLLAMA_503_DETAIL = "Ollama service unavailable. Please start Ollama."
+LLM_503_DETAIL = "AI service unavailable. Please check your Gemini API key."
 
 
 def _get_resume_text(db: Session) -> str:
@@ -59,7 +59,7 @@ async def match_breakdown(job_id: int, db: Session = Depends(get_db)):
         engine = MatchEngine(db)
         return await engine.compute_breakdown(resume_text, job.description)
     except (ConnectionError, httpx.ConnectError):
-        raise HTTPException(status_code=503, detail=OLLAMA_503_DETAIL)
+        raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
 
 
 @router.post("/tailor-resume/{job_id}", response_model=TailoredResumeOut)
@@ -73,7 +73,7 @@ async def tailor_resume(job_id: int, db: Session = Depends(get_db)):
         result = await tailor.tailor_resume(resume_text, job.description, job_id)
         return result
     except (ConnectionError, httpx.ConnectError):
-        raise HTTPException(status_code=503, detail=OLLAMA_503_DETAIL)
+        raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
 
 
 @router.post("/cover-letter/{job_id}", response_model=CoverLetterOut)
@@ -91,7 +91,7 @@ async def cover_letter(job_id: int, db: Session = Depends(get_db)):
             generated_at=datetime.datetime.utcnow(),
         )
     except (ConnectionError, httpx.ConnectError):
-        raise HTTPException(status_code=503, detail=OLLAMA_503_DETAIL)
+        raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
 
 
 @router.post("/analyze-fit/{job_id}", response_model=FitAnalysis)
@@ -104,4 +104,4 @@ async def analyze_fit(job_id: int, db: Session = Depends(get_db)):
         engine = MatchEngine(db)
         return await engine.analyze_fit(resume_text, job.description)
     except (ConnectionError, httpx.ConnectError):
-        raise HTTPException(status_code=503, detail=OLLAMA_503_DETAIL)
+        raise HTTPException(status_code=503, detail=LLM_503_DETAIL)

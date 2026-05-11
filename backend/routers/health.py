@@ -19,7 +19,7 @@ async def health_check():
     except Exception:
         checks["database"] = False
 
-    checks["ollama"] = bool(os.getenv("OLLAMA_BASE_URL"))
+    checks["gemini"] = bool(os.getenv("GEMINI_API_KEY"))
 
     all_ok = all(checks.values())
     return {"status": "healthy" if all_ok else "degraded", "checks": checks}

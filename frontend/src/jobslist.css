@@ -70,7 +70,7 @@
 }
 
 .jl-nav-link-active {
-  color: #10b981;
+  color: #ea580c;
   font-weight: 600;
 }
 
@@ -114,7 +114,7 @@
 .jl-stat-number {
   font-size: 1.75rem;
   font-weight: 700;
-  color: #10b981;
+  color: #ea580c;
 }
 
 .jl-stat-label {
@@ -158,13 +158,13 @@
 }
 
 .jl-country-btn:hover {
-  border-color: #10b981;
-  color: #10b981;
+  border-color: #ea580c;
+  color: #ea580c;
 }
 
 .jl-country-btn.active {
-  background: #10b981;
-  border-color: #10b981;
+  background: #ea580c;
+  border-color: #ea580c;
   color: #ffffff;
 }
 
@@ -214,13 +214,13 @@
 }
 
 .jl-cat-pill:hover {
-  border-color: #10b981;
-  color: #10b981;
+  border-color: #ea580c;
+  color: #ea580c;
 }
 
 .jl-cat-pill.active {
-  background: #10b981;
-  border-color: #10b981;
+  background: #ea580c;
+  border-color: #ea580c;
   color: #ffffff;
 }
 
@@ -254,7 +254,7 @@
 }
 
 .jl-filter-input:focus {
-  border-color: #10b981;
+  border-color: #ea580c;
 }
 
 .jl-filter-select {
@@ -271,12 +271,12 @@
 }
 
 .jl-filter-select:focus {
-  border-color: #10b981;
+  border-color: #ea580c;
 }
 
 .jl-filter-search-btn {
   padding: 0.5rem 1rem;
-  background: #10b981;
+  background: #ea580c;
   color: #ffffff;
   border: none;
   border-radius: 0 8px 8px 0;
@@ -288,7 +288,7 @@
 }
 
 .jl-filter-search-btn:hover {
-  background: #059669;
+  background: #dc4e08;
 }
 
 .jl-filter-item:first-child .jl-filter-input {
@@ -344,7 +344,7 @@
 
 .jl-row-even:hover,
 .jl-row-odd:hover {
-  background: #ecfdf5;
+  background: #fff7ed;
 }
 
 .jl-th-num {
@@ -379,7 +379,7 @@
 .jl-apply-btn {
   display: inline-block;
   padding: 0.35rem 1rem;
-  background: #10b981;
+  background: #ea580c;
   color: #ffffff;
   border-radius: 6px;
   text-decoration: none;
@@ -389,7 +389,7 @@
 }
 
 .jl-apply-btn:hover {
-  background: #059669;
+  background: #dc4e08;
 }
 
 .jl-td-location {
@@ -408,7 +408,7 @@
 }
 
 .jl-td-salary {
-  color: #059669;
+  color: #dc4e08;
   font-weight: 500;
   font-size: 0.85rem;
   white-space: nowrap;
@@ -426,8 +426,8 @@
 }
 
 .wt-remote {
-  background: #d1fae5;
-  color: #065f46;
+  background: #fff7ed;
+  color: #9a3412;
 }
 
 .wt-hybrid {
@@ -473,8 +473,8 @@
 }
 
 .jl-page-btn:hover:not(:disabled) {
-  border-color: #10b981;
-  color: #10b981;
+  border-color: #ea580c;
+  color: #ea580c;
 }
 
 .jl-page-btn:disabled {
@@ -572,4 +572,15 @@
   .jl-pagination {
     padding: 1rem;
   }
+}
+
+
+/* Flag images in country buttons */
+.jl-flag {
+  width: 24px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 0.25rem;
 }

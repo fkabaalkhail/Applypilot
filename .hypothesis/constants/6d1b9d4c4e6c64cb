@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\bidi\input.py
-# hypothesis_version: 6.151.10
-
-[0.0, 1.0, 359, 'FileDialogInfo', 'actions', 'altitudeAngle', 'azimuthAngle', 'button', 'context', 'deltaX', 'deltaY', 'duration', 'element', 'files', 'height', 'id', 'input.performActions', 'input.releaseActions', 'input.setFiles', 'key', 'keyDown', 'keyUp', 'mouse', 'multiple', 'none', 'origin', 'parameters', 'pause', 'pen', 'pointer', 'pointerDown', 'pointerMove', 'pointerType', 'pointerUp', 'pressure', 'scroll', 'tangentialPressure', 'touch', 'twist', 'type', 'value', 'viewport', 'wheel', 'width', 'x', 'y']

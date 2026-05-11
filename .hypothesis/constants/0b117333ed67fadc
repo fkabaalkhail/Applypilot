@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\Desktop\Applypilot\backend\routers\applications.py
-# hypothesis_version: 6.151.10
-
-[200, 404, '/export', '/review', '/stats', '/{app_id}', '; ', 'Company', 'Content-Disposition', 'Date Applied', 'Date Posted', 'Description Excerpt', 'Experience Required', 'HR Contact Link', 'HR Contact Name', 'Job ID', 'Job Link', 'Location', 'Questions Found', 'Resume Used', 'Skills', 'Status', 'Title', 'Work Style', 'met', 'original', 'question', 'req', 'text/csv', 'value']

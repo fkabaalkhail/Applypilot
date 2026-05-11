@@ -1,7 +1,7 @@
 """
 Resume upload and parsing endpoints.
 
-POST /resumes/upload — accepts PDF or DOCX, extracts text, analyzes via Ollama,
+POST /resumes/upload — accepts PDF or DOCX, extracts text, analyzes via Gemini,
 stores profile in DB, returns typed ResumeProfile.
 GET /resumes — list all resumes ordered by created_at desc.
 GET /resumes/{id} — get full resume detail including profile and analysis report.
@@ -103,11 +103,11 @@ async def analyze_resume(resume_id: int, db: Session = Depends(get_db)):
     if not record.raw_text:
         raise HTTPException(status_code=422, detail="Resume has no extracted text to analyze.")
 
-    ollama = get_llm_service()
+    llm = get_llm_service()
     try:
-        report = await ollama.analyze_resume_quality(record.raw_text)
+        report = await llm.analyze_resume_quality(record.raw_text)
     except Exception as e:
-        logger.error("Ollama quality analysis failed: %s", e)
+        logger.error("AI quality analysis failed: %s", e)
         raise HTTPException(status_code=502, detail=f"AI quality analysis failed: {e}")
 
     record.analysis_report = report.model_dump()
@@ -253,12 +253,12 @@ async def upload_resume(
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="Extracted text is empty.")
 
-    # Analyze with Ollama
-    ollama = get_llm_service()
+    # Analyze with Gemini
+    llm = get_llm_service()
     try:
-        profile = await ollama.analyze_resume(raw_text)
+        profile = await llm.analyze_resume(raw_text)
     except Exception as e:
-        logger.error("Ollama analysis failed: %s", e)
+        logger.error("AI analysis failed: %s", e)
         raise HTTPException(status_code=502, detail=f"AI analysis failed: {e}")
 
     # Persist to DB

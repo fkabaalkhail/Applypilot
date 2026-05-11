@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\remote\remote_connection.py
-# hypothesis_version: 6.151.10
-
-[100, 199, 300, 304, 400, 401, '$', '%s %s %s', '...', '/', '/session', '/session/$sessionId', ';', 'Accept', 'Authorization', 'CERT_NONE', 'CERT_REQUIRED', 'Connection', 'Content-Type', 'DELETE', 'Finished Request', 'GET', 'POST', 'PUT', 'REQUESTS_CA_BUNDLE', 'UTF-8', 'User-Agent', '_conn', 'application/json', 'ca_certs', 'cert_reqs', 'darwin', 'image/png', 'keep-alive', 'location', 'mac', 'proxy_headers', 'sock', 'status', 'timeout', 'value']

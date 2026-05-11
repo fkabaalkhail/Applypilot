@@ -219,13 +219,13 @@ export default function JobsList() {
           className={`jl-country-btn ${country === "US" ? "active" : ""}`}
           onClick={() => { setCountry("US"); setPage(1); }}
         >
-          🇺🇸 United States
+          <img src="https://flagcdn.com/w40/us.png" alt="US" className="jl-flag" /> United States
         </button>
         <button
           className={`jl-country-btn ${country === "CA" ? "active" : ""}`}
           onClick={() => { setCountry("CA"); setPage(1); }}
         >
-          🇨🇦 Canada
+          <img src="https://flagcdn.com/w40/ca.png" alt="CA" className="jl-flag" /> Canada
         </button>
       </div>
 
@@ -275,9 +275,9 @@ export default function JobsList() {
             className="jl-filter-select"
           >
             <option value="">Work Model</option>
-            <option value="Remote">Remote</option>
-            <option value="Hybrid">Hybrid</option>
-            <option value="On Site">On Site</option>
+            <option value="remote">Remote</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="onsite">On Site</option>
           </select>
         </div>
         <div className="jl-filter-item">
@@ -325,7 +325,7 @@ export default function JobsList() {
               {filteredJobs.map((job, idx) => (
                 <tr key={job.id} className={idx % 2 === 0 ? "jl-row-even" : "jl-row-odd"}>
                   <td className="jl-td-num">{(page - 1) * pageSize + idx + 1}</td>
-                  <td className="jl-td-title">{job.title}</td>
+                  <td className="jl-td-title">{job.title.replace(/\*\*/g, "")}</td>
                   <td className="jl-td-date">{timeAgo(job.posted_date || job.scraped_at)}</td>
                   <td className="jl-td-apply">
                     <a
@@ -341,7 +341,7 @@ export default function JobsList() {
                     <WorkTypeBadge type={job.work_type} />
                   </td>
                   <td className="jl-td-location">{job.location || "—"}</td>
-                  <td className="jl-td-company">{job.company}</td>
+                  <td className="jl-td-company">{job.company.replace(/\*\*/g, "")}</td>
                   <td className="jl-td-salary">{job.salary_range || "—"}</td>
                 </tr>
               ))}

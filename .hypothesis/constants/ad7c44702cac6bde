@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\pdfplumber\repair.py
-# hypothesis_version: 6.151.10
-
-['-', '-o', '-sDEVICE=pdfwrite', '-sstdout=%stderr', 'default', 'ebook', 'gs', 'gswin32c', 'gswin64c', 'prepress', 'printer', 'screen', 'wb']

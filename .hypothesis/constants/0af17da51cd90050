@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\bidi\session.py
-# hypothesis_version: 6.151.10
-
-['accept', 'alert', 'beforeUnload', 'before_unload', 'browsingContexts', 'confirm', 'default', 'dismiss', 'events', 'file', 'ignore', 'prompt', 'session.status', 'session.subscribe', 'session.unsubscribe']

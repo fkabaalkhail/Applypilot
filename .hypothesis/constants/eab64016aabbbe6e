@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\selenium\webdriver\common\bidi\network.py
-# hypothesis_version: 6.151.10
-
-['Request not found.', 'action', 'authRequired', 'auth_required', 'beforeRequestSent', 'before_request', 'body', 'bodySize', 'contexts', 'continue_auth', 'continue_request', 'cookies', 'credentials', 'default', 'event_class', 'events', 'fetch_error', 'goog:resourceType', 'headers', 'headersSize', 'intercept', 'method', 'network.addIntercept', 'network.authRequired', 'network.failRequest', 'network.fetchError', 'password', 'phases', 'provideCredentials', 'request', 'responseStarted', 'response_completed', 'response_started', 'session.subscribe', 'session.unsubscribe', 'timings', 'type', 'url', 'urlPatterns', 'username']

@@ -1,4 +1,0 @@
-# file: /Users/fahad/ApplyPilot/backend/routers/settings.py
-# hypothesis_version: 6.151.10
-
-[400, ',', '/cookies', '/resume', 'application/pdf', 'data/resumes', 'resume.pdf']

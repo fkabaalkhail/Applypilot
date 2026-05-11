@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\starlette\middleware\cors.py
-# hypothesis_version: 6.151.10
-
-[200, 400, 600, '*', ',', ', ', 'Accept', 'Accept-Language', 'Content-Language', 'Content-Type', 'DELETE', 'Disallowed CORS ', 'GET', 'HEAD', 'OK', 'OPTIONS', 'Origin', 'PATCH', 'POST', 'PUT', 'Vary', 'headers', 'http', 'http.response.start', 'method', 'origin', 'private-network', 'true', 'type']

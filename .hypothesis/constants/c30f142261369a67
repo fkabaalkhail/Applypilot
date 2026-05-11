@@ -1,4 +1,0 @@
-# file: C:\Users\fahad\AppData\Roaming\Python\Python312\site-packages\docx\enum\section.py
-# hypothesis_version: 6.151.10
-
-['continuous', 'default', 'even', 'evenPage', 'first', 'landscape', 'nextColumn', 'nextPage', 'oddPage', 'portrait']
