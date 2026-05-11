@@ -101,6 +101,85 @@ def cleanup_jobright_jobs(db: Session = Depends(get_db)):
     return {"deleted_jobs": count, "deleted_sources": source_count}
 
 
+@router.api_route("/cron-ats", methods=["GET", "POST"])
+async def cron_ats(db: Session = Depends(get_db)):
+    """Scrape ATS platforms (Greenhouse, Lever) for intern/new-grad jobs.
+
+    Polls all configured companies' public ATS APIs and stores jobs
+    with direct apply links. Filters to entry-level + US/Canada only.
+    Designed to be called by Vercel Cron Jobs on a schedule.
+    """
+    try:
+        from backend.db.models import ScrapedJob
+        from backend.services.ats_scraper import ATSScraper
+        from backend.services.country_filter import CountryFilter
+        from backend.services.work_type_classifier import WorkTypeClassifier
+
+        scraper = ATSScraper(filter_entry_level=True, filter_north_america=True)
+        country_filter = CountryFilter()
+        work_type_classifier = WorkTypeClassifier()
+
+        jobs = await scraper.scrape_all()
+
+        new_count = 0
+        skipped_dupe = 0
+        for job in jobs:
+            # Dedup by URL
+            existing = db.query(ScrapedJob).filter(ScrapedJob.url == job.url).first()
+            if existing:
+                skipped_dupe += 1
+                continue
+
+            # Classify country
+            country = country_filter.classify(job.location)
+            if not country:
+                country = "US"  # ATS scraper already filtered to NA
+
+            # Classify work type
+            work_type = job.work_type or work_type_classifier.classify(job.location)
+
+            # Determine experience level from title
+            title_lower = job.title.lower()
+            if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
+                experience_level = "internship"
+            else:
+                experience_level = "new_grad"
+
+            scraped_job = ScrapedJob(
+                title=job.title,
+                company=job.company,
+                location=job.location,
+                url=job.url,
+                description="",
+                source_platform="ats",
+                posted_date=job.posted_date,
+                easy_apply=0,
+                work_type=work_type,
+                role_category=job.department or "",
+                country=country,
+                experience_level=experience_level,
+                company_logo=f"https://logo.clearbit.com/{job.company.lower().replace(' ', '')}.com",
+            )
+            db.add(scraped_job)
+            try:
+                db.commit()
+                new_count += 1
+            except Exception:
+                db.rollback()
+                skipped_dupe += 1
+
+        return {
+            "status": "completed",
+            "total_found": len(jobs),
+            "new_jobs": new_count,
+            "duplicates_skipped": skipped_dupe,
+        }
+    except Exception as e:
+        import traceback
+        logger.error(f"ATS cron failed: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"ATS cron failed: {str(e)}")
+
+
 @router.api_route("/cron-poll", methods=["GET", "POST"])
 async def cron_poll(db: Session = Depends(get_db)):
     """Seed sources (if needed) and poll the next overdue source.

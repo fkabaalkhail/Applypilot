@@ -28,7 +28,7 @@ class AggregatorService:
     """Orchestrates scraping, classification, and storage of jobs from GitHub sources."""
 
     REPOS: list[dict] = [
-        # === Repos with DIRECT company apply links only ===
+        # === Community repos with DIRECT company apply links ===
         {
             "url": "https://github.com/Ouckah/Summer2025-Internships",
             "category": "Software Engineering",
@@ -69,6 +69,184 @@ class AggregatorService:
             "category": "",
             "level": "internship",
         },
+        # === Jobright-AI Internship repos (2026) ===
+        {
+            "url": "https://github.com/jobright-ai/2026-Software-Engineer-Internship",
+            "category": "Software Engineering",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Data-Analysis-Internship",
+            "category": "Data Analysis",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Product-Management-Internship",
+            "category": "Product Management",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Business-Analyst-Internship",
+            "category": "Business Analyst",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Consultant-Internship",
+            "category": "Consultant",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Marketing-Internship",
+            "category": "Marketing",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Support-Internship",
+            "category": "Customer Service and Support",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Education-Internship",
+            "category": "Education and Training",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Public-Sector-Internship",
+            "category": "Public Sector and Government",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-HR-Internship",
+            "category": "Human Resources",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Legal-Internship",
+            "category": "Legal and Compliance",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Art-Internship",
+            "category": "Arts and Entertainment",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Sales-Internship",
+            "category": "Sales",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Accounting-Internship",
+            "category": "Accounting and Finance",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Design-Internship",
+            "category": "Creatives and Design",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Management-Internship",
+            "category": "Management and Executive",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Engineering-Internship",
+            "category": "Engineering and Development",
+            "level": "internship",
+        },
+        # === Jobright-AI New Grad repos (2026) ===
+        {
+            "url": "https://github.com/jobright-ai/2026-Software-Engineer-New-Grad",
+            "category": "Software Engineering",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Data-Analysis-New-Grad",
+            "category": "Data Analysis",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Product-Management-New-Grad",
+            "category": "Product Management",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Business-Analyst-New-Grad",
+            "category": "Business Analyst",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Consultant-New-Grad",
+            "category": "Consultant",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Marketing-New-Grad",
+            "category": "Marketing",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Support-New-Grad",
+            "category": "Customer Service and Support",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Education-New-Grad",
+            "category": "Education and Training",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Public-Sector-New-Grad",
+            "category": "Public Sector and Government",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-HR-New-Grad",
+            "category": "Human Resources",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Legal-New-Grad",
+            "category": "Legal and Compliance",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Art-New-Grad",
+            "category": "Arts and Entertainment",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Sales-New-Grad",
+            "category": "Sales",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Accounting-New-Grad",
+            "category": "Accounting and Finance",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Design-New-Grad",
+            "category": "Creatives and Design",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Management-New-Grad",
+            "category": "Management and Executive",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/jobright-ai/2026-Engineering-New-Grad",
+            "category": "Engineering and Development",
+            "level": "new_grad",
+        },
+        # === Jobright-AI H1B Sponsorship repo ===
+        {
+            "url": "https://github.com/jobright-ai/Daily-H1B-Jobs-In-Tech",
+            "category": "",
+            "level": "new_grad",
+        },
     ]
 
     REPO_CATEGORY_MAP: dict[str, str] = {
@@ -80,6 +258,42 @@ class AggregatorService:
         "New-Grad-Software-Engineering-Jobs-2026": "Software Engineering",
         "New-Grad-Data-Science-Jobs-2026": "Data Analysis",
         "Internships-2026": "",
+        # Jobright-AI repos
+        "2026-Software-Engineer-Internship": "Software Engineering",
+        "2026-Data-Analysis-Internship": "Data Analysis",
+        "2026-Product-Management-Internship": "Product Management",
+        "2026-Business-Analyst-Internship": "Business Analyst",
+        "2026-Consultant-Internship": "Consultant",
+        "2026-Marketing-Internship": "Marketing",
+        "2026-Support-Internship": "Customer Service and Support",
+        "2026-Education-Internship": "Education and Training",
+        "2026-Public-Sector-Internship": "Public Sector and Government",
+        "2026-HR-Internship": "Human Resources",
+        "2026-Legal-Internship": "Legal and Compliance",
+        "2026-Art-Internship": "Arts and Entertainment",
+        "2026-Sales-Internship": "Sales",
+        "2026-Accounting-Internship": "Accounting and Finance",
+        "2026-Design-Internship": "Creatives and Design",
+        "2026-Management-Internship": "Management and Executive",
+        "2026-Engineering-Internship": "Engineering and Development",
+        "2026-Software-Engineer-New-Grad": "Software Engineering",
+        "2026-Data-Analysis-New-Grad": "Data Analysis",
+        "2026-Product-Management-New-Grad": "Product Management",
+        "2026-Business-Analyst-New-Grad": "Business Analyst",
+        "2026-Consultant-New-Grad": "Consultant",
+        "2026-Marketing-New-Grad": "Marketing",
+        "2026-Support-New-Grad": "Customer Service and Support",
+        "2026-Education-New-Grad": "Education and Training",
+        "2026-Public-Sector-New-Grad": "Public Sector and Government",
+        "2026-HR-New-Grad": "Human Resources",
+        "2026-Legal-New-Grad": "Legal and Compliance",
+        "2026-Art-New-Grad": "Arts and Entertainment",
+        "2026-Sales-New-Grad": "Sales",
+        "2026-Accounting-New-Grad": "Accounting and Finance",
+        "2026-Design-New-Grad": "Creatives and Design",
+        "2026-Management-New-Grad": "Management and Executive",
+        "2026-Engineering-New-Grad": "Engineering and Development",
+        "Daily-H1B-Jobs-In-Tech": "",
     }
 
     def __init__(self, db: Session):
@@ -89,7 +303,7 @@ class AggregatorService:
         self.work_type_classifier = WorkTypeClassifier()
 
     async def seed_sources(self) -> dict[str, int]:
-        """Create GitHubSource records for all 9 repos. Idempotent.
+        """Create GitHubSource records for all configured repos. Idempotent.
 
         Returns {"created": N, "existing": M}
         """

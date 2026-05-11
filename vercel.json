@@ -1,4 +1,14 @@
 {
+  "crons": [
+    {
+      "path": "/github-sources/cron-poll",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/github-sources/cron-ats",
+      "schedule": "0 * * * *"
+    }
+  ],
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": null,
