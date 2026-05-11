@@ -2,25 +2,58 @@
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": null,
-  "crons": [
-    {
-      "path": "/github-sources/cron-poll",
-      "schedule": "0 0 * * *"
-    }
-  ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.py" },
-    { "source": "/health", "destination": "/api/index.py" },
-    { "source": "/resumes", "destination": "/api/index.py" },
-    { "source": "/resumes/(.*)", "destination": "/api/index.py" },
-    { "source": "/ai/(.*)", "destination": "/api/index.py" },
-    { "source": "/jobs/(.*)", "destination": "/api/index.py" },
-    { "source": "/jobs", "destination": "/api/index.py" },
-    { "source": "/settings/(.*)", "destination": "/api/index.py" },
-    { "source": "/settings", "destination": "/api/index.py" },
-    { "source": "/connections/(.*)", "destination": "/api/index.py" },
-    { "source": "/apply/(.*)", "destination": "/api/index.py" },
-    { "source": "/github-sources(.*)", "destination": "/api/index.py" },
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/health",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/resumes",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/resumes/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/ai/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/jobs/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/jobs",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/settings/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/settings",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/connections/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/apply/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/github-sources(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/((?!assets/).*)",
+      "destination": "/index.html"
+    }
   ]
 }
