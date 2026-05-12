@@ -45,7 +45,6 @@ interface Stats {
 interface Filters {
   source: string;
   min_match_score: number;
-  location: string;
   experience_level: string;
 }
 
@@ -139,7 +138,6 @@ export default function Jobs() {
   const [filters, setFilters] = useState<Filters>({
     source: "",
     min_match_score: 0,
-    location: "",
     experience_level: "",
   });
   const [showFilters, setShowFilters] = useState(false);
@@ -151,7 +149,11 @@ export default function Jobs() {
         const parsed = JSON.parse(saved);
         return {
           country: parsed.country || "",
-          location: parsed.location || "",
+          location: Array.isArray(parsed.location)
+            ? parsed.location
+            : typeof parsed.location === "string" && parsed.location
+              ? [parsed.location]
+              : [],
           work_type: Array.isArray(parsed.work_type) ? parsed.work_type : [],
           role_category: Array.isArray(parsed.role_category) ? parsed.role_category : [],
           experience_level: Array.isArray(parsed.experience_level) ? parsed.experience_level : parsed.experience_level ? [parsed.experience_level] : [],
@@ -161,7 +163,7 @@ export default function Jobs() {
     } catch {
       // Ignore parse errors, use defaults
     }
-    return { country: "", location: "", work_type: [], role_category: [], experience_level: [], date_posted: "" };
+    return { country: "", location: [], work_type: [], role_category: [], experience_level: [], date_posted: "" };
   });
 
   useEffect(() => {
@@ -186,10 +188,12 @@ export default function Jobs() {
     if (activeTab === "Saved" || activeTab === "Liked") params.set("saved", "1");
     if (filters.source) params.set("source", filters.source);
     if (filters.min_match_score > 0) params.set("min_score", String(filters.min_match_score));
-    if (filters.location) params.set("location", filters.location);
 
     if (aggFilters.country) params.set("country", aggFilters.country);
-    if (aggFilters.location) params.set("location", aggFilters.location);
+    if (aggFilters.location.length > 0) {
+      const locationParam = aggFilters.location.map(c => c.trim()).filter(c => c.length > 0).join(",");
+      if (locationParam) params.set("location", locationParam);
+    }
     if (aggFilters.work_type.length > 0) params.set("work_type", aggFilters.work_type.join(","));
     if (aggFilters.role_category.length > 0) params.set("role_category", aggFilters.role_category.join(","));
     if (aggFilters.experience_level.length > 0) params.set("experience_level", aggFilters.experience_level.join(","));
@@ -329,13 +333,6 @@ export default function Jobs() {
       {/* Expanded Filters */}
       {showFilters && (
         <div className="filters-expanded">
-          <input
-            type="text"
-            value={filters.location}
-            onChange={(e) => setFilters({ ...filters, location: e.target.value })}
-            placeholder="Filter by location..."
-            className="filter-input"
-          />
           <select
             value={filters.experience_level}
             onChange={(e) => setFilters({ ...filters, experience_level: e.target.value })}

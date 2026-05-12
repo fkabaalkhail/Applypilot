@@ -47,7 +47,13 @@ def list_jobs(
     if saved is not None:
         q = q.filter(ScrapedJob.saved == saved)
     if location:
-        q = q.filter(ScrapedJob.location.ilike(f"%{location}%"))
+        city_values = [c.strip() for c in location.split(",") if c.strip()]
+        if city_values:
+            from sqlalchemy import or_
+            location_conditions = [
+                ScrapedJob.location.ilike(f"%{city}%") for city in city_values
+            ]
+            q = q.filter(or_(*location_conditions))
 
     # Aggregator filters (AND logic across different filter types, OR within same filter)
     if country:

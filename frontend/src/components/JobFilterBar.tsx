@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 
 export interface JobFilters {
   country: string;           // "US" | "CA" | ""
-  location: string;          // city search text
+  location: string[];        // array of city search tags
   work_type: string[];       // ["remote", "hybrid", "onsite"]
   role_category: string[];   // selected categories
   experience_level: string[];  // ["intern_new_grad", "entry", "mid", "senior", "lead", "director"]
@@ -222,7 +222,8 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
 
   // Temp state for pending selections (before Confirm)
   const [tempCountry, setTempCountry] = useState(filters.country);
-  const [tempLocation, setTempLocation] = useState(filters.location);
+  const [tempLocationTags, setTempLocationTags] = useState<string[]>(filters.location);
+  const [locationInput, setLocationInput] = useState("");
   const [tempRoleCategory, setTempRoleCategory] = useState<string[]>(filters.role_category);
   const [tempExperience, setTempExperience] = useState<string[]>(Array.isArray(filters.experience_level) ? filters.experience_level : filters.experience_level ? [filters.experience_level] : []);
   const [tempWorkType, setTempWorkType] = useState<string[]>(filters.work_type);
@@ -231,12 +232,35 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
   // Sync temp state when filters change externally
   useEffect(() => {
     setTempCountry(filters.country);
-    setTempLocation(filters.location);
+    setTempLocationTags(filters.location);
     setTempRoleCategory(filters.role_category);
     setTempExperience(Array.isArray(filters.experience_level) ? filters.experience_level : filters.experience_level ? [filters.experience_level] : []);
     setTempWorkType(filters.work_type);
     setTempDatePosted(filters.date_posted);
   }, [filters]);
+
+  // --- City tag management ---
+
+  function addCityTag(city: string) {
+    const trimmed = city.trim();
+    if (!trimmed) return;
+    if (tempLocationTags.includes(trimmed)) return;
+    setTempLocationTags((prev) => [...prev, trimmed]);
+    setLocationInput("");
+  }
+
+  function removeCityTag(city: string) {
+    setTempLocationTags((prev) => prev.filter((tag) => tag !== city));
+  }
+
+  function handleLocationKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addCityTag(locationInput);
+    } else if (e.key === "Backspace" && locationInput === "" && tempLocationTags.length > 0) {
+      setTempLocationTags((prev) => prev.slice(0, -1));
+    }
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -256,7 +280,7 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
   // --- Confirm handlers ---
 
   function confirmCountry() {
-    onChange({ ...filters, country: tempCountry, location: tempLocation });
+    onChange({ ...filters, country: tempCountry, location: tempLocationTags });
     setOpenDropdown(null);
   }
 
@@ -284,7 +308,8 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
 
   function resetCountry() {
     setTempCountry("");
-    setTempLocation("");
+    setTempLocationTags([]);
+    setLocationInput("");
   }
 
   function resetJobFunction() {
@@ -305,7 +330,7 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
 
   // --- Badge counts ---
 
-  const countryActive = filters.country || filters.location;
+  const countryActive = filters.country || filters.location.length > 0;
   const jobFunctionCount = filters.role_category.length;
   const experienceActive = filters.experience_level.length;
   const workModelCount = filters.work_type.length;
@@ -342,18 +367,87 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
               <input
                 type="checkbox"
                 style={styles.checkbox}
-                checked={!tempLocation}
-                onChange={() => setTempLocation("")}
+                checked={tempLocationTags.length === 0}
+                onChange={() => { setTempLocationTags([]); setLocationInput(""); }}
               />
               All locations within {tempCountry === "CA" ? "Canada" : "United States"}
             </label>
-            <input
-              type="text"
-              placeholder="Enter City"
-              value={tempLocation}
-              onChange={(e) => setTempLocation(e.target.value)}
-              style={styles.searchInput}
-            />
+            <div style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: "6px",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              border: "1px solid #D3D3FF",
+              marginTop: "8px",
+              minHeight: "38px",
+            }}>
+              {tempLocationTags.map((tag) => (
+                <span
+                  key={tag}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    padding: "4px 10px",
+                    borderRadius: "999px",
+                    background: "#F0EEFF",
+                    border: "1px solid #D3D3FF",
+                    color: "#374151",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    tabIndex={0}
+                    role="button"
+                    onClick={() => removeCityTag(tag)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        removeCityTag(tag);
+                      }
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "none",
+                      border: "none",
+                      color: "#7C6CFF",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      padding: "0 2px",
+                      lineHeight: 1,
+                    }}
+                    aria-label={`Remove ${tag} filter`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                type="text"
+                placeholder={tempLocationTags.length === 0 ? "Enter City" : "Add another city"}
+                value={locationInput}
+                onChange={(e) => setLocationInput(e.target.value)}
+                onKeyDown={handleLocationKeyDown}
+                aria-label="Type a city name and press Enter to add"
+                style={{
+                  flex: 1,
+                  minWidth: "80px",
+                  border: "none",
+                  outline: "none",
+                  fontSize: "13px",
+                  padding: "2px 0",
+                }}
+              />
+            </div>
             <DropdownFooter onReset={resetCountry} onConfirm={confirmCountry} />
           </DropdownPanel>
         )}
@@ -573,7 +667,7 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
                 onChange({
                   ...filters,
                   country: tempCountry,
-                  location: tempLocation,
+                  location: tempLocationTags,
                   work_type: tempWorkType,
                   role_category: tempRoleCategory,
                   experience_level: tempExperience,
