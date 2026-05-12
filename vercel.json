@@ -58,6 +58,14 @@
       "destination": "/api/index.py"
     },
     {
+      "source": "/auth/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/auth",
+      "destination": "/api/index.py"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }

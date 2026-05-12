@@ -4,19 +4,19 @@ Auth endpoints:
 - POST /auth/webhook — Clerk webhook for user sync (create/update/delete)
 """
 
-import os
+import base64
 import hashlib
 import hmac
 import json
 import logging
-from typing import Optional
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from backend.auth.clerk import get_current_user
 from backend.db.database import get_db
 from backend.db.models import User
-from backend.auth.clerk import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -43,7 +43,7 @@ async def clerk_webhook(request: Request, db: Session = Depends(get_db)):
     """
     Clerk webhook endpoint for user lifecycle events.
     Handles: user.created, user.updated, user.deleted
-    
+
     Clerk sends a Svix-signed webhook. We verify the signature
     using the webhook secret.
     """
@@ -56,55 +56,48 @@ async def clerk_webhook(request: Request, db: Session = Depends(get_db)):
         svix_signature = request.headers.get("svix-signature", "")
 
         if not all([svix_id, svix_timestamp, svix_signature]):
-            raise HTTPException(status_code=400, detail="Missing webhook headers")
+            raise HTTPException(status_code=400, detail="Missing svix webhook headers")
 
-        # Svix signature verification
-        # The secret from Clerk starts with "whsec_" — strip that prefix and base64 decode
-        try:
-            import base64
-            secret_bytes = base64.b64decode(CLERK_WEBHOOK_SECRET.replace("whsec_", ""))
-            msg = f"{svix_id}.{svix_timestamp}.{body.decode()}".encode()
-            expected_sig = base64.b64encode(
-                hmac.new(secret_bytes, msg, hashlib.sha256).digest()
-            ).decode()
+        # Strip "whsec_" prefix and base64-decode the secret
+        secret_bytes = base64.b64decode(CLERK_WEBHOOK_SECRET.replace("whsec_", ""))
 
-            # Svix sends multiple signatures separated by space, each prefixed with "v1,"
-            signatures = svix_signature.split(" ")
-            verified = any(
-                sig.replace("v1,", "") == expected_sig
-                for sig in signatures
-            )
-            if not verified:
-                logger.warning("Webhook signature verification failed")
-                raise HTTPException(status_code=401, detail="Invalid signature")
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.warning(f"Webhook verification error: {e}")
-            # In development, allow unverified webhooks
-            pass
+        # Build the signed message: "<svix-id>.<svix-timestamp>.<body>"
+        msg = f"{svix_id}.{svix_timestamp}.{body.decode()}".encode()
 
-    # Parse the event
+        # Compute expected HMAC-SHA256 signature (Python 3: hmac.new)
+        digest = hmac.new(secret_bytes, msg, hashlib.sha256).digest()
+        expected_sig = base64.b64encode(digest).decode()
+
+        # Svix sends space-separated signatures, each prefixed with "v1,"
+        signatures = svix_signature.split(" ")
+        verified = any(sig.replace("v1,", "") == expected_sig for sig in signatures)
+
+        if not verified:
+            logger.warning("Webhook signature verification failed")
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    # Parse the event body
     try:
         event = json.loads(body)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
 
     event_type = event.get("type", "")
     data = event.get("data", {})
+    logger.info(f"Clerk webhook received: {event_type}")
 
-    if event_type == "user.created" or event_type == "user.updated":
+    if event_type in ("user.created", "user.updated"):
         clerk_user_id = data.get("id", "")
         if not clerk_user_id:
             return {"status": "ignored", "reason": "no user id"}
 
+        # Resolve primary email
         email = ""
         email_addresses = data.get("email_addresses", [])
         if email_addresses:
-            # Use the primary email
             primary = next(
                 (e for e in email_addresses if e.get("id") == data.get("primary_email_address_id")),
-                email_addresses[0]
+                email_addresses[0],
             )
             email = primary.get("email_address", "")
 
