@@ -229,6 +229,24 @@ export default function JobsList() {
         </button>
       </div>
 
+      {/* City Quick Filters */}
+      <div className="jl-categories jl-cities">
+        <div className="jl-categories-scroll">
+          {(country === "CA"
+            ? ["Toronto", "Vancouver", "Montreal", "Ottawa", "Calgary", "Waterloo"]
+            : ["San Francisco", "New York", "Seattle", "Austin", "Boston", "Chicago", "Denver", "Remote"]
+          ).map((city) => (
+            <button
+              key={city}
+              className={`jl-cat-pill ${locationFilter === city ? "active" : ""}`}
+              onClick={() => { setLocationFilter(locationFilter === city ? "" : city); setPage(1); }}
+            >
+              {city}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Category Pills */}
       <div className="jl-categories">
         <div className="jl-categories-scroll">
