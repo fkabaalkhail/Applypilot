@@ -427,7 +427,7 @@ export default function Jobs() {
                   <i className="fa-solid fa-briefcase"></i>
                   <span>Full-time</span>
                 </div>
-                {job.salary_range && (
+                {job.salary_range && !job.salary_range.startsWith("{") && (
                   <div className="job-detail-item">
                     <i className="fa-solid fa-dollar-sign"></i>
                     <span className="salary">{job.salary_range}</span>
