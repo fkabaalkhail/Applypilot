@@ -465,9 +465,9 @@ export default function Jobs() {
                     rel="noopener noreferrer"
                     className="btn-outline"
                   >
-                    ASK ORION
+                    MATCH ME
                   </a>
-                  <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply">APPLY NOW</a>
+                  <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply">APPLY WITH AUTOFILL</a>
                 </div>
               </div>
             </div>

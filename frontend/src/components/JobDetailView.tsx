@@ -235,7 +235,7 @@ export default function JobDetailView({ job, onClose }: Props) {
         {/* Action buttons */}
         <div className="job-detail-actions">
           <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-apply-detail">
-            <i className="fa-solid fa-paper-plane"></i> Apply Now
+            <i className="fa-solid fa-paper-plane"></i> Apply with Autofill
           </a>
           <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-outline-detail">
             <i className="fa-solid fa-arrow-up-right-from-square"></i> View Original Post
@@ -255,7 +255,7 @@ export default function JobDetailView({ job, onClose }: Props) {
                 <span>Loading job details...</span>
               </div>
             ) : description ? (
-              <div className="description-content">{description}</div>
+              <div className="description-content" dangerouslySetInnerHTML={{ __html: description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n') }} />
             ) : (
               <div className="description-empty">
                 <div className="description-empty-icon">
