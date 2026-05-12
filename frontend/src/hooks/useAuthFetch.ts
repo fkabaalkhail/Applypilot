@@ -1,6 +1,6 @@
 import { useAuth } from "@clerk/clerk-react";
 import axios from "axios";
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -26,4 +26,26 @@ export function useAuthAxios() {
   }, [getToken]);
 
   return authAxios;
+}
+
+/**
+ * Returns a fetch wrapper that automatically attaches the Clerk JWT.
+ * Drop-in replacement for native fetch() — same API, just adds auth.
+ */
+export function useAuthFetch() {
+  const { getToken } = useAuth();
+
+  const authFetch = useCallback(
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const token = await getToken();
+      const headers = new Headers(init?.headers);
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+      return fetch(input, { ...init, headers });
+    },
+    [getToken]
+  );
+
+  return authFetch;
 }

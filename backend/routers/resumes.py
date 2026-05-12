@@ -3,7 +3,7 @@ Resume upload and parsing endpoints.
 
 POST /resumes/upload — accepts PDF or DOCX, extracts text, analyzes via Gemini,
 stores profile in DB, returns typed ResumeProfile.
-GET /resumes — list all resumes ordered by created_at desc.
+GET /resumes — list all resumes for the current user.
 GET /resumes/{id} — get full resume detail including profile and analysis report.
 """
 
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ResumeProfileDB
+from backend.auth.clerk import get_current_user_id
 from backend.schemas.resume import (
     ResumeProfile,
     ResumeUploadResponse,
@@ -30,9 +31,17 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[ResumeListItem])
-def list_resumes(db: Session = Depends(get_db)):
-    """List all resumes ordered by most recently created first."""
-    records = db.query(ResumeProfileDB).order_by(ResumeProfileDB.created_at.desc()).all()
+def list_resumes(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """List all resumes for the current user, ordered by most recently created first."""
+    records = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.user_id == user_id)
+        .order_by(ResumeProfileDB.created_at.desc())
+        .all()
+    )
     return [
         ResumeListItem(
             id=r.id,
@@ -48,20 +57,29 @@ def list_resumes(db: Session = Depends(get_db)):
 
 
 @router.put("/{resume_id}/primary", response_model=ResumeDetailResponse)
-def set_primary_resume(resume_id: int, db: Session = Depends(get_db)):
-    """Set a resume as primary, unsetting all others."""
-    record = db.query(ResumeProfileDB).filter(ResumeProfileDB.id == resume_id).first()
+def set_primary_resume(
+    resume_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Set a resume as primary, unsetting all others for this user."""
+    record = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
+        .first()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Resume not found.")
 
-    # Unset all resumes as primary
-    db.query(ResumeProfileDB).update({ResumeProfileDB.is_primary: 0})
+    # Unset all user's resumes as primary
+    db.query(ResumeProfileDB).filter(ResumeProfileDB.user_id == user_id).update(
+        {ResumeProfileDB.is_primary: 0}
+    )
     # Set the target resume as primary
     record.is_primary = 1
     db.commit()
     db.refresh(record)
 
-    # Serialize response using same logic as GET detail
     profile = ResumeProfile(
         name=record.profile_name or "",
         email=record.email or "",
@@ -94,9 +112,17 @@ def set_primary_resume(resume_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{resume_id}/analyze", response_model=AnalysisReport)
-async def analyze_resume(resume_id: int, db: Session = Depends(get_db)):
+async def analyze_resume(
+    resume_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Run AI quality analysis on a resume and persist the report."""
-    record = db.query(ResumeProfileDB).filter(ResumeProfileDB.id == resume_id).first()
+    record = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
+        .first()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Resume not found.")
 
@@ -119,9 +145,17 @@ async def analyze_resume(resume_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{resume_id}", response_model=ResumeDetailResponse)
-def get_resume(resume_id: int, db: Session = Depends(get_db)):
+def get_resume(
+    resume_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Get full resume detail by id, including profile and analysis report."""
-    record = db.query(ResumeProfileDB).filter(ResumeProfileDB.id == resume_id).first()
+    record = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
+        .first()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Resume not found.")
 
@@ -157,9 +191,18 @@ def get_resume(resume_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{resume_id}", response_model=ResumeDetailResponse)
-def update_resume(resume_id: int, body: ResumeUpdateRequest, db: Session = Depends(get_db)):
+def update_resume(
+    resume_id: int,
+    body: ResumeUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Update a resume's name, target_job_title, and/or profile fields."""
-    record = db.query(ResumeProfileDB).filter(ResumeProfileDB.id == resume_id).first()
+    record = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
+        .first()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Resume not found.")
 
@@ -186,7 +229,6 @@ def update_resume(resume_id: int, body: ResumeUpdateRequest, db: Session = Depen
     db.commit()
     db.refresh(record)
 
-    # Serialize response using same logic as GET detail
     response_profile = ResumeProfile(
         name=record.profile_name or "",
         email=record.email or "",
@@ -219,9 +261,17 @@ def update_resume(resume_id: int, body: ResumeUpdateRequest, db: Session = Depen
 
 
 @router.delete("/{resume_id}", status_code=204)
-def delete_resume(resume_id: int, db: Session = Depends(get_db)):
+def delete_resume(
+    resume_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Delete a resume by id. Returns 204 on success, 404 if not found."""
-    record = db.query(ResumeProfileDB).filter(ResumeProfileDB.id == resume_id).first()
+    record = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
+        .first()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Resume not found.")
     db.delete(record)
@@ -231,6 +281,7 @@ def delete_resume(resume_id: int, db: Session = Depends(get_db)):
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resume(
     file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Upload a PDF or DOCX resume, parse it, and store the profile."""
@@ -263,6 +314,7 @@ async def upload_resume(
 
     # Persist to DB
     db_profile = ResumeProfileDB(
+        user_id=user_id,
         name="Untitled Resume",
         profile_name=profile.name,
         email=profile.email,

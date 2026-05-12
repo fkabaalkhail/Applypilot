@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
+import { useAuthFetch } from "../hooks/useAuthFetch";
 
 const API_BASE = "";
 
@@ -132,6 +133,7 @@ export default function Jobs() {
   const [activeTab, setActiveTab] = useState("Recommended");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const authFetch = useAuthFetch();
   const pageSize = 50;
   const [search, setSearch] = useState("");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -222,7 +224,7 @@ export default function Jobs() {
       : `${API_BASE}/jobs/${job.id}/save`;
 
     try {
-      const res = await fetch(endpoint, { method: "POST" });
+      const res = await authFetch(endpoint, { method: "POST" });
       if (res.ok) {
         setJobs((prev) =>
           prev.map((j) => (j.id === job.id ? { ...j, saved: !j.saved } : j))

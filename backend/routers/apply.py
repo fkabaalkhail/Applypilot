@@ -20,6 +20,7 @@ from backend.db.models import (
     ScrapedJob, JobStatus, ApplicationRecord, PendingQuestion,
     ResumeProfileDB, TailoredResume, UserSettings,
 )
+from backend.auth.clerk import get_current_user_id
 from backend.schemas.apply import ApplySession, FillProfile, ProgressUpdate
 from backend.schemas.jobs import PendingQuestionOut
 
@@ -43,7 +44,11 @@ class QuestionRequest(BaseModel):
 
 
 @router.post("/initiate", response_model=ApplySession)
-def initiate_apply(request: InitiateRequest, db: Session = Depends(get_db)):
+def initiate_apply(
+    request: InitiateRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Initiate an apply flow for a job."""
     job = db.query(ScrapedJob).filter(ScrapedJob.id == request.job_id).first()
     if not job:
@@ -53,19 +58,24 @@ def initiate_apply(request: InitiateRequest, db: Session = Depends(get_db)):
     job.status = JobStatus.APPLYING
     db.commit()
 
-    # Check if tailored resume exists
+    # Check if tailored resume exists for this user
     tailored = (
         db.query(TailoredResume)
-        .filter(TailoredResume.job_id == request.job_id, TailoredResume.status == "accepted")
+        .filter(
+            TailoredResume.job_id == request.job_id,
+            TailoredResume.user_id == user_id,
+            TailoredResume.status == "accepted",
+        )
         .first()
     )
 
     session_id = str(uuid.uuid4())
     resume_version = "tailored" if tailored else "original"
 
-    # Store session
+    # Store session with user_id
     _sessions[session_id] = {
         "job_id": request.job_id,
+        "user_id": user_id,
         "resume_version": resume_version,
         "status": "initiated",
     }
@@ -80,14 +90,22 @@ def initiate_apply(request: InitiateRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/{session_id}/profile", response_model=FillProfile)
-def get_fill_profile(session_id: str, db: Session = Depends(get_db)):
+def get_fill_profile(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Get profile data for form filling by the extension."""
     session = _sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Apply session not found.")
 
+    # Verify session belongs to this user
+    if session.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this session.")
+
     # Get user settings
-    settings = db.query(UserSettings).first()
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
     if not settings:
         raise HTTPException(status_code=400, detail="User settings not configured.")
 
@@ -96,20 +114,38 @@ def get_fill_profile(session_id: str, db: Session = Depends(get_db)):
     if session["resume_version"] == "tailored":
         tailored = (
             db.query(TailoredResume)
-            .filter(TailoredResume.job_id == session["job_id"], TailoredResume.status == "accepted")
+            .filter(
+                TailoredResume.job_id == session["job_id"],
+                TailoredResume.user_id == user_id,
+                TailoredResume.status == "accepted",
+            )
             .first()
         )
         if tailored:
             resume_text = tailored.tailored_text
 
     if not resume_text:
-        profile = db.query(ResumeProfileDB).order_by(ResumeProfileDB.created_at.desc()).first()
+        profile = (
+            db.query(ResumeProfileDB)
+            .filter(ResumeProfileDB.user_id == user_id)
+            .order_by(ResumeProfileDB.created_at.desc())
+            .first()
+        )
         resume_text = profile.raw_text if profile else ""
 
     # Get resume profile for structured data — prefer primary, fall back to most recent
-    profile = db.query(ResumeProfileDB).filter(ResumeProfileDB.is_primary == 1).first()
+    profile = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.user_id == user_id, ResumeProfileDB.is_primary == 1)
+        .first()
+    )
     if not profile:
-        profile = db.query(ResumeProfileDB).order_by(ResumeProfileDB.created_at.desc()).first()
+        profile = (
+            db.query(ResumeProfileDB)
+            .filter(ResumeProfileDB.user_id == user_id)
+            .order_by(ResumeProfileDB.created_at.desc())
+            .first()
+        )
 
     # Merge all technology categories into flat skills list for backward compat
     skills = list(profile.skills or []) if profile else []
@@ -139,11 +175,19 @@ def get_fill_profile(session_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{session_id}/progress")
-def update_progress(session_id: str, update: ProgressUpdate, db: Session = Depends(get_db)):
+def update_progress(
+    session_id: str,
+    update: ProgressUpdate,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Receive progress update from the extension."""
     session = _sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Apply session not found.")
+
+    if session.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this session.")
 
     session["status"] = update.status
     session["progress"] = update.percentage
@@ -152,18 +196,26 @@ def update_progress(session_id: str, update: ProgressUpdate, db: Session = Depen
 
 
 @router.post("/{session_id}/complete")
-def complete_apply(session_id: str, db: Session = Depends(get_db)):
+def complete_apply(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Mark application as complete."""
     session = _sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Apply session not found.")
 
+    if session.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this session.")
+
     job = db.query(ScrapedJob).filter(ScrapedJob.id == session["job_id"]).first()
     if job:
         job.status = JobStatus.APPLIED
 
-    # Create application record
+    # Create application record linked to user
     record = ApplicationRecord(
+        user_id=user_id,
         platform=job.platform if job else "linkedin",
         company=job.company if job else "",
         role=job.title if job else "",
@@ -181,13 +233,22 @@ def complete_apply(session_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{session_id}/question", response_model=PendingQuestionOut)
-def submit_question(session_id: str, request: QuestionRequest, db: Session = Depends(get_db)):
+def submit_question(
+    session_id: str,
+    request: QuestionRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Submit a question the extension couldn't answer."""
     session = _sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Apply session not found.")
 
+    if session.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this session.")
+
     question = PendingQuestion(
+        user_id=user_id,
         job_id=session["job_id"],
         question=request.question,
         field_type=request.field_type,

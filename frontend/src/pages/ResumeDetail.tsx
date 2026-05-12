@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { useAuthFetch } from "../hooks/useAuthFetch";
 import "../resume.css";
 
 /* ===== TypeScript Interfaces ===== */
@@ -110,6 +111,7 @@ export default function ResumeDetail() {
   const [toast, setToast] = useState<ToastProps | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
+  const authFetch = useAuthFetch();
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type });
@@ -121,7 +123,7 @@ export default function ResumeDetail() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/resumes/${id}`);
+        const res = await authFetch(`/resumes/${id}`);
         if (!res.ok) {
           throw new Error(`Failed to load resume (status ${res.status})`);
         }
@@ -136,13 +138,13 @@ export default function ResumeDetail() {
       }
     }
     if (id) fetchResume();
-  }, [id]);
+  }, [id, authFetch]);
 
   const handleSave = useCallback(async () => {
     if (!profile || !id) return;
     setSaving(true);
     try {
-      const res = await fetch(`/resumes/${id}`, {
+      const res = await authFetch(`/resumes/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profile }),
@@ -157,13 +159,13 @@ export default function ResumeDetail() {
     } finally {
       setSaving(false);
     }
-  }, [profile, id, showToast]);
+  }, [profile, id, showToast, authFetch]);
 
   const handleAnalyze = useCallback(async () => {
     if (!id) return;
     setAnalyzing(true);
     try {
-      const res = await fetch(`/resumes/${id}/analyze`, { method: "POST" });
+      const res = await authFetch(`/resumes/${id}/analyze`, { method: "POST" });
       if (!res.ok) {
         const errorData = await res.json().catch(() => null);
         throw new Error(errorData?.detail || "Analysis could not be completed");
@@ -176,12 +178,12 @@ export default function ResumeDetail() {
     } finally {
       setAnalyzing(false);
     }
-  }, [id, showToast]);
+  }, [id, showToast, authFetch]);
 
   const handleSetPrimary = useCallback(async () => {
     if (!id) return;
     try {
-      const res = await fetch(`/resumes/${id}/primary`, { method: "PUT" });
+      const res = await authFetch(`/resumes/${id}/primary`, { method: "PUT" });
       if (!res.ok) {
         const errorData = await res.json().catch(() => null);
         throw new Error(errorData?.detail || "Failed to set as primary");
@@ -191,7 +193,7 @@ export default function ResumeDetail() {
     } catch (err: any) {
       showToast(err.message || "Failed to set as primary.", "error");
     }
-  }, [id, showToast]);
+  }, [id, showToast, authFetch]);
 
   const getGradeClass = (grade: string): string => {
     switch (grade) {

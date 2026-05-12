@@ -116,6 +116,7 @@ class PendingQuestion(Base):
     __tablename__ = "pending_questions"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
     job_id = Column(Integer, nullable=False)
     task_id = Column(String, nullable=True)
     question = Column(Text, nullable=False)
@@ -259,6 +260,7 @@ class BotRun(Base):
     __tablename__ = "bot_runs"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
     task_id = Column(String, unique=True, index=True)
     status = Column(String, default="idle")
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -274,6 +276,7 @@ class ConnectionRequest(Base):
     __tablename__ = "connection_requests"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
     job_id = Column(Integer, nullable=True)
     contact_name = Column(String, nullable=False)
     contact_title = Column(String, default="")
@@ -289,6 +292,7 @@ class AutopilotRun(Base):
     __tablename__ = "autopilot_runs"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
     task_id = Column(String, unique=True, index=True)
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
     stopped_at = Column(DateTime, nullable=True)
@@ -339,6 +343,7 @@ class InsiderConnection(Base):
     __tablename__ = "insider_connections"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
     company = Column(String, nullable=False, index=True)
     name = Column(String, nullable=False)
     title = Column(String, default="")

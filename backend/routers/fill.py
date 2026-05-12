@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import UserSettings, ResumeProfileDB
+from backend.auth.clerk import get_current_user_id
 from backend.services.llm import get_llm_service
 
 logger = logging.getLogger(__name__)
@@ -93,18 +94,27 @@ def _rule_based_answer(label: str, options: list[str], settings) -> str | None:
 
 
 @router.post("/fill", response_model=FillResponse)
-async def fill_form(request: FillRequest, db: Session = Depends(get_db)):
+async def fill_form(
+    request: FillRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """
     Generate AI answers for a batch of form fields.
 
     Tries rule-based answers first, falls back to Gemini for complex questions.
     """
-    settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
 
-    # Get resume text from DB if not provided
+    # Get resume text from DB if not provided — scoped to user
     resume_text = request.resumeText
     if not resume_text:
-        resume = db.query(ResumeProfileDB).order_by(ResumeProfileDB.created_at.desc()).first()
+        resume = (
+            db.query(ResumeProfileDB)
+            .filter(ResumeProfileDB.user_id == user_id)
+            .order_by(ResumeProfileDB.created_at.desc())
+            .first()
+        )
         if resume:
             resume_text = resume.raw_text or ""
 

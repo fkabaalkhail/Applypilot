@@ -1,7 +1,7 @@
 """
 Settings endpoints — clients configure everything from the UI.
 
-GET   /settings         — return current settings (password masked)
+GET   /settings         — return current user's settings (password masked)
 PUT   /settings         — update settings
 POST  /settings/resume  — upload resume file
 POST  /settings/cookies — upload LinkedIn session cookies (skip password login)
@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import UserSettings
+from backend.auth.clerk import get_current_user_id
 from backend.schemas.settings import SettingsUpdate, SettingsOut
 from backend.services.crypto import encrypt, decrypt
 
@@ -25,11 +26,11 @@ router = APIRouter()
 RESUME_DIR = Path("data/resumes")
 
 
-def _get_or_create_settings(db: Session) -> UserSettings:
-    """Get the singleton settings row, or create it if it doesn't exist."""
-    settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
+def _get_or_create_settings(db: Session, user_id: str) -> UserSettings:
+    """Get the user's settings row, or create it if it doesn't exist."""
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
     if not settings:
-        settings = UserSettings(id=1)
+        settings = UserSettings(user_id=user_id)
         db.add(settings)
         db.commit()
         db.refresh(settings)
@@ -85,15 +86,22 @@ def _settings_to_out(s: UserSettings) -> SettingsOut:
 
 
 @router.get("", response_model=SettingsOut)
-def get_settings(db: Session = Depends(get_db)):
-    """Return current settings. Password is never sent — only whether it's set."""
-    return _settings_to_out(_get_or_create_settings(db))
+def get_settings(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Return current user's settings. Password is never sent — only whether it's set."""
+    return _settings_to_out(_get_or_create_settings(db, user_id))
 
 
 @router.put("", response_model=SettingsOut)
-def update_settings(update: SettingsUpdate, db: Session = Depends(get_db)):
+def update_settings(
+    update: SettingsUpdate,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Update settings. Only provided fields are changed."""
-    s = _get_or_create_settings(db)
+    s = _get_or_create_settings(db, user_id)
 
     if update.linkedin_email is not None:
         s.linkedin_email = update.linkedin_email
@@ -179,6 +187,7 @@ def update_settings(update: SettingsUpdate, db: Session = Depends(get_db)):
 @router.post("/resume", response_model=SettingsOut)
 async def upload_resume(
     file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Upload a resume file (PDF/DOCX) to be used by the bot during applications."""
@@ -202,7 +211,7 @@ async def upload_resume(
     content = await file.read()
     save_path.write_bytes(content)
 
-    s = _get_or_create_settings(db)
+    s = _get_or_create_settings(db, user_id)
     s.resume_file_path = str(save_path)
     db.commit()
     db.refresh(s)
@@ -214,6 +223,7 @@ async def upload_resume(
 @router.post("/cookies", response_model=SettingsOut)
 async def upload_cookies(
     cookies: str,
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """
@@ -223,7 +233,7 @@ async def upload_cookies(
     and pastes the JSON string here. The bot will inject these cookies
     instead of going through the login flow.
     """
-    s = _get_or_create_settings(db)
+    s = _get_or_create_settings(db, user_id)
     s.linkedin_cookies = encrypt(cookies)
     db.commit()
     db.refresh(s)

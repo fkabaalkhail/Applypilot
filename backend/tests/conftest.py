@@ -8,12 +8,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.db.database import Base, get_db
+from backend.auth.clerk import get_current_user_id, get_optional_user_id
 from backend.main import app
 
 # In-memory SQLite for tests
 TEST_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+TEST_USER_ID = "test_user_123"
 
 
 @pytest.fixture(autouse=True)
@@ -36,14 +39,22 @@ def db_session():
 
 @pytest.fixture
 def client(db_session):
-    """FastAPI test client with overridden DB dependency."""
+    """FastAPI test client with overridden DB and auth dependencies."""
     def _override_get_db():
         try:
             yield db_session
         finally:
             pass
 
+    async def _override_get_user_id():
+        return TEST_USER_ID
+
+    async def _override_get_optional_user_id():
+        return TEST_USER_ID
+
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_current_user_id] = _override_get_user_id
+    app.dependency_overrides[get_optional_user_id] = _override_get_optional_user_id
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

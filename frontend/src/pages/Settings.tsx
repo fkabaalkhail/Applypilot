@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useAuthFetch } from "../hooks/useAuthFetch";
 import "../settings.css";
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
@@ -216,6 +217,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const authFetch = useAuthFetch();
 
   // ─── Toast helpers ───────────────────────────────────────────────────────
 
@@ -237,7 +239,7 @@ export default function Settings() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch("/settings");
+      const res = await authFetch("/settings");
       if (!res.ok) {
         throw new Error(`Failed to load settings (status ${res.status})`);
       }
@@ -286,7 +288,7 @@ export default function Settings() {
 
     try {
       setSaving(true);
-      const res = await fetch("/settings", {
+      const res = await authFetch("/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(diff),
@@ -339,7 +341,7 @@ export default function Settings() {
     formDataUpload.append("file", file);
 
     try {
-      const res = await fetch("/settings/resume", {
+      const res = await authFetch("/settings/resume", {
         method: "POST",
         body: formDataUpload,
       });

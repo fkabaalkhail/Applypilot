@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from backend.db.database import get_db
-from backend.db.models import ScrapedJob, JobStatus
+from backend.db.models import ScrapedJob, JobStatus, ApplicationRecord
+from backend.auth.clerk import get_current_user_id, get_optional_user_id
 from backend.schemas.jobs import ScrapedJobOut
 
 logger = logging.getLogger(__name__)
@@ -141,6 +142,25 @@ def job_stats(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/applications")
+def list_applications(
+    user_id: str = Depends(get_current_user_id),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """List the current user's application records."""
+    records = (
+        db.query(ApplicationRecord)
+        .filter(ApplicationRecord.user_id == user_id)
+        .order_by(ApplicationRecord.applied_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return records
+
+
 @router.get("/{job_id}", response_model=ScrapedJobOut)
 def get_job(job_id: int, db: Session = Depends(get_db)):
     """Get a single job by ID."""
@@ -236,7 +256,11 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{job_id}/save", response_model=ScrapedJobOut)
-def save_job(job_id: int, db: Session = Depends(get_db)):
+def save_job(
+    job_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Save a job (bookmark it)."""
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
     if not job:
@@ -248,7 +272,11 @@ def save_job(job_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{job_id}/unsave", response_model=ScrapedJobOut)
-def unsave_job(job_id: int, db: Session = Depends(get_db)):
+def unsave_job(
+    job_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Unsave a job (remove bookmark)."""
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
     if not job:

@@ -20,12 +20,15 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.db.database import Base, get_db
 from backend.db.models import ScrapedJob, ResumeProfileDB
+from backend.auth.clerk import get_current_user_id
 from backend.routers import ai
 
 # Create a test-specific app with only the AI router (avoids production lifespan issues)
 TEST_DATABASE_URL = "sqlite:///./test_ai_router.db"
 test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+TEST_USER_ID = "test_user_123"
 
 ai_app = FastAPI()
 ai_app.include_router(ai.router, prefix="/ai", tags=["ai"])
@@ -51,14 +54,18 @@ def db_session():
 
 @pytest.fixture
 def client(db_session):
-    """FastAPI test client with overridden DB dependency."""
+    """FastAPI test client with overridden DB and auth dependencies."""
     def _override_get_db():
         try:
             yield db_session
         finally:
             pass
 
+    async def _override_get_user_id():
+        return TEST_USER_ID
+
     ai_app.dependency_overrides[get_db] = _override_get_db
+    ai_app.dependency_overrides[get_current_user_id] = _override_get_user_id
     with TestClient(ai_app) as c:
         yield c
     ai_app.dependency_overrides.clear()
@@ -102,6 +109,7 @@ class TestMatchBreakdown:
         db_session.add(job)
 
         profile = ResumeProfileDB(
+            user_id=TEST_USER_ID,
             profile_name="Test User",
             email="test@example.com",
             raw_text="Experienced software engineer with 5 years...",

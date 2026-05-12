@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuthFetch } from "../hooks/useAuthFetch";
 import "../resume.css";
 
 interface ResumeListItem {
@@ -18,12 +19,13 @@ export default function Resume() {
   const [error, setError] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const navigate = useNavigate();
+  const authFetch = useAuthFetch();
 
-  async function fetchResumes() {
+  const fetchResumes = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch("/resumes");
+      const res = await authFetch("/resumes");
       if (!res.ok) {
         throw new Error(`Failed to load resumes (status ${res.status})`);
       }
@@ -34,11 +36,11 @@ export default function Resume() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [authFetch]);
 
   useEffect(() => {
     fetchResumes();
-  }, []);
+  }, [fetchResumes]);
 
   if (loading) {
     return (
@@ -128,6 +130,7 @@ export default function Resume() {
         <UploadModal
           onClose={() => setShowUploadModal(false)}
           onUploadSuccess={() => fetchResumes()}
+          authFetch={authFetch}
         />
       )}
     </div>
@@ -161,6 +164,7 @@ function isValidFileType(file: File): boolean {
 interface UploadModalProps {
   onClose: () => void;
   onUploadSuccess: () => void;
+  authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 interface UploadResponse {
@@ -171,7 +175,7 @@ interface UploadResponse {
   };
 }
 
-function UploadModal({ onClose, onUploadSuccess }: UploadModalProps) {
+function UploadModal({ onClose, onUploadSuccess, authFetch }: UploadModalProps) {
   const [modalState, setModalState] = useState<ModalState>("upload");
   const [dragOver, setDragOver] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -220,7 +224,7 @@ function UploadModal({ onClose, onUploadSuccess }: UploadModalProps) {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("/resumes/upload", {
+      const res = await authFetch("/resumes/upload", {
         method: "POST",
         body: formData,
       });
@@ -288,7 +292,7 @@ function UploadModal({ onClose, onUploadSuccess }: UploadModalProps) {
     if (!uploadResult) return;
 
     try {
-      const res = await fetch(`/resumes/${uploadResult.id}/primary`, {
+      const res = await authFetch(`/resumes/${uploadResult.id}/primary`, {
         method: "PUT",
       });
       if (!res.ok) {

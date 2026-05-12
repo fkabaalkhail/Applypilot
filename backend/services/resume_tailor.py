@@ -24,7 +24,7 @@ class ResumeTailor:
         self.llm = get_llm_service()
 
     async def tailor_resume(
-        self, resume_text: str, job_description: str, job_id: int
+        self, resume_text: str, job_description: str, job_id: int, user_id: str | None = None
     ) -> TailoredResume:
         """Generate a tailored resume for a specific job.
 
@@ -41,6 +41,7 @@ class ResumeTailor:
 
         # Store in database
         tailored = TailoredResume(
+            user_id=user_id,
             job_id=job_id,
             original_text=resume_text,
             tailored_text=tailored_text,

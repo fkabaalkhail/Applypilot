@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ScrapedJob, ResumeProfileDB
+from backend.auth.clerk import get_current_user_id
 from backend.schemas.match import MatchBreakdown, FitAnalysis
 from backend.schemas.ai import TailoredResumeOut, CoverLetterOut
 from backend.services.match_engine import MatchEngine
@@ -28,11 +29,21 @@ router = APIRouter()
 LLM_503_DETAIL = "AI service unavailable. Please check your Gemini API key."
 
 
-def _get_resume_text(db: Session) -> str:
-    """Get the user's resume text from the most recent profile."""
-    profile = db.query(ResumeProfileDB).order_by(
-        ResumeProfileDB.created_at.desc()
-    ).first()
+def _get_resume_text(db: Session, user_id: str) -> str:
+    """Get the user's resume text from their primary or most recent profile."""
+    # Prefer primary resume
+    profile = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.user_id == user_id, ResumeProfileDB.is_primary == 1)
+        .first()
+    )
+    if not profile:
+        profile = (
+            db.query(ResumeProfileDB)
+            .filter(ResumeProfileDB.user_id == user_id)
+            .order_by(ResumeProfileDB.created_at.desc())
+            .first()
+        )
     if not profile or not profile.raw_text:
         raise HTTPException(
             status_code=400,
@@ -50,10 +61,14 @@ def _get_job(job_id: int, db: Session) -> ScrapedJob:
 
 
 @router.post("/match-breakdown/{job_id}", response_model=MatchBreakdown)
-async def match_breakdown(job_id: int, db: Session = Depends(get_db)):
+async def match_breakdown(
+    job_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Compute match score breakdown for a job."""
     job = _get_job(job_id, db)
-    resume_text = _get_resume_text(db)
+    resume_text = _get_resume_text(db, user_id)
 
     try:
         engine = MatchEngine(db)
@@ -63,24 +78,32 @@ async def match_breakdown(job_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/tailor-resume/{job_id}", response_model=TailoredResumeOut)
-async def tailor_resume(job_id: int, db: Session = Depends(get_db)):
+async def tailor_resume(
+    job_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Generate a tailored resume for a job."""
     job = _get_job(job_id, db)
-    resume_text = _get_resume_text(db)
+    resume_text = _get_resume_text(db, user_id)
 
     try:
         tailor = ResumeTailor(db)
-        result = await tailor.tailor_resume(resume_text, job.description, job_id)
+        result = await tailor.tailor_resume(resume_text, job.description, job_id, user_id=user_id)
         return result
     except (ConnectionError, httpx.ConnectError):
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
 
 
 @router.post("/cover-letter/{job_id}", response_model=CoverLetterOut)
-async def cover_letter(job_id: int, db: Session = Depends(get_db)):
+async def cover_letter(
+    job_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Generate a cover letter for a job."""
     job = _get_job(job_id, db)
-    resume_text = _get_resume_text(db)
+    resume_text = _get_resume_text(db, user_id)
 
     try:
         generator = CoverLetterGenerator()
@@ -95,10 +118,14 @@ async def cover_letter(job_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/analyze-fit/{job_id}", response_model=FitAnalysis)
-async def analyze_fit(job_id: int, db: Session = Depends(get_db)):
+async def analyze_fit(
+    job_id: int,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Get detailed fit analysis for a job."""
     job = _get_job(job_id, db)
-    resume_text = _get_resume_text(db)
+    resume_text = _get_resume_text(db, user_id)
 
     try:
         engine = MatchEngine(db)

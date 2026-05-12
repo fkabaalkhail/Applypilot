@@ -32,7 +32,7 @@ class ConnectionFinder:
         self.db = db
 
     def find_connections(
-        self, company: str, user_connections: list[Connection] | None = None
+        self, company: str, user_id: str | None = None, user_connections: list[Connection] | None = None
     ) -> list[InsiderConnection]:
         """Find connections at a company, categorized by relationship type.
 
@@ -41,17 +41,19 @@ class ConnectionFinder:
 
         Args:
             company: The target company name
+            user_id: The clerk_user_id to scope results to
             user_connections: Optional list of user's connections to search
 
         Returns:
             List of InsiderConnection records at the target company
         """
         # Check database for existing connections at this company
-        existing = (
-            self.db.query(InsiderConnection)
-            .filter(InsiderConnection.company.ilike(f"%{company}%"))
-            .all()
+        q = self.db.query(InsiderConnection).filter(
+            InsiderConnection.company.ilike(f"%{company}%")
         )
+        if user_id:
+            q = q.filter(InsiderConnection.user_id == user_id)
+        existing = q.all()
 
         if existing:
             return existing
