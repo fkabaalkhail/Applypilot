@@ -5,7 +5,7 @@ export interface JobFilters {
   location: string;          // city search text
   work_type: string[];       // ["remote", "hybrid", "onsite"]
   role_category: string[];   // selected categories
-  experience_level: string;  // "new_grad" | "internship" | "entry" | "mid" | "senior" | "lead" | "director" | ""
+  experience_level: string[];  // ["intern_new_grad", "entry", "mid", "senior", "lead", "director"]
   date_posted: string;       // "24h" | "3d" | "week" | "month" | ""
 }
 
@@ -224,7 +224,7 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
   const [tempCountry, setTempCountry] = useState(filters.country);
   const [tempLocation, setTempLocation] = useState(filters.location);
   const [tempRoleCategory, setTempRoleCategory] = useState<string[]>(filters.role_category);
-  const [tempExperience, setTempExperience] = useState(filters.experience_level);
+  const [tempExperience, setTempExperience] = useState<string[]>(Array.isArray(filters.experience_level) ? filters.experience_level : filters.experience_level ? [filters.experience_level] : []);
   const [tempWorkType, setTempWorkType] = useState<string[]>(filters.work_type);
   const [tempDatePosted, setTempDatePosted] = useState(filters.date_posted);
 
@@ -233,7 +233,7 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
     setTempCountry(filters.country);
     setTempLocation(filters.location);
     setTempRoleCategory(filters.role_category);
-    setTempExperience(filters.experience_level);
+    setTempExperience(Array.isArray(filters.experience_level) ? filters.experience_level : filters.experience_level ? [filters.experience_level] : []);
     setTempWorkType(filters.work_type);
     setTempDatePosted(filters.date_posted);
   }, [filters]);
@@ -292,7 +292,7 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
   }
 
   function resetExperience() {
-    setTempExperience("");
+    setTempExperience([]);
   }
 
   function resetWorkModel() {
@@ -307,278 +307,290 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
 
   const countryActive = filters.country || filters.location;
   const jobFunctionCount = filters.role_category.length;
-  const experienceActive = filters.experience_level ? 1 : 0;
+  const experienceActive = filters.experience_level.length;
   const workModelCount = filters.work_type.length;
   const datePostedActive = filters.date_posted ? 1 : 0;
 
   return (
     <div ref={containerRef} style={styles.container} role="toolbar" aria-label="Job filters">
       {/* Country Filter */}
-      <FilterPill
-        label="Country"
-        isActive={!!countryActive}
-        count={countryActive ? 1 : 0}
-        isOpen={openDropdown === "country"}
-        onClick={() => toggleDropdown("country")}
-      />
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <FilterPill
+          label="Country"
+          isActive={!!countryActive}
+          count={countryActive ? 1 : 0}
+          isOpen={openDropdown === "country"}
+          onClick={() => toggleDropdown("country")}
+        />
+        {openDropdown === "country" && (
+          <DropdownPanel style={{}}>
+            <div style={styles.dropdownTitle}>Country</div>
+            {COUNTRY_OPTIONS.map((opt) => (
+              <label key={opt.value} style={styles.checkboxRow}>
+                <input
+                  type="radio"
+                  name="country"
+                  style={styles.radioInput}
+                  checked={tempCountry === opt.value}
+                  onChange={() => setTempCountry(opt.value)}
+                />
+                {opt.label}
+              </label>
+            ))}
+            <div style={styles.sectionLabel}>Location</div>
+            <label style={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                style={styles.checkbox}
+                checked={!tempLocation}
+                onChange={() => setTempLocation("")}
+              />
+              All locations within {tempCountry === "CA" ? "Canada" : "United States"}
+            </label>
+            <input
+              type="text"
+              placeholder="Enter City"
+              value={tempLocation}
+              onChange={(e) => setTempLocation(e.target.value)}
+              style={styles.searchInput}
+            />
+            <DropdownFooter onReset={resetCountry} onConfirm={confirmCountry} />
+          </DropdownPanel>
+        )}
+      </div>
 
       {/* Job Function Filter */}
-      <FilterPill
-        label="Job Function"
-        isActive={jobFunctionCount > 0}
-        count={jobFunctionCount}
-        isOpen={openDropdown === "jobFunction"}
-        onClick={() => toggleDropdown("jobFunction")}
-      />
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <FilterPill
+          label="Job Function"
+          isActive={jobFunctionCount > 0}
+          count={jobFunctionCount}
+          isOpen={openDropdown === "jobFunction"}
+          onClick={() => toggleDropdown("jobFunction")}
+        />
+        {openDropdown === "jobFunction" && (
+          <DropdownPanel style={{ minWidth: "280px" }}>
+            <div style={styles.dropdownTitle}>Job Function</div>
+            <div style={{ maxHeight: "280px", overflowY: "auto" }}>
+              {JOB_FUNCTION_OPTIONS.map((cat) => (
+                <label key={cat} style={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    style={styles.checkbox}
+                    checked={tempRoleCategory.includes(cat)}
+                    onChange={() => {
+                      setTempRoleCategory((prev) =>
+                        prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+                      );
+                    }}
+                  />
+                  {cat}
+                </label>
+              ))}
+            </div>
+            <DropdownFooter onReset={resetJobFunction} onConfirm={confirmJobFunction} />
+          </DropdownPanel>
+        )}
+      </div>
 
       {/* Experience Level Filter */}
-      <FilterPill
-        label="Experience Level"
-        isActive={experienceActive > 0}
-        count={experienceActive}
-        isOpen={openDropdown === "experience"}
-        onClick={() => toggleDropdown("experience")}
-      />
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <FilterPill
+          label="Experience Level"
+          isActive={experienceActive > 0}
+          count={experienceActive}
+          isOpen={openDropdown === "experience"}
+          onClick={() => toggleDropdown("experience")}
+        />
+        {openDropdown === "experience" && (
+          <DropdownPanel style={{}}>
+            <div style={styles.dropdownTitle}>Experience Level</div>
+            {EXPERIENCE_OPTIONS.map((opt) => (
+              <label key={opt.value} style={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  style={styles.checkbox}
+                  checked={tempExperience.includes(opt.value)}
+                  onChange={() => {
+                    setTempExperience((prev) =>
+                      prev.includes(opt.value) ? prev.filter((v) => v !== opt.value) : [...prev, opt.value]
+                    );
+                  }}
+                />
+                {opt.label}
+              </label>
+            ))}
+            <DropdownFooter onReset={resetExperience} onConfirm={confirmExperience} />
+          </DropdownPanel>
+        )}
+      </div>
 
       {/* Work Model Filter */}
-      <FilterPill
-        label="Work Model"
-        isActive={workModelCount > 0}
-        count={workModelCount}
-        isOpen={openDropdown === "workModel"}
-        onClick={() => toggleDropdown("workModel")}
-      />
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <FilterPill
+          label="Work Model"
+          isActive={workModelCount > 0}
+          count={workModelCount}
+          isOpen={openDropdown === "workModel"}
+          onClick={() => toggleDropdown("workModel")}
+        />
+        {openDropdown === "workModel" && (
+          <DropdownPanel style={{}}>
+            <div style={styles.dropdownTitle}>Work Model</div>
+            {WORK_MODEL_OPTIONS.map((opt) => (
+              <label key={opt.value} style={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  style={styles.checkbox}
+                  checked={tempWorkType.includes(opt.value)}
+                  onChange={() => {
+                    setTempWorkType((prev) =>
+                      prev.includes(opt.value) ? prev.filter((v) => v !== opt.value) : [...prev, opt.value]
+                    );
+                  }}
+                />
+                {opt.label}
+              </label>
+            ))}
+            <DropdownFooter onReset={resetWorkModel} onConfirm={confirmWorkModel} />
+          </DropdownPanel>
+        )}
+      </div>
 
       {/* Date Posted Filter */}
-      <FilterPill
-        label="Date Posted"
-        isActive={datePostedActive > 0}
-        count={datePostedActive}
-        isOpen={openDropdown === "datePosted"}
-        onClick={() => toggleDropdown("datePosted")}
-      />
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <FilterPill
+          label="Date Posted"
+          isActive={datePostedActive > 0}
+          count={datePostedActive}
+          isOpen={openDropdown === "datePosted"}
+          onClick={() => toggleDropdown("datePosted")}
+        />
+        {openDropdown === "datePosted" && (
+          <DropdownPanel style={{}}>
+            <div style={styles.dropdownTitle}>Date Posted</div>
+            {DATE_POSTED_OPTIONS.map((opt) => (
+              <label key={opt.value} style={styles.checkboxRow}>
+                <input
+                  type="radio"
+                  name="datePosted"
+                  style={styles.radioInput}
+                  checked={tempDatePosted === opt.value}
+                  onChange={() => setTempDatePosted(opt.value)}
+                />
+                {opt.label}
+              </label>
+            ))}
+            <DropdownFooter onReset={resetDatePosted} onConfirm={confirmDatePosted} />
+          </DropdownPanel>
+        )}
+      </div>
 
       {/* All Filters Button */}
-      <button
-        style={{ ...styles.pillButton, ...styles.allFiltersButton }}
-        onClick={() => toggleDropdown("allFilters")}
-        aria-label="All Filters"
-      >
-        ••• All Filters
-      </button>
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <button
+          style={{ ...styles.pillButton, ...styles.allFiltersButton }}
+          onClick={() => toggleDropdown("allFilters")}
+          aria-label="All Filters"
+        >
+          ••• All Filters
+        </button>
+        {openDropdown === "allFilters" && (
+          <DropdownPanel style={{ minWidth: "340px", maxHeight: "500px" }}>
+            <div style={styles.dropdownTitle}>All Filters</div>
+
+            <div style={styles.sectionLabel}>Country</div>
+            {COUNTRY_OPTIONS.map((opt) => (
+              <label key={opt.value} style={styles.checkboxRow}>
+                <input
+                  type="radio"
+                  name="allCountry"
+                  style={styles.radioInput}
+                  checked={tempCountry === opt.value}
+                  onChange={() => setTempCountry(opt.value)}
+                />
+                {opt.label}
+              </label>
+            ))}
+
+            <div style={styles.sectionLabel}>Work Model</div>
+            {WORK_MODEL_OPTIONS.map((opt) => (
+              <label key={opt.value} style={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  style={styles.checkbox}
+                  checked={tempWorkType.includes(opt.value)}
+                  onChange={() => {
+                    setTempWorkType((prev) =>
+                      prev.includes(opt.value) ? prev.filter((v) => v !== opt.value) : [...prev, opt.value]
+                    );
+                  }}
+                />
+                {opt.label}
+              </label>
+            ))}
+
+            <div style={styles.sectionLabel}>Experience Level</div>
+            {EXPERIENCE_OPTIONS.map((opt) => (
+              <label key={opt.value} style={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  style={styles.checkbox}
+                  checked={tempExperience.includes(opt.value)}
+                  onChange={() => {
+                    setTempExperience((prev) =>
+                      prev.includes(opt.value) ? prev.filter((v) => v !== opt.value) : [...prev, opt.value]
+                    );
+                  }}
+                />
+                {opt.label}
+              </label>
+            ))}
+
+            <div style={styles.sectionLabel}>Date Posted</div>
+            {DATE_POSTED_OPTIONS.map((opt) => (
+              <label key={opt.value} style={styles.checkboxRow}>
+                <input
+                  type="radio"
+                  name="allDatePosted"
+                  style={styles.radioInput}
+                  checked={tempDatePosted === opt.value}
+                  onChange={() => setTempDatePosted(opt.value)}
+                />
+                {opt.label}
+              </label>
+            ))}
+
+            <DropdownFooter
+              onReset={() => {
+                resetCountry();
+                resetJobFunction();
+                resetExperience();
+                resetWorkModel();
+                resetDatePosted();
+              }}
+              onConfirm={() => {
+                onChange({
+                  ...filters,
+                  country: tempCountry,
+                  location: tempLocation,
+                  work_type: tempWorkType,
+                  role_category: tempRoleCategory,
+                  experience_level: tempExperience,
+                  date_posted: tempDatePosted,
+                });
+                setOpenDropdown(null);
+              }}
+            />
+          </DropdownPanel>
+        )}
+      </div>
 
       {/* Total Count */}
       {totalCount !== undefined && (
         <span style={{ marginLeft: "auto", fontSize: "13px", color: "#6b7280", fontWeight: 500 }}>
           {totalCount.toLocaleString()} jobs
         </span>
-      )}
-
-      {/* --- Dropdown Panels --- */}
-
-      {openDropdown === "country" && (
-        <DropdownPanel style={{ left: 0 }}>
-          <div style={styles.dropdownTitle}>Country</div>
-          {COUNTRY_OPTIONS.map((opt) => (
-            <label key={opt.value} style={styles.checkboxRow}>
-              <input
-                type="radio"
-                name="country"
-                style={styles.radioInput}
-                checked={tempCountry === opt.value}
-                onChange={() => setTempCountry(opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-          <div style={styles.sectionLabel}>Location</div>
-          <label style={styles.checkboxRow}>
-            <input
-              type="checkbox"
-              style={styles.checkbox}
-              checked={!tempLocation}
-              onChange={() => setTempLocation("")}
-            />
-            All locations within {tempCountry === "CA" ? "Canada" : "United States"}
-          </label>
-          <input
-            type="text"
-            placeholder="Enter City"
-            value={tempLocation}
-            onChange={(e) => setTempLocation(e.target.value)}
-            style={styles.searchInput}
-          />
-          <DropdownFooter onReset={resetCountry} onConfirm={confirmCountry} />
-        </DropdownPanel>
-      )}
-
-      {openDropdown === "jobFunction" && (
-        <DropdownPanel style={{ left: 0, minWidth: "280px" }}>
-          <div style={styles.dropdownTitle}>Job Function</div>
-          <div style={{ maxHeight: "280px", overflowY: "auto" }}>
-            {JOB_FUNCTION_OPTIONS.map((cat) => (
-              <label key={cat} style={styles.checkboxRow}>
-                <input
-                  type="checkbox"
-                  style={styles.checkbox}
-                  checked={tempRoleCategory.includes(cat)}
-                  onChange={() => {
-                    setTempRoleCategory((prev) =>
-                      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
-                    );
-                  }}
-                />
-                {cat}
-              </label>
-            ))}
-          </div>
-          <DropdownFooter onReset={resetJobFunction} onConfirm={confirmJobFunction} />
-        </DropdownPanel>
-      )}
-
-      {openDropdown === "experience" && (
-        <DropdownPanel style={{ left: 0 }}>
-          <div style={styles.dropdownTitle}>Experience Level</div>
-          {EXPERIENCE_OPTIONS.map((opt) => (
-            <label key={opt.value} style={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                style={styles.checkbox}
-                checked={tempExperience === opt.value}
-                onChange={() => setTempExperience(tempExperience === opt.value ? "" : opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-          <DropdownFooter onReset={resetExperience} onConfirm={confirmExperience} />
-        </DropdownPanel>
-      )}
-
-      {openDropdown === "workModel" && (
-        <DropdownPanel style={{ left: 0 }}>
-          <div style={styles.dropdownTitle}>Work Model</div>
-          {WORK_MODEL_OPTIONS.map((opt) => (
-            <label key={opt.value} style={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                style={styles.checkbox}
-                checked={tempWorkType.includes(opt.value)}
-                onChange={() => {
-                  setTempWorkType((prev) =>
-                    prev.includes(opt.value) ? prev.filter((v) => v !== opt.value) : [...prev, opt.value]
-                  );
-                }}
-              />
-              {opt.label}
-            </label>
-          ))}
-          <DropdownFooter onReset={resetWorkModel} onConfirm={confirmWorkModel} />
-        </DropdownPanel>
-      )}
-
-      {openDropdown === "datePosted" && (
-        <DropdownPanel style={{ left: 0 }}>
-          <div style={styles.dropdownTitle}>Date Posted</div>
-          {DATE_POSTED_OPTIONS.map((opt) => (
-            <label key={opt.value} style={styles.checkboxRow}>
-              <input
-                type="radio"
-                name="datePosted"
-                style={styles.radioInput}
-                checked={tempDatePosted === opt.value}
-                onChange={() => setTempDatePosted(opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-          <DropdownFooter onReset={resetDatePosted} onConfirm={confirmDatePosted} />
-        </DropdownPanel>
-      )}
-
-      {openDropdown === "allFilters" && (
-        <DropdownPanel style={{ left: 0, minWidth: "340px", maxHeight: "500px" }}>
-          <div style={styles.dropdownTitle}>All Filters</div>
-
-          <div style={styles.sectionLabel}>Country</div>
-          {COUNTRY_OPTIONS.map((opt) => (
-            <label key={opt.value} style={styles.checkboxRow}>
-              <input
-                type="radio"
-                name="allCountry"
-                style={styles.radioInput}
-                checked={tempCountry === opt.value}
-                onChange={() => setTempCountry(opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-
-          <div style={styles.sectionLabel}>Work Model</div>
-          {WORK_MODEL_OPTIONS.map((opt) => (
-            <label key={opt.value} style={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                style={styles.checkbox}
-                checked={tempWorkType.includes(opt.value)}
-                onChange={() => {
-                  setTempWorkType((prev) =>
-                    prev.includes(opt.value) ? prev.filter((v) => v !== opt.value) : [...prev, opt.value]
-                  );
-                }}
-              />
-              {opt.label}
-            </label>
-          ))}
-
-          <div style={styles.sectionLabel}>Experience Level</div>
-          {EXPERIENCE_OPTIONS.map((opt) => (
-            <label key={opt.value} style={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                style={styles.checkbox}
-                checked={tempExperience === opt.value}
-                onChange={() => setTempExperience(tempExperience === opt.value ? "" : opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-
-          <div style={styles.sectionLabel}>Date Posted</div>
-          {DATE_POSTED_OPTIONS.map((opt) => (
-            <label key={opt.value} style={styles.checkboxRow}>
-              <input
-                type="radio"
-                name="allDatePosted"
-                style={styles.radioInput}
-                checked={tempDatePosted === opt.value}
-                onChange={() => setTempDatePosted(opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-
-          <DropdownFooter
-            onReset={() => {
-              resetCountry();
-              resetJobFunction();
-              resetExperience();
-              resetWorkModel();
-              resetDatePosted();
-            }}
-            onConfirm={() => {
-              onChange({
-                ...filters,
-                country: tempCountry,
-                location: tempLocation,
-                work_type: tempWorkType,
-                role_category: tempRoleCategory,
-                experience_level: tempExperience,
-                date_posted: tempDatePosted,
-              });
-              setOpenDropdown(null);
-            }}
-          />
-        </DropdownPanel>
       )}
     </div>
   );

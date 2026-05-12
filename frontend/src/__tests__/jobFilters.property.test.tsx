@@ -12,7 +12,7 @@ interface JobFilters {
   country: string;
   work_type: string[];
   role_category: string[];
-  experience_level: string;
+  experience_level: string[];
 }
 
 const COUNTRY_VALUES = ["", "US", "CA"];
@@ -26,14 +26,14 @@ const ROLE_CATEGORIES = [
   "Public Sector and Government", "Education and Training",
   "Customer Service and Support", "Marketing", "Consultant",
 ];
-const EXPERIENCE_VALUES = ["", "new_grad", "internship"];
+const EXPERIENCE_VALUES = ["new_grad", "internship", "entry", "mid", "senior", "lead", "director"];
 
 // Strategy for generating valid JobFilters
 const jobFiltersArb = fc.record({
   country: fc.constantFrom(...COUNTRY_VALUES),
   work_type: fc.subarray(WORK_TYPE_VALUES),
   role_category: fc.subarray(ROLE_CATEGORIES),
-  experience_level: fc.constantFrom(...EXPERIENCE_VALUES),
+  experience_level: fc.subarray(EXPERIENCE_VALUES),
 });
 
 // Simulate the save/load logic from Jobs.tsx
@@ -50,13 +50,13 @@ function loadFilters(): JobFilters {
         country: parsed.country || "",
         work_type: Array.isArray(parsed.work_type) ? parsed.work_type : [],
         role_category: Array.isArray(parsed.role_category) ? parsed.role_category : [],
-        experience_level: parsed.experience_level || "",
+        experience_level: Array.isArray(parsed.experience_level) ? parsed.experience_level : parsed.experience_level ? [parsed.experience_level] : [],
       };
     }
   } catch {
     // Ignore parse errors
   }
-  return { country: "", work_type: [], role_category: [], experience_level: "" };
+  return { country: "", work_type: [], role_category: [], experience_level: [] };
 }
 
 describe("Property 11: Filter Persistence Round-Trip", () => {
@@ -73,7 +73,7 @@ describe("Property 11: Filter Persistence Round-Trip", () => {
         expect(loaded.country).toBe(filters.country);
         expect(loaded.work_type).toEqual(filters.work_type);
         expect(loaded.role_category).toEqual(filters.role_category);
-        expect(loaded.experience_level).toBe(filters.experience_level);
+        expect(loaded.experience_level).toEqual(filters.experience_level);
       }),
       { numRuns: 100 }
     );
@@ -84,7 +84,7 @@ describe("Property 11: Filter Persistence Round-Trip", () => {
     expect(loaded.country).toBe("");
     expect(loaded.work_type).toEqual([]);
     expect(loaded.role_category).toEqual([]);
-    expect(loaded.experience_level).toBe("");
+    expect(loaded.experience_level).toEqual([]);
   });
 
   it("loading from corrupted localStorage returns defaults", () => {
@@ -93,7 +93,7 @@ describe("Property 11: Filter Persistence Round-Trip", () => {
     expect(loaded.country).toBe("");
     expect(loaded.work_type).toEqual([]);
     expect(loaded.role_category).toEqual([]);
-    expect(loaded.experience_level).toBe("");
+    expect(loaded.experience_level).toEqual([]);
   });
 
   it("loading from partial data fills in defaults", () => {
@@ -108,7 +108,7 @@ describe("Property 11: Filter Persistence Round-Trip", () => {
           expect(loaded.country).toBe(partial.country);
           expect(loaded.work_type).toEqual([]);
           expect(loaded.role_category).toEqual([]);
-          expect(loaded.experience_level).toBe("");
+          expect(loaded.experience_level).toEqual([]);
         }
       ),
       { numRuns: 50 }

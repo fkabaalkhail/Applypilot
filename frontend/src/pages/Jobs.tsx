@@ -154,14 +154,14 @@ export default function Jobs() {
           location: parsed.location || "",
           work_type: Array.isArray(parsed.work_type) ? parsed.work_type : [],
           role_category: Array.isArray(parsed.role_category) ? parsed.role_category : [],
-          experience_level: parsed.experience_level || "",
+          experience_level: Array.isArray(parsed.experience_level) ? parsed.experience_level : parsed.experience_level ? [parsed.experience_level] : [],
           date_posted: parsed.date_posted || "",
         };
       }
     } catch {
       // Ignore parse errors, use defaults
     }
-    return { country: "", location: "", work_type: [], role_category: [], experience_level: "", date_posted: "" };
+    return { country: "", location: "", work_type: [], role_category: [], experience_level: [], date_posted: "" };
   });
 
   useEffect(() => {
@@ -192,7 +192,7 @@ export default function Jobs() {
     if (aggFilters.location) params.set("location", aggFilters.location);
     if (aggFilters.work_type.length > 0) params.set("work_type", aggFilters.work_type.join(","));
     if (aggFilters.role_category.length > 0) params.set("role_category", aggFilters.role_category.join(","));
-    if (aggFilters.experience_level) params.set("experience_level", aggFilters.experience_level);
+    if (aggFilters.experience_level.length > 0) params.set("experience_level", aggFilters.experience_level.join(","));
     if (aggFilters.date_posted) params.set("date_posted", aggFilters.date_posted);
 
     try {
