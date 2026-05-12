@@ -1,12 +1,12 @@
 :root {
-  --accent: #ea580c;
-  --accent-light: #fff7ed;
-  --accent-border: #fed7aa;
-  --accent-hover: #dc4e08;
+  --accent: #7C6CFF;
+  --accent-light: #F0EEFF;
+  --accent-border: #D3D3FF;
+  --accent-hover: #6B5CE7;
   --bg-page: #F4F6F8;
   --bg-white: #ffffff;
-  --bg-match-strong: #022A30;
-  --bg-match-fair: #1E2325;
+  --bg-match-strong: #2D2B55;
+  --bg-match-fair: #1E1E3F;
   --text: #111827;
   --text-secondary: #6b7280;
   --text-muted: #9ca3af;
@@ -1324,3 +1324,4 @@ body {
   justify-content: center;
   padding: 0.75rem 1.25rem;
 }
+

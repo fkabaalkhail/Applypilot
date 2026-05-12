@@ -423,26 +423,20 @@ export default function Jobs() {
                   <i className="fa-solid fa-briefcase"></i>
                   <span>Full-time</span>
                 </div>
-                <div className="job-detail-item">
-                  <i className="fa-solid fa-building"></i>
-                  <span>{job.easy_apply ? "Easy Apply" : "External"}</span>
-                </div>
-                <div className="job-detail-item">
-                  <i className="fa-solid fa-layer-group"></i>
-                  <span>{job.match_label || "Mid Level"}</span>
-                </div>
                 {job.salary_range && (
                   <div className="job-detail-item">
                     <i className="fa-solid fa-dollar-sign"></i>
                     <span className="salary">{job.salary_range}</span>
                   </div>
                 )}
-                {job.experience_score > 0 && (
-                  <div className="job-detail-item">
-                    <i className="fa-solid fa-star"></i>
-                    <span>{job.experience_score}+ yrs exp</span>
-                  </div>
-                )}
+                <div className="job-detail-item">
+                  <i className="fa-solid fa-laptop-house"></i>
+                  <span>{job.work_type === "remote" ? "Remote" : job.work_type === "hybrid" ? "Hybrid" : "On Site"}</span>
+                </div>
+                <div className="job-detail-item">
+                  <i className="fa-solid fa-graduation-cap"></i>
+                  <span>{job.experience_level === "internship" ? "Internship" : "Entry, New Grad"}</span>
+                </div>
               </div>
 
               {/* Footer */}
@@ -465,7 +459,7 @@ export default function Jobs() {
                     rel="noopener noreferrer"
                     className="btn-outline"
                   >
-                    MATCH ME
+                    ASK REMI
                   </a>
                   <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply">APPLY WITH AUTOFILL</a>
                 </div>
