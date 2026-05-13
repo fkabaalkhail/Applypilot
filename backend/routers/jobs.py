@@ -30,6 +30,7 @@ def list_jobs(
     min_score: int = Query(0, ge=0),
     source: Optional[str] = None,
     saved: Optional[int] = None,
+    search: Optional[str] = None,
     location: Optional[str] = None,
     country: Optional[str] = None,
     work_type: Optional[str] = None,
@@ -40,7 +41,24 @@ def list_jobs(
     db: Session = Depends(get_db),
 ):
     """List scraped jobs, optionally filtered by status, match score, source, country, work_type, etc."""
+    from sqlalchemy import or_
+
     q = db.query(ScrapedJob).filter(ScrapedJob.match_score >= min_score)
+    if status:
+        q = q.filter(ScrapedJob.status == status)
+    if source:
+        q = q.filter(ScrapedJob.source_platform == source)
+    if saved is not None:
+        q = q.filter(ScrapedJob.saved == saved)
+    if search:
+        search_term = search.strip()
+        if search_term:
+            q = q.filter(
+                or_(
+                    ScrapedJob.title.ilike(f"%{search_term}%"),
+                    ScrapedJob.company.ilike(f"%{search_term}%"),
+                )
+            )
     if status:
         q = q.filter(ScrapedJob.status == status)
     if source:
@@ -50,7 +68,6 @@ def list_jobs(
     if location:
         city_values = [c.strip() for c in location.split(",") if c.strip()]
         if city_values:
-            from sqlalchemy import or_
             location_conditions = [
                 ScrapedJob.location.ilike(f"%{city}%") for city in city_values
             ]

@@ -177,7 +177,7 @@ export default function Jobs() {
   useEffect(() => {
     fetchJobs();
     fetchStats();
-  }, [page, activeTab, filters, aggFilters]);
+  }, [page, activeTab, filters, aggFilters, search]);
 
   async function fetchJobs() {
     setLoading(true);
@@ -188,6 +188,7 @@ export default function Jobs() {
     if (activeTab === "Saved" || activeTab === "Liked") params.set("saved", "1");
     if (filters.source) params.set("source", filters.source);
     if (filters.min_match_score > 0) params.set("min_score", String(filters.min_match_score));
+    if (search.trim()) params.set("search", search.trim());
 
     if (aggFilters.country) params.set("country", aggFilters.country);
     if (aggFilters.location.length > 0) {
@@ -253,10 +254,6 @@ export default function Jobs() {
     if (activeTab === "Applied") return j.status === "applied";
     if (activeTab === "New") return j.status === "new";
     if (activeTab === "Liked") return j.saved;
-    if (search) {
-      const q = search.toLowerCase();
-      return j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q);
-    }
     return true;
   });
 
