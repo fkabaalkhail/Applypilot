@@ -214,14 +214,20 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    # If we already have a description, return cached data
+    # If we already have a good description, return cached data
     if job.description and len(job.description) > 50:
-        return {
-            "id": job.id,
-            "description": job.description,
-            "apply_url": job.url,
-            "company_logo": job.company_logo,
-        }
+        # Reject known garbage descriptions (LinkedIn UI text)
+        if "This button displays the currently selected search type" not in job.description:
+            return {
+                "id": job.id,
+                "description": job.description,
+                "apply_url": job.url,
+                "company_logo": job.company_logo,
+            }
+        else:
+            # Clear garbage description so we re-fetch
+            job.description = ""
+            db.commit()
 
     # Fetch the page and try multiple extraction strategies
     try:
@@ -232,6 +238,43 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
 
         description = ""
         apply_url = final_url if final_url != job.url else job.url
+
+        # Strategy 0: LinkedIn job pages (special handling - must come first)
+        if "linkedin.com/jobs" in job.url:
+            # LinkedIn guest view has description in show-more-less-html__markup div
+            li_match = re.search(
+                r'show-more-less-html__markup[^>]*>(.*?)</div>',
+                text, re.DOTALL
+            )
+            if li_match:
+                desc_html = li_match.group(1)
+                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                if len(desc_text) > 50:
+                    description = desc_text
+            # Fallback: og:description (truncated but better than nothing)
+            if not description:
+                og_match = re.search(
+                    r'(?:og:description|name="description")[^>]*content="([^"]*)"',
+                    text, re.IGNORECASE
+                )
+                if og_match:
+                    og_desc = og_match.group(1).strip()
+                    # Remove "Posted X. " prefix and "...See this and similar jobs" suffix
+                    og_desc = re.sub(r'^Posted [^.]+\.\s*', '', og_desc)
+                    og_desc = re.sub(r'…See this and similar jobs on LinkedIn\.$', '', og_desc)
+                    if len(og_desc) > 30:
+                        description = og_desc
+
+            if description:
+                job.description = description
+                db.commit()
+            return {
+                "id": job.id,
+                "description": job.description or "",
+                "apply_url": job.url,
+                "company_logo": job.company_logo or "",
+            }
 
         # Strategy 1: Extract schema.org JSON-LD JobPosting
         schema_matches = re.findall(
