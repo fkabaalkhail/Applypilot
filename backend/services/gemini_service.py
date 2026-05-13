@@ -56,8 +56,8 @@ class GeminiService:
     """Async client for Google Gemini API."""
 
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "")
-        self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        self.api_key = os.getenv("GEMINI_API_KEY", "").strip().strip("\ufeff")
+        self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip().strip("\ufeff")
         self.timeout = float(os.getenv("GEMINI_TIMEOUT", "60"))
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not set in environment")
