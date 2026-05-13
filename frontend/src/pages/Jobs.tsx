@@ -89,39 +89,6 @@ function timeAgo(dateStr: string): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function MatchBadge({ score }: { score: number }) {
-  const label = score >= 80 ? "STRONG MATCH" : score >= 60 ? "GOOD MATCH" : "FAIR MATCH";
-  const bgClass = score >= 60 ? "strong" : "fair";
-  const circumference = 2 * Math.PI * 40;
-  const dashOffset = circumference - (score / 100) * circumference;
-
-  return (
-    <div className={`match-badge ${bgClass}`}>
-      <div className="match-circle">
-        <svg viewBox="0 0 100 100" style={{ transform: "rotate(-90deg)" }}>
-          <circle
-            cx="50" cy="50" r="40"
-            fill="none"
-            stroke="rgba(255,255,255,0.1)"
-            strokeWidth="7"
-          />
-          <circle
-            cx="50" cy="50" r="40"
-            fill="none"
-            stroke="#ea580c"
-            strokeWidth="7"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-          />
-        </svg>
-        <span className="match-number">{score}<small>%</small></span>
-      </div>
-      <span className="match-label">{label}</span>
-    </div>
-  );
-}
-
 const FILTER_STORAGE_KEY = "job-aggregator-filters";
 
 export default function Jobs() {
