@@ -13,6 +13,7 @@ import re
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
