@@ -440,6 +440,25 @@ export default function Jobs() {
                 </div>
               </div>
 
+              {/* Match Score Badge */}
+              {job.match_score > 0 && (
+                <div className="match-score-badge">
+                  <div className="match-circle-sm">
+                    <svg viewBox="0 0 100 100">
+                      <circle cx="50" cy="50" r="40" fill="none" stroke="#e8e0f0" strokeWidth="8" />
+                      <circle cx="50" cy="50" r="40" fill="none" stroke="#7c3aed" strokeWidth="8"
+                        strokeDasharray={`${job.match_score * 2.51} 251`}
+                        strokeLinecap="round"
+                        style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
+                      />
+                    </svg>
+                    <span className="match-pct">{job.match_score}<small>%</small></span>
+                  </div>
+                  <span className="match-label-sm">
+                    {job.match_score >= 80 ? "STRONG" : job.match_score >= 60 ? "GOOD" : "FAIR"} MATCH
+                  </span>
+                </div>
+              )}
             </div>
           ))}
 
