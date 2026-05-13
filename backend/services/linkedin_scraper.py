@@ -160,49 +160,76 @@ class LinkedInScraper:
         """Parse job cards from LinkedIn guest API HTML response."""
         jobs: list[LinkedInJob] = []
 
-        # Split into individual job card blocks using data-entity-urn as delimiter
-        cards = re.split(r'data-entity-urn="urn:li:jobPosting:', html)
+        # Split into individual job card blocks using the unique job posting URN
+        cards = html.split('data-entity-urn="urn:li:jobPosting:')
 
         for card in cards[1:]:  # Skip first empty split
-            title = ""
-            company = ""
-            location = ""
-            url = ""
+            try:
+                title = ""
+                company = ""
+                location = ""
+                url = ""
 
-            # Extract URL from base-card__full-link
-            url_match = re.search(r'base-card__full-link[^"]*href="([^"]+)"', card)
-            if url_match:
-                raw_url = url_match.group(1).replace("&amp;", "&")
-                url = raw_url.split("?")[0]
+                # Extract URL - find href with /jobs/view/
+                href_idx = card.find('base-card__full-link')
+                if href_idx != -1:
+                    href_start = card.find('href="', href_idx)
+                    if href_start != -1:
+                        href_start += 6
+                        href_end = card.find('"', href_start)
+                        raw_url = card[href_start:href_end].replace("&amp;", "&")
+                        url = raw_url.split("?")[0]
 
-            # Extract title from base-search-card__title
-            title_match = re.search(r'base-search-card__title[^>]*>(.*?)</h3>', card, re.DOTALL)
-            if title_match:
-                title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
-                title = re.sub(r'\s+', ' ', title)
+                # Extract title - find base-search-card__title
+                title_idx = card.find('base-search-card__title')
+                if title_idx != -1:
+                    # Find the > after the class attribute
+                    gt_idx = card.find('>', title_idx)
+                    if gt_idx != -1:
+                        # Find closing </h3>
+                        close_idx = card.find('</h3>', gt_idx)
+                        if close_idx != -1:
+                            raw_title = card[gt_idx + 1:close_idx]
+                            # Strip HTML tags and whitespace
+                            title = re.sub(r'<[^>]+>', '', raw_title).strip()
+                            title = re.sub(r'\s+', ' ', title)
 
-            # Extract company from base-search-card__subtitle > a
-            company_match = re.search(r'base-search-card__subtitle[^>]*>.*?<a[^>]*>(.*?)</a>', card, re.DOTALL)
-            if company_match:
-                company = re.sub(r'<[^>]+>', '', company_match.group(1)).strip()
-                company = re.sub(r'\s+', ' ', company)
+                # Extract company - find base-search-card__subtitle then the <a> inside
+                sub_idx = card.find('base-search-card__subtitle')
+                if sub_idx != -1:
+                    a_idx = card.find('<a', sub_idx)
+                    if a_idx != -1:
+                        a_gt = card.find('>', a_idx)
+                        if a_gt != -1:
+                            a_close = card.find('</a>', a_gt)
+                            if a_close != -1:
+                                raw_company = card[a_gt + 1:a_close]
+                                company = re.sub(r'<[^>]+>', '', raw_company).strip()
+                                company = re.sub(r'\s+', ' ', company)
 
-            # Extract location from job-search-card__location
-            loc_match = re.search(r'job-search-card__location[^>]*>(.*?)</span>', card, re.DOTALL)
-            if loc_match:
-                location = re.sub(r'<[^>]+>', '', loc_match.group(1)).strip()
-                location = re.sub(r'\s+', ' ', location)
+                # Extract location - find job-search-card__location
+                loc_idx = card.find('job-search-card__location')
+                if loc_idx != -1:
+                    loc_gt = card.find('>', loc_idx)
+                    if loc_gt != -1:
+                        loc_close = card.find('</span>', loc_gt)
+                        if loc_close != -1:
+                            raw_loc = card[loc_gt + 1:loc_close]
+                            location = re.sub(r'<[^>]+>', '', raw_loc).strip()
+                            location = re.sub(r'\s+', ' ', location)
 
-            # Clean HTML entities
-            title = title.replace("&amp;", "&").replace("&#39;", "'")
-            company = company.replace("&amp;", "&").replace("&#39;", "'")
+                # Clean HTML entities
+                title = title.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
+                company = company.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
 
-            if title and company and url and "/jobs/view/" in url:
-                jobs.append(LinkedInJob(
-                    title=title,
-                    company=company,
-                    location=location,
-                    url=url,
-                ))
+                if title and company and url and "/jobs/view/" in url:
+                    jobs.append(LinkedInJob(
+                        title=title,
+                        company=company,
+                        location=location,
+                        url=url,
+                    ))
+            except Exception:
+                continue
 
         return jobs
