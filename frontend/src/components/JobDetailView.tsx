@@ -92,7 +92,14 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [fetchingDetails, setFetchingDetails] = useState(false);
 
   useEffect(() => {
-    // Fetch actual job URL and description on mount
+    // Reset local state when job changes to avoid stale data from previous job
+    setApplyUrl(job.url);
+    setDescription(job.description || "");
+    setCompanyLogo(job.company_logo || "");
+    setBreakdown(null);
+    setError("");
+
+    // Fetch actual job URL and description
     fetchJobDetails();
 
     if (job.match_score > 0 && job.experience_score > 0) {
@@ -109,7 +116,8 @@ export default function JobDetailView({ job, onClose }: Props) {
   }, [job.id]);
 
   async function fetchJobDetails() {
-    if (description && description.length > 50) return; // Already have description
+    // Use job.description directly to avoid stale closure from state
+    if (job.description && job.description.length > 50) return; // Already have description
     setFetchingDetails(true);
     try {
       const res = await fetch(`${API_BASE}/jobs/${job.id}/fetch-details`, { method: "POST" });
@@ -156,7 +164,7 @@ export default function JobDetailView({ job, onClose }: Props) {
     <div className="job-detail-view">
       {/* Close button */}
       {onClose && (
-        <button className="btn-close-detail" onClick={onClose} aria-label="Close detail view">
+        <button className="btn-close-detail" onClick={onClose} aria-label="Close detail panel">
           <i className="fa-solid fa-xmark"></i>
         </button>
       )}
@@ -166,9 +174,9 @@ export default function JobDetailView({ job, onClose }: Props) {
         <div className="job-detail-company-row">
           {(() => {
             const cleaned = job.company.toLowerCase().replace(/[^a-z0-9]/g, "");
-            const logoUrl = companyLogo && companyLogo.startsWith("http")
+            const logoUrl = companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("logo.clearbit.com") && !companyLogo.includes("google.com/s2/favicons")
               ? companyLogo
-              : cleaned.length >= 2 ? `https://www.google.com/s2/favicons?domain=${cleaned}.com&sz=128` : null;
+              : cleaned.length >= 2 ? `https://icon.horse/icon/${cleaned}.com` : null;
             return logoUrl ? (
               <img
                 src={logoUrl}
@@ -235,7 +243,7 @@ export default function JobDetailView({ job, onClose }: Props) {
         {/* Action buttons */}
         <div className="job-detail-actions">
           <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-apply-detail">
-            <i className="fa-solid fa-paper-plane"></i> Apply Now
+            <i className="fa-solid fa-paper-plane"></i> Apply with Autofill
           </a>
           <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-outline-detail">
             <i className="fa-solid fa-arrow-up-right-from-square"></i> View Original Post
@@ -255,7 +263,7 @@ export default function JobDetailView({ job, onClose }: Props) {
                 <span>Loading job details...</span>
               </div>
             ) : description ? (
-              <div className="description-content">{description}</div>
+              <div className="description-content" dangerouslySetInnerHTML={{ __html: description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n') }} />
             ) : (
               <div className="description-empty">
                 <div className="description-empty-icon">

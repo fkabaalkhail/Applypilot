@@ -48,7 +48,13 @@ def list_jobs(
     if saved is not None:
         q = q.filter(ScrapedJob.saved == saved)
     if location:
-        q = q.filter(ScrapedJob.location.ilike(f"%{location}%"))
+        city_values = [c.strip() for c in location.split(",") if c.strip()]
+        if city_values:
+            from sqlalchemy import or_
+            location_conditions = [
+                ScrapedJob.location.ilike(f"%{city}%") for city in city_values
+            ]
+            q = q.filter(or_(*location_conditions))
 
     # Aggregator filters (AND logic across different filter types, OR within same filter)
     if country:
@@ -172,10 +178,16 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{job_id}/fetch-details")
 async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
-    """Fetch job description from the jobright page on-demand.
+    """Fetch job description from the job page on-demand.
 
-    Scrapes the schema.org structured data from the jobright page to get
-    the full job description. Caches the result in the database.
+    Tries multiple extraction strategies:
+    1. schema.org JSON-LD (JobPosting structured data)
+    2. JSON-LD array format (some sites wrap in an array)
+    3. __NEXT_DATA__ (Next.js sites like jobright.ai)
+    4. Greenhouse/Lever API-style JSON embedded in page
+    5. Generic HTML content extraction (meta description + main content)
+
+    Caches the result in the database.
     """
     import re
     import json
@@ -194,33 +206,47 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
             "company_logo": job.company_logo,
         }
 
-    # Fetch the jobright page and extract structured data
+    # Fetch the page and try multiple extraction strategies
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
             response = await client.get(job.url)
             text = response.text
+            final_url = str(response.url)
 
-        # Extract schema.org JobPosting description
-        schema_match = re.search(
+        description = ""
+        apply_url = final_url if final_url != job.url else job.url
+
+        # Strategy 1: Extract schema.org JSON-LD JobPosting
+        schema_matches = re.findall(
             r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
             text, re.DOTALL
         )
-        if schema_match:
+        for schema_raw in schema_matches:
             try:
-                schema_data = json.loads(schema_match.group(1))
-                if schema_data.get("@type") == "JobPosting":
+                schema_data = json.loads(schema_raw)
+                # Handle array format: [{"@type": "JobPosting", ...}]
+                if isinstance(schema_data, list):
+                    for item in schema_data:
+                        if isinstance(item, dict) and item.get("@type") == "JobPosting":
+                            schema_data = item
+                            break
+                    else:
+                        continue
+                if isinstance(schema_data, dict) and schema_data.get("@type") == "JobPosting":
                     desc_html = schema_data.get("description", "")
-                    # Strip HTML tags for plain text display
                     desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
                     desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                    if desc_text:
-                        job.description = desc_text
-                        db.commit()
-            except (json.JSONDecodeError, KeyError):
-                pass
+                    if desc_text and len(desc_text) > 50:
+                        description = desc_text
+                        # Also try to get apply URL from structured data
+                        if schema_data.get("directApply"):
+                            apply_url = schema_data.get("url", apply_url)
+                        break
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue
 
-        # Try to get company logo from __NEXT_DATA__
-        if not job.company_logo:
+        # Strategy 2: __NEXT_DATA__ (jobright.ai and other Next.js sites)
+        if not description:
             next_match = re.search(
                 r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
                 text, re.DOTALL
@@ -228,21 +254,150 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
             if next_match:
                 try:
                     next_data = json.loads(next_match.group(1))
+                    # jobright.ai structure
                     job_result = (next_data.get("props", {})
                                   .get("pageProps", {})
                                   .get("dataSource", {})
                                   .get("jobResult", {}))
-                    logo = job_result.get("jdLogo", "")
-                    if logo and logo.startswith("http"):
-                        job.company_logo = logo
-                        db.commit()
-                except (json.JSONDecodeError, KeyError):
+                    if job_result:
+                        desc_html = job_result.get("jdContent", "") or job_result.get("description", "")
+                        if desc_html:
+                            desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                            desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                            if len(desc_text) > 50:
+                                description = desc_text
+                        logo = job_result.get("jdLogo", "")
+                        if logo and logo.startswith("http") and not job.company_logo:
+                            job.company_logo = logo
+                except (json.JSONDecodeError, KeyError, TypeError):
                     pass
+
+        # Strategy 3: Greenhouse job board — use API for reliable description
+        if not description and "greenhouse.io" in job.url:
+            # Extract board slug and job ID from URL
+            # Format: https://boards.greenhouse.io/{slug}/jobs/{id}
+            gh_api_match = re.search(r'boards\.greenhouse\.io/([^/]+)/jobs/(\d+)', job.url)
+            if gh_api_match:
+                slug = gh_api_match.group(1)
+                gh_job_id = gh_api_match.group(2)
+                try:
+                    async with httpx.AsyncClient(timeout=10) as api_client:
+                        api_url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{gh_job_id}"
+                        api_resp = await api_client.get(api_url)
+                        if api_resp.status_code == 200:
+                            gh_data = api_resp.json()
+                            desc_html = gh_data.get("content", "")
+                            if desc_html:
+                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                if len(desc_text) > 50:
+                                    description = desc_text
+                except Exception:
+                    pass
+            # Fallback: try HTML scraping if API didn't work
+            if not description:
+                gh_match = re.search(
+                    r'<div\s+id="content"[^>]*>(.*?)</div>\s*</div>\s*</div>',
+                    text, re.DOTALL
+                )
+                if not gh_match:
+                    gh_match = re.search(
+                        r'<div\s+class="[^"]*job-post[^"]*"[^>]*>(.*?)</div>\s*(?:</div>\s*)*</section>',
+                        text, re.DOTALL
+                    )
+                if gh_match:
+                    desc_text = re.sub(r'<[^>]+>', '\n', gh_match.group(1))
+                    desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                    if len(desc_text) > 50:
+                        description = desc_text
+
+        # Strategy 4: Lever job page — use API for reliable description
+        if not description and "lever.co" in job.url:
+            # Extract company slug and job ID from URL
+            # Format: https://jobs.lever.co/{slug}/{id}
+            lever_match = re.search(r'jobs\.lever\.co/([^/]+)/([a-f0-9-]+)', job.url)
+            if lever_match:
+                slug = lever_match.group(1)
+                lever_job_id = lever_match.group(2)
+                try:
+                    async with httpx.AsyncClient(timeout=10) as api_client:
+                        api_url = f"https://api.lever.co/v0/postings/{slug}/{lever_job_id}"
+                        api_resp = await api_client.get(api_url)
+                        if api_resp.status_code == 200:
+                            lever_data = api_resp.json()
+                            desc_html = lever_data.get("descriptionPlain", "") or lever_data.get("description", "")
+                            if desc_html:
+                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                if len(desc_text) > 50:
+                                    description = desc_text
+                            # Also get lists (requirements, responsibilities)
+                            lists = lever_data.get("lists", [])
+                            for lst in lists:
+                                list_title = lst.get("text", "")
+                                list_content = lst.get("content", "")
+                                if list_content:
+                                    list_text = re.sub(r'<[^>]+>', '\n', list_content).strip()
+                                    if list_text:
+                                        description += f"\n\n{list_title}\n{list_text}"
+                except Exception:
+                    pass
+            # Fallback: HTML scraping
+            if not description:
+                lever_html_match = re.search(
+                    r'<div\s+class="[^"]*posting-page[^"]*"[^>]*>(.*?)<div\s+class="[^"]*posting-apply',
+                    text, re.DOTALL
+                )
+                if lever_html_match:
+                    desc_text = re.sub(r'<[^>]+>', '\n', lever_html_match.group(1))
+                    desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                    if len(desc_text) > 50:
+                        description = desc_text
+
+        # Strategy 5: Generic fallback — extract from meta tags and main content
+        if not description:
+            # Try meta description first
+            meta_match = re.search(
+                r'<meta\s+(?:name|property)="(?:description|og:description)"[^>]*content="([^"]*)"',
+                text, re.IGNORECASE
+            )
+            # Try to find main content area
+            main_match = re.search(
+                r'<(?:main|article|div\s+(?:class|id)="[^"]*(?:content|description|job|detail)[^"]*")[^>]*>(.*?)</(?:main|article|div)>',
+                text, re.DOTALL | re.IGNORECASE
+            )
+            if main_match:
+                desc_text = re.sub(r'<script[^>]*>.*?</script>', '', main_match.group(1), flags=re.DOTALL)
+                desc_text = re.sub(r'<style[^>]*>.*?</style>', '', desc_text, flags=re.DOTALL)
+                desc_text = re.sub(r'<[^>]+>', '\n', desc_text)
+                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                if len(desc_text) > 100:
+                    description = desc_text[:5000]  # Cap at 5000 chars
+            elif meta_match:
+                description = meta_match.group(1).strip()
+
+        # Try to get company logo if we don't have one
+        if not job.company_logo:
+            # From __NEXT_DATA__ (already handled above)
+            # From og:image or logo in page
+            logo_match = re.search(
+                r'<meta\s+property="og:image"\s+content="([^"]*)"',
+                text, re.IGNORECASE
+            )
+            if logo_match:
+                logo_url = logo_match.group(1)
+                if logo_url.startswith("http"):
+                    job.company_logo = logo_url
+
+        # Save results
+        if description:
+            job.description = description
+            db.commit()
 
         return {
             "id": job.id,
             "description": job.description or "",
-            "apply_url": job.url,
+            "apply_url": apply_url,
             "company_logo": job.company_logo or "",
         }
     except Exception as e:
