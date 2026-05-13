@@ -10,6 +10,7 @@ import AnimatedSection, {
   AnimatedCounter,
 } from "../components/ui/animated-section";
 import AutoApplyShowcase from "../components/ui/AutoApplyShowcase";
+import { TiltCard } from "../components/ui/tilt-card";
 import "./Landing.css";
 
 const TESTIMONIALS = [
@@ -191,6 +192,102 @@ function TestimonialsCarousel() {
   );
 }
 
+const SUCCESS_STORIES = [
+  {
+    img: "/interview_offer.png",
+    alt: "Interview invitation letter",
+    badge: "Interview Secured ✓",
+    initials: "FA",
+    name: "Ahmed A. — Applied for Software Engineer role in Ottawa",
+    quote: '"Resumate helped me land this interview in under a week."',
+  },
+  {
+    img: "/interview_offer_2.png",
+    alt: "Second interview offer letter",
+    badge: "Offer Received ✓",
+    initials: "TR",
+    name: "Tristan R. — Applied for Software Developer role in Ottawa",
+    quote: '"Got two offers in 10 days. The AI tailoring made all the difference."',
+  },
+];
+
+function SuccessStoryCarousel() {
+  const [current, setCurrent] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const [dir, setDir] = useState<"left" | "right">("right");
+
+  function goTo(index: number, direction: "left" | "right") {
+    if (animating || index === current) return;
+    setDir(direction);
+    setAnimating(true);
+    setTimeout(() => {
+      setCurrent(index);
+      setAnimating(false);
+    }, 320);
+  }
+
+  const prev = () => goTo((current - 1 + SUCCESS_STORIES.length) % SUCCESS_STORIES.length, "left");
+  const next = () => goTo((current + 1) % SUCCESS_STORIES.length, "right");
+
+  const story = SUCCESS_STORIES[current];
+
+  return (
+    <div className="success-story-card-wrapper">
+      <TiltCard className="success-story-card">
+        <div className="success-story-badge">{story.badge}</div>
+        <div
+          className={`success-story-letter-scroll story-slide${animating ? ` story-slide-out-${dir}` : " story-slide-in"}`}
+        >
+          <img
+            src={story.img}
+            alt={story.alt}
+            className="success-story-letter-img"
+          />
+        </div>
+      </TiltCard>
+
+      {/* Navigation */}
+      <div className="success-story-nav">
+        <button
+          className="story-nav-btn"
+          onClick={prev}
+          aria-label="Previous letter"
+        >
+          ‹
+        </button>
+        <div className="story-nav-dots">
+          {SUCCESS_STORIES.map((_, i) => (
+            <button
+              key={i}
+              className={`story-nav-dot${i === current ? " active" : ""}`}
+              onClick={() => goTo(i, i > current ? "right" : "left")}
+              aria-label={`Go to letter ${i + 1}`}
+            />
+          ))}
+        </div>
+        <button
+          className="story-nav-btn"
+          onClick={next}
+          aria-label="Next letter"
+        >
+          ›
+        </button>
+      </div>
+
+      <div className="success-story-caption">
+        <div className="success-story-avatar">
+          <span className="success-story-initials">{story.initials}</span>
+        </div>
+        <div className="success-story-meta">
+          <span className="success-story-name">{story.name}</span>
+          <div className="success-story-stars">★★★★★</div>
+          <span className="success-story-quote">{story.quote}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Landing() {
   const navigate = useNavigate();
   const { isSignedIn } = useUser();
@@ -215,18 +312,18 @@ export default function Landing() {
             <span className="landing-logo-text">Resumate</span>
           </div>
           <div className="landing-nav-links">
-            <a href="#features">Features</a>
-            <a href="#stats">Results</a>
-            <a href="#pricing">Pricing</a>
-            <a href="#faq">FAQ</a>
+            <a href="#features" className="nav-link-item">Features</a>
+            <a href="#pricing" className="nav-link-item">Pricing</a>
+            <a href="#success-story" className="nav-link-item">Results</a>
+            <a href="#faq" className="nav-link-item">FAQ</a>
           </div>
           <div className="landing-nav-actions">
             {isSignedIn ? (
-              <button className="btn-cta" onClick={() => navigate("/app")}>Dashboard</button>
+              <button className="btn-cta nav-cta" onClick={() => navigate("/app")}>Dashboard</button>
             ) : (
               <>
-                <button className="btn-ghost" onClick={() => navigate("/sign-in")}>Sign In</button>
-                <button className="btn-cta" onClick={() => navigate("/sign-up")}>Get Started</button>
+                <button className="btn-ghost nav-login" onClick={() => navigate("/sign-in")}>Log in</button>
+                <button className="btn-cta nav-cta" onClick={() => navigate("/sign-up")}>Sign up</button>
               </>
             )}
           </div>
@@ -865,29 +962,7 @@ export default function Landing() {
               <p className="success-story-sub">Our users don't just apply — they get invited to interview.</p>
             </div>
 
-            <div className="success-story-card-wrapper">
-              <div className="success-story-card">
-                <div className="success-story-badge">Interview Secured ✓</div>
-                <div className="success-story-letter-scroll">
-                  <img
-                    src="/interview_offer.png"
-                    alt="Interview invitation letter"
-                    className="success-story-letter-img"
-                  />
-                </div>
-              </div>
-
-              <div className="success-story-caption">
-                <div className="success-story-avatar">
-                  <span className="success-story-initials">FA</span>
-                </div>
-                <div className="success-story-meta">
-                  <span className="success-story-name">Ahmed A. — Applied for Software Engineer role in Ottawa</span>
-                  <div className="success-story-stars">★★★★★</div>
-                  <span className="success-story-quote">"Resumate helped me land this interview in under a week."</span>
-                </div>
-              </div>
-            </div>
+            <SuccessStoryCarousel />
           </div>
         </section>
       </AnimatedSection>
