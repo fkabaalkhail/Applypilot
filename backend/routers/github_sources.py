@@ -210,6 +210,12 @@ async def scrape_linkedin_jobs(
             if not city_match:
                 return {"error": f"City '{city}' not found. Available: {[c for c, _ in CITIES]}"}
             jobs = await scraper.scrape_single(query, city_match[0], city_match[1])
+            # Return immediately with parsed results for debugging
+            return {
+                "status": "completed",
+                "total_found": len(jobs),
+                "jobs_preview": [{"title": j.title, "company": j.company, "location": j.location, "url": j.url} for j in jobs[:5]],
+            }
         elif city:
             # All queries for one city
             city_match = next(
