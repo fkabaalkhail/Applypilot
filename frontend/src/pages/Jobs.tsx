@@ -426,6 +426,8 @@ export default function Jobs() {
                         <span className="badge-source">
                           {job.source_platform === "github" ? (
                             <><i className="fa-brands fa-github"></i> GitHub</>
+                          ) : job.source_platform === "ats" ? (
+                            <><i className="fa-solid fa-building"></i> ATS</>
                           ) : (
                             <><i className="fa-brands fa-linkedin"></i> {job.source_platform}</>
                           )}

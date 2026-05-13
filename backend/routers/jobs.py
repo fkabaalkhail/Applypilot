@@ -252,35 +252,87 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
                 except (json.JSONDecodeError, KeyError, TypeError):
                     pass
 
-        # Strategy 3: Greenhouse job board content
+        # Strategy 3: Greenhouse job board — use API for reliable description
         if not description and "greenhouse.io" in job.url:
-            # Greenhouse embeds job content in a specific div
-            gh_match = re.search(
-                r'<div\s+id="content"[^>]*>(.*?)</div>\s*</div>\s*</div>',
-                text, re.DOTALL
-            )
-            if not gh_match:
+            # Extract board slug and job ID from URL
+            # Format: https://boards.greenhouse.io/{slug}/jobs/{id}
+            gh_api_match = re.search(r'boards\.greenhouse\.io/([^/]+)/jobs/(\d+)', job.url)
+            if gh_api_match:
+                slug = gh_api_match.group(1)
+                gh_job_id = gh_api_match.group(2)
+                try:
+                    async with httpx.AsyncClient(timeout=10) as api_client:
+                        api_url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{gh_job_id}"
+                        api_resp = await api_client.get(api_url)
+                        if api_resp.status_code == 200:
+                            gh_data = api_resp.json()
+                            desc_html = gh_data.get("content", "")
+                            if desc_html:
+                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                if len(desc_text) > 50:
+                                    description = desc_text
+                except Exception:
+                    pass
+            # Fallback: try HTML scraping if API didn't work
+            if not description:
                 gh_match = re.search(
-                    r'<div\s+class="[^"]*job-post[^"]*"[^>]*>(.*?)</div>\s*(?:</div>\s*)*</section>',
+                    r'<div\s+id="content"[^>]*>(.*?)</div>\s*</div>\s*</div>',
                     text, re.DOTALL
                 )
-            if gh_match:
-                desc_text = re.sub(r'<[^>]+>', '\n', gh_match.group(1))
-                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                if len(desc_text) > 50:
-                    description = desc_text
+                if not gh_match:
+                    gh_match = re.search(
+                        r'<div\s+class="[^"]*job-post[^"]*"[^>]*>(.*?)</div>\s*(?:</div>\s*)*</section>',
+                        text, re.DOTALL
+                    )
+                if gh_match:
+                    desc_text = re.sub(r'<[^>]+>', '\n', gh_match.group(1))
+                    desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                    if len(desc_text) > 50:
+                        description = desc_text
 
-        # Strategy 4: Lever job page content
+        # Strategy 4: Lever job page — use API for reliable description
         if not description and "lever.co" in job.url:
-            lever_match = re.search(
-                r'<div\s+class="[^"]*posting-page[^"]*"[^>]*>(.*?)<div\s+class="[^"]*posting-apply',
-                text, re.DOTALL
-            )
+            # Extract company slug and job ID from URL
+            # Format: https://jobs.lever.co/{slug}/{id}
+            lever_match = re.search(r'jobs\.lever\.co/([^/]+)/([a-f0-9-]+)', job.url)
             if lever_match:
-                desc_text = re.sub(r'<[^>]+>', '\n', lever_match.group(1))
-                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                if len(desc_text) > 50:
-                    description = desc_text
+                slug = lever_match.group(1)
+                lever_job_id = lever_match.group(2)
+                try:
+                    async with httpx.AsyncClient(timeout=10) as api_client:
+                        api_url = f"https://api.lever.co/v0/postings/{slug}/{lever_job_id}"
+                        api_resp = await api_client.get(api_url)
+                        if api_resp.status_code == 200:
+                            lever_data = api_resp.json()
+                            desc_html = lever_data.get("descriptionPlain", "") or lever_data.get("description", "")
+                            if desc_html:
+                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                if len(desc_text) > 50:
+                                    description = desc_text
+                            # Also get lists (requirements, responsibilities)
+                            lists = lever_data.get("lists", [])
+                            for lst in lists:
+                                list_title = lst.get("text", "")
+                                list_content = lst.get("content", "")
+                                if list_content:
+                                    list_text = re.sub(r'<[^>]+>', '\n', list_content).strip()
+                                    if list_text:
+                                        description += f"\n\n{list_title}\n{list_text}"
+                except Exception:
+                    pass
+            # Fallback: HTML scraping
+            if not description:
+                lever_html_match = re.search(
+                    r'<div\s+class="[^"]*posting-page[^"]*"[^>]*>(.*?)<div\s+class="[^"]*posting-apply',
+                    text, re.DOTALL
+                )
+                if lever_html_match:
+                    desc_text = re.sub(r'<[^>]+>', '\n', lever_html_match.group(1))
+                    desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                    if len(desc_text) > 50:
+                        description = desc_text
 
         # Strategy 5: Generic fallback — extract from meta tags and main content
         if not description:
