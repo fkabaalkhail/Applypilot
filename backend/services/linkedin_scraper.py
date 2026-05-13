@@ -122,6 +122,15 @@ class LinkedInScraper:
 
         return all_jobs
 
+    async def scrape_single(self, query: str, city: str, province: str) -> list[LinkedInJob]:
+        """Run a single search query for a single city (fast, fits serverless timeout)."""
+        async with httpx.AsyncClient(
+            timeout=30,
+            follow_redirects=True,
+            headers=HEADERS,
+        ) as client:
+            return await self._search(client, query, city, province)
+
     async def _search(
         self,
         client: httpx.AsyncClient,

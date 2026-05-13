@@ -183,16 +183,17 @@ async def cron_ats(db: Session = Depends(get_db)):
 @router.post("/scrape-linkedin")
 async def scrape_linkedin_jobs(
     city: Optional[str] = None,
+    query: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Scrape LinkedIn public job search for intern/new-grad/co-op positions.
 
-    Searches major Canadian cities for entry-level positions using LinkedIn's
-    guest jobs API. Pass ?city=Ottawa to scrape a single city (faster).
+    Pass ?city=Ottawa&query=intern to scrape a single query for a single city (fast).
+    Without params, scrapes all cities and queries (may timeout on serverless).
     """
     try:
         from backend.db.models import ScrapedJob
-        from backend.services.linkedin_scraper import LinkedInScraper, CITIES
+        from backend.services.linkedin_scraper import LinkedInScraper, CITIES, QUERIES
         from backend.services.country_filter import CountryFilter
         from backend.services.work_type_classifier import WorkTypeClassifier
 
@@ -200,8 +201,17 @@ async def scrape_linkedin_jobs(
         country_filter = CountryFilter()
         work_type_classifier = WorkTypeClassifier()
 
-        if city:
-            # Find matching city from CITIES list
+        if city and query:
+            # Single query + single city (fastest, fits serverless timeout)
+            city_match = next(
+                ((c, p) for c, p in CITIES if c.lower() == city.lower()),
+                None
+            )
+            if not city_match:
+                return {"error": f"City '{city}' not found. Available: {[c for c, _ in CITIES]}"}
+            jobs = await scraper.scrape_single(query, city_match[0], city_match[1])
+        elif city:
+            # All queries for one city
             city_match = next(
                 ((c, p) for c, p in CITIES if c.lower() == city.lower()),
                 None
