@@ -451,6 +451,25 @@ body {
   font-weight: 500;
 }
 
+/* ===== Jobs Content Area (Split Layout Container) ===== */
+.jobs-content-area {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+}
+
+.jobs-content-area .jobs-feed {
+  width: 100%;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.jobs-content-area.has-detail .jobs-feed {
+  width: 40%;
+  overflow-y: auto;
+}
+
 /* ===== Jobs Feed ===== */
 .jobs-feed {
   flex: 1;
@@ -477,6 +496,13 @@ body {
 .job-card:hover {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   transform: translateY(-1px);
+}
+
+.job-card.selected {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-light);
+  box-shadow: 0 4px 16px rgba(124, 108, 255, 0.12);
+  transform: none;
 }
 
 .job-card-body {
@@ -800,34 +826,13 @@ body {
   .search-input { width: 160px; }
 }
 
-/* === Job Detail Overlay === */
-.job-detail-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
+/* === Job Detail Inline Panel === */
+.job-detail-inline {
+  width: 60%;
+  height: 100%;
   overflow-y: auto;
-}
-
-.job-detail-panel {
+  border-left: 1px solid var(--border-light, #e5e7eb);
   background: var(--bg-white);
-  border-radius: 16px;
-  width: 100%;
-  max-width: 880px;
-  max-height: 88vh;
-  overflow-y: auto;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.08);
-  animation: detailSlideUp 0.2s ease-out;
-}
-
-@keyframes detailSlideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .job-detail-view {

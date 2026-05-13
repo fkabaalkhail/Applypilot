@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
 
@@ -135,6 +135,9 @@ export default function Jobs() {
   const [search, setSearch] = useState("");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
+  const jobsListRef = useRef<HTMLDivElement>(null);
+  const prevSelectedJobRef = useRef<Job | null>(null);
+
   const [filters, setFilters] = useState<Filters>({
     source: "",
     min_match_score: 0,
@@ -173,6 +176,27 @@ export default function Jobs() {
       // Ignore storage errors (e.g., quota exceeded)
     }
   }, [aggFilters]);
+
+  // Close detail panel on Escape key press
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && selectedJob) {
+        setSelectedJob(null);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedJob]);
+
+  // Restore focus to job list when detail panel closes
+  useEffect(() => {
+    if (prevSelectedJobRef.current && !selectedJob) {
+      jobsListRef.current?.focus();
+    }
+    prevSelectedJobRef.current = selectedJob;
+  }, [selectedJob]);
 
   useEffect(() => {
     fetchJobs();
@@ -259,6 +283,13 @@ export default function Jobs() {
     }
     return true;
   });
+
+  // Auto-close detail panel when selected job is filtered out
+  useEffect(() => {
+    if (selectedJob && !filteredJobs.some((j) => j.id === selectedJob.id)) {
+      setSelectedJob(null);
+    }
+  }, [filteredJobs, selectedJob]);
 
   return (
     <div className="jobs-page">
@@ -353,155 +384,156 @@ export default function Jobs() {
         totalCount={stats.total}
       />
 
-      {/* Job Feed */}
-      <div className="jobs-feed">
-        {loading && <p className="loading-text">Loading jobs...</p>}
-        {!loading && filteredJobs.length === 0 && (
-          <p className="empty-text">No jobs found. Start the scraper or adjust your filters.</p>
-        )}
+      {/* Content Area: Job Feed + Detail Panel */}
+      <div className={`jobs-content-area${selectedJob ? " has-detail" : ""}`}>
+        {/* Job Feed */}
+        <div className="jobs-feed" ref={jobsListRef} tabIndex={-1}>
+          {loading && <p className="loading-text">Loading jobs...</p>}
+          {!loading && filteredJobs.length === 0 && (
+            <p className="empty-text">No jobs found. Start the scraper or adjust your filters.</p>
+          )}
 
-        {filteredJobs.map((job) => (
-          <div key={job.id} className="job-card" onClick={() => setSelectedJob(job)} style={{ cursor: "pointer" }}>
-            <div className="job-card-body">
-              {/* Header: Logo + Info + Bookmark */}
-              <div className="job-card-header">
-                <div className="company-logo-wrapper">
-                  <div
-                    className="company-logo"
-                    style={{ backgroundColor: getLogoColor(job.company) }}
-                  >
-                    {job.company.charAt(0).toUpperCase()}
+          {filteredJobs.map((job) => (
+            <div key={job.id} className={`job-card${selectedJob?.id === job.id ? " selected" : ""}`} onClick={() => setSelectedJob(job)} style={{ cursor: "pointer" }}>
+              <div className="job-card-body">
+                {/* Header: Logo + Info + Bookmark */}
+                <div className="job-card-header">
+                  <div className="company-logo-wrapper">
+                    <div
+                      className="company-logo"
+                      style={{ backgroundColor: getLogoColor(job.company) }}
+                    >
+                      {job.company.charAt(0).toUpperCase()}
+                    </div>
+                    {(() => {
+                      const logoUrl = getCompanyLogoUrl(job.company, job.company_logo);
+                      return logoUrl ? (
+                        <img
+                          src={logoUrl}
+                          alt=""
+                          className="company-logo-img-overlay"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : null;
+                    })()}
                   </div>
-                  {(() => {
-                    const logoUrl = getCompanyLogoUrl(job.company, job.company_logo);
-                    return logoUrl ? (
-                      <img
-                        src={logoUrl}
-                        alt=""
-                        className="company-logo-img-overlay"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                      />
-                    ) : null;
-                  })()}
-                </div>
-                <div className="job-card-info">
-                  <div className="job-card-badges">
-                    <span className="badge-time">
-                      <i className="fa-regular fa-clock"></i> {job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}
-                    </span>
-                    {job.source_platform && (
-                      <span className="badge-source">
-                        {job.source_platform === "github" ? (
-                          <><i className="fa-brands fa-github"></i> GitHub</>
-                        ) : (
-                          <><i className="fa-brands fa-linkedin"></i> {job.source_platform}</>
-                        )}
+                  <div className="job-card-info">
+                    <div className="job-card-badges">
+                      <span className="badge-time">
+                        <i className="fa-regular fa-clock"></i> {job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}
                       </span>
-                    )}
+                      {job.source_platform && (
+                        <span className="badge-source">
+                          {job.source_platform === "github" ? (
+                            <><i className="fa-brands fa-github"></i> GitHub</>
+                          ) : (
+                            <><i className="fa-brands fa-linkedin"></i> {job.source_platform}</>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="job-title">{job.title}</h2>
+                    <p className="job-company">
+                      {job.company}
+                      <span className="company-meta"> · {job.company_size || "Technology"}</span>
+                    </p>
                   </div>
-                  <h2 className="job-title">{job.title}</h2>
-                  <p className="job-company">
-                    {job.company}
-                    <span className="company-meta"> · {job.company_size || "Technology"}</span>
-                  </p>
-                </div>
-                <button
-                  className={`btn-bookmark ${job.saved ? "saved" : ""}`}
-                  onClick={(e) => { e.stopPropagation(); toggleSave(job); }}
-                  aria-label={job.saved ? "Unsave job" : "Save job"}
-                >
-                  <i className={job.saved ? "fa-solid fa-bookmark" : "fa-regular fa-bookmark"}></i>
-                </button>
-              </div>
-
-              {/* Details Grid */}
-              <div className="job-details-grid">
-                <div className="job-detail-item">
-                  <i className="fa-solid fa-location-dot"></i>
-                  <span>{job.location || "Remote"}</span>
-                </div>
-                <div className="job-detail-item">
-                  <i className="fa-solid fa-briefcase"></i>
-                  <span>Full-time</span>
-                </div>
-                {job.salary_range && !job.salary_range.startsWith("{") && (
-                  <div className="job-detail-item">
-                    <i className="fa-solid fa-dollar-sign"></i>
-                    <span className="salary">{job.salary_range}</span>
-                  </div>
-                )}
-                <div className="job-detail-item">
-                  <i className="fa-solid fa-laptop-house"></i>
-                  <span>{job.work_type === "remote" ? "Remote" : job.work_type === "hybrid" ? "Hybrid" : "On Site"}</span>
-                </div>
-                <div className="job-detail-item">
-                  <i className="fa-solid fa-graduation-cap"></i>
-                  <span>{job.experience_level === "internship" ? "Internship" : "Entry, New Grad"}</span>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="job-card-footer" onClick={(e) => e.stopPropagation()}>
-                <span className="applicant-text">
-                  {job.applicant_count
-                    ? <><i className="fa-solid fa-users"></i> {job.applicant_count}+ applicants</>
-                    : ""}
-                </span>
-                <div className="job-actions">
-                  <button className="btn-icon" title="Not interested">
-                    <i className="fa-solid fa-thumbs-down"></i>
-                  </button>
-                  <button className="btn-icon" title="Share">
-                    <i className="fa-solid fa-share-nodes"></i>
-                  </button>
-                  <a
-                    href={job.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn-outline"
+                  <button
+                    className={`btn-bookmark ${job.saved ? "saved" : ""}`}
+                    onClick={(e) => { e.stopPropagation(); toggleSave(job); }}
+                    aria-label={job.saved ? "Unsave job" : "Save job"}
                   >
-                    ASK REMI
-                  </a>
-                  <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply">APPLY WITH AUTOFILL</a>
+                    <i className={job.saved ? "fa-solid fa-bookmark" : "fa-regular fa-bookmark"}></i>
+                  </button>
+                </div>
+
+                {/* Details Grid */}
+                <div className="job-details-grid">
+                  <div className="job-detail-item">
+                    <i className="fa-solid fa-location-dot"></i>
+                    <span>{job.location || "Remote"}</span>
+                  </div>
+                  <div className="job-detail-item">
+                    <i className="fa-solid fa-briefcase"></i>
+                    <span>Full-time</span>
+                  </div>
+                  {job.salary_range && !job.salary_range.startsWith("{") && (
+                    <div className="job-detail-item">
+                      <i className="fa-solid fa-dollar-sign"></i>
+                      <span className="salary">{job.salary_range}</span>
+                    </div>
+                  )}
+                  <div className="job-detail-item">
+                    <i className="fa-solid fa-laptop-house"></i>
+                    <span>{job.work_type === "remote" ? "Remote" : job.work_type === "hybrid" ? "Hybrid" : "On Site"}</span>
+                  </div>
+                  <div className="job-detail-item">
+                    <i className="fa-solid fa-graduation-cap"></i>
+                    <span>{job.experience_level === "internship" ? "Internship" : "Entry, New Grad"}</span>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="job-card-footer" onClick={(e) => e.stopPropagation()}>
+                  <span className="applicant-text">
+                    {job.applicant_count
+                      ? <><i className="fa-solid fa-users"></i> {job.applicant_count}+ applicants</>
+                      : ""}
+                  </span>
+                  <div className="job-actions">
+                    <button className="btn-icon" title="Not interested">
+                      <i className="fa-solid fa-thumbs-down"></i>
+                    </button>
+                    <button className="btn-icon" title="Share">
+                      <i className="fa-solid fa-share-nodes"></i>
+                    </button>
+                    <a
+                      href={job.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-outline"
+                    >
+                      ASK REMI
+                    </a>
+                    <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply">APPLY WITH AUTOFILL</a>
+                  </div>
                 </div>
               </div>
+
+              {/* Match Score Panel */}
+              {job.match_score > 0 && <MatchBadge score={job.match_score} />}
             </div>
+          ))}
 
-            {/* Match Score Panel */}
-            {job.match_score > 0 && <MatchBadge score={job.match_score} />}
-          </div>
-        ))}
+          {/* Pagination */}
+          {!loading && filteredJobs.length > 0 && (
+            <div className="pagination">
+              <button
+                className="btn-outline"
+                disabled={page === 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <i className="fa-solid fa-chevron-left"></i> Previous
+              </button>
+              <span className="page-indicator">Page {page}</span>
+              <button
+                className="btn-outline"
+                disabled={!hasMore}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next <i className="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
+          )}
+        </div>
 
-        {/* Pagination */}
-        {!loading && filteredJobs.length > 0 && (
-          <div className="pagination">
-            <button
-              className="btn-outline"
-              disabled={page === 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              <i className="fa-solid fa-chevron-left"></i> Previous
-            </button>
-            <span className="page-indicator">Page {page}</span>
-            <button
-              className="btn-outline"
-              disabled={!hasMore}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next <i className="fa-solid fa-chevron-right"></i>
-            </button>
+        {/* Inline Job Detail Panel */}
+        {selectedJob && (
+          <div className="job-detail-inline">
+            <JobDetailView job={selectedJob} onClose={() => setSelectedJob(null)} />
           </div>
         )}
       </div>
-
-      {/* Job Detail Panel */}
-      {selectedJob && (
-        <div className="job-detail-overlay" onClick={() => setSelectedJob(null)}>
-          <div className="job-detail-panel" onClick={(e) => e.stopPropagation()}>
-            <JobDetailView job={selectedJob} onClose={() => setSelectedJob(null)} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

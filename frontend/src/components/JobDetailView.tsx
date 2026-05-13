@@ -92,7 +92,14 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [fetchingDetails, setFetchingDetails] = useState(false);
 
   useEffect(() => {
-    // Fetch actual job URL and description on mount
+    // Reset local state when job changes to avoid stale data from previous job
+    setApplyUrl(job.url);
+    setDescription(job.description || "");
+    setCompanyLogo(job.company_logo || "");
+    setBreakdown(null);
+    setError("");
+
+    // Fetch actual job URL and description
     fetchJobDetails();
 
     if (job.match_score > 0 && job.experience_score > 0) {
@@ -109,7 +116,8 @@ export default function JobDetailView({ job, onClose }: Props) {
   }, [job.id]);
 
   async function fetchJobDetails() {
-    if (description && description.length > 50) return; // Already have description
+    // Use job.description directly to avoid stale closure from state
+    if (job.description && job.description.length > 50) return; // Already have description
     setFetchingDetails(true);
     try {
       const res = await fetch(`${API_BASE}/jobs/${job.id}/fetch-details`, { method: "POST" });
@@ -156,7 +164,7 @@ export default function JobDetailView({ job, onClose }: Props) {
     <div className="job-detail-view">
       {/* Close button */}
       {onClose && (
-        <button className="btn-close-detail" onClick={onClose} aria-label="Close detail view">
+        <button className="btn-close-detail" onClick={onClose} aria-label="Close detail panel">
           <i className="fa-solid fa-xmark"></i>
         </button>
       )}
