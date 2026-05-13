@@ -323,7 +323,7 @@ class MarkdownParser:
                     # Store company URL (e.g., https://www.tiktok.com)
                     if link and not link.startswith("https://jobright.ai"):
                         data["company_url"] = link
-                        # Generate logo from company domain using Clearbit
+                        # Generate logo from company domain using icon.horse
                         if not logo_url:
                             try:
                                 from urllib.parse import urlparse
@@ -331,7 +331,7 @@ class MarkdownParser:
                                 if domain:
                                     if domain.startswith("www."):
                                         domain = domain[4:]
-                                    data["company_logo"] = f"https://logo.clearbit.com/{domain}"
+                                    data["company_logo"] = f"https://icon.horse/icon/{domain}"
                             except Exception:
                                 pass
                 else:
