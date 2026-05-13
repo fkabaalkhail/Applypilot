@@ -160,8 +160,8 @@ class LinkedInScraper:
         """Parse job cards from LinkedIn guest API HTML response."""
         jobs: list[LinkedInJob] = []
 
-        # Split into individual job card blocks
-        cards = re.split(r'<li>\s*<div class="base-card', html)
+        # Split into individual job card blocks using data-entity-urn as delimiter
+        cards = re.split(r'data-entity-urn="urn:li:jobPosting:', html)
 
         for card in cards[1:]:  # Skip first empty split
             title = ""
