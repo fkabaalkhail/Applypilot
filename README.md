@@ -1,4 +1,4 @@
-# Resumate
+# Tailrd
 
 A job aggregation and smart-apply platform that scrapes job listings from 9 jobright-ai GitHub repositories, classifies them by country/work type/role category, and provides a filterable dashboard with AI-powered resume matching.
 

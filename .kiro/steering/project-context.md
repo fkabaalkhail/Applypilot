@@ -2,7 +2,7 @@
 inclusion: always
 ---
 
-# Resumate — Project Context
+# Tailrd — Project Context
 
 ## What This Project Is
 A job aggregation and smart-apply platform that scrapes job listings from multiple GitHub repositories, classifies them by country/work type/role category, and provides a filterable dashboard with AI-powered resume matching.

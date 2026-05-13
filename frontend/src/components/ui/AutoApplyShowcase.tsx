@@ -169,7 +169,7 @@ export default function AutoApplyShowcase() {
       {/* Right: Processing panel */}
       <div className="showcase-process-panel">
         <div className="spp-header">
-          <img src="/logo-icon.png" alt="Resumate" className="spp-logo" />
+          <img src="/logo-icon.png" alt="Tailrd" className="spp-logo" />
           <div className="spp-header-info">
             <div className="spp-company">{JOBS[activeJobIndex].company}</div>
             <div className="spp-role">{JOBS[activeJobIndex].title}</div>

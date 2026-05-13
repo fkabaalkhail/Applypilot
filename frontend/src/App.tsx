@@ -9,8 +9,8 @@ export default function App() {
       <aside className="sidebar">
         {/* Logo */}
         <div className="sidebar-logo">
-          <img src="/logo-icon.png" alt="Resumate" className="sidebar-logo-img" />
-          <span className="logo-text">Resumate</span>
+          <img src="/logo-icon.png" alt="Tailrd" className="sidebar-logo-img" />
+          <span className="logo-text">Tailrd</span>
         </div>
 
         {/* Menu Section */}

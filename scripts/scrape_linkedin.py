@@ -1,6 +1,6 @@
 """
 Local LinkedIn scraper — run this from your machine to scrape LinkedIn
-and push jobs to your deployed Resumate API.
+and push jobs to your deployed Tailrd API.
 
 Usage:
     python scripts/scrape_linkedin.py
@@ -10,7 +10,7 @@ Usage:
 This script:
 1. Searches LinkedIn's guest jobs API for intern/new-grad positions
 2. Parses job cards from the HTML response
-3. Posts each new job to your Resumate API (deduplicates by URL)
+3. Posts each new job to your Tailrd API (deduplicates by URL)
 """
 
 import asyncio
@@ -141,7 +141,7 @@ async def search_linkedin(client: httpx.AsyncClient, query: str, city: str, prov
 
 
 async def push_job_to_api(client: httpx.AsyncClient, job: Job) -> bool:
-    """Push a job to the Resumate API. Returns True if new, False if duplicate."""
+    """Push a job to the Tailrd API. Returns True if new, False if duplicate."""
     # Check if already exists
     resp = await client.get(f"{API_BASE}/jobs", params={"search": job.url[:50], "page_size": 1})
     if resp.status_code == 200:

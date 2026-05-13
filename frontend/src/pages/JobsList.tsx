@@ -177,8 +177,8 @@ export default function JobsList() {
         <div className="jl-nav-inner">
           <div className="jl-nav-left">
             <a href="/" className="jl-logo">
-              <img src="/logo-icon.png" alt="Resumate" className="jl-logo-img" />
-              <span className="jl-logo-text">Resumate</span>
+              <img src="/logo-icon.png" alt="Tailrd" className="jl-logo-img" />
+              <span className="jl-logo-text">Tailrd</span>
             </a>
           </div>
           <div className="jl-nav-right">
