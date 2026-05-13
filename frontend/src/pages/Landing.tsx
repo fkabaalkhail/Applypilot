@@ -9,6 +9,7 @@ import AnimatedSection, {
   FloatingElement,
   AnimatedCounter,
 } from "../components/ui/animated-section";
+import AutoApplyShowcase from "../components/ui/AutoApplyShowcase";
 import "./Landing.css";
 
 const TESTIMONIALS = [
@@ -371,6 +372,32 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Live Auto-Apply Demo — Top Showcase */}
+      <section className="showcase-section showcase-demo-section">
+        <div className="showcase-demo-wrapper">
+          <motion.div
+            className="showcase-demo-header"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 2.8, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <span className="showcase-demo-eyebrow">SEE IT IN ACTION</span>
+            <h2 className="showcase-title">Watch Resumate Work For You</h2>
+            <p className="showcase-desc">
+              While you relax, our AI scans job postings, extracts keywords,
+              tailors your resume, and fills applications — all in seconds.
+            </p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 3.0, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <AutoApplyShowcase />
+          </motion.div>
+        </div>
+      </section>
+
       {/* Stats Section */}
       <AnimatedSection animation="fadeUp">
         <section className="stats-section-light" id="stats">
@@ -667,54 +694,161 @@ export default function Landing() {
         </section>
       </AnimatedSection>
 
-      {/* Trusted By Companies */}
+      {/* Trusted By Companies — Continuous Carousel */}
       <AnimatedSection animation="fadeUp">
         <section className="companies-section">
           <p className="companies-label">Trusted by job seekers applying to</p>
-          <StaggerContainer className="companies-logos" staggerDelay={0.08}>
-            <StaggerItem animation="scale">
+          <div className="companies-carousel-wrapper">
+            <div className="companies-carousel-track">
+              {/* First set */}
               <span className="company-logo">
                 <img src="https://www.google.com/s2/favicons?domain=google.com&sz=32" alt="Google" className="company-favicon" />
-                Google
+                <span className="company-name">Google</span>
               </span>
-            </StaggerItem>
-            <StaggerItem animation="scale">
               <span className="company-logo">
                 <img src="https://www.google.com/s2/favicons?domain=meta.com&sz=32" alt="Meta" className="company-favicon" />
-                Meta
+                <span className="company-name">Meta</span>
               </span>
-            </StaggerItem>
-            <StaggerItem animation="scale">
               <span className="company-logo">
                 <img src="https://www.google.com/s2/favicons?domain=amazon.com&sz=32" alt="Amazon" className="company-favicon" />
-                Amazon
+                <span className="company-name">Amazon</span>
               </span>
-            </StaggerItem>
-            <StaggerItem animation="scale">
               <span className="company-logo">
                 <img src="https://www.google.com/s2/favicons?domain=microsoft.com&sz=32" alt="Microsoft" className="company-favicon" />
-                Microsoft
+                <span className="company-name">Microsoft</span>
               </span>
-            </StaggerItem>
-            <StaggerItem animation="scale">
               <span className="company-logo">
                 <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=32" alt="Apple" className="company-favicon" />
-                Apple
+                <span className="company-name">Apple</span>
               </span>
-            </StaggerItem>
-            <StaggerItem animation="scale">
               <span className="company-logo">
                 <img src="https://www.google.com/s2/favicons?domain=netflix.com&sz=32" alt="Netflix" className="company-favicon" />
-                Netflix
+                <span className="company-name">Netflix</span>
               </span>
-            </StaggerItem>
-            <StaggerItem animation="scale">
               <span className="company-logo">
                 <img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=32" alt="Shopify" className="company-favicon" />
-                Shopify
+                <span className="company-name">Shopify</span>
               </span>
-            </StaggerItem>
-          </StaggerContainer>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=stripe.com&sz=32" alt="Stripe" className="company-favicon" />
+                <span className="company-name">Stripe</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=airbnb.com&sz=32" alt="Airbnb" className="company-favicon" />
+                <span className="company-name">Airbnb</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=uber.com&sz=32" alt="Uber" className="company-favicon" />
+                <span className="company-name">Uber</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=salesforce.com&sz=32" alt="Salesforce" className="company-favicon" />
+                <span className="company-name">Salesforce</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=spotify.com&sz=32" alt="Spotify" className="company-favicon" />
+                <span className="company-name">Spotify</span>
+              </span>
+              {/* Duplicate set for seamless loop */}
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=google.com&sz=32" alt="Google" className="company-favicon" />
+                <span className="company-name">Google</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=meta.com&sz=32" alt="Meta" className="company-favicon" />
+                <span className="company-name">Meta</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=amazon.com&sz=32" alt="Amazon" className="company-favicon" />
+                <span className="company-name">Amazon</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=microsoft.com&sz=32" alt="Microsoft" className="company-favicon" />
+                <span className="company-name">Microsoft</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=32" alt="Apple" className="company-favicon" />
+                <span className="company-name">Apple</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=netflix.com&sz=32" alt="Netflix" className="company-favicon" />
+                <span className="company-name">Netflix</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=32" alt="Shopify" className="company-favicon" />
+                <span className="company-name">Shopify</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=stripe.com&sz=32" alt="Stripe" className="company-favicon" />
+                <span className="company-name">Stripe</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=airbnb.com&sz=32" alt="Airbnb" className="company-favicon" />
+                <span className="company-name">Airbnb</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=uber.com&sz=32" alt="Uber" className="company-favicon" />
+                <span className="company-name">Uber</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=salesforce.com&sz=32" alt="Salesforce" className="company-favicon" />
+                <span className="company-name">Salesforce</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=spotify.com&sz=32" alt="Spotify" className="company-favicon" />
+                <span className="company-name">Spotify</span>
+              </span>
+              {/* Third set for seamless loop */}
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=google.com&sz=32" alt="Google" className="company-favicon" />
+                <span className="company-name">Google</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=meta.com&sz=32" alt="Meta" className="company-favicon" />
+                <span className="company-name">Meta</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=amazon.com&sz=32" alt="Amazon" className="company-favicon" />
+                <span className="company-name">Amazon</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=microsoft.com&sz=32" alt="Microsoft" className="company-favicon" />
+                <span className="company-name">Microsoft</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=32" alt="Apple" className="company-favicon" />
+                <span className="company-name">Apple</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=netflix.com&sz=32" alt="Netflix" className="company-favicon" />
+                <span className="company-name">Netflix</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=32" alt="Shopify" className="company-favicon" />
+                <span className="company-name">Shopify</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=stripe.com&sz=32" alt="Stripe" className="company-favicon" />
+                <span className="company-name">Stripe</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=airbnb.com&sz=32" alt="Airbnb" className="company-favicon" />
+                <span className="company-name">Airbnb</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=uber.com&sz=32" alt="Uber" className="company-favicon" />
+                <span className="company-name">Uber</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=salesforce.com&sz=32" alt="Salesforce" className="company-favicon" />
+                <span className="company-name">Salesforce</span>
+              </span>
+              <span className="company-logo">
+                <img src="https://www.google.com/s2/favicons?domain=spotify.com&sz=32" alt="Spotify" className="company-favicon" />
+                <span className="company-name">Spotify</span>
+              </span>
+            </div>
+          </div>
         </section>
       </AnimatedSection>
 

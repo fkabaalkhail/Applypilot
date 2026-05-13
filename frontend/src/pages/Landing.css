@@ -508,6 +508,45 @@
   margin: 0 auto;
 }
 
+/* Demo showcase section */
+.showcase-demo-section {
+  text-align: center;
+  background: linear-gradient(180deg, #fafafe 0%, #fff 100%);
+  border-radius: 0;
+  padding: 6rem 2rem 5rem;
+  max-width: 100%;
+}
+
+.showcase-demo-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.showcase-demo-header {
+  margin-bottom: 3.5rem;
+}
+
+.showcase-demo-eyebrow {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: #5B5BFF;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.showcase-demo-header .showcase-title {
+  margin-bottom: 1rem;
+  font-size: 3rem;
+}
+
+.showcase-demo-header .showcase-desc {
+  max-width: 560px;
+  margin: 0 auto 0;
+  font-size: 1.1rem;
+}
+
 .showcase-content {
   display: grid;
   grid-template-columns: 0.7fr 1.3fr;
@@ -964,6 +1003,7 @@
   text-align: center;
   border-top: 1px solid #f3f4f6;
   border-bottom: 1px solid #f3f4f6;
+  overflow: hidden;
 }
 
 .companies-label {
@@ -974,12 +1014,29 @@
   margin-bottom: 1.5rem;
 }
 
-.companies-logos {
+.companies-carousel-wrapper {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+
+.companies-carousel-track {
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 3rem;
-  flex-wrap: wrap;
+  gap: 5.5rem;
+  animation: companyScroll 40s linear infinite;
+  width: max-content;
+}
+
+@keyframes companyScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(calc(-100% / 3)); }
+}
+
+.companies-carousel-wrapper:hover .companies-carousel-track {
+  animation-play-state: paused;
 }
 
 .company-logo {
@@ -990,6 +1047,11 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.company-name {
+  color: #374151;
 }
 
 .company-favicon {
@@ -1807,7 +1869,7 @@
   .pricing-grid { grid-template-columns: 1fr; }
   .landing-nav-links { display: none; }
   .pricing-featured { transform: none; }
-  .companies-logos { gap: 1.5rem; }
+  .companies-carousel-track { gap: 2.5rem; }
   .bottom-banner-inner { flex-direction: column; text-align: center; padding: 3rem 2rem; }
   .footer-inner { grid-template-columns: 1fr 1fr; gap: 2rem; }
 }
