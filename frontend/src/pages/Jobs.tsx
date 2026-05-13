@@ -65,12 +65,14 @@ function getLogoColor(company: string): string {
 }
 
 function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
-  // If we already have a logo URL from the parser, use it
-  if (companyLogo && companyLogo.startsWith("http")) return companyLogo;
-  // Generate from company name using unavatar (aggregates multiple logo sources)
+  // If we have a stored logo URL that's NOT from clearbit (those may be stale), use it
+  if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("logo.clearbit.com") && !companyLogo.includes("google.com/s2/favicons")) {
+    return companyLogo;
+  }
+  // Always generate fresh from Clearbit using company name
   const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (cleaned.length < 2) return null;
-  return `https://unavatar.io/${cleaned}.com?fallback=false`;
+  return `https://logo.clearbit.com/${cleaned}.com`;
 }
 
 function timeAgo(dateStr: string): string {
