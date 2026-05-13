@@ -554,3 +554,315 @@ async def fix_empty_companies(db: Session = Depends(get_db)):
             fixed += 1
 
     return {"total_empty": len(jobs_with_empty_company), "fixed": fixed}
+
+
+@router.post("/batch-fix-descriptions")
+async def batch_fix_descriptions(
+    batch_size: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """Batch fix jobs with missing or garbage descriptions.
+
+    Processes LinkedIn and Greenhouse/Lever jobs that have empty or garbage descriptions.
+    Prioritizes LinkedIn jobs (most common source for missing descriptions).
+    """
+    import re
+    import json
+    import httpx
+
+    GARBAGE_PATTERNS = [
+        "This button displays the currently selected search type",
+        "Sign in to view more",
+        "Join now to see",
+    ]
+
+    # Find jobs needing description fixes
+    from sqlalchemy import or_
+    jobs_to_fix = (
+        db.query(ScrapedJob)
+        .filter(
+            or_(
+                ScrapedJob.description == "",
+                ScrapedJob.description == None,
+                ScrapedJob.description.ilike("%This button displays%"),
+            )
+        )
+        .limit(batch_size)
+        .all()
+    )
+
+    fixed = 0
+    failed = 0
+    results = []
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+        for job in jobs_to_fix:
+            description = ""
+            try:
+                # LinkedIn jobs
+                if "linkedin.com/jobs" in (job.url or ""):
+                    resp = await client.get(job.url)
+                    text = resp.text
+                    # Extract from show-more-less-html__markup div
+                    li_match = re.search(
+                        r'show-more-less-html__markup[^>]*>(.*?)</div>',
+                        text, re.DOTALL
+                    )
+                    if li_match:
+                        desc_html = li_match.group(1)
+                        desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                        desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                        if len(desc_text) > 50:
+                            description = desc_text
+
+                # Greenhouse jobs
+                elif "greenhouse.io" in (job.url or ""):
+                    gh_match = re.search(r'boards\.greenhouse\.io/([^/]+)/jobs/(\d+)', job.url)
+                    if gh_match:
+                        slug, gh_job_id = gh_match.group(1), gh_match.group(2)
+                        api_url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{gh_job_id}"
+                        api_resp = await client.get(api_url)
+                        if api_resp.status_code == 200:
+                            gh_data = api_resp.json()
+                            desc_html = gh_data.get("content", "")
+                            if desc_html:
+                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                if len(desc_text) > 50:
+                                    description = desc_text
+
+                # Lever jobs
+                elif "lever.co" in (job.url or ""):
+                    lever_match = re.search(r'jobs\.lever\.co/([^/]+)/([a-f0-9-]+)', job.url)
+                    if lever_match:
+                        slug, lever_id = lever_match.group(1), lever_match.group(2)
+                        api_url = f"https://api.lever.co/v0/postings/{slug}/{lever_id}"
+                        api_resp = await client.get(api_url)
+                        if api_resp.status_code == 200:
+                            lever_data = api_resp.json()
+                            desc_text = lever_data.get("descriptionPlain", "")
+                            if not desc_text:
+                                desc_html = lever_data.get("description", "")
+                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                            if len(desc_text) > 50:
+                                description = desc_text
+
+                # Generic: try schema.org JSON-LD
+                else:
+                    resp = await client.get(job.url)
+                    text = resp.text
+                    schema_matches = re.findall(
+                        r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+                        text, re.DOTALL
+                    )
+                    for schema_raw in schema_matches:
+                        try:
+                            schema_data = json.loads(schema_raw)
+                            if isinstance(schema_data, list):
+                                for item in schema_data:
+                                    if isinstance(item, dict) and item.get("@type") == "JobPosting":
+                                        schema_data = item
+                                        break
+                                else:
+                                    continue
+                            if isinstance(schema_data, dict) and schema_data.get("@type") == "JobPosting":
+                                desc_html = schema_data.get("description", "")
+                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                if len(desc_text) > 50:
+                                    description = desc_text
+                                    break
+                        except (json.JSONDecodeError, TypeError):
+                            continue
+
+                if description:
+                    job.description = description
+                    db.commit()
+                    fixed += 1
+                    results.append({"id": job.id, "company": job.company, "status": "fixed"})
+                else:
+                    failed += 1
+                    results.append({"id": job.id, "company": job.company, "status": "no_description_found"})
+
+            except Exception as e:
+                failed += 1
+                results.append({"id": job.id, "company": job.company, "status": f"error: {str(e)[:50]}"})
+
+    return {
+        "total_processed": len(jobs_to_fix),
+        "fixed": fixed,
+        "failed": failed,
+        "remaining": db.query(ScrapedJob).filter(
+            or_(
+                ScrapedJob.description == "",
+                ScrapedJob.description == None,
+            )
+        ).count(),
+    }
+
+
+@router.post("/batch-enrich-salaries")
+async def batch_enrich_salaries(
+    batch_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Enrich jobs with salary data from Levels.fyi and known company ranges.
+
+    Uses a mapping of known intern/new-grad salary ranges for major tech companies.
+    For companies not in the mapping, attempts to extract from job descriptions.
+    """
+    import re
+
+    # Known intern/new-grad hourly rates (CAD/USD) from Levels.fyi and public data
+    SALARY_MAP = {
+        # Big Tech
+        "google": "$45-55/hr",
+        "amazon": "$40-50/hr",
+        "microsoft": "$40-52/hr",
+        "apple": "$40-55/hr",
+        "meta": "$45-55/hr",
+        # Mid-size Tech
+        "shopify": "$35-45/hr CAD",
+        "databricks": "$45-55/hr",
+        "stripe": "$45-55/hr",
+        "airbnb": "$45-55/hr",
+        "uber": "$42-52/hr",
+        "lyft": "$40-50/hr",
+        "pinterest": "$40-50/hr",
+        "reddit": "$40-50/hr",
+        "discord": "$40-50/hr",
+        "figma": "$45-55/hr",
+        "roblox": "$45-55/hr",
+        "robinhood": "$42-52/hr",
+        "cloudflare": "$38-48/hr",
+        "datadog": "$40-50/hr",
+        "mongodb": "$35-45/hr",
+        "elastic": "$35-45/hr",
+        "twilio": "$38-48/hr",
+        "okta": "$35-45/hr",
+        "pagerduty": "$35-45/hr",
+        "samsara": "$38-48/hr",
+        "scale ai": "$45-55/hr",
+        "spacex": "$30-38/hr",
+        "palantir": "$45-55/hr",
+        # Canadian companies
+        "ciena": "$25-34/hr CAD",
+        "nokia": "$28-38/hr CAD",
+        "ericsson": "$28-38/hr CAD",
+        "blackberry": "$25-35/hr CAD",
+        "kinaxis": "$25-35/hr CAD",
+        "ross video": "$22-30/hr CAD",
+        "fullscript": "$25-35/hr CAD",
+        "solace": "$28-38/hr CAD",
+        "fortinet": "$30-40/hr CAD",
+        # Finance
+        "jane street": "$55-65/hr",
+        "citadel": "$55-65/hr",
+        "two sigma": "$50-60/hr",
+        # Other
+        "nvidia": "$42-55/hr",
+        "intel": "$30-40/hr",
+        "amd": "$30-40/hr",
+        "qualcomm": "$32-42/hr",
+        "broadcom": "$32-42/hr",
+        "cisco": "$30-40/hr",
+        "ibm": "$25-35/hr",
+        "oracle": "$30-40/hr",
+        "salesforce": "$40-50/hr",
+        "adobe": "$38-48/hr",
+        "vmware": "$35-45/hr",
+        "splunk": "$38-48/hr",
+        "atlassian": "$40-50/hr",
+        "snap": "$42-52/hr",
+        "doordash": "$40-50/hr",
+        "instacart": "$38-48/hr",
+        "coinbase": "$45-55/hr",
+        "block": "$40-50/hr",
+        "square": "$40-50/hr",
+        "affirm": "$42-52/hr",
+        "brex": "$40-50/hr",
+        "chime": "$38-48/hr",
+        "sofi": "$35-45/hr",
+        "toast": "$35-45/hr",
+        "gusto": "$38-48/hr",
+        "vercel": "$35-45/hr",
+        "netlify": "$35-45/hr",
+        "webflow": "$35-45/hr",
+        "duolingo": "$40-50/hr",
+        "epic games": "$38-48/hr",
+        "riot games": "$38-48/hr",
+        "unity": "$35-45/hr",
+        "waymo": "$45-55/hr",
+        "nuro": "$42-52/hr",
+        "zoox": "$42-52/hr",
+        "lucid motors": "$35-45/hr",
+        "roku": "$38-48/hr",
+        "peloton": "$35-45/hr",
+        "dropbox": "$40-50/hr",
+        "asana": "$40-50/hr",
+        "gitlab": "$35-45/hr",
+        "new relic": "$35-45/hr",
+        "cockroachdb": "$38-48/hr",
+        "contentful": "$35-45/hr",
+        "flexport": "$38-48/hr",
+        "faire": "$38-48/hr",
+        "squarespace": "$38-48/hr",
+        "wattpad": "$25-35/hr CAD",
+        "vanta": "$40-50/hr",
+    }
+
+    # Find jobs without salary data
+    jobs_to_enrich = (
+        db.query(ScrapedJob)
+        .filter(
+            ScrapedJob.salary_range == "",
+            ScrapedJob.experience_level.in_(["internship", "new_grad"]),
+        )
+        .limit(batch_size)
+        .all()
+    )
+
+    enriched = 0
+    for job in jobs_to_enrich:
+        company_lower = job.company.lower().strip()
+
+        # Check direct match
+        salary = SALARY_MAP.get(company_lower)
+
+        # Check partial match (e.g., "Scale AI" matches "scale ai")
+        if not salary:
+            for key, val in SALARY_MAP.items():
+                if key in company_lower or company_lower in key:
+                    salary = val
+                    break
+
+        # Try to extract from description
+        if not salary and job.description:
+            # Look for patterns like "$XX/hr", "$XX-$YY/hr", "$XX,000-$YY,000"
+            hr_match = re.search(r'\$(\d+(?:\.\d+)?)\s*[-–]\s*\$?(\d+(?:\.\d+)?)\s*/\s*(?:hr|hour)', job.description, re.IGNORECASE)
+            if hr_match:
+                salary = f"${hr_match.group(1)}-${hr_match.group(2)}/hr"
+            else:
+                annual_match = re.search(r'\$(\d{2,3}),?(\d{3})\s*[-–]\s*\$?(\d{2,3}),?(\d{3})', job.description)
+                if annual_match:
+                    low = int(annual_match.group(1) + annual_match.group(2))
+                    high = int(annual_match.group(3) + annual_match.group(4))
+                    if low > 10000 and high > 10000:
+                        salary = f"${low:,}-${high:,}/yr"
+
+        if salary:
+            job.salary_range = salary
+            db.commit()
+            enriched += 1
+
+    remaining = db.query(ScrapedJob).filter(
+        ScrapedJob.salary_range == "",
+        ScrapedJob.experience_level.in_(["internship", "new_grad"]),
+    ).count()
+
+    return {
+        "total_processed": len(jobs_to_enrich),
+        "enriched": enriched,
+        "remaining_without_salary": remaining,
+    }
