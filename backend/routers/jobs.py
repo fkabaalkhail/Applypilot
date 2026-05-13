@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from backend.db.database import get_db
 from backend.db.models import ScrapedJob, JobStatus, ApplicationRecord
@@ -41,7 +41,6 @@ def list_jobs(
     db: Session = Depends(get_db),
 ):
     """List scraped jobs, optionally filtered by status, match score, source, country, work_type, etc."""
-    from sqlalchemy import or_
 
     q = db.query(ScrapedJob).filter(ScrapedJob.match_score >= min_score)
     if status:
@@ -577,7 +576,6 @@ async def batch_fix_descriptions(
     ]
 
     # Find jobs needing description fixes
-    from sqlalchemy import or_
     jobs_to_fix = (
         db.query(ScrapedJob)
         .filter(
@@ -813,7 +811,6 @@ async def batch_enrich_salaries(
     }
 
     # Find jobs without salary data
-    from sqlalchemy import or_
     jobs_to_enrich = (
         db.query(ScrapedJob)
         .filter(
