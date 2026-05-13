@@ -162,37 +162,39 @@ class LinkedInScraper:
 
         # Extract titles (inside h3.base-search-card__title)
         titles = [m.group(1).strip() for m in re.finditer(
-            r'base-search-card__title[^>]*>\s*\n?\s*([^\n<]+)', html
+            r'base-search-card__title[^>]*>\s*([\s\S]*?)\s*</h3>', html
         )]
         # Extract companies (inside a tag within h4.base-search-card__subtitle)
         companies = [m.group(1).strip() for m in re.finditer(
-            r'base-search-card__subtitle[^>]*>\s*(?:<a[^>]*>)?\s*\n?\s*([^\n<]+)', html
+            r'base-search-card__subtitle[^>]*>\s*<a[^>]*>\s*([\s\S]*?)\s*</a>', html
         )]
         # Extract locations
         locations = [m.group(1).strip() for m in re.finditer(
-            r'job-search-card__location[^>]*>\s*\n?\s*([^\n<]+)', html
+            r'job-search-card__location[^>]*>\s*([\s\S]*?)\s*</span>', html
         )]
-        # Extract job URLs (LinkedIn job view links - handles ca.linkedin.com, www.linkedin.com, etc.)
-        urls = [m.group(1).split("?")[0].replace("&amp;", "&") for m in re.finditer(
-            r'href="(https://[a-z]+\.linkedin\.com/jobs/view/[^"]+)"', html
-        )]
-        # Clean URLs - remove tracking params
-        urls = [u.split("?")[0] for u in urls]
+        # Extract job URLs from base-card__full-link
+        urls = []
+        for m in re.finditer(r'base-card__full-link[^>]*href="([^"]+)"', html):
+            raw_url = m.group(1).replace("&amp;", "&")
+            # Clean URL - keep only the base path without tracking params
+            clean_url = raw_url.split("?")[0]
+            if "/jobs/view/" in clean_url:
+                urls.append(clean_url)
 
         # Match them up (they appear in order)
         count = min(len(titles), len(companies), len(locations), len(urls))
         for i in range(count):
-            # Clean up HTML entities
-            title = titles[i].replace("&amp;", "&").replace("&#39;", "'").strip()
-            company = companies[i].replace("&amp;", "&").replace("&#39;", "'").strip()
-            location = locations[i].strip()
+            # Clean up HTML entities and whitespace
+            title = re.sub(r'\s+', ' ', titles[i]).replace("&amp;", "&").replace("&#39;", "'").strip()
+            company = re.sub(r'\s+', ' ', companies[i]).replace("&amp;", "&").replace("&#39;", "'").strip()
+            location = re.sub(r'\s+', ' ', locations[i]).strip()
 
-            if title and company:
+            if title and company and urls[i]:
                 jobs.append(LinkedInJob(
                     title=title,
                     company=company,
                     location=location,
-                    url=urls[i] if i < len(urls) else "",
+                    url=urls[i],
                 ))
 
         return jobs
