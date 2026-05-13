@@ -174,9 +174,16 @@ export default function JobDetailView({ job, onClose }: Props) {
         <div className="job-detail-company-row">
           {(() => {
             const cleaned = job.company.toLowerCase().replace(/[^a-z0-9]/g, "");
-            const logoUrl = companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("logo.clearbit.com") && !companyLogo.includes("google.com/s2/favicons")
-              ? companyLogo
-              : cleaned.length >= 2 ? `https://icon.horse/icon/${cleaned}.com` : null;
+            let logoUrl: string | null = null;
+            // Convert dead Clearbit URLs to icon.horse using the stored domain
+            if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
+              const domain = companyLogo.split("logo.clearbit.com/")[1];
+              if (domain) logoUrl = `https://icon.horse/icon/${domain}`;
+            } else if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("google.com/s2/favicons")) {
+              logoUrl = companyLogo;
+            } else if (cleaned.length >= 2) {
+              logoUrl = `https://icon.horse/icon/${cleaned}.com`;
+            }
             return logoUrl ? (
               <img
                 src={logoUrl}

@@ -66,11 +66,16 @@ function getLogoColor(company: string): string {
 }
 
 function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
-  // If we have a stored logo URL that's not from dead services, use it
-  if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("logo.clearbit.com") && !companyLogo.includes("google.com/s2/favicons")) {
+  // If stored logo is a dead Clearbit URL, extract domain and use icon.horse
+  if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
+    const domain = companyLogo.split("logo.clearbit.com/")[1];
+    if (domain) return `https://icon.horse/icon/${domain}`;
+  }
+  // If we have a non-Clearbit stored logo URL, use it directly
+  if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("google.com/s2/favicons")) {
     return companyLogo;
   }
-  // Generate from company name using icon.horse (high-quality company logos)
+  // Fallback: guess domain from company name
   const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (cleaned.length < 2) return null;
   return `https://icon.horse/icon/${cleaned}.com`;
