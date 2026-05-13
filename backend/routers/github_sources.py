@@ -181,24 +181,36 @@ async def cron_ats(db: Session = Depends(get_db)):
 
 
 @router.post("/scrape-linkedin")
-async def scrape_linkedin_jobs(db: Session = Depends(get_db)):
+async def scrape_linkedin_jobs(
+    city: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """Scrape LinkedIn public job search for intern/new-grad/co-op positions.
 
     Searches major Canadian cities for entry-level positions using LinkedIn's
-    public (non-authenticated) job search pages. Extracts job details and
-    stores new listings in the database, deduplicating by URL.
+    guest jobs API. Pass ?city=Ottawa to scrape a single city (faster).
     """
     try:
         from backend.db.models import ScrapedJob
-        from backend.services.linkedin_scraper import LinkedInScraper
+        from backend.services.linkedin_scraper import LinkedInScraper, CITIES
         from backend.services.country_filter import CountryFilter
         from backend.services.work_type_classifier import WorkTypeClassifier
 
-        scraper = LinkedInScraper(request_delay=2.5)
+        scraper = LinkedInScraper(request_delay=2.0)
         country_filter = CountryFilter()
         work_type_classifier = WorkTypeClassifier()
 
-        jobs = await scraper.scrape_all()
+        if city:
+            # Find matching city from CITIES list
+            city_match = next(
+                ((c, p) for c, p in CITIES if c.lower() == city.lower()),
+                None
+            )
+            if not city_match:
+                return {"error": f"City '{city}' not found. Available: {[c for c, _ in CITIES]}"}
+            jobs = await scraper.scrape_city(city_match[0], city_match[1])
+        else:
+            jobs = await scraper.scrape_all()
 
         new_count = 0
         skipped_dupe = 0
@@ -212,7 +224,7 @@ async def scrape_linkedin_jobs(db: Session = Depends(get_db)):
             # Classify country
             country = country_filter.classify(job.location)
             if not country:
-                country = "CA"  # LinkedIn scraper targets Canadian cities
+                country = "CA"
 
             # Classify work type
             work_type = work_type_classifier.classify(job.location)
@@ -223,8 +235,6 @@ async def scrape_linkedin_jobs(db: Session = Depends(get_db)):
                 experience_level = "internship"
             elif "new grad" in title_lower or "new graduate" in title_lower:
                 experience_level = "new_grad"
-            elif "co-op" in title_lower:
-                experience_level = "internship"
             else:
                 experience_level = "new_grad"
 
