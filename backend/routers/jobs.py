@@ -482,23 +482,31 @@ async def fix_empty_companies(db: Session = Depends(get_db)):
                 async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
                     resp = await client.get(job.url)
                     text = resp.text
-                    # LinkedIn puts company name in og:title or structured data
-                    og_match = re.search(r'<meta[^>]*property="og:title"[^>]*content="([^"]*)"', text)
+                    # LinkedIn og:title format: "Company hiring Title in Location | LinkedIn"
+                    og_match = re.search(r'property="og:title"[^>]*content="([^"]*)"', text)
                     if og_match:
-                        # Format: "Job Title at Company | LinkedIn"
                         og_title = og_match.group(1)
-                        if " at " in og_title:
+                        # Format: "Company hiring Job Title in Location | LinkedIn"
+                        if " hiring " in og_title:
+                            company_name = og_title.split(" hiring ")[0].strip()
+                        elif " at " in og_title:
+                            # Alternate format: "Job Title at Company | LinkedIn"
                             company_name = og_title.split(" at ")[1].split("|")[0].strip()
                     if not company_name:
-                        # Try schema.org
-                        schema_match = re.search(r'"hiringOrganization"[^}]*"name"\s*:\s*"([^"]+)"', text)
-                        if schema_match:
-                            company_name = schema_match.group(1)
+                        # Try title tag: "Company hiring Title..."
+                        title_match = re.search(r'<title>([^<]*)</title>', text)
+                        if title_match:
+                            title_text = title_match.group(1)
+                            if " hiring " in title_text:
+                                company_name = title_text.split(" hiring ")[0].strip()
             except Exception:
                 pass
 
         if company_name:
             job.company = company_name
+            # Also set company logo
+            cleaned = company_name.lower().replace(" ", "").replace(".", "")
+            job.company_logo = f"https://icon.horse/icon/{cleaned}.com"
             db.commit()
             fixed += 1
 
