@@ -13,7 +13,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import ResumeProfileDB
+from backend.db.models import ResumeProfileDB, ScrapedJob
 from backend.auth.clerk import get_current_user_id
 from backend.schemas.resume import (
     ResumeProfile,
@@ -334,5 +334,40 @@ async def upload_resume(
     db.add(db_profile)
     db.commit()
     db.refresh(db_profile)
+
+    # Trigger batch scoring for top jobs in background
+    import asyncio
+    from backend.services.match_engine import MatchEngine
+
+    async def _score_top_jobs():
+        try:
+            engine = MatchEngine(db)
+            jobs_to_score = (
+                db.query(ScrapedJob)
+                .filter(
+                    ScrapedJob.match_score == 0,
+                    ScrapedJob.description != "",
+                    ScrapedJob.description != None,
+                )
+                .order_by(ScrapedJob.id.desc())
+                .limit(10)
+                .all()
+            )
+            for job in jobs_to_score:
+                if job.description and len(job.description) > 50:
+                    try:
+                        breakdown = await engine.compute_breakdown(raw_text, job.description)
+                        job.match_score = breakdown.overall_score
+                        job.experience_score = breakdown.experience_score
+                        job.skill_score = breakdown.skill_score
+                        job.industry_score = breakdown.industry_score
+                        job.match_label = breakdown.match_label
+                        db.commit()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    asyncio.ensure_future(_score_top_jobs())
 
     return ResumeUploadResponse(id=db_profile.id, profile=profile)
