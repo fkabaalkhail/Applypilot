@@ -13,6 +13,7 @@ import re
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -178,6 +179,119 @@ async def cron_ats(db: Session = Depends(get_db)):
         import traceback
         logger.error(f"ATS cron failed: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"ATS cron failed: {str(e)}")
+
+
+@router.post("/scrape-linkedin")
+async def scrape_linkedin_jobs(
+    city: Optional[str] = None,
+    query: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Scrape LinkedIn public job search for intern/new-grad/co-op positions.
+
+    Pass ?city=Ottawa&query=intern to scrape a single query for a single city (fast).
+    Without params, scrapes all cities and queries (may timeout on serverless).
+    """
+    try:
+        from backend.db.models import ScrapedJob
+        from backend.services.linkedin_scraper import LinkedInScraper, CITIES, QUERIES
+        from backend.services.country_filter import CountryFilter
+        from backend.services.work_type_classifier import WorkTypeClassifier
+
+        scraper = LinkedInScraper(request_delay=2.0)
+        country_filter = CountryFilter()
+        work_type_classifier = WorkTypeClassifier()
+
+        if city and query:
+            # Single query + single city (fastest, fits serverless timeout)
+            city_match = next(
+                ((c, p) for c, p in CITIES if c.lower() == city.lower()),
+                None
+            )
+            if not city_match:
+                return {"error": f"City '{city}' not found. Available: {[c for c, _ in CITIES]}"}
+            jobs = await scraper.scrape_single(query, city_match[0], city_match[1])
+            # Return immediately with parsed results for debugging
+            return {
+                "status": "completed",
+                "total_found": len(jobs),
+                "jobs_preview": [{"title": j.title, "company": j.company, "location": j.location, "url": j.url} for j in jobs[:5]],
+            }
+        elif city:
+            # All queries for one city
+            city_match = next(
+                ((c, p) for c, p in CITIES if c.lower() == city.lower()),
+                None
+            )
+            if not city_match:
+                return {"error": f"City '{city}' not found. Available: {[c for c, _ in CITIES]}"}
+            jobs = await scraper.scrape_city(city_match[0], city_match[1])
+        else:
+            jobs = await scraper.scrape_all()
+
+        new_count = 0
+        skipped_dupe = 0
+        for job in jobs:
+            # Dedup by URL
+            existing = db.query(ScrapedJob).filter(ScrapedJob.url == job.url).first()
+            if existing:
+                skipped_dupe += 1
+                continue
+
+            # Classify country
+            country = country_filter.classify(job.location)
+            if not country:
+                country = "CA"
+
+            # Classify work type
+            work_type = work_type_classifier.classify(job.location)
+
+            # Determine experience level from title
+            title_lower = job.title.lower()
+            if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
+                experience_level = "internship"
+            elif "new grad" in title_lower or "new graduate" in title_lower:
+                experience_level = "new_grad"
+            else:
+                experience_level = "new_grad"
+
+            # Generate company logo URL
+            cleaned_company = re.sub(r'[^a-z0-9]', '', job.company.lower())
+            company_logo = f"https://icon.horse/icon/{cleaned_company}.com"
+
+            scraped_job = ScrapedJob(
+                title=job.title,
+                company=job.company,
+                location=job.location,
+                url=job.url,
+                description="",
+                source_platform="linkedin",
+                posted_date=None,
+                easy_apply=0,
+                work_type=work_type,
+                role_category="",
+                country=country,
+                experience_level=experience_level,
+                company_logo=company_logo,
+            )
+            db.add(scraped_job)
+            try:
+                db.commit()
+                new_count += 1
+            except Exception:
+                db.rollback()
+                skipped_dupe += 1
+
+        return {
+            "status": "completed",
+            "total_found": len(jobs),
+            "new_jobs": new_count,
+            "duplicates_skipped": skipped_dupe,
+        }
+    except Exception as e:
+        import traceback
+        logger.error(f"LinkedIn scrape failed: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"LinkedIn scrape failed: {str(e)}")
 
 
 @router.api_route("/cron-poll", methods=["GET", "POST"])
