@@ -132,3 +132,119 @@ async def analyze_fit(
         return await engine.analyze_fit(resume_text, job.description)
     except (ConnectionError, httpx.ConnectError):
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
+
+
+@router.post("/batch-score")
+async def batch_score_jobs(
+    batch_size: int = 10,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Score the newest unscored jobs against the user's resume.
+
+    Call this after uploading a resume to populate match scores for the job list.
+    Processes up to batch_size jobs that have descriptions but no match score.
+    """
+    resume_text = _get_resume_text(db, user_id)
+
+    # Find jobs with descriptions but no match score (newest first)
+    from sqlalchemy import or_, func
+    jobs_to_score = (
+        db.query(ScrapedJob)
+        .filter(
+            ScrapedJob.match_score == 0,
+            ScrapedJob.description != "",
+            ScrapedJob.description != None,
+            func.length(ScrapedJob.description) > 50,
+        )
+        .order_by(ScrapedJob.id.desc())
+        .limit(batch_size)
+        .all()
+    )
+
+    scored = 0
+    errors = 0
+    engine = MatchEngine(db)
+
+    for job in jobs_to_score:
+        try:
+            result = await engine.compute_breakdown(resume_text, job.description)
+            job.match_score = result.overall_score
+            job.experience_score = result.experience_score
+            job.skill_score = result.skill_score
+            job.industry_score = result.industry_score
+            job.match_label = result.match_label
+            db.commit()
+            scored += 1
+        except Exception:
+            errors += 1
+            continue
+
+    return {
+        "scored": scored,
+        "errors": errors,
+        "remaining": db.query(ScrapedJob).filter(
+            ScrapedJob.match_score == 0,
+            ScrapedJob.description != "",
+            ScrapedJob.description != None,
+        ).count(),
+    }
+
+
+@router.post("/batch-score")
+async def batch_score_jobs(
+    batch_size: int = 20,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Score the top unscored jobs against the user's resume.
+
+    Processes jobs that have descriptions but no match score yet.
+    Prioritizes newest jobs first.
+    """
+    resume_text = _get_resume_text(db, user_id)
+
+    # Find jobs with descriptions but no match score
+    jobs_to_score = (
+        db.query(ScrapedJob)
+        .filter(
+            ScrapedJob.match_score == 0,
+            ScrapedJob.description != "",
+            ScrapedJob.description != None,
+        )
+        .order_by(ScrapedJob.id.desc())
+        .limit(batch_size)
+        .all()
+    )
+
+    scored = 0
+    errors = 0
+    try:
+        engine = MatchEngine(db)
+        for job in jobs_to_score:
+            if not job.description or len(job.description) < 50:
+                continue
+            try:
+                breakdown = await engine.compute_breakdown(resume_text, job.description)
+                job.match_score = breakdown.overall_score
+                job.experience_score = breakdown.experience_score
+                job.skill_score = breakdown.skill_score
+                job.industry_score = breakdown.industry_score
+                job.match_label = breakdown.match_label
+                db.commit()
+                scored += 1
+            except Exception as e:
+                errors += 1
+                logger.warning(f"Failed to score job {job.id}: {e}")
+    except (ConnectionError,):
+        raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
+
+    return {
+        "scored": scored,
+        "errors": errors,
+        "remaining": db.query(ScrapedJob).filter(
+            ScrapedJob.match_score == 0,
+            ScrapedJob.description != "",
+            ScrapedJob.description != None,
+        ).count(),
+    }

@@ -36,6 +36,7 @@ def list_jobs(
     work_type: Optional[str] = None,
     role_category: Optional[str] = None,
     experience_level: Optional[str] = None,
+    sort: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -90,8 +91,13 @@ def list_jobs(
         if level_values:
             q = q.filter(ScrapedJob.experience_level.in_(level_values))
 
-    # Default sort: posted_date descending (newest first)
-    q = q.order_by(ScrapedJob.posted_date.desc().nullslast())
+    # Sort
+    if sort == "match":
+        # Sort by match score descending (best matches first), then by date
+        q = q.order_by(ScrapedJob.match_score.desc(), ScrapedJob.posted_date.desc().nullslast())
+    else:
+        # Default sort: posted_date descending (newest first)
+        q = q.order_by(ScrapedJob.posted_date.desc().nullslast())
     q = q.offset((page - 1) * page_size).limit(page_size)
     return q.all()
 

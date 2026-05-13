@@ -186,6 +186,7 @@ export default function Jobs() {
     params.set("page_size", String(pageSize));
 
     if (activeTab === "Saved" || activeTab === "Liked") params.set("saved", "1");
+    if (activeTab === "Recommended") params.set("sort", "match");
     if (filters.source) params.set("source", filters.source);
     if (filters.min_match_score > 0) params.set("min_score", String(filters.min_match_score));
     if (search.trim()) params.set("search", search.trim());
