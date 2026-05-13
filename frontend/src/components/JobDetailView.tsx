@@ -174,9 +174,9 @@ export default function JobDetailView({ job, onClose }: Props) {
         <div className="job-detail-company-row">
           {(() => {
             const cleaned = job.company.toLowerCase().replace(/[^a-z0-9]/g, "");
-            const logoUrl = companyLogo && companyLogo.startsWith("http")
+            const logoUrl = companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("logo.clearbit.com") && !companyLogo.includes("google.com/s2/favicons")
               ? companyLogo
-              : cleaned.length >= 2 ? `https://logo.clearbit.com/${cleaned}.com` : null;
+              : cleaned.length >= 2 ? `https://icon.horse/icon/${cleaned}.com` : null;
             return logoUrl ? (
               <img
                 src={logoUrl}
