@@ -813,10 +813,14 @@ async def batch_enrich_salaries(
     }
 
     # Find jobs without salary data
+    from sqlalchemy import or_
     jobs_to_enrich = (
         db.query(ScrapedJob)
         .filter(
-            ScrapedJob.salary_range == "",
+            or_(
+                ScrapedJob.salary_range == "",
+                ScrapedJob.salary_range == None,
+            ),
             ScrapedJob.experience_level.in_(["internship", "new_grad"]),
         )
         .limit(batch_size)
@@ -857,7 +861,10 @@ async def batch_enrich_salaries(
             enriched += 1
 
     remaining = db.query(ScrapedJob).filter(
-        ScrapedJob.salary_range == "",
+        or_(
+            ScrapedJob.salary_range == "",
+            ScrapedJob.salary_range == None,
+        ),
         ScrapedJob.experience_level.in_(["internship", "new_grad"]),
     ).count()
 

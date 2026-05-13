@@ -407,7 +407,7 @@ export default function Jobs() {
                   </div>
                   {job.salary_range && !job.salary_range.startsWith("{") && (
                     <div className="job-detail-item">
-                      <i className="fa-solid fa-money-bill-wave"></i>
+                      <i className="fa-solid fa-sack-dollar"></i>
                       <span className="salary">{job.salary_range}</span>
                     </div>
                   )}
