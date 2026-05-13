@@ -180,6 +180,93 @@ async def cron_ats(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"ATS cron failed: {str(e)}")
 
 
+@router.post("/scrape-linkedin")
+async def scrape_linkedin_jobs(db: Session = Depends(get_db)):
+    """Scrape LinkedIn public job search for intern/new-grad/co-op positions.
+
+    Searches major Canadian cities for entry-level positions using LinkedIn's
+    public (non-authenticated) job search pages. Extracts job details and
+    stores new listings in the database, deduplicating by URL.
+    """
+    try:
+        from backend.db.models import ScrapedJob
+        from backend.services.linkedin_scraper import LinkedInScraper
+        from backend.services.country_filter import CountryFilter
+        from backend.services.work_type_classifier import WorkTypeClassifier
+
+        scraper = LinkedInScraper(request_delay=2.5)
+        country_filter = CountryFilter()
+        work_type_classifier = WorkTypeClassifier()
+
+        jobs = await scraper.scrape_all()
+
+        new_count = 0
+        skipped_dupe = 0
+        for job in jobs:
+            # Dedup by URL
+            existing = db.query(ScrapedJob).filter(ScrapedJob.url == job.url).first()
+            if existing:
+                skipped_dupe += 1
+                continue
+
+            # Classify country
+            country = country_filter.classify(job.location)
+            if not country:
+                country = "CA"  # LinkedIn scraper targets Canadian cities
+
+            # Classify work type
+            work_type = work_type_classifier.classify(job.location)
+
+            # Determine experience level from title
+            title_lower = job.title.lower()
+            if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
+                experience_level = "internship"
+            elif "new grad" in title_lower or "new graduate" in title_lower:
+                experience_level = "new_grad"
+            elif "co-op" in title_lower:
+                experience_level = "internship"
+            else:
+                experience_level = "new_grad"
+
+            # Generate company logo URL
+            cleaned_company = re.sub(r'[^a-z0-9]', '', job.company.lower())
+            company_logo = f"https://icon.horse/icon/{cleaned_company}.com"
+
+            scraped_job = ScrapedJob(
+                title=job.title,
+                company=job.company,
+                location=job.location,
+                url=job.url,
+                description="",
+                source_platform="linkedin",
+                posted_date=None,
+                easy_apply=0,
+                work_type=work_type,
+                role_category="",
+                country=country,
+                experience_level=experience_level,
+                company_logo=company_logo,
+            )
+            db.add(scraped_job)
+            try:
+                db.commit()
+                new_count += 1
+            except Exception:
+                db.rollback()
+                skipped_dupe += 1
+
+        return {
+            "status": "completed",
+            "total_found": len(jobs),
+            "new_jobs": new_count,
+            "duplicates_skipped": skipped_dupe,
+        }
+    except Exception as e:
+        import traceback
+        logger.error(f"LinkedIn scrape failed: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"LinkedIn scrape failed: {str(e)}")
+
+
 @router.api_route("/cron-poll", methods=["GET", "POST"])
 async def cron_poll(db: Session = Depends(get_db)):
     """Seed sources (if needed) and poll the next overdue source.
