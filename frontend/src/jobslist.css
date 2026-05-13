@@ -70,7 +70,7 @@
 }
 
 .jl-nav-link-active {
-  color: #ea580c;
+  color: #5B5BFF;
   font-weight: 600;
 }
 
@@ -114,7 +114,7 @@
 .jl-stat-number {
   font-size: 1.75rem;
   font-weight: 700;
-  color: #ea580c;
+  color: #5B5BFF;
 }
 
 .jl-stat-label {
@@ -158,13 +158,13 @@
 }
 
 .jl-country-btn:hover {
-  border-color: #ea580c;
-  color: #ea580c;
+  border-color: #5B5BFF;
+  color: #5B5BFF;
 }
 
 .jl-country-btn.active {
-  background: #ea580c;
-  border-color: #ea580c;
+  background: #5B5BFF;
+  border-color: #5B5BFF;
   color: #ffffff;
 }
 
@@ -214,13 +214,13 @@
 }
 
 .jl-cat-pill:hover {
-  border-color: #ea580c;
-  color: #ea580c;
+  border-color: #5B5BFF;
+  color: #5B5BFF;
 }
 
 .jl-cat-pill.active {
-  background: #ea580c;
-  border-color: #ea580c;
+  background: #5B5BFF;
+  border-color: #5B5BFF;
   color: #ffffff;
 }
 
@@ -254,7 +254,7 @@
 }
 
 .jl-filter-input:focus {
-  border-color: #ea580c;
+  border-color: #5B5BFF;
 }
 
 .jl-filter-select {
@@ -271,12 +271,12 @@
 }
 
 .jl-filter-select:focus {
-  border-color: #ea580c;
+  border-color: #5B5BFF;
 }
 
 .jl-filter-search-btn {
   padding: 0.5rem 1rem;
-  background: #ea580c;
+  background: #5B5BFF;
   color: #ffffff;
   border: none;
   border-radius: 0 8px 8px 0;
@@ -288,7 +288,7 @@
 }
 
 .jl-filter-search-btn:hover {
-  background: #dc4e08;
+  background: #4040CC;
 }
 
 .jl-filter-item:first-child .jl-filter-input {
@@ -379,7 +379,7 @@
 .jl-apply-btn {
   display: inline-block;
   padding: 0.35rem 1rem;
-  background: #ea580c;
+  background: #5B5BFF;
   color: #ffffff;
   border-radius: 6px;
   text-decoration: none;
@@ -389,7 +389,7 @@
 }
 
 .jl-apply-btn:hover {
-  background: #dc4e08;
+  background: #4040CC;
 }
 
 .jl-td-location {
@@ -408,7 +408,7 @@
 }
 
 .jl-td-salary {
-  color: #dc4e08;
+  color: #4040CC;
   font-weight: 500;
   font-size: 0.85rem;
   white-space: nowrap;
@@ -473,8 +473,8 @@
 }
 
 .jl-page-btn:hover:not(:disabled) {
-  border-color: #ea580c;
-  color: #ea580c;
+  border-color: #5B5BFF;
+  color: #5B5BFF;
 }
 
 .jl-page-btn:disabled {

@@ -110,7 +110,7 @@ function MatchBadge({ score }: { score: number }) {
           <circle
             cx="50" cy="50" r="40"
             fill="none"
-            stroke="#ea580c"
+            stroke="#5B5BFF"
             strokeWidth="7"
             strokeDasharray={circumference}
             strokeDashoffset={dashOffset}

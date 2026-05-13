@@ -36,7 +36,7 @@ interface Job {
 }
 
 function getMatchColor(score: number): string {
-  if (score >= 80) return "#ea580c";
+  if (score >= 80) return "#5B5BFF";
   if (score >= 60) return "#f59e0b";
   return "#6b7280";
 }

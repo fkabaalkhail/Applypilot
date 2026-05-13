@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
 import { motion } from "framer-motion";
 import TypewriterText from "../components/ui/typewriter-text";
 import AnimatedSection, {
@@ -191,6 +192,7 @@ function TestimonialsCarousel() {
 
 export default function Landing() {
   const navigate = useNavigate();
+  const { isSignedIn } = useUser();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const faqs = [
@@ -218,8 +220,14 @@ export default function Landing() {
             <a href="#faq">FAQ</a>
           </div>
           <div className="landing-nav-actions">
-            <button className="btn-ghost" onClick={() => navigate("/sign-in")}>Sign In</button>
-            <button className="btn-cta" onClick={() => navigate("/sign-up")}>Get Started</button>
+            {isSignedIn ? (
+              <button className="btn-cta" onClick={() => navigate("/app")}>Dashboard</button>
+            ) : (
+              <>
+                <button className="btn-ghost" onClick={() => navigate("/sign-in")}>Sign In</button>
+                <button className="btn-cta" onClick={() => navigate("/sign-up")}>Get Started</button>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -420,7 +428,7 @@ export default function Landing() {
               <StaggerItem>
                 <div className="stat-card-light">
                   <div className="stat-icon-light">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5B5BFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                     </svg>
                   </div>
@@ -713,6 +721,43 @@ export default function Landing() {
       {/* Testimonials */}
       <TestimonialsCarousel />
 
+      {/* Success Story */}
+      <AnimatedSection animation="fadeUp">
+        <section className="success-story-section" id="success-story">
+          <div className="success-story-inner">
+            <div className="success-story-headline">
+              <span className="success-story-eyebrow">PROOF, NOT PROMISES</span>
+              <h2 className="success-story-title">Real Results from Real Users</h2>
+              <p className="success-story-sub">Our users don't just apply — they get invited to interview.</p>
+            </div>
+
+            <div className="success-story-card-wrapper">
+              <div className="success-story-card">
+                <div className="success-story-badge">Interview Secured ✓</div>
+                <div className="success-story-letter-scroll">
+                  <img
+                    src="/interview_offer.png"
+                    alt="Interview invitation letter"
+                    className="success-story-letter-img"
+                  />
+                </div>
+              </div>
+
+              <div className="success-story-caption">
+                <div className="success-story-avatar">
+                  <span className="success-story-initials">FA</span>
+                </div>
+                <div className="success-story-meta">
+                  <span className="success-story-name">Ahmed A. — Applied for Software Engineer role in Ottawa</span>
+                  <div className="success-story-stars">★★★★★</div>
+                  <span className="success-story-quote">"Resumate helped me land this interview in under a week."</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </AnimatedSection>
+
       {/* Pricing */}
       <AnimatedSection animation="fadeUp">
         <section className="section" id="pricing">
@@ -800,34 +845,6 @@ export default function Landing() {
               </StaggerItem>
             ))}
           </StaggerContainer>
-        </section>
-      </AnimatedSection>
-
-      {/* Bottom Banner */}
-      <AnimatedSection animation="scale">
-        <section className="bottom-banner">
-          <div className="bottom-banner-inner">
-            <div className="bottom-banner-text">
-              <h2>
-                <TypewriterText
-                  text="Start applying smarter today."
-                  speed={50}
-                  triggerOnView={true}
-                  showCursor={false}
-                  className=""
-                />
-              </h2>
-              <p>Join 1.25M+ job seekers who landed their dream roles with AI.</p>
-            </div>
-            <motion.button
-              className="btn-cta-hero"
-              onClick={() => navigate("/app")}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              GET STARTED FREE
-            </motion.button>
-          </div>
         </section>
       </AnimatedSection>
 
