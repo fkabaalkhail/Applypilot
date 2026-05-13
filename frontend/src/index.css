@@ -466,8 +466,7 @@ body {
 }
 
 .jobs-content-area.has-detail .jobs-feed {
-  width: 40%;
-  overflow-y: auto;
+  display: none;
 }
 
 /* ===== Jobs Feed ===== */
@@ -828,10 +827,9 @@ body {
 
 /* === Job Detail Inline Panel === */
 .job-detail-inline {
-  width: 60%;
+  width: 100%;
   height: 100%;
   overflow-y: auto;
-  border-left: 1px solid var(--border-light, #e5e7eb);
   background: var(--bg-white);
 }
 

@@ -158,7 +158,7 @@ async def cron_ats(db: Session = Depends(get_db)):
                 role_category=job.department or "",
                 country=country,
                 experience_level=experience_level,
-                company_logo=f"https://logo.clearbit.com/{job.company.lower().replace(' ', '')}.com",
+                company_logo=f"https://www.google.com/s2/favicons?domain={job.company.lower().replace(' ', '')}.com&sz=128",
             )
             db.add(scraped_job)
             try:
