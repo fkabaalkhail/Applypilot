@@ -457,3 +457,49 @@ def unsave_job(
     db.commit()
     db.refresh(job)
     return job
+
+
+@router.post("/fix-empty-companies")
+async def fix_empty_companies(db: Session = Depends(get_db)):
+    """Fix jobs with empty company names by extracting from LinkedIn or other sources."""
+    import re
+    import httpx
+
+    jobs_with_empty_company = (
+        db.query(ScrapedJob)
+        .filter(ScrapedJob.company == "")
+        .limit(50)
+        .all()
+    )
+
+    fixed = 0
+    for job in jobs_with_empty_company:
+        company_name = ""
+
+        # Try to extract company from LinkedIn job URL
+        if "linkedin.com/jobs/view" in (job.url or ""):
+            try:
+                async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
+                    resp = await client.get(job.url)
+                    text = resp.text
+                    # LinkedIn puts company name in og:title or structured data
+                    og_match = re.search(r'<meta[^>]*property="og:title"[^>]*content="([^"]*)"', text)
+                    if og_match:
+                        # Format: "Job Title at Company | LinkedIn"
+                        og_title = og_match.group(1)
+                        if " at " in og_title:
+                            company_name = og_title.split(" at ")[1].split("|")[0].strip()
+                    if not company_name:
+                        # Try schema.org
+                        schema_match = re.search(r'"hiringOrganization"[^}]*"name"\s*:\s*"([^"]+)"', text)
+                        if schema_match:
+                            company_name = schema_match.group(1)
+            except Exception:
+                pass
+
+        if company_name:
+            job.company = company_name
+            db.commit()
+            fixed += 1
+
+    return {"total_empty": len(jobs_with_empty_company), "fixed": fixed}
