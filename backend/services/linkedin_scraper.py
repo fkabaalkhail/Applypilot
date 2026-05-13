@@ -151,35 +151,39 @@ class LinkedInScraper:
         """Parse job cards from LinkedIn guest API HTML response."""
         jobs: list[LinkedInJob] = []
 
-        # Extract titles
+        # Extract titles (inside h3.base-search-card__title)
         titles = [m.group(1).strip() for m in re.finditer(
-            r'base-search-card__title[^>]*>([^<]+)<', html
+            r'base-search-card__title[^>]*>\s*\n?\s*([^\n<]+)', html
         )]
-        # Extract companies
+        # Extract companies (inside a tag within h4.base-search-card__subtitle)
         companies = [m.group(1).strip() for m in re.finditer(
-            r'base-search-card__subtitle[^>]*>([^<]+)<', html
+            r'base-search-card__subtitle[^>]*>\s*(?:<a[^>]*>)?\s*\n?\s*([^\n<]+)', html
         )]
         # Extract locations
         locations = [m.group(1).strip() for m in re.finditer(
-            r'job-search-card__location[^>]*>([^<]+)<', html
+            r'job-search-card__location[^>]*>\s*\n?\s*([^\n<]+)', html
         )]
-        # Extract job URLs (LinkedIn job view links)
-        urls = [m.group(1).split("?")[0] for m in re.finditer(
-            r'href="(https://\w+\.linkedin\.com/jobs/view/[^"?]+)', html
+        # Extract job URLs (LinkedIn job view links - handles ca.linkedin.com, www.linkedin.com, etc.)
+        urls = [m.group(1).split("?")[0].replace("&amp;", "&") for m in re.finditer(
+            r'href="(https://[a-z]+\.linkedin\.com/jobs/view/[^"]+)"', html
         )]
+        # Clean URLs - remove tracking params
+        urls = [u.split("?")[0] for u in urls]
 
         # Match them up (they appear in order)
         count = min(len(titles), len(companies), len(locations), len(urls))
         for i in range(count):
             # Clean up HTML entities
-            title = titles[i].replace("&amp;", "&").replace("&#39;", "'")
-            company = companies[i].replace("&amp;", "&").replace("&#39;", "'")
+            title = titles[i].replace("&amp;", "&").replace("&#39;", "'").strip()
+            company = companies[i].replace("&amp;", "&").replace("&#39;", "'").strip()
+            location = locations[i].strip()
 
-            jobs.append(LinkedInJob(
-                title=title,
-                company=company,
-                location=locations[i],
-                url=urls[i],
-            ))
+            if title and company:
+                jobs.append(LinkedInJob(
+                    title=title,
+                    company=company,
+                    location=location,
+                    url=urls[i] if i < len(urls) else "",
+                ))
 
         return jobs
