@@ -67,10 +67,10 @@ function getLogoColor(company: string): string {
 function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
   // If we already have a logo URL from the parser, use it
   if (companyLogo && companyLogo.startsWith("http")) return companyLogo;
-  // Generate from company name using Google's favicon service
+  // Generate from company name using unavatar (aggregates multiple logo sources)
   const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (cleaned.length < 2) return null;
-  return `https://www.google.com/s2/favicons?domain=${cleaned}.com&sz=128`;
+  return `https://unavatar.io/${cleaned}.com?fallback=false`;
 }
 
 function timeAgo(dateStr: string): string {
@@ -327,30 +327,6 @@ export default function Jobs() {
       {/* Filter Bar */}
       <div className="filter-bar">
         <button
-          className={`filter-pill ${filters.source === "linkedin" ? "active" : ""}`}
-          onClick={() => setFilters({ ...filters, source: filters.source === "linkedin" ? "" : "linkedin" })}
-        >
-          <i className="fa-brands fa-linkedin"></i> LinkedIn
-        </button>
-        <button
-          className={`filter-pill ${filters.source === "github" ? "active" : ""}`}
-          onClick={() => setFilters({ ...filters, source: filters.source === "github" ? "" : "github" })}
-        >
-          <i className="fa-brands fa-github"></i> GitHub
-        </button>
-        <button
-          className={`filter-pill ${filters.min_match_score === 80 ? "active" : ""}`}
-          onClick={() => setFilters({ ...filters, min_match_score: filters.min_match_score === 80 ? 0 : 80 })}
-        >
-          <i className="fa-solid fa-fire"></i> 80%+ Match
-        </button>
-        <button
-          className={`filter-pill ${filters.min_match_score === 60 ? "active" : ""}`}
-          onClick={() => setFilters({ ...filters, min_match_score: filters.min_match_score === 60 ? 0 : 60 })}
-        >
-          <i className="fa-solid fa-chart-simple"></i> 60%+ Match
-        </button>
-        <button
           className="filter-pill all-filters"
           onClick={() => setShowFilters(!showFilters)}
         >
@@ -422,17 +398,6 @@ export default function Jobs() {
                       <span className="badge-time">
                         <i className="fa-regular fa-clock"></i> {job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}
                       </span>
-                      {job.source_platform && (
-                        <span className="badge-source">
-                          {job.source_platform === "github" ? (
-                            <><i className="fa-brands fa-github"></i> GitHub</>
-                          ) : job.source_platform === "ats" ? (
-                            <><i className="fa-solid fa-building"></i> ATS</>
-                          ) : (
-                            <><i className="fa-brands fa-linkedin"></i> {job.source_platform}</>
-                          )}
-                        </span>
-                      )}
                     </div>
                     <h2 className="job-title">{job.title}</h2>
                     <p className="job-company">
@@ -502,8 +467,6 @@ export default function Jobs() {
                 </div>
               </div>
 
-              {/* Match Score Panel */}
-              {job.match_score > 0 && <MatchBadge score={job.match_score} />}
             </div>
           ))}
 

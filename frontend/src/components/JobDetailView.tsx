@@ -176,7 +176,7 @@ export default function JobDetailView({ job, onClose }: Props) {
             const cleaned = job.company.toLowerCase().replace(/[^a-z0-9]/g, "");
             const logoUrl = companyLogo && companyLogo.startsWith("http")
               ? companyLogo
-              : cleaned.length >= 2 ? `https://www.google.com/s2/favicons?domain=${cleaned}.com&sz=128` : null;
+              : cleaned.length >= 2 ? `https://unavatar.io/${cleaned}.com?fallback=false` : null;
             return logoUrl ? (
               <img
                 src={logoUrl}
