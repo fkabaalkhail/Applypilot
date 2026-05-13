@@ -397,12 +397,6 @@ export default function Jobs() {
                     <i className="fa-solid fa-briefcase"></i>
                     <span>Full-time</span>
                   </div>
-                  {job.salary_range && !job.salary_range.startsWith("{") && (
-                    <div className="job-detail-item">
-                      <i className="fa-solid fa-dollar-sign"></i>
-                      <span className="salary">{job.salary_range}</span>
-                    </div>
-                  )}
                   <div className="job-detail-item">
                     <i className="fa-solid fa-laptop-house"></i>
                     <span>{job.work_type === "remote" ? "Remote" : job.work_type === "hybrid" ? "Hybrid" : "On Site"}</span>
@@ -411,6 +405,12 @@ export default function Jobs() {
                     <i className="fa-solid fa-graduation-cap"></i>
                     <span>{job.experience_level === "internship" ? "Internship" : "Entry, New Grad"}</span>
                   </div>
+                  {job.salary_range && !job.salary_range.startsWith("{") && (
+                    <div className="job-detail-item">
+                      <i className="fa-solid fa-money-bill-wave"></i>
+                      <span className="salary">{job.salary_range}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer */}
