@@ -810,7 +810,7 @@ async def batch_enrich_salaries(
         "vanta": "$40-50/hr",
     }
 
-    # Find jobs without salary data
+    # Find jobs without salary data (newest first so recent jobs get enriched first)
     jobs_to_enrich = (
         db.query(ScrapedJob)
         .filter(
@@ -820,6 +820,7 @@ async def batch_enrich_salaries(
             ),
             ScrapedJob.experience_level.in_(["internship", "new_grad"]),
         )
+        .order_by(ScrapedJob.id.desc())
         .limit(batch_size)
         .all()
     )
