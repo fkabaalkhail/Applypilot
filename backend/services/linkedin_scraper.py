@@ -160,41 +160,49 @@ class LinkedInScraper:
         """Parse job cards from LinkedIn guest API HTML response."""
         jobs: list[LinkedInJob] = []
 
-        # Extract titles (inside h3.base-search-card__title)
-        titles = [m.group(1).strip() for m in re.finditer(
-            r'base-search-card__title[^>]*>\s*([\s\S]*?)\s*</h3>', html
-        )]
-        # Extract companies (inside a tag within h4.base-search-card__subtitle)
-        companies = [m.group(1).strip() for m in re.finditer(
-            r'base-search-card__subtitle[^>]*>\s*<a[^>]*>\s*([\s\S]*?)\s*</a>', html
-        )]
-        # Extract locations
-        locations = [m.group(1).strip() for m in re.finditer(
-            r'job-search-card__location[^>]*>\s*([\s\S]*?)\s*</span>', html
-        )]
-        # Extract job URLs from base-card__full-link
-        urls = []
-        for m in re.finditer(r'base-card__full-link[^>]*href="([^"]+)"', html):
-            raw_url = m.group(1).replace("&amp;", "&")
-            # Clean URL - keep only the base path without tracking params
-            clean_url = raw_url.split("?")[0]
-            if "/jobs/view/" in clean_url:
-                urls.append(clean_url)
+        # Split into individual job card blocks
+        cards = re.split(r'<li>\s*<div class="base-card', html)
 
-        # Match them up (they appear in order)
-        count = min(len(titles), len(companies), len(locations), len(urls))
-        for i in range(count):
-            # Clean up HTML entities and whitespace
-            title = re.sub(r'\s+', ' ', titles[i]).replace("&amp;", "&").replace("&#39;", "'").strip()
-            company = re.sub(r'\s+', ' ', companies[i]).replace("&amp;", "&").replace("&#39;", "'").strip()
-            location = re.sub(r'\s+', ' ', locations[i]).strip()
+        for card in cards[1:]:  # Skip first empty split
+            title = ""
+            company = ""
+            location = ""
+            url = ""
 
-            if title and company and urls[i]:
+            # Extract URL from base-card__full-link
+            url_match = re.search(r'base-card__full-link[^"]*href="([^"]+)"', card)
+            if url_match:
+                raw_url = url_match.group(1).replace("&amp;", "&")
+                url = raw_url.split("?")[0]
+
+            # Extract title from base-search-card__title
+            title_match = re.search(r'base-search-card__title[^>]*>(.*?)</h3>', card, re.DOTALL)
+            if title_match:
+                title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
+                title = re.sub(r'\s+', ' ', title)
+
+            # Extract company from base-search-card__subtitle > a
+            company_match = re.search(r'base-search-card__subtitle[^>]*>.*?<a[^>]*>(.*?)</a>', card, re.DOTALL)
+            if company_match:
+                company = re.sub(r'<[^>]+>', '', company_match.group(1)).strip()
+                company = re.sub(r'\s+', ' ', company)
+
+            # Extract location from job-search-card__location
+            loc_match = re.search(r'job-search-card__location[^>]*>(.*?)</span>', card, re.DOTALL)
+            if loc_match:
+                location = re.sub(r'<[^>]+>', '', loc_match.group(1)).strip()
+                location = re.sub(r'\s+', ' ', location)
+
+            # Clean HTML entities
+            title = title.replace("&amp;", "&").replace("&#39;", "'")
+            company = company.replace("&amp;", "&").replace("&#39;", "'")
+
+            if title and company and url and "/jobs/view/" in url:
                 jobs.append(LinkedInJob(
                     title=title,
                     company=company,
                     location=location,
-                    url=urls[i],
+                    url=url,
                 ))
 
         return jobs
