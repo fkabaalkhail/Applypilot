@@ -1,7 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { ClerkProvider, SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
+import { AuthProvider } from "./auth/AuthProvider";
+import { ProtectedRoute } from "./auth/ProtectedRoute";
 import App from "./App";
 import Landing from "./pages/Landing";
 import Jobs from "./pages/Jobs";
@@ -17,26 +18,9 @@ import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
 import "./index.css";
 
-const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "";
-
-if (!CLERK_PUBLISHABLE_KEY) {
-  console.error("Missing VITE_CLERK_PUBLISHABLE_KEY — auth will not work. Check your .env file.");
-}
-
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <SignedIn>{children}</SignedIn>
-      <SignedOut>
-        <RedirectToSignIn />
-      </SignedOut>
-    </>
-  );
-}
-
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+    <AuthProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
@@ -63,6 +47,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           </Route>
         </Routes>
       </BrowserRouter>
-    </ClerkProvider>
+    </AuthProvider>
   </React.StrictMode>
 );

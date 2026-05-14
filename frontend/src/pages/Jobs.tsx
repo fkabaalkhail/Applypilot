@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
-import { useAuthFetch } from "../hooks/useAuthFetch";
+import api from "../auth/api";
 
-const API_BASE = "";
+
 
 interface Job {
   id: number;
@@ -125,7 +125,6 @@ export default function Jobs() {
   const [activeTab, setActiveTab] = useState("Recommended");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const authFetch = useAuthFetch();
   const pageSize = 50;
   const [search, setSearch] = useState("");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -221,12 +220,9 @@ export default function Jobs() {
     if (aggFilters.date_posted) params.set("date_posted", aggFilters.date_posted);
 
     try {
-      const res = await fetch(`${API_BASE}/jobs?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setJobs(data);
-        setHasMore(data.length === pageSize);
-      }
+      const res = await api.get("/jobs", { params });
+      setJobs(res.data);
+      setHasMore(res.data.length === pageSize);
     } catch {
       // Silently fail
     } finally {
@@ -236,10 +232,8 @@ export default function Jobs() {
 
   async function fetchStats() {
     try {
-      const res = await fetch(`${API_BASE}/jobs/stats`);
-      if (res.ok) {
-        setStats(await res.json());
-      }
+      const res = await api.get("/jobs/stats");
+      setStats(res.data);
     } catch {
       // Silently fail
     }
@@ -247,17 +241,15 @@ export default function Jobs() {
 
   async function toggleSave(job: Job) {
     const endpoint = job.saved
-      ? `${API_BASE}/jobs/${job.id}/unsave`
-      : `${API_BASE}/jobs/${job.id}/save`;
+      ? `/jobs/${job.id}/unsave`
+      : `/jobs/${job.id}/save`;
 
     try {
-      const res = await authFetch(endpoint, { method: "POST" });
-      if (res.ok) {
-        setJobs((prev) =>
-          prev.map((j) => (j.id === job.id ? { ...j, saved: !j.saved } : j))
-        );
-        fetchStats();
-      }
+      await api.post(endpoint);
+      setJobs((prev) =>
+        prev.map((j) => (j.id === job.id ? { ...j, saved: !j.saved } : j))
+      );
+      fetchStats();
     } catch {
       // Silently fail
     }

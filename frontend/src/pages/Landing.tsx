@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth } from "../auth/useAuth";
 import { motion } from "framer-motion";
 import TypewriterText from "../components/ui/typewriter-text";
 import AnimatedSection, {
@@ -290,7 +290,7 @@ function SuccessStoryCarousel() {
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { isSignedIn } = useUser();
+  const { isAuthenticated } = useAuth();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const faqs = [
@@ -318,7 +318,7 @@ export default function Landing() {
             <a href="#faq" className="nav-link-item">FAQ</a>
           </div>
           <div className="landing-nav-actions">
-            {isSignedIn ? (
+            {isAuthenticated ? (
               <button className="btn-cta nav-cta" onClick={() => navigate("/app")}>Dashboard</button>
             ) : (
               <>

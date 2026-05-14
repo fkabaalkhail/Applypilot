@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ResumeProfileDB, ScrapedJob
-from backend.auth.clerk import get_current_user_id
+from backend.auth.dependencies import get_current_user_id
 from backend.schemas.resume import (
     ResumeProfile,
     ResumeUploadResponse,
@@ -32,7 +32,7 @@ router = APIRouter()
 
 @router.get("", response_model=list[ResumeListItem])
 def list_resumes(
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """List all resumes for the current user, ordered by most recently created first."""
@@ -59,7 +59,7 @@ def list_resumes(
 @router.put("/{resume_id}/primary", response_model=ResumeDetailResponse)
 def set_primary_resume(
     resume_id: int,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Set a resume as primary, unsetting all others for this user."""
@@ -114,7 +114,7 @@ def set_primary_resume(
 @router.post("/{resume_id}/analyze", response_model=AnalysisReport)
 async def analyze_resume(
     resume_id: int,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Run AI quality analysis on a resume and persist the report."""
@@ -147,7 +147,7 @@ async def analyze_resume(
 @router.get("/{resume_id}", response_model=ResumeDetailResponse)
 def get_resume(
     resume_id: int,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Get full resume detail by id, including profile and analysis report."""
@@ -194,7 +194,7 @@ def get_resume(
 def update_resume(
     resume_id: int,
     body: ResumeUpdateRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Update a resume's name, target_job_title, and/or profile fields."""
@@ -263,7 +263,7 @@ def update_resume(
 @router.delete("/{resume_id}", status_code=204)
 def delete_resume(
     resume_id: int,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Delete a resume by id. Returns 204 on success, 404 if not found."""
@@ -281,7 +281,7 @@ def delete_resume(
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resume(
     file: UploadFile = File(...),
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Upload a PDF or DOCX resume, parse it, and store the profile."""

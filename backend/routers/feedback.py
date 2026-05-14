@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from backend.db.database import get_db
 from backend.db.models import Feedback
-from backend.auth.clerk import get_optional_user_id
+from backend.auth.dependencies import get_optional_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/feedback", tags=["feedback"])
@@ -21,12 +21,12 @@ class FeedbackCreate(BaseModel):
 @router.post("")
 def submit_feedback(
     body: FeedbackCreate,
-    user_id: str = Depends(get_optional_user_id),
+    user_id: int | None = Depends(get_optional_user_id),
     db: Session = Depends(get_db),
 ):
     """Submit user feedback."""
     feedback = Feedback(
-        user_id=user_id or "",
+        user_id=str(user_id) if user_id else "",
         category=body.category,
         message=body.message,
         wants_followup=1 if body.wants_followup else 0,

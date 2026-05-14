@@ -2,7 +2,7 @@
 SQLAlchemy ORM models for the Auto Apply Bot.
 
 Models:
-    - User: authenticated user synced from Clerk
+    - User: authenticated user
     - ScrapedJob: jobs found by the scraper, shown on dashboard
     - ApplicationRecord: tracked job applications
     - UserSettings: all client config (creds, profile, filters, prefilled answers)
@@ -14,21 +14,21 @@ Models:
 import enum
 import datetime
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, Enum, JSON, Float,
+    Column, Integer, String, Text, DateTime, Enum, JSON, Float, ForeignKey,
     func,
 )
 from backend.db.database import Base
 
 
-# ─── User (synced from Clerk) ───────────────────────────────────────────────
+# ─── User ────────────────────────────────────────────────────────────────────
 
 class User(Base):
-    """Authenticated user synced from Clerk. Links all user-specific data."""
+    """Authenticated user. Links all user-specific data."""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    clerk_user_id = Column(String, unique=True, nullable=False, index=True)
-    email = Column(String, nullable=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
     first_name = Column(String, default="")
     last_name = Column(String, default="")
     profile_image_url = Column(String, default="")
@@ -66,7 +66,7 @@ class ScrapedJob(Base):
     __tablename__ = "scraped_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, index=True)  # clerk_user_id (nullable for migration)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     platform = Column(String, default="linkedin")
     title = Column(String, nullable=False)
     company = Column(String, nullable=False)
@@ -117,7 +117,7 @@ class PendingQuestion(Base):
     __tablename__ = "pending_questions"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     job_id = Column(Integer, nullable=False)
     task_id = Column(String, nullable=True)
     question = Column(Text, nullable=False)
@@ -132,7 +132,7 @@ class ResumeProfileDB(Base):
     __tablename__ = "resume_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     name = Column(String, default="Untitled Resume")
     target_job_title = Column(String, nullable=True)
     is_primary = Column(Integer, default=0)
@@ -169,7 +169,7 @@ class ApplicationRecord(Base):
     __tablename__ = "application_records"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     platform = Column(String, nullable=False, default="linkedin")
     company = Column(String, nullable=False)
     role = Column(String, nullable=False)
@@ -193,7 +193,7 @@ class UserSettings(Base):
     __tablename__ = "user_settings"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, unique=True, index=True)  # clerk_user_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, unique=True, index=True)
 
     # LinkedIn credentials
     linkedin_email = Column(String, default="")
@@ -261,7 +261,7 @@ class BotRun(Base):
     __tablename__ = "bot_runs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     task_id = Column(String, unique=True, index=True)
     status = Column(String, default="idle")
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -277,7 +277,7 @@ class ConnectionRequest(Base):
     __tablename__ = "connection_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     job_id = Column(Integer, nullable=True)
     contact_name = Column(String, nullable=False)
     contact_title = Column(String, default="")
@@ -293,7 +293,7 @@ class AutopilotRun(Base):
     __tablename__ = "autopilot_runs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     task_id = Column(String, unique=True, index=True)
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
     stopped_at = Column(DateTime, nullable=True)
@@ -330,7 +330,7 @@ class TailoredResume(Base):
     __tablename__ = "tailored_resumes"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     job_id = Column(Integer, nullable=False)
     original_text = Column(Text, nullable=False)
     tailored_text = Column(Text, nullable=False)
@@ -344,7 +344,7 @@ class InsiderConnection(Base):
     __tablename__ = "insider_connections"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=True, index=True)  # clerk_user_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     company = Column(String, nullable=False, index=True)
     name = Column(String, nullable=False)
     title = Column(String, default="")

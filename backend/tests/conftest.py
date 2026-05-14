@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.db.database import Base, get_db
-from backend.auth.clerk import get_current_user_id, get_optional_user_id
+from backend.auth.dependencies import get_current_user_id, get_optional_user_id
 from backend.main import app
 
 # In-memory SQLite for tests
@@ -16,7 +16,7 @@ TEST_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-TEST_USER_ID = "test_user_123"
+TEST_USER_ID = 1
 
 
 @pytest.fixture(autouse=True)

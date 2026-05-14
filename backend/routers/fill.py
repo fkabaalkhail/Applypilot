@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import UserSettings, ResumeProfileDB
-from backend.auth.clerk import get_current_user_id
+from backend.auth.dependencies import get_current_user_id
 from backend.services.llm import get_llm_service
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ def _rule_based_answer(label: str, options: list[str], settings) -> str | None:
 @router.post("/fill", response_model=FillResponse)
 async def fill_form(
     request: FillRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """

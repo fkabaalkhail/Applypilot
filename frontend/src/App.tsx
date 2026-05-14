@@ -1,13 +1,13 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { UserButton, useUser } from "@clerk/clerk-react";
+import { useAuth } from "./auth/useAuth";
 import { useState } from "react";
 
 export default function App() {
-  const { user } = useUser();
+  const { user, logout } = useAuth();
   const [showReferModal, setShowReferModal] = useState(false);
   const [referCopied, setReferCopied] = useState(false);
 
-  const referralCode = user?.id?.slice(-8) || "tailrd";
+  const referralCode = user?.id?.toString().slice(-8) || "tailrd";
   const referralLink = `https://www.tailrd.ca?ref=${referralCode}`;
 
   const copyReferLink = () => {
@@ -124,10 +124,16 @@ export default function App() {
 
         {/* User Profile at Bottom */}
         <div className="sidebar-user">
-          <UserButton afterSignOutUrl="/" />
+          <button className="sidebar-logout-btn" onClick={logout} title="Sign out">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
           <div className="sidebar-user-info">
-            <span className="sidebar-user-name">{user?.firstName || "User"}</span>
-            <span className="sidebar-user-email">{user?.primaryEmailAddress?.emailAddress || ""}</span>
+            <span className="sidebar-user-name">{user?.first_name || "User"}</span>
+            <span className="sidebar-user-email">{user?.email || ""}</span>
           </div>
         </div>
       </aside>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuthFetch } from "../hooks/useAuthFetch";
+import api from "../auth/api";
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
 
@@ -95,7 +95,6 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [editingSection, setEditingSection] = useState<EditingSection>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const authFetch = useAuthFetch();
 
   // ─── Fetch resume profile ────────────────────────────────────────────────
 
@@ -103,9 +102,8 @@ export default function Profile() {
     async function load() {
       try {
         setLoading(true);
-        const listRes = await authFetch("/resumes");
-        if (!listRes.ok) throw new Error("Failed to fetch resumes");
-        const resumes: ResumeListItem[] = await listRes.json();
+        const listRes = await api.get("/resumes");
+        const resumes: ResumeListItem[] = listRes.data;
 
         if (resumes.length === 0) {
           setNoResume(true);
@@ -116,9 +114,8 @@ export default function Profile() {
         const primary = resumes.find((r) => r.is_primary) || resumes[0];
         setResumeId(primary.id);
 
-        const detailRes = await authFetch(`/resumes/${primary.id}`);
-        if (!detailRes.ok) throw new Error("Failed to fetch resume detail");
-        const detail = await detailRes.json();
+        const detailRes = await api.get(`/resumes/${primary.id}`);
+        const detail = detailRes.data;
 
         setProfile(detail.profile || emptyProfile());
       } catch {
@@ -136,12 +133,7 @@ export default function Profile() {
     if (resumeId === null) return;
     try {
       setSaving(true);
-      const res = await authFetch(`/resumes/${resumeId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile }),
-      });
-      if (!res.ok) throw new Error("Save failed");
+      await api.put(`/resumes/${resumeId}`, { profile });
       setEditingSection(null);
       showToast("success", "Profile saved successfully.");
     } catch {

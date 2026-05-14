@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { useAuthFetch } from "../hooks/useAuthFetch";
+import api from "../auth/api";
 import "../feedback.css";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const CATEGORIES = [
   { value: "bug_report", label: "Bug Report" },
@@ -13,7 +11,6 @@ const CATEGORIES = [
 ];
 
 export default function Feedback() {
-  const authFetch = useAuthFetch();
   const [category, setCategory] = useState("");
   const [message, setMessage] = useState("");
   const [wantsFollowup, setWantsFollowup] = useState(false);
@@ -30,17 +27,10 @@ export default function Feedback() {
     setError("");
     setSubmitting(true);
     try {
-      const res = await authFetch(`${API_BASE}/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, message, wants_followup: wantsFollowup }),
-      });
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`);
-      }
+      await api.post("/feedback", { category, message, wants_followup: wantsFollowup });
       setSubmitted(true);
     } catch (err: any) {
-      setError(err.message || "Failed to submit feedback.");
+      setError(err.response?.data?.detail || err.message || "Failed to submit feedback.");
     } finally {
       setSubmitting(false);
     }
