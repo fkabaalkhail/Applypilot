@@ -136,7 +136,7 @@ function QuestionCard({ question }: { question: any }) {
       {expanded && (
         <div className="interview-question-expanded">
           <a
-            href={hasUrl ? q.url : `https://leetcode.com/problemset/?search=${encodeURIComponent(q.title)}`}
+            href={`https://leetcode.com/problemset/?search=${encodeURIComponent(q.title)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="interview-practice-btn"
