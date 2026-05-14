@@ -1,0 +1,575 @@
+{
+  "companies": [
+    {
+      "name": "Google",
+      "domain": "google.com",
+      "category": "FAANG",
+      "totalQuestions": 12,
+      "questions": [
+        { "title": "Design a URL Shortener", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "LRU Cache Implementation", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you disagreed with a teammate", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Word Ladder (BFS Shortest Path)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design Google Maps Navigation", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Merge K Sorted Lists", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Number of Islands", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Web Crawler", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Describe a project where you had significant impact", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Trapping Rain Water", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Serialize and Deserialize Binary Tree", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "New Grad", "type": "onsite" },
+        { "title": "How do you prioritize competing deadlines?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" }
+      ]
+    },
+    {
+      "name": "Apple",
+      "domain": "apple.com",
+      "category": "FAANG",
+      "totalQuestions": 10,
+      "questions": [
+        { "title": "Three Sum", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design iMessage Backend", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Why do you want to work at Apple?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Valid Parentheses", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Photo Storage System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Longest Substring Without Repeating Characters", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Tell me about a time you shipped a product under tight deadlines", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Binary Tree Level Order Traversal", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Reverse Linked List", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Notification System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Meta",
+      "domain": "meta.com",
+      "category": "FAANG",
+      "totalQuestions": 12,
+      "questions": [
+        { "title": "Design Facebook News Feed", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Two Sum", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you received critical feedback", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Minimum Window Substring", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design Instagram Stories", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Product of Array Except Self", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Describe a time you moved fast and broke things", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Clone Graph", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Design a Chat Application", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Subarray Sum Equals K", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Binary Tree Right Side View", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "How do you handle ambiguity in projects?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" }
+      ]
+    },
+    {
+      "name": "Netflix",
+      "domain": "netflix.com",
+      "category": "FAANG",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design a Video Streaming Service", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Top K Frequent Elements", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you championed an unpopular idea", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Recommendation Engine", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Longest Increasing Subsequence", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Course Schedule (Topological Sort)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "How do you give and receive feedback?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a CDN", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Amazon",
+      "domain": "amazon.com",
+      "category": "FAANG",
+      "totalQuestions": 12,
+      "questions": [
+        { "title": "Design an E-Commerce Order System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Two Sum (Hash Map)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you earned trust of a team", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Maximum Subarray (Kadane's Algorithm)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Rate Limiter", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Describe a time you had to deliver results with incomplete information", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Rotting Oranges (BFS)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Design Amazon's Shopping Cart", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Word Break (Dynamic Programming)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you disagreed with your manager", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Min Stack", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Warehouse Management System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "OpenAI",
+      "domain": "openai.com",
+      "category": "AI",
+      "totalQuestions": 10,
+      "questions": [
+        { "title": "Design a Large Language Model Serving Infrastructure", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement Attention Mechanism from Scratch", "topic": "Coding", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you worked on something with high ambiguity", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Token Rate Limiter for API", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement KV Cache for Transformer Inference", "topic": "Coding", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Matrix Multiplication Optimization", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "What motivates you to work on AI safety?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Model Training Pipeline", "topic": "System Design", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement Beam Search Decoding", "topic": "Coding", "subtopic": "Machine Learning", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "How do you approach debugging complex distributed systems?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Anthropic",
+      "domain": "anthropic.com",
+      "category": "AI",
+      "totalQuestions": 9,
+      "questions": [
+        { "title": "Design a Constitutional AI Training System", "topic": "System Design", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement RLHF Reward Model", "topic": "Coding", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Why do you care about AI alignment?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Prompt Evaluation Pipeline", "topic": "System Design", "subtopic": "Machine Learning", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement Tokenizer (BPE Algorithm)", "topic": "Coding", "subtopic": "Machine Learning", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Graph Traversal with Constraints", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you identified a critical risk early", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Safe Content Filtering System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement Sliding Window Attention", "topic": "Coding", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "NVIDIA",
+      "domain": "nvidia.com",
+      "category": "AI",
+      "totalQuestions": 9,
+      "questions": [
+        { "title": "Design a GPU Task Scheduler", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "CUDA Kernel for Matrix Multiply", "topic": "Coding", "subtopic": "Systems Programming", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you optimized performance significantly", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Distributed Training Framework", "topic": "System Design", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement Parallel Prefix Sum", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Memory Coalescing Optimization", "topic": "Coding", "subtopic": "Systems Programming", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Why are you passionate about GPU computing?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Model Inference Server", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement Thread Block Synchronization", "topic": "Coding", "subtopic": "Systems Programming", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Databricks",
+      "domain": "databricks.com",
+      "category": "AI",
+      "totalQuestions": 9,
+      "questions": [
+        { "title": "Design a Distributed Query Engine", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Spark-like Shuffle Operation", "topic": "Coding", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you simplified a complex system", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Data Lakehouse Architecture", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement Delta Table Merge Operation", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "SQL Query Optimization", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you approach building reliable data pipelines?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Job Scheduling System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Simple Column Store", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Microsoft",
+      "domain": "microsoft.com",
+      "category": "High-Growth",
+      "totalQuestions": 11,
+      "questions": [
+        { "title": "Design Microsoft Teams Backend", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Reverse a Linked List", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you mentored someone", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Distributed File System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Validate Binary Search Tree", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Coin Change (Dynamic Programming)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "How do you handle conflicting priorities?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design Azure Blob Storage", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Trie (Prefix Tree)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Group Anagrams", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Describe a time you drove a cross-team initiative", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Senior", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Uber",
+      "domain": "uber.com",
+      "category": "High-Growth",
+      "totalQuestions": 10,
+      "questions": [
+        { "title": "Design a Ride Matching System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Find Median from Data Stream", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you dealt with a production outage", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design Uber's Surge Pricing System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Shortest Path in Weighted Graph (Dijkstra)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Design a Real-Time Location Tracking Service", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Priority Queue", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you make decisions with incomplete data?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design an ETA Prediction System", "topic": "System Design", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Task Scheduler", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" }
+      ]
+    },
+    {
+      "name": "Stripe",
+      "domain": "stripe.com",
+      "category": "High-Growth",
+      "totalQuestions": 10,
+      "questions": [
+        { "title": "Design a Payment Processing System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Rate Limiter", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you improved developer experience", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design an Idempotency System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement an Event-Driven Webhook System", "topic": "Coding", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "String Parsing and Validation", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you approach API design?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Fraud Detection System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Retry Mechanism with Exponential Backoff", "topic": "Coding", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Describe a time you balanced speed vs correctness", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Shopify",
+      "domain": "shopify.com",
+      "category": "Canadian",
+      "totalQuestions": 10,
+      "questions": [
+        { "title": "Design a Scalable E-Commerce Platform", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Shopping Cart with Discounts", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you built something for merchants", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design an Inventory Management System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Graph-Based Product Recommendations", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Flatten Nested List Iterator", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "How do you think about building for scale?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Checkout Flow System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement LRU Cache with TTL", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Describe a time you simplified a complex user experience", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Coinbase",
+      "domain": "coinbase.com",
+      "category": "High-Growth",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design a Cryptocurrency Exchange", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement an Order Book", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you prioritized security", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Blockchain Transaction Validator", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Merkle Tree", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Two Pointers: Container With Most Water", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you build trust with users in a financial product?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Wallet System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "DoorDash",
+      "domain": "doordash.com",
+      "category": "High-Growth",
+      "totalQuestions": 9,
+      "questions": [
+        { "title": "Design a Food Delivery Dispatch System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Merge Intervals", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you improved operational efficiency", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Real-Time Order Tracking System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Geospatial Index", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Search in Rotated Sorted Array", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "How do you handle competing stakeholder priorities?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Restaurant Menu Management System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Time-Based Key-Value Store", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Roblox",
+      "domain": "roblox.com",
+      "category": "High-Growth",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design a Multiplayer Game Server", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Spatial Hash Grid", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you built something creative", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Virtual Economy System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "BFS/DFS on Grid (Flood Fill)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Implement a Physics Collision Detector", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "How do you design for millions of concurrent users?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Content Moderation System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Snap",
+      "domain": "snap.com",
+      "category": "High-Growth",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design Snapchat Stories Backend", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Sliding Window Maximum", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you shipped a feature users loved", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Real-Time Messaging System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement Image Filter Pipeline", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Decode Ways (Dynamic Programming)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you approach building for a young audience?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design an AR Lens Distribution System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Discord",
+      "domain": "discord.com",
+      "category": "High-Growth",
+      "totalQuestions": 9,
+      "questions": [
+        { "title": "Design a Real-Time Chat System at Scale", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Message Queue", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you built community features", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Voice Channel System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Consistent Hashing Implementation", "topic": "Coding", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design String (Longest Common Subsequence)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you think about real-time user experience?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Permission/Roles System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement WebSocket Connection Manager", "topic": "Coding", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Airbnb",
+      "domain": "airbnb.com",
+      "category": "High-Growth",
+      "totalQuestions": 10,
+      "questions": [
+        { "title": "Design a Search and Booking System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Alien Dictionary (Topological Sort)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you created belonging", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Dynamic Pricing System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Calendar Availability Checker", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Combination Sum", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "How do you approach cross-cultural design challenges?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Review and Rating System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Geo-Search (K Nearest Points)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Describe a time you championed the user perspective", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" }
+      ]
+    },
+    {
+      "name": "Kinaxis",
+      "domain": "kinaxis.com",
+      "category": "Canadian",
+      "totalQuestions": 7,
+      "questions": [
+        { "title": "Design a Supply Chain Optimization Engine", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Dependency Graph Resolver", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you solved a customer problem creatively", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Real-Time Data Aggregation Pipeline", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Interval Scheduling Maximization", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you approach working with enterprise customers?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Implement a Concurrent Task Scheduler", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Ciena",
+      "domain": "ciena.com",
+      "category": "Canadian",
+      "totalQuestions": 7,
+      "questions": [
+        { "title": "Design a Network Topology Manager", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement Shortest Path in Network Graph", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you debugged a complex networking issue", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Fiber Optic Network Monitoring System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Packet Router Simulation", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "How do you approach testing distributed systems?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Binary Search on Sorted Network Logs", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" }
+      ]
+    },
+    {
+      "name": "Wealthsimple",
+      "domain": "wealthsimple.com",
+      "category": "Canadian",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design a Stock Trading Platform", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Portfolio Rebalancer", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you made finance accessible", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Tax-Loss Harvesting System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Transaction Ledger", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Best Time to Buy and Sell Stock", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you build products that simplify complexity?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a KYC Verification Pipeline", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Clio",
+      "domain": "clio.com",
+      "category": "Canadian",
+      "totalQuestions": 7,
+      "questions": [
+        { "title": "Design a Document Management System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement Full-Text Search", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you improved a workflow for users", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Billing and Invoicing System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Calendar Conflict Detector", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you approach building for legal professionals?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "String Matching with Wildcards", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Tesla",
+      "domain": "tesla.com",
+      "category": "High-Growth",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design an Autonomous Vehicle Data Pipeline", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Sensor Fusion Algorithm", "topic": "Coding", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you worked under extreme pressure", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Fleet Management System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement Path Planning (A* Algorithm)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "Matrix Spiral Traversal", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Why do you want to work on sustainable energy?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design an OTA Update System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Palantir",
+      "domain": "palantir.com",
+      "category": "High-Growth",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design a Large-Scale Data Integration Platform", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Graph Database Query Engine", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you worked on a mission-critical system", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design an Access Control System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement Union-Find (Disjoint Set)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Kth Largest Element in Array", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you approach problems with national security implications?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Real-Time Anomaly Detection System", "topic": "System Design", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Spotify",
+      "domain": "spotify.com",
+      "category": "High-Growth",
+      "totalQuestions": 9,
+      "questions": [
+        { "title": "Design a Music Recommendation System", "topic": "System Design", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Playlist Shuffle Algorithm", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Tell me about a time you used data to drive a decision", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Music Streaming Architecture", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Collaborative Filtering Algorithm", "topic": "Coding", "subtopic": "Machine Learning", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Find All Anagrams in a String", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "How do you think about personalization at scale?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Podcast Search Engine", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement an Audio Fingerprinting System", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "LinkedIn",
+      "domain": "linkedin.com",
+      "category": "High-Growth",
+      "totalQuestions": 9,
+      "questions": [
+        { "title": "Design a Social Network Feed", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Connection Degree Calculator", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you built something that connected people", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Job Recommendation Engine", "topic": "System Design", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a People You May Know Algorithm", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Valid Palindrome II", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you create economic opportunity for every member?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design a Messaging System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Nested List Weight Sum", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Twitter",
+      "domain": "x.com",
+      "category": "High-Growth",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design a Tweet Timeline Service", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Trending Topics Algorithm", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you scaled a system 10x", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Senior", "type": "onsite" },
+        { "title": "Design a URL Shortener (t.co)", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Bloom Filter", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design Patterns: Observer Pattern", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you think about content moderation at scale?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Distributed Cache", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Salesforce",
+      "domain": "salesforce.com",
+      "category": "High-Growth",
+      "totalQuestions": 7,
+      "questions": [
+        { "title": "Design a Multi-Tenant SaaS Platform", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Query Builder", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you delivered customer success", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Workflow Automation Engine", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Permission Hierarchy Checker", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you approach building trust with stakeholders?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Longest Palindromic Substring", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Datadog",
+      "domain": "datadoghq.com",
+      "category": "High-Growth",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design a Metrics Aggregation Pipeline", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Time-Series Database", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you debugged a complex distributed issue", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Log Ingestion System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Sliding Window Rate Counter", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Meeting Rooms II (Interval Overlap)", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "onsite" },
+        { "title": "How do you approach observability in your own systems?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design an Alerting System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Square",
+      "domain": "squareup.com",
+      "category": "High-Growth",
+      "totalQuestions": 7,
+      "questions": [
+        { "title": "Design a Point-of-Sale System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Transaction Reconciliation System", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you made technology accessible", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Payment Gateway", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Hash Map from Scratch", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you think about financial inclusion?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Serialize and Deserialize a Binary Tree", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "Figma",
+      "domain": "figma.com",
+      "category": "High-Growth",
+      "totalQuestions": 7,
+      "questions": [
+        { "title": "Design a Real-Time Collaborative Editor", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a CRDT (Conflict-Free Replicated Data Type)", "topic": "Coding", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you obsessed over user experience", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Vector Graphics Rendering Engine", "topic": "System Design", "subtopic": "Systems Programming", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Quadtree for Spatial Indexing", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "How do you think about multiplayer collaboration?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Implement Undo/Redo with Command Pattern", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" }
+      ]
+    },
+    {
+      "name": "Notion",
+      "domain": "notion.so",
+      "category": "High-Growth",
+      "totalQuestions": 7,
+      "questions": [
+        { "title": "Design a Block-Based Document Editor", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Tree-Based Data Model", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you simplified a complex product", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Database-Backed Workspace System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Implement a Rich Text Parser", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you approach building tools for thought?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Implement Operational Transform for Collaboration", "topic": "Coding", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" }
+      ]
+    },
+    {
+      "name": "ByteDance",
+      "domain": "bytedance.com",
+      "category": "High-Growth",
+      "totalQuestions": 8,
+      "questions": [
+        { "title": "Design a Short Video Recommendation System", "topic": "System Design", "subtopic": "Machine Learning", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Content Distribution Network", "topic": "Coding", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Tell me about a time you optimized for user engagement", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Design a Live Streaming Platform", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Hard", "seniority": "Senior", "type": "onsite" },
+        { "title": "Implement a Video Encoding Pipeline", "topic": "Coding", "subtopic": "Systems Programming", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" },
+        { "title": "Maximum Product Subarray", "topic": "Coding", "subtopic": "Data Structures & Algorithms", "difficulty": "Medium", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "How do you approach building for a global audience?", "topic": "Behavioral", "subtopic": "Culture & Leadership", "difficulty": "Easy", "seniority": "New Grad", "type": "phone_screen" },
+        { "title": "Design an Ad Serving System", "topic": "System Design", "subtopic": "Distributed Systems", "difficulty": "Medium", "seniority": "Mid-Level", "type": "onsite" }
+      ]
+    }
+  ]
+}
