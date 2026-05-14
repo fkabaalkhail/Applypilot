@@ -1024,7 +1024,8 @@ body {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  object-fit: cover;
+  object-fit: contain;
+  background: white;
 }
 
 .detail-company-logo-placeholder {

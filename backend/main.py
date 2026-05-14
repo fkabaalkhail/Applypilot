@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.db.database import engine, Base
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources
 from backend.routers import auth
+from backend.routers.feedback import router as feedback_router
 
 
 @asynccontextmanager
@@ -47,3 +48,4 @@ app.include_router(ai.router, prefix="/ai", tags=["ai"])
 app.include_router(apply.router, prefix="/apply", tags=["apply"])
 app.include_router(connections.router, prefix="/connections", tags=["connections"])
 app.include_router(github_sources.router, prefix="/github-sources", tags=["github-sources"])
+app.include_router(feedback_router)

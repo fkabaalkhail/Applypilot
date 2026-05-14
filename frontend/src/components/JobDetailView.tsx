@@ -192,9 +192,9 @@ export default function JobDetailView({ job, onClose }: Props) {
               domain = companyLogo.split("icon.horse/icon/")[1] || "";
             }
             if (!domain) domain = cleaned.length >= 2 ? `${cleaned}.com` : "";
-            const logoUrl = companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("clearbit") && !companyLogo.includes("icon.horse") && !companyLogo.includes("google.com/s2")
+            const logoUrl = companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("clearbit") && !companyLogo.includes("icon.horse") && !companyLogo.includes("google.com/s2") && !companyLogo.includes("hunter.io") && !companyLogo.includes("apistemic")
               ? companyLogo
-              : domain ? `https://logos.hunter.io/${domain}` : null;
+              : domain ? `https://logos-api.apistemic.com/domain:${domain}?fallback=404` : null;
             return logoUrl ? (
               <img
                 src={logoUrl}
@@ -203,10 +203,8 @@ export default function JobDetailView({ job, onClose }: Props) {
                 onError={(e) => {
                   const img = e.target as HTMLImageElement;
                   const src = img.src;
-                  if (src.includes("logos.hunter.io") && domain) {
-                    img.src = `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
-                  } else if (src.includes("apistemic.com") && domain) {
-                    img.src = `https://icon.horse/icon/${domain}`;
+                  if (src.includes("apistemic.com") && domain) {
+                    img.src = `https://logos.hunter.io/${domain}`;
                   } else {
                     img.style.display = "none";
                     (img.nextElementSibling as HTMLElement)?.classList.remove("hidden-logo");
@@ -220,7 +218,7 @@ export default function JobDetailView({ job, onClose }: Props) {
           </div>
           <div className="detail-company-info">
             <span className="job-detail-company">{job.company}</span>
-            <span className="job-detail-posted">{timeAgo(job.scraped_at)}</span>
+            <span className="job-detail-posted">{job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}</span>
           </div>
         </div>
 

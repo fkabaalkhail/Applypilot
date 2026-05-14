@@ -15,6 +15,7 @@ import enum
 import datetime
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, Enum, JSON, Float,
+    func,
 )
 from backend.db.database import Base
 
@@ -351,3 +352,17 @@ class InsiderConnection(Base):
     relationship_type = Column(String, default="beyond_network")
     source = Column(String, default="linkedin")
     discovered_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+# ─── Feedback ────────────────────────────────────────────────────────────────
+
+class Feedback(Base):
+    """User-submitted feedback (bug reports, feature requests, etc.)."""
+    __tablename__ = "feedback"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, default="")
+    category = Column(String, default="")  # bug_report, feature_request, ux_feedback, subscription, other
+    message = Column(Text, default="")
+    wants_followup = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
