@@ -1024,10 +1024,7 @@ body {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  object-fit: contain;
-  background: #fff;
-  border: 1px solid var(--border);
-  padding: 4px;
+  object-fit: cover;
 }
 
 .detail-company-logo-placeholder {
@@ -1423,10 +1420,7 @@ body {
   width: 52px;
   height: 52px;
   border-radius: 12px;
-  object-fit: contain;
-  background: #fff;
-  border: 1px solid var(--border-light);
-  padding: 4px;
+  object-fit: cover;
   z-index: 1;
 }
 
