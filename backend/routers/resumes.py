@@ -304,18 +304,21 @@ async def upload_resume(
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="Extracted text is empty.")
 
-    # Analyze with Gemini
+    # Analyze with Gemini (graceful degradation if rate limited)
     llm = get_llm_service()
+    profile = None
     try:
         profile = await llm.analyze_resume(raw_text)
     except Exception as e:
-        logger.error("AI analysis failed: %s", e)
-        raise HTTPException(status_code=502, detail=f"AI analysis failed: {e}")
+        logger.warning("AI analysis failed (will save raw text): %s", e)
+        # Don't fail the upload — save with basic info extracted from text
+        from backend.schemas.resume import ResumeProfile as RP
+        profile = RP(name=file.filename.rsplit(".", 1)[0] if file.filename else "")
 
     # Persist to DB
     db_profile = ResumeProfileDB(
         user_id=user_id,
-        name="Untitled Resume",
+        name=file.filename.rsplit(".", 1)[0] if file.filename else "Untitled Resume",
         profile_name=profile.name,
         email=profile.email,
         phone=profile.phone,
@@ -329,7 +332,7 @@ async def upload_resume(
         projects=[proj.model_dump() for proj in profile.projects],
         technologies=profile.technologies,
         raw_text=raw_text,
-        status="analyzed",
+        status="analyzed" if profile.experience else "uploaded",
     )
     db.add(db_profile)
     db.commit()
