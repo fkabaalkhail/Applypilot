@@ -135,27 +135,15 @@ function QuestionCard({ question }: { question: any }) {
       </div>
       {expanded && (
         <div className="interview-question-expanded">
-          {hasUrl ? (
-            <a
-              href={`https://neetcode.io/problems?search=${encodeURIComponent(q.title)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="interview-practice-btn"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Practice on NeetCode (Free) →
-            </a>
-          ) : (
-            <a
-              href={`https://neetcode.io/problems?search=${encodeURIComponent(q.title)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="interview-practice-btn"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Search on NeetCode →
-            </a>
-          )}
+          <a
+            href={hasUrl ? q.url : `https://leetcode.com/problemset/?search=${encodeURIComponent(q.title)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="interview-practice-btn"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Practice on LeetCode →
+          </a>
         </div>
       )}
     </div>

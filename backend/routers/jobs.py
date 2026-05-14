@@ -308,18 +308,78 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
                     og_desc = og_match.group(1).strip()
                     # Remove "Posted X. " prefix and "...See this and similar jobs" suffix
                     og_desc = re.sub(r'^Posted [^.]+\.\s*', '', og_desc)
-                    og_desc = re.sub(r'…See this and similar jobs on LinkedIn\.$', '', og_desc)
+                    og_desc = re.sub(r'…See this and similar jobs on LinkedIn\.', '', og_desc)
                     if len(og_desc) > 30:
                         description = og_desc
 
+            # Extract company name from LinkedIn page if missing/empty
+            if not job.company or job.company.strip() == "":
+                # Try og:title format: "Job Title at Company Name"
+                og_title_match = re.search(
+                    r'<meta\s+property="og:title"\s+content="([^"]*)"',
+                    text, re.IGNORECASE
+                )
+                if og_title_match:
+                    og_title = og_title_match.group(1)
+                    # Pattern: "Title hiring Job at Location" or "Company hiring Title"
+                    at_match = re.search(r'\s+at\s+(.+?)(?:\s*\||\s*-|\s*$)', og_title)
+                    hiring_match = re.search(r'^(.+?)\s+hiring\s+', og_title)
+                    if at_match:
+                        job.company = at_match.group(1).strip()
+                    elif hiring_match:
+                        job.company = hiring_match.group(1).strip()
+                # Fallback: look for company name in sub-header
+                if not job.company or job.company.strip() == "":
+                    company_match = re.search(
+                        r'class="[^"]*topcard[^"]*company[^"]*"[^>]*>([^<]+)<',
+                        text, re.IGNORECASE
+                    )
+                    if not company_match:
+                        company_match = re.search(
+                            r'<a[^>]*class="[^"]*topcard__org-name[^"]*"[^>]*>([^<]+)<',
+                            text, re.IGNORECASE
+                        )
+                    if company_match:
+                        job.company = company_match.group(1).strip()
+
+            # Extract company logo from LinkedIn page if missing
+            if not job.company_logo:
+                # LinkedIn puts company logo in img tags with specific classes
+                logo_match = re.search(
+                    r'<img[^>]*class="[^"]*artdeco-entity-image[^"]*"[^>]*src="([^"]+)"',
+                    text, re.IGNORECASE
+                )
+                if not logo_match:
+                    logo_match = re.search(
+                        r'<img[^>]*data-delayed-url="([^"]+)"[^>]*class="[^"]*artdeco-entity-image',
+                        text, re.IGNORECASE
+                    )
+                if not logo_match:
+                    # Try og:image as fallback (sometimes it's the company logo)
+                    logo_match = re.search(
+                        r'<meta\s+property="og:image"\s+content="([^"]*)"',
+                        text, re.IGNORECASE
+                    )
+                if logo_match:
+                    logo_url = logo_match.group(1)
+                    if logo_url.startswith("http") and "linkedin" not in logo_url.lower():
+                        job.company_logo = logo_url
+
+                # If still no logo but we have company name, use apistemic
+                if not job.company_logo and job.company:
+                    cleaned = re.sub(r'[^a-z0-9]', '', job.company.lower())
+                    if len(cleaned) >= 2:
+                        job.company_logo = f"https://logos-api.apistemic.com/domain:{cleaned}.com?fallback=404"
+
             if description:
                 job.description = description
-                db.commit()
+            db.commit()
             return {
                 "id": job.id,
                 "description": job.description or "",
                 "apply_url": job.url,
                 "company_logo": job.company_logo or "",
+                "company": job.company or "",
             }
 
         # Strategy 1: Extract schema.org JSON-LD JobPosting
