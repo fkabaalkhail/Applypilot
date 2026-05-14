@@ -137,16 +137,24 @@ function QuestionCard({ question }: { question: any }) {
         <div className="interview-question-expanded">
           {hasUrl ? (
             <a
-              href={q.url}
+              href={`https://neetcode.io/problems?search=${encodeURIComponent(q.title)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="interview-practice-btn"
               onClick={(e) => e.stopPropagation()}
             >
-              Practice on LeetCode →
+              Practice on NeetCode (Free) →
             </a>
           ) : (
-            <p className="interview-no-link">This is a {q.topic.toLowerCase()} question — prepare by practicing similar problems and reviewing common patterns.</p>
+            <a
+              href={`https://neetcode.io/problems?search=${encodeURIComponent(q.title)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="interview-practice-btn"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Search on NeetCode →
+            </a>
           )}
         </div>
       )}

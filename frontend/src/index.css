@@ -2598,6 +2598,20 @@ body {
   background: #4f46e5;
 }
 
+.interview-practice-btn-alt {
+  background: #10b981;
+}
+
+.interview-practice-btn-alt:hover {
+  background: #059669;
+}
+
+.interview-practice-links {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .interview-no-link {
   font-size: 0.8rem;
   color: var(--text-muted);
