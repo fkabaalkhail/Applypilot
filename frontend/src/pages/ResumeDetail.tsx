@@ -70,6 +70,8 @@ interface ResumeDetailData {
   updated_at: string;
 }
 
+type EditingSection = "personal" | "education" | "experience" | "projects" | "technologies" | null;
+
 /* ===== Toast Component ===== */
 
 interface ToastProps {
@@ -79,24 +81,20 @@ interface ToastProps {
 
 function Toast({ message, type }: ToastProps) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: "1.5rem",
-        right: "1.5rem",
-        padding: "0.75rem 1.25rem",
-        borderRadius: "8px",
-        fontSize: "0.875rem",
-        fontWeight: 600,
-        color: type === "success" ? "#166534" : "#991b1b",
-        background: type === "success" ? "#dcfce7" : "#fee2e2",
-        border: `1px solid ${type === "success" ? "#86efac" : "#fca5a5"}`,
-        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-        zIndex: 9999,
-      }}
-    >
+    <div className={`profile-toast profile-toast-${type}`}>
       {message}
     </div>
+  );
+}
+
+/* ===== Pencil Icon ===== */
+
+function PencilIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
   );
 }
 
@@ -113,10 +111,19 @@ export default function ResumeDetail() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [editingSection, setEditingSection] = useState<EditingSection>(null);
+
+  /* ===== Toast helper ===== */
+
+  const showToast = useCallback((message: string, type: "success" | "error") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  /* ===== Export handler ===== */
 
   const handleExport = useCallback(() => {
     if (!profile) return;
-    // Generate a simple text resume and download it
     let text = `${profile.name}\n${profile.email} | ${profile.phone} | ${profile.location}\n`;
     if (profile.linkedin_url) text += `LinkedIn: ${profile.linkedin_url}\n`;
     if (profile.github_url) text += `GitHub: ${profile.github_url}\n`;
@@ -148,10 +155,7 @@ export default function ResumeDetail() {
     URL.revokeObjectURL(url);
   }, [profile]);
 
-  const showToast = useCallback((message: string, type: "success" | "error") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
+  /* ===== Fetch resume ===== */
 
   useEffect(() => {
     async function fetchResume() {
@@ -172,11 +176,14 @@ export default function ResumeDetail() {
     if (id) fetchResume();
   }, [id]);
 
+  /* ===== Save ===== */
+
   const handleSave = useCallback(async () => {
     if (!profile || !id) return;
     setSaving(true);
     try {
       await api.put(`/resumes/${id}`, { profile });
+      setEditingSection(null);
       showToast("Resume saved successfully!", "success");
     } catch (err: any) {
       showToast(err.response?.data?.detail || err.message || "Failed to save resume.", "error");
@@ -184,6 +191,8 @@ export default function ResumeDetail() {
       setSaving(false);
     }
   }, [profile, id, showToast]);
+
+  /* ===== Analyze ===== */
 
   const handleAnalyze = useCallback(async () => {
     if (!id) return;
@@ -200,6 +209,8 @@ export default function ResumeDetail() {
     }
   }, [id, showToast]);
 
+  /* ===== Set Primary ===== */
+
   const handleSetPrimary = useCallback(async () => {
     if (!id) return;
     try {
@@ -211,6 +222,8 @@ export default function ResumeDetail() {
     }
   }, [id, showToast]);
 
+  /* ===== Grade helper ===== */
+
   const getGradeClass = (grade: string): string => {
     switch (grade) {
       case "EXCELLENT": return "grade-excellent";
@@ -220,121 +233,13 @@ export default function ResumeDetail() {
     }
   };
 
-  /* ===== Profile Field Updaters ===== */
+  /* ===== Section edit toggle ===== */
 
-  const updateField = useCallback((field: keyof ResumeProfile, value: string) => {
-    setProfile((prev) => prev ? { ...prev, [field]: value } : prev);
-  }, []);
+  function toggleEdit(section: EditingSection) {
+    setEditingSection((prev) => (prev === section ? null : section));
+  }
 
-  const updateEducation = useCallback((index: number, field: keyof EducationItem, value: string | string[]) => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const education = [...prev.education];
-      education[index] = { ...education[index], [field]: value };
-      return { ...prev, education };
-    });
-  }, []);
-
-  const updateExperience = useCallback((index: number, field: keyof ExperienceItem, value: string | string[]) => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const experience = [...prev.experience];
-      experience[index] = { ...experience[index], [field]: value };
-      return { ...prev, experience };
-    });
-  }, []);
-
-  const updateExperienceBullet = useCallback((expIndex: number, bulletIndex: number, value: string) => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const experience = [...prev.experience];
-      const bullets = [...experience[expIndex].bullets];
-      bullets[bulletIndex] = value;
-      experience[expIndex] = { ...experience[expIndex], bullets };
-      return { ...prev, experience };
-    });
-  }, []);
-
-  const addExperienceBullet = useCallback((expIndex: number) => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const experience = [...prev.experience];
-      const bullets = [...experience[expIndex].bullets, ""];
-      experience[expIndex] = { ...experience[expIndex], bullets };
-      return { ...prev, experience };
-    });
-  }, []);
-
-  const updateProject = useCallback((index: number, field: keyof ProjectItem, value: string | string[]) => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const projects = [...prev.projects];
-      projects[index] = { ...projects[index], [field]: value };
-      return { ...prev, projects };
-    });
-  }, []);
-
-  const updateProjectBullet = useCallback((projIndex: number, bulletIndex: number, value: string) => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const projects = [...prev.projects];
-      const bullets = [...projects[projIndex].bullets];
-      bullets[bulletIndex] = value;
-      projects[projIndex] = { ...projects[projIndex], bullets };
-      return { ...prev, projects };
-    });
-  }, []);
-
-  const addProjectBullet = useCallback((projIndex: number) => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const projects = [...prev.projects];
-      const bullets = [...projects[projIndex].bullets, ""];
-      projects[projIndex] = { ...projects[projIndex], bullets };
-      return { ...prev, projects };
-    });
-  }, []);
-
-  const addEducation = useCallback(() => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        education: [
-          ...prev.education,
-          { school: "", degree: "", start_date: "", end_date: "", gpa: "", achievements: [], coursework: [] },
-        ],
-      };
-    });
-  }, []);
-
-  const addExperience = useCallback(() => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        experience: [
-          ...prev.experience,
-          { company: "", title: "", location: "", start_date: "", end_date: "", bullets: [] },
-        ],
-      };
-    });
-  }, []);
-
-  const addProject = useCallback(() => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        projects: [
-          ...prev.projects,
-          { name: "", link: "", organization: "", location: "", start_date: "", end_date: "", bullets: [] },
-        ],
-      };
-    });
-  }, []);
-
-  /* ===== Render ===== */
+  /* ===== Loading / Error states ===== */
 
   if (loading) {
     return (
@@ -356,11 +261,14 @@ export default function ResumeDetail() {
 
   if (!profile || !resume) return null;
 
+  /* ===== Render ===== */
+
   return (
-    <div className="resume-detail">
+    <div className="resume-detail profile-page">
       {toast && <Toast message={toast.message} type={toast.type} />}
 
-      <div className="resume-detail-header">
+      {/* Header */}
+      <div className="profile-header">
         <h1>{resume.name}</h1>
         {resume.is_primary && <span className="badge-primary">PRIMARY</span>}
         <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
@@ -369,6 +277,13 @@ export default function ResumeDetail() {
           </button>
           <button className="btn-pill" onClick={handleExport}>
             <i className="fa-solid fa-download" style={{ marginRight: "0.3rem" }}></i> Export
+          </button>
+          <button
+            className="profile-save-btn"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save Changes"}
           </button>
         </div>
       </div>
@@ -383,13 +298,10 @@ export default function ResumeDetail() {
         </div>
       )}
 
-      <div className="resume-detail-split">
-        <div className="resume-detail-editor">
-
-      {/* Analysis Report Section */}
-      <div className="section-card" data-testid="analysis-report-section">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
-          <h3 style={{ margin: 0, border: "none", paddingBottom: 0 }}>Analysis</h3>
+      {/* Analysis Section */}
+      <section className="profile-section" data-testid="analysis-report-section">
+        <div className="profile-section-header">
+          <h2>Analysis</h2>
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             {resume.is_primary ? (
               <span className="badge-primary">PRIMARY</span>
@@ -440,403 +352,455 @@ export default function ResumeDetail() {
                 <li key={i}>{highlight}</li>
               ))}
             </ul>
-
-            <button
-              className="btn-pill btn-pill-accent"
-              type="button"
-              onClick={() => document.querySelector('.section-card')?.scrollIntoView({ behavior: 'smooth' })}
-            >
-              Begin Improvements Now
-            </button>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Header Section Card */}
-      <div className="section-card">
-        <h3>Personal Information</h3>
-        <div className="field-grid">
-          <div>
-            <label>Full Name</label>
-            <input
-              type="text"
-              value={profile.name}
-              onChange={(e) => updateField("name", e.target.value)}
-            />
+      {/* Personal Information */}
+      <section className="profile-section">
+        <div className="profile-section-header">
+          <h2>Personal Information</h2>
+          <button className="profile-edit-btn" onClick={() => toggleEdit("personal")} aria-label="Edit personal info">
+            <PencilIcon />
+          </button>
+        </div>
+        {editingSection === "personal" ? (
+          <div className="profile-form-grid">
+            <div className="profile-form-group">
+              <label>Full Name</label>
+              <input type="text" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+            </div>
+            <div className="profile-form-group">
+              <label>Email</label>
+              <input type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
+            </div>
+            <div className="profile-form-group">
+              <label>Phone</label>
+              <input type="tel" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
+            </div>
+            <div className="profile-form-group">
+              <label>Location</label>
+              <input type="text" value={profile.location} onChange={(e) => setProfile({ ...profile, location: e.target.value })} />
+            </div>
+            <div className="profile-form-group">
+              <label>LinkedIn URL</label>
+              <input type="url" value={profile.linkedin_url} onChange={(e) => setProfile({ ...profile, linkedin_url: e.target.value })} />
+            </div>
+            <div className="profile-form-group">
+              <label>GitHub URL</label>
+              <input type="url" value={profile.github_url} onChange={(e) => setProfile({ ...profile, github_url: e.target.value })} />
+            </div>
+            <div className="profile-form-group">
+              <label>Other Link</label>
+              <input type="url" value={profile.other_link} onChange={(e) => setProfile({ ...profile, other_link: e.target.value })} />
+            </div>
           </div>
-          <div>
-            <label>Email</label>
-            <input
-              type="email"
-              value={profile.email}
-              onChange={(e) => updateField("email", e.target.value)}
-            />
+        ) : (
+          <div className="profile-info-grid">
+            <InfoRow label="Full Name" value={profile.name} />
+            <InfoRow label="Email" value={profile.email} />
+            <InfoRow label="Phone" value={profile.phone} />
+            <InfoRow label="Location" value={profile.location} />
+            <InfoRow label="LinkedIn" value={profile.linkedin_url} />
+            <InfoRow label="GitHub" value={profile.github_url} />
+            <InfoRow label="Other Link" value={profile.other_link} />
           </div>
-          <div>
-            <label>Phone</label>
-            <input
-              type="tel"
-              value={profile.phone}
-              onChange={(e) => updateField("phone", e.target.value)}
-            />
+        )}
+      </section>
+
+      {/* Education */}
+      <section className="profile-section">
+        <div className="profile-section-header">
+          <h2>Education</h2>
+          <button className="profile-edit-btn" onClick={() => toggleEdit("education")} aria-label="Edit education">
+            <PencilIcon />
+          </button>
+        </div>
+        {editingSection === "education" ? (
+          <EducationEditor
+            items={profile.education}
+            onChange={(education) => setProfile({ ...profile, education })}
+          />
+        ) : (
+          <div className="profile-timeline">
+            {profile.education.length === 0 && <p className="profile-empty-text">No education added yet.</p>}
+            {profile.education.map((edu, i) => (
+              <div key={i} className="profile-timeline-item">
+                <div className="profile-timeline-dot" />
+                <div className="profile-timeline-content">
+                  <strong>{edu.school}</strong>
+                  <span>{edu.degree}{edu.gpa ? ` — GPA: ${edu.gpa}` : ""}</span>
+                  <span className="profile-timeline-date">{edu.start_date} → {edu.end_date || "Present"}</span>
+                  {edu.achievements.length > 0 && (
+                    <ul className="profile-bullets">
+                      {edu.achievements.map((a, j) => <li key={j}>{a}</li>)}
+                    </ul>
+                  )}
+                  {edu.coursework.length > 0 && (
+                    <div className="profile-tags" style={{ marginTop: "0.5rem" }}>
+                      {edu.coursework.map((c, j) => (
+                        <span key={j} className="profile-tag">{c}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-          <div>
-            <label>Location</label>
-            <input
-              type="text"
-              value={profile.location}
-              onChange={(e) => updateField("location", e.target.value)}
-            />
+        )}
+      </section>
+
+      {/* Experience */}
+      <section className="profile-section">
+        <div className="profile-section-header">
+          <h2>Experience</h2>
+          <button className="profile-edit-btn" onClick={() => toggleEdit("experience")} aria-label="Edit experience">
+            <PencilIcon />
+          </button>
+        </div>
+        {editingSection === "experience" ? (
+          <ExperienceEditor
+            items={profile.experience}
+            onChange={(experience) => setProfile({ ...profile, experience })}
+          />
+        ) : (
+          <div className="profile-timeline">
+            {profile.experience.length === 0 && <p className="profile-empty-text">No experience added yet.</p>}
+            {profile.experience.map((exp, i) => (
+              <div key={i} className="profile-timeline-item">
+                <div className="profile-timeline-dot" />
+                <div className="profile-timeline-content">
+                  <span className="profile-timeline-date">{exp.start_date} → {exp.end_date || "Present"}</span>
+                  <strong>{exp.company}</strong> — {exp.title}
+                  {exp.location && <span className="profile-timeline-location">{exp.location}</span>}
+                  {exp.bullets.length > 0 && (
+                    <ul className="profile-bullets">
+                      {exp.bullets.map((b, j) => <li key={j}>{b}</li>)}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-          <div>
-            <label>LinkedIn URL</label>
-            <input
-              type="url"
-              value={profile.linkedin_url}
-              onChange={(e) => updateField("linkedin_url", e.target.value)}
-            />
+        )}
+      </section>
+
+      {/* Projects */}
+      <section className="profile-section">
+        <div className="profile-section-header">
+          <h2>Projects</h2>
+          <button className="profile-edit-btn" onClick={() => toggleEdit("projects")} aria-label="Edit projects">
+            <PencilIcon />
+          </button>
+        </div>
+        {editingSection === "projects" ? (
+          <ProjectsEditor
+            items={profile.projects}
+            onChange={(projects) => setProfile({ ...profile, projects })}
+          />
+        ) : (
+          <div className="profile-timeline">
+            {profile.projects.length === 0 && <p className="profile-empty-text">No projects added yet.</p>}
+            {profile.projects.map((proj, i) => (
+              <div key={i} className="profile-timeline-item">
+                <div className="profile-timeline-dot" />
+                <div className="profile-timeline-content">
+                  <strong>{proj.name}</strong>
+                  {proj.organization && <span> — {proj.organization}</span>}
+                  {proj.link && <a href={proj.link} target="_blank" rel="noopener noreferrer" className="profile-link">{proj.link}</a>}
+                  <span className="profile-timeline-date">{proj.start_date} → {proj.end_date || "Present"}</span>
+                  {proj.location && <span className="profile-timeline-location">{proj.location}</span>}
+                  {proj.bullets.length > 0 && (
+                    <ul className="profile-bullets">
+                      {proj.bullets.map((b, j) => <li key={j}>{b}</li>)}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-          <div>
-            <label>GitHub URL</label>
-            <input
-              type="url"
-              value={profile.github_url}
-              onChange={(e) => updateField("github_url", e.target.value)}
-            />
+        )}
+      </section>
+
+      {/* Technologies */}
+      <section className="profile-section">
+        <div className="profile-section-header">
+          <h2>Technologies</h2>
+          <button className="profile-edit-btn" onClick={() => toggleEdit("technologies")} aria-label="Edit technologies">
+            <PencilIcon />
+          </button>
+        </div>
+        {editingSection === "technologies" ? (
+          <TechnologiesEditor
+            technologies={profile.technologies}
+            onChange={(technologies) => setProfile({ ...profile, technologies })}
+          />
+        ) : (
+          <div className="profile-tech-categories">
+            {Object.keys(profile.technologies).length === 0 && <p className="profile-empty-text">No technologies added yet.</p>}
+            {Object.entries(profile.technologies).map(([category, items]) => (
+              <div key={category} className="profile-tech-category">
+                <span className="profile-tech-label">{category}</span>
+                <div className="profile-tags">
+                  {items.map((item, i) => (
+                    <span key={i} className="profile-tag">{item}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-          <div>
-            <label>Other Link</label>
-            <input
-              type="url"
-              value={profile.other_link}
-              onChange={(e) => updateField("other_link", e.target.value)}
+        )}
+      </section>
+    </div>
+  );
+}
+
+/* ===== Sub-Components ===== */
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
+  return (
+    <div className="profile-info-row">
+      <span className="profile-info-label">{label}</span>
+      <span className="profile-info-value">{value}</span>
+    </div>
+  );
+}
+
+/* ===== Experience Editor ===== */
+
+function ExperienceEditor({ items, onChange }: { items: ExperienceItem[]; onChange: (items: ExperienceItem[]) => void }) {
+  function update(index: number, field: keyof ExperienceItem, value: string | string[]) {
+    const updated = [...items];
+    updated[index] = { ...updated[index], [field]: value };
+    onChange(updated);
+  }
+
+  function addItem() {
+    onChange([...items, { company: "", title: "", location: "", start_date: "", end_date: "", bullets: [] }]);
+  }
+
+  function removeItem(index: number) {
+    onChange(items.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className="profile-editor-list">
+      {items.map((item, i) => (
+        <div key={i} className="profile-editor-card">
+          <div className="profile-editor-card-header">
+            <span>Experience #{i + 1}</span>
+            <button className="profile-remove-btn" onClick={() => removeItem(i)} aria-label="Remove experience">×</button>
+          </div>
+          <div className="profile-form-grid">
+            <div className="profile-form-group">
+              <label>Company</label>
+              <input type="text" value={item.company} onChange={(e) => update(i, "company", e.target.value)} />
+            </div>
+            <div className="profile-form-group">
+              <label>Title</label>
+              <input type="text" value={item.title} onChange={(e) => update(i, "title", e.target.value)} />
+            </div>
+            <div className="profile-form-group">
+              <label>Location</label>
+              <input type="text" value={item.location} onChange={(e) => update(i, "location", e.target.value)} />
+            </div>
+            <div className="profile-form-group">
+              <label>Start Date</label>
+              <input type="text" value={item.start_date} onChange={(e) => update(i, "start_date", e.target.value)} placeholder="YYYY-MM" />
+            </div>
+            <div className="profile-form-group">
+              <label>End Date</label>
+              <input type="text" value={item.end_date} onChange={(e) => update(i, "end_date", e.target.value)} placeholder="YYYY-MM or Present" />
+            </div>
+          </div>
+          <div className="profile-form-group profile-form-group-full">
+            <label>Bullet Points (one per line)</label>
+            <textarea
+              rows={4}
+              value={item.bullets.join("\n")}
+              onChange={(e) => update(i, "bullets", e.target.value.split("\n"))}
             />
           </div>
         </div>
-      </div>
+      ))}
+      <button className="profile-add-btn" onClick={addItem}>+ Add Experience</button>
+    </div>
+  );
+}
 
-      {/* Education Section Card */}
-      <div className="section-card">
-        <h3>Education</h3>
-        {profile.education.map((edu, i) => (
-          <div key={i} style={{ marginBottom: "1.25rem", paddingBottom: "1rem", borderBottom: i < profile.education.length - 1 ? "1px solid var(--border-light, #eee)" : "none" }}>
-            <div className="field-grid">
-              <div>
-                <label>School</label>
-                <input
-                  type="text"
-                  value={edu.school}
-                  onChange={(e) => updateEducation(i, "school", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>Degree</label>
-                <input
-                  type="text"
-                  value={edu.degree}
-                  onChange={(e) => updateEducation(i, "degree", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>Start Date</label>
-                <input
-                  type="text"
-                  value={edu.start_date}
-                  onChange={(e) => updateEducation(i, "start_date", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>End Date</label>
-                <input
-                  type="text"
-                  value={edu.end_date}
-                  onChange={(e) => updateEducation(i, "end_date", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>GPA</label>
-                <input
-                  type="text"
-                  value={edu.gpa}
-                  onChange={(e) => updateEducation(i, "gpa", e.target.value)}
-                />
-              </div>
+/* ===== Education Editor ===== */
+
+function EducationEditor({ items, onChange }: { items: EducationItem[]; onChange: (items: EducationItem[]) => void }) {
+  function update(index: number, field: keyof EducationItem, value: string | string[]) {
+    const updated = [...items];
+    updated[index] = { ...updated[index], [field]: value };
+    onChange(updated);
+  }
+
+  function addItem() {
+    onChange([...items, { school: "", degree: "", start_date: "", end_date: "", gpa: "", achievements: [], coursework: [] }]);
+  }
+
+  function removeItem(index: number) {
+    onChange(items.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className="profile-editor-list">
+      {items.map((item, i) => (
+        <div key={i} className="profile-editor-card">
+          <div className="profile-editor-card-header">
+            <span>Education #{i + 1}</span>
+            <button className="profile-remove-btn" onClick={() => removeItem(i)} aria-label="Remove education">×</button>
+          </div>
+          <div className="profile-form-grid">
+            <div className="profile-form-group">
+              <label>School</label>
+              <input type="text" value={item.school} onChange={(e) => update(i, "school", e.target.value)} />
             </div>
-            <div>
-              <label>Achievements</label>
-              {edu.achievements.map((ach, j) => (
-                <input
-                  key={j}
-                  type="text"
-                  value={ach}
-                  onChange={(e) => {
-                    const achievements = [...edu.achievements];
-                    achievements[j] = e.target.value;
-                    updateEducation(i, "achievements", achievements);
-                  }}
-                />
-              ))}
-              <button
-                className="btn-pill"
-                type="button"
-                onClick={() => updateEducation(i, "achievements", [...edu.achievements, ""])}
-              >
-                + Achievement
-              </button>
+            <div className="profile-form-group">
+              <label>Degree</label>
+              <input type="text" value={item.degree} onChange={(e) => update(i, "degree", e.target.value)} />
             </div>
-            <div style={{ marginTop: "0.5rem" }}>
-              <label>Coursework</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginBottom: "0.5rem" }}>
-                {edu.coursework.map((course, j) => (
-                  <span key={j} className="skill-tag">{course}</span>
-                ))}
-              </div>
-              <input
-                type="text"
-                placeholder="Add coursework (press Enter)"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    const val = (e.target as HTMLInputElement).value.trim();
-                    if (val) {
-                      updateEducation(i, "coursework", [...edu.coursework, val]);
-                      (e.target as HTMLInputElement).value = "";
-                    }
-                  }
-                }}
-              />
+            <div className="profile-form-group">
+              <label>GPA</label>
+              <input type="text" value={item.gpa} onChange={(e) => update(i, "gpa", e.target.value)} />
+            </div>
+            <div className="profile-form-group">
+              <label>Start Date</label>
+              <input type="text" value={item.start_date} onChange={(e) => update(i, "start_date", e.target.value)} placeholder="YYYY-MM" />
+            </div>
+            <div className="profile-form-group">
+              <label>End Date</label>
+              <input type="text" value={item.end_date} onChange={(e) => update(i, "end_date", e.target.value)} placeholder="YYYY-MM" />
             </div>
           </div>
-        ))}
-        <button className="btn-pill" type="button" onClick={addEducation}>
-          + Add Education
-        </button>
-      </div>
-
-      {/* Experience Section Card */}
-      <div className="section-card">
-        <h3>Experience</h3>
-        {profile.experience.map((exp, i) => (
-          <div key={i} style={{ marginBottom: "1.25rem", paddingBottom: "1rem", borderBottom: i < profile.experience.length - 1 ? "1px solid var(--border-light, #eee)" : "none" }}>
-            <div className="field-grid">
-              <div>
-                <label>Company</label>
-                <input
-                  type="text"
-                  value={exp.company}
-                  onChange={(e) => updateExperience(i, "company", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>Title</label>
-                <input
-                  type="text"
-                  value={exp.title}
-                  onChange={(e) => updateExperience(i, "title", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>Location</label>
-                <input
-                  type="text"
-                  value={exp.location}
-                  onChange={(e) => updateExperience(i, "location", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>Start Date</label>
-                <input
-                  type="text"
-                  value={exp.start_date}
-                  onChange={(e) => updateExperience(i, "start_date", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>End Date</label>
-                <input
-                  type="text"
-                  value={exp.end_date}
-                  onChange={(e) => updateExperience(i, "end_date", e.target.value)}
-                />
-              </div>
-            </div>
-            <div>
-              <label>Bullet Points</label>
-              {exp.bullets.map((bullet, j) => (
-                <input
-                  key={j}
-                  type="text"
-                  value={bullet}
-                  onChange={(e) => updateExperienceBullet(i, j, e.target.value)}
-                />
-              ))}
-              <button
-                className="btn-pill"
-                type="button"
-                onClick={() => addExperienceBullet(i)}
-              >
-                + Bullet Points
-              </button>
-            </div>
-          </div>
-        ))}
-        <button className="btn-pill" type="button" onClick={addExperience}>
-          + Add Experience
-        </button>
-      </div>
-
-      {/* Projects Section Card */}
-      <div className="section-card">
-        <h3>Projects</h3>
-        {profile.projects.map((proj, i) => (
-          <div key={i} style={{ marginBottom: "1.25rem", paddingBottom: "1rem", borderBottom: i < profile.projects.length - 1 ? "1px solid var(--border-light, #eee)" : "none" }}>
-            <div className="field-grid">
-              <div>
-                <label>Project Name</label>
-                <input
-                  type="text"
-                  value={proj.name}
-                  onChange={(e) => updateProject(i, "name", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>Link</label>
-                <input
-                  type="url"
-                  value={proj.link}
-                  onChange={(e) => updateProject(i, "link", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>Organization</label>
-                <input
-                  type="text"
-                  value={proj.organization}
-                  onChange={(e) => updateProject(i, "organization", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>Location</label>
-                <input
-                  type="text"
-                  value={proj.location}
-                  onChange={(e) => updateProject(i, "location", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>Start Date</label>
-                <input
-                  type="text"
-                  value={proj.start_date}
-                  onChange={(e) => updateProject(i, "start_date", e.target.value)}
-                />
-              </div>
-              <div>
-                <label>End Date</label>
-                <input
-                  type="text"
-                  value={proj.end_date}
-                  onChange={(e) => updateProject(i, "end_date", e.target.value)}
-                />
-              </div>
-            </div>
-            <div>
-              <label>Bullet Points</label>
-              {proj.bullets.map((bullet, j) => (
-                <input
-                  key={j}
-                  type="text"
-                  value={bullet}
-                  onChange={(e) => updateProjectBullet(i, j, e.target.value)}
-                />
-              ))}
-              <button
-                className="btn-pill"
-                type="button"
-                onClick={() => addProjectBullet(i)}
-              >
-                + Bullet Points
-              </button>
-            </div>
-          </div>
-        ))}
-        <button className="btn-pill" type="button" onClick={addProject}>
-          + Add Project
-        </button>
-      </div>
-
-      {/* Technologies Section Card */}
-      <div className="section-card">
-        <h3>Technologies</h3>
-        {Object.entries(profile.technologies).map(([category, skills]) => (
-          <div key={category} style={{ marginBottom: "1rem" }}>
-            <label>{category}</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginBottom: "0.5rem" }}>
-              {skills.map((skill, j) => (
-                <span
-                  key={j}
-                  className={`skill-tag category-${category.toLowerCase()}`}
-                >
-                  {skill}
-                </span>
-              ))}
-            </div>
-            <input
-              type="text"
-              placeholder={`Add ${category} skill (press Enter)`}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const val = (e.target as HTMLInputElement).value.trim();
-                  if (val) {
-                    setProfile((prev) => {
-                      if (!prev) return prev;
-                      const technologies = { ...prev.technologies };
-                      technologies[category] = [...(technologies[category] || []), val];
-                      return { ...prev, technologies };
-                    });
-                    (e.target as HTMLInputElement).value = "";
-                  }
-                }
-              }}
+          <div className="profile-form-group profile-form-group-full">
+            <label>Achievements (one per line)</label>
+            <textarea
+              rows={3}
+              value={item.achievements.join("\n")}
+              onChange={(e) => update(i, "achievements", e.target.value.split("\n"))}
             />
           </div>
-        ))}
-        <button
-          className="btn-pill"
-          type="button"
-          onClick={() => {
-            const categoryName = prompt("Enter category name:");
-            if (categoryName && categoryName.trim()) {
-              setProfile((prev) => {
-                if (!prev) return prev;
-                const technologies = { ...prev.technologies };
-                if (!technologies[categoryName.trim()]) {
-                  technologies[categoryName.trim()] = [];
-                }
-                return { ...prev, technologies };
-              });
-            }
-          }}
-        >
-          + Add Category
-        </button>
-      </div>
-
-      {/* Save Footer */}
-      <div className="save-footer">
-        <button
-          className="btn-pill btn-pill-accent"
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
-
+          <div className="profile-form-group profile-form-group-full">
+            <label>Coursework (one per line)</label>
+            <textarea
+              rows={3}
+              value={item.coursework.join("\n")}
+              onChange={(e) => update(i, "coursework", e.target.value.split("\n"))}
+            />
+          </div>
         </div>
-        {/* Preview is now a modal, not side-by-side */}
-      </div>
+      ))}
+      <button className="profile-add-btn" onClick={addItem}>+ Add Education</button>
+    </div>
+  );
+}
+
+/* ===== Projects Editor ===== */
+
+function ProjectsEditor({ items, onChange }: { items: ProjectItem[]; onChange: (items: ProjectItem[]) => void }) {
+  function update(index: number, field: keyof ProjectItem, value: string | string[]) {
+    const updated = [...items];
+    updated[index] = { ...updated[index], [field]: value };
+    onChange(updated);
+  }
+
+  function addItem() {
+    onChange([...items, { name: "", link: "", organization: "", location: "", start_date: "", end_date: "", bullets: [] }]);
+  }
+
+  function removeItem(index: number) {
+    onChange(items.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className="profile-editor-list">
+      {items.map((item, i) => (
+        <div key={i} className="profile-editor-card">
+          <div className="profile-editor-card-header">
+            <span>Project #{i + 1}</span>
+            <button className="profile-remove-btn" onClick={() => removeItem(i)} aria-label="Remove project">×</button>
+          </div>
+          <div className="profile-form-grid">
+            <div className="profile-form-group">
+              <label>Name</label>
+              <input type="text" value={item.name} onChange={(e) => update(i, "name", e.target.value)} />
+            </div>
+            <div className="profile-form-group">
+              <label>Organization</label>
+              <input type="text" value={item.organization} onChange={(e) => update(i, "organization", e.target.value)} />
+            </div>
+            <div className="profile-form-group">
+              <label>Link</label>
+              <input type="url" value={item.link} onChange={(e) => update(i, "link", e.target.value)} />
+            </div>
+            <div className="profile-form-group">
+              <label>Location</label>
+              <input type="text" value={item.location} onChange={(e) => update(i, "location", e.target.value)} />
+            </div>
+            <div className="profile-form-group">
+              <label>Start Date</label>
+              <input type="text" value={item.start_date} onChange={(e) => update(i, "start_date", e.target.value)} placeholder="YYYY-MM" />
+            </div>
+            <div className="profile-form-group">
+              <label>End Date</label>
+              <input type="text" value={item.end_date} onChange={(e) => update(i, "end_date", e.target.value)} placeholder="YYYY-MM" />
+            </div>
+          </div>
+          <div className="profile-form-group profile-form-group-full">
+            <label>Bullet Points (one per line)</label>
+            <textarea
+              rows={4}
+              value={item.bullets.join("\n")}
+              onChange={(e) => update(i, "bullets", e.target.value.split("\n"))}
+            />
+          </div>
+        </div>
+      ))}
+      <button className="profile-add-btn" onClick={addItem}>+ Add Project</button>
+    </div>
+  );
+}
+
+/* ===== Technologies Editor ===== */
+
+function TechnologiesEditor({ technologies, onChange }: { technologies: Record<string, string[]>; onChange: (t: Record<string, string[]>) => void }) {
+  function updateCategory(category: string, value: string) {
+    const updated = { ...technologies, [category]: value.split(",").map((s) => s.trim()).filter(Boolean) };
+    onChange(updated);
+  }
+
+  function removeCategory(category: string) {
+    const updated = { ...technologies };
+    delete updated[category];
+    onChange(updated);
+  }
+
+  function addCategory() {
+    const name = prompt("Category name:");
+    if (name && name.trim() && !technologies[name.trim()]) {
+      onChange({ ...technologies, [name.trim()]: [] });
+    }
+  }
+
+  return (
+    <div className="profile-editor-list">
+      {Object.entries(technologies).map(([category, items]) => (
+        <div key={category} className="profile-editor-card">
+          <div className="profile-editor-card-header">
+            <span>{category}</span>
+            <button className="profile-remove-btn" onClick={() => removeCategory(category)} aria-label={`Remove ${category}`}>×</button>
+          </div>
+          <div className="profile-form-group profile-form-group-full">
+            <label>Items (comma-separated)</label>
+            <input type="text" value={items.join(", ")} onChange={(e) => updateCategory(category, e.target.value)} />
+          </div>
+        </div>
+      ))}
+      <button className="profile-add-btn" onClick={addCategory}>+ Add Category</button>
     </div>
   );
 }
