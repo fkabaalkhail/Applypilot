@@ -2670,3 +2670,173 @@ body {
   padding: 0.3rem 0.75rem;
   border-radius: 999px;
 }
+
+/* Company Request CTA */
+.interview-request-cta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  margin-top: 2rem;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.04), rgba(99, 102, 241, 0.08));
+  border: 1px dashed rgba(99, 102, 241, 0.3);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.interview-request-cta:hover {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(99, 102, 241, 0.12));
+  transform: translateY(-1px);
+}
+
+.interview-request-cta > i:first-child {
+  font-size: 1.5rem;
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+.interview-request-cta > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.interview-request-cta > div strong {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.interview-request-cta > div span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.interview-request-cta > i:last-child {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+/* Request Modal */
+.interview-request-modal {
+  max-width: 420px;
+  text-align: center;
+  padding: 2.5rem 2rem;
+}
+
+.interview-request-modal h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.interview-request-modal p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
+}
+
+.request-modal-icon {
+  font-size: 2.5rem;
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
+
+.request-company-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  transition: border-color 0.15s;
+  background: var(--bg-page);
+}
+
+.request-company-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.request-submit-btn {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.request-submit-btn:hover:not(:disabled) {
+  background: #4f46e5;
+  transform: translateY(-1px);
+}
+
+.request-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.request-success-icon {
+  font-size: 3rem;
+  color: #10b981;
+  margin-bottom: 1rem;
+}
+
+.modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.modal-close:hover {
+  background: var(--bg-page);
+  color: var(--text);
+}
+
+/* Generic Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+  animation: fadeIn 0.15s ease;
+}
+
+.modal-content {
+  position: relative;
+  background: var(--bg-white);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

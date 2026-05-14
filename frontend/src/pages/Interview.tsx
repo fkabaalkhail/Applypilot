@@ -6,6 +6,9 @@ export default function Interview() {
   const [searchQuery, setSearchQuery] = useState("");
   const [topicFilter, setTopicFilter] = useState<string>("All");
   const [difficultyFilter, setDifficultyFilter] = useState<string>("All");
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestCompany, setRequestCompany] = useState("");
+  const [requestSubmitted, setRequestSubmitted] = useState(false);
 
   const companies = interviewData.companies;
   const filtered = searchQuery
@@ -15,6 +18,27 @@ export default function Interview() {
   const selected = selectedCompany
     ? companies.find(c => c.name === selectedCompany)
     : null;
+
+  function handleRequestSubmit() {
+    if (!requestCompany.trim()) return;
+    // Store in backend
+    fetch("/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: "Feature Request",
+        message: `Interview questions request: ${requestCompany.trim()}`,
+        follow_up: false,
+      }),
+    }).catch(() => {});
+    setRequestSubmitted(true);
+  }
+
+  function closeRequestModal() {
+    setShowRequestModal(false);
+    setRequestCompany("");
+    setRequestSubmitted(false);
+  }
 
   if (selected) {
     const filteredQuestions = selected.questions.filter(q => {
@@ -112,6 +136,63 @@ export default function Interview() {
           </div>
         ))}
       </div>
+
+      {/* Company not listed CTA */}
+      <div className="interview-request-cta" onClick={() => setShowRequestModal(true)}>
+        <i className="fa-solid fa-building-circle-xmark"></i>
+        <div>
+          <strong>Company not listed?</strong>
+          <span>Request interview questions for your target company</span>
+        </div>
+        <i className="fa-solid fa-chevron-right"></i>
+      </div>
+
+      {/* Request Modal */}
+      {showRequestModal && (
+        <div className="modal-overlay" onClick={closeRequestModal}>
+          <div className="modal-content interview-request-modal" onClick={e => e.stopPropagation()}>
+            {!requestSubmitted ? (
+              <>
+                <button className="modal-close" onClick={closeRequestModal}>
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+                <div className="request-modal-icon">
+                  <i className="fa-solid fa-building-circle-plus"></i>
+                </div>
+                <h2>Request a Company</h2>
+                <p>Tell us which company you're preparing for and we'll add their interview questions to the database.</p>
+                <input
+                  type="text"
+                  className="request-company-input"
+                  placeholder="e.g. Stripe, Databricks, Shopify..."
+                  value={requestCompany}
+                  onChange={e => setRequestCompany(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleRequestSubmit()}
+                  autoFocus
+                />
+                <button
+                  className="request-submit-btn"
+                  onClick={handleRequestSubmit}
+                  disabled={!requestCompany.trim()}
+                >
+                  Submit Request
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="request-success-icon">
+                  <i className="fa-solid fa-circle-check"></i>
+                </div>
+                <h2>Request Received</h2>
+                <p>We've noted your request for <strong>{requestCompany}</strong>. Our team will work on adding their interview questions soon.</p>
+                <button className="request-submit-btn" onClick={closeRequestModal}>
+                  Done
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
