@@ -186,14 +186,17 @@ export default function JobDetailView({ job, onClose }: Props) {
           {(() => {
             const cleaned = job.company.toLowerCase().replace(/[^a-z0-9]/g, "");
             let logoUrl: string | null = null;
-            // Convert dead Clearbit URLs to icon.horse using the stored domain
+            // Convert dead Clearbit/icon.horse URLs to apistemic
             if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
               const domain = companyLogo.split("logo.clearbit.com/")[1];
-              if (domain) logoUrl = `https://icon.horse/icon/${domain}`;
+              if (domain) logoUrl = `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
+            } else if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
+              const domain = companyLogo.split("icon.horse/icon/")[1];
+              if (domain) logoUrl = `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
             } else if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("google.com/s2/favicons")) {
               logoUrl = companyLogo;
             } else if (cleaned.length >= 2) {
-              logoUrl = `https://icon.horse/icon/${cleaned}.com`;
+              logoUrl = `https://logos-api.apistemic.com/domain:${cleaned}.com?fallback=404`;
             }
             return logoUrl ? (
               <img

@@ -66,19 +66,24 @@ function getLogoColor(company: string): string {
 }
 
 function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
-  // If stored logo is a dead Clearbit URL, extract domain and use icon.horse
+  // If stored logo is a dead Clearbit URL, extract domain and use apistemic
   if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
     const domain = companyLogo.split("logo.clearbit.com/")[1];
-    if (domain) return `https://icon.horse/icon/${domain}`;
+    if (domain) return `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
   }
-  // If we have a non-Clearbit stored logo URL, use it directly
+  // If stored logo is icon.horse, convert to apistemic
+  if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
+    const domain = companyLogo.split("icon.horse/icon/")[1];
+    if (domain) return `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
+  }
+  // If we have a non-Clearbit/icon.horse stored logo URL, use it directly
   if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("google.com/s2/favicons")) {
     return companyLogo;
   }
-  // Fallback: guess domain from company name
+  // Fallback: guess domain from company name using apistemic
   const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (cleaned.length < 2) return null;
-  return `https://icon.horse/icon/${cleaned}.com`;
+  return `https://logos-api.apistemic.com/domain:${cleaned}.com?fallback=404`;
 }
 
 function timeAgo(dateStr: string): string {

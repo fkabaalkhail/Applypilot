@@ -59,6 +59,16 @@ export default function App() {
               </span>
               <span className="nav-label">Profile</span>
             </NavLink>
+            <NavLink to="/app/interview" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
+              <span className="nav-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  <line x1="9" y1="9" x2="15" y2="9"/>
+                  <line x1="9" y1="13" x2="13" y2="13"/>
+                </svg>
+              </span>
+              <span className="nav-label">Interview</span>
+            </NavLink>
           </nav>
         </div>
 
@@ -66,6 +76,28 @@ export default function App() {
         <div className="sidebar-section sidebar-section-bottom">
           <span className="sidebar-section-label">GENERAL</span>
           <nav className="sidebar-nav">
+            <NavLink to="/app/refer" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
+              <span className="nav-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 12 20 22 4 22 4 12"/>
+                  <rect x="2" y="7" width="20" height="5"/>
+                  <line x1="12" y1="22" x2="12" y2="7"/>
+                  <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                  <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+                </svg>
+              </span>
+              <span className="nav-label">Refer & Earn</span>
+            </NavLink>
+            <NavLink to="/app/feedback" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
+              <span className="nav-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </span>
+              <span className="nav-label">Feedback</span>
+            </NavLink>
             <NavLink to="/app/settings" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
               <span className="nav-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
