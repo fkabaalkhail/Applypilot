@@ -2109,10 +2109,7 @@ body {
 
 /* ===== Resume Detail Split Layout ===== */
 .resume-detail-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-  align-items: start;
+  display: block;
 }
 
 .resume-detail-editor {
@@ -2120,15 +2117,51 @@ body {
 }
 
 .resume-detail-preview {
-  position: sticky;
-  top: 1rem;
+  display: none;
 }
 
-@media (max-width: 1200px) {
-  .resume-detail-split {
-    grid-template-columns: 1fr;
-  }
-  .resume-detail-preview {
-    display: none;
-  }
+/* Resume Preview Modal */
+.preview-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.preview-modal {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 700px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+
+.preview-modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: var(--bg-page);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  z-index: 10;
+}
+
+.preview-modal-close:hover {
+  background: var(--border);
+  color: var(--text);
 }
