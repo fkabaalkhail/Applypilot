@@ -56,13 +56,15 @@ class GeminiService:
     """Async client for Google Gemini API."""
 
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "")
-        self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        self.api_key = os.getenv("GEMINI_API_KEY", "").strip().strip("\ufeff")
+        self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip().strip("\ufeff")
         self.timeout = float(os.getenv("GEMINI_TIMEOUT", "60"))
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not set in environment")
 
     async def _generate(self, prompt: str, system: str = None) -> str:
+        import asyncio
+
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}"
             f":generateContent?key={self.api_key}"
@@ -72,10 +74,21 @@ class GeminiService:
         if system:
             body["systemInstruction"] = {"parts": [{"text": system}]}
 
-        async with httpx.AsyncClient() as client:
-            r = await client.post(url, json=body, timeout=self.timeout)
-            r.raise_for_status()
-            data = r.json()
+        # Retry with exponential backoff on 429
+        max_retries = 3
+        for attempt in range(max_retries):
+            async with httpx.AsyncClient() as client:
+                r = await client.post(url, json=body, timeout=self.timeout)
+                if r.status_code == 429:
+                    wait_time = (2 ** attempt) * 5  # 5s, 10s, 20s
+                    logger.warning(f"Gemini rate limited (429), retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(wait_time)
+                    continue
+                r.raise_for_status()
+                data = r.json()
+                break
+        else:
+            raise ConnectionError("Gemini API rate limited after 3 retries. Please try again in a minute.")
 
         try:
             return data["candidates"][0]["content"]["parts"][0]["text"]

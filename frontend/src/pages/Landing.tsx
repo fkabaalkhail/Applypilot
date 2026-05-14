@@ -199,7 +199,7 @@ const SUCCESS_STORIES = [
     badge: "Interview Secured ✓",
     initials: "FA",
     name: "Ahmed A. — Applied for Software Engineer role in Ottawa",
-    quote: '"Resumate helped me land this interview in under a week."',
+    quote: '"Tailrd helped me land this interview in under a week."',
   },
   {
     img: "/interview_offer_2.png",
@@ -294,12 +294,12 @@ export default function Landing() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const faqs = [
-    { q: "How is Resumate different from other job platforms like LinkedIn?", a: "Resumate uses AI to automatically fill out applications for you, match you with jobs based on your real skills, and tailor your resume for each role — all running locally on your machine for maximum privacy." },
-    { q: "Will Resumate share my personal information?", a: "Never. Your data stays on your machine. We don't upload your resume, credentials, or personal info to any cloud server. Everything runs locally." },
-    { q: "Is Resumate free to use?", a: "Yes! You can start with our free tier which includes 10 auto-applies per day. Upgrade to Pro for unlimited applications and advanced AI features." },
-    { q: "How does the auto-apply feature work?", a: "Resumate uses your Chrome browser with AI to fill out LinkedIn Easy Apply forms automatically — answering screening questions, uploading your resume, and submitting applications while you focus on other things." },
-    { q: "What job platforms does Resumate support?", a: "Currently we support LinkedIn Easy Apply jobs. Support for Greenhouse, Lever, and other ATS platforms is coming soon." },
-    { q: "I have more questions!", a: "Reach out to us at support@resumate.app and we'll get back to you within 24 hours." },
+    { q: "How is Tailrd different from other job platforms like LinkedIn?", a: "Tailrd uses AI to automatically fill out applications for you, match you with jobs based on your real skills, and tailor your resume for each role — all running locally on your machine for maximum privacy." },
+    { q: "Will Tailrd share my personal information?", a: "Never. Your data stays on your machine. We don't upload your resume, credentials, or personal info to any cloud server. Everything runs locally." },
+    { q: "Is Tailrd free to use?", a: "Yes! You can start with our free tier which includes 10 auto-applies per day. Upgrade to Pro for unlimited applications and advanced AI features." },
+    { q: "How does the auto-apply feature work?", a: "Tailrd uses your Chrome browser with AI to fill out LinkedIn Easy Apply forms automatically — answering screening questions, uploading your resume, and submitting applications while you focus on other things." },
+    { q: "What job platforms does Tailrd support?", a: "Currently we support LinkedIn Easy Apply jobs. Support for Greenhouse, Lever, and other ATS platforms is coming soon." },
+    { q: "I have more questions!", a: "Reach out to us at support@tailrd.app and we'll get back to you within 24 hours." },
   ];
 
   return (
@@ -308,8 +308,8 @@ export default function Landing() {
       <nav className="landing-nav">
         <div className="landing-nav-inner">
           <div className="landing-brand">
-            <img src="/logo-icon.png" alt="Resumate" className="landing-logo-img" />
-            <span className="landing-logo-text">Resumate</span>
+            <img src="/logo-icon.png" alt="Tailrd" className="landing-logo-img" />
+            <span className="landing-logo-text">Tailrd</span>
           </div>
           <div className="landing-nav-links">
             <a href="#features" className="nav-link-item">Features</a>
@@ -479,7 +479,7 @@ export default function Landing() {
             transition={{ duration: 0.7, delay: 2.8, ease: [0.16, 1, 0.3, 1] }}
           >
             <span className="showcase-demo-eyebrow">SEE IT IN ACTION</span>
-            <h2 className="showcase-title">Watch Resumate Work For You</h2>
+            <h2 className="showcase-title">Watch Tailrd Work For You</h2>
             <p className="showcase-desc">
               While you relax, our AI scans job postings, extracts keywords,
               tailors your resume, and fills applications — all in seconds.
@@ -653,8 +653,8 @@ export default function Landing() {
             <AnimatedSection className="showcase-visual" animation="fadeLeft" delay={0.3}>
               <div className="showcase-card autofill-card">
                 <div className="autofill-header">
-                  <img src="/logo-icon.png" alt="Resumate" className="autofill-logo" />
-                  <span className="autofill-brand">Resumate</span>
+                  <img src="/logo-icon.png" alt="Tailrd" className="autofill-logo" />
+                  <span className="autofill-brand">Tailrd</span>
                 </div>
                 <div className="autofill-job">
                   <div className="autofill-job-icon"></div>
@@ -1062,8 +1062,8 @@ export default function Landing() {
         <div className="footer-inner">
           <div className="footer-col">
             <div className="footer-brand">
-              <img src="/logo-icon.png" alt="Resumate" className="landing-logo-img" />
-              <span className="landing-logo-text">Resumate</span>
+              <img src="/logo-icon.png" alt="Tailrd" className="landing-logo-img" />
+              <span className="landing-logo-text">Tailrd</span>
             </div>
             <p className="footer-tagline">AI-powered job applications.<br />Apply smarter, not harder.</p>
           </div>
@@ -1087,7 +1087,7 @@ export default function Landing() {
           </div>
         </div>
         <div className="footer-bottom">
-          <p>© 2026 Resumate. All rights reserved.</p>
+          <p>© 2026 Tailrd. All rights reserved.</p>
         </div>
       </footer>
     </div>

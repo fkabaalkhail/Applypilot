@@ -13,7 +13,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import ResumeProfileDB
+from backend.db.models import ResumeProfileDB, ScrapedJob
 from backend.auth.dependencies import get_current_user_id
 from backend.schemas.resume import (
     ResumeProfile,
@@ -304,18 +304,21 @@ async def upload_resume(
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="Extracted text is empty.")
 
-    # Analyze with Gemini
+    # Analyze with Gemini (graceful degradation if rate limited)
     llm = get_llm_service()
+    profile = None
     try:
         profile = await llm.analyze_resume(raw_text)
     except Exception as e:
-        logger.error("AI analysis failed: %s", e)
-        raise HTTPException(status_code=502, detail=f"AI analysis failed: {e}")
+        logger.warning("AI analysis failed (will save raw text): %s", e)
+        # Don't fail the upload — save with basic info extracted from text
+        from backend.schemas.resume import ResumeProfile as RP
+        profile = RP(name=file.filename.rsplit(".", 1)[0] if file.filename else "")
 
     # Persist to DB
     db_profile = ResumeProfileDB(
         user_id=user_id,
-        name="Untitled Resume",
+        name=file.filename.rsplit(".", 1)[0] if file.filename else "Untitled Resume",
         profile_name=profile.name,
         email=profile.email,
         phone=profile.phone,
@@ -329,10 +332,45 @@ async def upload_resume(
         projects=[proj.model_dump() for proj in profile.projects],
         technologies=profile.technologies,
         raw_text=raw_text,
-        status="analyzed",
+        status="analyzed" if profile.experience else "uploaded",
     )
     db.add(db_profile)
     db.commit()
     db.refresh(db_profile)
+
+    # Trigger batch scoring for top jobs in background
+    import asyncio
+    from backend.services.match_engine import MatchEngine
+
+    async def _score_top_jobs():
+        try:
+            engine = MatchEngine(db)
+            jobs_to_score = (
+                db.query(ScrapedJob)
+                .filter(
+                    ScrapedJob.match_score == 0,
+                    ScrapedJob.description != "",
+                    ScrapedJob.description != None,
+                )
+                .order_by(ScrapedJob.id.desc())
+                .limit(10)
+                .all()
+            )
+            for job in jobs_to_score:
+                if job.description and len(job.description) > 50:
+                    try:
+                        breakdown = await engine.compute_breakdown(raw_text, job.description)
+                        job.match_score = breakdown.overall_score
+                        job.experience_score = breakdown.experience_score
+                        job.skill_score = breakdown.skill_score
+                        job.industry_score = breakdown.industry_score
+                        job.match_label = breakdown.match_label
+                        db.commit()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    asyncio.ensure_future(_score_top_jobs())
 
     return ResumeUploadResponse(id=db_profile.id, profile=profile)

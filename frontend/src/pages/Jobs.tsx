@@ -66,19 +66,38 @@ function getLogoColor(company: string): string {
 }
 
 function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
-  // If stored logo is a dead Clearbit URL, extract domain and use icon.horse
-  if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
-    const domain = companyLogo.split("logo.clearbit.com/")[1];
-    if (domain) return `https://icon.horse/icon/${domain}`;
-  }
-  // If we have a non-Clearbit stored logo URL, use it directly
-  if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("google.com/s2/favicons")) {
+  // If we have a direct URL (LinkedIn CDN, etc.), use it
+  if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("clearbit") && !companyLogo.includes("icon.horse") && !companyLogo.includes("google.com/s2") && !companyLogo.includes("apistemic") && !companyLogo.includes("hunter.io")) {
     return companyLogo;
   }
-  // Fallback: guess domain from company name
+  // Extract domain from stored URL or guess from company name
+  let domain = "";
+  if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
+    domain = companyLogo.split("logo.clearbit.com/")[1] || "";
+  } else if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
+    domain = companyLogo.split("icon.horse/icon/")[1] || "";
+  }
+  if (!domain) {
+    const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (cleaned.length < 2) return null;
+    domain = `${cleaned}.com`;
+  }
+  // Primary: apistemic (good quality, proper aspect ratio)
+  return `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
+}
+
+// On error: try Hunter.io, then hide
+function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, company: string, _companyLogo: string) {
+  const img = e.target as HTMLImageElement;
+  const src = img.src;
   const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (cleaned.length < 2) return null;
-  return `https://icon.horse/icon/${cleaned}.com`;
+  const domain = cleaned.length >= 2 ? `${cleaned}.com` : "";
+
+  if (src.includes("apistemic.com") && domain) {
+    img.src = `https://logos.hunter.io/${domain}`;
+  } else {
+    img.style.display = "none";
+  }
 }
 
 function timeAgo(dateStr: string): string {
@@ -185,6 +204,7 @@ export default function Jobs() {
     params.set("page_size", String(pageSize));
 
     if (activeTab === "Saved" || activeTab === "Liked") params.set("saved", "1");
+    if (activeTab === "Recommended") params.set("sort", "match");
     if (filters.source) params.set("source", filters.source);
     if (filters.min_match_score > 0) params.set("min_score", String(filters.min_match_score));
     if (search.trim()) params.set("search", search.trim());
@@ -353,7 +373,7 @@ export default function Jobs() {
                           src={logoUrl}
                           alt=""
                           className="company-logo-img-overlay"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          onError={(e) => handleLogoError(e, job.company, job.company_logo)}
                         />
                       ) : null;
                     })()}
@@ -432,6 +452,25 @@ export default function Jobs() {
                 </div>
               </div>
 
+              {/* Match Score Badge */}
+              {job.match_score > 0 && (
+                <div className="match-score-badge">
+                  <div className="match-circle-sm">
+                    <svg viewBox="0 0 100 100">
+                      <circle cx="50" cy="50" r="40" fill="none" stroke="#e8e0f0" strokeWidth="8" />
+                      <circle cx="50" cy="50" r="40" fill="none" stroke="#7c3aed" strokeWidth="8"
+                        strokeDasharray={`${job.match_score * 2.51} 251`}
+                        strokeLinecap="round"
+                        style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
+                      />
+                    </svg>
+                    <span className="match-pct">{job.match_score}<small>%</small></span>
+                  </div>
+                  <span className="match-label-sm">
+                    {job.match_score >= 80 ? "STRONG" : job.match_score >= 60 ? "GOOD" : "FAIR"} MATCH
+                  </span>
+                </div>
+              )}
             </div>
           ))}
 

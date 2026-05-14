@@ -1,0 +1,189 @@
+/* ===== Feedback Page ===== */
+.feedback-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.feedback-header {
+  margin-bottom: 2rem;
+}
+
+.feedback-header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.feedback-header p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.feedback-form {
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 2rem;
+  box-shadow: var(--shadow-card);
+}
+
+.feedback-field {
+  margin-bottom: 1.5rem;
+}
+
+.feedback-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+
+.feedback-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.feedback-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.feedback-radio:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.feedback-radio.selected {
+  background: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.feedback-radio input[type="radio"] {
+  display: none;
+}
+
+.feedback-radio-label {
+  pointer-events: none;
+}
+
+.feedback-textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  resize: vertical;
+  min-height: 120px;
+  transition: border-color 0.15s ease;
+}
+
+.feedback-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.1);
+}
+
+.feedback-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.feedback-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.feedback-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.feedback-error {
+  color: #dc2626;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: #fef2f2;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+}
+
+.feedback-page .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.7rem 1.5rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.feedback-page .btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.feedback-page .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Success state */
+.feedback-success {
+  text-align: center;
+  padding: 3rem 2rem;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.feedback-success-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 1rem;
+  background: #d1fae5;
+  color: #059669;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.feedback-success h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.feedback-success p {
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+}

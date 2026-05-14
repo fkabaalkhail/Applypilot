@@ -221,7 +221,9 @@ function UploadModal({ onClose, onUploadSuccess }: UploadModalProps) {
 
       const data: UploadResponse = res.data;
       setUploadResult(data);
-      setResumeName(data.profile?.name || "Untitled Resume");
+      // Default resume name to filename without extension
+      const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+      setResumeName(fileNameWithoutExt || data.profile?.name || "Untitled Resume");
       setModalState("success");
       onUploadSuccess();
     } catch (err: any) {

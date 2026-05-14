@@ -36,6 +36,7 @@ def list_jobs(
     work_type: Optional[str] = None,
     role_category: Optional[str] = None,
     experience_level: Optional[str] = None,
+    sort: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -90,10 +91,56 @@ def list_jobs(
         if level_values:
             q = q.filter(ScrapedJob.experience_level.in_(level_values))
 
-    # Default sort: posted_date descending (newest first)
-    q = q.order_by(ScrapedJob.posted_date.desc().nullslast())
+    # Sort
+    if sort == "match":
+        # Sort by match score descending (best matches first), then by date
+        q = q.order_by(ScrapedJob.match_score.desc(), ScrapedJob.posted_date.desc().nullslast())
+    else:
+        # Default sort: posted_date descending (newest first)
+        q = q.order_by(ScrapedJob.posted_date.desc().nullslast())
     q = q.offset((page - 1) * page_size).limit(page_size)
     return q.all()
+
+
+@router.post("/create")
+def create_job(
+    title: str,
+    company: str,
+    location: str,
+    url: str,
+    source_platform: str = "linkedin",
+    experience_level: str = "new_grad",
+    work_type: str = "onsite",
+    country: str = "CA",
+    db: Session = Depends(get_db),
+):
+    """Create a new job listing (used by scrapers to push jobs)."""
+    # Dedup by URL
+    existing = db.query(ScrapedJob).filter(ScrapedJob.url == url).first()
+    if existing:
+        return {"status": "duplicate", "id": existing.id}
+
+    import re
+    cleaned_company = re.sub(r'[^a-z0-9]', '', company.lower())
+
+    job = ScrapedJob(
+        title=title,
+        company=company,
+        location=location,
+        url=url,
+        description="",
+        source_platform=source_platform,
+        easy_apply=0,
+        work_type=work_type,
+        role_category="",
+        country=country,
+        experience_level=experience_level,
+        company_logo=f"https://icon.horse/icon/{cleaned_company}.com",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return {"status": "created", "id": job.id}
 
 
 @router.get("/stats")
@@ -261,18 +308,78 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
                     og_desc = og_match.group(1).strip()
                     # Remove "Posted X. " prefix and "...See this and similar jobs" suffix
                     og_desc = re.sub(r'^Posted [^.]+\.\s*', '', og_desc)
-                    og_desc = re.sub(r'…See this and similar jobs on LinkedIn\.$', '', og_desc)
+                    og_desc = re.sub(r'…See this and similar jobs on LinkedIn\.', '', og_desc)
                     if len(og_desc) > 30:
                         description = og_desc
 
+            # Extract company name from LinkedIn page if missing/empty
+            if not job.company or job.company.strip() == "":
+                # Try og:title format: "Job Title at Company Name"
+                og_title_match = re.search(
+                    r'<meta\s+property="og:title"\s+content="([^"]*)"',
+                    text, re.IGNORECASE
+                )
+                if og_title_match:
+                    og_title = og_title_match.group(1)
+                    # Pattern: "Title hiring Job at Location" or "Company hiring Title"
+                    at_match = re.search(r'\s+at\s+(.+?)(?:\s*\||\s*-|\s*$)', og_title)
+                    hiring_match = re.search(r'^(.+?)\s+hiring\s+', og_title)
+                    if at_match:
+                        job.company = at_match.group(1).strip()
+                    elif hiring_match:
+                        job.company = hiring_match.group(1).strip()
+                # Fallback: look for company name in sub-header
+                if not job.company or job.company.strip() == "":
+                    company_match = re.search(
+                        r'class="[^"]*topcard[^"]*company[^"]*"[^>]*>([^<]+)<',
+                        text, re.IGNORECASE
+                    )
+                    if not company_match:
+                        company_match = re.search(
+                            r'<a[^>]*class="[^"]*topcard__org-name[^"]*"[^>]*>([^<]+)<',
+                            text, re.IGNORECASE
+                        )
+                    if company_match:
+                        job.company = company_match.group(1).strip()
+
+            # Extract company logo from LinkedIn page if missing
+            if not job.company_logo:
+                # LinkedIn puts company logo in img tags with specific classes
+                logo_match = re.search(
+                    r'<img[^>]*class="[^"]*artdeco-entity-image[^"]*"[^>]*src="([^"]+)"',
+                    text, re.IGNORECASE
+                )
+                if not logo_match:
+                    logo_match = re.search(
+                        r'<img[^>]*data-delayed-url="([^"]+)"[^>]*class="[^"]*artdeco-entity-image',
+                        text, re.IGNORECASE
+                    )
+                if not logo_match:
+                    # Try og:image as fallback (sometimes it's the company logo)
+                    logo_match = re.search(
+                        r'<meta\s+property="og:image"\s+content="([^"]*)"',
+                        text, re.IGNORECASE
+                    )
+                if logo_match:
+                    logo_url = logo_match.group(1)
+                    if logo_url.startswith("http") and "linkedin" not in logo_url.lower():
+                        job.company_logo = logo_url
+
+                # If still no logo but we have company name, use apistemic
+                if not job.company_logo and job.company:
+                    cleaned = re.sub(r'[^a-z0-9]', '', job.company.lower())
+                    if len(cleaned) >= 2:
+                        job.company_logo = f"https://logos-api.apistemic.com/domain:{cleaned}.com?fallback=404"
+
             if description:
                 job.description = description
-                db.commit()
+            db.commit()
             return {
                 "id": job.id,
                 "description": job.description or "",
                 "apply_url": job.url,
                 "company_logo": job.company_logo or "",
+                "company": job.company or "",
             }
 
         # Strategy 1: Extract schema.org JSON-LD JobPosting
@@ -467,6 +574,86 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
             "apply_url": job.url,
             "company_logo": job.company_logo or "",
         }
+
+
+@router.post("/{job_id}/structure-description")
+async def structure_description(job_id: int, db: Session = Depends(get_db)):
+    """Parse a job description into structured sections using Gemini AI. Cached in DB."""
+    import json
+    from backend.services.llm import get_llm_service
+
+    job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    if not job.description or len(job.description) < 50:
+        return {"sections": [], "skills": [], "error": "No description available"}
+
+    # Check cache (stored in company_description field as JSON)
+    if job.company_description and job.company_description.startswith("{"):
+        try:
+            cached = json.loads(job.company_description)
+            if cached.get("sections"):
+                return cached
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    llm = get_llm_service()
+
+    prompt = f"""Parse this job description into structured sections. Return a JSON object with:
+{{
+  "sections": [
+    {{"title": "Responsibilities", "icon": "clipboard-list", "items": ["item 1", "item 2", ...]}},
+    {{"title": "Qualifications", "icon": "graduation-cap", "subsections": [
+      {{"title": "Required", "items": ["item 1", ...]}},
+      {{"title": "Preferred", "items": ["item 1", ...]}}
+    ]}},
+    {{"title": "Benefits", "icon": "gift", "items": ["item 1", ...]}}
+  ],
+  "skills": ["Python", "Java", "AWS", "SQL", ...],
+  "experience_years": "2-4",
+  "education": "BS/MS in Computer Science"
+}}
+
+Rules:
+- Extract ALL bullet points into the appropriate section
+- Skills should be specific technologies, tools, languages, frameworks
+- If a section doesn't exist in the description, omit it
+- Keep items concise (one sentence each)
+- Include 5-15 skills maximum
+
+Job Description:
+{job.description[:4000]}"""
+
+    try:
+        response = await llm._generate(prompt)
+        # Parse JSON from response
+        json_str = response.strip()
+        if "```" in json_str:
+            parts = json_str.split("```")
+            for part in parts:
+                part = part.strip()
+                if part.startswith("json"):
+                    part = part[4:].strip()
+                if part.startswith("{"):
+                    json_str = part
+                    break
+        if not json_str.startswith("{"):
+            start = json_str.find("{")
+            end = json_str.rfind("}")
+            if start >= 0 and end > start:
+                json_str = json_str[start:end + 1]
+
+        data = json.loads(json_str)
+
+        # Cache the result in DB
+        if data.get("sections"):
+            job.company_description = json.dumps(data)
+            db.commit()
+
+        return data
+    except Exception as e:
+        return {"sections": [], "skills": [], "error": str(e)}
 
 
 @router.post("/{job_id}/save", response_model=ScrapedJobOut)

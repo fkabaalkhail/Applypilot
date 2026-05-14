@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import api from "../auth/api";
+import ResumePreview from "../components/ResumePreview";
 import "../resume.css";
 
 /* ===== TypeScript Interfaces ===== */
@@ -111,6 +112,41 @@ export default function ResumeDetail() {
   const [toast, setToast] = useState<ToastProps | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const handleExport = useCallback(() => {
+    if (!profile) return;
+    // Generate a simple text resume and download it
+    let text = `${profile.name}\n${profile.email} | ${profile.phone} | ${profile.location}\n`;
+    if (profile.linkedin_url) text += `LinkedIn: ${profile.linkedin_url}\n`;
+    if (profile.github_url) text += `GitHub: ${profile.github_url}\n`;
+    text += "\n--- EDUCATION ---\n";
+    for (const edu of profile.education) {
+      text += `${edu.school} | ${edu.degree} | ${edu.start_date} - ${edu.end_date}\n`;
+      if (edu.gpa) text += `GPA: ${edu.gpa}\n`;
+    }
+    text += "\n--- EXPERIENCE ---\n";
+    for (const exp of profile.experience) {
+      text += `${exp.title} | ${exp.company} | ${exp.location} | ${exp.start_date} - ${exp.end_date || "Present"}\n`;
+      for (const b of exp.bullets) { if (b.trim()) text += `• ${b}\n`; }
+      text += "\n";
+    }
+    text += "--- SKILLS ---\n";
+    text += profile.skills.join(", ") + "\n";
+    text += "\n--- PROJECTS ---\n";
+    for (const proj of profile.projects) {
+      text += `${proj.name}${proj.organization ? ` | ${proj.organization}` : ""}\n`;
+      for (const b of proj.bullets) { if (b.trim()) text += `• ${b}\n`; }
+      text += "\n";
+    }
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${profile.name || "resume"}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [profile]);
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type });
@@ -327,7 +363,28 @@ export default function ResumeDetail() {
       <div className="resume-detail-header">
         <h1>{resume.name}</h1>
         {resume.is_primary && <span className="badge-primary">PRIMARY</span>}
+        <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
+          <button className="btn-pill" onClick={() => setShowPreview(true)}>
+            <i className="fa-solid fa-eye" style={{ marginRight: "0.3rem" }}></i> Preview
+          </button>
+          <button className="btn-pill" onClick={handleExport}>
+            <i className="fa-solid fa-download" style={{ marginRight: "0.3rem" }}></i> Export
+          </button>
+        </div>
       </div>
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <div className="preview-modal-overlay" onClick={() => setShowPreview(false)}>
+          <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="preview-modal-close" onClick={() => setShowPreview(false)}>×</button>
+            <ResumePreview profile={profile} originalProfile={resume.profile} />
+          </div>
+        </div>
+      )}
+
+      <div className="resume-detail-split">
+        <div className="resume-detail-editor">
 
       {/* Analysis Report Section */}
       <div className="section-card" data-testid="analysis-report-section">
@@ -775,6 +832,10 @@ export default function ResumeDetail() {
         >
           {saving ? "Saving..." : "Save Changes"}
         </button>
+      </div>
+
+        </div>
+        {/* Preview is now a modal, not side-by-side */}
       </div>
     </div>
   );
