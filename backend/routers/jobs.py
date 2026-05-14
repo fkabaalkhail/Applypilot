@@ -518,7 +518,7 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{job_id}/structure-description")
 async def structure_description(job_id: int, db: Session = Depends(get_db)):
-    """Parse a job description into structured sections using Gemini AI."""
+    """Parse a job description into structured sections using Gemini AI. Cached in DB."""
     import json
     from backend.services.llm import get_llm_service
 
@@ -528,6 +528,15 @@ async def structure_description(job_id: int, db: Session = Depends(get_db)):
 
     if not job.description or len(job.description) < 50:
         return {"sections": [], "skills": [], "error": "No description available"}
+
+    # Check cache (stored in company_description field as JSON)
+    if job.company_description and job.company_description.startswith("{"):
+        try:
+            cached = json.loads(job.company_description)
+            if cached.get("sections"):
+                return cached
+        except (json.JSONDecodeError, TypeError):
+            pass
 
     llm = get_llm_service()
 
@@ -576,6 +585,12 @@ Job Description:
                 json_str = json_str[start:end + 1]
 
         data = json.loads(json_str)
+
+        # Cache the result in DB
+        if data.get("sections"):
+            job.company_description = json.dumps(data)
+            db.commit()
+
         return data
     except Exception as e:
         return {"sections": [], "skills": [], "error": str(e)}
