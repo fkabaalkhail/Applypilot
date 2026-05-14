@@ -16,7 +16,6 @@ export default function SignUpPage() {
     e.preventDefault();
     setError("");
 
-    // Client-side validation
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
       return;
@@ -61,85 +60,99 @@ export default function SignUpPage() {
 
   return (
     <div className="auth-page">
-      <div className="auth-card">
-        <div className="auth-header">
-          <img src="/logo-icon.png" alt="Resumate" className="auth-logo" />
-          <h1 className="auth-title">Create your account</h1>
-          <p className="auth-subtitle">Get started with Resumate</p>
+      <div className="auth-container">
+        {/* Left form panel */}
+        <div className="auth-form-panel">
+          <div className="auth-form-header">
+            <h1 className="auth-form-title">Create Account</h1>
+            <p className="auth-form-subtitle">Get started with Resumate</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="auth-form">
+            {error && (
+              <div className="auth-error" role="alert">
+                {error}
+              </div>
+            )}
+
+            <div className="auth-field">
+              <label htmlFor="email" className="auth-label">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="auth-input"
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+              />
+            </div>
+
+            <div className="auth-field">
+              <label htmlFor="password" className="auth-label">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="auth-input"
+                placeholder="••••••••"
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </div>
+
+            <div className="auth-field">
+              <label htmlFor="confirm-password" className="auth-label">
+                Confirm Password
+              </label>
+              <input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="auth-input"
+                placeholder="••••••••"
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="auth-submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Creating account..." : "Sign Up"}
+            </button>
+          </form>
+
+          <p className="auth-footer">
+            Already have an account?{" "}
+            <Link to="/sign-in" className="auth-link">
+              Sign in
+            </Link>
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          {error && (
-            <div className="auth-error" role="alert">
-              {error}
-            </div>
-          )}
-
-          <div className="auth-field">
-            <label htmlFor="email" className="auth-label">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="auth-input"
-              placeholder="you@example.com"
-              required
-              autoComplete="email"
-            />
-          </div>
-
-          <div className="auth-field">
-            <label htmlFor="password" className="auth-label">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="auth-input"
-              placeholder="••••••••"
-              required
-              minLength={8}
-              autoComplete="new-password"
-            />
-          </div>
-
-          <div className="auth-field">
-            <label htmlFor="confirm-password" className="auth-label">
-              Confirm Password
-            </label>
-            <input
-              id="confirm-password"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="auth-input"
-              placeholder="••••••••"
-              required
-              minLength={8}
-              autoComplete="new-password"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="auth-submit"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "Creating account..." : "Sign up"}
-          </button>
-        </form>
-
-        <p className="auth-footer">
-          Already have an account?{" "}
-          <Link to="/sign-in" className="auth-link">
-            Sign in
+        {/* Right overlay panel */}
+        <div className="auth-overlay auth-overlay--right">
+          <img src="/logo-icon.png" alt="Resumate" className="auth-overlay-logo" />
+          <h2 className="auth-overlay-title">Welcome Back!</h2>
+          <p className="auth-overlay-text">
+            Already have an account? Sign in to access your dashboard and job matches.
+          </p>
+          <Link to="/sign-in" className="auth-overlay-btn">
+            Sign In
           </Link>
-        </p>
+        </div>
       </div>
     </div>
   );
