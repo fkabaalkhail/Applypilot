@@ -6,6 +6,7 @@ Supported platforms:
 - Greenhouse (boards-api.greenhouse.io)
 - Lever (api.lever.co)
 - Ashby (api.ashbyhq.com)
+- SmartRecruiters (api.smartrecruiters.com)
 
 These APIs are public and intended for job board consumption.
 No authentication required.
@@ -107,7 +108,13 @@ ATS_COMPANIES: list[tuple[str, str, str]] = [
     ("greenhouse", "waymo", "Waymo"),
     ("greenhouse", "webflow", "Webflow"),
     ("greenhouse", "zscaler", "Zscaler"),
-    # === Lever companies (8) ===
+    ("greenhouse", "coinbase", "Coinbase"),
+    ("greenhouse", "doordash", "DoorDash"),
+    ("greenhouse", "snap", "Snap"),
+    ("greenhouse", "openai", "OpenAI"),
+    ("greenhouse", "wealthsimple", "Wealthsimple"),
+    ("greenhouse", "clio", "Clio"),
+    # === Lever companies ===
     ("lever", "anyscale", "Anyscale"),
     ("lever", "gopuff", "GoPuff"),
     ("lever", "neon", "Neon"),
@@ -116,6 +123,9 @@ ATS_COMPANIES: list[tuple[str, str, str]] = [
     ("lever", "spotify", "Spotify"),
     ("lever", "veeva", "Veeva Systems"),
     ("lever", "zoox", "Zoox"),
+    ("lever", "netflix", "Netflix"),
+    ("lever", "wattpad", "Wattpad"),
+    ("lever", "fullscript", "Fullscript"),
     # === Ashby companies ===
     ("ashby", "vanta", "Vanta"),
     ("ashby", "notion", "Notion"),
@@ -129,6 +139,17 @@ ATS_COMPANIES: list[tuple[str, str, str]] = [
     ("ashby", "airtable", "Airtable"),
     ("ashby", "deel", "Deel"),
     ("ashby", "rippling", "Rippling"),
+    ("ashby", "openphone", "OpenPhone"),
+    ("ashby", "loom", "Loom"),
+    # === SmartRecruiters companies ===
+    ("smartrecruiters", "Visa", "Visa"),
+    ("smartrecruiters", "BoschGroup", "Bosch"),
+    ("smartrecruiters", "Accenture1", "Accenture"),
+    ("smartrecruiters", "DHL", "DHL"),
+    ("smartrecruiters", "Adidas", "Adidas"),
+    ("smartrecruiters", "Sanofi", "Sanofi"),
+    ("smartrecruiters", "Ubisoft", "Ubisoft"),
+    ("smartrecruiters", "Deloitte4", "Deloitte"),
 ]
 
 
@@ -224,6 +245,8 @@ class ATSScraper:
                         jobs = await self._scrape_lever(client, slug, company_name)
                     elif platform == "ashby":
                         jobs = await self._scrape_ashby(client, slug, company_name)
+                    elif platform == "smartrecruiters":
+                        jobs = await self._scrape_smartrecruiters(client, slug, company_name)
                     else:
                         continue
 
@@ -248,6 +271,8 @@ class ATSScraper:
                 return await self._scrape_lever(client, slug, company_name)
             elif platform == "ashby":
                 return await self._scrape_ashby(client, slug, company_name)
+            elif platform == "smartrecruiters":
+                return await self._scrape_smartrecruiters(client, slug, company_name)
             return []
 
     async def _scrape_greenhouse(self, client: httpx.AsyncClient, slug: str, company_name: str) -> list[ATSJob]:
@@ -369,6 +394,64 @@ class ATSScraper:
             if published_at:
                 try:
                     posted_date = datetime.datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    pass
+
+            job = ATSJob(
+                title=title,
+                company=company_name,
+                location=location,
+                url=job_url,
+                posted_date=posted_date,
+                department=department,
+                work_type=self._detect_work_type(location, title),
+            )
+
+            if self._passes_filters(job):
+                jobs.append(job)
+
+        return jobs
+
+    async def _scrape_smartrecruiters(self, client: httpx.AsyncClient, identifier: str, company_name: str) -> list[ATSJob]:
+        """Scrape jobs from SmartRecruiters postings API.
+
+        API: https://api.smartrecruiters.com/v1/companies/{identifier}/postings
+        """
+        url = f"https://api.smartrecruiters.com/v1/companies/{identifier}/postings"
+        params = {"limit": "100"}
+
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        jobs: list[ATSJob] = []
+        for job_data in data.get("content", []):
+            title = job_data.get("name", "")
+
+            # Build location from city, region, country
+            loc_info = job_data.get("location", {})
+            loc_parts = [
+                loc_info.get("city", ""),
+                loc_info.get("region", ""),
+                loc_info.get("country", ""),
+            ]
+            location = ", ".join(part for part in loc_parts if part)
+
+            # Use ref_url or construct from identifier + id
+            job_url = job_data.get("ref_url", "")
+            if not job_url:
+                job_id = job_data.get("id", "")
+                job_url = f"https://careers.smartrecruiters.com/{identifier}/{job_id}"
+
+            released_date = job_data.get("releasedDate", "")
+            department_info = job_data.get("department", {})
+            department = department_info.get("label", "") if department_info else ""
+
+            # Parse date
+            posted_date = None
+            if released_date:
+                try:
+                    posted_date = datetime.datetime.fromisoformat(released_date.replace("Z", "+00:00"))
                 except (ValueError, TypeError):
                     pass
 
