@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { useAuthFetch } from "../hooks/useAuthFetch";
+import ResumePreview from "../components/ResumePreview";
 import "../resume.css";
 
 /* ===== TypeScript Interfaces ===== */
@@ -348,6 +349,10 @@ export default function ResumeDetail() {
         <h1>{resume.name}</h1>
         {resume.is_primary && <span className="badge-primary">PRIMARY</span>}
       </div>
+
+      <div className="resume-detail-split">
+        {/* Left: Editor */}
+        <div className="resume-detail-editor">
 
       {/* Analysis Report Section */}
       <div className="section-card" data-testid="analysis-report-section">
@@ -795,6 +800,13 @@ export default function ResumeDetail() {
         >
           {saving ? "Saving..." : "Save Changes"}
         </button>
+      </div>
+
+        </div>
+        {/* Right: Live Preview */}
+        <div className="resume-detail-preview">
+          <ResumePreview profile={profile} originalProfile={resume.profile} />
+        </div>
       </div>
     </div>
   );
