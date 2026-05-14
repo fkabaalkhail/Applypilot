@@ -86,7 +86,7 @@ function getCompanyLogoUrl(company: string, companyLogo: string): string | null 
 }
 
 // On error: try next source, then hide
-function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, company: string, companyLogo: string) {
+function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, company: string, _companyLogo: string) {
   const img = e.target as HTMLImageElement;
   const src = img.src;
   const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
