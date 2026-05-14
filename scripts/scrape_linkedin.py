@@ -140,16 +140,8 @@ async def search_linkedin(client: httpx.AsyncClient, query: str, city: str, prov
     return []
 
 
-async def push_job_to_api(client: httpx.AsyncClient, job: Job) -> bool:
-    """Push a job to the Tailrd API. Returns True if new, False if duplicate."""
-    # Check if already exists
-    resp = await client.get(f"{API_BASE}/jobs", params={"search": job.url[:50], "page_size": 1})
-    if resp.status_code == 200:
-        existing = resp.json()
-        for j in existing:
-            if j.get("url") == job.url:
-                return False  # Already exists
-
+async def push_job_to_api(client: httpx.AsyncClient, job: Job) -> str:
+    """Push a job to the Tailrd API. Returns 'created', 'duplicate', or 'error'."""
     # Determine experience level
     title_lower = job.title.lower()
     if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
@@ -166,9 +158,31 @@ async def push_job_to_api(client: httpx.AsyncClient, job: Job) -> bool:
     else:
         work_type = "onsite"
 
-    # We can't directly create jobs via the API (no create endpoint),
-    # so we'll just print them for now and you can add them via the DB
-    return True
+    # Determine country
+    country = "CA"  # Default for Canadian cities
+    if any(x in loc_lower for x in ["united states", "usa", ", ca", ", ny", ", tx"]):
+        country = "US"
+
+    try:
+        resp = await client.post(
+            f"{API_BASE}/jobs/create",
+            params={
+                "title": job.title,
+                "company": job.company,
+                "location": job.location,
+                "url": job.url,
+                "source_platform": "linkedin",
+                "experience_level": exp_level,
+                "work_type": work_type,
+                "country": country,
+            },
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("status", "error")
+        return "error"
+    except Exception:
+        return "error"
 
 
 async def main():
@@ -208,13 +222,26 @@ async def main():
 
     print(f"\n{'='*60}")
     print(f"Total unique jobs found: {len(all_jobs)}")
-    print(f"{'='*60}\n")
+    print(f"{'='*60}")
 
-    for i, job in enumerate(all_jobs, 1):
-        print(f"{i:3}. {job.company:20} | {job.title}")
-        print(f"     {job.location}")
-        print(f"     {job.url}")
-        print()
+    # Push jobs to the API
+    print(f"\nPushing jobs to {API_BASE}...")
+    created = 0
+    duplicates = 0
+    errors = 0
+
+    async with httpx.AsyncClient(timeout=30) as api_client:
+        for job in all_jobs:
+            result = await push_job_to_api(api_client, job)
+            if result == "created":
+                created += 1
+            elif result == "duplicate":
+                duplicates += 1
+            else:
+                errors += 1
+
+    print(f"\nResults: {created} created, {duplicates} duplicates, {errors} errors")
+    print(f"Total in DB: check {API_BASE}/jobs/stats")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,29 @@
+name: Scrape Jobs
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install httpx
+      - name: Run LinkedIn scraper
+        run: python scripts/scrape_linkedin.py
+      - name: Trigger ATS scraper
+        run: |
+          curl -X POST "https://www.tailrd.ca/github-sources/scrape-ats" \
+            -H "Content-Type: application/json" \
+            --max-time 300 || true
+      - name: Trigger GitHub aggregator
+        run: |
+          curl -X POST "https://www.tailrd.ca/github-sources/cron-poll" \
+            -H "Content-Type: application/json" \
+            --max-time 300 || true

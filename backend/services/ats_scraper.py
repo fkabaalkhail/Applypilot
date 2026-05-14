@@ -5,6 +5,7 @@ for job listings with direct company apply links.
 Supported platforms:
 - Greenhouse (boards-api.greenhouse.io)
 - Lever (api.lever.co)
+- Ashby (api.ashbyhq.com)
 
 These APIs are public and intended for job board consumption.
 No authentication required.
@@ -115,6 +116,19 @@ ATS_COMPANIES: list[tuple[str, str, str]] = [
     ("lever", "spotify", "Spotify"),
     ("lever", "veeva", "Veeva Systems"),
     ("lever", "zoox", "Zoox"),
+    # === Ashby companies ===
+    ("ashby", "vanta", "Vanta"),
+    ("ashby", "notion", "Notion"),
+    ("ashby", "ramp", "Ramp"),
+    ("ashby", "linear", "Linear"),
+    ("ashby", "mercury", "Mercury"),
+    ("ashby", "retool", "Retool"),
+    ("ashby", "watershed", "Watershed"),
+    ("ashby", "anduril", "Anduril"),
+    ("ashby", "plaid", "Plaid"),
+    ("ashby", "airtable", "Airtable"),
+    ("ashby", "deel", "Deel"),
+    ("ashby", "rippling", "Rippling"),
 ]
 
 
@@ -208,6 +222,8 @@ class ATSScraper:
                         jobs = await self._scrape_greenhouse(client, slug, company_name)
                     elif platform == "lever":
                         jobs = await self._scrape_lever(client, slug, company_name)
+                    elif platform == "ashby":
+                        jobs = await self._scrape_ashby(client, slug, company_name)
                     else:
                         continue
 
@@ -230,6 +246,8 @@ class ATSScraper:
                 return await self._scrape_greenhouse(client, slug, company_name)
             elif platform == "lever":
                 return await self._scrape_lever(client, slug, company_name)
+            elif platform == "ashby":
+                return await self._scrape_ashby(client, slug, company_name)
             return []
 
     async def _scrape_greenhouse(self, client: httpx.AsyncClient, slug: str, company_name: str) -> list[ATSJob]:
@@ -311,6 +329,48 @@ class ATSScraper:
 
             department = categories.get("department", "")
             commitment = categories.get("commitment", "")  # e.g., "Full-time", "Intern"
+
+            job = ATSJob(
+                title=title,
+                company=company_name,
+                location=location,
+                url=job_url,
+                posted_date=posted_date,
+                department=department,
+                work_type=self._detect_work_type(location, title),
+            )
+
+            if self._passes_filters(job):
+                jobs.append(job)
+
+        return jobs
+
+    async def _scrape_ashby(self, client: httpx.AsyncClient, slug: str, company_name: str) -> list[ATSJob]:
+        """Scrape jobs from Ashby posting API.
+
+        API: https://api.ashbyhq.com/posting-api/job-board/{slug}
+        """
+        url = f"https://api.ashbyhq.com/posting-api/job-board/{slug}"
+
+        response = await client.get(url)
+        response.raise_for_status()
+        data = response.json()
+
+        jobs: list[ATSJob] = []
+        for job_data in data.get("jobs", []):
+            title = job_data.get("title", "")
+            location = job_data.get("location", "")
+            job_url = job_data.get("jobUrl", "")
+            published_at = job_data.get("publishedAt", "")
+            department = job_data.get("departmentName", "")
+
+            # Parse date
+            posted_date = None
+            if published_at:
+                try:
+                    posted_date = datetime.datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    pass
 
             job = ATSJob(
                 title=title,

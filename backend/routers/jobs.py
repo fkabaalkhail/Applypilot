@@ -102,6 +102,47 @@ def list_jobs(
     return q.all()
 
 
+@router.post("/create")
+def create_job(
+    title: str,
+    company: str,
+    location: str,
+    url: str,
+    source_platform: str = "linkedin",
+    experience_level: str = "new_grad",
+    work_type: str = "onsite",
+    country: str = "CA",
+    db: Session = Depends(get_db),
+):
+    """Create a new job listing (used by scrapers to push jobs)."""
+    # Dedup by URL
+    existing = db.query(ScrapedJob).filter(ScrapedJob.url == url).first()
+    if existing:
+        return {"status": "duplicate", "id": existing.id}
+
+    import re
+    cleaned_company = re.sub(r'[^a-z0-9]', '', company.lower())
+
+    job = ScrapedJob(
+        title=title,
+        company=company,
+        location=location,
+        url=url,
+        description="",
+        source_platform=source_platform,
+        easy_apply=0,
+        work_type=work_type,
+        role_category="",
+        country=country,
+        experience_level=experience_level,
+        company_logo=f"https://icon.horse/icon/{cleaned_company}.com",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return {"status": "created", "id": job.id}
+
+
 @router.get("/stats")
 def job_stats(db: Session = Depends(get_db)):
     """Return aggregate job stats with breakdowns by country, work_type, role_category, experience_level."""
