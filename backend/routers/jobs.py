@@ -516,6 +516,71 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
         }
 
 
+@router.post("/{job_id}/structure-description")
+async def structure_description(job_id: int, db: Session = Depends(get_db)):
+    """Parse a job description into structured sections using Gemini AI."""
+    import json
+    from backend.services.llm import get_llm_service
+
+    job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    if not job.description or len(job.description) < 50:
+        return {"sections": [], "skills": [], "error": "No description available"}
+
+    llm = get_llm_service()
+
+    prompt = f"""Parse this job description into structured sections. Return a JSON object with:
+{{
+  "sections": [
+    {{"title": "Responsibilities", "icon": "clipboard-list", "items": ["item 1", "item 2", ...]}},
+    {{"title": "Qualifications", "icon": "graduation-cap", "subsections": [
+      {{"title": "Required", "items": ["item 1", ...]}},
+      {{"title": "Preferred", "items": ["item 1", ...]}}
+    ]}},
+    {{"title": "Benefits", "icon": "gift", "items": ["item 1", ...]}}
+  ],
+  "skills": ["Python", "Java", "AWS", "SQL", ...],
+  "experience_years": "2-4",
+  "education": "BS/MS in Computer Science"
+}}
+
+Rules:
+- Extract ALL bullet points into the appropriate section
+- Skills should be specific technologies, tools, languages, frameworks
+- If a section doesn't exist in the description, omit it
+- Keep items concise (one sentence each)
+- Include 5-15 skills maximum
+
+Job Description:
+{job.description[:4000]}"""
+
+    try:
+        response = await llm._generate(prompt)
+        # Parse JSON from response
+        json_str = response.strip()
+        if "```" in json_str:
+            parts = json_str.split("```")
+            for part in parts:
+                part = part.strip()
+                if part.startswith("json"):
+                    part = part[4:].strip()
+                if part.startswith("{"):
+                    json_str = part
+                    break
+        if not json_str.startswith("{"):
+            start = json_str.find("{")
+            end = json_str.rfind("}")
+            if start >= 0 and end > start:
+                json_str = json_str[start:end + 1]
+
+        data = json.loads(json_str)
+        return data
+    except Exception as e:
+        return {"sections": [], "skills": [], "error": str(e)}
+
+
 @router.post("/{job_id}/save", response_model=ScrapedJobOut)
 def save_job(
     job_id: int,

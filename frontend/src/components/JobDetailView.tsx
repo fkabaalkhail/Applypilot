@@ -90,6 +90,7 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [description, setDescription] = useState(job.description || "");
   const [companyLogo, setCompanyLogo] = useState(job.company_logo || "");
   const [fetchingDetails, setFetchingDetails] = useState(false);
+  const [structured, setStructured] = useState<any>(null);
 
   useEffect(() => {
     // Reset local state when job changes to avoid stale data from previous job
@@ -98,6 +99,7 @@ export default function JobDetailView({ job, onClose }: Props) {
     setCompanyLogo(job.company_logo || "");
     setBreakdown(null);
     setError("");
+    setStructured(null);
 
     // Fetch actual job URL and description
     fetchJobDetails();
@@ -114,6 +116,15 @@ export default function JobDetailView({ job, onClose }: Props) {
       triggerAnalysis();
     }
   }, [job.id]);
+
+  useEffect(() => {
+    if (description && description.length > 50) {
+      fetch(`${API_BASE}/jobs/${job.id}/structure-description`, { method: "POST" })
+        .then(r => r.json())
+        .then(data => { if (data.sections && data.sections.length > 0) setStructured(data); })
+        .catch(() => {});
+    }
+  }, [job.id, description]);
 
   async function fetchJobDetails() {
     // Use job.description directly to avoid stale closure from state
@@ -268,6 +279,42 @@ export default function JobDetailView({ job, onClose }: Props) {
               <div className="description-loading">
                 <div className="spinner" />
                 <span>Loading job details...</span>
+              </div>
+            ) : structured ? (
+              <div className="structured-description">
+                {/* Skill tags */}
+                {structured.skills && structured.skills.length > 0 && (
+                  <div className="skill-tags">
+                    {structured.skills.map((skill: string, i: number) => (
+                      <span key={i} className="skill-tag">{skill}</span>
+                    ))}
+                  </div>
+                )}
+                {/* Sections */}
+                {structured.sections.map((section: any, i: number) => (
+                  <div key={i} className="desc-section">
+                    <h3 className="desc-section-title">
+                      <i className={`fa-solid fa-${section.icon || 'list'}`}></i> {section.title}
+                    </h3>
+                    {section.items && (
+                      <ul className="desc-section-list">
+                        {section.items.map((item: string, j: number) => (
+                          <li key={j}>{item}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {section.subsections && section.subsections.map((sub: any, k: number) => (
+                      <div key={k} className="desc-subsection">
+                        <h4 className="desc-subsection-title">{sub.title}</h4>
+                        <ul className="desc-section-list">
+                          {sub.items.map((item: string, j: number) => (
+                            <li key={j}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ))}
               </div>
             ) : description ? (
               <div className="description-content" dangerouslySetInnerHTML={{ __html: description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n') }} />
