@@ -119,7 +119,6 @@ export default function Interview() {
 function QuestionCard({ question }: { question: any }) {
   const [expanded, setExpanded] = useState(false);
   const q = question;
-  const hasUrl = q.url && q.url.length > 0;
 
   return (
     <div className={`interview-question-card ${expanded ? "expanded" : ""}`} onClick={() => setExpanded(!expanded)}>
