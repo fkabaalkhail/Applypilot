@@ -82,18 +82,19 @@ function getCompanyLogoUrl(company: string, companyLogo: string): string | null 
     if (cleaned.length < 2) return null;
     domain = `${cleaned}.com`;
   }
-  return `https://logos.hunter.io/${domain}`;
+  // Primary: apistemic (good quality, proper aspect ratio)
+  return `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
 }
 
-// On error: try next source, then hide
+// On error: try Hunter.io, then hide
 function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, company: string, _companyLogo: string) {
   const img = e.target as HTMLImageElement;
   const src = img.src;
   const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
   const domain = cleaned.length >= 2 ? `${cleaned}.com` : "";
 
-  if (src.includes("logos.hunter.io") && domain) {
-    img.src = `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
+  if (src.includes("apistemic.com") && domain) {
+    img.src = `https://logos.hunter.io/${domain}`;
   } else {
     img.style.display = "none";
   }
