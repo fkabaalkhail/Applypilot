@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { useAuthFetch } from "../hooks/useAuthFetch";
+import api from "../auth/api";
 import "../resume.css";
 
 /* ===== TypeScript Interfaces ===== */
@@ -111,7 +111,6 @@ export default function ResumeDetail() {
   const [toast, setToast] = useState<ToastProps | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
-  const authFetch = useAuthFetch();
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type });
@@ -123,77 +122,58 @@ export default function ResumeDetail() {
       try {
         setLoading(true);
         setError(null);
-        const res = await authFetch(`/resumes/${id}`);
-        if (!res.ok) {
-          throw new Error(`Failed to load resume (status ${res.status})`);
-        }
-        const data: ResumeDetailData = await res.json();
+        const res = await api.get(`/resumes/${id}`);
+        const data: ResumeDetailData = res.data;
         setResume(data);
         setProfile({ ...data.profile });
         setAnalysisReport(data.analysis_report || null);
       } catch (err: any) {
-        setError(err.message || "Could not load resume.");
+        setError(err.response?.data?.detail || err.message || "Could not load resume.");
       } finally {
         setLoading(false);
       }
     }
     if (id) fetchResume();
-  }, [id, authFetch]);
+  }, [id]);
 
   const handleSave = useCallback(async () => {
     if (!profile || !id) return;
     setSaving(true);
     try {
-      const res = await authFetch(`/resumes/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile }),
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null);
-        throw new Error(errorData?.detail || `Save failed (status ${res.status})`);
-      }
+      await api.put(`/resumes/${id}`, { profile });
       showToast("Resume saved successfully!", "success");
     } catch (err: any) {
-      showToast(err.message || "Failed to save resume.", "error");
+      showToast(err.response?.data?.detail || err.message || "Failed to save resume.", "error");
     } finally {
       setSaving(false);
     }
-  }, [profile, id, showToast, authFetch]);
+  }, [profile, id, showToast]);
 
   const handleAnalyze = useCallback(async () => {
     if (!id) return;
     setAnalyzing(true);
     try {
-      const res = await authFetch(`/resumes/${id}/analyze`, { method: "POST" });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null);
-        throw new Error(errorData?.detail || "Analysis could not be completed");
-      }
-      const report: AnalysisReport = await res.json();
+      const res = await api.post(`/resumes/${id}/analyze`);
+      const report: AnalysisReport = res.data;
       setAnalysisReport(report);
       setResume((prev) => prev ? { ...prev, analysis_report: report } : prev);
     } catch (err: any) {
-      showToast(err.message || "Analysis could not be completed", "error");
+      showToast(err.response?.data?.detail || err.message || "Analysis could not be completed", "error");
     } finally {
       setAnalyzing(false);
     }
-  }, [id, showToast, authFetch]);
+  }, [id, showToast]);
 
   const handleSetPrimary = useCallback(async () => {
     if (!id) return;
     try {
-      const res = await authFetch(`/resumes/${id}/primary`, { method: "PUT" });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null);
-        throw new Error(errorData?.detail || "Failed to set as primary");
-      }
+      await api.put(`/resumes/${id}/primary`);
       setResume((prev) => prev ? { ...prev, is_primary: true } : prev);
       showToast("Resume set as primary!", "success");
     } catch (err: any) {
-      showToast(err.message || "Failed to set as primary.", "error");
+      showToast(err.response?.data?.detail || err.message || "Failed to set as primary.", "error");
     }
-  }, [id, showToast, authFetch]);
+  }, [id, showToast]);
 
   const getGradeClass = (grade: string): string => {
     switch (grade) {

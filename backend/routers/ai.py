@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ScrapedJob, ResumeProfileDB
-from backend.auth.clerk import get_current_user_id
+from backend.auth.dependencies import get_current_user_id
 from backend.schemas.match import MatchBreakdown, FitAnalysis
 from backend.schemas.ai import TailoredResumeOut, CoverLetterOut
 from backend.services.match_engine import MatchEngine
@@ -29,7 +29,7 @@ router = APIRouter()
 LLM_503_DETAIL = "AI service unavailable. Please check your Gemini API key."
 
 
-def _get_resume_text(db: Session, user_id: str) -> str:
+def _get_resume_text(db: Session, user_id: int) -> str:
     """Get the user's resume text from their primary or most recent profile."""
     # Prefer primary resume
     profile = (
@@ -63,7 +63,7 @@ def _get_job(job_id: int, db: Session) -> ScrapedJob:
 @router.post("/match-breakdown/{job_id}", response_model=MatchBreakdown)
 async def match_breakdown(
     job_id: int,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Compute match score breakdown for a job."""
@@ -80,7 +80,7 @@ async def match_breakdown(
 @router.post("/tailor-resume/{job_id}", response_model=TailoredResumeOut)
 async def tailor_resume(
     job_id: int,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Generate a tailored resume for a job."""
@@ -98,7 +98,7 @@ async def tailor_resume(
 @router.post("/cover-letter/{job_id}", response_model=CoverLetterOut)
 async def cover_letter(
     job_id: int,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Generate a cover letter for a job."""
@@ -120,7 +120,7 @@ async def cover_letter(
 @router.post("/analyze-fit/{job_id}", response_model=FitAnalysis)
 async def analyze_fit(
     job_id: int,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Get detailed fit analysis for a job."""

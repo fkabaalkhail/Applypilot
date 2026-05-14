@@ -20,7 +20,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.db.database import Base, get_db
 from backend.db.models import ScrapedJob, ResumeProfileDB
-from backend.auth.clerk import get_current_user_id
+from backend.auth.dependencies import get_current_user_id
 from backend.routers import ai
 
 # Create a test-specific app with only the AI router (avoids production lifespan issues)
@@ -28,7 +28,7 @@ TEST_DATABASE_URL = "sqlite:///./test_ai_router.db"
 test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
-TEST_USER_ID = "test_user_123"
+TEST_USER_ID = 1
 
 ai_app = FastAPI()
 ai_app.include_router(ai.router, prefix="/ai", tags=["ai"])

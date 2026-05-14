@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useAuthFetch } from "../hooks/useAuthFetch";
+import api from "../auth/api";
 import "../settings.css";
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
@@ -217,7 +217,6 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const authFetch = useAuthFetch();
 
   // ─── Toast helpers ───────────────────────────────────────────────────────
 
@@ -239,11 +238,8 @@ export default function Settings() {
     try {
       setLoading(true);
       setError(null);
-      const res = await authFetch("/settings");
-      if (!res.ok) {
-        throw new Error(`Failed to load settings (status ${res.status})`);
-      }
-      const data = await res.json();
+      const res = await api.get("/settings");
+      const data = res.data;
       const settings: SettingsData = {
         first_name: data.first_name ?? "",
         last_name: data.last_name ?? "",
@@ -266,7 +262,7 @@ export default function Settings() {
       setOriginalData(settings);
       setPrefilledEntries(dictToEntries(settings.prefilled_answers));
     } catch (err: any) {
-      setError(err.message || "Could not load settings. Please check your connection.");
+      setError(err.response?.data?.detail || err.message || "Could not load settings. Please check your connection.");
     } finally {
       setLoading(false);
     }
@@ -288,17 +284,8 @@ export default function Settings() {
 
     try {
       setSaving(true);
-      const res = await authFetch("/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(diff),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        const detail = body?.detail || `Save failed (status ${res.status})`;
-        throw new Error(detail);
-      }
-      const data = await res.json();
+      const res = await api.put("/settings", diff);
+      const data = res.data;
       const updated: SettingsData = {
         first_name: data.first_name ?? "",
         last_name: data.last_name ?? "",
@@ -322,7 +309,7 @@ export default function Settings() {
       setPrefilledEntries(dictToEntries(updated.prefilled_answers));
       showToast("success", "Settings saved successfully.");
     } catch (err: any) {
-      showToast("error", err.message || "Failed to save settings.");
+      showToast("error", err.response?.data?.detail || err.message || "Failed to save settings.");
     } finally {
       setSaving(false);
     }
@@ -341,19 +328,8 @@ export default function Settings() {
     formDataUpload.append("file", file);
 
     try {
-      const res = await authFetch("/settings/resume", {
-        method: "POST",
-        body: formDataUpload,
-      });
-      if (!res.ok) {
-        if (res.status === 400) {
-          showToast("error", "Only PDF and DOCX files are accepted.");
-        } else {
-          showToast("error", "Resume upload failed.");
-        }
-        return;
-      }
-      const data = await res.json();
+      const res = await api.post("/settings/resume", formDataUpload);
+      const data = res.data;
       setFormData((prev) =>
         prev
           ? {
@@ -373,8 +349,12 @@ export default function Settings() {
           : prev
       );
       showToast("success", "Resume uploaded successfully.");
-    } catch {
-      showToast("error", "Resume upload failed.");
+    } catch (err: any) {
+      if (err.response?.status === 400) {
+        showToast("error", "Only PDF and DOCX files are accepted.");
+      } else {
+        showToast("error", "Resume upload failed.");
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuthFetch } from "../hooks/useAuthFetch";
+import api from "../auth/api";
 import "../resume.css";
 
 interface ResumeListItem {
@@ -19,24 +19,19 @@ export default function Resume() {
   const [error, setError] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const navigate = useNavigate();
-  const authFetch = useAuthFetch();
 
   const fetchResumes = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await authFetch("/resumes");
-      if (!res.ok) {
-        throw new Error(`Failed to load resumes (status ${res.status})`);
-      }
-      const data = await res.json();
-      setResumes(data);
+      const res = await api.get("/resumes");
+      setResumes(res.data);
     } catch (err: any) {
-      setError(err.message || "Could not load resumes. Please try again.");
+      setError(err.response?.data?.detail || err.message || "Could not load resumes. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, [authFetch]);
+  }, []);
 
   useEffect(() => {
     fetchResumes();
@@ -130,7 +125,6 @@ export default function Resume() {
         <UploadModal
           onClose={() => setShowUploadModal(false)}
           onUploadSuccess={() => fetchResumes()}
-          authFetch={authFetch}
         />
       )}
     </div>
@@ -164,7 +158,6 @@ function isValidFileType(file: File): boolean {
 interface UploadModalProps {
   onClose: () => void;
   onUploadSuccess: () => void;
-  authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 interface UploadResponse {
@@ -175,7 +168,7 @@ interface UploadResponse {
   };
 }
 
-function UploadModal({ onClose, onUploadSuccess, authFetch }: UploadModalProps) {
+function UploadModal({ onClose, onUploadSuccess }: UploadModalProps) {
   const [modalState, setModalState] = useState<ModalState>("upload");
   const [dragOver, setDragOver] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -224,26 +217,16 @@ function UploadModal({ onClose, onUploadSuccess, authFetch }: UploadModalProps) 
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await authFetch("/resumes/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await api.post("/resumes/upload", formData);
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null);
-        const message = errorData?.detail || `Upload failed (status ${res.status})`;
-        setApiError(message);
-        setModalState("error");
-        return;
-      }
-
-      const data: UploadResponse = await res.json();
+      const data: UploadResponse = res.data;
       setUploadResult(data);
       setResumeName(data.profile?.name || "Untitled Resume");
       setModalState("success");
       onUploadSuccess();
     } catch (err: any) {
-      setApiError(err.message || "Upload failed. Please try again.");
+      const message = err.response?.data?.detail || err.message || "Upload failed. Please try again.";
+      setApiError(message);
       setModalState("error");
     }
   }, [onUploadSuccess]);
@@ -292,17 +275,10 @@ function UploadModal({ onClose, onUploadSuccess, authFetch }: UploadModalProps) 
     if (!uploadResult) return;
 
     try {
-      const res = await authFetch(`/resumes/${uploadResult.id}/primary`, {
-        method: "PUT",
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null);
-        setApiError(errorData?.detail || "Failed to set as primary.");
-        return;
-      }
+      await api.put(`/resumes/${uploadResult.id}/primary`);
       navigate(`/app/resume/${uploadResult.id}`);
     } catch (err: any) {
-      setApiError(err.message || "Failed to set as primary.");
+      setApiError(err.response?.data?.detail || err.message || "Failed to set as primary.");
     }
   }, [uploadResult, navigate]);
 

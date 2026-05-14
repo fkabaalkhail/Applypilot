@@ -22,14 +22,14 @@ from backend.db.models import (
 )
 from backend.routers import apply as apply_module
 from backend.routers.apply import router as apply_router
-from backend.auth.clerk import get_current_user_id
+from backend.auth.dependencies import get_current_user_id
 
 # Create a test-specific app with only the apply router
 TEST_DATABASE_URL = "sqlite:///./test_apply_integration.db"
 test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
-TEST_USER_ID = "test_user_123"
+TEST_USER_ID = 1
 
 apply_app = FastAPI()
 apply_app.include_router(apply_router, prefix="/apply", tags=["apply"])
