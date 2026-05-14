@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuthFetch } from "../hooks/useAuthFetch";
 import "../resume.css";
 
+const MAX_RESUME_SLOTS = 3;
+
 interface ResumeListItem {
   id: number;
   name: string;
@@ -13,11 +15,25 @@ interface ResumeListItem {
   updated_at: string;
 }
 
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "1 day ago";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? "a month ago" : `${months} months ago`;
+}
+
 export default function Resume() {
   const [resumes, setResumes] = useState<ResumeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [menuOpen, setMenuOpen] = useState<number | null>(null);
   const navigate = useNavigate();
   const authFetch = useAuthFetch();
 
@@ -26,104 +42,146 @@ export default function Resume() {
       setLoading(true);
       setError(null);
       const res = await authFetch("/resumes");
-      if (!res.ok) {
-        throw new Error(`Failed to load resumes (status ${res.status})`);
-      }
+      if (!res.ok) throw new Error(`Failed to load resumes (status ${res.status})`);
       const data = await res.json();
       setResumes(data);
     } catch (err: any) {
-      setError(err.message || "Could not load resumes. Please try again.");
+      setError(err.message || "Could not load resumes.");
     } finally {
       setLoading(false);
     }
   }, [authFetch]);
 
-  useEffect(() => {
-    fetchResumes();
-  }, [fetchResumes]);
+  useEffect(() => { fetchResumes(); }, [fetchResumes]);
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Delete this resume?")) return;
+    try {
+      await authFetch(`/resumes/${id}`, { method: "DELETE" });
+      setResumes(prev => prev.filter(r => r.id !== id));
+    } catch {}
+    setMenuOpen(null);
+  };
+
+  const handleSetPrimary = async (id: number) => {
+    try {
+      await authFetch(`/resumes/${id}/primary`, { method: "PUT" });
+      fetchResumes();
+    } catch {}
+    setMenuOpen(null);
+  };
 
   if (loading) {
     return (
-      <div className="resume-list">
-        <div className="settings-loading">Loading resumes...</div>
+      <div className="resume-page-new">
+        <div className="resume-page-loading"><div className="spinner" /> Loading resumes...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="resume-list">
-        <div className="settings-error">
+      <div className="resume-page-new">
+        <div className="resume-page-error">
           <p>{error}</p>
-          <button className="btn-pill" onClick={fetchResumes}>
-            Retry
-          </button>
+          <button className="btn-pill" onClick={fetchResumes}>Retry</button>
         </div>
       </div>
     );
   }
 
+  const slotsUsed = resumes.length;
+  const canUpload = slotsUsed < MAX_RESUME_SLOTS;
+
   return (
-    <div className="resume-list">
-      <div className="resume-detail-header">
-        <h1>Resumes</h1>
+    <div className="resume-page-new">
+      {/* Header */}
+      <div className="resume-page-header">
+        <h1>Resume</h1>
         <button
-          className="btn-pill btn-pill-accent"
+          className="resume-add-btn"
           onClick={() => setShowUploadModal(true)}
+          disabled={!canUpload}
+          title={canUpload ? "Add a new resume" : "Maximum 3 resumes reached"}
         >
-          + Add Resume
+          <i className="fa-solid fa-plus"></i> Add Resume
         </button>
       </div>
 
+      {/* Slot counter */}
+      <div className="resume-slot-bar">
+        <div className="resume-slot-indicator">
+          <i className="fa-solid fa-circle-check"></i>
+          <span>You have <strong>{slotsUsed}</strong> resume{slotsUsed !== 1 ? "s" : ""} saved out of <strong>{MAX_RESUME_SLOTS}</strong> available slots.</span>
+        </div>
+        <div className="resume-slot-dots">
+          {Array.from({ length: MAX_RESUME_SLOTS }).map((_, i) => (
+            <span key={i} className={`resume-slot-dot ${i < slotsUsed ? "filled" : ""}`} />
+          ))}
+        </div>
+      </div>
+
+      {/* Resume table */}
       {resumes.length === 0 ? (
-        <div className="settings-loading" style={{ textAlign: "center", padding: "3rem 1rem" }}>
-          <p>No resumes yet. Upload your first resume to get started.</p>
-          <button
-            className="btn-pill btn-pill-accent"
-            style={{ marginTop: "1rem" }}
-            onClick={() => setShowUploadModal(true)}
-          >
-            + Upload Resume
+        <div className="resume-empty-state">
+          <div className="resume-empty-icon"><i className="fa-regular fa-file-lines"></i></div>
+          <h3>No resumes yet</h3>
+          <p>Upload your first resume to get AI-powered analysis and job matching.</p>
+          <button className="resume-add-btn" onClick={() => setShowUploadModal(true)}>
+            <i className="fa-solid fa-plus"></i> Upload Resume
           </button>
         </div>
       ) : (
-        <table className="resume-table">
-          <thead>
-            <tr>
-              <th>Resume Name</th>
-              <th>Target Job Title</th>
-              <th>Last Modified</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {resumes.map((resume) => (
-              <tr
-                key={resume.id}
-                onClick={() => navigate(`/app/resume/${resume.id}`)}
-              >
-                <td>
-                  {resume.name}
-                  {resume.is_primary && (
-                    <span className="badge-primary" style={{ marginLeft: "0.5rem" }}>
-                      PRIMARY
-                    </span>
-                  )}
-                </td>
-                <td>{resume.target_job_title || "Not set"}</td>
-                <td>{new Date(resume.updated_at).toLocaleDateString()}</td>
-                <td>
-                  {new Date(resume.created_at).toLocaleDateString()}
-                  {resume.status === "analyzed" && (
-                    <span className="badge-analyzed" style={{ marginLeft: "0.5rem" }}>
-                      Analysis Complete
-                    </span>
-                  )}
-                </td>
+        <div className="resume-table-wrapper">
+          <table className="resume-table-new">
+            <thead>
+              <tr>
+                <th>Resume</th>
+                <th>Target Job Title</th>
+                <th>Last Modified</th>
+                <th>Created</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {resumes.map((resume) => (
+                <tr key={resume.id} onClick={() => navigate(`/app/resume/${resume.id}`)}>
+                  <td className="resume-name-cell">
+                    <span className="resume-avatar">{resume.name.charAt(0).toUpperCase()}</span>
+                    <span className="resume-name-text">
+                      {resume.name}
+                      {resume.is_primary && <span className="resume-badge-primary"><i className="fa-solid fa-star"></i> Primary</span>}
+                      {resume.status === "analyzed" && <span className="resume-badge-analyzed">Analysis Complete</span>}
+                    </span>
+                  </td>
+                  <td className="resume-target-cell">{resume.target_job_title || <span className="text-muted">Not set</span>}</td>
+                  <td className="resume-date-cell">{timeAgo(resume.updated_at)}</td>
+                  <td className="resume-date-cell">{timeAgo(resume.created_at)}</td>
+                  <td className="resume-actions-cell">
+                    <button
+                      className="resume-menu-btn"
+                      onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === resume.id ? null : resume.id); }}
+                    >
+                      <i className="fa-solid fa-ellipsis"></i>
+                    </button>
+                    {menuOpen === resume.id && (
+                      <div className="resume-menu-dropdown">
+                        {!resume.is_primary && (
+                          <button onClick={(e) => { e.stopPropagation(); handleSetPrimary(resume.id); }}>
+                            <i className="fa-solid fa-star"></i> Set as Primary
+                          </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(resume.id); }} className="resume-menu-danger">
+                          <i className="fa-solid fa-trash"></i> Delete
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {showUploadModal && (
@@ -138,7 +196,6 @@ export default function Resume() {
 }
 
 /* ===== Upload Modal Component ===== */
-
 type ModalState = "upload" | "progress" | "success" | "error";
 
 const ROTATING_TIPS = [
@@ -148,11 +205,7 @@ const ROTATING_TIPS = [
   "Building your structured profile...",
 ];
 
-const ACCEPTED_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-];
-
+const ACCEPTED_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx"];
 
 function isValidFileType(file: File): boolean {
@@ -169,10 +222,7 @@ interface UploadModalProps {
 
 interface UploadResponse {
   id: number;
-  profile: {
-    name?: string;
-    [key: string]: unknown;
-  };
+  profile: { name?: string; [key: string]: unknown };
 }
 
 function UploadModal({ onClose, onUploadSuccess, authFetch }: UploadModalProps) {
@@ -188,225 +238,86 @@ function UploadModal({ onClose, onUploadSuccess, authFetch }: UploadModalProps) 
   const tipIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const navigate = useNavigate();
 
-  // Rotate tips every 3 seconds during progress
   useEffect(() => {
     if (modalState === "progress") {
-      tipIntervalRef.current = setInterval(() => {
-        setTipIndex((prev) => (prev + 1) % ROTATING_TIPS.length);
-      }, 3000);
-    } else {
-      if (tipIntervalRef.current) {
-        clearInterval(tipIntervalRef.current);
-        tipIntervalRef.current = null;
-      }
-    }
-    return () => {
-      if (tipIntervalRef.current) {
-        clearInterval(tipIntervalRef.current);
-      }
-    };
+      tipIntervalRef.current = setInterval(() => setTipIndex((p) => (p + 1) % ROTATING_TIPS.length), 3000);
+    } else if (tipIntervalRef.current) { clearInterval(tipIntervalRef.current); tipIntervalRef.current = null; }
+    return () => { if (tipIntervalRef.current) clearInterval(tipIntervalRef.current); };
   }, [modalState]);
 
   const handleFile = useCallback(async (file: File) => {
-    setFileError(null);
-    setApiError(null);
-
-    if (!isValidFileType(file)) {
-      setFileError("Only PDF and DOCX files are accepted.");
-      return;
-    }
-
-    // Start upload
-    setModalState("progress");
-    setTipIndex(0);
-
+    setFileError(null); setApiError(null);
+    if (!isValidFileType(file)) { setFileError("Only PDF and DOCX files are accepted."); return; }
+    setModalState("progress"); setTipIndex(0);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await authFetch("/resumes/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null);
-        const message = errorData?.detail || `Upload failed (status ${res.status})`;
-        setApiError(message);
-        setModalState("error");
-        return;
-      }
-
+      const formData = new FormData(); formData.append("file", file);
+      const res = await authFetch("/resumes/upload", { method: "POST", body: formData });
+      if (!res.ok) { const d = await res.json().catch(() => null); setApiError(d?.detail || `Upload failed (${res.status})`); setModalState("error"); return; }
       const data: UploadResponse = await res.json();
       setUploadResult(data);
-      // Default resume name to filename without extension
-      const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-      setResumeName(fileNameWithoutExt || data.profile?.name || "Untitled Resume");
-      setModalState("success");
-      onUploadSuccess();
-    } catch (err: any) {
-      setApiError(err.message || "Upload failed. Please try again.");
-      setModalState("error");
-    }
+      setResumeName(file.name.replace(/\.[^/.]+$/, "") || data.profile?.name || "Untitled Resume");
+      setModalState("success"); onUploadSuccess();
+    } catch (err: any) { setApiError(err.message || "Upload failed."); setModalState("error"); }
   }, [onUploadSuccess]);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFile(files[0]);
-    }
-  }, [handleFile]);
-
-  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      handleFile(files[0]);
-    }
-  }, [handleFile]);
-
-  const handleDropZoneClick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-
-  const handleViewResume = useCallback(() => {
-    if (uploadResult) {
-      navigate(`/app/resume/${uploadResult.id}`);
-    }
-  }, [uploadResult, navigate]);
-
-  const handleUpdateToProfile = useCallback(async () => {
-    if (!uploadResult) return;
-
-    try {
-      const res = await authFetch(`/resumes/${uploadResult.id}/primary`, {
-        method: "PUT",
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null);
-        setApiError(errorData?.detail || "Failed to set as primary.");
-        return;
-      }
-      navigate(`/app/resume/${uploadResult.id}`);
-    } catch (err: any) {
-      setApiError(err.message || "Failed to set as primary.");
-    }
-  }, [uploadResult, navigate]);
-
   return (
-    <div className="upload-modal-overlay" onClick={onClose}>
-      <div className="upload-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Upload State */}
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content upload-modal-new" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose}><i className="fa-solid fa-xmark"></i></button>
+
         {modalState === "upload" && (
           <>
+            <div className="upload-modal-icon"><i className="fa-solid fa-cloud-arrow-up"></i></div>
             <h2>Upload Resume</h2>
+            <p>Drop your PDF or DOCX file below for instant AI analysis</p>
             <div
-              className={`drop-zone${dragOver ? " drag-over" : ""}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={handleDropZoneClick}
+              className={`upload-drop-zone${dragOver ? " drag-over" : ""}`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }}
+              onClick={() => fileInputRef.current?.click()}
             >
-              <div className="drop-icon">📄</div>
-              <p><strong>Drop your resume here</strong></p>
-              <p>or click to browse (PDF, DOCX)</p>
+              <i className="fa-regular fa-file-pdf"></i>
+              <span><strong>Drop file here</strong> or click to browse</span>
+              <span className="upload-formats">PDF, DOCX (max 10MB)</span>
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              style={{ display: "none" }}
-              onChange={handleFileInputChange}
-            />
-            {fileError && (
-              <p style={{ color: "#dc2626", fontSize: "0.85rem", marginTop: "0.75rem" }}>
-                {fileError}
-              </p>
-            )}
-            <div style={{ marginTop: "1.25rem", textAlign: "right" }}>
-              <button className="btn-pill" onClick={onClose}>
-                Cancel
-              </button>
-            </div>
+            <input ref={fileInputRef} type="file" accept=".pdf,.docx" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+            {fileError && <p className="upload-error-text">{fileError}</p>}
           </>
         )}
 
-        {/* Progress State */}
         {modalState === "progress" && (
-          <>
+          <div className="upload-progress-state">
+            <div className="upload-spinner-ring"><div className="spinner" /></div>
             <h2>Analyzing Your Resume</h2>
-            <div className="progress-bar">
-              <div className="progress-bar-fill" style={{ width: "80%" }} />
-            </div>
-            <p className="progress-text">{ROTATING_TIPS[tipIndex]}</p>
-          </>
+            <div className="upload-progress-bar"><div className="upload-progress-fill" /></div>
+            <p className="upload-tip">{ROTATING_TIPS[tipIndex]}</p>
+          </div>
         )}
 
-        {/* Success State */}
         {modalState === "success" && (
-          <div className="success-modal">
-            <div className="success-icon">✓</div>
-            <h3>Upload Success!</h3>
-            <input
-              type="text"
-              placeholder="Resume Name"
-              value={resumeName}
-              onChange={(e) => setResumeName(e.target.value)}
-            />
-            <input
-              type="text"
-              placeholder="Target Job Title"
-              value={targetJobTitle}
-              onChange={(e) => setTargetJobTitle(e.target.value)}
-            />
-            <div className="modal-actions">
-              <button className="btn-pill" onClick={handleViewResume}>
-                View My Resume
-              </button>
-              <button className="btn-pill btn-pill-accent" onClick={handleUpdateToProfile}>
-                Update to Profile
+          <div className="upload-success-state">
+            <div className="upload-success-icon"><i className="fa-solid fa-circle-check"></i></div>
+            <h2>Resume Uploaded</h2>
+            <p>Your resume has been analyzed and is ready to use for job matching.</p>
+            <div className="upload-success-actions">
+              <button className="resume-add-btn" onClick={() => navigate(`/app/resume/${uploadResult?.id}`)}>
+                View Resume
               </button>
             </div>
           </div>
         )}
 
-        {/* Error State */}
         {modalState === "error" && (
-          <>
+          <div className="upload-error-state">
+            <div className="upload-error-icon"><i className="fa-solid fa-circle-xmark"></i></div>
             <h2>Upload Failed</h2>
-            <p style={{ color: "#dc2626", fontSize: "0.9rem", margin: "1rem 0" }}>
-              {apiError || "An unexpected error occurred."}
-            </p>
-            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
-              <button className="btn-pill" onClick={onClose}>
-                Close
-              </button>
-              <button
-                className="btn-pill btn-pill-accent"
-                onClick={() => {
-                  setModalState("upload");
-                  setApiError(null);
-                }}
-              >
-                Try Again
-              </button>
+            <p>{apiError || "Something went wrong."}</p>
+            <div className="upload-success-actions">
+              <button className="btn-pill" onClick={onClose}>Close</button>
+              <button className="resume-add-btn" onClick={() => { setModalState("upload"); setApiError(null); }}>Try Again</button>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
