@@ -1,8 +1,20 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { UserButton, useUser } from "@clerk/clerk-react";
+import { useState } from "react";
 
 export default function App() {
   const { user } = useUser();
+  const [showReferModal, setShowReferModal] = useState(false);
+  const [referCopied, setReferCopied] = useState(false);
+
+  const referralCode = user?.id?.slice(-8) || "tailrd";
+  const referralLink = `https://www.tailrd.ca?ref=${referralCode}`;
+
+  const copyReferLink = () => {
+    navigator.clipboard.writeText(referralLink);
+    setReferCopied(true);
+    setTimeout(() => setReferCopied(false), 2000);
+  };
 
   return (
     <div className="app-layout">
@@ -76,7 +88,7 @@ export default function App() {
         <div className="sidebar-section sidebar-section-bottom">
           <span className="sidebar-section-label">GENERAL</span>
           <nav className="sidebar-nav">
-            <NavLink to="/app/refer" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
+            <button className="nav-item" onClick={() => setShowReferModal(true)}>
               <span className="nav-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 12 20 22 4 22 4 12"/>
@@ -87,7 +99,7 @@ export default function App() {
                 </svg>
               </span>
               <span className="nav-label">Refer & Earn</span>
-            </NavLink>
+            </button>
             <NavLink to="/app/feedback" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
               <span className="nav-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -122,6 +134,53 @@ export default function App() {
       <main className="main-content">
         <Outlet />
       </main>
+
+      {/* Refer & Earn Modal */}
+      {showReferModal && (
+        <div className="modal-overlay" onClick={() => setShowReferModal(false)}>
+          <div className="modal-content refer-modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowReferModal(false)}>
+              <i className="fa-solid fa-xmark"></i>
+            </button>
+            <div className="refer-modal-icon">
+              <i className="fa-solid fa-gift"></i>
+            </div>
+            <h2>Invite Friends & Earn Credits</h2>
+            <p>Share Tailrd with friends. When they sign up and upload their resume, you both earn +5 AI analysis credits.</p>
+
+            <div className="refer-modal-steps">
+              <div className="refer-modal-step">
+                <span className="refer-step-num">1</span>
+                <span>Share your link</span>
+              </div>
+              <div className="refer-modal-step">
+                <span className="refer-step-num">2</span>
+                <span>Friend signs up</span>
+              </div>
+              <div className="refer-modal-step">
+                <span className="refer-step-num">3</span>
+                <span>Both earn credits</span>
+              </div>
+            </div>
+
+            <div className="refer-modal-link">
+              <input type="text" readOnly value={referralLink} className="refer-link-input" />
+              <button className="refer-copy-btn" onClick={copyReferLink}>
+                {referCopied ? <><i className="fa-solid fa-check"></i> Copied</> : <><i className="fa-solid fa-copy"></i> Copy</>}
+              </button>
+            </div>
+
+            <div className="refer-modal-share">
+              <button className="refer-share-btn refer-share-linkedin" onClick={() => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(referralLink)}`, "_blank")}>
+                <i className="fa-brands fa-linkedin"></i> LinkedIn
+              </button>
+              <button className="refer-share-btn refer-share-twitter" onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Check out Tailrd - AI-powered job search for interns and new grads!")}&url=${encodeURIComponent(referralLink)}`, "_blank")}>
+                <i className="fa-brands fa-x-twitter"></i> Twitter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

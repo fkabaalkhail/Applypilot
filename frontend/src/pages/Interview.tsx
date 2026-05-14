@@ -109,6 +109,24 @@ export default function Interview() {
           <span className="interview-stat">{totalQuestions.toLocaleString()} Questions</span>
         </div>
       </div>
+
+      {/* Company carousel */}
+      <div className="interview-carousel-wrapper">
+        <div className="interview-carousel-track">
+          {[...companies.slice(0, 20), ...companies.slice(0, 20)].map((c, i) => (
+            <span key={i} className="interview-carousel-item" onClick={() => setSelectedCompany(c.name)}>
+              <img
+                src={`https://logos-api.apistemic.com/domain:${c.domain}?fallback=404`}
+                alt=""
+                className="interview-carousel-logo"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+              <span>{c.name}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
       <input
         type="text"
         placeholder="Search companies..."
