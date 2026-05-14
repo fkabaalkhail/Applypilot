@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuthFetch } from "../hooks/useAuthFetch";
+import api from "../hooks/useAuthFetch";
 import "../resume.css";
 
 const MAX_RESUME_SLOTS = 3;
@@ -35,29 +35,26 @@ export default function Resume() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [menuOpen, setMenuOpen] = useState<number | null>(null);
   const navigate = useNavigate();
-  const authFetch = useAuthFetch();
 
   const fetchResumes = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await authFetch("/resumes");
-      if (!res.ok) throw new Error(`Failed to load resumes (status ${res.status})`);
-      const data = await res.json();
-      setResumes(data);
+      const res = await api.get("/resumes");
+      setResumes(res.data);
     } catch (err: any) {
-      setError(err.message || "Could not load resumes.");
+      setError(err.response?.data?.detail || err.message || "Could not load resumes.");
     } finally {
       setLoading(false);
     }
-  }, [authFetch]);
+  }, []);
 
   useEffect(() => { fetchResumes(); }, [fetchResumes]);
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this resume?")) return;
     try {
-      await authFetch(`/resumes/${id}`, { method: "DELETE" });
+      await api.delete(`/resumes/${id}`);
       setResumes(prev => prev.filter(r => r.id !== id));
     } catch {}
     setMenuOpen(null);
@@ -65,7 +62,7 @@ export default function Resume() {
 
   const handleSetPrimary = async (id: number) => {
     try {
-      await authFetch(`/resumes/${id}/primary`, { method: "PUT" });
+      await api.put(`/resumes/${id}/primary`);
       fetchResumes();
     } catch {}
     setMenuOpen(null);
@@ -188,7 +185,6 @@ export default function Resume() {
         <UploadModal
           onClose={() => setShowUploadModal(false)}
           onUploadSuccess={() => fetchResumes()}
-          authFetch={authFetch}
         />
       )}
     </div>
@@ -217,7 +213,6 @@ function isValidFileType(file: File): boolean {
 interface UploadModalProps {
   onClose: () => void;
   onUploadSuccess: () => void;
-  authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 interface UploadResponse {
@@ -225,15 +220,13 @@ interface UploadResponse {
   profile: { name?: string; [key: string]: unknown };
 }
 
-function UploadModal({ onClose, onUploadSuccess, authFetch }: UploadModalProps) {
+function UploadModal({ onClose, onUploadSuccess }: UploadModalProps) {
   const [modalState, setModalState] = useState<ModalState>("upload");
   const [dragOver, setDragOver] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [tipIndex, setTipIndex] = useState(0);
   const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
-  const [resumeName, setResumeName] = useState("");
-  const [targetJobTitle, setTargetJobTitle] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tipIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const navigate = useNavigate();
@@ -251,13 +244,11 @@ function UploadModal({ onClose, onUploadSuccess, authFetch }: UploadModalProps) 
     setModalState("progress"); setTipIndex(0);
     try {
       const formData = new FormData(); formData.append("file", file);
-      const res = await authFetch("/resumes/upload", { method: "POST", body: formData });
-      if (!res.ok) { const d = await res.json().catch(() => null); setApiError(d?.detail || `Upload failed (${res.status})`); setModalState("error"); return; }
-      const data: UploadResponse = await res.json();
+      const res = await api.post("/resumes/upload", formData);
+      const data: UploadResponse = res.data;
       setUploadResult(data);
-      setResumeName(file.name.replace(/\.[^/.]+$/, "") || data.profile?.name || "Untitled Resume");
       setModalState("success"); onUploadSuccess();
-    } catch (err: any) { setApiError(err.message || "Upload failed."); setModalState("error"); }
+    } catch (err: any) { setApiError(err.response?.data?.detail || err.message || "Upload failed."); setModalState("error"); }
   }, [onUploadSuccess]);
 
   return (
