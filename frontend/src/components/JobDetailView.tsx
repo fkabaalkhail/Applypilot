@@ -82,6 +82,132 @@ interface Props {
   onClose?: () => void;
 }
 
+/**
+ * Fast client-side parser that structures job descriptions into sections
+ * using regex/heuristics. No AI call needed — instant results.
+ */
+function parseDescriptionClientSide(rawDesc: string): any | null {
+  // Clean HTML tags and decode entities
+  let text = rawDesc
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?(p|div|li|ul|ol|h[1-6])[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+
+  // Section header patterns
+  const sectionPatterns = [
+    { regex: /(?:^|\n)\s*(?:key\s+)?responsibilities?\s*[:\-]?\s*\n/i, title: "Responsibilities", icon: "clipboard-list" },
+    { regex: /(?:^|\n)\s*(?:what you(?:'ll| will) do|your role|the role|about the role|job duties|duties)\s*[:\-]?\s*\n/i, title: "Responsibilities", icon: "clipboard-list" },
+    { regex: /(?:^|\n)\s*(?:requirements?|qualifications?|what we(?:'re| are) looking for|who you are|must have|minimum qualifications?)\s*[:\-]?\s*\n/i, title: "Qualifications", icon: "graduation-cap" },
+    { regex: /(?:^|\n)\s*(?:required skills?|required experience|basic qualifications?)\s*[:\-]?\s*\n/i, title: "Required Qualifications", icon: "graduation-cap" },
+    { regex: /(?:^|\n)\s*(?:preferred|nice to have|bonus|preferred qualifications?|desired)\s*[:\-]?\s*\n/i, title: "Preferred Qualifications", icon: "star" },
+    { regex: /(?:^|\n)\s*(?:benefits?|perks?|what we offer|compensation|why join us|why work here)\s*[:\-]?\s*\n/i, title: "Benefits", icon: "gift" },
+    { regex: /(?:^|\n)\s*(?:about (?:us|the (?:company|team))|who we are|company overview)\s*[:\-]?\s*\n/i, title: "About the Company", icon: "building" },
+    { regex: /(?:^|\n)\s*(?:tech(?:nology)? stack|technologies|tools)\s*[:\-]?\s*\n/i, title: "Tech Stack", icon: "code" },
+  ];
+
+  // Find all section boundaries
+  const sections: { title: string; icon: string; start: number; end?: number }[] = [];
+
+  for (const pattern of sectionPatterns) {
+    const match = text.match(pattern.regex);
+    if (match && match.index !== undefined) {
+      const start = match.index + match[0].length;
+      // Avoid duplicate section titles
+      if (!sections.find(s => s.title === pattern.title && Math.abs(s.start - start) < 50)) {
+        sections.push({ title: pattern.title, icon: pattern.icon, start });
+      }
+    }
+  }
+
+  // If we found fewer than 2 sections, try a simpler bullet-point based approach
+  if (sections.length < 2) {
+    // Try to split by bullet points into a single "Description" section
+    const bullets = text.split("\n")
+      .map(l => l.replace(/^[\s•\-\*·▪►●○◦‣⁃]+/, "").trim())
+      .filter(l => l.length > 10 && l.length < 300);
+
+    if (bullets.length >= 3) {
+      // Extract skills from the text
+      const skills = extractSkills(text);
+      return {
+        sections: [{ title: "Job Description", icon: "list", items: bullets.slice(0, 20) }],
+        skills,
+      };
+    }
+    return null; // Can't parse, show raw
+  }
+
+  // Sort sections by position
+  sections.sort((a, b) => a.start - b.start);
+
+  // Set end boundaries
+  for (let i = 0; i < sections.length; i++) {
+    sections[i].end = i < sections.length - 1 ? sections[i + 1].start : text.length;
+  }
+
+  // Extract items from each section
+  const result: any[] = [];
+  for (const section of sections) {
+    const sectionText = text.slice(section.start, section.end);
+    const items = sectionText.split("\n")
+      .map(l => l.replace(/^[\s•\-\*·▪►●○◦‣⁃\d.)+]+/, "").trim())
+      .filter(l => l.length > 5 && l.length < 500);
+
+    if (items.length > 0) {
+      result.push({ title: section.title, icon: section.icon, items: items.slice(0, 15) });
+    }
+  }
+
+  if (result.length === 0) return null;
+
+  // Also add intro text (before first section) if meaningful
+  const introEnd = sections[0].start;
+  if (introEnd > 50) {
+    const introText = text.slice(0, introEnd).trim();
+    const introLines = introText.split("\n").map(l => l.trim()).filter(l => l.length > 10);
+    if (introLines.length > 0 && introLines.length <= 5) {
+      result.unshift({ title: "Overview", icon: "info-circle", items: introLines });
+    }
+  }
+
+  const skills = extractSkills(text);
+  return { sections: result, skills };
+}
+
+function extractSkills(text: string): string[] {
+  const knownSkills = [
+    "Python", "Java", "JavaScript", "TypeScript", "C++", "C#", "Go", "Rust", "Ruby", "PHP", "Swift", "Kotlin",
+    "React", "Angular", "Vue", "Node.js", "Django", "Flask", "Spring", "Express", "Next.js",
+    "AWS", "Azure", "GCP", "Docker", "Kubernetes", "Terraform", "Jenkins", "CI/CD",
+    "SQL", "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "DynamoDB", "Cassandra",
+    "REST", "GraphQL", "gRPC", "Microservices", "Kafka", "RabbitMQ",
+    "Machine Learning", "Deep Learning", "TensorFlow", "PyTorch", "NLP",
+    "Git", "Linux", "Agile", "Scrum", "Jira",
+    "HTML", "CSS", "Tailwind", "SASS",
+    "Figma", "Sketch",
+    "Spark", "Hadoop", "Airflow", "dbt", "Snowflake", "BigQuery",
+    "iOS", "Android", "React Native", "Flutter",
+  ];
+
+  const found: string[] = [];
+  const lowerText = text.toLowerCase();
+  for (const skill of knownSkills) {
+    if (lowerText.includes(skill.toLowerCase())) {
+      found.push(skill);
+    }
+    if (found.length >= 12) break;
+  }
+  return found;
+}
+
 export default function JobDetailView({ job, onClose }: Props) {
   const [breakdown, setBreakdown] = useState<MatchBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,7 +217,6 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [companyLogo, setCompanyLogo] = useState(job.company_logo || "");
   const [fetchingDetails, setFetchingDetails] = useState(false);
   const [structured, setStructured] = useState<any>(null);
-  const [structuring, setStructuring] = useState(false);
 
   useEffect(() => {
     // Reset local state when job changes to avoid stale data from previous job
@@ -101,14 +226,14 @@ export default function JobDetailView({ job, onClose }: Props) {
     setBreakdown(null);
     setError("");
     setStructured(null);
-    setStructuring(false);
 
     // Fetch actual job URL and description
     fetchJobDetails();
 
-    // Immediately try to get structured description if we already have text
+    // Instantly parse description client-side (no AI call needed)
     if (job.description && job.description.length > 50) {
-      fetchStructured();
+      const parsed = parseDescriptionClientSide(job.description);
+      if (parsed) setStructured(parsed);
     }
 
     if (job.match_score > 0 && job.experience_score > 0) {
@@ -125,24 +250,12 @@ export default function JobDetailView({ job, onClose }: Props) {
   }, [job.id]);
 
   useEffect(() => {
-    // If description was fetched (didn't exist before), trigger structuring
+    // If description was fetched (didn't exist before), parse it client-side
     if (description && description.length > 50 && !structured && !job.description) {
-      fetchStructured();
+      const parsed = parseDescriptionClientSide(description);
+      if (parsed) setStructured(parsed);
     }
   }, [description]);
-
-  async function fetchStructured() {
-    setStructuring(true);
-    try {
-      const res = await fetch(`${API_BASE}/jobs/${job.id}/structure-description`, { method: "POST" });
-      const data = await res.json();
-      if (data.sections && data.sections.length > 0) setStructured(data);
-    } catch {
-      // Silently fail — will show raw description
-    } finally {
-      setStructuring(false);
-    }
-  }
 
   async function fetchJobDetails() {
     // Use job.description directly to avoid stale closure from state
@@ -344,15 +457,7 @@ export default function JobDetailView({ job, onClose }: Props) {
                 ))}
               </div>
             ) : description ? (
-              <div className="description-structuring">
-                {structuring && (
-                  <div className="description-structuring-indicator">
-                    <div className="spinner" />
-                    <span>Structuring job description...</span>
-                  </div>
-                )}
-                <div className={`description-content ${structuring ? "description-faded" : ""}`} dangerouslySetInnerHTML={{ __html: description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n') }} />
-              </div>
+              <div className="description-content" dangerouslySetInnerHTML={{ __html: description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n') }} />
             ) : (
               <div className="description-empty">
                 <div className="description-empty-icon">
