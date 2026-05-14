@@ -66,50 +66,35 @@ function getLogoColor(company: string): string {
 }
 
 function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
-  // Extract domain from stored logo URL or guess from company name
+  // If we have a direct URL (LinkedIn CDN, etc.), use it
+  if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("clearbit") && !companyLogo.includes("icon.horse") && !companyLogo.includes("google.com/s2") && !companyLogo.includes("apistemic") && !companyLogo.includes("hunter.io")) {
+    return companyLogo;
+  }
+  // Extract domain from stored URL or guess from company name
   let domain = "";
   if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
     domain = companyLogo.split("logo.clearbit.com/")[1] || "";
   } else if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
     domain = companyLogo.split("icon.horse/icon/")[1] || "";
-  } else if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("google.com/s2/favicons") && !companyLogo.includes("apistemic") && !companyLogo.includes("hunter.io")) {
-    return companyLogo; // Direct URL (e.g., LinkedIn CDN)
   }
   if (!domain) {
     const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
     if (cleaned.length < 2) return null;
     domain = `${cleaned}.com`;
   }
-  // Primary: Hunter.io (16M+ logos, best coverage)
   return `https://logos.hunter.io/${domain}`;
 }
 
-// Fallback chain for when a logo fails to load
+// On error: try next source, then hide
 function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, company: string, companyLogo: string) {
   const img = e.target as HTMLImageElement;
   const src = img.src;
+  const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const domain = cleaned.length >= 2 ? `${cleaned}.com` : "";
 
-  // Extract domain
-  let domain = "";
-  if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
-    domain = companyLogo.split("logo.clearbit.com/")[1] || "";
-  } else if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
-    domain = companyLogo.split("icon.horse/icon/")[1] || "";
-  }
-  if (!domain) {
-    const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
-    domain = `${cleaned}.com`;
-  }
-
-  // Try fallbacks in order
-  if (src.includes("logos.hunter.io")) {
-    // Hunter failed → try apistemic
+  if (src.includes("logos.hunter.io") && domain) {
     img.src = `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
-  } else if (src.includes("apistemic.com")) {
-    // Apistemic failed → try icon.horse
-    img.src = `https://icon.horse/icon/${domain}`;
   } else {
-    // All failed → hide image, show letter initial
     img.style.display = "none";
   }
 }
