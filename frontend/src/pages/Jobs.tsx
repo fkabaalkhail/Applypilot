@@ -66,24 +66,52 @@ function getLogoColor(company: string): string {
 }
 
 function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
-  // If stored logo is a dead Clearbit URL, extract domain and use apistemic
+  // Extract domain from stored logo URL or guess from company name
+  let domain = "";
   if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
-    const domain = companyLogo.split("logo.clearbit.com/")[1];
-    if (domain) return `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
+    domain = companyLogo.split("logo.clearbit.com/")[1] || "";
+  } else if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
+    domain = companyLogo.split("icon.horse/icon/")[1] || "";
+  } else if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("google.com/s2/favicons") && !companyLogo.includes("apistemic") && !companyLogo.includes("hunter.io")) {
+    return companyLogo; // Direct URL (e.g., LinkedIn CDN)
   }
-  // If stored logo is icon.horse, convert to apistemic
-  if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
-    const domain = companyLogo.split("icon.horse/icon/")[1];
-    if (domain) return `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
+  if (!domain) {
+    const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (cleaned.length < 2) return null;
+    domain = `${cleaned}.com`;
   }
-  // If we have a non-Clearbit/icon.horse stored logo URL, use it directly
-  if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("google.com/s2/favicons")) {
-    return companyLogo;
+  // Primary: Hunter.io (16M+ logos, best coverage)
+  return `https://logos.hunter.io/${domain}`;
+}
+
+// Fallback chain for when a logo fails to load
+function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, company: string, companyLogo: string) {
+  const img = e.target as HTMLImageElement;
+  const src = img.src;
+
+  // Extract domain
+  let domain = "";
+  if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
+    domain = companyLogo.split("logo.clearbit.com/")[1] || "";
+  } else if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
+    domain = companyLogo.split("icon.horse/icon/")[1] || "";
   }
-  // Fallback: guess domain from company name using apistemic
-  const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (cleaned.length < 2) return null;
-  return `https://logos-api.apistemic.com/domain:${cleaned}.com?fallback=404`;
+  if (!domain) {
+    const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
+    domain = `${cleaned}.com`;
+  }
+
+  // Try fallbacks in order
+  if (src.includes("logos.hunter.io")) {
+    // Hunter failed → try apistemic
+    img.src = `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
+  } else if (src.includes("apistemic.com")) {
+    // Apistemic failed → try icon.horse
+    img.src = `https://icon.horse/icon/${domain}`;
+  } else {
+    // All failed → hide image, show letter initial
+    img.style.display = "none";
+  }
 }
 
 function timeAgo(dateStr: string): string {
@@ -367,7 +395,7 @@ export default function Jobs() {
                           src={logoUrl}
                           alt=""
                           className="company-logo-img-overlay"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          onError={(e) => handleLogoError(e, job.company, job.company_logo)}
                         />
                       ) : null;
                     })()}

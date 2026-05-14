@@ -185,25 +185,33 @@ export default function JobDetailView({ job, onClose }: Props) {
         <div className="job-detail-company-row">
           {(() => {
             const cleaned = job.company.toLowerCase().replace(/[^a-z0-9]/g, "");
-            let logoUrl: string | null = null;
-            // Convert dead Clearbit/icon.horse URLs to apistemic
+            let domain = "";
             if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
-              const domain = companyLogo.split("logo.clearbit.com/")[1];
-              if (domain) logoUrl = `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
+              domain = companyLogo.split("logo.clearbit.com/")[1] || "";
             } else if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
-              const domain = companyLogo.split("icon.horse/icon/")[1];
-              if (domain) logoUrl = `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
-            } else if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("google.com/s2/favicons")) {
-              logoUrl = companyLogo;
-            } else if (cleaned.length >= 2) {
-              logoUrl = `https://logos-api.apistemic.com/domain:${cleaned}.com?fallback=404`;
+              domain = companyLogo.split("icon.horse/icon/")[1] || "";
             }
+            if (!domain) domain = cleaned.length >= 2 ? `${cleaned}.com` : "";
+            const logoUrl = companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("clearbit") && !companyLogo.includes("icon.horse") && !companyLogo.includes("google.com/s2")
+              ? companyLogo
+              : domain ? `https://logos.hunter.io/${domain}` : null;
             return logoUrl ? (
               <img
                 src={logoUrl}
                 alt={`${job.company} logo`}
                 className="detail-company-logo"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden-logo"); }}
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  const src = img.src;
+                  if (src.includes("logos.hunter.io") && domain) {
+                    img.src = `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
+                  } else if (src.includes("apistemic.com") && domain) {
+                    img.src = `https://icon.horse/icon/${domain}`;
+                  } else {
+                    img.style.display = "none";
+                    (img.nextElementSibling as HTMLElement)?.classList.remove("hidden-logo");
+                  }
+                }}
               />
             ) : null;
           })()}
