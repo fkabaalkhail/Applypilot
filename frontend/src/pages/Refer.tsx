@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth } from "../auth/useAuth";
 
 export default function Refer() {
-  const { user } = useUser();
+  const { user } = useAuth();
   const [copied, setCopied] = useState(false);
 
   // Generate referral link from user ID
-  const referralCode = user?.id?.slice(-8) || "tailrd";
+  const referralCode = user?.id?.toString().slice(-8) || "tailrd";
   const referralLink = `https://www.tailrd.ca?ref=${referralCode}`;
 
   const copyLink = () => {
