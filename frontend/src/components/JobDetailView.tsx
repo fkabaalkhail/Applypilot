@@ -91,6 +91,7 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [companyLogo, setCompanyLogo] = useState(job.company_logo || "");
   const [fetchingDetails, setFetchingDetails] = useState(false);
   const [structured, setStructured] = useState<any>(null);
+  const [structuring, setStructuring] = useState(false);
 
   useEffect(() => {
     // Reset local state when job changes to avoid stale data from previous job
@@ -100,9 +101,15 @@ export default function JobDetailView({ job, onClose }: Props) {
     setBreakdown(null);
     setError("");
     setStructured(null);
+    setStructuring(false);
 
     // Fetch actual job URL and description
     fetchJobDetails();
+
+    // Immediately try to get structured description if we already have text
+    if (job.description && job.description.length > 50) {
+      fetchStructured();
+    }
 
     if (job.match_score > 0 && job.experience_score > 0) {
       setBreakdown({
@@ -118,13 +125,24 @@ export default function JobDetailView({ job, onClose }: Props) {
   }, [job.id]);
 
   useEffect(() => {
-    if (description && description.length > 50) {
-      fetch(`${API_BASE}/jobs/${job.id}/structure-description`, { method: "POST" })
-        .then(r => r.json())
-        .then(data => { if (data.sections && data.sections.length > 0) setStructured(data); })
-        .catch(() => {});
+    // If description was fetched (didn't exist before), trigger structuring
+    if (description && description.length > 50 && !structured && !job.description) {
+      fetchStructured();
     }
-  }, [job.id, description]);
+  }, [description]);
+
+  async function fetchStructured() {
+    setStructuring(true);
+    try {
+      const res = await fetch(`${API_BASE}/jobs/${job.id}/structure-description`, { method: "POST" });
+      const data = await res.json();
+      if (data.sections && data.sections.length > 0) setStructured(data);
+    } catch {
+      // Silently fail — will show raw description
+    } finally {
+      setStructuring(false);
+    }
+  }
 
   async function fetchJobDetails() {
     // Use job.description directly to avoid stale closure from state
@@ -326,7 +344,15 @@ export default function JobDetailView({ job, onClose }: Props) {
                 ))}
               </div>
             ) : description ? (
-              <div className="description-content" dangerouslySetInnerHTML={{ __html: description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n') }} />
+              <div className="description-structuring">
+                {structuring && (
+                  <div className="description-structuring-indicator">
+                    <div className="spinner" />
+                    <span>Structuring job description...</span>
+                  </div>
+                )}
+                <div className={`description-content ${structuring ? "description-faded" : ""}`} dangerouslySetInnerHTML={{ __html: description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n') }} />
+              </div>
             ) : (
               <div className="description-empty">
                 <div className="description-empty-icon">
