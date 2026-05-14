@@ -1,7 +1,7 @@
 """
 Resume text extraction service.
 
-Supports PDF (via pdfplumber) and DOCX (via python-docx).
+Supports PDF (via PyMuPDF/fitz primary, pdfplumber fallback) and DOCX (via python-docx).
 Imports are lazy — these deps are optional for serverless deployment.
 """
 
@@ -22,6 +22,26 @@ def extract_text(content: bytes, filename: str) -> str:
 
 
 def _extract_pdf(content: bytes) -> str:
+    """Extract text from PDF. Tries PyMuPDF first (better spacing), falls back to pdfplumber."""
+    # Try PyMuPDF first (handles word spacing much better)
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=content, filetype="pdf")
+        text_parts = []
+        for page in doc:
+            page_text = page.get_text()
+            if page_text:
+                text_parts.append(page_text)
+        doc.close()
+        result = "\n\n".join(text_parts)
+        if result.strip():
+            return result
+    except ImportError:
+        logger.info("PyMuPDF not available, falling back to pdfplumber")
+    except Exception as e:
+        logger.warning(f"PyMuPDF extraction failed: {e}, falling back to pdfplumber")
+
+    # Fallback to pdfplumber
     import pdfplumber
     text_parts = []
     with pdfplumber.open(io.BytesIO(content)) as pdf:
