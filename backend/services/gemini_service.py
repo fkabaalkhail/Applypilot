@@ -53,14 +53,27 @@ def _extract_json(response: str) -> str:
 
 
 class GeminiService:
-    """Async client for Google Gemini API."""
+    """Async client for Google Gemini API with multi-key rotation."""
 
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "").strip().strip("\ufeff")
+        # Support multiple API keys separated by commas for rotation
+        raw_keys = os.getenv("GEMINI_API_KEY", "").strip().strip("\ufeff")
+        self.api_keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
         self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip().strip("\ufeff")
         self.timeout = float(os.getenv("GEMINI_TIMEOUT", "60"))
-        if not self.api_key:
+        self._current_key_index = 0
+        if not self.api_keys:
             raise ValueError("GEMINI_API_KEY not set in environment")
+
+    @property
+    def api_key(self):
+        return self.api_keys[self._current_key_index % len(self.api_keys)]
+
+    def _rotate_key(self):
+        """Switch to the next API key."""
+        if len(self.api_keys) > 1:
+            self._current_key_index = (self._current_key_index + 1) % len(self.api_keys)
+            logger.info(f"Rotated to Gemini API key #{self._current_key_index + 1}")
 
     async def _generate(self, prompt: str, system: str = None) -> str:
         import asyncio
@@ -74,21 +87,26 @@ class GeminiService:
         if system:
             body["systemInstruction"] = {"parts": [{"text": system}]}
 
-        # Retry with exponential backoff on 429
-        max_retries = 3
+        # Retry with exponential backoff on 429, rotating keys
+        max_retries = 4
         for attempt in range(max_retries):
             async with httpx.AsyncClient() as client:
-                r = await client.post(url, json=body, timeout=self.timeout)
+                current_url = (
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}"
+                    f":generateContent?key={self.api_key}"
+                )
+                r = await client.post(current_url, json=body, timeout=self.timeout)
                 if r.status_code == 429:
-                    wait_time = (2 ** attempt) * 5  # 5s, 10s, 20s
-                    logger.warning(f"Gemini rate limited (429), retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    self._rotate_key()  # Try next key
+                    wait_time = (2 ** attempt) * 3  # 3s, 6s, 12s, 24s
+                    logger.warning(f"Gemini rate limited (429), rotating key and retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
                     await asyncio.sleep(wait_time)
                     continue
                 r.raise_for_status()
                 data = r.json()
                 break
         else:
-            raise ConnectionError("Gemini API rate limited after 3 retries. Please try again in a minute.")
+            raise ConnectionError("Gemini API rate limited after retries. Please try again in a minute.")
 
         try:
             return data["candidates"][0]["content"]["parts"][0]["text"]
