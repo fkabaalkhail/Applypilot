@@ -185,12 +185,19 @@ function getCompanyLogoUrl(company: string, companyLogo: string): string | null 
 function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, company: string, _companyLogo: string) {
   const img = e.target as HTMLImageElement;
   const src = img.src;
+  const lowerCompany = company.toLowerCase().trim();
+  const knownDomain = COMPANY_DOMAINS[lowerCompany];
   const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const domain = cleaned.length >= 2 ? `${cleaned}.com` : "";
+  const domain = knownDomain || (cleaned.length >= 2 ? `${cleaned}.com` : "");
 
   if (src.includes("apistemic.com") && domain) {
+    // Try hunter.io as second attempt
     img.src = `https://logos.hunter.io/${domain}`;
+  } else if (src.includes("hunter.io") && domain) {
+    // Try Google favicon as last resort
+    img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
   } else {
+    // All failed — hide the img, letter initial will show through
     img.style.display = "none";
   }
 }
