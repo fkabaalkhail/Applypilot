@@ -65,24 +65,119 @@ function getLogoColor(company: string): string {
   return LOGO_COLORS[letter] || "#6B7280";
 }
 
+// Known company → domain mappings for accurate logos
+const COMPANY_DOMAINS: Record<string, string> = {
+  "pwc canada": "pwc.com", "pwc": "pwc.com",
+  "deloitte canada": "deloitte.com", "deloitte": "deloitte.com",
+  "kpmg canada": "kpmg.com", "kpmg": "kpmg.com",
+  "ey canada": "ey.com", "ey": "ey.com",
+  "accenture canada": "accenture.com", "accenture": "accenture.com",
+  "mckinsey": "mckinsey.com", "mckinsey (canada)": "mckinsey.com",
+  "capgemini canada": "capgemini.com", "capgemini": "capgemini.com",
+  "td bank": "td.com", "td": "td.com",
+  "rbc": "rbc.com", "royal bank": "rbc.com",
+  "cibc": "cibc.com",
+  "bmo": "bmo.com", "bank of montreal": "bmo.com",
+  "scotiabank": "scotiabank.com",
+  "national bank": "nbc.ca", "national bank of canada": "nbc.ca",
+  "cgi": "cgi.com",
+  "manulife": "manulife.com",
+  "sun life": "sunlife.com",
+  "shopify": "shopify.com",
+  "kinaxis": "kinaxis.com",
+  "ciena": "ciena.com",
+  "ross video": "rossvideo.com",
+  "trend micro": "trendmicro.com",
+  "magnet forensics": "magnetforensics.com",
+  "ribbon communications": "ribboncommunications.com",
+  "assent compliance": "assentcompliance.com",
+  "you.i tv": "youi.tv",
+  "electronic arts": "ea.com", "electronic arts (ea)": "ea.com",
+  "capital one": "capitalone.com",
+  "jp morgan": "jpmorgan.com", "jpmorgan": "jpmorgan.com",
+  "goldman sachs": "goldmansachs.com",
+  "two sigma": "twosigma.com",
+  "de shaw": "deshaw.com",
+  "jane street": "janestreet.com",
+  "meta": "meta.com", "facebook": "meta.com",
+  "google": "google.com", "alphabet": "google.com",
+  "amazon": "amazon.com", "aws": "amazon.com",
+  "apple": "apple.com",
+  "microsoft": "microsoft.com",
+  "netflix": "netflix.com",
+  "uber": "uber.com",
+  "airbnb": "airbnb.com",
+  "stripe": "stripe.com",
+  "openai": "openai.com",
+  "anthropic": "anthropic.com",
+  "nvidia": "nvidia.com",
+  "databricks": "databricks.com",
+  "snowflake": "snowflake.com",
+  "salesforce": "salesforce.com",
+  "oracle": "oracle.com",
+  "adobe": "adobe.com",
+  "intuit": "intuit.com",
+  "spotify": "spotify.com",
+  "twitter": "x.com",
+  "snap": "snap.com", "snapchat": "snap.com",
+  "discord": "discord.com",
+  "figma": "figma.com",
+  "notion": "notion.so",
+  "bytedance": "bytedance.com", "tiktok": "tiktok.com",
+  "bloomberg": "bloomberg.com",
+  "palantir": "palantir.com",
+  "coinbase": "coinbase.com",
+  "robinhood": "robinhood.com",
+  "doordash": "doordash.com",
+  "roblox": "roblox.com",
+  "tesla": "tesla.com",
+  "spacex": "spacex.com",
+  "wealthsimple": "wealthsimple.com",
+  "clio": "clio.com",
+  "fullscript": "fullscript.com",
+  "solace": "solace.com",
+  "calian": "calian.com",
+  "ericsson": "ericsson.com",
+  "blackberry": "blackberry.com",
+  "nokia": "nokia.com",
+  "mitel": "mitel.com",
+  "coveo": "coveo.com",
+  "huawei": "huawei.com", "huawei canada": "huawei.com",
+  "fortinet": "fortinet.com",
+  "mongodb": "mongodb.com",
+};
+
 function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
   // If we have a direct URL (LinkedIn CDN, etc.), use it
   if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("clearbit") && !companyLogo.includes("icon.horse") && !companyLogo.includes("google.com/s2") && !companyLogo.includes("apistemic") && !companyLogo.includes("hunter.io")) {
     return companyLogo;
   }
-  // Extract domain from stored URL or guess from company name
-  let domain = "";
-  if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
-    domain = companyLogo.split("logo.clearbit.com/")[1] || "";
-  } else if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
-    domain = companyLogo.split("icon.horse/icon/")[1] || "";
+  // Check known domain mapping first
+  const lowerCompany = company.toLowerCase().trim();
+  let domain = COMPANY_DOMAINS[lowerCompany] || "";
+
+  // If not in mapping, try extracting from stored logo URL
+  if (!domain && companyLogo) {
+    if (companyLogo.includes("logo.clearbit.com/")) {
+      domain = companyLogo.split("logo.clearbit.com/")[1] || "";
+    } else if (companyLogo.includes("icon.horse/icon/")) {
+      domain = companyLogo.split("icon.horse/icon/")[1] || "";
+    } else if (companyLogo.includes("apistemic.com/domain:")) {
+      const match = companyLogo.match(/domain:([^?]+)/);
+      if (match) domain = match[1];
+    }
   }
+
+  // Fallback: guess domain from company name
   if (!domain) {
-    const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
+    // Remove common suffixes like "Inc.", "Ltd.", "Corp.", "Canada", etc.
+    const cleaned = lowerCompany
+      .replace(/\s*(inc\.?|ltd\.?|corp\.?|llc|canada|usa|us|uk|group|technologies|solutions)\s*/gi, "")
+      .replace(/[^a-z0-9]/g, "");
     if (cleaned.length < 2) return null;
     domain = `${cleaned}.com`;
   }
-  // Primary: apistemic (good quality, proper aspect ratio)
+
   return `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
 }
 
