@@ -171,15 +171,41 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 1rem 1.5rem;
+  padding: 1rem 1.25rem;
   border-top: 1px solid var(--border-light);
   margin-top: 0.5rem;
+}
+
+.sidebar-user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.sidebar-avatar-initials {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .sidebar-user-info {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
 }
 
 .sidebar-user-name {
@@ -197,6 +223,26 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sidebar-logout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.sidebar-logout-btn:hover {
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .main-content {
@@ -963,6 +1009,8 @@ body {
   .sidebar-logo { padding: 0; justify-content: center; }
   .sidebar-section { padding: 0 0.5rem; }
   .sidebar-user { padding: 1rem 0.5rem; justify-content: center; }
+  .sidebar-user-avatar { display: none; }
+  .sidebar-logout-btn { width: 36px; height: 36px; }
   .nav-item { justify-content: center; padding: 0.65rem; }
   .nav-item.active::before { left: -0.5rem; }
   .main-content { margin-left: 64px; }
@@ -1721,6 +1769,44 @@ body {
 
 .auth-link:hover {
   text-decoration: underline;
+}
+
+/* --- Google Sign-In --- */
+.google-signin-wrapper {
+  width: 100%;
+  max-width: 320px;
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.auth-divider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.auth-divider-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.google-signin-button {
+  display: flex;
+  justify-content: center;
 }
 
 /* --- Responsive --- */

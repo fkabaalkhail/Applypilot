@@ -1,6 +1,7 @@
 import { useState, FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
+import { GoogleSignInButton } from "../auth/GoogleSignInButton";
 
 export default function SignUpPage() {
   const navigate = useNavigate();
@@ -133,6 +134,8 @@ export default function SignUpPage() {
               {isSubmitting ? "Creating account..." : "Sign Up"}
             </button>
           </form>
+
+          <GoogleSignInButton />
 
           <p className="auth-footer">
             Already have an account?{" "}

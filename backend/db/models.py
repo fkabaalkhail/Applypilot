@@ -28,7 +28,8 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
-    hashed_password = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=True)  # nullable for OAuth-only users
+    auth_provider = Column(String, default="local")  # "local" or "google"
     first_name = Column(String, default="")
     last_name = Column(String, default="")
     profile_image_url = Column(String, default="")

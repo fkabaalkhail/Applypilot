@@ -2,17 +2,20 @@
 Auth endpoints:
 - POST /auth/register — create user, return tokens
 - POST /auth/login — verify credentials, return tokens
+- POST /auth/google — authenticate with Google ID token
 - POST /auth/refresh — exchange refresh token for new token pair
 - GET /auth/me — return authenticated user profile
 - PUT /auth/me — update user profile fields
 """
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
+import httpx
 
 from backend.db.database import get_db
 from backend.db.models import User
@@ -22,6 +25,9 @@ from backend.auth.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 
 
 # --- Pydantic Schemas ---
@@ -33,6 +39,9 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+class GoogleAuthRequest(BaseModel):
+    credential: str  # Google ID token from frontend
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -58,7 +67,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == body.email).first()
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
-    user = User(email=body.email, hashed_password=hash_password(body.password))
+    user = User(email=body.email, hashed_password=hash_password(body.password), auth_provider="local")
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -73,8 +82,77 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     """Authenticate with email and password."""
     user = db.query(User).filter(User.email == body.email).first()
-    if not user or not verify_password(body.password, user.hashed_password):
+    if not user or not user.hashed_password or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    return TokenResponse(
+        access_token=create_access_token(user.id),
+        refresh_token=create_refresh_token(user.id),
+    )
+
+
+@router.post("/google", response_model=TokenResponse)
+def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
+    """Authenticate or register with a Google ID token."""
+    if not GOOGLE_CLIENT_ID:
+        logger.error("GOOGLE_CLIENT_ID env var is not set")
+        raise HTTPException(status_code=500, detail="Google OAuth not configured on server")
+
+    # Verify the token with Google's tokeninfo endpoint
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(
+                GOOGLE_TOKEN_INFO_URL,
+                params={"id_token": body.credential},
+            )
+    except httpx.RequestError as e:
+        logger.error(f"Failed to reach Google token verification: {e}")
+        raise HTTPException(status_code=502, detail="Could not verify Google token")
+
+    if resp.status_code != 200:
+        logger.warning(f"Google token verification failed: {resp.status_code} {resp.text}")
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+    idinfo = resp.json()
+
+    # Verify the token was issued for our app
+    token_aud = idinfo.get("aud")
+    if token_aud != GOOGLE_CLIENT_ID:
+        logger.warning(f"Token audience mismatch: got {token_aud}, expected {GOOGLE_CLIENT_ID}")
+        raise HTTPException(status_code=401, detail="Token not issued for this application")
+
+    email = idinfo.get("email")
+    if not email:
+        raise HTTPException(status_code=401, detail="Google account has no email")
+
+    if idinfo.get("email_verified") != "true":
+        raise HTTPException(status_code=401, detail="Google email not verified")
+
+    # Find or create user
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        user = User(
+            email=email,
+            hashed_password=None,
+            auth_provider="google",
+            first_name=idinfo.get("given_name", ""),
+            last_name=idinfo.get("family_name", ""),
+            profile_image_url=idinfo.get("picture", ""),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        logger.info(f"New Google user registered: {user.email}")
+    else:
+        # Update profile image from Google if not set
+        if not user.profile_image_url and idinfo.get("picture"):
+            user.profile_image_url = idinfo["picture"]
+        if not user.first_name and idinfo.get("given_name"):
+            user.first_name = idinfo["given_name"]
+        if not user.last_name and idinfo.get("family_name"):
+            user.last_name = idinfo["family_name"]
+        db.commit()
+        db.refresh(user)
+
     return TokenResponse(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
