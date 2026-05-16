@@ -145,7 +145,7 @@
   color: white;
   border: none;
   padding: 0.65rem 1.6rem;
-  border-radius: 999px;
+  border-radius: 10px;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -161,7 +161,7 @@
   color: white;
   border: none;
   padding: 1.1rem 3rem;
-  border-radius: 999px;
+  border-radius: 10px;
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -175,7 +175,7 @@
   background: none;
   border: 2px solid #e5e7eb;
   padding: 0.85rem 2rem;
-  border-radius: 999px;
+  border-radius: 10px;
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -190,7 +190,7 @@
   color: white;
   border: none;
   padding: 0.9rem 2.25rem;
-  border-radius: 999px;
+  border-radius: 10px;
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -359,10 +359,13 @@
   height: 32px;
   border-radius: 8px;
   background: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .mockup-sidebar-item.active {
-  background: #b8b8ff;
+  background: #f0f0ff;
 }
 
 .mockup-main {
@@ -374,10 +377,81 @@
   margin-bottom: 16px;
 }
 
+.mockup-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.mockup-greeting {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.mockup-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mockup-notif-icon {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.mockup-avatar-sm {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #5B5BFF;
+  color: white;
+  font-size: 0.55rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .mockup-search {
   height: 34px;
   background: #f3f4f6;
   border-radius: 8px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 6px;
+}
+
+.mockup-search-icon {
+  font-size: 0.65rem;
+  opacity: 0.5;
+}
+
+.mockup-search-text {
+  font-size: 0.6rem;
+  color: #9ca3af;
+}
+
+.mockup-filter-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.mockup-filter-chip {
+  font-size: 0.55rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.mockup-filter-chip.active {
+  background: #5B5BFF;
+  color: white;
 }
 
 .mockup-card {
@@ -714,7 +788,10 @@
   width: 46px;
   height: 46px;
   border-radius: 10px;
-  background: #e5e7eb;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .match-job-title {
@@ -837,8 +914,11 @@
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: #e5e7eb;
+  background: #f3f4f6;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .autofill-job-info {
@@ -862,16 +942,16 @@
 }
 
 .autofill-score {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 2.5px solid #5B5BFF;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 2px solid #5B5BFF;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.8rem;
   font-weight: 700;
   color: #5B5BFF;
+  background: #f0f0ff;
 }
 
 .autofill-btn {

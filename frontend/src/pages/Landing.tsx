@@ -351,14 +351,34 @@ export default function Landing() {
                 </div>
                 <div className="mockup-body">
                   <div className="mockup-sidebar">
-                    <div className="mockup-sidebar-item active"></div>
-                    <div className="mockup-sidebar-item"></div>
-                    <div className="mockup-sidebar-item"></div>
-                    <div className="mockup-sidebar-item"></div>
+                    <div className="mockup-sidebar-item active">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5B5BFF" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                    </div>
+                    <div className="mockup-sidebar-item">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <div className="mockup-sidebar-item">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </div>
+                    <div className="mockup-sidebar-item">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </div>
                   </div>
                   <div className="mockup-main">
                     <div className="mockup-header">
-                      <div className="mockup-search"></div>
+                      <div className="mockup-header-top">
+                        
+                      </div>
+                      <div className="mockup-search">
+                        <span className="mockup-search-icon">🔍</span>
+                        <span className="mockup-search-text">Search jobs, companies...</span>
+                      </div>
+                      <div className="mockup-filter-row">
+                        <span className="mockup-filter-chip active">All Jobs</span>
+                        <span className="mockup-filter-chip">Remote</span>
+                        <span className="mockup-filter-chip">Canada</span>
+                        <span className="mockup-filter-chip">Full-time</span>
+                      </div>
                     </div>
                     <motion.div
                       className="mockup-card"
@@ -574,7 +594,7 @@ export default function Landing() {
             <AnimatedSection className="showcase-text" animation="fadeLeft" delay={0.2}>
               <h2 className="showcase-title">
                 <TypewriterText
-                  text="Personalized AI Job Matches"
+                  text="Your Skills, Ranked & Matched"
                   speed={45}
                   triggerOnView={true}
                   showCursor={false}
@@ -582,10 +602,11 @@ export default function Landing() {
                 />
               </h2>
               <p className="showcase-desc">
-                See jobs you're truly qualified for, matched to your real skills,
-                with no fake listings and early alerts.
+                Our AI reads the job description and your resume side by side,
+                then scores how well you fit — so you only spend time on roles
+                where you actually have a shot.
               </p>
-              <button className="btn-dark" onClick={() => navigate("/app")}>Find My Matches</button>
+              <button className="btn-dark" onClick={() => navigate("/app")}>See My Fit Score</button>
             </AnimatedSection>
             <AnimatedSection className="showcase-visual" animation="fadeRight" delay={0.3}>
               <div className="showcase-card match-card">
@@ -598,10 +619,12 @@ export default function Landing() {
                   </div>
                 </div>
                 <div className="match-card-job">
-                  <div className="match-job-icon"></div>
+                  <div className="match-job-icon">
+                    <img src="https://www.google.com/s2/favicons?domain=runway.com&sz=32" alt="Runway" style={{ width: '24px', height: '24px', borderRadius: '4px' }} />
+                  </div>
                   <div>
                     <div className="match-job-title">Senior Data Analyst</div>
-                    <div className="match-job-company">Runway</div>
+                    <div className="match-job-company">Runway • New York, NY</div>
                   </div>
                 </div>
                 <div className="match-scores-row">
@@ -637,7 +660,7 @@ export default function Landing() {
             <AnimatedSection className="showcase-text" animation="fadeRight" delay={0.2}>
               <h2 className="showcase-title">
                 <TypewriterText
-                  text="1-Click Application Autofill"
+                  text="Hands-Free Application Engine"
                   speed={45}
                   triggerOnView={true}
                   showCursor={false}
@@ -645,10 +668,11 @@ export default function Landing() {
                 />
               </h2>
               <p className="showcase-desc">
-                Apply to hundreds of jobs daily across all major ATS platforms.
-                Skip repetitive data entry and save 80% of your time.
+                Point it at a job posting and walk away. Tailrd fills every field,
+                answers screening questions, and submits — you just review the
+                confirmation email.
               </p>
-              <button className="btn-dark" onClick={() => navigate("/app")}>Start Autofilling</button>
+              <button className="btn-dark" onClick={() => navigate("/app")}>Let It Apply For Me</button>
             </AnimatedSection>
             <AnimatedSection className="showcase-visual" animation="fadeLeft" delay={0.3}>
               <div className="showcase-card autofill-card">
@@ -657,7 +681,9 @@ export default function Landing() {
                   <span className="autofill-brand">Tailrd</span>
                 </div>
                 <div className="autofill-job">
-                  <div className="autofill-job-icon"></div>
+                  <div className="autofill-job-icon">
+                    <img src="https://www.google.com/s2/favicons?domain=runway.com&sz=32" alt="Runway" style={{ width: '24px', height: '24px', borderRadius: '4px' }} />
+                  </div>
                   <div className="autofill-job-info">
                     <div className="autofill-company">Runway • Artificial Intelligence(AI)</div>
                     <div className="autofill-title">Product Manager, Analytics</div>
@@ -697,7 +723,7 @@ export default function Landing() {
             <AnimatedSection className="showcase-text" animation="fadeLeft" delay={0.2}>
               <h2 className="showcase-title">
                 <TypewriterText
-                  text="Job Specific Tailored Resume"
+                  text="A New Resume for Every Role"
                   speed={45}
                   triggerOnView={true}
                   showCursor={false}
@@ -705,16 +731,17 @@ export default function Landing() {
                 />
               </h2>
               <p className="showcase-desc">
-                Get a perfectly tailored, professional resume that passes ATS
-                and highlights your strengths in just 6 seconds.
+                Each application gets its own version of your resume — rewritten
+                to mirror the job's language, highlight relevant wins, and sail
+                through ATS filters.
               </p>
               <ul className="showcase-bullets">
-                <li>✓ ATS-optimized formatting</li>
-                <li>✓ Keyword matching from job description</li>
-                <li>✓ Quantified achievements highlighted</li>
-                <li>✓ Industry-specific language</li>
+                <li>✓ Mirrors keywords from the posting</li>
+                <li>✓ Reorders sections by relevance</li>
+                <li>✓ Adds metrics the recruiter cares about</li>
+                <li>✓ Passes automated screening tools</li>
               </ul>
-              <button className="btn-dark" onClick={() => navigate("/app")}>Upgrade My Resume</button>
+              <button className="btn-dark" onClick={() => navigate("/app")}>Build My Resume</button>
             </AnimatedSection>
             <AnimatedSection className="showcase-visual" animation="fadeRight" delay={0.3}>
               <div className="showcase-card resume-card">

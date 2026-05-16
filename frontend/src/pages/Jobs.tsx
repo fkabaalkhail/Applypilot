@@ -230,16 +230,16 @@ export default function Jobs() {
   const pageSize = 50;
   const [search, setSearch] = useState("");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [filtersVisible, setFiltersVisible] = useState(true);
 
   const jobsListRef = useRef<HTMLDivElement>(null);
   const prevSelectedJobRef = useRef<Job | null>(null);
 
-  const [filters, setFilters] = useState<Filters>({
+  const [filters] = useState<Filters>({
     source: "",
     min_match_score: 0,
     experience_level: "",
   });
-  const [showFilters, setShowFilters] = useState(false);
 
   const [aggFilters, setAggFilters] = useState<JobFilters>(() => {
     try {
@@ -382,21 +382,7 @@ export default function Jobs() {
     <div className="jobs-page">
       {/* Header Bar */}
       <header className="jobs-header">
-        <h1>JOBS</h1>
-        <div className="jobs-tabs">
-          {TABS.map((tab) => (
-            <button
-              key={tab.label}
-              className={`tab-btn ${activeTab === tab.label ? "active" : ""}`}
-              onClick={() => { setActiveTab(tab.label); setPage(1); }}
-            >
-              {tab.label}
-              {tab.count !== null && tab.count > 0 && (
-                <span className="tab-count">{tab.count}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        <h1>Jobs</h1>
         <div className="header-right">
           <div className="search-wrapper">
             <i className="fa-solid fa-magnifying-glass"></i>
@@ -411,41 +397,40 @@ export default function Jobs() {
         </div>
       </header>
 
-      {/* Filter Bar */}
-      <div className="filter-bar">
-        <button
-          className="filter-pill all-filters"
-          onClick={() => setShowFilters(!showFilters)}
-        >
-          <i className="fa-solid fa-sliders"></i> All Filters
-        </button>
-        <span className="filter-sort">
-          <i className="fa-solid fa-arrow-down-wide-short"></i> Recommended
-        </span>
-      </div>
-
-      {/* Expanded Filters */}
-      {showFilters && (
-        <div className="filters-expanded">
-          <select
-            value={filters.experience_level}
-            onChange={(e) => setFilters({ ...filters, experience_level: e.target.value })}
-            className="filter-select"
+      {/* Tabs + Filter Bar */}
+      <div className="jobs-toolbar">
+        <div className="jobs-toolbar-top">
+          <div className="jobs-tabs">
+            {TABS.map((tab) => (
+              <button
+                key={tab.label}
+                className={`tab-btn ${activeTab === tab.label ? "active" : ""}`}
+                onClick={() => { setActiveTab(tab.label); setPage(1); }}
+              >
+                {tab.label}
+                {tab.count !== null && tab.count > 0 && (
+                  <span className="tab-count">{tab.count}</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <button
+            className="filter-toggle-btn"
+            onClick={() => setFiltersVisible(!filtersVisible)}
+            aria-label={filtersVisible ? "Hide filters" : "Show filters"}
           >
-            <option value="">Any Level</option>
-            <option value="entry">Entry Level</option>
-            <option value="mid">Mid Level</option>
-            <option value="senior">Senior</option>
-          </select>
+            <i className="fa-solid fa-sliders"></i>
+            {filtersVisible ? "Hide Filters" : "Show Filters"}
+          </button>
         </div>
-      )}
-
-      {/* Aggregator Filter Bar */}
-      <JobFilterBar
-        filters={aggFilters}
-        onChange={(newFilters) => { setAggFilters(newFilters); setPage(1); }}
-        totalCount={stats.total}
-      />
+        {filtersVisible && (
+          <JobFilterBar
+            filters={aggFilters}
+            onChange={(newFilters) => { setAggFilters(newFilters); setPage(1); }}
+            totalCount={stats.total}
+          />
+        )}
+      </div>
 
       {/* Content Area: Job Feed + Detail Panel */}
       <div className={`jobs-content-area${selectedJob ? " has-detail" : ""}`}>

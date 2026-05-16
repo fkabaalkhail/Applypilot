@@ -264,27 +264,31 @@ export default function ResumeDetail() {
   /* ===== Render ===== */
 
   return (
-    <div className="resume-detail profile-page">
+    <div className="resume-detail">
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
-      <div className="profile-header">
-        <h1>{resume.name}</h1>
-        {resume.is_primary && <span className="badge-primary">PRIMARY</span>}
-        <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
-          <button className="btn-pill" onClick={() => setShowPreview(true)}>
-            <i className="fa-solid fa-eye" style={{ marginRight: "0.3rem" }}></i> Preview
-          </button>
-          <button className="btn-pill" onClick={handleExport}>
-            <i className="fa-solid fa-download" style={{ marginRight: "0.3rem" }}></i> Export
-          </button>
-          <button
-            className="profile-save-btn"
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
+      <div className="resume-detail-top-header">
+        <div className="resume-detail-title-row">
+          <div>
+            <h1 className="resume-detail-name">{resume.name}</h1>
+            {resume.is_primary && <span className="badge-primary"><i className="fa-solid fa-star"></i> Primary</span>}
+          </div>
+          <div className="resume-detail-actions">
+            <button className="btn-secondary" onClick={() => setShowPreview(true)}>
+              <i className="fa-solid fa-eye"></i> Preview
+            </button>
+            <button className="btn-secondary" onClick={handleExport}>
+              <i className="fa-solid fa-download"></i> Export
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -299,24 +303,24 @@ export default function ResumeDetail() {
       )}
 
       {/* Analysis Section */}
-      <section className="profile-section" data-testid="analysis-report-section">
-        <div className="profile-section-header">
-          <h2>Analysis</h2>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+      <section className="resume-section-card" data-testid="analysis-report-section">
+        <div className="resume-section-header">
+          <h2><i className="fa-solid fa-chart-line"></i> Analysis</h2>
+          <div className="resume-section-actions">
             {resume.is_primary ? (
-              <span className="badge-primary">PRIMARY</span>
+              <span className="badge-primary"><i className="fa-solid fa-star"></i> Primary</span>
             ) : (
-              <button className="btn-pill" type="button" onClick={handleSetPrimary}>
+              <button className="btn-secondary" type="button" onClick={handleSetPrimary}>
                 Set as Primary
               </button>
             )}
             <button
-              className="btn-pill btn-pill-accent"
+              className="btn-primary"
               type="button"
               onClick={handleAnalyze}
               disabled={analyzing}
             >
-              {analyzing ? "Analyzing..." : "Analyze"}
+              {analyzing ? "Analyzing..." : "Run Analysis"}
             </button>
           </div>
         </div>
@@ -357,11 +361,11 @@ export default function ResumeDetail() {
       </section>
 
       {/* Personal Information */}
-      <section className="profile-section">
-        <div className="profile-section-header">
-          <h2>Personal Information</h2>
-          <button className="profile-edit-btn" onClick={() => toggleEdit("personal")} aria-label="Edit personal info">
-            <PencilIcon />
+      <section className="resume-section-card">
+        <div className="resume-section-header">
+          <h2><i className="fa-solid fa-user"></i> Personal Information</h2>
+          <button className="btn-secondary" onClick={() => toggleEdit("personal")} aria-label="Edit personal info">
+            <PencilIcon /> {editingSection === "personal" ? "Done" : "Edit"}
           </button>
         </div>
         {editingSection === "personal" ? (
@@ -409,11 +413,11 @@ export default function ResumeDetail() {
       </section>
 
       {/* Education */}
-      <section className="profile-section">
-        <div className="profile-section-header">
-          <h2>Education</h2>
-          <button className="profile-edit-btn" onClick={() => toggleEdit("education")} aria-label="Edit education">
-            <PencilIcon />
+      <section className="resume-section-card">
+        <div className="resume-section-header">
+          <h2><i className="fa-solid fa-graduation-cap"></i> Education</h2>
+          <button className="btn-secondary" onClick={() => toggleEdit("education")} aria-label="Edit education">
+            <PencilIcon /> {editingSection === "education" ? "Done" : "Edit"}
           </button>
         </div>
         {editingSection === "education" ? (
@@ -451,11 +455,11 @@ export default function ResumeDetail() {
       </section>
 
       {/* Experience */}
-      <section className="profile-section">
-        <div className="profile-section-header">
-          <h2>Experience</h2>
-          <button className="profile-edit-btn" onClick={() => toggleEdit("experience")} aria-label="Edit experience">
-            <PencilIcon />
+      <section className="resume-section-card">
+        <div className="resume-section-header">
+          <h2><i className="fa-solid fa-briefcase"></i> Experience</h2>
+          <button className="btn-secondary" onClick={() => toggleEdit("experience")} aria-label="Edit experience">
+            <PencilIcon /> {editingSection === "experience" ? "Done" : "Edit"}
           </button>
         </div>
         {editingSection === "experience" ? (
@@ -486,11 +490,11 @@ export default function ResumeDetail() {
       </section>
 
       {/* Projects */}
-      <section className="profile-section">
-        <div className="profile-section-header">
-          <h2>Projects</h2>
-          <button className="profile-edit-btn" onClick={() => toggleEdit("projects")} aria-label="Edit projects">
-            <PencilIcon />
+      <section className="resume-section-card">
+        <div className="resume-section-header">
+          <h2><i className="fa-solid fa-code"></i> Projects</h2>
+          <button className="btn-secondary" onClick={() => toggleEdit("projects")} aria-label="Edit projects">
+            <PencilIcon /> {editingSection === "projects" ? "Done" : "Edit"}
           </button>
         </div>
         {editingSection === "projects" ? (
@@ -523,11 +527,11 @@ export default function ResumeDetail() {
       </section>
 
       {/* Technologies */}
-      <section className="profile-section">
-        <div className="profile-section-header">
-          <h2>Technologies</h2>
-          <button className="profile-edit-btn" onClick={() => toggleEdit("technologies")} aria-label="Edit technologies">
-            <PencilIcon />
+      <section className="resume-section-card">
+        <div className="resume-section-header">
+          <h2><i className="fa-solid fa-microchip"></i> Technologies</h2>
+          <button className="btn-secondary" onClick={() => toggleEdit("technologies")} aria-label="Edit technologies">
+            <PencilIcon /> {editingSection === "technologies" ? "Done" : "Edit"}
           </button>
         </div>
         {editingSection === "technologies" ? (

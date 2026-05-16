@@ -6,6 +6,7 @@ export default function App() {
   const { user, logout } = useAuth();
   const [showReferModal, setShowReferModal] = useState(false);
   const [referCopied, setReferCopied] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const referralCode = user?.id?.toString().slice(-8) || "tailrd";
   const referralLink = `https://www.tailrd.ca?ref=${referralCode}`;
@@ -17,13 +18,28 @@ export default function App() {
   };
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         {/* Logo */}
         <div className="sidebar-logo">
           <img src="/logo-icon.png" alt="Tailrd" className="sidebar-logo-img" />
           <span className="logo-text">Tailrd</span>
         </div>
+
+        {/* Collapse Toggle */}
+        <button
+          className="sidebar-collapse-btn"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {sidebarCollapsed ? (
+              <polyline points="9 18 15 12 9 6" />
+            ) : (
+              <polyline points="15 18 9 12 15 6" />
+            )}
+          </svg>
+        </button>
 
         {/* Menu Section */}
         <div className="sidebar-section">

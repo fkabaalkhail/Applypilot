@@ -94,7 +94,10 @@ export default function Resume() {
     <div className="resume-page-new">
       {/* Header */}
       <div className="resume-page-header">
-        <h1>Resume</h1>
+        <div>
+          <h1>My Resumes</h1>
+          <p className="resume-page-subtitle">Manage your resumes and get AI-powered analysis for better job matching.</p>
+        </div>
         <button
           className="resume-add-btn"
           onClick={() => setShowUploadModal(true)}

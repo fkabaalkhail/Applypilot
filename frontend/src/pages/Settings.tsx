@@ -389,16 +389,19 @@ export default function Settings() {
 
   return (
     <div className="settings-page">
-      <h1>Settings</h1>
+      <div className="settings-page-header">
+        <h1>Settings</h1>
+        <p>Manage your account details, job preferences, and extension configuration.</p>
+      </div>
 
-      {/* Personal Info Card */}
-      <div className="section-card">
-        <div className="section-header">
-          <span className="section-icon">👤</span>
-          Personal Info
+      {/* Personal Info */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <i className="fa-solid fa-user"></i>
+          <h2>Personal Information</h2>
         </div>
-        <div className="form-grid">
-          <div className="form-group">
+        <div className="settings-form-grid">
+          <div className="settings-field">
             <label htmlFor="first_name">First Name</label>
             <input
               id="first_name"
@@ -407,7 +410,7 @@ export default function Settings() {
               onChange={(e) => updateField("first_name", e.target.value)}
             />
           </div>
-          <div className="form-group">
+          <div className="settings-field">
             <label htmlFor="last_name">Last Name</label>
             <input
               id="last_name"
@@ -416,7 +419,7 @@ export default function Settings() {
               onChange={(e) => updateField("last_name", e.target.value)}
             />
           </div>
-          <div className="form-group">
+          <div className="settings-field">
             <label htmlFor="email">Email</label>
             <input
               id="email"
@@ -425,7 +428,7 @@ export default function Settings() {
               onChange={(e) => updateField("email", e.target.value)}
             />
           </div>
-          <div className="form-group">
+          <div className="settings-field">
             <label htmlFor="phone">Phone</label>
             <input
               id="phone"
@@ -434,7 +437,7 @@ export default function Settings() {
               onChange={(e) => updateField("phone", e.target.value)}
             />
           </div>
-          <div className="form-group">
+          <div className="settings-field">
             <label htmlFor="city">City</label>
             <input
               id="city"
@@ -443,7 +446,7 @@ export default function Settings() {
               onChange={(e) => updateField("city", e.target.value)}
             />
           </div>
-          <div className="form-group">
+          <div className="settings-field">
             <label htmlFor="linkedin_url">LinkedIn URL</label>
             <input
               id="linkedin_url"
@@ -452,7 +455,7 @@ export default function Settings() {
               onChange={(e) => updateField("linkedin_url", e.target.value)}
             />
           </div>
-          <div className="form-group">
+          <div className="settings-field">
             <label htmlFor="website">Website</label>
             <input
               id="website"
@@ -464,14 +467,14 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Job Preferences Card */}
-      <div className="section-card">
-        <div className="section-header">
-          <span className="section-icon">💼</span>
-          Job Preferences
+      {/* Job Preferences */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <i className="fa-solid fa-briefcase"></i>
+          <h2>Job Preferences</h2>
         </div>
-        <div className="form-grid">
-          <div className="form-group">
+        <div className="settings-form-grid">
+          <div className="settings-field">
             <label htmlFor="job_title">Job Title</label>
             <input
               id="job_title"
@@ -480,8 +483,8 @@ export default function Settings() {
               onChange={(e) => updateField("job_title", e.target.value)}
             />
           </div>
-          <div className="form-group">
-            <label htmlFor="location">Location</label>
+          <div className="settings-field">
+            <label htmlFor="location">Preferred Location</label>
             <input
               id="location"
               type="text"
@@ -498,11 +501,11 @@ export default function Settings() {
         />
       </div>
 
-      {/* Pre-filled Answers Card */}
-      <div className="section-card">
-        <div className="section-header">
-          <span className="section-icon">💬</span>
-          Pre-filled Answers
+      {/* Pre-filled Answers */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <i className="fa-solid fa-comment-dots"></i>
+          <h2>Pre-filled Answers</h2>
         </div>
         <KeyValueEditor
           entries={prefilledEntries}
@@ -510,16 +513,16 @@ export default function Settings() {
         />
       </div>
 
-      {/* Resume Card */}
-      <div className="section-card">
-        <div className="section-header">
-          <span className="section-icon">📄</span>
-          Resume
+      {/* Resume */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <i className="fa-solid fa-file-lines"></i>
+          <h2>Resume</h2>
         </div>
         {formData.resume_file_name && (
-          <div className="resume-info">
-            <span>📎</span>
-            <span className="resume-file-name">{formData.resume_file_name}</span>
+          <div className="settings-resume-info">
+            <i className="fa-solid fa-paperclip"></i>
+            <span className="settings-resume-filename">{formData.resume_file_name}</span>
           </div>
         )}
         <input
@@ -530,24 +533,23 @@ export default function Settings() {
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (file) uploadResume(file);
-            // Reset so the same file can be re-selected
             e.target.value = "";
           }}
         />
         <button
           type="button"
-          className="resume-upload-btn"
+          className="settings-upload-btn"
           onClick={() => fileInputRef.current?.click()}
         >
-          📤 Upload Resume
+          <i className="fa-solid fa-cloud-arrow-up"></i> Upload Resume
         </button>
       </div>
 
-      {/* Extension Settings Card */}
-      <div className="section-card">
-        <div className="section-header">
-          <span className="section-icon">⚙️</span>
-          Extension Settings
+      {/* Extension Settings */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <i className="fa-solid fa-gear"></i>
+          <h2>Extension Settings</h2>
         </div>
         <ToggleSwitch
           checked={formData.pause_before_submit}
@@ -570,10 +572,10 @@ export default function Settings() {
       </div>
 
       {/* Save Bar */}
-      <div className="save-bar">
+      <div className="settings-save-bar">
         <button
           type="button"
-          className="save-btn"
+          className="settings-save-btn"
           disabled={saving || !isDirty}
           onClick={saveSettings}
         >
