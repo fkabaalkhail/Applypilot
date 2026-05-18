@@ -27,6 +27,7 @@ function IndexPopup() {
   const [result, setResult] = useState("")
   const [completion, setCompletion] = useState(0)
   const [jobInfo, setJobInfo] = useState<JobInfo | null>(null)
+  const [logoLoaded, setLogoLoaded] = useState(false)
 
   useEffect(() => {
     // Load profile
@@ -169,10 +170,21 @@ function IndexPopup() {
         <div className="job-card">
           <div className="job-card-top">
             <div className="job-card-logo-wrap">
-              {jobInfo.logo ? (
-                <img src={jobInfo.logo} alt="" className="job-card-logo" onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }} />
-              ) : null}
-              <div className="job-card-logo-fallback">{jobInfo.company.charAt(0)}</div>
+              {jobInfo.logo && (
+                <img
+                  src={jobInfo.logo}
+                  alt=""
+                  className="job-card-logo"
+                  onLoad={() => setLogoLoaded(true)}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none"
+                    setLogoLoaded(false)
+                  }}
+                />
+              )}
+              {!logoLoaded && (
+                <div className="job-card-logo-fallback">{jobInfo.company.charAt(0)}</div>
+              )}
             </div>
             <div className="job-card-company-info">
               <span className="job-card-company">{jobInfo.company}</span>
