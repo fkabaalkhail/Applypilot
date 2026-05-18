@@ -16,6 +16,7 @@ import Refer from "./pages/Refer";
 import Interview from "./pages/Interview";
 import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
+import DemoApply from "./pages/DemoApply";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -27,6 +28,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/sign-in/*" element={<SignInPage />} />
           <Route path="/sign-up/*" element={<SignUpPage />} />
           <Route path="/list" element={<JobsList />} />
+          <Route path="/demo-apply" element={<DemoApply />} />
           <Route
             path="/app"
             element={
