@@ -1,8 +1,8 @@
 {
-  "name": "applypilot-extension",
-  "displayName": "ApplyPilot",
-  "version": "0.1.0",
-  "description": "AI-powered job application form filler",
+  "name": "tailrd-extension",
+  "displayName": "Tailrd - AI Job Autofill",
+  "version": "1.0.0",
+  "description": "AI-powered job application autofill. Fill forms in one click with your resume data.",
   "author": "Fahad Aba-Alkhail",
   "scripts": {
     "dev": "plasmo dev",
@@ -28,11 +28,15 @@
   "manifest": {
     "permissions": ["activeTab", "storage", "tabs", "scripting"],
     "host_permissions": [
-      "http://localhost:8000/*",
+      "https://www.tailrd.ca/*",
       "https://www.linkedin.com/*",
       "https://jobs.lever.co/*",
       "https://boards.greenhouse.io/*",
-      "https://*.myworkdayjobs.com/*"
+      "https://*.myworkdayjobs.com/*",
+      "https://*.ashbyhq.com/*",
+      "https://*.smartrecruiters.com/*",
+      "https://*.icims.com/*",
+      "https://*.taleo.net/*"
     ]
   }
 }
