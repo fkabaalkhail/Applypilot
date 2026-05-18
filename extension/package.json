@@ -37,6 +37,12 @@
       "https://*.smartrecruiters.com/*",
       "https://*.icims.com/*",
       "https://*.taleo.net/*"
+    ],
+    "web_accessible_resources": [
+      {
+        "resources": ["assets/icon.png"],
+        "matches": ["<all_urls>"]
+      }
     ]
   }
 }

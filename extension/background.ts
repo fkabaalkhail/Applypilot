@@ -1,6 +1,6 @@
 export {}
 
-import { registerMessageHandlers } from "./src/messaging"
+import { registerMessageHandlers } from "./lib/messaging"
 
 // Background service worker — handles API calls to backend and message routing
 registerMessageHandlers()

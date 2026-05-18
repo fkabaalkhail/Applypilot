@@ -1,10 +1,10 @@
 import type { PlasmoCSConfig } from "plasmo"
-import { FormDetector } from "./src/form-detector"
-import { FieldMapper } from "./src/field-mapper"
-import { FormFiller } from "./src/form-filler"
-import { TaskQueue } from "./src/task-queue"
-import { ProgressTracker } from "./src/progress-tracker"
-import { reportComplete, reportError } from "./src/messaging"
+import { FormDetector } from "./lib/form-detector"
+import { FieldMapper } from "./lib/field-mapper"
+import { FormFiller } from "./lib/form-filler"
+import { TaskQueue } from "./lib/task-queue"
+import { ProgressTracker } from "./lib/progress-tracker"
+import { reportComplete, reportError } from "./lib/messaging"
 
 export const config: PlasmoCSConfig = {
   matches: [
