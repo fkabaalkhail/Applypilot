@@ -1,0 +1,346 @@
+/* DemoApply — Greenhouse-style ATS form */
+
+.demo-apply-page {
+  min-height: 100vh;
+  background-color: #f9fafb;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Header */
+.demo-apply-header {
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 20px 0;
+}
+
+.demo-apply-header-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.demo-apply-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.demo-apply-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.demo-apply-company {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.demo-apply-job-title {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Main Content */
+.demo-apply-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+.demo-apply-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 32px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.demo-apply-form-heading {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 4px;
+}
+
+.demo-apply-form-subheading {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0 0 24px;
+}
+
+.demo-required-star {
+  color: #ef4444;
+}
+
+/* Autofill Button Bar */
+.demo-apply-autofill-bar {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.demo-autofill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #7c3aed;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.demo-autofill-btn:hover {
+  background: #6d28d9;
+}
+
+/* Form */
+.demo-apply-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.demo-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.demo-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.demo-form-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.demo-form-input {
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #111827;
+  background: #ffffff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+
+.demo-form-input:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+}
+
+.demo-form-input::placeholder {
+  color: #9ca3af;
+}
+
+.demo-form-textarea {
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #111827;
+  background: #ffffff;
+  resize: vertical;
+  min-height: 120px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+
+.demo-form-textarea:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+}
+
+.demo-form-textarea::placeholder {
+  color: #9ca3af;
+}
+
+/* Resume Upload */
+.demo-resume-upload-area {
+  position: relative;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+  transition: border-color 0.15s ease;
+  cursor: pointer;
+}
+
+.demo-resume-upload-area:hover {
+  border-color: #7c3aed;
+}
+
+.demo-resume-file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.demo-resume-upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.demo-resume-upload-placeholder svg {
+  color: #9ca3af;
+}
+
+/* Generate Resume Button */
+.demo-generate-resume-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #ffffff;
+  color: #7c3aed;
+  border: 1px solid #7c3aed;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  width: fit-content;
+}
+
+.demo-generate-resume-btn:hover {
+  background: #f5f3ff;
+}
+
+/* Extension Popup Area */
+.demo-extension-popup-area {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.demo-extension-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.demo-extension-popup-logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.demo-extension-popup-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.demo-extension-popup-text {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Autofill Info Section */
+.demo-autofill-info-section {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.demo-autofill-info-heading {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 12px;
+}
+
+.demo-autofill-info-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.demo-autofill-info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.demo-autofill-info-item:hover {
+  background: #f5f3ff;
+}
+
+.demo-autofill-info-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.demo-autofill-info-value {
+  font-size: 12px;
+  color: #7c3aed;
+  font-weight: 500;
+}
+
+/* Submit Button */
+.demo-submit-btn {
+  padding: 12px 24px;
+  background: #7c3aed;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: not-allowed;
+  opacity: 0.5;
+  margin-top: 8px;
+  transition: opacity 0.15s ease;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .demo-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .demo-apply-card {
+    padding: 20px;
+  }
+
+  .demo-apply-main {
+    padding: 16px 12px 48px;
+  }
+}

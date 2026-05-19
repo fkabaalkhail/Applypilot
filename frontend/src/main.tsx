@@ -17,6 +17,7 @@ import Interview from "./pages/Interview";
 import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
 import VerifyEmailPage from "./pages/VerifyEmail";
+import DemoApply from "./pages/DemoApply";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -29,6 +30,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/sign-up/*" element={<SignUpPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/list" element={<JobsList />} />
+          <Route path="/demo-apply" element={<DemoApply />} />
           <Route
             path="/app"
             element={

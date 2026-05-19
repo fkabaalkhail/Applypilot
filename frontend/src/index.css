@@ -3473,3 +3473,417 @@ body {
   border-radius: 4px;
   object-fit: contain;
 }
+
+/* ===== Tailored Resume Overlay ===== */
+.tailor-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.tailor-overlay-container {
+  position: relative;
+  background: var(--bg-white);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 1400px;
+  height: 90vh;
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.tailor-overlay-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.tailor-overlay-close:hover {
+  background: var(--bg-page);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* Loading state */
+.tailor-overlay-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 3rem;
+}
+
+.tailor-overlay-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border);
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.tailor-overlay-loading-text {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tailor-overlay-loading-sub {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 360px;
+}
+
+/* Error state */
+.tailor-overlay-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem;
+  text-align: center;
+}
+
+.tailor-overlay-error-icon {
+  font-size: 2.5rem;
+}
+
+.tailor-overlay-error h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tailor-overlay-error p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  max-width: 400px;
+  line-height: 1.5;
+}
+
+/* Content 3-column layout */
+.tailor-overlay-content {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 220px 1fr 300px;
+  overflow: hidden;
+}
+
+/* Left column */
+.tailor-overlay-left {
+  border-right: 1px solid var(--border-light);
+  padding: 1.5rem;
+  overflow-y: auto;
+  background: var(--bg-page);
+}
+
+.tailor-overlay-job-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tailor-overlay-job-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.tailor-overlay-job-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.tailor-overlay-job-company {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.tailor-overlay-diff {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.tailor-overlay-diff h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.tailor-overlay-diff p {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Center column */
+.tailor-overlay-center {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tailor-overlay-preview-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.tailor-overlay-preview-header h3 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tailor-overlay-preview-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.tailor-overlay-resume-text {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+  background: none;
+}
+
+/* Right column */
+.tailor-overlay-right {
+  border-left: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tailor-overlay-editor-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.tailor-overlay-editor-header h3 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tailor-overlay-sections {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tailor-overlay-section {
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.tailor-overlay-section-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-page);
+  border: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.tailor-overlay-section-toggle:hover {
+  background: var(--border-light);
+}
+
+.tailor-overlay-section-arrow {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  width: 14px;
+}
+
+.tailor-overlay-section-title {
+  flex: 1;
+}
+
+.tailor-overlay-section-textarea {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--border-light);
+  padding: 0.75rem 1rem;
+  font-size: 0.8rem;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  resize: vertical;
+  outline: none;
+  background: var(--bg-white);
+}
+
+.tailor-overlay-section-textarea:focus {
+  background: #fafaff;
+  box-shadow: inset 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+/* Bottom bar */
+.tailor-overlay-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem 2rem;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-white);
+  flex-shrink: 0;
+}
+
+.tailor-overlay-btn {
+  padding: 0.65rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+}
+
+.tailor-overlay-btn-download {
+  background: var(--bg-white);
+  border: 1.5px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.tailor-overlay-btn-download:hover {
+  border-color: #6366f1;
+  color: #6366f1;
+}
+
+.tailor-overlay-btn-autofill {
+  background: #6366f1;
+  color: white;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+}
+
+.tailor-overlay-btn-autofill:hover {
+  background: #4f46e5;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  transform: translateY(-1px);
+}
+
+.tailor-overlay-btn-regenerate {
+  background: #10b981;
+  color: white;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+}
+
+.tailor-overlay-btn-regenerate:hover {
+  background: #059669;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .tailor-overlay-content {
+    grid-template-columns: 180px 1fr 260px;
+  }
+}
+
+@media (max-width: 900px) {
+  .tailor-overlay-content {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .tailor-overlay-left {
+    border-right: none;
+    border-bottom: 1px solid var(--border-light);
+    padding: 1rem 1.5rem;
+  }
+
+  .tailor-overlay-right {
+    border-left: none;
+    border-top: 1px solid var(--border-light);
+    max-height: 200px;
+  }
+
+  .tailor-overlay-container {
+    height: 95vh;
+    max-height: none;
+    border-radius: 12px;
+  }
+
+  .tailor-overlay-backdrop {
+    padding: 0.5rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .tailor-overlay-bottom {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+  }
+
+  .tailor-overlay-btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  .tailor-overlay-backdrop {
+    padding: 0;
+  }
+
+  .tailor-overlay-container {
+    height: 100vh;
+    max-height: none;
+    border-radius: 0;
+  }
+}
