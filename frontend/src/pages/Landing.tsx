@@ -209,6 +209,14 @@ const SUCCESS_STORIES = [
     name: "Tristan R. — Applied for Software Developer role in Ottawa",
     quote: '"Got two offers in 10 days. The AI tailoring made all the difference."',
   },
+  {
+    img: "/interview_offer_3.png",
+    alt: "Third interview offer letter",
+    badge: "Interview Secured ✓",
+    initials: "MK",
+    name: "Mohamed K. — Applied for Data Analyst role in Toronto",
+    quote: '"Tailrd matched me perfectly. Got the call within days."',
+  },
 ];
 
 function SuccessStoryCarousel() {

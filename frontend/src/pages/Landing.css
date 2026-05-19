@@ -1846,7 +1846,7 @@
   align-items: center;
   gap: 1.5rem;
   width: 100%;
-  max-width: 620px;
+  max-width: 820px;
 }
 
 .success-story-card {
@@ -1887,7 +1887,7 @@
 }
 
 .success-story-letter-scroll {
-  max-height: 480px;
+  max-height: 640px;
   overflow-y: auto;
   border-radius: 6px;
 }
