@@ -20,7 +20,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.db.database import Base, get_db
 from backend.db.models import ScrapedJob, ResumeProfileDB
-from backend.auth.dependencies import get_current_user_id
+from backend.auth.dependencies import get_current_user_id, get_verified_user_id
 from backend.routers import ai
 
 # Create a test-specific app with only the AI router (avoids production lifespan issues)
@@ -66,6 +66,7 @@ def client(db_session):
 
     ai_app.dependency_overrides[get_db] = _override_get_db
     ai_app.dependency_overrides[get_current_user_id] = _override_get_user_id
+    ai_app.dependency_overrides[get_verified_user_id] = _override_get_user_id
     with TestClient(ai_app) as c:
         yield c
     ai_app.dependency_overrides.clear()

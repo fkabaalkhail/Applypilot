@@ -31,7 +31,7 @@ export default function SignUpPage() {
 
     try {
       await register(email, password);
-      navigate("/app");
+      navigate("/verify-email");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string }; status?: number } };

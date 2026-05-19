@@ -73,9 +73,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     window.location.href = "/sign-in";
   }, []);
 
+  const resendVerification = useCallback(async () => {
+    await api.post("/auth/resend-verification");
+  }, []);
+
   const getToken = useCallback(() => {
     return localStorage.getItem("access_token");
   }, []);
+
+  const isEmailVerified = user?.email_verified ?? false;
 
   const value: AuthContextValue = {
     isAuthenticated,
@@ -86,6 +92,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loginWithGoogle,
     logout,
     getToken,
+    resendVerification,
+    isEmailVerified,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

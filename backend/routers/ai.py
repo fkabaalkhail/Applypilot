@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ScrapedJob, ResumeProfileDB
-from backend.auth.dependencies import get_current_user_id
+from backend.auth.dependencies import get_verified_user_id
 from backend.schemas.match import MatchBreakdown, FitAnalysis
 from backend.schemas.ai import TailoredResumeOut, CoverLetterOut
 from backend.services.match_engine import MatchEngine
@@ -63,7 +63,7 @@ def _get_job(job_id: int, db: Session) -> ScrapedJob:
 @router.post("/match-breakdown/{job_id}", response_model=MatchBreakdown)
 async def match_breakdown(
     job_id: int,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Compute match score breakdown for a job."""
@@ -80,7 +80,7 @@ async def match_breakdown(
 @router.post("/tailor-resume/{job_id}", response_model=TailoredResumeOut)
 async def tailor_resume(
     job_id: int,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Generate a tailored resume for a job."""
@@ -98,7 +98,7 @@ async def tailor_resume(
 @router.post("/cover-letter/{job_id}", response_model=CoverLetterOut)
 async def cover_letter(
     job_id: int,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Generate a cover letter for a job."""
@@ -120,7 +120,7 @@ async def cover_letter(
 @router.post("/analyze-fit/{job_id}", response_model=FitAnalysis)
 async def analyze_fit(
     job_id: int,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Get detailed fit analysis for a job."""
@@ -137,7 +137,7 @@ async def analyze_fit(
 @router.post("/batch-score")
 async def batch_score_jobs(
     batch_size: int = 10,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Score the newest unscored jobs against the user's resume.
@@ -194,7 +194,7 @@ async def batch_score_jobs(
 @router.post("/batch-score")
 async def batch_score_jobs(
     batch_size: int = 20,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Score the top unscored jobs against the user's resume.

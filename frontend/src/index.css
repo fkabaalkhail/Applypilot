@@ -1866,6 +1866,16 @@ body {
   text-align: center;
 }
 
+.auth-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #16a34a;
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
 .auth-footer {
   margin-top: 1.5rem;
   font-size: 0.85rem;

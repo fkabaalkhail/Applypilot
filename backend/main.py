@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db.database import engine, Base
+from backend.migrations.add_email_verification import run_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources
 from backend.routers import auth
 from backend.routers.feedback import router as feedback_router
@@ -20,6 +21,7 @@ from backend.routers.feedback import router as feedback_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    run_migration()
     yield
 
 

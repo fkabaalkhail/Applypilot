@@ -20,7 +20,7 @@ from backend.db.models import (
     ScrapedJob, JobStatus, ApplicationRecord, PendingQuestion,
     ResumeProfileDB, TailoredResume, UserSettings,
 )
-from backend.auth.dependencies import get_current_user_id
+from backend.auth.dependencies import get_verified_user_id
 from backend.schemas.apply import ApplySession, FillProfile, ProgressUpdate
 from backend.schemas.jobs import PendingQuestionOut
 
@@ -46,7 +46,7 @@ class QuestionRequest(BaseModel):
 @router.post("/initiate", response_model=ApplySession)
 def initiate_apply(
     request: InitiateRequest,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Initiate an apply flow for a job."""
@@ -92,7 +92,7 @@ def initiate_apply(
 @router.get("/{session_id}/profile", response_model=FillProfile)
 def get_fill_profile(
     session_id: str,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Get profile data for form filling by the extension."""
@@ -178,7 +178,7 @@ def get_fill_profile(
 def update_progress(
     session_id: str,
     update: ProgressUpdate,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Receive progress update from the extension."""
@@ -198,7 +198,7 @@ def update_progress(
 @router.post("/{session_id}/complete")
 def complete_apply(
     session_id: str,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Mark application as complete."""
@@ -236,7 +236,7 @@ def complete_apply(
 def submit_question(
     session_id: str,
     request: QuestionRequest,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Submit a question the extension couldn't answer."""

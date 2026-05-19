@@ -7,6 +7,7 @@ export interface UserProfile {
   last_name: string;
   profile_image_url?: string;
   created_at?: string;
+  email_verified: boolean;
 }
 
 export interface AuthState {
@@ -21,6 +22,8 @@ export interface AuthContextValue extends AuthState {
   loginWithGoogle: (credential: string) => Promise<void>;
   logout: () => void;
   getToken: () => string | null;
+  resendVerification: () => Promise<void>;
+  isEmailVerified: boolean;
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);

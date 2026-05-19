@@ -16,6 +16,16 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    // Handle 403 "Email verification required" — redirect to verify page
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.detail === "Email verification required"
+    ) {
+      window.location.href = "/verify-email";
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       const refreshToken = localStorage.getItem("refresh_token");

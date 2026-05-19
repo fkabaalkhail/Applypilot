@@ -22,7 +22,7 @@ from backend.db.models import (
 )
 from backend.routers import apply as apply_module
 from backend.routers.apply import router as apply_router
-from backend.auth.dependencies import get_current_user_id
+from backend.auth.dependencies import get_current_user_id, get_verified_user_id
 
 # Create a test-specific app with only the apply router
 TEST_DATABASE_URL = "sqlite:///./test_apply_integration.db"
@@ -69,6 +69,7 @@ def client(db_session):
 
     apply_app.dependency_overrides[get_db] = _override_get_db
     apply_app.dependency_overrides[get_current_user_id] = _override_get_user_id
+    apply_app.dependency_overrides[get_verified_user_id] = _override_get_user_id
     with TestClient(apply_app) as c:
         yield c
     apply_app.dependency_overrides.clear()

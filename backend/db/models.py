@@ -14,8 +14,8 @@ Models:
 import enum
 import datetime
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, Enum, JSON, Float, ForeignKey,
-    func,
+    Boolean, Column, Integer, String, Text, DateTime, Enum, JSON, Float,
+    ForeignKey, func,
 )
 from backend.db.database import Base
 
@@ -36,6 +36,11 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow,
                         onupdate=datetime.datetime.utcnow)
+
+    # Email verification fields
+    email_verified = Column(Boolean, default=False, nullable=False)
+    verification_token = Column(String(255), nullable=True, default=None)
+    verification_token_expires_at = Column(DateTime, nullable=True, default=None)
 
 
 # ─── Enums ───────────────────────────────────────────────────────────────────

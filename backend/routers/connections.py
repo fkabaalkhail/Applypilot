@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.auth.dependencies import get_current_user_id
+from backend.auth.dependencies import get_verified_user_id
 from backend.schemas.connections import InsiderConnectionOut, EmailResult
 from backend.services.connection_finder import ConnectionFinder
 from backend.services.email_finder import EmailFinder, validate_linkedin_url
@@ -30,7 +30,7 @@ class EmailFindRequest(BaseModel):
 @router.get("/{company}", response_model=list[InsiderConnectionOut])
 def get_connections(
     company: str,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Get insider connections at a company for the current user."""
@@ -42,7 +42,7 @@ def get_connections(
 @router.post("/email-find", response_model=EmailResult)
 async def find_email(
     request: EmailFindRequest,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
     """Find work email from a LinkedIn profile URL."""

@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.db.database import Base, get_db
-from backend.auth.dependencies import get_current_user_id, get_optional_user_id
+from backend.auth.dependencies import get_current_user_id, get_optional_user_id, get_verified_user_id
 from backend.main import app
 
 # In-memory SQLite for tests
@@ -54,6 +54,7 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_current_user_id] = _override_get_user_id
+    app.dependency_overrides[get_verified_user_id] = _override_get_user_id
     app.dependency_overrides[get_optional_user_id] = _override_get_optional_user_id
     with TestClient(app) as c:
         yield c
