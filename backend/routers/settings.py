@@ -208,7 +208,11 @@ async def upload_resume(
     filename = file.filename or "resume.pdf"
     save_path = RESUME_DIR / filename
 
+    # File size limit: 10 MB
+    MAX_FILE_SIZE = 10 * 1024 * 1024
     content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
     save_path.write_bytes(content)
 
     s = _get_or_create_settings(db, user_id)

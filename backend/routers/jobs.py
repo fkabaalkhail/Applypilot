@@ -9,6 +9,7 @@ POST /jobs/{id}/unsave — unsave a job
 """
 
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,12 +17,31 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 
 from backend.db.database import get_db
-from backend.db.models import ScrapedJob, JobStatus, ApplicationRecord
-from backend.auth.dependencies import get_verified_user_id, get_optional_user_id
+from backend.db.models import ScrapedJob, JobStatus, ApplicationRecord, UserSavedJob
+from backend.auth.dependencies import get_verified_user_id, get_optional_user_id, get_admin_user_id
 from backend.schemas.jobs import ScrapedJobOut
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _escape_like(term: str) -> str:
+    """Escape SQL LIKE wildcards to prevent DoS via expensive patterns."""
+    return re.sub(r'([%_])', r'\\\1', term)
+
+
+def _sanitize_description(text: str) -> str:
+    """Sanitize HTML from job descriptions to prevent stored XSS."""
+    try:
+        import nh3
+        # Strip all HTML tags, keeping only safe text content
+        return nh3.clean(text, tags=set())
+    except ImportError:
+        # Fallback: aggressive regex strip if nh3 not installed
+        cleaned = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r'<style[^>]*>.*?</style>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r'<[^>]+>', '\n', cleaned)
+        return cleaned
 
 
 @router.get("", response_model=list[ScrapedJobOut])
@@ -51,7 +71,7 @@ def list_jobs(
     if saved is not None:
         q = q.filter(ScrapedJob.saved == saved)
     if search:
-        search_term = search.strip()
+        search_term = _escape_like(search.strip())
         if search_term:
             q = q.filter(
                 or_(
@@ -112,9 +132,10 @@ def create_job(
     experience_level: str = "new_grad",
     work_type: str = "onsite",
     country: str = "CA",
+    _admin: int = Depends(get_admin_user_id),
     db: Session = Depends(get_db),
 ):
-    """Create a new job listing (used by scrapers to push jobs)."""
+    """Create a new job listing (admin only — used by scrapers to push jobs)."""
     # Dedup by URL
     existing = db.query(ScrapedJob).filter(ScrapedJob.url == url).first()
     if existing:
@@ -240,7 +261,11 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{job_id}/fetch-details")
-async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
+async def fetch_job_details(
+    job_id: int,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
     """Fetch job description from the job page on-demand.
 
     Tries multiple extraction strategies:
@@ -255,10 +280,69 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
     import re
     import json
     import httpx
+    import ipaddress
+    from urllib.parse import urlparse
+
+    # SSRF protection: validate URL against allowlist
+    ALLOWED_DOMAINS = [
+        "linkedin.com", "www.linkedin.com",
+        "greenhouse.io", "boards.greenhouse.io",
+        "lever.co", "jobs.lever.co",
+        "myworkdayjobs.com",
+        "ashbyhq.com",
+        "smartrecruiters.com",
+        "icims.com",
+        "taleo.net",
+        "jobright.ai", "www.jobright.ai",
+        "indeed.com", "www.indeed.com",
+        "glassdoor.com", "www.glassdoor.com",
+    ]
+
+    BLOCKED_IP_RANGES = [
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+        ipaddress.ip_network("169.254.0.0/16"),
+        ipaddress.ip_network("127.0.0.0/8"),
+        ipaddress.ip_network("::1/128"),
+    ]
+
+    def _is_url_allowed(url: str) -> bool:
+        """Check if URL is safe to fetch (not internal, matches allowlist)."""
+        try:
+            parsed = urlparse(url)
+            hostname = parsed.hostname or ""
+            # Block non-http(s) schemes
+            if parsed.scheme not in ("http", "https"):
+                return False
+            # Block IP addresses in private ranges
+            try:
+                ip = ipaddress.ip_address(hostname)
+                for network in BLOCKED_IP_RANGES:
+                    if ip in network:
+                        return False
+            except ValueError:
+                pass  # Not an IP, it's a hostname — check domain allowlist
+            # Check domain allowlist
+            for allowed in ALLOWED_DOMAINS:
+                if hostname == allowed or hostname.endswith(f".{allowed}"):
+                    return True
+            return False
+        except Exception:
+            return False
 
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
+
+    # Validate URL before fetching
+    if not job.url or not _is_url_allowed(job.url):
+        return {
+            "id": job.id,
+            "description": job.description or "",
+            "apply_url": job.url or "",
+            "company_logo": job.company_logo or "",
+        }
 
     # If we already have a good description, return cached data
     if job.description and len(job.description) > 50:
@@ -372,7 +456,7 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
                         job.company_logo = f"https://logos-api.apistemic.com/domain:{cleaned}.com?fallback=404"
 
             if description:
-                job.description = description
+                job.description = _sanitize_description(description)
             db.commit()
             return {
                 "id": job.id,
@@ -557,7 +641,7 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
 
         # Save results
         if description:
-            job.description = description
+            job.description = _sanitize_description(description)
             db.commit()
 
         return {
@@ -577,7 +661,11 @@ async def fetch_job_details(job_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{job_id}/structure-description")
-async def structure_description(job_id: int, db: Session = Depends(get_db)):
+async def structure_description(
+    job_id: int,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
     """Parse a job description into structured sections using Gemini AI. Cached in DB."""
     import json
     from backend.services.llm import get_llm_service
@@ -662,12 +750,19 @@ def save_job(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Save a job (bookmark it)."""
+    """Save a job (bookmark it) for the current user."""
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
-    job.saved = 1
-    db.commit()
+    # Check if already saved
+    existing = db.query(UserSavedJob).filter(
+        UserSavedJob.user_id == user_id,
+        UserSavedJob.job_id == job_id,
+    ).first()
+    if not existing:
+        saved_entry = UserSavedJob(user_id=user_id, job_id=job_id)
+        db.add(saved_entry)
+        db.commit()
     db.refresh(job)
     return job
 
@@ -678,18 +773,24 @@ def unsave_job(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Unsave a job (remove bookmark)."""
+    """Unsave a job (remove bookmark) for the current user."""
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
-    job.saved = 0
+    db.query(UserSavedJob).filter(
+        UserSavedJob.user_id == user_id,
+        UserSavedJob.job_id == job_id,
+    ).delete()
     db.commit()
     db.refresh(job)
     return job
 
 
 @router.post("/fix-empty-companies")
-async def fix_empty_companies(db: Session = Depends(get_db)):
+async def fix_empty_companies(
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
     """Fix jobs with empty company names by extracting from LinkedIn or other sources."""
     import re
     import httpx
@@ -745,6 +846,7 @@ async def fix_empty_companies(db: Session = Depends(get_db)):
 @router.post("/batch-fix-descriptions")
 async def batch_fix_descriptions(
     batch_size: int = Query(20, ge=1, le=50),
+    _admin: int = Depends(get_admin_user_id),
     db: Session = Depends(get_db),
 ):
     """Batch fix jobs with missing or garbage descriptions.
@@ -862,7 +964,7 @@ async def batch_fix_descriptions(
                             continue
 
                 if description:
-                    job.description = description
+                    job.description = _sanitize_description(description)
                     db.commit()
                     fixed += 1
                     results.append({"id": job.id, "company": job.company, "status": "fixed"})
@@ -890,6 +992,7 @@ async def batch_fix_descriptions(
 @router.post("/batch-enrich-salaries")
 async def batch_enrich_salaries(
     batch_size: int = Query(50, ge=1, le=200),
+    _admin: int = Depends(get_admin_user_id),
     db: Session = Depends(get_db),
 ):
     """Enrich jobs with salary data from Levels.fyi and known company ranges.

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from backend.db.database import get_db
 from backend.db.models import Feedback
-from backend.auth.dependencies import get_optional_user_id
+from backend.auth.dependencies import get_optional_user_id, get_admin_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/feedback", tags=["feedback"])
@@ -37,8 +37,11 @@ def submit_feedback(
 
 
 @router.get("")
-def list_feedback(db: Session = Depends(get_db)):
-    """List all feedback (admin use)."""
+def list_feedback(
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
+    """List all feedback (admin only)."""
     items = db.query(Feedback).order_by(Feedback.created_at.desc()).limit(100).all()
     return [
         {

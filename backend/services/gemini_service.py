@@ -80,7 +80,7 @@ class GeminiService:
 
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}"
-            f":generateContent?key={self.api_key}"
+            f":generateContent"
         )
         contents = [{"parts": [{"text": prompt}]}]
         body = {"contents": contents}
@@ -91,11 +91,11 @@ class GeminiService:
         max_retries = 4
         for attempt in range(max_retries):
             async with httpx.AsyncClient() as client:
-                current_url = (
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}"
-                    f":generateContent?key={self.api_key}"
-                )
-                r = await client.post(current_url, json=body, timeout=self.timeout)
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.api_key,
+                }
+                r = await client.post(url, json=body, headers=headers, timeout=self.timeout)
                 if r.status_code == 429:
                     self._rotate_key()  # Try next key
                     wait_time = (2 ** attempt) * 3  # 3s, 6s, 12s, 24s

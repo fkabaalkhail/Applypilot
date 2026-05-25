@@ -42,6 +42,9 @@ class User(Base):
     verification_token = Column(String(255), nullable=True, default=None)
     verification_token_expires_at = Column(DateTime, nullable=True, default=None)
 
+    # Admin role
+    is_admin = Column(Boolean, default=False, nullable=False)
+
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
@@ -372,3 +375,15 @@ class Feedback(Base):
     message = Column(Text, default="")
     wants_followup = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now())
+
+
+# ─── User Saved Jobs (per-user bookmarks) ────────────────────────────────────
+
+class UserSavedJob(Base):
+    """Per-user job bookmarks (many-to-many between users and jobs)."""
+    __tablename__ = "user_saved_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("scraped_jobs.id"), nullable=False, index=True)
+    saved_at = Column(DateTime, default=datetime.datetime.utcnow)

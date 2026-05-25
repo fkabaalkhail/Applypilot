@@ -8,11 +8,12 @@ Runs as Vercel serverless function or standalone with uvicorn.
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db.database import engine, Base
 from backend.migrations.add_email_verification import run_migration
+from backend.migrations.add_admin_role import run_migration as run_admin_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources
 from backend.routers import auth
 from backend.routers.feedback import router as feedback_router
@@ -22,6 +23,7 @@ from backend.routers.feedback import router as feedback_router
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     run_migration()
+    run_admin_migration()
     yield
 
 
@@ -32,13 +34,34 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# --- CORS Configuration ---
+# Restrict origins to known frontends. Use CORS_ORIGINS env var in production.
+_default_origins = "http://localhost:5173"
+_cors_origins = os.getenv("CORS_ORIGINS", _default_origins).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5173,chrome-extension://*").split(","),
+    allow_origins=[o.strip() for o in _cors_origins if o.strip()],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+
+# --- Security Headers Middleware ---
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "0"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # HSTS — only enable if behind HTTPS in production
+    if os.getenv("ENVIRONMENT", "development") == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, prefix="/auth", tags=["auth"])

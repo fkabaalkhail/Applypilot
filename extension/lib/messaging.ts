@@ -83,14 +83,25 @@ export interface MessageResponse {
 
 // ─── API Client ──────────────────────────────────────────────────────────────
 
-const API_BASE = "http://localhost:8000"
+const API_BASE = process.env.PLASMO_PUBLIC_API_URL || "http://localhost:8000"
 
 async function apiCall<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  // Get auth token from storage
+  const result = await chrome.storage.local.get("access_token")
+  const token = result.access_token
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  }
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...options
   })
 
@@ -265,10 +276,11 @@ async function handleNeedAnswer(
 }
 
 /**
- * Forward a message to all dashboard tabs (localhost:5173).
+ * Forward a message to all dashboard tabs.
  */
 function forwardToDashboard(message: ExtensionMessage): void {
-  chrome.tabs.query({ url: "http://localhost:5173/*" }, (tabs) => {
+  const dashboardUrl = process.env.PLASMO_PUBLIC_DASHBOARD_URL || "http://localhost:5173"
+  chrome.tabs.query({ url: `${dashboardUrl}/*` }, (tabs) => {
     for (const tab of tabs) {
       if (tab.id) {
         chrome.tabs.sendMessage(tab.id, message)

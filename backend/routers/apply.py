@@ -8,6 +8,7 @@ POST /apply/{session_id}/complete    → ApplicationRecordOut
 POST /apply/{session_id}/question    → PendingQuestionOut
 """
 
+import time
 import uuid
 import logging
 
@@ -27,8 +28,29 @@ from backend.schemas.jobs import PendingQuestionOut
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# In-memory session store (for simplicity; could be Redis in production)
+# In-memory session store with TTL and size limits
 _sessions: dict[str, dict] = {}
+_SESSION_TTL_SECONDS = 3600  # 1 hour
+_MAX_SESSIONS = 1000
+
+
+def _cleanup_expired_sessions():
+    """Remove expired sessions to prevent memory exhaustion."""
+    now = time.time()
+    expired = [sid for sid, data in _sessions.items() if now - data.get("_created_at", 0) > _SESSION_TTL_SECONDS]
+    for sid in expired:
+        del _sessions[sid]
+
+
+def _get_session(session_id: str) -> dict | None:
+    """Get a session, returning None if expired or not found."""
+    session = _sessions.get(session_id)
+    if not session:
+        return None
+    if time.time() - session.get("_created_at", 0) > _SESSION_TTL_SECONDS:
+        del _sessions[session_id]
+        return None
+    return session
 
 
 class InitiateRequest(BaseModel):
@@ -72,12 +94,21 @@ def initiate_apply(
     session_id = str(uuid.uuid4())
     resume_version = "tailored" if tailored else "original"
 
-    # Store session with user_id
+    # Cleanup expired sessions and enforce size limit
+    _cleanup_expired_sessions()
+    if len(_sessions) >= _MAX_SESSIONS:
+        # Remove oldest sessions
+        sorted_sessions = sorted(_sessions.items(), key=lambda x: x[1].get("_created_at", 0))
+        for sid, _ in sorted_sessions[:100]:
+            del _sessions[sid]
+
+    # Store session with user_id and creation time
     _sessions[session_id] = {
         "job_id": request.job_id,
         "user_id": user_id,
         "resume_version": resume_version,
         "status": "initiated",
+        "_created_at": time.time(),
     }
 
     return ApplySession(
@@ -96,7 +127,7 @@ def get_fill_profile(
     db: Session = Depends(get_db),
 ):
     """Get profile data for form filling by the extension."""
-    session = _sessions.get(session_id)
+    session = _get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Apply session not found.")
 
@@ -182,7 +213,7 @@ def update_progress(
     db: Session = Depends(get_db),
 ):
     """Receive progress update from the extension."""
-    session = _sessions.get(session_id)
+    session = _get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Apply session not found.")
 
@@ -202,7 +233,7 @@ def complete_apply(
     db: Session = Depends(get_db),
 ):
     """Mark application as complete."""
-    session = _sessions.get(session_id)
+    session = _get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Apply session not found.")
 
@@ -240,7 +271,7 @@ def submit_question(
     db: Session = Depends(get_db),
 ):
     """Submit a question the extension couldn't answer."""
-    session = _sessions.get(session_id)
+    session = _get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Apply session not found.")
 

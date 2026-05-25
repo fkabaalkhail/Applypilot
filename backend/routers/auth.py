@@ -84,8 +84,17 @@ class ResendVerificationResponse(BaseModel):
 @router.post("/register", response_model=TokenResponseWithVerification)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
     """Register a new user with email and password."""
+    # Password complexity validation
     if len(body.password) < 8:
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    if not any(c.isupper() for c in body.password):
+        raise HTTPException(status_code=422, detail="Password must contain at least one uppercase letter")
+    if not any(c.islower() for c in body.password):
+        raise HTTPException(status_code=422, detail="Password must contain at least one lowercase letter")
+    if not any(c.isdigit() for c in body.password):
+        raise HTTPException(status_code=422, detail="Password must contain at least one number")
+    if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in body.password):
+        raise HTTPException(status_code=422, detail="Password must contain at least one special character")
     existing = db.query(User).filter(User.email == body.email).first()
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")

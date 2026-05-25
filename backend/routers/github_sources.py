@@ -11,6 +11,7 @@ POST   /github-sources/{id}/poll → PollResult
 
 import re
 import logging
+import traceback
 
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
@@ -20,6 +21,7 @@ from backend.db.database import get_db
 from backend.db.models import GitHubSource
 from backend.schemas.github_source import GitHubSourceOut, GitHubSourceCreate
 from backend.services.github_scraper import GitHubScraper, validate_github_repo_url
+from backend.auth.dependencies import get_admin_user_id, verify_cron_secret
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,13 +36,20 @@ def _parse_github_url(url: str) -> tuple[str, str]:
 
 
 @router.get("", response_model=list[GitHubSourceOut])
-def list_sources(db: Session = Depends(get_db)):
+def list_sources(
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
     """List all configured GitHub sources."""
     return db.query(GitHubSource).all()
 
 
 @router.post("", response_model=GitHubSourceOut)
-def create_source(source: GitHubSourceCreate, db: Session = Depends(get_db)):
+def create_source(
+    source: GitHubSourceCreate,
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
     """Add a new GitHub repository source."""
     if not validate_github_repo_url(source.repo_url):
         raise HTTPException(status_code=422, detail="Invalid GitHub repository URL.")
@@ -66,7 +75,10 @@ def create_source(source: GitHubSourceCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/seed")
-async def seed_sources(db: Session = Depends(get_db)):
+async def seed_sources(
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
     """Seed all jobright-ai repositories. Idempotent.
 
     Creates GitHubSource records for all configured repositories.
@@ -82,14 +94,16 @@ async def seed_sources(db: Session = Depends(get_db)):
             "existing": result["existing"],
             "total": result["created"] + result["existing"],
         }
-    except Exception as e:
-        import traceback
+    except Exception:
         logger.error(f"Seed failed: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Seed failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/cleanup-jobright")
-def cleanup_jobright_jobs(db: Session = Depends(get_db)):
+def cleanup_jobright_jobs(
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
     """Remove all jobs with jobright.ai URLs from the database.
 
     One-time cleanup to remove redirect-only jobs.
@@ -103,7 +117,10 @@ def cleanup_jobright_jobs(db: Session = Depends(get_db)):
 
 
 @router.api_route("/cron-ats", methods=["GET", "POST"])
-async def cron_ats(db: Session = Depends(get_db)):
+async def cron_ats(
+    _cron: None = Depends(verify_cron_secret),
+    db: Session = Depends(get_db),
+):
     """Scrape ATS platforms (Greenhouse, Lever) for intern/new-grad jobs.
 
     Polls all configured companies' public ATS APIs and stores jobs
@@ -175,16 +192,16 @@ async def cron_ats(db: Session = Depends(get_db)):
             "new_jobs": new_count,
             "duplicates_skipped": skipped_dupe,
         }
-    except Exception as e:
-        import traceback
+    except Exception:
         logger.error(f"ATS cron failed: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"ATS cron failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/scrape-linkedin")
 async def scrape_linkedin_jobs(
     city: Optional[str] = None,
     query: Optional[str] = None,
+    _admin: int = Depends(get_admin_user_id),
     db: Session = Depends(get_db),
 ):
     """Scrape LinkedIn public job search for intern/new-grad/co-op positions.
@@ -288,14 +305,16 @@ async def scrape_linkedin_jobs(
             "new_jobs": new_count,
             "duplicates_skipped": skipped_dupe,
         }
-    except Exception as e:
-        import traceback
+    except Exception:
         logger.error(f"LinkedIn scrape failed: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"LinkedIn scrape failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.api_route("/cron-poll", methods=["GET", "POST"])
-async def cron_poll(db: Session = Depends(get_db)):
+async def cron_poll(
+    _cron: None = Depends(verify_cron_secret),
+    db: Session = Depends(get_db),
+):
     """Seed sources (if needed) and poll the next overdue source.
 
     Designed to be called by Vercel Cron Jobs on a schedule.
@@ -327,14 +346,18 @@ async def cron_poll(db: Session = Depends(get_db)):
             "source_polled": source.repo_name,
             "new_jobs": new_count,
         }
-    except Exception as e:
-        import traceback
+    except Exception:
         logger.error(f"Cron poll failed: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Cron poll failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/{source_id}", response_model=GitHubSourceOut)
-def update_source(source_id: int, source: GitHubSourceCreate, db: Session = Depends(get_db)):
+def update_source(
+    source_id: int,
+    source: GitHubSourceCreate,
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
     """Update a GitHub source configuration."""
     db_source = db.query(GitHubSource).filter(GitHubSource.id == source_id).first()
     if not db_source:
@@ -356,7 +379,11 @@ def update_source(source_id: int, source: GitHubSourceCreate, db: Session = Depe
 
 
 @router.delete("/{source_id}")
-def delete_source(source_id: int, db: Session = Depends(get_db)):
+def delete_source(
+    source_id: int,
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
     """Remove a GitHub source."""
     db_source = db.query(GitHubSource).filter(GitHubSource.id == source_id).first()
     if not db_source:
@@ -368,7 +395,11 @@ def delete_source(source_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{source_id}/poll")
-async def poll_source(source_id: int, db: Session = Depends(get_db)):
+async def poll_source(
+    source_id: int,
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
     """Trigger an immediate poll of a GitHub source."""
     db_source = db.query(GitHubSource).filter(GitHubSource.id == source_id).first()
     if not db_source:
@@ -379,6 +410,6 @@ async def poll_source(source_id: int, db: Session = Depends(get_db)):
         jobs = await scraper.fetch_jobs(db_source)
         new_count = await scraper._store_jobs(jobs, db_source)
         return {"status": "polled", "new_jobs": new_count, "total_found": len(jobs)}
-    except Exception as e:
-        logger.error(f"Poll failed for source {source_id}: {e}")
-        raise HTTPException(status_code=502, detail=f"Poll failed: {str(e)}")
+    except Exception:
+        logger.error(f"Poll failed for source {source_id}: {traceback.format_exc()}")
+        raise HTTPException(status_code=502, detail="Internal server error")

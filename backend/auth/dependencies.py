@@ -1,8 +1,9 @@
 """FastAPI auth dependencies for route protection."""
 
+import os
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import jwt
@@ -12,6 +13,8 @@ from backend.db.models import User
 from backend.auth.tokens import decode_token
 
 security = HTTPBearer(auto_error=False)
+
+CRON_SECRET = os.getenv("CRON_SECRET", "")
 
 
 async def get_current_user(
@@ -148,3 +151,66 @@ async def get_verified_user_id(
         status_code=403,
         detail="Email verification required",
     )
+
+
+async def get_admin_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
+    """
+    Requires valid JWT, email verification, AND admin role.
+    Returns the full User object.
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = decode_token(credentials.credentials)
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user_id = int(payload["sub"])
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    return user
+
+
+async def get_admin_user_id(
+    admin: User = Depends(get_admin_user),
+) -> int:
+    """Shortcut: requires admin, returns just the user ID."""
+    return admin.id
+
+
+async def verify_cron_secret(
+    x_cron_secret: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+) -> None:
+    """
+    Verify the cron secret for scheduled job endpoints.
+    Supports two methods:
+    1. Vercel's built-in CRON_SECRET (sent as Authorization: Bearer <secret>)
+    2. Custom x-cron-secret header (for manual testing)
+    Allows access if CRON_SECRET is not configured (development mode).
+    """
+    if not CRON_SECRET:
+        # No cron secret configured — allow (dev mode)
+        return
+    # Check Vercel's Authorization: Bearer <secret>
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+        if token == CRON_SECRET:
+            return
+    # Check custom header
+    if x_cron_secret == CRON_SECRET:
+        return
+    raise HTTPException(status_code=403, detail="Invalid cron secret")

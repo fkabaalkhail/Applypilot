@@ -291,7 +291,11 @@ async def upload_resume(
     ):
         raise HTTPException(status_code=400, detail="Only PDF and DOCX files are accepted.")
 
+    # File size limit: 10 MB
+    MAX_FILE_SIZE = 10 * 1024 * 1024
     content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
     filename = file.filename or "resume"
 
     # Extract raw text
