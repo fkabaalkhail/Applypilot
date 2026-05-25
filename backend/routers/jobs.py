@@ -32,16 +32,9 @@ def _escape_like(term: str) -> str:
 
 def _sanitize_description(text: str) -> str:
     """Sanitize HTML from job descriptions to prevent stored XSS."""
-    try:
-        import nh3
-        # Strip all HTML tags, keeping only safe text content
-        return nh3.clean(text, tags=set())
-    except ImportError:
-        # Fallback: aggressive regex strip if nh3 not installed
-        cleaned = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
-        cleaned = re.sub(r'<style[^>]*>.*?</style>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
-        cleaned = re.sub(r'<[^>]+>', '\n', cleaned)
-        return cleaned
+    import nh3
+    # Strip all HTML tags, keeping only safe text content
+    return nh3.clean(text, tags=set())
 
 
 @router.get("", response_model=list[ScrapedJobOut])

@@ -45,6 +45,11 @@ class User(Base):
     # Admin role
     is_admin = Column(Boolean, default=False, nullable=False)
 
+    # Account lockout fields
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    locked_until = Column(DateTime, nullable=True)
+    last_failed_login_at = Column(DateTime, nullable=True)
+
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
@@ -387,3 +392,32 @@ class UserSavedJob(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     job_id = Column(Integer, ForeignKey("scraped_jobs.id"), nullable=False, index=True)
     saved_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+# ─── Revoked Tokens (for token blacklisting) ─────────────────────────────────
+
+class RevokedToken(Base):
+    """Stores revoked refresh tokens to prevent reuse after logout/password change."""
+    __tablename__ = "revoked_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    jti = Column(String(255), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    revoked_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+
+# ─── Security Event Log ──────────────────────────────────────────────────────
+
+class SecurityEvent(Base):
+    """Structured security audit log for authentication and access events."""
+    __tablename__ = "security_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_type = Column(String(100), nullable=False, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    details = Column(JSON, nullable=True)
+    success = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), index=True)

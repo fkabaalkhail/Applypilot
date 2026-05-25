@@ -30,10 +30,12 @@ jobs:
         run: |
           curl -X POST "https://www.tailrd.ca/github-sources/scrape-ats" \
             -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             --max-time 300 || true
 
       - name: Trigger GitHub aggregator
         run: |
           curl -X POST "https://www.tailrd.ca/github-sources/cron-poll" \
             -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             --max-time 300 || true

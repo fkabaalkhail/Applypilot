@@ -116,7 +116,7 @@ def cleanup_jobright_jobs(
     return {"deleted_jobs": count, "deleted_sources": source_count}
 
 
-@router.api_route("/cron-ats", methods=["GET", "POST"])
+@router.post("/cron-ats")
 async def cron_ats(
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
@@ -310,7 +310,7 @@ async def scrape_linkedin_jobs(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.api_route("/cron-poll", methods=["GET", "POST"])
+@router.post("/cron-poll")
 async def cron_poll(
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),

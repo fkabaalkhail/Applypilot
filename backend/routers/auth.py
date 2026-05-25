@@ -4,6 +4,7 @@ Auth endpoints:
 - POST /auth/login — verify credentials, return tokens
 - POST /auth/google — authenticate with Google ID token
 - POST /auth/refresh — exchange refresh token for new token pair
+- POST /auth/logout — revoke refresh token
 - GET /auth/me — return authenticated user profile
 - PUT /auth/me — update user profile fields
 - POST /auth/verify-email — verify email with token
@@ -12,16 +13,17 @@ Auth endpoints:
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 import httpx
 
 from backend.db.database import get_db
-from backend.db.models import User
+from backend.db.models import User, RevokedToken
 from backend.auth.passwords import hash_password, verify_password
 from backend.auth.tokens import create_access_token, create_refresh_token, decode_token
 from backend.auth.dependencies import get_current_user, get_verified_user
@@ -32,12 +34,18 @@ from backend.services.verification_service import (
     mark_verified,
 )
 from backend.services.email_service import email_service
+from backend.services.rate_limiter import rate_limiter
+from backend.services.security_logger import security_logger, SecurityLogger
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo"
+
+# Account lockout settings
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_DURATION_MINUTES = 15
 
 
 # --- Pydantic Schemas ---
@@ -78,12 +86,18 @@ class VerifyEmailRequest(BaseModel):
 class ResendVerificationResponse(BaseModel):
     message: str
 
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
 
 # --- Endpoints ---
 
 @router.post("/register", response_model=TokenResponseWithVerification)
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
+def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     """Register a new user with email and password."""
+    # Rate limit: 3 registrations per IP per minute
+    rate_limiter.enforce(request, "register", max_requests=3, window_seconds=60)
+
     # Password complexity validation
     if len(body.password) < 8:
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
@@ -104,6 +118,13 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(user)
     logger.info(f"New user registered: {user.email}")
 
+    # Log security event
+    security_logger.log_event(
+        db, SecurityLogger.REGISTER, request,
+        user_id=user.id, success=True,
+        details={"email": user.email},
+    )
+
     # Generate verification token and send email (fire-and-forget)
     try:
         token = create_verification_token(user, db)
@@ -119,11 +140,71 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponseWithVerification)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     """Authenticate with email and password."""
+    # Rate limit: 5 login attempts per IP per minute
+    rate_limiter.enforce(request, "login", max_requests=5, window_seconds=60)
+
     user = db.query(User).filter(User.email == body.email).first()
-    if not user or not user.hashed_password or not verify_password(body.password, user.hashed_password):
+    if not user or not user.hashed_password:
+        # Log failed attempt (unknown user)
+        security_logger.log_event(
+            db, SecurityLogger.LOGIN_FAILED, request,
+            success=False, details={"reason": "invalid_credentials"},
+        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Check account lockout
+    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+        remaining = int((user.locked_until - datetime.now(timezone.utc)).total_seconds())
+        security_logger.log_event(
+            db, SecurityLogger.LOGIN_FAILED, request,
+            user_id=user.id, success=False,
+            details={"reason": "account_locked", "locked_until": user.locked_until.isoformat()},
+        )
+        raise HTTPException(
+            status_code=423,
+            detail=f"Account locked due to too many failed attempts. Try again in {remaining // 60 + 1} minutes.",
+        )
+
+    if not verify_password(body.password, user.hashed_password):
+        # Increment failed attempts
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+        user.last_failed_login_at = datetime.now(timezone.utc)
+
+        # Lock account if threshold exceeded
+        if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
+            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+            db.commit()
+            security_logger.log_event(
+                db, SecurityLogger.ACCOUNT_LOCKED, request,
+                user_id=user.id, success=False,
+                details={"failed_attempts": user.failed_login_attempts},
+            )
+            raise HTTPException(
+                status_code=423,
+                detail=f"Account locked due to too many failed attempts. Try again in {LOCKOUT_DURATION_MINUTES} minutes.",
+            )
+
+        db.commit()
+        security_logger.log_event(
+            db, SecurityLogger.LOGIN_FAILED, request,
+            user_id=user.id, success=False,
+            details={"failed_attempts": user.failed_login_attempts},
+        )
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Successful login — reset failed attempts
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.last_failed_login_at = None
+    db.commit()
+
+    security_logger.log_event(
+        db, SecurityLogger.LOGIN_SUCCESS, request,
+        user_id=user.id, success=True,
+    )
+
     return TokenResponseWithVerification(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
@@ -203,7 +284,7 @@ def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponseWithVerification)
-def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
+def refresh(body: RefreshRequest, request: Request, db: Session = Depends(get_db)):
     """Exchange a valid refresh token for a new token pair."""
     try:
         payload = decode_token(body.refresh_token)
@@ -211,15 +292,78 @@ def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=401, detail="Invalid token type")
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    # Check if token has been revoked
+    jti = payload.get("jti")
+    if jti:
+        revoked = db.query(RevokedToken).filter(RevokedToken.jti == jti).first()
+        if revoked:
+            security_logger.log_event(
+                db, SecurityLogger.TOKEN_REFRESH, request,
+                user_id=int(payload["sub"]), success=False,
+                details={"reason": "token_revoked"},
+            )
+            raise HTTPException(status_code=401, detail="Token has been revoked")
+
     user_id = int(payload["sub"])
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+
+    # Revoke the old refresh token (rotation)
+    if jti:
+        revoked_token = RevokedToken(
+            jti=jti,
+            user_id=user_id,
+            expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+        )
+        db.add(revoked_token)
+        db.commit()
+
+    security_logger.log_event(
+        db, SecurityLogger.TOKEN_REFRESH, request,
+        user_id=user_id, success=True,
+    )
+
     return TokenResponseWithVerification(
         access_token=create_access_token(user_id),
         refresh_token=create_refresh_token(user_id),
         email_verified=user.email_verified,
     )
+
+
+@router.post("/logout")
+def logout(body: LogoutRequest, request: Request, db: Session = Depends(get_db)):
+    """Revoke a refresh token (logout)."""
+    try:
+        payload = decode_token(body.refresh_token)
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+    except Exception:
+        # Even if token is invalid/expired, return success (idempotent logout)
+        return {"status": "logged_out"}
+
+    jti = payload.get("jti")
+    user_id = int(payload["sub"])
+
+    if jti:
+        # Check if already revoked
+        existing = db.query(RevokedToken).filter(RevokedToken.jti == jti).first()
+        if not existing:
+            revoked_token = RevokedToken(
+                jti=jti,
+                user_id=user_id,
+                expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+            )
+            db.add(revoked_token)
+            db.commit()
+
+    security_logger.log_event(
+        db, SecurityLogger.LOGOUT, request,
+        user_id=user_id, success=True,
+    )
+
+    return {"status": "logged_out"}
 
 
 @router.get("/me")
