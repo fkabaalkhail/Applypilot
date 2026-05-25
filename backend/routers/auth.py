@@ -16,7 +16,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -25,7 +25,10 @@ import httpx
 from backend.db.database import get_db
 from backend.db.models import User, RevokedToken
 from backend.auth.passwords import hash_password, verify_password
-from backend.auth.tokens import create_access_token, create_refresh_token, decode_token
+from backend.auth.tokens import (
+    create_access_token, create_refresh_token, decode_token,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+)
 from backend.auth.dependencies import get_current_user, get_verified_user
 from backend.services.verification_service import (
     create_verification_token,
@@ -47,6 +50,32 @@ GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 15
 
+IS_PRODUCTION = os.getenv("ENVIRONMENT") == "production"
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    """Set refresh token as HttpOnly secure cookie."""
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=IS_PRODUCTION,
+        samesite="strict",
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/auth",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    """Clear the refresh token cookie."""
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=IS_PRODUCTION,
+        samesite="strict",
+        path="/auth",
+    )
+
 
 # --- Pydantic Schemas ---
 
@@ -67,7 +96,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = ""
 
 class ProfileUpdate(BaseModel):
     first_name: Optional[str] = None
@@ -87,13 +116,13 @@ class ResendVerificationResponse(BaseModel):
     message: str
 
 class LogoutRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = ""
 
 
 # --- Endpoints ---
 
 @router.post("/register", response_model=TokenResponseWithVerification)
-def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+def register(body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """Register a new user with email and password."""
     # Rate limit: 3 registrations per IP per minute
     rate_limiter.enforce(request, "register", max_requests=3, window_seconds=60)
@@ -132,15 +161,18 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     except Exception as e:
         logger.warning(f"Failed to send verification email to {user.email}: {e}")
 
+    refresh_tok = create_refresh_token(user.id)
+    _set_refresh_cookie(response, refresh_tok)
+
     return TokenResponseWithVerification(
         access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
+        refresh_token=refresh_tok,
         email_verified=False,
     )
 
 
 @router.post("/login", response_model=TokenResponseWithVerification)
-def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """Authenticate with email and password."""
     # Rate limit: 5 login attempts per IP per minute
     rate_limiter.enforce(request, "login", max_requests=5, window_seconds=60)
@@ -205,15 +237,18 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         user_id=user.id, success=True,
     )
 
+    refresh_tok = create_refresh_token(user.id)
+    _set_refresh_cookie(response, refresh_tok)
+
     return TokenResponseWithVerification(
         access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
+        refresh_token=refresh_tok,
         email_verified=user.email_verified,
     )
 
 
 @router.post("/google", response_model=TokenResponseWithVerification)
-def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
+def google_auth(body: GoogleAuthRequest, response: Response, db: Session = Depends(get_db)):
     """Authenticate or register with a Google ID token."""
     if not GOOGLE_CLIENT_ID:
         logger.error("GOOGLE_CLIENT_ID env var is not set")
@@ -266,28 +301,55 @@ def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
         db.refresh(user)
         logger.info(f"New Google user registered: {user.email}")
     else:
-        # Update profile image from Google if not set
+        # Update profile info from Google if not set
         if not user.profile_image_url and idinfo.get("picture"):
             user.profile_image_url = idinfo["picture"]
         if not user.first_name and idinfo.get("given_name"):
             user.first_name = idinfo["given_name"]
         if not user.last_name and idinfo.get("family_name"):
             user.last_name = idinfo["family_name"]
+        # Link Google auth and mark email as verified
+        if user.auth_provider == "local":
+            user.auth_provider = "google"
+        if not user.email_verified:
+            user.email_verified = True
         db.commit()
         db.refresh(user)
 
+    refresh_tok = create_refresh_token(user.id)
+    _set_refresh_cookie(response, refresh_tok)
+
     return TokenResponseWithVerification(
         access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
+        refresh_token=refresh_tok,
         email_verified=True,
     )
 
 
 @router.post("/refresh", response_model=TokenResponseWithVerification)
-def refresh(body: RefreshRequest, request: Request, db: Session = Depends(get_db)):
-    """Exchange a valid refresh token for a new token pair."""
+def refresh(
+    request: Request,
+    response: Response,
+    body: Optional[RefreshRequest] = None,
+    refresh_token_cookie: Optional[str] = Cookie(None, alias="refresh_token"),
+    db: Session = Depends(get_db),
+):
+    """Exchange a valid refresh token for a new token pair.
+
+    Accepts refresh token from either request body or HttpOnly cookie.
+    """
+    # Get token from body or cookie
+    raw_token = None
+    if body and body.refresh_token:
+        raw_token = body.refresh_token
+    elif refresh_token_cookie:
+        raw_token = refresh_token_cookie
+
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="No refresh token provided")
+
     try:
-        payload = decode_token(body.refresh_token)
+        payload = decode_token(raw_token)
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")
     except Exception:
@@ -325,20 +387,41 @@ def refresh(body: RefreshRequest, request: Request, db: Session = Depends(get_db
         user_id=user_id, success=True,
     )
 
+    refresh_tok = create_refresh_token(user_id)
+    _set_refresh_cookie(response, refresh_tok)
+
     return TokenResponseWithVerification(
         access_token=create_access_token(user_id),
-        refresh_token=create_refresh_token(user_id),
+        refresh_token=refresh_tok,
         email_verified=user.email_verified,
     )
 
 
 @router.post("/logout")
-def logout(body: LogoutRequest, request: Request, db: Session = Depends(get_db)):
-    """Revoke a refresh token (logout)."""
+def logout(
+    request: Request,
+    response: Response,
+    body: Optional[LogoutRequest] = None,
+    refresh_token_cookie: Optional[str] = Cookie(None, alias="refresh_token"),
+    db: Session = Depends(get_db),
+):
+    """Revoke a refresh token (logout). Accepts token from body or cookie."""
+    raw_token = None
+    if body and body.refresh_token:
+        raw_token = body.refresh_token
+    elif refresh_token_cookie:
+        raw_token = refresh_token_cookie
+
+    # Always clear the cookie
+    _clear_refresh_cookie(response)
+
+    if not raw_token:
+        return {"status": "logged_out"}
+
     try:
-        payload = decode_token(body.refresh_token)
+        payload = decode_token(raw_token)
         if payload.get("type") != "refresh":
-            raise HTTPException(status_code=401, detail="Invalid token type")
+            return {"status": "logged_out"}
     except Exception:
         # Even if token is invalid/expired, return success (idempotent logout)
         return {"status": "logged_out"}
@@ -407,7 +490,7 @@ def update_me(
 
 
 @router.post("/verify-email", response_model=TokenResponseWithVerification)
-def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
+def verify_email(body: VerifyEmailRequest, response: Response, db: Session = Depends(get_db)):
     """Verify a user's email with the provided token."""
     user, error = verify_token(body.token, db)
 
@@ -423,9 +506,12 @@ def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
     # Mark user as verified
     mark_verified(user, db)
 
+    refresh_tok = create_refresh_token(user.id)
+    _set_refresh_cookie(response, refresh_tok)
+
     return TokenResponseWithVerification(
         access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
+        refresh_token=refresh_tok,
         email_verified=True,
     )
 

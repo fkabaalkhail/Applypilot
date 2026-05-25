@@ -12,7 +12,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const isAuthenticated = !!user;
 
-  // On mount, check localStorage for tokens and validate by calling /auth/me
+  // On mount, check localStorage for access token and validate by calling /auth/me
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     if (!token) {
@@ -28,7 +28,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       .catch(() => {
         // Token invalid or expired (refresh interceptor already tried)
         localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
         setUser(null);
       })
       .finally(() => {
@@ -39,7 +38,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await api.post("/auth/login", { email, password });
     localStorage.setItem("access_token", data.access_token);
-    localStorage.setItem("refresh_token", data.refresh_token);
+    // refresh_token is now stored as HttpOnly cookie by the backend
 
     // Fetch user profile
     const { data: profile } = await api.get("/auth/me");
@@ -49,7 +48,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const register = useCallback(async (email: string, password: string) => {
     const { data } = await api.post("/auth/register", { email, password });
     localStorage.setItem("access_token", data.access_token);
-    localStorage.setItem("refresh_token", data.refresh_token);
+    // refresh_token is now stored as HttpOnly cookie by the backend
 
     // Fetch user profile
     const { data: profile } = await api.get("/auth/me");
@@ -59,16 +58,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const loginWithGoogle = useCallback(async (credential: string) => {
     const { data } = await api.post("/auth/google", { credential });
     localStorage.setItem("access_token", data.access_token);
-    localStorage.setItem("refresh_token", data.refresh_token);
+    // refresh_token is now stored as HttpOnly cookie by the backend
 
     // Fetch user profile
     const { data: profile } = await api.get("/auth/me");
     setUser(profile);
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      // Call backend to revoke refresh token and clear cookie
+      await api.post("/auth/logout");
+    } catch {
+      // Logout should succeed even if the API call fails
+    }
     localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
     setUser(null);
     window.location.href = "/sign-in";
   }, []);

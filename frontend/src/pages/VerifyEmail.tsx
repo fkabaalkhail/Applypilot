@@ -58,9 +58,8 @@ export default function VerifyEmailPage() {
     async function verifyToken() {
       try {
         const { data } = await api.post("/auth/verify-email", { token });
-        // Store tokens on success
+        // Store access token on success (refresh token is set as HttpOnly cookie)
         localStorage.setItem("access_token", data.access_token);
-        localStorage.setItem("refresh_token", data.refresh_token);
         setState("success");
         // Full page reload to refresh auth state with verified user
         setTimeout(() => {

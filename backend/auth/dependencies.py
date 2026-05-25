@@ -178,6 +178,10 @@ async def get_admin_user(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
+    # Require email verification for admin access (Google users bypass)
+    if user.auth_provider != "google" and not user.email_verified:
+        raise HTTPException(status_code=403, detail="Email verification required")
+
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
 
@@ -200,10 +204,16 @@ async def verify_cron_secret(
     Supports two methods:
     1. Vercel's built-in CRON_SECRET (sent as Authorization: Bearer <secret>)
     2. Custom x-cron-secret header (for manual testing)
-    Allows access if CRON_SECRET is not configured (development mode).
+    Fails closed in production if CRON_SECRET is not configured.
     """
     if not CRON_SECRET:
-        # No cron secret configured — allow (dev mode)
+        # Fail closed in production — deny if secret is not configured
+        if os.getenv("ENVIRONMENT") == "production":
+            raise HTTPException(
+                status_code=500,
+                detail="Server misconfiguration: CRON_SECRET not set",
+            )
+        # Allow in development mode only
         return
     # Check Vercel's Authorization: Bearer <secret>
     if authorization and authorization.startswith("Bearer "):

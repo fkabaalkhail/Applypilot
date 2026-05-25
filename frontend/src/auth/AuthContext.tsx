@@ -20,7 +20,7 @@ export interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (credential: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void> | void;
   getToken: () => string | null;
   resendVerification: () => Promise<void>;
   isEmailVerified: boolean;
