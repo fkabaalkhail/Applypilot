@@ -142,6 +142,31 @@ export async function login(email: string, password: string): Promise<void> {
   await clearProfileCache();
 }
 
+export async function googleLogin(credential: string): Promise<void> {
+  const tokens = await publicRequest<TokenResponse>("/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ credential }),
+  });
+  // Fetch user email from /auth/me after login
+  const meRes = await fetch(await apiUrl("/auth/me"), {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${tokens.access_token}`,
+    },
+  });
+  let email = "";
+  if (meRes.ok) {
+    const me = (await meRes.json()) as MeResponse;
+    email = me.email || "";
+  }
+  await saveAuth({
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    email,
+  });
+  await clearProfileCache();
+}
+
 export async function logout(): Promise<void> {
   const auth = await getAuth();
   if (auth) {

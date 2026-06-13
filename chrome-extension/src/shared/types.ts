@@ -190,6 +190,7 @@ export interface FieldsUpdatedEvent {
 export type BackgroundRequest =
   | { type: "GET_STATUS" }
   | { type: "LOGIN"; email: string; password: string }
+  | { type: "GOOGLE_LOGIN" }
   | { type: "LOGOUT" }
   | { type: "GET_PROFILE"; forceRefresh?: boolean }
   | { type: "OPEN_DASHBOARD" };

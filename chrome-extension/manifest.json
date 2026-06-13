@@ -23,7 +23,7 @@
   "background": {
     "service_worker": "serviceWorker.js"
   },
-  "permissions": ["activeTab", "storage", "scripting"],
+  "permissions": ["activeTab", "storage", "scripting", "identity"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*"],
   "content_scripts": [
     {

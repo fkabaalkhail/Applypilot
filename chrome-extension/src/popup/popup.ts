@@ -586,6 +586,39 @@ async function handleLogin(event: Event): Promise<void> {
   }
 }
 
+async function handleGoogleLogin(): Promise<void> {
+  const errorEl = $("login-error");
+  const btn = $<HTMLButtonElement>("btn-google-login");
+  errorEl.hidden = true;
+
+  // The backend origin must be granted before the service worker can fetch it.
+  const pattern = originPattern(state.config.apiBaseUrl);
+  if (pattern) {
+    const granted = await chrome.permissions.request({ origins: [pattern] }).catch(() => false);
+    if (!granted) {
+      errorEl.hidden = false;
+      errorEl.textContent = "Permission to reach your ApplyPilot server was declined.";
+      return;
+    }
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Signing in…";
+  try {
+    const resp = await sendToBackground<LoginResponse>({ type: "GOOGLE_LOGIN" });
+    if (!resp.ok) {
+      errorEl.hidden = false;
+      errorEl.textContent = resp.error ?? "Google sign-in failed";
+      return;
+    }
+    await saveConfig({ useMockData: false });
+    await restart();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Sign in with Google";
+  }
+}
+
 function fillSettingsForm(): void {
   $<HTMLInputElement>("set-api-url").value = state.config.apiBaseUrl;
   $<HTMLInputElement>("set-dash-url").value = state.config.dashboardUrl;
@@ -656,6 +689,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-settings-save").addEventListener("click", () => void handleSettingsSave());
   $("btn-logout").addEventListener("click", () => void handleLogout());
   $("login-form").addEventListener("submit", (e) => void handleLogin(e));
+  $("btn-google-login").addEventListener("click", () => void handleGoogleLogin());
   $("btn-use-mock").addEventListener("click", () => {
     void saveConfig({ useMockData: true }).then(restart);
   });

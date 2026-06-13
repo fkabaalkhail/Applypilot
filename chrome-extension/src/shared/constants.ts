@@ -1,8 +1,8 @@
 /** Central configuration constants. */
 
 /** Default ApplyPilot deployment. Both are editable in the popup settings. */
-export const DEFAULT_API_BASE_URL = "https://resumate-smoky.vercel.app";
-export const DEFAULT_DASHBOARD_URL = "https://resumate-smoky.vercel.app";
+export const DEFAULT_API_BASE_URL = "https://www.tailrd.ca";
+export const DEFAULT_DASHBOARD_URL = "https://www.tailrd.ca";
 
 /**
  * Placeholder profile endpoint. If the backend does not implement it yet,

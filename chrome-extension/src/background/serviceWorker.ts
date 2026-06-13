@@ -11,6 +11,7 @@ import {
   AuthRequiredError,
   checkAuthStatus,
   fetchApplicationProfile,
+  googleLogin,
   login,
   logout,
 } from "../api/client";
@@ -74,6 +75,49 @@ async function handle(
         return {
           ok: false,
           error: err instanceof Error ? err.message : "Login failed",
+        };
+      }
+    }
+
+    case "GOOGLE_LOGIN": {
+      try {
+        // Use chrome.identity to get a Google ID token via OAuth
+        const redirectUrl = chrome.identity.getRedirectURL();
+        const clientId = "333525816538-1e7099ljo24tprl2atgi3k81q4s1s112.apps.googleusercontent.com";
+        const nonce = crypto.randomUUID();
+        const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+        authUrl.searchParams.set("client_id", clientId);
+        authUrl.searchParams.set("response_type", "id_token");
+        authUrl.searchParams.set("redirect_uri", redirectUrl);
+        authUrl.searchParams.set("scope", "openid email profile");
+        authUrl.searchParams.set("nonce", nonce);
+        authUrl.searchParams.set("prompt", "select_account");
+
+        const responseUrl = await chrome.identity.launchWebAuthFlow({
+          url: authUrl.toString(),
+          interactive: true,
+        });
+
+        if (!responseUrl) {
+          return { ok: false, error: "Google sign-in was cancelled" };
+        }
+
+        // Extract id_token from the URL fragment
+        const url = new URL(responseUrl);
+        const fragment = new URLSearchParams(url.hash.substring(1));
+        const idToken = fragment.get("id_token");
+
+        if (!idToken) {
+          return { ok: false, error: "Could not get Google ID token" };
+        }
+
+        // Send the ID token to our backend's /auth/google endpoint
+        await googleLogin(idToken);
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Google sign-in failed",
         };
       }
     }
