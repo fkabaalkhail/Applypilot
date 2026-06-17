@@ -183,12 +183,22 @@ export async function logout(): Promise<void> {
   await clearProfileCache();
 }
 
-export async function checkAuthStatus(): Promise<{ connected: boolean; email?: string }> {
+export async function checkAuthStatus(): Promise<{
+  connected: boolean;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+}> {
   const auth = await getAuth();
   if (!auth) return { connected: false };
   try {
     const me = await authedRequest<MeResponse>("/auth/me");
-    return { connected: true, email: me.email || auth.email };
+    return {
+      connected: true,
+      email: me.email || auth.email,
+      firstName: me.first_name || undefined,
+      lastName: me.last_name || undefined,
+    };
   } catch {
     return { connected: false };
   }
@@ -252,6 +262,7 @@ function normalizeProfile(raw: Partial<UserApplicationProfile>): UserApplication
     requiresSponsorship: str(raw.requiresSponsorship),
     education: Array.isArray(raw.education) ? raw.education : [],
     experience: Array.isArray(raw.experience) ? raw.experience : [],
+    skills: Array.isArray(raw.skills) ? raw.skills.filter((s): s is string => typeof s === "string") : [],
     coverLetter: str(raw.coverLetter),
     salaryExpectation: raw.salaryExpectation ? str(raw.salaryExpectation) : undefined,
     eeo: raw.eeo,

@@ -63,6 +63,8 @@ async function handle(
         ok: true,
         mode: status.connected ? "connected" : "signedOut",
         email: status.email,
+        firstName: status.firstName,
+        lastName: status.lastName,
         apiBaseUrl: config.apiBaseUrl,
       };
     }

@@ -36,5 +36,6 @@ export const MOCK_PROFILE: UserApplicationProfile = {
       description: "Built full-stack features using React, Node.js, and PostgreSQL.",
     },
   ],
+  skills: ["JavaScript", "TypeScript", "React", "Node.js", "Python", "PostgreSQL"],
   coverLetter: "Please generate or insert the saved cover letter here.",
 };

@@ -6,30 +6,125 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
+    <!-- Header (shared across views) -->
     <header class="header">
       <div class="brand">
-        <img src="../assets/icon-32.png" alt="" width="22" height="22" />
-        <span>ApplyPilot</span>
+        <span class="brand-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </span>
+        <div class="brand-text">
+          <span class="brand-name">ApplyPilot</span>
+          <span class="brand-sub">Job Application Autofill</span>
+        </div>
       </div>
       <div class="header-right">
         <span id="status-chip" class="chip">…</span>
-        <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+        <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button id="btn-signin" class="btn-signin" hidden>Sign in</button>
+        <span id="avatar" class="avatar" hidden>AP</span>
       </div>
     </header>
 
-    <!-- Main view: scan results + autofill -->
+    <!-- Tab bar (main view only) -->
+    <nav id="tabbar" class="tabbar" hidden>
+      <button class="tab" data-tab="autofill">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Autofill
+      </button>
+      <button class="tab" data-tab="profile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Profile
+      </button>
+      <button class="tab" data-tab="experience">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        Experience
+      </button>
+      <button class="tab" data-tab="education">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 2.5 3 6 3s6-1.5 6-3v-5"/></svg>
+        Education
+      </button>
+      <button class="tab" data-tab="skills">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/></svg>
+        Skills
+      </button>
+      <button class="tab" data-tab="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </button>
+    </nav>
+
+    <!-- Main view: tabbed content -->
     <main id="view-main" hidden>
-      <section id="profile-card" class="card"></section>
-      <div id="site-line" class="site-line"></div>
+      <!-- Autofill tab -->
+      <section id="tab-autofill" class="tabpanel">
+        <div id="site-line" class="site-line"></div>
+        <div id="banner" class="banner" hidden></div>
+        <div class="scan-card">
+          <div class="scan-card-head">
+            <span class="scan-status"><span class="live-dot"></span><span id="counts-headline">Scanning…</span></span>
+            <span id="counts" class="counts"></span>
+          </div>
+          <section id="fields" class="fields"></section>
+        </div>
+        <div class="actions">
+          <button id="btn-scan" class="btn secondary">Rescan</button>
+          <button id="btn-fill" class="btn primary" disabled>Autofill</button>
+        </div>
+      </section>
 
-      <div class="actions">
-        <button id="btn-scan" class="btn secondary">Scan page</button>
-        <button id="btn-fill" class="btn primary" disabled>Autofill</button>
-      </div>
+      <!-- Profile tab -->
+      <section id="tab-profile" class="tabpanel" hidden>
+        <div id="profile-head" class="profile-head"></div>
+        <div id="profile-info" class="info-list"></div>
+      </section>
 
-      <div id="banner" class="banner" hidden></div>
-      <div id="counts" class="counts"></div>
-      <section id="fields" class="fields"></section>
+      <!-- Experience tab -->
+      <section id="tab-experience" class="tabpanel" hidden>
+        <div id="experience-list" class="timeline"></div>
+      </section>
+
+      <!-- Education tab -->
+      <section id="tab-education" class="tabpanel" hidden>
+        <div id="education-list" class="timeline"></div>
+      </section>
+
+      <!-- Skills tab -->
+      <section id="tab-skills" class="tabpanel" hidden>
+        <div id="skills-list" class="tags"></div>
+      </section>
+
+      <!-- Settings tab -->
+      <section id="tab-settings" class="tabpanel" hidden>
+        <div class="card">
+          <label class="form-label" for="set-api-url">API base URL</label>
+          <input id="set-api-url" type="url" placeholder="https://www.tailrd.ca" />
+          <label class="form-label" for="set-dash-url">Dashboard URL</label>
+          <input id="set-dash-url" type="url" placeholder="https://www.tailrd.ca" />
+        </div>
+        <div class="card toggles">
+          <label class="toggle-row">
+            <span class="toggle-text">
+              <span class="toggle-title">Use sample data</span>
+              <span class="toggle-desc">Autofill from a demo profile — no backend needed.</span>
+            </span>
+            <input id="set-mock" type="checkbox" class="switch" />
+          </label>
+          <label class="toggle-row">
+            <span class="toggle-text">
+              <span class="toggle-title">Fill EEO / demographic fields</span>
+              <span class="toggle-desc">Detected by default, but only filled when this is on and your profile has the answers.</span>
+            </span>
+            <input id="set-eeo" type="checkbox" class="switch" />
+          </label>
+        </div>
+        <div id="settings-error" class="error" hidden></div>
+        <div class="actions">
+          <button id="btn-settings-save" class="btn primary full">Save settings</button>
+        </div>
+        <button id="btn-logout" class="btn link full" hidden>Sign out</button>
+      </section>
     </main>
 
     <!-- Login view -->
@@ -59,40 +154,10 @@
       </div>
     </main>
 
-    <!-- Settings view -->
-    <main id="view-settings" hidden>
-      <div class="card">
-        <h2>Settings</h2>
-        <label class="form-label" for="set-api-url">API base URL</label>
-        <input id="set-api-url" type="url" placeholder="https://your-app.vercel.app" />
-        <label class="form-label" for="set-dash-url">Dashboard URL</label>
-        <input id="set-dash-url" type="url" placeholder="https://your-app.vercel.app" />
-
-        <label class="check-row">
-          <input id="set-mock" type="checkbox" />
-          <span>Use sample data (no backend needed)</span>
-        </label>
-        <label class="check-row">
-          <input id="set-eeo" type="checkbox" />
-          <span>Allow filling EEO / demographic fields</span>
-        </label>
-        <p class="muted small">
-          EEO fields are always detected but left untouched unless you enable this
-          <em>and</em> your profile contains those answers.
-        </p>
-
-        <div id="settings-error" class="error" hidden></div>
-        <div class="actions">
-          <button id="btn-settings-back" class="btn secondary">Back</button>
-          <button id="btn-settings-save" class="btn primary">Save</button>
-        </div>
-        <button id="btn-logout" class="btn link full" hidden>Sign out</button>
-      </div>
-    </main>
-
     <footer class="footer">
+      <span id="footer-version" class="footer-version">v0.2.0</span>
+      <span id="footer-status" class="footer-status"><span class="live-dot"></span>Ready to fill</span>
       <button id="btn-dashboard" class="btn link">Open dashboard ↗</button>
-      <span class="safety-note">Fills only — never submits for you</span>
     </footer>
 
     <script src="popup.js"></script>

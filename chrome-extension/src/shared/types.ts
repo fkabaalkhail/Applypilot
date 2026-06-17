@@ -52,6 +52,7 @@ export interface UserApplicationProfile {
   requiresSponsorship: string;
   education: EducationEntry[];
   experience: ExperienceEntry[];
+  skills: string[];
   coverLetter: string;
   salaryExpectation?: string;
   eeo?: EeoAnswers;
@@ -200,6 +201,9 @@ export interface StatusResponse {
   /** mock = sample data, connected = signed in, signedOut = needs login */
   mode: "mock" | "connected" | "signedOut";
   email?: string;
+  /** Account name from /auth/me — used for the avatar before the profile loads. */
+  firstName?: string;
+  lastName?: string;
   apiBaseUrl: string;
 }
 

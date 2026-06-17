@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ApplyPilot — Job Application Autofill",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Detects job application forms (Greenhouse, Lever, Workday, Ashby, BambooHR, SmartRecruiters and more) and fills them from your ApplyPilot profile. Never submits anything automatically.",
   "minimum_chrome_version": "110",
   "icons": {
@@ -34,7 +34,10 @@
         "https://*.myworkdaysite.com/*",
         "https://*.ashbyhq.com/*",
         "https://*.bamboohr.com/*",
-        "https://*.smartrecruiters.com/*"
+        "https://*.smartrecruiters.com/*",
+        "https://*.icims.com/*",
+        "https://*.jobvite.com/*",
+        "https://*.workable.com/*"
       ],
       "js": ["contentScript.js"],
       "run_at": "document_idle",
