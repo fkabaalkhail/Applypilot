@@ -18,7 +18,14 @@ from backend.db.database import get_db
 from backend.db.models import ScrapedJob, ResumeProfileDB
 from backend.auth.dependencies import get_verified_user_id
 from backend.schemas.match import MatchBreakdown, FitAnalysis
-from backend.schemas.ai import TailoredResumeOut, CoverLetterOut
+from backend.schemas.ai import (
+    TailoredResumeOut,
+    CoverLetterOut,
+    JobAnalysisOut,
+    RewriteIn,
+    RewriteOut,
+    CoverLetterIn,
+)
 from backend.services.match_engine import MatchEngine
 from backend.services.resume_tailor import ResumeTailor
 from backend.services.cover_letter import CoverLetterGenerator
@@ -29,27 +36,42 @@ router = APIRouter()
 LLM_503_DETAIL = "AI service unavailable. Please check your Gemini API key."
 
 
-def _get_resume_text(db: Session, user_id: int) -> str:
-    """Get the user's resume text from their primary or most recent profile."""
-    # Prefer primary resume
-    profile = (
-        db.query(ResumeProfileDB)
-        .filter(ResumeProfileDB.user_id == user_id, ResumeProfileDB.is_primary == 1)
-        .first()
-    )
-    if not profile:
+def _resolve_resume(
+    db: Session, user_id: int, resume_id: int | None = None
+) -> ResumeProfileDB:
+    """Resolve which resume to use: explicit resume_id → primary → most recent."""
+    profile = None
+    if resume_id is not None:
         profile = (
             db.query(ResumeProfileDB)
+            .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
+            .first()
+        )
+        if not profile:
+            raise HTTPException(status_code=404, detail="Resume not found.")
+
+    if profile is None:
+        profile = (
+            db.query(ResumeProfileDB)
+            .filter(ResumeProfileDB.user_id == user_id, ResumeProfileDB.is_primary == 1)
+            .first()
+            or db.query(ResumeProfileDB)
             .filter(ResumeProfileDB.user_id == user_id)
             .order_by(ResumeProfileDB.created_at.desc())
             .first()
         )
+
     if not profile or not profile.raw_text:
         raise HTTPException(
             status_code=400,
             detail="No resume profile found. Please upload a resume first.",
         )
-    return profile.raw_text
+    return profile
+
+
+def _get_resume_text(db: Session, user_id: int) -> str:
+    """Get the user's resume text from their primary or most recent profile."""
+    return _resolve_resume(db, user_id).raw_text
 
 
 def _get_job(job_id: int, db: Session) -> ScrapedJob:
@@ -98,16 +120,27 @@ async def tailor_resume(
 @router.post("/cover-letter/{job_id}", response_model=CoverLetterOut)
 async def cover_letter(
     job_id: int,
+    body: CoverLetterIn | None = None,
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Generate a cover letter for a job."""
+    """Generate (or regenerate in a tone) a cover letter for a job.
+
+    The body is optional — existing callers that POST with no body still get a
+    fresh letter from the primary resume.
+    """
     job = _get_job(job_id, db)
-    resume_text = _get_resume_text(db, user_id)
+    resume = _resolve_resume(db, user_id, body.resume_id if body else None)
 
     try:
         generator = CoverLetterGenerator()
-        text = await generator.generate(resume_text, job.description, job.company)
+        text = await generator.generate(
+            resume.raw_text,
+            job.description,
+            job.company,
+            tone=body.tone if body else None,
+            base_text=body.base_text if body else None,
+        )
         return CoverLetterOut(
             text=text,
             job_id=job_id,
@@ -132,6 +165,75 @@ async def analyze_fit(
         return await engine.analyze_fit(resume_text, job.description)
     except (ConnectionError, httpx.ConnectError):
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
+
+
+# ---------------------------------------------------------------------------
+# Web "Generate Custom Resume" flow (See Difference → Align → Review)
+#
+# These power the per-job-card modal. Nothing is persisted (download/copy only).
+# ---------------------------------------------------------------------------
+
+
+@router.post("/job-analysis/{job_id}", response_model=JobAnalysisOut)
+async def job_analysis(
+    job_id: int,
+    body: RewriteIn | None = None,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Step 1 'See Your Difference': match score + matched/missing keywords."""
+    job = _get_job(job_id, db)
+    resume = _resolve_resume(db, user_id, body.resume_id if body else None)
+
+    try:
+        engine = MatchEngine(db)
+        return await engine.analyze_job(
+            resume.raw_text, job.title, job.company, job.description
+        )
+    except (ConnectionError, httpx.ConnectError):
+        raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
+
+
+@router.post("/rewrite/{job_id}", response_model=RewriteOut)
+async def rewrite_resume(
+    job_id: int,
+    body: RewriteIn | None = None,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Step 3 'Review': tailor the resume with the chosen sections/keywords and
+    report the before/after scores. Not persisted."""
+    job = _get_job(job_id, db)
+    opts = body or RewriteIn()
+    resume = _resolve_resume(db, user_id, opts.resume_id)
+
+    try:
+        engine = MatchEngine(db)
+        before = await engine.analyze_job(
+            resume.raw_text, job.title, job.company, job.description
+        )
+
+        tailor = ResumeTailor(db)
+        tailored_text = await tailor.llm.tailor_resume_guided(
+            resume.raw_text, job.description, opts.sections, opts.add_keywords
+        )
+        diff_summary = tailor.compute_diff(resume.raw_text, tailored_text)
+
+        after = await engine.analyze_job(
+            tailored_text, job.title, job.company, job.description
+        )
+    except (ConnectionError, httpx.ConnectError):
+        raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
+
+    return RewriteOut(
+        tailored_text=tailored_text,
+        original_text=resume.raw_text,
+        diff_summary=diff_summary,
+        original_overall_score=before.overall_score,
+        new_overall_score=after.overall_score,
+        new_ats_score=after.ats_score,
+        new_keyword_coverage=after.keyword_coverage,
+    )
 
 
 @router.post("/batch-score")

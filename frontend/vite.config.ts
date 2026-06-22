@@ -20,6 +20,11 @@ export default defineConfig({
       "/resumes": "http://localhost:8000",
       "/jobs": "http://localhost:8000",
       "/settings": "http://localhost:8000",
+      "/ai": "http://localhost:8000",
+      "/apply": "http://localhost:8000",
+      "/connections": "http://localhost:8000",
+      "/github-sources": "http://localhost:8000",
+      "/feedback": "http://localhost:8000",
     },
   },
 });

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
+import AIRewriteModal, { type AIJob } from "../components/AIRewriteModal";
+import CoverLetterModal from "../components/CoverLetterModal";
 import api from "../auth/api";
 
 
@@ -230,6 +232,8 @@ export default function Jobs() {
   const pageSize = 50;
   const [search, setSearch] = useState("");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [rewriteJob, setRewriteJob] = useState<AIJob | null>(null);
+  const [coverJob, setCoverJob] = useState<AIJob | null>(null);
   const [filtersVisible, setFiltersVisible] = useState(true);
 
   const jobsListRef = useRef<HTMLDivElement>(null);
@@ -526,14 +530,18 @@ export default function Jobs() {
                     <button className="btn-icon" title="Share">
                       <i className="fa-solid fa-share-nodes"></i>
                     </button>
-                    <a
-                      href={job.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-outline"
+                    <button
+                      className="btn-ai"
+                      onClick={(e) => { e.stopPropagation(); setRewriteJob({ id: job.id, title: job.title, company: job.company, url: job.url }); }}
                     >
-                      ASK REMI
-                    </a>
+                      <i className="fa-solid fa-wand-magic-sparkles"></i> AI Rewrite
+                    </button>
+                    <button
+                      className="btn-ai"
+                      onClick={(e) => { e.stopPropagation(); setCoverJob({ id: job.id, title: job.title, company: job.company, url: job.url }); }}
+                    >
+                      <i className="fa-solid fa-envelope"></i> Cover Letter
+                    </button>
                     <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply">APPLY WITH AUTOFILL</a>
                   </div>
                 </div>
@@ -590,6 +598,9 @@ export default function Jobs() {
           </div>
         )}
       </div>
+
+      {rewriteJob && <AIRewriteModal job={rewriteJob} onClose={() => setRewriteJob(null)} />}
+      {coverJob && <CoverLetterModal job={coverJob} onClose={() => setCoverJob(null)} />}
     </div>
   );
 }

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.models import ScrapedJob, ResumeProfileDB
 from backend.schemas.match import MatchBreakdown, FitAnalysis
+from backend.schemas.ai import JobAnalysisOut
 from backend.services.llm import get_llm_service
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,30 @@ Return a JSON object with these exact fields:
   "strengths": ["strength 1", "strength 2", ...],
   "weaknesses": ["weakness 1", "weakness 2", ...]
 }}
+
+Resume:
+{resume_text}
+
+Job Posting:
+{job_description}
+"""
+
+JOB_ANALYSIS_PROMPT = """
+Analyze how well this resume matches the job posting, like an applicant tracking
+system (ATS) would. Return ONLY a JSON object with these exact fields:
+
+{{
+  "overall_score": <0-100 overall fit>,
+  "ats_score": <0-100 how well the resume would pass an automated ATS keyword scan>,
+  "matched_keywords": ["important skills/keywords from the job that ARE in the resume"],
+  "missing_keywords": ["important skills/keywords from the job that are NOT in the resume"],
+  "strengths": ["short strength phrases"],
+  "weaknesses": ["short gap phrases"],
+  "suggestions": ["1-2 sentence actionable suggestions to improve the match for this role"]
+}}
+
+Job title: {job_title}
+Company: {company}
 
 Resume:
 {resume_text}
@@ -107,6 +132,55 @@ class MatchEngine:
             match_label=score_to_label(overall),
             strengths=data.get("strengths", []),
             weaknesses=data.get("weaknesses", []),
+        )
+
+    async def analyze_job(
+        self,
+        resume_text: str,
+        job_title: str,
+        company: str,
+        job_description: str,
+    ) -> JobAnalysisOut:
+        """Resume↔job analysis for the rewrite flow.
+
+        Adds an ATS score plus matched/missing keyword lists (and a derived
+        keyword-coverage percentage) on top of the overall fit score.
+        """
+        prompt = JOB_ANALYSIS_PROMPT.format(
+            job_title=job_title or "",
+            company=company or "",
+            resume_text=resume_text[:3000],
+            job_description=job_description[:3000],
+        )
+
+        response = await self.llm._generate(prompt)
+        data = self._parse_json_response(response)
+
+        def _strs(key: str) -> list[str]:
+            return [str(v).strip() for v in data.get(key, []) if str(v).strip()]
+
+        def _score(key: str) -> int:
+            try:
+                return max(0, min(100, int(data.get(key, 0) or 0)))
+            except (TypeError, ValueError):
+                return 0
+
+        matched = _strs("matched_keywords")
+        missing = _strs("missing_keywords")
+        total = len(matched) + len(missing)
+        coverage = round(100 * len(matched) / total) if total else 0
+        overall = _score("overall_score")
+
+        return JobAnalysisOut(
+            overall_score=overall,
+            ats_score=_score("ats_score"),
+            match_label=score_to_label(overall),
+            keyword_coverage=coverage,
+            matched_keywords=matched,
+            missing_keywords=missing,
+            strengths=_strs("strengths"),
+            weaknesses=_strs("weaknesses"),
+            suggestions=_strs("suggestions"),
         )
 
     async def analyze_fit(

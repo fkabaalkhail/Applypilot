@@ -181,6 +181,59 @@ class GeminiService:
         )
         return await self._generate(prompt)
 
+    async def tailor_resume_guided(
+        self,
+        resume_text: str,
+        job_description: str,
+        sections: list[str] | None = None,
+        keywords: list[str] | None = None,
+    ) -> str:
+        """Rewrite the candidate's COMPLETE resume, tailored to the target job.
+
+        Unlike ``tailor_resume`` (which returns a short summary), this returns the
+        full resume — every section the candidate actually has — so the web flow's
+        Review step can show a finished, ready-to-download document. The user's
+        'Align' choices (sections to emphasize, keywords to weave in) are layered on
+        top, and keywords are only added where truthful.
+        """
+        focus = ""
+        if sections:
+            focus += (
+                "\n- Put extra effort into improving these sections: "
+                f"{', '.join(sections)}."
+            )
+        if keywords:
+            focus += (
+                "\n- Where it is truthful and supported by the candidate's real "
+                f"experience, naturally weave in these keywords: {', '.join(keywords)}. "
+                "Never fabricate experience, skills, or tools the candidate does not have."
+            )
+
+        prompt = (
+            "You are a professional resume writer. Rewrite the candidate's COMPLETE "
+            "resume, tailored to the target job below. Output the FULL resume as clean "
+            "plain text, preserving every section the candidate actually has (contact "
+            "information, professional summary, skills, work experience, projects, "
+            "education, and any others present).\n\n"
+            "Rules:\n"
+            "- Keep all real, factual content — never invent employers, job titles, "
+            "dates, degrees, metrics, or skills the candidate does not have.\n"
+            "- Reorder and rephrase to emphasize what matches the job; lead with the "
+            "most relevant qualifications.\n"
+            "- Use strong action verbs and keep any real quantifiable achievements.\n"
+            "- Start with the candidate's real name on the first line, then their "
+            "contact details.\n"
+            "- Use UPPERCASE section headers (e.g. PROFESSIONAL SUMMARY, SKILLS, WORK "
+            "EXPERIENCE, PROJECTS, EDUCATION).\n"
+            "- Use '- ' for bullet points. Plain text only — no markdown symbols such "
+            "as ** or #.\n"
+            f"{focus}\n\n"
+            f"Candidate resume:\n{resume_text[:6000]}\n\n"
+            f"Target job description:\n{job_description[:3000]}\n\n"
+            "Return ONLY the rewritten resume text — no preamble, notes, or commentary."
+        )
+        return await self._generate(prompt)
+
     async def extract_experience_years(self, description: str) -> int | None:
         template = _load_prompt("extract_experience.txt")
         prompt = template.replace("{{JOB_DESCRIPTION}}", description[:3000])
