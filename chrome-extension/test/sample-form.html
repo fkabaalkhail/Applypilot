@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sample Job Application — ApplyPilot test page</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 32px auto; padding: 0 16px; color: #222; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 16px; margin-top: 28px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+    .row { margin: 14px 0; }
+    label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+    input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input[type="number"], select, textarea {
+      width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box;
+    }
+    textarea { min-height: 90px; }
+    .inline { display: flex; gap: 16px; }
+    .inline > div { flex: 1; }
+    .radio-row label { font-weight: 400; display: inline-flex; align-items: center; gap: 4px; margin-right: 16px; }
+    fieldset { border: 1px solid #ccc; border-radius: 6px; }
+    legend { font-weight: 600; font-size: 13px; padding: 0 6px; }
+    .note { background: #f5f3ff; border: 1px solid #ddd6ff; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+    .nolabel-section .q { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+    button { background: #7C6CFF; color: white; border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Software Engineer — Sample Application Form</h1>
+  <p class="note">
+    Test page for the ApplyPilot extension. Serve it over HTTP (e.g.
+    <code>python -m http.server 8080</code> in this folder), open the extension
+    popup and click <strong>Scan page</strong>. The submit button only shows an
+    alert — nothing is sent anywhere.
+  </p>
+
+  <form id="application" onsubmit="event.preventDefault(); alert('Form would submit now — the extension must never do this for you.');">
+    <h2>Your information</h2>
+    <div class="inline">
+      <div class="row">
+        <label for="first_name">First Name *</label>
+        <input type="text" id="first_name" name="first_name" required autocomplete="given-name" />
+      </div>
+      <div class="row">
+        <label for="last_name">Last Name *</label>
+        <input type="text" id="last_name" name="last_name" required autocomplete="family-name" />
+      </div>
+    </div>
+    <div class="row">
+      <label for="email">Email Address *</label>
+      <input type="email" id="email" name="email" required autocomplete="email" />
+    </div>
+    <div class="row">
+      <label for="phone">Phone</label>
+      <input type="tel" id="phone" name="phone" autocomplete="tel" />
+    </div>
+    <div class="inline">
+      <div class="row">
+        <label for="city">City</label>
+        <input type="text" id="city" name="city" />
+      </div>
+      <div class="row">
+        <label for="country">Country</label>
+        <select id="country" name="country">
+          <option value="">Select…</option>
+          <option>United States</option>
+          <option>Canada</option>
+          <option>United Kingdom</option>
+          <option>Germany</option>
+        </select>
+      </div>
+    </div>
+
+    <h2>Links</h2>
+    <div class="row">
+      <label for="linkedin">LinkedIn Profile</label>
+      <input type="url" id="linkedin" name="urls[linkedin]" placeholder="https://linkedin.com/in/…" />
+    </div>
+    <div class="row">
+      <label for="github">GitHub Profile</label>
+      <input type="url" id="github" name="urls[github]" />
+    </div>
+    <div class="row">
+      <label for="website">Personal Website / Portfolio</label>
+      <input type="url" id="website" name="urls[website]" />
+    </div>
+
+    <h2>Documents</h2>
+    <div class="row">
+      <label for="resume">Resume/CV *</label>
+      <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx" />
+    </div>
+    <div class="row">
+      <label for="cover_letter">Cover Letter</label>
+      <textarea id="cover_letter" name="cover_letter" placeholder="Why do you want to work here?"></textarea>
+    </div>
+
+    <h2>Work eligibility</h2>
+    <div class="row">
+      <label for="work_auth">Are you legally authorized to work in Canada? *</label>
+      <select id="work_auth" name="work_auth" required>
+        <option value="">Select…</option>
+        <option>Yes</option>
+        <option>No</option>
+      </select>
+    </div>
+    <div class="row">
+      <fieldset>
+        <legend>Will you now or in the future require sponsorship for employment visa status? *</legend>
+        <div class="radio-row">
+          <label><input type="radio" name="sponsorship" value="yes" /> Yes</label>
+          <label><input type="radio" name="sponsorship" value="no" /> No</label>
+        </div>
+      </fieldset>
+    </div>
+
+    <h2>Background</h2>
+    <div class="inline">
+      <div class="row">
+        <label for="company">Current Company</label>
+        <input type="text" id="company" name="company" autocomplete="organization" />
+      </div>
+      <div class="row">
+        <label for="title">Current Job Title</label>
+        <input type="text" id="title" name="title" autocomplete="organization-title" />
+      </div>
+    </div>
+    <!-- Div-based "labels" on purpose — exercises the nearby-text matcher -->
+    <div class="nolabel-section">
+      <div class="row">
+        <div class="q">School / University</div>
+        <input type="text" name="education[school]" />
+      </div>
+      <div class="inline">
+        <div class="row">
+          <div class="q">Degree</div>
+          <input type="text" name="education[degree]" />
+        </div>
+        <div class="row">
+          <div class="q">Graduation Year</div>
+          <input type="number" name="education[grad_year]" min="1980" max="2035" />
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <label for="salary">Salary Expectations</label>
+      <input type="text" id="salary" name="salary" placeholder="e.g. $90,000" />
+    </div>
+    <div class="row">
+      <label for="experience_summary">Describe your relevant work experience</label>
+      <textarea id="experience_summary" name="experience_summary"></textarea>
+    </div>
+
+    <h2>Voluntary Equal Employment Opportunity questions</h2>
+    <p class="note">The extension should <strong>detect</strong> these but leave them untouched by default.</p>
+    <div class="row">
+      <label for="gender">Gender</label>
+      <select id="gender" name="eeo[gender]">
+        <option value="">Select…</option>
+        <option>Male</option>
+        <option>Female</option>
+        <option>Non-binary</option>
+        <option>Decline to self-identify</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="race">Race / Ethnicity</label>
+      <select id="race" name="eeo[race]">
+        <option value="">Select…</option>
+        <option>Asian</option>
+        <option>Black or African American</option>
+        <option>White</option>
+        <option>Two or more races</option>
+        <option>Decline to self-identify</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="veteran">Veteran Status</label>
+      <select id="veteran" name="eeo[veteran]">
+        <option value="">Select…</option>
+        <option>I am not a protected veteran</option>
+        <option>I identify as one or more of the classifications of a protected veteran</option>
+        <option>I don't wish to answer</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="disability">Disability Status</label>
+      <select id="disability" name="eeo[disability]">
+        <option value="">Select…</option>
+        <option>Yes, I have a disability</option>
+        <option>No, I do not have a disability</option>
+        <option>I don't wish to answer</option>
+      </select>
+    </div>
+
+    <button type="submit">Submit application</button>
+  </form>
+</body>
+</html>

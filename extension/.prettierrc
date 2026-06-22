@@ -1,5 +1,0 @@
-{
-  "semi": false,
-  "trailingComma": "none",
-  "plugins": ["@plasmohq/prettier-plugin-sort-imports"]
-}
