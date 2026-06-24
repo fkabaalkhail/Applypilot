@@ -1,7 +1,7 @@
 """
 CoverLetterGenerator — generates tailored cover letters for job applications.
 
-Uses Gemini to create personalized cover letters based on the user's resume
+Uses Claude to create personalized cover letters based on the user's resume
 and the target job description.
 """
 

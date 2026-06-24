@@ -1,7 +1,7 @@
 """
 Resume upload and parsing endpoints.
 
-POST /resumes/upload — accepts PDF or DOCX, extracts text, analyzes via Gemini,
+POST /resumes/upload — accepts PDF or DOCX, extracts text, analyzes via Claude,
 stores profile in DB, returns typed ResumeProfile.
 GET /resumes — list all resumes for the current user.
 GET /resumes/{id} — get full resume detail including profile and analysis report.
@@ -308,7 +308,7 @@ async def upload_resume(
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="Extracted text is empty.")
 
-    # Analyze with Gemini (graceful degradation if rate limited)
+    # Analyze with Claude (graceful degradation if rate limited)
     llm = get_llm_service()
     profile = None
     try:

@@ -1,7 +1,7 @@
 """
-MatchEngine — computes detailed match score breakdowns via Gemini.
+MatchEngine — computes detailed match score breakdowns via Claude.
 
-Extends the existing GeminiService.match_job with breakdown scores
+Extends the existing AnthropicService.match_job with breakdown scores
 for experience, skills, and industry.
 """
 
@@ -100,7 +100,7 @@ Job Posting:
 
 
 class MatchEngine:
-    """Computes detailed match score breakdowns via Gemini."""
+    """Computes detailed match score breakdowns via Claude."""
 
     def __init__(self, db: Session):
         self.db = db

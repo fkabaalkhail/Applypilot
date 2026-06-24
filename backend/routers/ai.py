@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import ScrapedJob, ResumeProfileDB
+from backend.db.models import ScrapedJob, ResumeProfileDB, ResumeVersion
 from backend.auth.dependencies import get_verified_user_id
 from backend.schemas.match import MatchBreakdown, FitAnalysis
 from backend.schemas.ai import (
@@ -25,15 +25,22 @@ from backend.schemas.ai import (
     RewriteIn,
     RewriteOut,
     CoverLetterIn,
+    ResumeVersionIn,
+    ResumeVersionOut,
+    SnippetEditIn,
+    SnippetEditOut,
 )
+from backend.schemas.resume_document import ResumeDocument
 from backend.services.match_engine import MatchEngine
 from backend.services.resume_tailor import ResumeTailor
 from backend.services.cover_letter import CoverLetterGenerator
+from backend.services.resume_document import db_record_to_document, document_to_text
+from backend.services.llm import get_llm_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-LLM_503_DETAIL = "AI service unavailable. Please check your Gemini API key."
+LLM_503_DETAIL = "AI service unavailable. Please check your Anthropic API key."
 
 
 def _resolve_resume(
@@ -201,23 +208,31 @@ async def rewrite_resume(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Step 3 'Review': tailor the resume with the chosen sections/keywords and
-    report the before/after scores. Not persisted."""
+    """Step 3 'Review': tailor the resume (structured) with the chosen
+    sections/keywords, report before/after scores, and save the version.
+
+    Returns a structured ``ResumeDocument`` — the single source the renderer,
+    PDF, and DOCX all consume — so the download always matches the preview.
+    """
     job = _get_job(job_id, db)
     opts = body or RewriteIn()
     resume = _resolve_resume(db, user_id, opts.resume_id)
 
+    original_document = db_record_to_document(resume)
+    original_text = document_to_text(original_document)
+
     try:
         engine = MatchEngine(db)
         before = await engine.analyze_job(
-            resume.raw_text, job.title, job.company, job.description
+            original_text, job.title, job.company, job.description
         )
 
         tailor = ResumeTailor(db)
-        tailored_text = await tailor.llm.tailor_resume_guided(
-            resume.raw_text, job.description, opts.sections, opts.add_keywords
+        document = await tailor.llm.tailor_resume_structured(
+            original_document, job.description, opts.sections, opts.add_keywords
         )
-        diff_summary = tailor.compute_diff(resume.raw_text, tailored_text)
+        tailored_text = document_to_text(document)
+        diff_summary = tailor.compute_diff(original_text, tailored_text)
 
         after = await engine.analyze_job(
             tailored_text, job.title, job.company, job.description
@@ -225,14 +240,29 @@ async def rewrite_resume(
     except (ConnectionError, httpx.ConnectError):
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
 
+    version = ResumeVersion(
+        user_id=user_id,
+        resume_id=resume.id,
+        job_id=job_id,
+        label=f"AI · {job.title}"[:120],
+        source="ai",
+        document_json=document.model_dump(),
+    )
+    db.add(version)
+    db.commit()
+    db.refresh(version)
+
     return RewriteOut(
+        document=document,
+        original_document=original_document,
         tailored_text=tailored_text,
-        original_text=resume.raw_text,
+        original_text=original_text,
         diff_summary=diff_summary,
         original_overall_score=before.overall_score,
         new_overall_score=after.overall_score,
         new_ats_score=after.ats_score,
         new_keyword_coverage=after.keyword_coverage,
+        version_id=version.id,
     )
 
 
@@ -350,3 +380,122 @@ async def batch_score_jobs(
             ScrapedJob.description != None,
         ).count(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Resume version history (Phase 4) + inline edit assistant (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+def _version_out(row: ResumeVersion) -> ResumeVersionOut:
+    return ResumeVersionOut(
+        id=row.id,
+        resume_id=row.resume_id,
+        job_id=row.job_id,
+        label=row.label or "",
+        source=row.source or "user",
+        document=ResumeDocument(**(row.document_json or {})),
+        created_at=row.created_at,
+    )
+
+
+@router.get("/resume-versions", response_model=list[ResumeVersionOut])
+def list_resume_versions(
+    resume_id: int | None = None,
+    job_id: int | None = None,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """List the current user's saved resume versions, newest first.
+
+    Optionally scoped to a resume and/or a job (job-specific versions).
+    """
+    q = db.query(ResumeVersion).filter(ResumeVersion.user_id == user_id)
+    if resume_id is not None:
+        q = q.filter(ResumeVersion.resume_id == resume_id)
+    if job_id is not None:
+        q = q.filter(ResumeVersion.job_id == job_id)
+    rows = q.order_by(ResumeVersion.created_at.desc(), ResumeVersion.id.desc()).limit(50).all()
+    return [_version_out(r) for r in rows]
+
+
+@router.post("/resume-versions", response_model=ResumeVersionOut)
+def save_resume_version(
+    body: ResumeVersionIn,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Persist a structured resume document as a new version."""
+    row = ResumeVersion(
+        user_id=user_id,
+        resume_id=body.resume_id,
+        job_id=body.job_id,
+        label=body.label or "Saved version",
+        source=body.source or "user",
+        document_json=body.document.model_dump(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _version_out(row)
+
+
+@router.get("/resume-versions/{version_id}", response_model=ResumeVersionOut)
+def get_resume_version(
+    version_id: int,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    row = (
+        db.query(ResumeVersion)
+        .filter(ResumeVersion.id == version_id, ResumeVersion.user_id == user_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Version not found.")
+    return _version_out(row)
+
+
+@router.delete("/resume-versions/{version_id}", status_code=204)
+def delete_resume_version(
+    version_id: int,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    row = (
+        db.query(ResumeVersion)
+        .filter(ResumeVersion.id == version_id, ResumeVersion.user_id == user_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Version not found.")
+    db.delete(row)
+    db.commit()
+
+
+@router.post("/edit-snippet", response_model=SnippetEditOut)
+async def edit_snippet(
+    body: SnippetEditIn,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Apply a single AI editing action to a selected snippet of resume text.
+
+    Only the provided text is transformed and returned — never the whole resume.
+    """
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="No text selected.")
+
+    job_description = ""
+    if body.job_id:
+        job = db.query(ScrapedJob).filter(ScrapedJob.id == body.job_id).first()
+        if job:
+            job_description = job.description or ""
+
+    try:
+        llm = get_llm_service()
+        edited = await llm.edit_snippet(text, body.action, job_description)
+        return SnippetEditOut(text=edited or text)
+    except (ConnectionError, httpx.ConnectError):
+        raise HTTPException(status_code=503, detail=LLM_503_DETAIL)

@@ -1,8 +1,8 @@
 """
-GeminiService — Google Gemini API client for AI-powered features.
+AnthropicService — Anthropic Claude API client for AI-powered features.
 
-Same interface: analyze_resume, generate_cover_letter, answer_question,
-suggest_job_titles, tailor_resume, extract_experience_years,
+Same interface as the former GeminiService: analyze_resume, generate_cover_letter,
+answer_question, suggest_job_titles, tailor_resume, extract_experience_years,
 generate_connection_message, match_job, analyze_resume_quality.
 """
 
@@ -15,6 +15,7 @@ from pathlib import Path
 import httpx
 
 from backend.schemas.resume import ResumeProfile, ExperienceItem, EducationItem, AnalysisReport
+from backend.schemas.resume_document import ResumeDocument
 from backend.schemas.application import JobPosting
 
 logger = logging.getLogger(__name__)
@@ -52,67 +53,71 @@ def _extract_json(response: str) -> str:
     return text
 
 
-class GeminiService:
-    """Async client for Google Gemini API with multi-key rotation."""
+class AnthropicService:
+    """Async client for the Anthropic Messages API (Claude)."""
 
     def __init__(self):
-        # Support multiple API keys separated by commas for rotation
-        raw_keys = os.getenv("GEMINI_API_KEY", "").strip().strip("\ufeff")
-        self.api_keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
-        self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip().strip("\ufeff")
-        self.timeout = float(os.getenv("GEMINI_TIMEOUT", "60"))
-        self._current_key_index = 0
-        if not self.api_keys:
-            raise ValueError("GEMINI_API_KEY not set in environment")
-
-    @property
-    def api_key(self):
-        return self.api_keys[self._current_key_index % len(self.api_keys)]
-
-    def _rotate_key(self):
-        """Switch to the next API key."""
-        if len(self.api_keys) > 1:
-            self._current_key_index = (self._current_key_index + 1) % len(self.api_keys)
-            logger.info(f"Rotated to Gemini API key #{self._current_key_index + 1}")
+        self.api_key = os.getenv("ANTHROPIC_API_KEY", "").strip().strip("\ufeff")
+        self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514").strip().strip("\ufeff")
+        self.timeout = float(os.getenv("ANTHROPIC_TIMEOUT", "60"))
+        self.max_tokens = int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096"))
+        if not self.api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set in environment")
 
     async def _generate(self, prompt: str, system: str = None) -> str:
         import asyncio
 
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}"
-            f":generateContent"
-        )
-        contents = [{"parts": [{"text": prompt}]}]
-        body = {"contents": contents}
-        if system:
-            body["systemInstruction"] = {"parts": [{"text": system}]}
+        url = "https://api.anthropic.com/v1/messages"
 
-        # Retry with exponential backoff on 429, rotating keys
+        messages = [{"role": "user", "content": prompt}]
+        body: dict = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": messages,
+        }
+        if system:
+            body["system"] = system
+
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+        }
+
         max_retries = 4
         for attempt in range(max_retries):
             async with httpx.AsyncClient() as client:
-                headers = {
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": self.api_key,
-                }
                 r = await client.post(url, json=body, headers=headers, timeout=self.timeout)
                 if r.status_code == 429:
-                    self._rotate_key()  # Try next key
-                    wait_time = (2 ** attempt) * 3  # 3s, 6s, 12s, 24s
-                    logger.warning(f"Gemini rate limited (429), rotating key and retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    wait_time = (2 ** attempt) * 3
+                    logger.warning(
+                        f"Anthropic rate limited (429), retrying in {wait_time}s "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(wait_time)
+                    continue
+                if r.status_code == 529:
+                    wait_time = (2 ** attempt) * 5
+                    logger.warning(
+                        f"Anthropic overloaded (529), retrying in {wait_time}s "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
                     await asyncio.sleep(wait_time)
                     continue
                 r.raise_for_status()
                 data = r.json()
                 break
         else:
-            raise ConnectionError("Gemini API rate limited after retries. Please try again in a minute.")
+            raise ConnectionError(
+                "Anthropic API rate limited after retries. Please try again in a minute."
+            )
 
         try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
+            # Anthropic response: { "content": [{ "type": "text", "text": "..." }] }
+            return data["content"][0]["text"]
         except (KeyError, IndexError):
-            logger.error("Unexpected Gemini response: %s", json.dumps(data)[:500])
-            raise ValueError("Gemini returned an unexpected response format")
+            logger.error("Unexpected Anthropic response: %s", json.dumps(data)[:500])
+            raise ValueError("Anthropic returned an unexpected response format")
 
     async def analyze_resume(self, raw_text: str) -> ResumeProfile:
         template = _load_prompt("analyze_resume.txt")
@@ -188,14 +193,7 @@ class GeminiService:
         sections: list[str] | None = None,
         keywords: list[str] | None = None,
     ) -> str:
-        """Rewrite the candidate's COMPLETE resume, tailored to the target job.
-
-        Unlike ``tailor_resume`` (which returns a short summary), this returns the
-        full resume — every section the candidate actually has — so the web flow's
-        Review step can show a finished, ready-to-download document. The user's
-        'Align' choices (sections to emphasize, keywords to weave in) are layered on
-        top, and keywords are only added where truthful.
-        """
+        """Rewrite the candidate's COMPLETE resume, tailored to the target job."""
         focus = ""
         if sections:
             focus += (
@@ -233,6 +231,88 @@ class GeminiService:
             "Return ONLY the rewritten resume text — no preamble, notes, or commentary."
         )
         return await self._generate(prompt)
+
+    async def tailor_resume_structured(
+        self,
+        document: ResumeDocument,
+        job_description: str,
+        sections: list[str] | None = None,
+        keywords: list[str] | None = None,
+    ) -> ResumeDocument:
+        """Rewrite a structured resume document, tailored to the target job."""
+        from backend.services.resume_document import merge_rewrite
+
+        focus = ""
+        if sections:
+            focus += (
+                "\n- Put extra effort into improving these sections: "
+                f"{', '.join(sections)}."
+            )
+        if keywords:
+            focus += (
+                "\n- Where it is truthful and supported by the candidate's real "
+                f"experience, naturally weave in these keywords: {', '.join(keywords)}. "
+                "Never fabricate experience, skills, or tools the candidate does not have."
+            )
+
+        doc_json = document.model_dump_json()
+        prompt = (
+            "You are a professional resume writer. You will be given a candidate's "
+            "resume as a JSON object and a target job description. Rewrite the "
+            "resume to be tailored to the job, then return the SAME JSON object.\n\n"
+            "STRICT RULES:\n"
+            "- Return ONLY valid JSON with the exact same shape, keys, and array "
+            "lengths. Keep every section's `id` and `type` and every item's `id` "
+            "unchanged, in the same order.\n"
+            "- You may ONLY change the wording of: each section's `text`, the "
+            "`skills` array, the `groups` values, and each item's `bullets`.\n"
+            "- NEVER change `header`, `theme`, section `title`s, or item `title`, "
+            "`subtitle`, `location`, `start_date`, `end_date`, `detail`, or `link`.\n"
+            "- NEVER invent employers, job titles, dates, degrees, metrics, or "
+            "skills the candidate does not already have. Only rephrase what is "
+            "there, using strong action verbs and keeping real quantified results.\n"
+            "- Rephrase bullets to emphasize what matches the job; lead with the "
+            "most relevant qualifications."
+            f"{focus}\n\n"
+            f"Target job description:\n{job_description[:3000]}\n\n"
+            f"Resume JSON:\n{doc_json}\n\n"
+            "Return ONLY the rewritten JSON object."
+        )
+
+        try:
+            response = await self._generate(prompt)
+            data = json.loads(_extract_json(response))
+            edited = ResumeDocument(**data)
+        except Exception as e:
+            logger.warning("Structured tailor failed (%s); returning original", e)
+            return document
+
+        return merge_rewrite(document, edited)
+
+    async def edit_snippet(self, text: str, action: str, job_description: str = "") -> str:
+        """Apply a single AI editing action to a selected snippet of resume text."""
+        instructions = {
+            "rewrite": "Rewrite the text to be clearer and stronger while keeping the meaning.",
+            "shorten": "Make the text more concise without losing key information.",
+            "expand": "Expand the text with relevant, truthful detail.",
+            "professional": "Rewrite in a more professional, polished tone.",
+            "ats": "Rewrite to be ATS-friendly: clear, keyword-rich phrasing aligned to the job, plain text only.",
+            "impact": "Rewrite to emphasize measurable impact with strong action verbs.",
+            "grammar": "Fix spelling and grammar only; keep the wording and meaning intact.",
+        }
+        instruction = instructions.get(action, instructions["rewrite"])
+        ctx = ""
+        if job_description and action in ("ats", "impact", "rewrite"):
+            ctx = f"\n\nTarget job (for context only):\n{job_description[:1500]}"
+        prompt = (
+            "You are editing a snippet of a resume. "
+            f"{instruction} "
+            "Return ONLY the edited text — no preamble, quotes, labels, or explanation. "
+            "Do not invent employers, job titles, dates, or metrics that are not already implied."
+            f"{ctx}\n\nText:\n{text}"
+        )
+        result = await self._generate(prompt)
+        return result.strip().strip('"').strip()
 
     async def extract_experience_years(self, description: str) -> int | None:
         template = _load_prompt("extract_experience.txt")

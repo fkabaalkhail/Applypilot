@@ -1,7 +1,7 @@
 """
 ResumeTailor — generates tailored resume versions for specific job postings.
 
-Uses Gemini to rewrite/reorder resume content to emphasize skills and experience
+Uses Claude to rewrite/reorder resume content to emphasize skills and experience
 relevant to the target job. Stores tailored versions linked to specific jobs.
 """
 
@@ -28,12 +28,12 @@ class ResumeTailor:
     ) -> TailoredResume:
         """Generate a tailored resume for a specific job.
 
-        Uses Gemini to rewrite the resume emphasizing relevant skills/experience.
+        Uses Claude to rewrite the resume emphasizing relevant skills/experience.
         Stores the result in the TailoredResume table.
 
         Returns the TailoredResume database record.
         """
-        # Generate tailored version via Gemini
+        # Generate tailored version via Claude
         tailored_text = await self.llm.tailor_resume(resume_text, job_description)
 
         # Compute diff summary

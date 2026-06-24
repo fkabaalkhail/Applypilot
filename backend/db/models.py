@@ -353,6 +353,24 @@ class TailoredResume(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class ResumeVersion(Base):
+    """A saved version of a structured resume document.
+
+    Backs version history and job-specific resume generation. ``document_json``
+    is a serialized ``ResumeDocument``; ``source`` is one of original | ai | user.
+    """
+    __tablename__ = "resume_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    resume_id = Column(Integer, ForeignKey("resume_profiles.id"), nullable=True, index=True)
+    job_id = Column(Integer, nullable=True, index=True)
+    label = Column(String, default="")
+    source = Column(String, default="ai")  # original | ai | user
+    document_json = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 class InsiderConnection(Base):
     """A connection at a target company."""
     __tablename__ = "insider_connections"

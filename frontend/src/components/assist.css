@@ -1,0 +1,34 @@
+/* Inline AI assistant floating toolbar (Phase 5). */
+
+.assist-wrap { position: relative; }
+
+.assist-bar {
+  position: absolute;
+  top: -34px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: #111827;
+  border-radius: 9px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  z-index: 30;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.assist-spark { font-size: 0.82rem; padding: 0 2px; }
+.assist-btn {
+  border: none;
+  background: transparent;
+  color: #f9fafb;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.assist-btn:hover { background: rgba(255, 255, 255, 0.16); }
+.assist-busy { color: #c7d2fe; font-size: 0.74rem; padding: 0 8px; white-space: nowrap; }
+.assist-err { color: #fecaca; font-size: 0.72rem; padding: 0 6px; white-space: nowrap; }

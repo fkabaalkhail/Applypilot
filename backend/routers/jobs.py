@@ -659,7 +659,7 @@ async def structure_description(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Parse a job description into structured sections using Gemini AI. Cached in DB."""
+    """Parse a job description into structured sections using Claude AI. Cached in DB."""
     import json
     from backend.services.llm import get_llm_service
 

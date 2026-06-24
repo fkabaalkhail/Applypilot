@@ -4,7 +4,7 @@ Unit tests for the web "Generate Custom Resume" flow endpoints:
   POST /ai/rewrite/{job_id}       (Step 3 — tailor + before/after scores)
   POST /ai/cover-letter/{job_id}  (tone option, backward compatible)
 
-The Gemini call (`GeminiService._generate`) is mocked, so no network/API key.
+The Anthropic call (`AnthropicService._generate`) is mocked, so no network/API key.
 """
 
 from unittest.mock import patch, AsyncMock
@@ -53,6 +53,16 @@ ANALYSIS_AFTER_JSON = """
 }
 """
 
+# What the structured tailor LLM call returns: same shape, rewritten bullets +
+# an added skill. Most fields are omitted and fall back to schema defaults; the
+# merge re-attaches the original structure/facts, so only content is adopted.
+EDITED_DOC_JSON = (
+    '{"sections": ['
+    '{"type": "experience", "items": [{"bullets": ["Built internal tools used by 500+ employees"]}]},'
+    '{"type": "skills", "skills": ["Python", "SQL", "TypeScript"]}'
+    ']}'
+)
+
 
 @pytest.fixture(autouse=True)
 def setup_test_db():
@@ -62,8 +72,8 @@ def setup_test_db():
 
 
 @pytest.fixture(autouse=True)
-def _gemini_key(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+def _anthropic_key(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
 
 @pytest.fixture
@@ -108,6 +118,17 @@ def _seed(db_session, with_resume=True):
                 user_id=TEST_USER_ID,
                 profile_name="Test User",
                 is_primary=1,
+                skills=["Python", "SQL"],
+                experience=[
+                    {
+                        "title": "Software Engineer",
+                        "company": "Acme",
+                        "location": "NYC",
+                        "start_date": "2020",
+                        "end_date": "2023",
+                        "bullets": ["Built internal tools"],
+                    }
+                ],
                 raw_text="Python and SQL engineer.",
             )
         )
@@ -120,7 +141,7 @@ class TestJobAnalysis:
     def test_returns_keywords_and_coverage(self, client, db_session):
         job = _seed(db_session)
         with patch(
-            "backend.services.gemini_service.GeminiService._generate",
+            "backend.services.anthropic_service.AnthropicService._generate",
             new_callable=AsyncMock,
             return_value=ANALYSIS_JSON,
         ):
@@ -142,7 +163,7 @@ class TestJobAnalysis:
     def test_400_when_no_resume(self, client, db_session):
         job = _seed(db_session, with_resume=False)
         with patch(
-            "backend.services.gemini_service.GeminiService._generate",
+            "backend.services.anthropic_service.AnthropicService._generate",
             new_callable=AsyncMock,
             return_value=ANALYSIS_JSON,
         ):
@@ -151,13 +172,13 @@ class TestJobAnalysis:
 
 
 class TestRewrite:
-    def test_returns_tailored_text_and_before_after_scores(self, client, db_session):
+    def test_returns_structured_document_and_before_after_scores(self, client, db_session):
         job = _seed(db_session)
-        # 3 LLM calls: analyze(before), tailor, analyze(after).
+        # 3 LLM calls: analyze(before), structured tailor, analyze(after).
         with patch(
-            "backend.services.gemini_service.GeminiService._generate",
+            "backend.services.anthropic_service.AnthropicService._generate",
             new_callable=AsyncMock,
-            side_effect=[ANALYSIS_JSON, "TAILORED RESUME TEXT", ANALYSIS_AFTER_JSON],
+            side_effect=[ANALYSIS_JSON, EDITED_DOC_JSON, ANALYSIS_AFTER_JSON],
         ):
             resp = client.post(
                 f"/ai/rewrite/{job.id}",
@@ -165,18 +186,30 @@ class TestRewrite:
             )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["tailored_text"] == "TAILORED RESUME TEXT"
+
+        # Structured document reflects the AI's bullet rewrite + added skill,
+        # merged onto the original structure so facts/sections are preserved.
+        sections = data["document"]["sections"]
+        assert sections[0]["type"] == "experience"
+        assert sections[0]["items"][0]["bullets"] == ["Built internal tools used by 500+ employees"]
+        assert sections[0]["items"][0]["title"] == "Software Engineer"  # fact preserved
+        assert sections[1]["skills"] == ["Python", "SQL", "TypeScript"]
+
+        # Flattened text (for Copy) + before/after scores still provided.
+        assert "Built internal tools used by 500+ employees" in data["tailored_text"]
+        assert data["original_document"]["sections"][0]["items"][0]["title"] == "Software Engineer"
         assert data["diff_summary"]  # non-empty unified diff
         assert data["original_overall_score"] == 68
         assert data["new_overall_score"] == 82
         assert data["new_ats_score"] == 78
+        assert data["version_id"] is not None
 
 
 class TestCoverLetterTone:
     def test_tone_path_passes_through(self, client, db_session):
         job = _seed(db_session)
         mock = AsyncMock(return_value="Dear Hiring Team, ...")
-        with patch("backend.services.gemini_service.GeminiService._generate", mock):
+        with patch("backend.services.anthropic_service.AnthropicService._generate", mock):
             resp = client.post(
                 f"/ai/cover-letter/{job.id}", json={"tone": "enthusiastic"}
             )
@@ -186,10 +219,59 @@ class TestCoverLetterTone:
     def test_no_body_still_works(self, client, db_session):
         job = _seed(db_session)
         with patch(
-            "backend.services.gemini_service.GeminiService._generate",
+            "backend.services.anthropic_service.AnthropicService._generate",
             new_callable=AsyncMock,
             return_value="A letter.",
         ):
             resp = client.post(f"/ai/cover-letter/{job.id}")
         assert resp.status_code == 200
         assert resp.json()["text"] == "A letter."
+
+
+class TestResumeVersions:
+    DOC = {
+        "header": {"name": "Jane Doe"},
+        "sections": [{"type": "skills", "title": "SKILLS", "skills": ["Python", "AWS"]}],
+        "theme": {},
+    }
+
+    def test_save_list_get_roundtrip(self, client, db_session):
+        job = _seed(db_session)
+        resume = db_session.query(ResumeProfileDB).first()
+
+        save = client.post(
+            "/ai/resume-versions",
+            json={"resume_id": resume.id, "job_id": job.id, "source": "user", "label": "My edits", "document": self.DOC},
+        )
+        assert save.status_code == 200
+        body = save.json()
+        vid = body["id"]
+        assert body["source"] == "user"
+        assert body["document"]["sections"][0]["skills"] == ["Python", "AWS"]
+
+        lst = client.get("/ai/resume-versions", params={"job_id": job.id})
+        assert lst.status_code == 200
+        assert any(v["id"] == vid for v in lst.json())
+
+        got = client.get(f"/ai/resume-versions/{vid}")
+        assert got.status_code == 200
+        assert got.json()["document"]["header"]["name"] == "Jane Doe"
+
+    def test_get_missing_returns_404(self, client):
+        assert client.get("/ai/resume-versions/99999").status_code == 404
+
+
+class TestEditSnippet:
+    def test_edits_only_the_snippet(self, client, db_session):
+        job = _seed(db_session)
+        with patch(
+            "backend.services.anthropic_service.AnthropicService._generate",
+            new_callable=AsyncMock,
+            return_value="Architected scalable APIs serving 1M requests/day.",
+        ):
+            resp = client.post("/ai/edit-snippet", json={"text": "built apis", "action": "impact", "job_id": job.id})
+        assert resp.status_code == 200
+        assert resp.json()["text"] == "Architected scalable APIs serving 1M requests/day."
+
+    def test_empty_text_returns_422(self, client):
+        assert client.post("/ai/edit-snippet", json={"text": "  ", "action": "rewrite"}).status_code == 422

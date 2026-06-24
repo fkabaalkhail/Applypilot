@@ -1,7 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../auth/api";
-import { downloadDocx } from "../lib/docx";
+import { FittedResume } from "./ResumeRenderer";
+import ResumeEditor from "./ResumeEditor";
+import AtsPanel from "./AtsPanel";
+import VersionsPanel from "./VersionsPanel";
+import { DEFAULT_THEME, type ResumeDocument } from "../lib/resumeDocument";
+import { addSkills, useDocumentHistory } from "../lib/resumeEdit";
+import { analyzeKeywords, heatmapTerms } from "../lib/keywordMatch";
+import { downloadResumeDocx, printResume } from "../lib/resumeExport";
 import "./ai-flow.css";
+
+const EMPTY_DOCUMENT: ResumeDocument = {
+  header: { name: "", email: "", phone: "", location: "", linkedin_url: "", github_url: "", other_link: "" },
+  sections: [],
+  theme: DEFAULT_THEME,
+};
 
 export interface AIJob {
   id: number;
@@ -29,6 +42,8 @@ interface Analysis {
 }
 
 interface RewriteResult {
+  document: ResumeDocument;
+  original_document: ResumeDocument;
   tailored_text: string;
   original_text: string;
   diff_summary: string;
@@ -36,6 +51,7 @@ interface RewriteResult {
   new_overall_score: number;
   new_ats_score: number;
   new_keyword_coverage: number;
+  version_id?: number | null;
 }
 
 const ALL_SECTIONS = ["Skills", "Work Experience", "Projects", "Education"] as const;
@@ -70,13 +86,6 @@ function errorMessage(err: unknown, fallback: string): string {
 
 function labelOf(score: number): string {
   return score >= 80 ? "STRONG" : score >= 60 ? "GOOD" : "FAIR";
-}
-
-// A short, mostly-uppercase line is treated as a resume section header.
-function isHeaderLine(line: string): boolean {
-  const t = line.trim();
-  if (!t || t.length > 48) return false;
-  return /[A-Z]/.test(t) && t === t.toUpperCase() && !/[.!?]$/.test(t);
 }
 
 // Semicircular rainbow score gauge (0-100 shown as X.X / 10).
@@ -117,33 +126,16 @@ function Gauge({ score, size = "lg" }: { score: number; size?: "lg" | "sm" }) {
   );
 }
 
-function computeLineDiff(original: string, tailored: string) {
-  const a = original.split("\n");
-  const b = tailored.split("\n");
-  const out: { type: "same" | "removed" | "added"; text: string }[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length) {
-      if (a[i] === b[j]) {
-        out.push({ type: "same", text: a[i] });
-        i++;
-        j++;
-      } else {
-        out.push({ type: "removed", text: a[i] });
-        out.push({ type: "added", text: b[j] });
-        i++;
-        j++;
-      }
-    } else if (i < a.length) {
-      out.push({ type: "removed", text: a[i] });
-      i++;
-    } else {
-      out.push({ type: "added", text: b[j] });
-      j++;
-    }
+// Count lines in the tailored resume that are new/changed vs the original
+// (a lightweight "what changed" stat for the sidebar).
+function countChangedLines(original: string, tailored: string): number {
+  const seen = new Set(original.split("\n").map((l) => l.trim()));
+  let n = 0;
+  for (const line of tailored.split("\n")) {
+    const t = line.trim();
+    if (t && !seen.has(t)) n++;
   }
-  return out;
+  return n;
 }
 
 export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: () => void }) {
@@ -164,6 +156,39 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
   const [loadingRewrite, setLoadingRewrite] = useState(false);
   const [rewriteError, setRewriteError] = useState("");
   const [copied, setCopied] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  // Visual editor: edited document + undo/redo history, seeded on generate.
+  const [editing, setEditing] = useState(false);
+  const [highlightOn, setHighlightOn] = useState(false);
+  const {
+    doc: editedDoc,
+    set: setEditedDoc,
+    reset: resetEditedDoc,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useDocumentHistory(EMPTY_DOCUMENT);
+
+  // Keyboard undo/redo while the editor is open.
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      if (k === "z") {
+        e.preventDefault();
+        e.shiftKey ? redo() : undo();
+      } else if (k === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, undo, redo]);
 
   // Load the analysis + resume sections for a given resume.
   const loadForResume = useCallback(
@@ -243,6 +268,8 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
         add_keywords: [...keywords],
       });
       setRewrite(res.data);
+      resetEditedDoc(res.data.document);
+      setEditing(false);
     } catch (err) {
       setRewriteError(errorMessage(err, "Couldn't generate your resume. Please try again."));
     } finally {
@@ -250,10 +277,20 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
     }
   }
 
-  function download() {
+  const slug = job.company.toLowerCase().replace(/\s+/g, "-") || "company";
+
+  function downloadPdf() {
+    if (!rewrite || !previewRef.current) return;
+    printResume(previewRef.current, editedDoc.theme.page_size);
+  }
+
+  function downloadDocxFile() {
     if (!rewrite) return;
-    const slug = job.company.toLowerCase().replace(/\s+/g, "-");
-    void downloadDocx(`resume-${slug}.docx`, rewrite.tailored_text);
+    void downloadResumeDocx(editedDoc, `resume-${slug}.docx`);
+  }
+
+  function applySkills(skills: string[]) {
+    setEditedDoc(addSkills(editedDoc, skills));
   }
 
   function copy() {
@@ -497,10 +534,29 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
     }
     if (!rewrite) return null;
 
-    const lines = computeLineDiff(rewrite.original_text, rewrite.tailored_text);
-    const docLines = lines.filter((l) => l.type !== "removed");
-    const firstTextIdx = docLines.findIndex((l) => l.text.trim().length > 0);
-    const addedCount = lines.filter((l) => l.type === "added").length;
+    const jobKeywords = analysis ? [...analysis.matched_keywords, ...analysis.missing_keywords] : [];
+
+    if (editing) {
+      return (
+        <ResumeEditor
+          value={editedDoc}
+          onChange={setEditedDoc}
+          previewRef={previewRef}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          keywords={jobKeywords}
+          jobId={job.id}
+        />
+      );
+    }
+
+    const hlTerms = highlightOn ? heatmapTerms(analyzeKeywords(jobKeywords, editedDoc)) : undefined;
+    const hasContent = rewrite.document.sections.some(
+      (s) => s.items.length > 0 || s.skills.length > 0 || s.text.trim() !== "" || Object.keys(s.groups).length > 0
+    );
+    const changedCount = countChangedLines(rewrite.original_text, rewrite.tailored_text);
 
     const orig = rewrite.original_overall_score;
     const next = rewrite.new_overall_score;
@@ -520,30 +576,32 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
       const list = [...keywords].slice(0, 4).join(", ");
       changes.push(`Wove in ${keywords.size} keyword${keywords.size > 1 ? "s" : ""}: ${list}${keywords.size > 4 ? "…" : ""}`);
     }
-    if (addedCount > 0) changes.push(`Rewrote ${addedCount} line${addedCount === 1 ? "" : "s"} to match the role`);
+    if (changedCount > 0) changes.push(`Rewrote ${changedCount} line${changedCount === 1 ? "" : "s"} to match the role`);
     changes.push(`Aligned wording to lift ATS to ${rewrite.new_ats_score}`);
 
     return (
-      <div className="ai-review">
-        {/* Left: full tailored resume rendered as a document */}
-        <div className="ai-doc-wrap">
-          <div className="ai-doc">
-            {docLines.map((l, i) => {
-              const trimmed = l.text.trim();
-              const bullet = /^[-•*]\s+/.test(trimmed);
-              const cls = [
-                "ai-doc-line",
-                l.type === "added" ? "ai-doc-add" : "",
-                i === firstTextIdx ? "ai-doc-name" : isHeaderLine(trimmed) ? "ai-doc-h" : bullet ? "ai-doc-li" : "",
-              ].filter(Boolean).join(" ");
-              return (
-                <div key={i} className={cls}>
-                  {bullet ? trimmed.replace(/^[-•*]\s+/, "") : (l.text || " ")}
-                </div>
-              );
-            })}
+      <>
+        {!hasContent && (
+          <div
+            style={{
+              background: "#fef3c7",
+              border: "1px solid #fde68a",
+              color: "#92400e",
+              borderRadius: 10,
+              padding: "10px 12px",
+              fontSize: "0.85rem",
+              marginBottom: 12,
+            }}
+          >
+            ⚠️ We couldn't fully read this resume's structure, so the result may be limited. A simpler
+            one-column PDF or DOCX usually parses best — or add sections in the editor.
           </div>
-        </div>
+        )}
+        <div className="ai-review">
+          {/* Left: full tailored resume rendered by the single-source renderer */}
+          <div className="ai-doc-wrap">
+            <FittedResume document={editedDoc} innerRef={previewRef} highlightTerms={hlTerms} />
+          </div>
 
         {/* Right: score jump + what changed */}
         <aside className="ai-side">
@@ -555,6 +613,28 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
           <div className="ai-side-stats">
             ATS {rewrite.new_ats_score} · {rewrite.new_keyword_coverage}% keyword coverage
           </div>
+          <button className="ai-btn ai-btn-soft" style={{ width: "100%", justifyContent: "center" }} onClick={() => setEditing(true)}>
+            ✏️ Edit resume
+          </button>
+
+          <AtsPanel
+            keywords={jobKeywords}
+            document={editedDoc}
+            suggestions={analysis?.suggestions}
+            onAddSkills={applySkills}
+            highlightOn={highlightOn}
+            onToggleHighlight={() => setHighlightOn((v) => !v)}
+          />
+
+          <VersionsPanel
+            jobId={job.id}
+            resumeId={resumeId}
+            currentDoc={editedDoc}
+            originalDoc={rewrite.original_document}
+            refreshKey={rewrite.version_id}
+            onRestore={(doc) => resetEditedDoc(doc)}
+          />
+
           <div className="ai-card-label">See what's changed</div>
           <ul className="ai-changes-list">
             {changes.map((c, i) => (
@@ -562,7 +642,8 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
             ))}
           </ul>
         </aside>
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -594,12 +675,23 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
         </div>
       );
     }
+    if (editing) {
+      return (
+        <div className="ai-modal-foot">
+          <button className="ai-btn ai-btn-ghost ai-foot-left" onClick={() => setEditing(false)}>← Done editing</button>
+          <button className="ai-btn ai-btn-soft" onClick={downloadPdf} disabled={!rewrite}>Download PDF</button>
+          <button className="ai-btn ai-btn-soft" onClick={downloadDocxFile} disabled={!rewrite}>Download DOCX</button>
+          <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>
+        </div>
+      );
+    }
     return (
       <div className="ai-modal-foot">
         <button className="ai-btn ai-btn-ghost ai-foot-left" onClick={() => setStep(2)} disabled={loadingRewrite}>← Adjust</button>
         <button className="ai-btn ai-btn-ghost" onClick={generate} disabled={loadingRewrite}>Regenerate</button>
         <button className="ai-btn ai-btn-ghost" onClick={copy} disabled={!rewrite}>{copied ? "Copied!" : "Copy"}</button>
-        <button className="ai-btn ai-btn-soft" onClick={download} disabled={!rewrite}>Download .docx</button>
+        <button className="ai-btn ai-btn-soft" onClick={downloadPdf} disabled={!rewrite}>Download PDF</button>
+        <button className="ai-btn ai-btn-soft" onClick={downloadDocxFile} disabled={!rewrite}>Download DOCX</button>
         <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>
       </div>
     );

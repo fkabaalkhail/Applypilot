@@ -5,6 +5,8 @@ Pydantic schemas for AI-generated content (tailored resumes, cover letters).
 import datetime
 from pydantic import BaseModel
 
+from backend.schemas.resume_document import ResumeDocument
+
 
 class TailoredResumeOut(BaseModel):
     """A tailored resume returned to the frontend."""
@@ -51,7 +53,14 @@ class RewriteIn(BaseModel):
 
 
 class RewriteOut(BaseModel):
-    """Result of the tailoring pass, with before/after scores for Step 3."""
+    """Result of the tailoring pass, with before/after scores for Step 3.
+
+    ``document`` is the structured, rewritten resume that the renderer/export
+    consume (the single source of truth). ``tailored_text``/``original_text``
+    are flattened plain text kept for the Copy button and diffing.
+    """
+    document: ResumeDocument
+    original_document: ResumeDocument
     tailored_text: str
     original_text: str
     diff_summary: str
@@ -59,6 +68,7 @@ class RewriteOut(BaseModel):
     new_overall_score: int
     new_ats_score: int
     new_keyword_coverage: int
+    version_id: int | None = None
 
 
 class CoverLetterIn(BaseModel):
@@ -68,3 +78,40 @@ class CoverLetterIn(BaseModel):
     tone: str | None = None
     # When regenerating in a new tone, the existing letter to rewrite.
     base_text: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Version history (Phase 4) + inline edit assistant (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+class ResumeVersionIn(BaseModel):
+    """Save a structured resume document as a version."""
+    resume_id: int | None = None
+    job_id: int | None = None
+    label: str = ""
+    source: str = "user"  # original | ai | user
+    document: ResumeDocument
+
+
+class ResumeVersionOut(BaseModel):
+    """A stored resume version returned to the frontend."""
+    id: int
+    resume_id: int | None
+    job_id: int | None
+    label: str
+    source: str
+    document: ResumeDocument
+    created_at: datetime.datetime
+
+
+class SnippetEditIn(BaseModel):
+    """Apply an AI action to a selected snippet of resume text."""
+    text: str
+    # rewrite | shorten | expand | professional | ats | impact | grammar
+    action: str
+    job_id: int | None = None
+
+
+class SnippetEditOut(BaseModel):
+    text: str

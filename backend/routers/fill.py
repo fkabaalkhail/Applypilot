@@ -102,7 +102,7 @@ async def fill_form(
     """
     Generate AI answers for a batch of form fields.
 
-    Tries rule-based answers first, falls back to Gemini for complex questions.
+    Tries rule-based answers first, falls back to Claude for complex questions.
     """
     settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
 
