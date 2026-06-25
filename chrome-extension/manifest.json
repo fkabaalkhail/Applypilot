@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "ApplyPilot — Job Application Autofill",
+  "name": "Tailrd — Job Application Autofill",
   "version": "0.2.0",
   "description": "Detects job application forms (Greenhouse, Lever, Workday, Ashby, BambooHR, SmartRecruiters and more) and fills them from your ApplyPilot profile. Never submits anything automatically.",
   "minimum_chrome_version": "110",
@@ -11,8 +11,7 @@
     "128": "assets/icon-128.png"
   },
   "action": {
-    "default_title": "ApplyPilot Autofill",
-    "default_popup": "popup/popup.html",
+    "default_title": "Tailrd Autofill",
     "default_icon": {
       "16": "assets/icon-16.png",
       "32": "assets/icon-32.png",

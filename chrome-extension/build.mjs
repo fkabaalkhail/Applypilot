@@ -16,10 +16,8 @@ const watch = process.argv.includes("--watch");
 const DIST = "dist";
 
 function copyStatic() {
-  mkdirSync(path.join(DIST, "popup"), { recursive: true });
+  mkdirSync(DIST, { recursive: true });
   cpSync("manifest.json", path.join(DIST, "manifest.json"));
-  cpSync("src/popup/popup.html", path.join(DIST, "popup", "popup.html"));
-  cpSync("src/popup/popup.css", path.join(DIST, "popup", "popup.css"));
   cpSync("assets", path.join(DIST, "assets"), { recursive: true });
 }
 
@@ -29,7 +27,6 @@ const options = {
     // Output names must match the paths referenced in manifest.json.
     { in: "src/background/serviceWorker.ts", out: "serviceWorker" },
     { in: "src/content/contentScript.ts", out: "contentScript" },
-    { in: "src/popup/popup.ts", out: "popup/popup" },
   ],
   bundle: true,
   outdir: DIST,

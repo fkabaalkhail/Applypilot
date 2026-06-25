@@ -32,6 +32,7 @@ import { FRAME_TOKEN, observePage, scanPage, type RuntimeControl } from "./formS
 import {
   showOverlay,
   updateOverlay,
+  toggleOverlay,
   type OverlayCallbacks,
 } from "./overlay";
 
@@ -159,6 +160,15 @@ function initialize(): void {
         case "PING": {
           const response: PingResponse = { ok: true, frameToken: FRAME_TOKEN };
           sendResponse(response);
+          return false;
+        }
+
+        case "TOGGLE_PANEL": {
+          if (isTopFrame) {
+            const state = { fields: lastFields, tabUrl: location.href };
+            toggleOverlay(state, overlayCallbacks);
+          }
+          sendResponse({ ok: true });
           return false;
         }
 

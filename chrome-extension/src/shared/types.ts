@@ -140,6 +140,7 @@ export interface DetectedField {
 
 export type ContentRequest =
   | { type: "PING" }
+  | { type: "TOGGLE_PANEL" }
   | {
       type: "SCAN_PAGE";
       profile: UserApplicationProfile | null;

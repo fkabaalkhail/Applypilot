@@ -30,6 +30,39 @@ chrome.runtime.onInstalled.addListener(() => {
   // kept for future migrations.
 });
 
+// When the user clicks the extension icon in the toolbar, inject the content
+// script (if needed) and tell it to toggle the side panel open.
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id || !tab.url || !/^https?:/i.test(tab.url)) return;
+
+  // Ensure content script is injected
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: "PING" });
+  } catch {
+    // Not injected yet — inject it
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        files: ["contentScript.js"],
+      });
+    } catch {
+      return; // Can't inject (chrome://, web store, etc.)
+    }
+  }
+
+  // Send toggle message to show the side panel
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_PANEL" });
+  } catch {
+    // Content script may not be ready yet, retry after a brief delay
+    setTimeout(async () => {
+      try {
+        await chrome.tabs.sendMessage(tab.id!, { type: "TOGGLE_PANEL" });
+      } catch { /* give up */ }
+    }, 300);
+  }
+});
+
 chrome.runtime.onMessage.addListener(
   (message: BackgroundRequest | FieldsUpdatedEvent, _sender, sendResponse) => {
     // Content scripts emit FIELDS_UPDATED for the popup; not addressed to us.
