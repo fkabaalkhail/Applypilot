@@ -80,6 +80,33 @@ class CoverLetterIn(BaseModel):
     base_text: str | None = None
 
 
+class CoverLetterRecordOut(BaseModel):
+    """A persisted cover letter, synced to the web app and extension."""
+    id: int
+    job_id: int | None = None
+    company: str = ""
+    job_title: str = ""
+    job_url: str = ""
+    text: str = ""
+    tone: str = ""
+    source: str = "generated"
+    is_active: bool = False
+    created_at: datetime.datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CoverLetterSaveIn(BaseModel):
+    """Save (or edit) a cover letter from the web app or extension."""
+    job_id: int | None = None
+    company: str = ""
+    job_title: str = ""
+    job_url: str = ""
+    text: str
+    tone: str = ""
+    set_active: bool = True
+
+
 # ---------------------------------------------------------------------------
 # Version history (Phase 4) + inline edit assistant (Phase 5)
 # ---------------------------------------------------------------------------

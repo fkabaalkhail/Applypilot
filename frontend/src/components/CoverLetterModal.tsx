@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../auth/api";
 import { downloadDocx } from "../lib/docx";
-import type { AIJob } from "./AIRewriteModal";
+import type { AIJob } from "./CustomResumeModal";
 import "./ai-flow.css";
 
 interface ResumeOption {

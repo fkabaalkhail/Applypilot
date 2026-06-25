@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Tailrd — Job Application Autofill",
-  "version": "0.2.0",
-  "description": "Detects job application forms (Greenhouse, Lever, Workday, Ashby, BambooHR, SmartRecruiters and more) and fills them from your ApplyPilot profile. Never submits anything automatically.",
+  "version": "0.3.0",
+  "description": "Detects job application forms (Greenhouse, Lever, Workday, Ashby, BambooHR, SmartRecruiters, iCIMS, Jobvite, Taleo, SuccessFactors and more) and fills them from your Tailrd profile. Never submits anything automatically.",
   "minimum_chrome_version": "110",
   "icons": {
     "16": "assets/icon-16.png",
@@ -22,7 +22,8 @@
   "background": {
     "service_worker": "serviceWorker.js"
   },
-  "permissions": ["activeTab", "storage", "scripting", "identity"],
+  "permissions": ["activeTab", "storage", "scripting", "identity", "alarms"],
+  "host_permissions": ["http://localhost/*", "https://www.tailrd.ca/*"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*"],
   "content_scripts": [
     {
@@ -36,7 +37,12 @@
         "https://*.smartrecruiters.com/*",
         "https://*.icims.com/*",
         "https://*.jobvite.com/*",
-        "https://*.workable.com/*"
+        "https://*.workable.com/*",
+        "https://*.taleo.net/*",
+        "https://*.successfactors.com/*",
+        "https://*.successfactors.eu/*",
+        "https://*.sapsf.com/*",
+        "https://*.sapsf.eu/*"
       ],
       "js": ["contentScript.js"],
       "run_at": "document_idle",

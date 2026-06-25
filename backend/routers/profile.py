@@ -22,8 +22,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import ResumeProfileDB, User, UserSettings
+from backend.db.models import CoverLetter, ResumeProfileDB, User, UserSettings
 from backend.auth.dependencies import get_verified_user
+from backend.services.profile_version import bump_profile_version, get_profile_version
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -62,6 +63,36 @@ class ApplicationProfileOut(BaseModel):
     experience: list[ExperienceEntry] = []
     skills: list[str] = []
     coverLetter: str = ""
+    # Sync + resume metadata for the extension.
+    version: int = 1
+    resumeId: int | None = None
+    resumeFileName: str = ""
+    hasResumeFile: bool = False
+
+
+class ApplicationProfileIn(BaseModel):
+    """Editable autofill fields the extension (or web app) can write back.
+
+    Only contact + screening fields are user-editable; resume-derived sections
+    (experience, education, skills) come from the parsed resume. Any provided
+    field overrides the stored value; omitted fields are left untouched.
+    """
+    firstName: str | None = None
+    lastName: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    location: str | None = None
+    linkedin: str | None = None
+    portfolio: str | None = None
+    currentTitle: str | None = None
+    workAuthorization: str | None = None
+    requiresSponsorship: str | None = None
+    salaryExpectation: str | None = None
+
+
+class ProfileVersionOut(BaseModel):
+    version: int = 1
+    updated_at: str | None = None
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -192,16 +223,17 @@ def get_application_profile(
             detail="No application profile yet. Upload a resume or fill in your settings first.",
         )
 
-    # Name: prefer the resume's parsed name, then settings, then the account.
+    # Name: prefer a manual settings override, then the resume's parsed name,
+    # then the account. (Settings-first so edits made in the app/extension win.)
     resume_first, resume_last = _split_name(resume.profile_name if resume else "")
     first_name = _first_non_empty(
-        resume_first,
         settings.first_name if settings else "",
+        resume_first,
         user.first_name,
     )
     last_name = _first_non_empty(
-        resume_last,
         settings.last_name if settings else "",
+        resume_last,
         user.last_name,
     )
 
@@ -214,39 +246,49 @@ def get_application_profile(
 
     current_company = experience[0].company if experience else ""
     current_title = _first_non_empty(
-        experience[0].title if experience else "",
         settings.job_title if settings else "",
+        experience[0].title if experience else "",
     )
 
     work_authorization, requires_sponsorship = _mine_screening(
         settings.prefilled_answers if settings else None
     )
 
+    # Active cover letter (synced to the extension's cover-letter fields).
+    cover = (
+        db.query(CoverLetter)
+        .filter(CoverLetter.user_id == user.id, CoverLetter.is_active == 1)
+        .order_by(CoverLetter.updated_at.desc())
+        .first()
+    )
+
+    version = settings.data_version if settings and settings.data_version else 1
+
     return ApplicationProfileOut(
         firstName=first_name,
         lastName=last_name,
         email=_first_non_empty(
-            resume.email if resume else "",
             settings.email if settings else "",
+            resume.email if resume else "",
             user.email,
         ),
         phone=_first_non_empty(
-            resume.phone if resume else "",
             settings.phone if settings else "",
+            resume.phone if resume else "",
         ),
         location=_first_non_empty(
-            resume.location if resume else "",
             settings.city if settings else "",
             settings.location if settings else "",
+            resume.location if resume else "",
         ),
         linkedin=_first_non_empty(
-            resume.linkedin_url if resume else "",
             settings.linkedin_url if settings else "",
+            resume.linkedin_url if resume else "",
         ),
         github=_first_non_empty(resume.github_url if resume else ""),
         portfolio=_first_non_empty(
-            resume.other_link if resume else "",
             settings.website if settings else "",
+            resume.other_link if resume else "",
         ),
         currentCompany=current_company,
         currentTitle=current_title,
@@ -255,5 +297,70 @@ def get_application_profile(
         education=education,
         experience=experience,
         skills=skills,
-        coverLetter="",
+        coverLetter=(cover.text if cover else "") or "",
+        version=version,
+        resumeId=resume.id if resume else None,
+        resumeFileName=(resume.file_name if resume else "") or "",
+        hasResumeFile=bool(resume.file_blob_url) if resume else False,
+    )
+
+
+@router.put("/user/application-profile", response_model=ProfileVersionOut)
+def update_application_profile(
+    body: ApplicationProfileIn,
+    user: User = Depends(get_verified_user),
+    db: Session = Depends(get_db),
+):
+    """Write editable autofill fields back to settings and bump the sync version
+    so the change reflects across both the web app and the extension."""
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
+    if settings is None:
+        settings = UserSettings(user_id=user.id)
+        db.add(settings)
+
+    field_map = {
+        "firstName": "first_name",
+        "lastName": "last_name",
+        "email": "email",
+        "phone": "phone",
+        "location": "city",
+        "linkedin": "linkedin_url",
+        "portfolio": "website",
+        "currentTitle": "job_title",
+    }
+    for in_field, col in field_map.items():
+        val = getattr(body, in_field)
+        if val is not None:
+            setattr(settings, col, val)
+
+    # Screening answers + salary live in the free-form prefilled_answers map.
+    # Reassign (don't mutate in place) so SQLAlchemy detects the JSON change.
+    answers = dict(settings.prefilled_answers or {})
+    if body.workAuthorization is not None:
+        answers["Are you authorized to work in this country?"] = body.workAuthorization
+    if body.requiresSponsorship is not None:
+        answers["Do you now or in the future require sponsorship?"] = body.requiresSponsorship
+    if body.salaryExpectation is not None:
+        answers["Salary expectation"] = body.salaryExpectation
+    settings.prefilled_answers = answers
+
+    db.commit()
+
+    version = bump_profile_version(db, user.id)
+    _, updated_at = get_profile_version(db, user.id)
+    return ProfileVersionOut(
+        version=version, updated_at=updated_at.isoformat() if updated_at else None
+    )
+
+
+@router.get("/user/profile-version", response_model=ProfileVersionOut)
+def read_profile_version(
+    user: User = Depends(get_verified_user),
+    db: Session = Depends(get_db),
+):
+    """Cheap staleness check for the extension — returns the current sync
+    version so it only re-downloads the full profile when something changed."""
+    version, updated_at = get_profile_version(db, user.id)
+    return ProfileVersionOut(
+        version=version, updated_at=updated_at.isoformat() if updated_at else None
     )

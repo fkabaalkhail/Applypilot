@@ -24,10 +24,13 @@ import type {
   FieldsUpdatedEvent,
   FillResponse,
   PingResponse,
+  ResumeFileResponse,
+  ResumesResponse,
   ScanResponse,
   UserApplicationProfile,
 } from "../shared/types";
 import { fillFields } from "./autofill";
+import { base64ToFile, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, type RuntimeControl } from "./formScanner";
 import {
   showOverlay,
@@ -103,6 +106,30 @@ function initialize(): void {
     onRescan: () => {
       runScan();
       maybeUpdateOverlay();
+    },
+    onListResumes: async () => {
+      const resp = await sendToBackground<ResumesResponse>({ type: "GET_RESUMES" });
+      return resp?.ok ? resp.resumes : [];
+    },
+    onUploadResume: async (resumeId: number) => {
+      const field = lastFields.find(
+        (f) => f.category === "resumeUpload" && f.controlType === "file"
+      );
+      const control = field ? registry.get(field.id) : undefined;
+      if (!control?.el) {
+        return { ok: false, reason: "No résumé upload field found on this page." };
+      }
+      const file = await sendToBackground<ResumeFileResponse>({
+        type: "DOWNLOAD_RESUME",
+        resumeId,
+      });
+      if (!file?.ok || !file.dataBase64) {
+        return { ok: false, reason: file?.error ?? "Could not download your résumé." };
+      }
+      return injectResumeFile(
+        control.el,
+        base64ToFile(file.dataBase64, file.name, file.contentType)
+      );
     },
   };
 

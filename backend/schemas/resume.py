@@ -82,6 +82,9 @@ class ResumeListItem(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    # True when the original PDF/DOCX is stored and can be auto-uploaded by the
+    # Chrome extension (GET /resumes/{id}/file).
+    has_file: bool = False
 
 
 class ResumeDetailResponse(BaseModel):

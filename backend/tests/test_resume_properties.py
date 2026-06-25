@@ -137,6 +137,11 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.db.database import Base, get_db
 from backend.db.models import ResumeProfileDB, UserSettings
+from backend.auth.dependencies import (
+    get_current_user_id,
+    get_optional_user_id,
+    get_verified_user_id,
+)
 from backend.main import app
 
 # In-memory SQLite for property 6 tests
@@ -173,6 +178,13 @@ def prop6_client(prop6_db_session):
             pass
 
     app.dependency_overrides[get_db] = _override_get_db
+
+    async def _prop_user_id():
+        return 1
+
+    app.dependency_overrides[get_current_user_id] = _prop_user_id
+    app.dependency_overrides[get_verified_user_id] = _prop_user_id
+    app.dependency_overrides[get_optional_user_id] = _prop_user_id
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -298,6 +310,13 @@ def prop8_client(prop8_db_session):
             pass
 
     app.dependency_overrides[get_db] = _override_get_db
+
+    async def _prop_user_id():
+        return 1
+
+    app.dependency_overrides[get_current_user_id] = _prop_user_id
+    app.dependency_overrides[get_verified_user_id] = _prop_user_id
+    app.dependency_overrides[get_optional_user_id] = _prop_user_id
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -472,6 +491,13 @@ def prop9_client(prop9_db_session):
             pass
 
     app.dependency_overrides[get_db] = _override_get_db
+
+    async def _prop_user_id():
+        return 1
+
+    app.dependency_overrides[get_current_user_id] = _prop_user_id
+    app.dependency_overrides[get_verified_user_id] = _prop_user_id
+    app.dependency_overrides[get_optional_user_id] = _prop_user_id
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -616,6 +642,13 @@ def prop11_client(prop11_db_session):
             pass
 
     app.dependency_overrides[get_db] = _override_get_db
+
+    async def _prop_user_id():
+        return 1
+
+    app.dependency_overrides[get_current_user_id] = _prop_user_id
+    app.dependency_overrides[get_verified_user_id] = _prop_user_id
+    app.dependency_overrides[get_optional_user_id] = _prop_user_id
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -815,6 +848,13 @@ def prop7_client(prop7_db_session):
             pass
 
     app.dependency_overrides[get_db] = _override_get_db
+
+    async def _prop_user_id():
+        return 1
+
+    app.dependency_overrides[get_current_user_id] = _prop_user_id
+    app.dependency_overrides[get_verified_user_id] = _prop_user_id
+    app.dependency_overrides[get_optional_user_id] = _prop_user_id
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -1082,6 +1122,13 @@ def prop12_client(prop12_db_session):
             pass
 
     app.dependency_overrides[get_db] = _override_get_db
+
+    async def _prop_user_id():
+        return 1
+
+    app.dependency_overrides[get_current_user_id] = _prop_user_id
+    app.dependency_overrides[get_verified_user_id] = _prop_user_id
+    app.dependency_overrides[get_optional_user_id] = _prop_user_id
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

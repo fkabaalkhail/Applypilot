@@ -20,6 +20,7 @@ import type {
   LoginResponse,
   ProfileResponse,
   ProfileSource,
+  ResumeSummary,
   SimpleResponse,
   StatusResponse,
   UserApplicationProfile,
@@ -32,6 +33,10 @@ import type {
 export interface OverlayCallbacks {
   onAutofill: (fieldIds: string[]) => Promise<{ ok: number; fail: number; total: number }>;
   onRescan: () => void;
+  /** List the user's resumes for the picker / auto-upload. */
+  onListResumes: () => Promise<ResumeSummary[]>;
+  /** Inject the chosen resume's file into the page's upload control. */
+  onUploadResume: (resumeId: number) => Promise<{ ok: boolean; reason?: string }>;
 }
 
 export interface OverlayViewState {
@@ -263,6 +268,26 @@ const STYLES = `
   text-transform: uppercase; letter-spacing: 0.5px;
 }
 
+/* ---- Resume picker + upload ---- */
+.ap-resume-select {
+  width: 100%; padding: 9px 10px; margin-bottom: 8px;
+  border: 1px solid #e0e0e0; border-radius: 8px;
+  font-size: 13px; color: #1a1a2e; background: #fff;
+}
+.ap-resume-select:focus { outline: none; border-color: #7c6cff; box-shadow: 0 0 0 2px rgba(124,108,255,0.1); }
+.ap-btn-upload {
+  width: 100%; padding: 11px; border: none; border-radius: 9px;
+  background: linear-gradient(135deg, #7c6cff 0%, #9f6bff 100%);
+  color: #fff; font-size: 13.5px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+}
+.ap-btn-upload:hover:not(:disabled) { box-shadow: 0 4px 14px rgba(124,108,255,0.3); }
+.ap-btn-upload:disabled { opacity: 0.5; cursor: default; }
+.ap-upload-status { margin-top: 8px; font-size: 12px; min-height: 16px; }
+.ap-upload-status.ok { color: #1e9e6a; }
+.ap-upload-status.warn { color: #b97d10; }
+.ap-upload-status.error { color: #c0392b; }
+
 /* ---- Autofill Info MODAL (centered on page) ---- */
 .ap-modal-backdrop {
   position: fixed;
@@ -459,6 +484,7 @@ interface PanelState {
   status: StatusResponse | null;
   profile: UserApplicationProfile | null;
   source: ProfileSource | null;
+  resumes: ResumeSummary[];
   fields: DetectedField[];
   tabUrl: string;
   selected: Set<string>;
@@ -479,6 +505,7 @@ const overlayState: PanelState = {
   status: null,
   profile: null,
   source: null,
+  resumes: [],
   fields: [],
   tabUrl: "",
   selected: new Set(),
@@ -497,6 +524,10 @@ interface Refs {
   btnAutofill: HTMLButtonElement;
   fieldCount: HTMLDivElement;
   banner: HTMLDivElement;
+  resumeName: HTMLDivElement;
+  resumeSelect: HTMLSelectElement;
+  btnUploadResume: HTMLButtonElement;
+  uploadStatus: HTMLDivElement;
   modalBackdrop: HTMLDivElement;
   infoSidebar: HTMLDivElement;
   infoForm: HTMLDivElement;
@@ -595,11 +626,12 @@ function buildHTML(): string {
           </div>
           <div class="ap-section-sub" id="ap-resume-sub" style="display:none">
             <div class="ap-file-name" id="ap-resume-name">No resume uploaded</div>
-            <div class="ap-section-action">
-              ${icon('<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/>', 14)}
-              Generate Custom Resume
-              <span class="ap-coming-soon">Coming soon</span>
-            </div>
+            <select class="ap-resume-select" id="ap-resume-select" style="display:none"></select>
+            <button class="ap-btn-upload" id="ap-btn-upload-resume" type="button" disabled>
+              ${icon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>', 14)}
+              Upload résumé to this form
+            </button>
+            <div class="ap-upload-status" id="ap-upload-status"></div>
           </div>
         </div>
 
@@ -698,6 +730,10 @@ function collectRefs(root: HTMLDivElement): Refs {
     btnAutofill: q("#ap-btn-autofill"),
     fieldCount: q("#ap-field-count"),
     banner: q("#ap-banner"),
+    resumeName: q("#ap-resume-name"),
+    resumeSelect: q("#ap-resume-select"),
+    btnUploadResume: q("#ap-btn-upload-resume"),
+    uploadStatus: q("#ap-upload-status"),
     modalBackdrop: q("#ap-modal-backdrop"),
     infoSidebar: q("#ap-info-sidebar"),
     infoForm: q("#ap-info-form"),
@@ -741,8 +777,13 @@ function wireEvents(root: HTMLDivElement): void {
   // Resume section toggle
   root.querySelector("#ap-section-resume")!.addEventListener("click", () => {
     const sub = root.querySelector<HTMLElement>("#ap-resume-sub")!;
-    sub.style.display = sub.style.display === "none" ? "block" : "none";
+    const opening = sub.style.display === "none";
+    sub.style.display = opening ? "block" : "none";
+    if (opening) renderResumeSection();
   });
+
+  // Upload résumé to the current form
+  root.querySelector("#ap-btn-upload-resume")!.addEventListener("click", () => void doUploadResume());
 
   // Cover letter section toggle
   root.querySelector("#ap-section-cover")!.addEventListener("click", () => {
@@ -824,6 +865,17 @@ async function loadProfile(): Promise<void> {
   overlayState.scanned = true;
   applyDefaultSelection();
   refreshMainView();
+  void loadResumes();
+}
+
+async function loadResumes(): Promise<void> {
+  if (!callbacks) return;
+  try {
+    overlayState.resumes = await callbacks.onListResumes();
+  } catch {
+    overlayState.resumes = [];
+  }
+  renderResumeSection();
 }
 
 // ---------------------------------------------------------------------------
@@ -880,6 +932,103 @@ function refreshMainView(): void {
     refs.fieldCount.textContent = overlayState.scanned
       ? "No form fields detected on this page"
       : "Scanning page\u2026";
+  }
+
+  // Keep the r\u00e9sum\u00e9-upload button in sync as the form is (re)scanned.
+  updateUploadButtonState();
+}
+
+// ---------------------------------------------------------------------------
+// Resume sync + auto-upload
+// ---------------------------------------------------------------------------
+
+/** True when the current page exposes a r\u00e9sum\u00e9 file-upload control. */
+function hasResumeField(): boolean {
+  return overlayState.fields.some(
+    (f) => f.category === "resumeUpload" && f.controlType === "file"
+  );
+}
+
+function updateUploadButtonState(): void {
+  if (!refs) return;
+  const canUpload =
+    hasResumeField() && overlayState.resumes.some((r) => r.hasFile) && !overlayState.busy;
+  refs.btnUploadResume.disabled = !canUpload;
+}
+
+function setUploadStatus(text: string, kind: "ok" | "warn" | "error" | ""): void {
+  if (!refs) return;
+  refs.uploadStatus.textContent = text;
+  refs.uploadStatus.className = "ap-upload-status" + (kind ? ` ${kind}` : "");
+}
+
+/** Render the r\u00e9sum\u00e9 picker + header + hint (called on section open / load). */
+function renderResumeSection(): void {
+  if (!refs) return;
+  const { resumes } = overlayState;
+  const withFile = resumes.filter((r) => r.hasFile);
+
+  if (resumes.length === 0) {
+    refs.resumeName.textContent = "No resume uploaded yet \u2014 add one in the dashboard.";
+  } else {
+    const primary = resumes.find((r) => r.isPrimary) ?? resumes[0];
+    refs.resumeName.textContent = `Active resume: ${primary.name}`;
+  }
+
+  // Only show the picker when there's an actual choice of downloadable files.
+  if (withFile.length > 1) {
+    refs.resumeSelect.style.display = "block";
+    refs.resumeSelect.innerHTML = withFile
+      .map(
+        (r) =>
+          `<option value="${r.id}">${esc(r.name)}${r.isPrimary ? " (active)" : ""}</option>`
+      )
+      .join("");
+    const primary = withFile.find((r) => r.isPrimary) ?? withFile[0];
+    refs.resumeSelect.value = String(primary.id);
+  } else {
+    refs.resumeSelect.style.display = "none";
+  }
+
+  updateUploadButtonState();
+
+  if (resumes.length > 0 && withFile.length === 0) {
+    setUploadStatus(
+      "Your resume has no stored file \u2014 re-upload it in the dashboard to enable auto-upload.",
+      "warn"
+    );
+  } else if (!hasResumeField()) {
+    setUploadStatus("No r\u00e9sum\u00e9 field detected on this page.", "");
+  } else {
+    setUploadStatus("", "");
+  }
+}
+
+async function doUploadResume(): Promise<void> {
+  if (!refs || !callbacks || overlayState.busy) return;
+  const withFile = overlayState.resumes.filter((r) => r.hasFile);
+  if (withFile.length === 0) return;
+
+  const picked =
+    refs.resumeSelect.style.display !== "none" && refs.resumeSelect.value
+      ? Number(refs.resumeSelect.value)
+      : (withFile.find((r) => r.isPrimary) ?? withFile[0]).id;
+
+  overlayState.busy = true;
+  refs.btnUploadResume.disabled = true;
+  setUploadStatus("Uploading r\u00e9sum\u00e9\u2026", "");
+  try {
+    const res = await callbacks.onUploadResume(picked);
+    if (res.ok) {
+      setUploadStatus("R\u00e9sum\u00e9 attached. Review before submitting.", "ok");
+    } else {
+      setUploadStatus(res.reason ?? "Upload failed \u2014 attach manually.", "error");
+    }
+  } catch (err) {
+    setUploadStatus(err instanceof Error ? err.message : "Upload failed.", "error");
+  } finally {
+    overlayState.busy = false;
+    updateUploadButtonState();
   }
 }
 
@@ -1073,6 +1222,7 @@ async function reInit(): Promise<void> {
   overlayState.status = null;
   overlayState.profile = null;
   overlayState.source = null;
+  overlayState.resumes = [];
   overlayState.selected = new Set();
   overlayState.outcomes = new Map();
   overlayState.busy = false;

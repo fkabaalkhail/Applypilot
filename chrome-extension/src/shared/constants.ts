@@ -10,6 +10,8 @@ export const DEFAULT_DASHBOARD_URL = "https://www.tailrd.ca";
  * finally to mock data (see src/api/client.ts).
  */
 export const PROFILE_ENDPOINT = "/api/user/application-profile";
+/** Cheap staleness check — returns just the sync version. */
+export const PROFILE_VERSION_ENDPOINT = "/api/user/profile-version";
 export const SETTINGS_ENDPOINT = "/settings";
 
 /** Fields at or above this confidence are pre-selected for autofill. */
@@ -35,6 +37,8 @@ const KNOWN_ATS: Array<{ pattern: RegExp; name: string }> = [
   { pattern: /icims\.com$/i, name: "iCIMS" },
   { pattern: /jobvite\.com$/i, name: "Jobvite" },
   { pattern: /workable\.com$/i, name: "Workable" },
+  { pattern: /taleo\.net$/i, name: "Taleo" },
+  { pattern: /(successfactors|sapsf)\.(com|eu)$/i, name: "SuccessFactors" },
 ];
 
 export function detectAtsName(hostname: string): string | null {

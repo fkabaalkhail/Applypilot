@@ -13,19 +13,27 @@
  * Auth: JWT bearer tokens from POST /auth/login, refreshed via /auth/refresh
  * (the backend rotates refresh tokens, so each refresh stores a new pair).
  */
-import { PROFILE_ENDPOINT, SETTINGS_ENDPOINT } from "../shared/constants";
+import { PROFILE_ENDPOINT, PROFILE_VERSION_ENDPOINT, SETTINGS_ENDPOINT } from "../shared/constants";
 import {
   cacheProfile,
   clearAuth,
   clearProfileCache,
   getAuth,
   getCachedProfile,
+  getCachedProfileAny,
+  getCachedProfileVersion,
   getConfig,
   saveAuth,
 } from "../shared/storage";
-import type { ProfileSource, UserApplicationProfile } from "../shared/types";
+import type { ProfileSource, ResumeSummary, UserApplicationProfile } from "../shared/types";
 import { MOCK_PROFILE } from "./mockProfile";
-import type { ApiErrorBody, BackendSettings, MeResponse, TokenResponse } from "./types";
+import type {
+  ApiErrorBody,
+  BackendSettings,
+  MeResponse,
+  ResumeListItemWire,
+  TokenResponse,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number) {
@@ -123,6 +131,27 @@ async function authedRequest<T>(path: string, init?: RequestInit, retry = true):
   }
   if (!res.ok) throw await parseError(res);
   return (await res.json()) as T;
+}
+
+/** Authenticated raw fetch (binary-safe) with one refresh-and-retry on 401. */
+async function authedRaw(path: string, init?: RequestInit, retry = true): Promise<Response> {
+  const auth = await getAuth();
+  if (!auth) throw new AuthRequiredError();
+
+  const res = await fetch(await apiUrl(path), {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${auth.accessToken}`,
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (res.status === 401 && retry) {
+    await refreshTokens();
+    return authedRaw(path, init, false);
+  }
+  if (!res.ok) throw await parseError(res);
+  return res;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,20 +254,65 @@ export async function fetchApplicationProfile(
 
   // Preferred endpoint. Falls through to /settings while it doesn't exist.
   try {
-    const raw = await authedRequest<Partial<UserApplicationProfile>>(PROFILE_ENDPOINT);
+    const raw = await authedRequest<Partial<UserApplicationProfile> & { version?: number }>(
+      PROFILE_ENDPOINT
+    );
     const profile = normalizeProfile(raw);
-    await cacheProfile(profile, "api");
+    await cacheProfile(profile, "api", raw.version ?? 1);
     return { profile, source: "api" };
   } catch (err) {
+    if (err instanceof AuthRequiredError) throw err;
     const notImplemented =
       err instanceof ApiError && (err.status === 404 || err.status === 405 || err.status === 501);
-    if (!notImplemented) throw err;
+    if (!notImplemented) {
+      // Network or server error — serve the last cached profile so the
+      // extension keeps working while the API is unavailable.
+      const stale = await getCachedProfileAny();
+      if (stale) return { profile: stale.profile, source: "cache" };
+      throw err;
+    }
   }
 
-  const settings = await authedRequest<BackendSettings>(SETTINGS_ENDPOINT);
-  const profile = mapSettingsToProfile(settings);
-  await cacheProfile(profile, "api-settings");
-  return { profile, source: "api-settings" };
+  try {
+    const settings = await authedRequest<BackendSettings>(SETTINGS_ENDPOINT);
+    const profile = mapSettingsToProfile(settings);
+    await cacheProfile(profile, "api-settings");
+    return { profile, source: "api-settings" };
+  } catch (err) {
+    if (err instanceof AuthRequiredError) throw err;
+    const stale = await getCachedProfileAny();
+    if (stale) return { profile: stale.profile, source: "cache" };
+    throw err;
+  }
+}
+
+/** Fetch just the server's current sync version (cheap staleness check). */
+export async function fetchProfileVersion(): Promise<number> {
+  const res = await authedRequest<{ version?: number }>(PROFILE_VERSION_ENDPOINT);
+  return res.version ?? 1;
+}
+
+/**
+ * Compare the server's sync version to the cached profile's version; if they
+ * differ, drop the cache so the next fetch re-downloads. Returns true when a
+ * change was detected. Best-effort — offline/missing-endpoint errors are
+ * swallowed so the extension keeps working from cache.
+ */
+export async function syncProfileIfStale(): Promise<boolean> {
+  const config = await getConfig();
+  if (config.useMockData || !config.apiBaseUrl) return false;
+  const cachedVersion = await getCachedProfileVersion();
+  if (cachedVersion === null) return false; // nothing cached; a normal fetch will populate
+  try {
+    const serverVersion = await fetchProfileVersion();
+    if (serverVersion !== cachedVersion) {
+      await clearProfileCache();
+      return true;
+    }
+  } catch {
+    // offline or endpoint missing — keep using the cache
+  }
+  return false;
 }
 
 /**
@@ -299,4 +373,53 @@ function mapSettingsToProfile(s: BackendSettings): UserApplicationProfile {
     workAuthorization,
     requiresSponsorship,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Resumes (sync + auto-upload)
+// ---------------------------------------------------------------------------
+
+/** List the signed-in user's resumes for the picker / auto-upload. */
+export async function fetchResumes(): Promise<ResumeSummary[]> {
+  const config = await getConfig();
+  if (config.useMockData || !config.apiBaseUrl) return [];
+  const items = await authedRequest<ResumeListItemWire[]>("/resumes");
+  return items.map((r) => ({
+    id: r.id,
+    name: r.name,
+    isPrimary: !!r.is_primary,
+    hasFile: !!r.has_file,
+  }));
+}
+
+/**
+ * Download a resume's original file as base64 so the content script can rebuild
+ * a File and inject it into an ATS upload control (messaging can't carry an
+ * ArrayBuffer, so we base64-encode it).
+ */
+export async function downloadResumeFile(
+  resumeId: number
+): Promise<{ dataBase64: string; name: string; contentType: string }> {
+  const res = await authedRaw(`/resumes/${resumeId}/file`);
+  const buf = await res.arrayBuffer();
+  const contentType = res.headers.get("Content-Type") || "application/octet-stream";
+  const name =
+    filenameFromDisposition(res.headers.get("Content-Disposition")) || `resume-${resumeId}`;
+  return { dataBase64: arrayBufferToBase64(buf), name, contentType };
+}
+
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000; // chunk to avoid call-stack limits on large files
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function filenameFromDisposition(value: string | null): string | null {
+  if (!value) return null;
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(value);
+  return m ? decodeURIComponent(m[1]) : null;
 }

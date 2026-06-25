@@ -79,7 +79,7 @@ function logoColor(name: string): string {
 
 function errorMessage(err: unknown, fallback: string): string {
   const detail = (err as { response?: { data?: { detail?: string }; status?: number } })?.response;
-  if (detail?.status === 400) return detail.data?.detail || "Upload a resume first to use AI rewrite.";
+  if (detail?.status === 400) return detail.data?.detail || "Upload a resume first to use Custom Resume.";
   if (detail?.status === 503) return "AI is temporarily unavailable. Please try again in a moment.";
   return detail?.data?.detail || fallback;
 }
@@ -138,7 +138,7 @@ function countChangedLines(original: string, tailored: string): number {
   return n;
 }
 
-export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: () => void }) {
+export default function CustomResumeModal({ job, onClose }: { job: AIJob; onClose: () => void }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   const [resumes, setResumes] = useState<ResumeOption[]>([]);
@@ -200,7 +200,7 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
       setStep(1);
       try {
         const [analysisRes, detailRes] = await Promise.all([
-          api.post<Analysis>(`/ai/job-analysis/${job.id}`, { resume_id: rid }),
+          api.post<Analysis>(`/ai/custom-resume-analysis/${job.id}`, { resume_id: rid }),
           rid ? api.get(`/resumes/${rid}`) : Promise.resolve(null),
         ]);
         setAnalysis(analysisRes.data);
@@ -262,7 +262,7 @@ export default function AIRewriteModal({ job, onClose }: { job: AIJob; onClose: 
     setRewriteError("");
     setStep(3);
     try {
-      const res = await api.post<RewriteResult>(`/ai/rewrite/${job.id}`, {
+      const res = await api.post<RewriteResult>(`/ai/custom-resume/${job.id}`, {
         resume_id: resumeId,
         sections: [...sections],
         add_keywords: [...keywords],

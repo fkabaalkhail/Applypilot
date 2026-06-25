@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import ScrapedJob, ResumeProfileDB, ResumeVersion
+from backend.db.models import ScrapedJob, ResumeProfileDB, ResumeVersion, CoverLetter
 from backend.auth.dependencies import get_verified_user_id
 from backend.schemas.match import MatchBreakdown, FitAnalysis
 from backend.schemas.ai import (
@@ -25,11 +25,14 @@ from backend.schemas.ai import (
     RewriteIn,
     RewriteOut,
     CoverLetterIn,
+    CoverLetterRecordOut,
+    CoverLetterSaveIn,
     ResumeVersionIn,
     ResumeVersionOut,
     SnippetEditIn,
     SnippetEditOut,
 )
+from backend.services.profile_version import bump_profile_version
 from backend.schemas.resume_document import ResumeDocument
 from backend.services.match_engine import MatchEngine
 from backend.services.resume_tailor import ResumeTailor
@@ -87,6 +90,33 @@ def _get_job(job_id: int, db: Session) -> ScrapedJob:
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
     return job
+
+
+def _persist_active_cover_letter(
+    db: Session, user_id: int, job: ScrapedJob, text: str, tone: str | None
+) -> None:
+    """Upsert a per-job cover letter, mark it active, and bump the sync version
+    so it shows up in the web app and the extension's cover-letter fields."""
+    db.query(CoverLetter).filter(CoverLetter.user_id == user_id).update(
+        {CoverLetter.is_active: 0}, synchronize_session=False
+    )
+    row = (
+        db.query(CoverLetter)
+        .filter(CoverLetter.user_id == user_id, CoverLetter.job_id == job.id)
+        .first()
+    )
+    if row is None:
+        row = CoverLetter(user_id=user_id, job_id=job.id)
+        db.add(row)
+    row.company = job.company or ""
+    row.job_title = job.title or ""
+    row.job_url = job.url or ""
+    row.text = text
+    row.tone = tone or ""
+    row.source = "generated"
+    row.is_active = 1
+    db.commit()
+    bump_profile_version(db, user_id)
 
 
 @router.post("/match-breakdown/{job_id}", response_model=MatchBreakdown)
@@ -148,6 +178,8 @@ async def cover_letter(
             tone=body.tone if body else None,
             base_text=body.base_text if body else None,
         )
+        # Persist + sync so it's accessible from the web app and extension.
+        _persist_active_cover_letter(db, user_id, job, text, body.tone if body else None)
         return CoverLetterOut(
             text=text,
             job_id=job_id,
@@ -155,6 +187,97 @@ async def cover_letter(
         )
     except (ConnectionError, httpx.ConnectError):
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
+
+
+# ---------------------------------------------------------------------------
+# Saved cover letters (CRUD) — synced to web app + extension
+# ---------------------------------------------------------------------------
+
+
+@router.get("/cover-letters", response_model=list[CoverLetterRecordOut])
+def list_cover_letters(
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """List the user's saved cover letters, newest first."""
+    return (
+        db.query(CoverLetter)
+        .filter(CoverLetter.user_id == user_id)
+        .order_by(CoverLetter.updated_at.desc(), CoverLetter.id.desc())
+        .limit(50)
+        .all()
+    )
+
+
+@router.post("/cover-letters", response_model=CoverLetterRecordOut)
+def save_cover_letter(
+    body: CoverLetterSaveIn,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Save a user-written/edited cover letter (optionally as the active one)."""
+    if body.set_active:
+        db.query(CoverLetter).filter(CoverLetter.user_id == user_id).update(
+            {CoverLetter.is_active: 0}, synchronize_session=False
+        )
+    row = CoverLetter(
+        user_id=user_id,
+        job_id=body.job_id,
+        company=body.company,
+        job_title=body.job_title,
+        job_url=body.job_url,
+        text=body.text,
+        tone=body.tone,
+        source="user",
+        is_active=1 if body.set_active else 0,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    bump_profile_version(db, user_id)
+    return row
+
+
+@router.put("/cover-letters/{cover_letter_id}/active", response_model=CoverLetterRecordOut)
+def set_active_cover_letter(
+    cover_letter_id: int,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Mark a cover letter active (the default used for autofill)."""
+    row = (
+        db.query(CoverLetter)
+        .filter(CoverLetter.id == cover_letter_id, CoverLetter.user_id == user_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Cover letter not found.")
+    db.query(CoverLetter).filter(CoverLetter.user_id == user_id).update(
+        {CoverLetter.is_active: 0}, synchronize_session=False
+    )
+    row.is_active = 1
+    db.commit()
+    db.refresh(row)
+    bump_profile_version(db, user_id)
+    return row
+
+
+@router.delete("/cover-letters/{cover_letter_id}", status_code=204)
+def delete_cover_letter(
+    cover_letter_id: int,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    row = (
+        db.query(CoverLetter)
+        .filter(CoverLetter.id == cover_letter_id, CoverLetter.user_id == user_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Cover letter not found.")
+    db.delete(row)
+    db.commit()
+    bump_profile_version(db, user_id)
 
 
 @router.post("/analyze-fit/{job_id}", response_model=FitAnalysis)
@@ -182,6 +305,7 @@ async def analyze_fit(
 
 
 @router.post("/job-analysis/{job_id}", response_model=JobAnalysisOut)
+@router.post("/custom-resume-analysis/{job_id}", response_model=JobAnalysisOut)
 async def job_analysis(
     job_id: int,
     body: RewriteIn | None = None,
@@ -202,6 +326,7 @@ async def job_analysis(
 
 
 @router.post("/rewrite/{job_id}", response_model=RewriteOut)
+@router.post("/custom-resume/{job_id}", response_model=RewriteOut)
 async def rewrite_resume(
     job_id: int,
     body: RewriteIn | None = None,
@@ -311,65 +436,6 @@ async def batch_score_jobs(
         except Exception:
             errors += 1
             continue
-
-    return {
-        "scored": scored,
-        "errors": errors,
-        "remaining": db.query(ScrapedJob).filter(
-            ScrapedJob.match_score == 0,
-            ScrapedJob.description != "",
-            ScrapedJob.description != None,
-        ).count(),
-    }
-
-
-@router.post("/batch-score")
-async def batch_score_jobs(
-    batch_size: int = 20,
-    user_id: str = Depends(get_verified_user_id),
-    db: Session = Depends(get_db),
-):
-    """Score the top unscored jobs against the user's resume.
-
-    Processes jobs that have descriptions but no match score yet.
-    Prioritizes newest jobs first.
-    """
-    resume_text = _get_resume_text(db, user_id)
-
-    # Find jobs with descriptions but no match score
-    jobs_to_score = (
-        db.query(ScrapedJob)
-        .filter(
-            ScrapedJob.match_score == 0,
-            ScrapedJob.description != "",
-            ScrapedJob.description != None,
-        )
-        .order_by(ScrapedJob.id.desc())
-        .limit(batch_size)
-        .all()
-    )
-
-    scored = 0
-    errors = 0
-    try:
-        engine = MatchEngine(db)
-        for job in jobs_to_score:
-            if not job.description or len(job.description) < 50:
-                continue
-            try:
-                breakdown = await engine.compute_breakdown(resume_text, job.description)
-                job.match_score = breakdown.overall_score
-                job.experience_score = breakdown.experience_score
-                job.skill_score = breakdown.skill_score
-                job.industry_score = breakdown.industry_score
-                job.match_label = breakdown.match_label
-                db.commit()
-                scored += 1
-            except Exception as e:
-                errors += 1
-                logger.warning(f"Failed to score job {job.id}: {e}")
-    except (ConnectionError,):
-        raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
 
     return {
         "scored": scored,

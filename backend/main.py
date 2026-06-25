@@ -15,6 +15,7 @@ from backend.db.database import engine, Base
 from backend.migrations.add_email_verification import run_migration
 from backend.migrations.add_admin_role import run_migration as run_admin_migration
 from backend.migrations.add_security_fields import run_migration as run_security_migration
+from backend.migrations.add_extension_sync_fields import run_migration as run_extension_sync_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile
 from backend.routers import auth
 from backend.routers.feedback import router as feedback_router
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     run_migration()
     run_admin_migration()
     run_security_migration()
+    run_extension_sync_migration()
     yield
 
 

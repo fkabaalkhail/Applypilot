@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
-import AIRewriteModal, { type AIJob } from "../components/AIRewriteModal";
+import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
 import api from "../auth/api";
 
@@ -534,7 +534,7 @@ export default function Jobs() {
                       className="btn-ai"
                       onClick={(e) => { e.stopPropagation(); setRewriteJob({ id: job.id, title: job.title, company: job.company, url: job.url }); }}
                     >
-                      <i className="fa-solid fa-wand-magic-sparkles"></i> AI Rewrite
+                      <i className="fa-solid fa-wand-magic-sparkles"></i> Custom Resume
                     </button>
                     <button
                       className="btn-ai"
@@ -599,7 +599,7 @@ export default function Jobs() {
         )}
       </div>
 
-      {rewriteJob && <AIRewriteModal job={rewriteJob} onClose={() => setRewriteJob(null)} />}
+      {rewriteJob && <CustomResumeModal job={rewriteJob} onClose={() => setRewriteJob(null)} />}
       {coverJob && <CoverLetterModal job={coverJob} onClose={() => setCoverJob(null)} />}
     </div>
   );

@@ -61,6 +61,15 @@ export interface UserApplicationProfile {
 /** Where a profile came from — shown in the popup so the user always knows. */
 export type ProfileSource = "api" | "api-settings" | "cache" | "mock";
 
+/** A resume available for syncing / auto-upload (mirrors a GET /resumes item). */
+export interface ResumeSummary {
+  id: number;
+  name: string;
+  isPrimary: boolean;
+  /** True when the original PDF/DOCX is stored and can be auto-uploaded. */
+  hasFile: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Field detection
 // ---------------------------------------------------------------------------
@@ -195,6 +204,8 @@ export type BackgroundRequest =
   | { type: "GOOGLE_LOGIN" }
   | { type: "LOGOUT" }
   | { type: "GET_PROFILE"; forceRefresh?: boolean }
+  | { type: "GET_RESUMES" }
+  | { type: "DOWNLOAD_RESUME"; resumeId: number }
   | { type: "OPEN_DASHBOARD" };
 
 export interface StatusResponse {
@@ -220,6 +231,23 @@ export interface ProfileResponse {
 export interface LoginResponse {
   ok: boolean;
   error?: string;
+}
+
+export interface ResumesResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  resumes: ResumeSummary[];
+}
+
+/** Resume file bytes (base64) for content-script injection into ATS forms. */
+export interface ResumeFileResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  dataBase64?: string;
+  name: string;
+  contentType: string;
 }
 
 export interface SimpleResponse {

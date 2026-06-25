@@ -39,6 +39,15 @@ export interface BackendSettings {
   prefilled_answers?: Record<string, string>;
 }
 
+/** GET /resumes item (snake_case wire shape). */
+export interface ResumeListItemWire {
+  id: number;
+  name: string;
+  is_primary: boolean;
+  has_file?: boolean;
+  status?: string;
+}
+
 /** FastAPI error body. */
 export interface ApiErrorBody {
   detail?: string;

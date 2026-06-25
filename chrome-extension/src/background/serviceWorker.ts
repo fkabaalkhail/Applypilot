@@ -10,10 +10,13 @@
 import {
   AuthRequiredError,
   checkAuthStatus,
+  downloadResumeFile,
   fetchApplicationProfile,
+  fetchResumes,
   googleLogin,
   login,
   logout,
+  syncProfileIfStale,
 } from "../api/client";
 import { getConfig } from "../shared/storage";
 import type {
@@ -21,13 +24,32 @@ import type {
   FieldsUpdatedEvent,
   LoginResponse,
   ProfileResponse,
+  ResumeFileResponse,
+  ResumesResponse,
   SimpleResponse,
   StatusResponse,
 } from "../shared/types";
 
+/** Periodic profile-sync alarm — keeps the cached profile fresh while active. */
+const SYNC_ALARM = "tailrd-profile-sync";
+
+function ensureSyncAlarm(): void {
+  chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 5 });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
-  // getConfig() merges defaults, so no seeding is required — this hook is
-  // kept for future migrations.
+  // getConfig() merges defaults, so no seeding is required.
+  ensureSyncAlarm();
+});
+
+// Re-arm the alarm and sync once whenever the worker spins up (startup).
+chrome.runtime.onStartup.addListener(() => {
+  ensureSyncAlarm();
+  void syncProfileIfStale().catch(() => {});
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === SYNC_ALARM) void syncProfileIfStale().catch(() => {});
 });
 
 // When the user clicks the extension icon in the toolbar, inject the content
@@ -84,7 +106,14 @@ chrome.runtime.onMessage.addListener(
 
 async function handle(
   message: BackgroundRequest
-): Promise<StatusResponse | ProfileResponse | LoginResponse | SimpleResponse> {
+): Promise<
+  | StatusResponse
+  | ProfileResponse
+  | LoginResponse
+  | SimpleResponse
+  | ResumesResponse
+  | ResumeFileResponse
+> {
   switch (message.type) {
     case "GET_STATUS": {
       const config = await getConfig();
@@ -164,6 +193,9 @@ async function handle(
 
     case "GET_PROFILE": {
       try {
+        // On open, cheaply check the sync version; drop the cache if the web
+        // app changed something so the fetch below pulls the latest.
+        if (!message.forceRefresh) await syncProfileIfStale().catch(() => false);
         const { profile, source } = await fetchApplicationProfile(message.forceRefresh);
         return { ok: true, profile, source };
       } catch (err) {
@@ -173,6 +205,39 @@ async function handle(
         return {
           ok: false,
           error: err instanceof Error ? err.message : "Could not load profile",
+        };
+      }
+    }
+
+    case "GET_RESUMES": {
+      try {
+        const resumes = await fetchResumes();
+        return { ok: true, resumes };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, resumes: [], error: err.message };
+        }
+        return {
+          ok: false,
+          resumes: [],
+          error: err instanceof Error ? err.message : "Could not load resumes",
+        };
+      }
+    }
+
+    case "DOWNLOAD_RESUME": {
+      try {
+        const { dataBase64, name, contentType } = await downloadResumeFile(message.resumeId);
+        return { ok: true, dataBase64, name, contentType };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, name: "", contentType: "", error: err.message };
+        }
+        return {
+          ok: false,
+          name: "",
+          contentType: "",
+          error: err instanceof Error ? err.message : "Could not download resume",
         };
       }
     }

@@ -9,7 +9,7 @@ GET /resumes/{id} — get full resume detail including profile and analysis repo
 
 import datetime
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Response
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -25,6 +25,8 @@ from backend.schemas.resume import (
 )
 from backend.services.resume_parser import extract_text
 from backend.services.llm import get_llm_service
+from backend.services import blob_storage
+from backend.services.profile_version import bump_profile_version
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,6 +53,7 @@ def list_resumes(
             status=r.status,
             created_at=r.created_at,
             updated_at=r.updated_at,
+            has_file=bool(r.file_blob_url),
         )
         for r in records
     ]
@@ -79,6 +82,9 @@ def set_primary_resume(
     record.is_primary = 1
     db.commit()
     db.refresh(record)
+
+    # The active resume changed — sync it to the extension.
+    bump_profile_version(db, user_id)
 
     profile = ResumeProfile(
         name=record.profile_name or "",
@@ -142,6 +148,49 @@ async def analyze_resume(
     db.refresh(record)
 
     return report
+
+
+@router.get("/{resume_id}/file")
+async def download_resume_file(
+    resume_id: int,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Stream the original PDF/DOCX for a resume the caller owns.
+
+    Authorization is enforced here and the bytes are proxied from Blob storage,
+    so the underlying public Blob URL is never handed to the client. Powers the
+    Chrome extension's auto-upload into ATS application forms.
+    """
+    record = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Resume not found.")
+    if not record.file_blob_url:
+        raise HTTPException(
+            status_code=404,
+            detail="No original file stored for this resume. Re-upload it to enable auto-upload.",
+        )
+
+    content = await blob_storage.download(record.file_blob_url)
+    if content is None:
+        raise HTTPException(status_code=502, detail="Could not retrieve the stored resume file.")
+
+    filename = record.file_name or "resume"
+    media_type = record.file_content_type or "application/octet-stream"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            # `inline` lets the extension read bytes; the filename is preserved
+            # so the ATS upload widget shows the real name.
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @router.get("/{resume_id}", response_model=ResumeDetailResponse)
@@ -229,6 +278,9 @@ def update_resume(
     db.commit()
     db.refresh(record)
 
+    # Profile fields may have changed — sync to the extension.
+    bump_profile_version(db, user_id)
+
     response_profile = ResumeProfile(
         name=record.profile_name or "",
         email=record.email or "",
@@ -261,7 +313,7 @@ def update_resume(
 
 
 @router.delete("/{resume_id}", status_code=204)
-def delete_resume(
+async def delete_resume(
     resume_id: int,
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
@@ -274,8 +326,12 @@ def delete_resume(
     )
     if not record:
         raise HTTPException(status_code=404, detail="Resume not found.")
+    blob_url = record.file_blob_url
     db.delete(record)
     db.commit()
+    if blob_url:
+        await blob_storage.delete(blob_url)
+    bump_profile_version(db, user_id)
 
 
 @router.post("/upload", response_model=ResumeUploadResponse)
@@ -319,6 +375,11 @@ async def upload_resume(
         from backend.schemas.resume import ResumeProfile as RP
         profile = RP(name=file.filename.rsplit(".", 1)[0] if file.filename else "")
 
+    # Store the original file so the extension can auto-upload it into ATS
+    # forms later. Best-effort: a None result (e.g. Blob not configured) just
+    # means this resume has no downloadable file — parsing still succeeds.
+    blob = await blob_storage.upload_resume(content, filename, file.content_type or "", user_id)
+
     # Persist to DB
     db_profile = ResumeProfileDB(
         user_id=user_id,
@@ -337,10 +398,18 @@ async def upload_resume(
         technologies=profile.technologies,
         raw_text=raw_text,
         status="analyzed" if profile.experience else "uploaded",
+        file_blob_url=blob["url"] if blob else None,
+        file_name=blob["name"] if blob else None,
+        file_content_type=blob["content_type"] if blob else None,
+        file_size=blob["size"] if blob else None,
+        file_uploaded_at=datetime.datetime.utcnow() if blob else None,
     )
     db.add(db_profile)
     db.commit()
     db.refresh(db_profile)
+
+    # Bump the sync version so the extension picks up the new resume.
+    bump_profile_version(db, user_id)
 
     # Trigger batch scoring for top jobs in background
     import asyncio
