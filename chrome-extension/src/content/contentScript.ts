@@ -5,9 +5,8 @@
  * is injected on demand into any other page via the popup's Scan button.
  *
  * Two ways it is used:
- *  1. Autonomously — on the top frame it scans for an application form and, when
- *     it finds one, fetches the profile from the background and shows the in-page
- *     overlay (auto-expanded once). This is the "auto pop-up" the user sees.
+ *  1. Autonomously — on the top frame it scans for an application form and,
+ *     when fields are found, mounts the in-page overlay (FAB + full popup UI).
  *  2. On demand — the toolbar popup sends SCAN_PAGE / FILL_FIELDS messages.
  *
  * Frame coordination: chrome.tabs.sendMessage broadcasts to all frames but
@@ -25,9 +24,7 @@ import type {
   FieldsUpdatedEvent,
   FillResponse,
   PingResponse,
-  ProfileResponse,
   ScanResponse,
-  StatusResponse,
   UserApplicationProfile,
 } from "../shared/types";
 import { fillFields } from "./autofill";
@@ -36,7 +33,6 @@ import {
   showOverlay,
   updateOverlay,
   type OverlayCallbacks,
-  type OverlayStatus,
 } from "./overlay";
 
 // Guard against double injection (manifest match + programmatic inject).
@@ -46,8 +42,8 @@ declare global {
   }
 }
 
-/** Below this many recognized, fillable fields we don't auto-show the overlay. */
-const MIN_FIELDS_FOR_OVERLAY = 2;
+/** Show the overlay after detecting at least this many recognizable fields. */
+const MIN_FIELDS_FOR_OVERLAY = 1;
 
 if (!window.__apContentScriptLoaded) {
   window.__apContentScriptLoaded = true;
@@ -65,13 +61,7 @@ function initialize(): void {
   let lastProfile: UserApplicationProfile | null = null;
   let lastFillEEO = false;
   let observer: MutationObserver | null = null;
-
-  // Overlay state (top frame only).
   let overlayShown = false;
-  let overlayStatus: OverlayStatus = "offline";
-  let overlayProfileName = "";
-  let profileFetched = false;
-  let profileFetchPromise: Promise<void> | null = null;
 
   const isTopFrame = ((): boolean => {
     try {
@@ -93,68 +83,10 @@ function initialize(): void {
     };
   }
 
-  /** Start watching for SPA re-renders after the first scan request. */
-  function ensureObserver(): void {
-    if (observer) return;
-    observer = observePage(() => {
-      const before = lastFields.length;
-      runScan();
-      if (lastFields.length !== before) {
-        // Let the popup know (it refreshes if open; background ignores this).
-        const event: FieldsUpdatedEvent = {
-          type: "FIELDS_UPDATED",
-          url: location.href,
-          fieldCount: lastFields.length,
-        };
-        void chrome.runtime.sendMessage(event).catch(() => {
-          // Popup closed — nobody listening. That's fine.
-        });
-      }
-      // Keep the in-page overlay in sync with the live form.
-      void maybeShowOverlay();
-    });
-  }
+  // ---- In-page overlay -------------------------------------------------------
 
-  // ---- Autonomous overlay ----------------------------------------------------
-
-  function recognizedFillableCount(fields: DetectedField[]): number {
-    return fields.filter((f) => f.category !== "unknown" && f.fillable && !f.sensitive).length;
-  }
-
-  async function fetchProfileForOverlay(): Promise<void> {
-    const status = await sendToBackground<StatusResponse>({ type: "GET_STATUS" }).catch(() => null);
-    overlayStatus = status && status.ok ? status.mode : "offline";
-    // Account name is the fallback display name until the full profile loads.
-    if (status) {
-      overlayProfileName = [status.firstName, status.lastName].filter(Boolean).join(" ");
-    }
-
-    if (overlayStatus === "signedOut" || overlayStatus === "offline") {
-      lastProfile = null;
-      profileFetched = true;
-      return;
-    }
-
-    const resp = await sendToBackground<ProfileResponse>({ type: "GET_PROFILE" }).catch(() => null);
-    if (resp && resp.ok && resp.profile) {
-      lastProfile = resp.profile;
-      const name = [resp.profile.firstName, resp.profile.lastName].filter(Boolean).join(" ");
-      if (name) overlayProfileName = name;
-    } else if (resp && resp.needsLogin) {
-      overlayStatus = "signedOut";
-      lastProfile = null;
-    }
-    profileFetched = true;
-  }
-
-  function ensureProfileFetched(): Promise<void> {
-    if (profileFetched) return Promise.resolve();
-    if (!profileFetchPromise) {
-      profileFetchPromise = fetchProfileForOverlay().finally(() => {
-        profileFetchPromise = null;
-      });
-    }
-    return profileFetchPromise;
+  function recognizedCount(fields: DetectedField[]): number {
+    return fields.filter((f) => f.category !== "unknown").length;
   }
 
   const overlayCallbacks: OverlayCallbacks = {
@@ -167,37 +99,56 @@ function initialize(): void {
       const ok = outcomes.filter((o) => o.ok).length;
       return { ok, fail: outcomes.length - ok, total: instructions.length };
     },
-    onOpenDashboard: () => {
-      void sendToBackground({ type: "OPEN_DASHBOARD" });
-    },
     onRescan: () => {
       runScan();
-      void maybeShowOverlay();
+      maybeUpdateOverlay();
     },
   };
 
-  async function maybeShowOverlay(): Promise<void> {
+  function maybeShowOrUpdateOverlay(): void {
     if (!isTopFrame) return;
-    if (recognizedFillableCount(lastFields) < MIN_FIELDS_FOR_OVERLAY) return;
-
-    const needRescan = !profileFetched;
-    await ensureProfileFetched();
-    if (needRescan) runScan(); // recompute proposed values now that we have the profile
-
-    const state = { status: overlayStatus, profileName: overlayProfileName, fields: lastFields };
-    if (!overlayShown) {
+    const state = { fields: lastFields, tabUrl: location.href };
+    if (!overlayShown && recognizedCount(lastFields) >= MIN_FIELDS_FOR_OVERLAY) {
       overlayShown = true;
       showOverlay(state, overlayCallbacks);
-    } else {
+    } else if (overlayShown) {
       updateOverlay(state);
     }
+  }
+
+  function maybeUpdateOverlay(): void {
+    if (!isTopFrame || !overlayShown) return;
+    updateOverlay({ fields: lastFields, tabUrl: location.href });
+  }
+
+  // ---- Observer ---------------------------------------------------------------
+
+  /** Start watching for SPA re-renders after the first scan request. */
+  function ensureObserver(): void {
+    if (observer) return;
+    observer = observePage(() => {
+      const before = lastFields.length;
+      runScan();
+      if (lastFields.length !== before) {
+        // Let the toolbar popup know (it refreshes if open).
+        const event: FieldsUpdatedEvent = {
+          type: "FIELDS_UPDATED",
+          url: location.href,
+          fieldCount: lastFields.length,
+        };
+        void chrome.runtime.sendMessage(event).catch(() => {
+          // Popup closed — nobody listening. That's fine.
+        });
+      }
+      maybeShowOrUpdateOverlay();
+    });
   }
 
   function autoInit(): void {
     if (!isTopFrame) return;
     runScan();
     ensureObserver();
-    void maybeShowOverlay();
+    maybeShowOrUpdateOverlay();
   }
 
   // ---- Popup-driven messaging ------------------------------------------------
@@ -216,8 +167,7 @@ function initialize(): void {
           lastFillEEO = message.fillEEO;
           const response = runScan();
           ensureObserver();
-          // The popup just gave us a fresh profile — refresh the overlay too.
-          void maybeShowOverlay();
+          maybeShowOrUpdateOverlay();
 
           if (response.fields.length > 0) {
             sendResponse(response); // we have the form — answer first
