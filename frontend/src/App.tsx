@@ -1,6 +1,24 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "./auth/useAuth";
 import { useState } from "react";
+import {
+  SquaresFour,
+  FileText,
+  ListChecks,
+  UserCircle,
+  ChatCircleDots,
+  Gift,
+  Question,
+  GearSix,
+  SignOut,
+  CaretLeft,
+  CaretRight,
+  X,
+  Check,
+  Copy,
+  LinkedinLogo,
+  XLogo,
+} from "@phosphor-icons/react";
 
 export default function App() {
   const { user, logout } = useAuth();
@@ -32,13 +50,11 @@ export default function App() {
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            {sidebarCollapsed ? (
-              <polyline points="9 18 15 12 9 6" />
-            ) : (
-              <polyline points="15 18 9 12 15 6" />
-            )}
-          </svg>
+          {sidebarCollapsed ? (
+            <CaretRight size={16} weight="bold" />
+          ) : (
+            <CaretLeft size={16} weight="bold" />
+          )}
         </button>
 
         {/* Menu Section */}
@@ -47,53 +63,31 @@ export default function App() {
           <nav className="sidebar-nav">
             <NavLink to="/app" end className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
               <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="7" height="7" rx="1.5"/>
-                  <rect x="14" y="3" width="7" height="7" rx="1.5"/>
-                  <rect x="3" y="14" width="7" height="7" rx="1.5"/>
-                  <rect x="14" y="14" width="7" height="7" rx="1.5"/>
-                </svg>
+                <SquaresFour size={20} weight="duotone" />
               </span>
               <span className="nav-label">Dashboard</span>
             </NavLink>
             <NavLink to="/app/resume" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
               <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <line x1="16" y1="13" x2="8" y2="13"/>
-                  <line x1="16" y1="17" x2="8" y2="17"/>
-                  <polyline points="10 9 9 9 8 9"/>
-                </svg>
+                <FileText size={20} weight="duotone" />
               </span>
               <span className="nav-label">Resume</span>
             </NavLink>
             <NavLink to="/app/applications" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
               <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-                  <path d="M9 14l2 2 4-4"/>
-                </svg>
+                <ListChecks size={20} weight="duotone" />
               </span>
               <span className="nav-label">Applications</span>
             </NavLink>
             <NavLink to="/app/profile" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
               <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
+                <UserCircle size={20} weight="duotone" />
               </span>
               <span className="nav-label">Profile</span>
             </NavLink>
             <NavLink to="/app/interview" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
               <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                  <line x1="9" y1="9" x2="15" y2="9"/>
-                  <line x1="9" y1="13" x2="13" y2="13"/>
-                </svg>
+                <ChatCircleDots size={20} weight="duotone" />
               </span>
               <span className="nav-label">Interview</span>
             </NavLink>
@@ -106,32 +100,19 @@ export default function App() {
           <nav className="sidebar-nav">
             <button className="nav-item" onClick={() => setShowReferModal(true)}>
               <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 12 20 22 4 22 4 12"/>
-                  <rect x="2" y="7" width="20" height="5"/>
-                  <line x1="12" y1="22" x2="12" y2="7"/>
-                  <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
-                  <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
-                </svg>
+                <Gift size={20} weight="duotone" />
               </span>
               <span className="nav-label">Refer & Earn</span>
             </button>
             <NavLink to="/app/feedback" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
               <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                  <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
+                <Question size={20} weight="duotone" />
               </span>
               <span className="nav-label">Feedback</span>
             </NavLink>
             <NavLink to="/app/settings" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
               <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
+                <GearSix size={20} weight="duotone" />
               </span>
               <span className="nav-label">Settings</span>
             </NavLink>
@@ -154,11 +135,7 @@ export default function App() {
             <span className="sidebar-user-email">{user?.email || ""}</span>
           </div>
           <button className="sidebar-logout-btn" onClick={logout} title="Sign out" aria-label="Sign out">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
+            <SignOut size={18} weight="bold" />
           </button>
         </div>
       </aside>
@@ -171,10 +148,10 @@ export default function App() {
         <div className="modal-overlay" onClick={() => setShowReferModal(false)}>
           <div className="modal-content refer-modal" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setShowReferModal(false)}>
-              <i className="fa-solid fa-xmark"></i>
+              <X size={20} weight="bold" />
             </button>
             <div className="refer-modal-icon">
-              <i className="fa-solid fa-gift"></i>
+              <Gift size={32} weight="duotone" />
             </div>
             <h2>Invite Friends & Earn Credits</h2>
             <p>Share Tailrd with friends. When they sign up and upload their resume, you both earn +5 AI analysis credits.</p>
@@ -197,16 +174,16 @@ export default function App() {
             <div className="refer-modal-link">
               <input type="text" readOnly value={referralLink} className="refer-link-input" />
               <button className="refer-copy-btn" onClick={copyReferLink}>
-                {referCopied ? <><i className="fa-solid fa-check"></i> Copied</> : <><i className="fa-solid fa-copy"></i> Copy</>}
+                {referCopied ? <><Check size={15} weight="bold" /> Copied</> : <><Copy size={15} weight="bold" /> Copy</>}
               </button>
             </div>
 
             <div className="refer-modal-share">
               <button className="refer-share-btn refer-share-linkedin" onClick={() => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(referralLink)}`, "_blank")}>
-                <i className="fa-brands fa-linkedin"></i> LinkedIn
+                <LinkedinLogo size={16} weight="fill" /> LinkedIn
               </button>
               <button className="refer-share-btn refer-share-twitter" onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Check out Tailrd - AI-powered job search for interns and new grads!")}&url=${encodeURIComponent(referralLink)}`, "_blank")}>
-                <i className="fa-brands fa-x-twitter"></i> Twitter
+                <XLogo size={16} weight="fill" /> Twitter
               </button>
             </div>
           </div>
