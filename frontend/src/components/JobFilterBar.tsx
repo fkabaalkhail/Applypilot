@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { CaretDown, CaretUp } from "@phosphor-icons/react";
 
 export interface JobFilters {
   country: string;           // "US" | "CA" | ""
@@ -79,37 +80,37 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     gap: "6px",
-    padding: "7px 14px",
-    borderRadius: "8px",
-    border: "1px solid #e5e7eb",
+    padding: "8px 16px",
+    borderRadius: "9999px",
+    border: "1px solid #e3e8ee",
     background: "#fff",
-    color: "#374151",
-    fontSize: "13px",
-    fontWeight: 500,
+    color: "#273951",
+    fontSize: "14px",
+    fontWeight: 400,
     cursor: "pointer",
     transition: "all 0.15s ease",
     whiteSpace: "nowrap" as const,
     userSelect: "none" as const,
   },
   pillButtonActive: {
-    background: "#F0EEFF",
-    borderColor: "#7C6CFF",
-    color: "#7C6CFF",
+    background: "#eef0ff",
+    borderColor: "#c3b9fd",
+    color: "#4434d4",
   },
   allFiltersButton: {
-    background: "#7C6CFF",
-    borderColor: "#7C6CFF",
+    background: "#533afd",
+    borderColor: "#533afd",
     color: "#fff",
   },
   badge: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "#7C6CFF",
+    background: "#533afd",
     color: "#fff",
     fontSize: "11px",
-    fontWeight: 600,
-    borderRadius: "4px",
+    fontWeight: 500,
+    borderRadius: "9999px",
     padding: "1px 6px",
     marginLeft: "2px",
     minWidth: "18px",
@@ -119,11 +120,11 @@ const styles = {
     position: "absolute" as const,
     top: "100%",
     left: 0,
-    marginTop: "6px",
+    marginTop: "8px",
     background: "#fff",
     borderRadius: "12px",
-    border: "1px solid #e5e7eb",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.04)",
+    border: "1px solid #e3e8ee",
+    boxShadow: "0 8px 24px rgba(0,55,112,0.08), 0 2px 6px rgba(0,55,112,0.04)",
     padding: "16px",
     zIndex: 1000,
     minWidth: "260px",
@@ -131,35 +132,36 @@ const styles = {
     overflowY: "auto" as const,
   },
   dropdownTitle: {
-    fontSize: "13px",
-    fontWeight: 600,
-    color: "#374151",
+    fontSize: "15px",
+    fontWeight: 500,
+    color: "#0d253d",
     marginBottom: "12px",
+    letterSpacing: "-0.2px",
   },
   checkboxRow: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
     padding: "7px 8px",
-    borderRadius: "8px",
+    borderRadius: "6px",
     cursor: "pointer",
-    fontSize: "13px",
-    color: "#374151",
+    fontSize: "14px",
+    color: "#273951",
     transition: "background 0.1s",
   },
   checkboxRowHover: {
-    background: "#F0EEFF",
+    background: "#eef0ff",
   },
   checkbox: {
     width: "16px",
     height: "16px",
-    accentColor: "#7C6CFF",
+    accentColor: "#533afd",
     cursor: "pointer",
   },
   radioInput: {
     width: "16px",
     height: "16px",
-    accentColor: "#7C6CFF",
+    accentColor: "#533afd",
     cursor: "pointer",
   },
   footerRow: {
@@ -168,42 +170,42 @@ const styles = {
     alignItems: "center",
     marginTop: "12px",
     paddingTop: "12px",
-    borderTop: "1px solid #f3f4f6",
+    borderTop: "1px solid #e3e8ee",
   },
   resetBtn: {
     background: "none",
     border: "none",
-    color: "#6b7280",
-    fontSize: "12px",
+    color: "#64748d",
+    fontSize: "13px",
     cursor: "pointer",
-    padding: "4px 8px",
-    borderRadius: "6px",
+    padding: "6px 12px",
+    borderRadius: "9999px",
   },
   confirmBtn: {
-    background: "#7C6CFF",
+    background: "#533afd",
     border: "none",
     color: "#fff",
-    fontSize: "12px",
-    fontWeight: 600,
+    fontSize: "14px",
+    fontWeight: 400,
     cursor: "pointer",
-    padding: "6px 16px",
-    borderRadius: "8px",
+    padding: "8px 18px",
+    borderRadius: "9999px",
   },
   searchInput: {
     width: "100%",
     padding: "8px 12px",
-    borderRadius: "8px",
-    border: "1px solid #D3D3FF",
-    fontSize: "13px",
+    borderRadius: "6px",
+    border: "1px solid #a8c3de",
+    fontSize: "14px",
     outline: "none",
     marginTop: "8px",
   },
   sectionLabel: {
-    fontSize: "11px",
-    fontWeight: 600,
-    color: "#9ca3af",
+    fontSize: "10px",
+    fontWeight: 500,
+    color: "#64748d",
     textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
+    letterSpacing: "0.1px",
     marginTop: "12px",
     marginBottom: "6px",
   },
@@ -378,8 +380,8 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
               alignItems: "center",
               gap: "6px",
               padding: "8px 12px",
-              borderRadius: "8px",
-              border: "1px solid #D3D3FF",
+              borderRadius: "6px",
+              border: "1px solid #a8c3de",
               marginTop: "8px",
               minHeight: "38px",
             }}>
@@ -391,12 +393,12 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
                     alignItems: "center",
                     gap: "4px",
                     padding: "4px 10px",
-                    borderRadius: "6px",
-                    background: "#F0EEFF",
-                    border: "1px solid #D3D3FF",
-                    color: "#374151",
+                    borderRadius: "9999px",
+                    background: "#eef0ff",
+                    border: "1px solid #c3b9fd",
+                    color: "#4434d4",
                     fontSize: "12px",
-                    fontWeight: 500,
+                    fontWeight: 400,
                     whiteSpace: "nowrap",
                   }}
                 >
@@ -418,9 +420,9 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
                       justifyContent: "center",
                       background: "none",
                       border: "none",
-                      color: "#7C6CFF",
+                      color: "#533afd",
                       fontSize: "14px",
-                      fontWeight: 700,
+                      fontWeight: 600,
                       cursor: "pointer",
                       padding: "0 2px",
                       lineHeight: 1,
@@ -443,7 +445,7 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
                   minWidth: "80px",
                   border: "none",
                   outline: "none",
-                  fontSize: "13px",
+                  fontSize: "14px",
                   padding: "2px 0",
                 }}
               />
@@ -682,7 +684,7 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
 
       {/* Total Count */}
       {totalCount !== undefined && (
-        <span style={{ marginLeft: "auto", fontSize: "13px", color: "#6b7280", fontWeight: 500 }}>
+        <span style={{ marginLeft: "auto", fontSize: "14px", color: "#64748d", fontWeight: 400, fontFeatureSettings: '"tnum"', letterSpacing: "-0.42px" }}>
           {totalCount.toLocaleString()} jobs
         </span>
       )}
@@ -708,14 +710,16 @@ function FilterPill({
   const pillStyle = {
     ...styles.pillButton,
     ...(isActive ? styles.pillButtonActive : {}),
-    ...(isOpen ? { borderColor: "#7C6CFF", boxShadow: "0 0 0 2px rgba(124,108,255,0.15)" } : {}),
+    ...(isOpen ? { borderColor: "#533afd", boxShadow: "0 0 0 3px rgba(83,58,253,0.12)" } : {}),
   };
 
   return (
     <button style={pillStyle} onClick={onClick} aria-expanded={isOpen} aria-haspopup="true">
       {label}
       {count > 0 && <span style={styles.badge}>+{count}</span>}
-      <span style={styles.chevron}>{isOpen ? "▲" : "▼"}</span>
+      <span style={{ display: "inline-flex", marginLeft: "2px", opacity: 0.7 }}>
+        {isOpen ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
+      </span>
     </button>
   );
 }
