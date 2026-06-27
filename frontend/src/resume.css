@@ -41,13 +41,13 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-  box-shadow: 0 2px 8px rgba(124, 108, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(83, 58, 253, 0.2);
 }
 
 .resume-add-btn:hover:not(:disabled) {
   background: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(124, 108, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(83, 58, 253, 0.3);
 }
 
 .resume-add-btn:disabled {
@@ -144,7 +144,7 @@
 }
 
 .resume-table-new tbody tr:hover {
-  background: rgba(124, 108, 255, 0.03);
+  background: rgba(83, 58, 253, 0.03);
 }
 
 .resume-table-new tbody tr:last-child td {

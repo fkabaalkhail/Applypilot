@@ -103,7 +103,7 @@
 .settings-field input:focus {
   border-color: var(--accent);
   background: var(--bg-white);
-  box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
 }
 
 /* Toggle Switch */
@@ -209,7 +209,7 @@
 .kv-row input:focus {
   border-color: var(--accent);
   background: var(--bg-white);
-  box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
 }
 
 .kv-remove-btn {

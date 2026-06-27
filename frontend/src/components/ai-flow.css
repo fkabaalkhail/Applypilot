@@ -135,7 +135,7 @@
 .ai-btn-primary {
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 6px 18px rgba(124, 108, 255, 0.32);
+  box-shadow: 0 6px 18px rgba(83, 58, 253, 0.32);
 }
 .ai-btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 .ai-btn-primary:disabled { opacity: 0.55; cursor: default; box-shadow: none; }

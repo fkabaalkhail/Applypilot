@@ -96,7 +96,7 @@
 .feedback-textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.1);
+  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.1);
 }
 
 .feedback-textarea::placeholder {

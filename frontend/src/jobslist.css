@@ -70,7 +70,7 @@
 }
 
 .jl-nav-link-active {
-  color: #5B5BFF;
+  color: #533afd;
   font-weight: 600;
 }
 
@@ -114,7 +114,7 @@
 .jl-stat-number {
   font-size: 1.75rem;
   font-weight: 700;
-  color: #5B5BFF;
+  color: #533afd;
 }
 
 .jl-stat-label {
@@ -158,13 +158,13 @@
 }
 
 .jl-country-btn:hover {
-  border-color: #5B5BFF;
-  color: #5B5BFF;
+  border-color: #533afd;
+  color: #533afd;
 }
 
 .jl-country-btn.active {
-  background: #5B5BFF;
-  border-color: #5B5BFF;
+  background: #533afd;
+  border-color: #533afd;
   color: #ffffff;
 }
 
@@ -214,13 +214,13 @@
 }
 
 .jl-cat-pill:hover {
-  border-color: #5B5BFF;
-  color: #5B5BFF;
+  border-color: #533afd;
+  color: #533afd;
 }
 
 .jl-cat-pill.active {
-  background: #5B5BFF;
-  border-color: #5B5BFF;
+  background: #533afd;
+  border-color: #533afd;
   color: #ffffff;
 }
 
@@ -254,7 +254,7 @@
 }
 
 .jl-filter-input:focus {
-  border-color: #5B5BFF;
+  border-color: #533afd;
 }
 
 .jl-filter-select {
@@ -271,12 +271,12 @@
 }
 
 .jl-filter-select:focus {
-  border-color: #5B5BFF;
+  border-color: #533afd;
 }
 
 .jl-filter-search-btn {
   padding: 0.5rem 1rem;
-  background: #5B5BFF;
+  background: #533afd;
   color: #ffffff;
   border: none;
   border-radius: 0 8px 8px 0;
@@ -379,7 +379,7 @@
 .jl-apply-btn {
   display: inline-block;
   padding: 0.35rem 1rem;
-  background: #5B5BFF;
+  background: #533afd;
   color: #ffffff;
   border-radius: 6px;
   text-decoration: none;
@@ -473,8 +473,8 @@
 }
 
 .jl-page-btn:hover:not(:disabled) {
-  border-color: #5B5BFF;
-  color: #5B5BFF;
+  border-color: #533afd;
+  color: #533afd;
 }
 
 .jl-page-btn:disabled {

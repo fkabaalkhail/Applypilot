@@ -1,25 +1,49 @@
 :root {
-  --accent: #7C6CFF;
-  --accent-light: #f0f0ff;
-  --accent-border: #b8b8ff;
-  --accent-hover: #6B5CE6;
-  --accent-soft: #D3D3FF;
-  --bg-page: #F7F8FA;
-  --bg-white: #ffffff;
-  --bg-match-strong: #2D2B55;
-  --bg-match-fair: #1E1E3F;
-  --text: #111827;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
-  --border: #e5e7eb;
-  --border-light: #f3f4f6;
-  --radius-card: 16px;
-  --radius-pill: 999px;
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.03);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06), 0 8px 32px rgba(0, 0, 0, 0.04);
+  /* ===== Stripe design system — brand palette ===== */
+  --stripe-primary: #533afd;
+  --stripe-primary-deep: #4434d4;
+  --stripe-primary-press: #2e2b8c;
+  --stripe-primary-soft: #665efd;
+  --stripe-primary-subdued: #b9b9f9;
+  --stripe-dark-900: #1c1e54;
+  --stripe-ink: #0d253d;
+  --stripe-ink-secondary: #273951;
+  --stripe-ink-mute: #64748d;
+  --stripe-canvas: #ffffff;
+  --stripe-canvas-soft: #f6f9fc;
+  --stripe-canvas-cream: #f5e9d4;
+  --stripe-hairline: #e3e8ee;
+  --stripe-hairline-input: #a8c3de;
+  --stripe-ruby: #ea2261;
+  --stripe-magenta: #f96bee;
+
+  /* Signature gradient mesh (hero backdrop) */
+  --stripe-mesh: linear-gradient(110deg, #f5e9d4 0%, #ffd9a8 14%, #f9b5d0 32%, #c3b9fd 52%, #665efd 72%, #533afd 86%, #ea2261 100%);
+  --stripe-mesh-soft: linear-gradient(120deg, #f6f9fc 0%, #eef0ff 38%, #e9e6ff 64%, #f3e9fb 100%);
+  --stripe-cta-gradient: linear-gradient(180deg, #665efd 0%, #533afd 100%);
+
+  /* ===== Legacy aliases mapped to Stripe tokens (keeps existing CSS working) ===== */
+  --accent: var(--stripe-primary);
+  --accent-light: #eef0ff;
+  --accent-border: var(--stripe-primary-subdued);
+  --accent-hover: var(--stripe-primary-deep);
+  --accent-soft: #d8d4ff;
+  --bg-page: var(--stripe-canvas-soft);
+  --bg-white: var(--stripe-canvas);
+  --bg-match-strong: var(--stripe-dark-900);
+  --bg-match-fair: #161842;
+  --text: var(--stripe-ink);
+  --text-secondary: var(--stripe-ink-secondary);
+  --text-muted: var(--stripe-ink-mute);
+  --border: var(--stripe-hairline);
+  --border-light: #eef2f6;
+  --radius-card: 12px;
+  --radius-pill: 9999px;
+  --shadow-card: 0 1px 3px rgba(0, 55, 112, 0.08);
+  --shadow-card-hover: 0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04);
   --sidebar-width: 240px;
   --header-height: 64px;
-  --tab-count-bg: #7C6CFF;
+  --tab-count-bg: var(--stripe-primary);
 }
 
 *, *::before, *::after {
@@ -29,12 +53,50 @@
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-page);
   color: var(--text);
   line-height: 1.5;
+  font-weight: 400;
+  font-feature-settings: "ss01";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== Stripe typography: thin display tier with negative tracking ===== */
+h1, h2, h3, .display-xxl, .display-xl, .display-lg, .display-md {
+  font-weight: 300;
+  color: var(--stripe-ink);
+  font-feature-settings: "ss01";
+}
+h1 { letter-spacing: -1.4px; line-height: 1.04; }
+h2 { letter-spacing: -0.8px; line-height: 1.12; }
+h3 { letter-spacing: -0.4px; line-height: 1.15; }
+
+/* Money / numeric cells — tabular figures, the Stripe financial-data signal */
+.tnum, .money, .numeric {
+  font-feature-settings: "tnum";
+  letter-spacing: -0.42px;
+}
+
+/* ===== Stripe utility classes ===== */
+.stripe-mesh {
+  background: var(--stripe-mesh);
+}
+.stripe-mesh-soft {
+  background: var(--stripe-mesh-soft);
+}
+.pill-tag-soft {
+  display: inline-flex;
+  align-items: center;
+  background: var(--stripe-primary-subdued);
+  color: var(--stripe-primary-deep);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1px;
+  padding: 4px 8px;
+  border-radius: 9999px;
 }
 
 /* ===== Layout ===== */
@@ -452,7 +514,7 @@ body {
 .search-input:focus {
   border-color: var(--accent);
   background: var(--bg-white);
-  box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
 }
 
 .search-wrapper {
@@ -511,12 +573,12 @@ body {
   color: white;
   border-color: var(--accent);
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(124, 108, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(83, 58, 253, 0.2);
 }
 
 .filter-pill.all-filters:hover {
   background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(124, 108, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(83, 58, 253, 0.3);
 }
 
 .filter-pill i {
@@ -751,7 +813,7 @@ body {
 .job-card.selected {
   border-left: 4px solid var(--accent);
   background: var(--accent-light);
-  box-shadow: 0 4px 16px rgba(124, 108, 255, 0.08);
+  box-shadow: 0 4px 16px rgba(83, 58, 253, 0.1);
   transform: none;
 }
 
@@ -964,19 +1026,20 @@ body {
 
 .btn-outline {
   padding: 0.5rem 1.1rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--stripe-primary);
+  border-radius: var(--radius-pill);
   background: var(--bg-white);
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 400;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--stripe-primary);
   transition: all 0.15s;
 }
 
 .btn-outline:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--accent-light);
+  border-color: var(--stripe-primary-deep);
+  color: var(--stripe-primary-deep);
 }
 
 .btn-outline:disabled {
@@ -987,13 +1050,13 @@ body {
 .btn-apply {
   padding: 0.5rem 1.4rem;
   border: none;
-  border-radius: 8px;
-  background: var(--accent);
+  border-radius: var(--radius-pill);
+  background: var(--stripe-primary);
   color: white;
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 400;
   cursor: pointer;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   transition: all 0.15s;
   text-decoration: none;
   display: inline-flex;
@@ -1001,8 +1064,7 @@ body {
 }
 
 .btn-apply:hover {
-  background: var(--accent-hover);
-  transform: scale(1.02);
+  background: var(--stripe-primary-press);
 }
 
 /* ===== Match Badge Panel ===== */
@@ -1299,31 +1361,30 @@ body {
   color: white;
   border: none;
   padding: 0.65rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 0.85rem;
+  border-radius: var(--radius-pill);
+  font-weight: 400;
+  font-size: 0.92rem;
   cursor: pointer;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   transition: all 0.15s;
 }
 .btn-apply-detail:hover {
-  background: var(--accent-hover);
-  transform: scale(1.02);
+  background: var(--stripe-primary-press);
 }
 
 .btn-outline-detail {
   padding: 0.65rem 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--stripe-primary);
+  border-radius: var(--radius-pill);
   background: var(--bg-white);
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 400;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--stripe-primary);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -1667,7 +1728,7 @@ body {
   min-height: 540px;
   border-radius: var(--radius-card);
   overflow: hidden;
-  box-shadow: 0 8px 40px rgba(124, 108, 255, 0.10), 0 2px 12px rgba(0,0,0,0.06);
+  box-shadow: 0 8px 40px rgba(83, 58, 253, 0.10), 0 2px 12px rgba(0,0,0,0.06);
   background: var(--bg-white);
 }
 
@@ -1679,7 +1740,7 @@ body {
   justify-content: center;
   width: 42%;
   padding: 3rem 2.5rem;
-  background: linear-gradient(135deg, var(--accent) 0%, #5B4CC4 100%);
+  background: linear-gradient(135deg, var(--stripe-primary-soft) 0%, var(--stripe-primary) 55%, var(--stripe-primary-press) 100%);
   color: #fff;
   text-align: center;
   border-radius: 0 80px 80px 0;
@@ -2185,7 +2246,7 @@ body {
 .profile-form-group textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
 }
 
 .profile-form-group-full {
@@ -2349,7 +2410,7 @@ body {
 .profile-skill-input-row input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
 }
 
 /* Editor list (experience/education/projects cards) */

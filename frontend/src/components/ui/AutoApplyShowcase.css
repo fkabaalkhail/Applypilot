@@ -86,7 +86,7 @@
 .sjc-salary {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #5B5BFF;
+  color: #533afd;
   background: #f0f0ff;
   padding: 3px 8px;
   border-radius: 6px;
@@ -115,7 +115,7 @@
   top: 0;
   bottom: 0;
   width: 3px;
-  background: linear-gradient(180deg, transparent, #5B5BFF, transparent);
+  background: linear-gradient(180deg, transparent, #533afd, transparent);
   border-radius: 2px;
   box-shadow: 0 0 8px rgba(91, 91, 255, 0.4);
   pointer-events: none;
@@ -197,7 +197,7 @@
 
 .spp-step-icon {
   font-size: 0.75rem;
-  color: #5B5BFF;
+  color: #533afd;
   font-weight: 700;
   width: 16px;
   text-align: center;
