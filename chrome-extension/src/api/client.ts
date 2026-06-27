@@ -15,6 +15,7 @@
 import {
   clearAuth,
   clearSnapshot,
+  getAccessTokenExp,
   getAuth,
   getConfig,
   saveAuth,
@@ -97,8 +98,20 @@ async function refreshTokens(): Promise<void> {
   return refreshInFlight;
 }
 
+/** Refresh proactively when the access token is missing or near expiry. */
+export const ACCESS_TOKEN_SKEW_SECONDS = 120;
+
+export async function ensureFreshAccessToken(): Promise<void> {
+  const auth = await getAuth();
+  if (!auth?.refreshToken) return; // not connected — nothing to refresh
+  const exp = await getAccessTokenExp();
+  const needs = !auth.accessToken || exp === null || exp - Math.floor(Date.now() / 1000) <= ACCESS_TOKEN_SKEW_SECONDS;
+  if (needs) await refreshTokens();
+}
+
 /** Authenticated request with one automatic refresh-and-retry on 401. */
 export async function authedRequest<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
+  await ensureFreshAccessToken();
   const auth = await getAuth();
   if (!auth) throw new AuthRequiredError();
 
@@ -121,6 +134,7 @@ export async function authedRequest<T>(path: string, init?: RequestInit, retry =
 
 /** Authenticated raw fetch (binary-safe) with one refresh-and-retry on 401. */
 export async function authedRaw(path: string, init?: RequestInit, retry = true): Promise<Response> {
+  await ensureFreshAccessToken();
   const auth = await getAuth();
   if (!auth) throw new AuthRequiredError();
 

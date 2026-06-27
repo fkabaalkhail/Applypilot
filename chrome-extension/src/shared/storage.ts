@@ -15,6 +15,8 @@ const KEYS = {
   auth: "ap_auth",
   // In-memory only (chrome.storage.session): the short-lived access token.
   authAccess: "ap_auth_access",
+  // In-memory only (chrome.storage.session): epoch-seconds expiry of the access token.
+  authAccessExp: "ap_auth_access_exp",
   // Last synced snapshot (profile, resumes, cover letters, …) — offline source.
   snapshot: "ap_sync",
   // Per-resume original file cache (base64), keyed by resume id.
@@ -92,12 +94,36 @@ export async function getAuth(): Promise<StoredAuth | null> {
   return { accessToken, refreshToken: persistent.refreshToken, email: persistent.email };
 }
 
+/** Read a JWT's `exp` (epoch seconds) without verifying the signature. Returns null on any parse failure. */
+function readJwtExp(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    const exp = (JSON.parse(json) as { exp?: number }).exp;
+    return typeof exp === "number" ? exp : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getAccessTokenExp(): Promise<number | null> {
+  try {
+    const sess = await chrome.storage.session.get(KEYS.authAccessExp);
+    const v = sess[KEYS.authAccessExp];
+    return typeof v === "number" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveAuth(auth: StoredAuth): Promise<void> {
   await chrome.storage.local.set({
     [KEYS.auth]: { refreshToken: auth.refreshToken, email: auth.email },
   });
   try {
     await chrome.storage.session.set({ [KEYS.authAccess]: auth.accessToken });
+    await chrome.storage.session.set({ [KEYS.authAccessExp]: readJwtExp(auth.accessToken) });
   } catch {
     // session storage unavailable — the access token just won't persist
   }
@@ -107,6 +133,7 @@ export async function clearAuth(): Promise<void> {
   await chrome.storage.local.remove(KEYS.auth);
   try {
     await chrome.storage.session.remove(KEYS.authAccess);
+    await chrome.storage.session.remove(KEYS.authAccessExp);
   } catch {
     // ignore
   }

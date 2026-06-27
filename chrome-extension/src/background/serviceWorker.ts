@@ -10,7 +10,7 @@
  * FastAPI backend needs no CORS changes for the extension.
  */
 import { connectAccount } from "../api/handshake";
-import { AuthRequiredError, checkAuthStatus, logout } from "../api/client";
+import { AuthRequiredError, checkAuthStatus, ensureFreshAccessToken, logout } from "../api/client";
 import { downloadResumeFile, getSnapshotForUi, syncIfStale } from "../api/sync";
 import { getConfig, getSnapshot, saveConfig } from "../shared/storage";
 import type {
@@ -45,7 +45,11 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === SYNC_ALARM) void syncIfStale().catch(() => {});
+  if (alarm.name === SYNC_ALARM) {
+    void ensureFreshAccessToken()
+      .catch(() => {})
+      .finally(() => void syncIfStale().catch(() => {}));
+  }
 });
 
 // When the user clicks the extension icon in the toolbar, make sure the content
