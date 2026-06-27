@@ -23,6 +23,9 @@ jobs:
         # throwaway DB and CI never touches the Neon branches.
         env:
           DATABASE_URL: "sqlite:///./ci_test.db"
+          # Required at import time by backend.auth.tokens; any non-empty value
+          # works for tests (no real tokens are minted against prod).
+          JWT_SECRET: "ci-test-secret-not-used-in-prod"
         run: |
           # The deselected tests are a pre-existing property-fixture issue
           # (resume rows created without user_id ownership) tracked separately —
