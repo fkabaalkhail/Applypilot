@@ -3541,6 +3541,306 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   object-fit: contain;
 }
 
+/* ===== Interview — Premium UI ===== */
+.interview-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  padding: 2.75rem 2.5rem;
+  margin-bottom: 1.75rem;
+  background:
+    radial-gradient(900px circle at 0% 0%, rgba(99, 102, 241, 0.18), transparent 45%),
+    radial-gradient(700px circle at 100% 100%, rgba(168, 85, 247, 0.16), transparent 45%),
+    linear-gradient(135deg, #0f172a, #1e1b4b);
+  color: #fff;
+}
+
+.interview-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #c7d2fe;
+}
+
+.interview-hero h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 1rem 0 0.6rem;
+  letter-spacing: -0.02em;
+}
+
+.interview-hero p {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: rgba(226, 232, 240, 0.85);
+  max-width: 600px;
+}
+
+.interview-hero-stats {
+  display: flex;
+  gap: 2.25rem;
+  margin-top: 1.75rem;
+}
+
+.interview-hero-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.interview-hero-stat strong {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+
+.interview-hero-stat span {
+  font-size: 0.78rem;
+  color: rgba(199, 210, 254, 0.8);
+  margin-top: 0.3rem;
+}
+
+/* Controls: search + chips */
+.interview-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.interview-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.interview-search-wrap > i {
+  position: absolute;
+  left: 1rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+.interview-search-wrap .interview-search {
+  margin-bottom: 0;
+  padding-left: 2.5rem;
+}
+
+.interview-chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.interview-chip {
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.interview-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.interview-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Company card category tag */
+.interview-company-card {
+  position: relative;
+}
+
+.interview-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.interview-card-cat {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.22rem 0.55rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.cat-faang { background: #fef3c7; color: #92400e; }
+.cat-ai { background: #ede9fe; color: #6d28d9; }
+.cat-highgrowth { background: #dbeafe; color: #1e40af; }
+.cat-canadian { background: #fee2e2; color: #b91c1c; }
+
+.interview-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 3rem 1rem;
+}
+
+/* Company detail header */
+.interview-company-header-info h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.interview-company-header-info p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+/* Difficulty distribution */
+.interview-distribution {
+  margin-bottom: 1.5rem;
+}
+
+.interview-dist-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg-page);
+}
+
+.interview-dist-bar span { display: block; height: 100%; }
+.dist-easy { background: #10b981; }
+.dist-medium { background: #f59e0b; }
+.dist-hard { background: #ef4444; }
+
+.interview-dist-legend {
+  display: flex;
+  gap: 1.25rem;
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.interview-dist-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-easy { background: #10b981; }
+.dot-medium { background: #f59e0b; }
+.dot-hard { background: #ef4444; }
+
+/* Question meta + toggle */
+.interview-question-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.interview-question-toggle {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Practice link buttons */
+.interview-practice-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.ipb-primary { background: var(--accent); color: #fff; }
+.ipb-primary:hover { background: #4f46e5; }
+.ipb-yt { background: #ef4444; color: #fff; }
+.ipb-yt:hover { background: #dc2626; }
+.ipb-alt {
+  background: var(--bg-page);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.ipb-alt:hover { border-color: var(--accent); color: var(--accent); }
+
+.interview-practice-note {
+  margin-top: 0.85rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Submit modal toggle */
+.submit-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  background: var(--bg-page);
+  padding: 0.3rem;
+  border-radius: 12px;
+}
+
+.submit-toggle button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.submit-toggle button.active {
+  background: var(--bg-white);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.submit-question-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  text-align: left;
+}
+
+.submit-question-fields .request-company-input {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .interview-hero { padding: 2rem 1.5rem; }
+  .interview-hero h1 { font-size: 1.5rem; }
+  .interview-hero-stats { gap: 1.5rem; }
+}
+
 /* ===== Tailored Resume Overlay ===== */
 .tailor-overlay-backdrop {
   position: fixed;
