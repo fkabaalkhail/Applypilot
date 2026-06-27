@@ -1324,6 +1324,13 @@
       "enabled": true
     },
     {
+      "company_name": "Assent",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "assent",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=assent.com&sz=128",
+      "enabled": true
+    },
+    {
       "company_name": "Bosch",
       "ats_platform": "smartrecruiters",
       "board_slug": "BoschGroup",
@@ -1405,7 +1412,8 @@
       "ats_platform": "workday",
       "board_slug": "bmo",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=bmo.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://bmo.wd3.myworkdayjobs.com/wday/cxs/bmo/external"
     },
     {
       "company_name": "Boeing",
@@ -1433,6 +1441,15 @@
       "ats_platform": "workday",
       "board_slug": "cibc",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=cibc.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://cibc.wd3.myworkdayjobs.com/wday/cxs/cibc/search"
+    },
+    {
+      "company_name": "Ciena",
+      "ats_platform": "workday",
+      "board_slug": "ciena",
+      "workday_url_template": "https://ciena.wd5.myworkdayjobs.com/wday/cxs/ciena/careers",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=ciena.com&sz=128",
       "enabled": true
     },
     {
@@ -1478,11 +1495,20 @@
       "enabled": true
     },
     {
+      "company_name": "Marvell",
+      "ats_platform": "workday",
+      "board_slug": "marvell",
+      "workday_url_template": "https://marvell.wd1.myworkdayjobs.com/wday/cxs/marvell/MarvellCareers",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=marvell.com&sz=128",
+      "enabled": true
+    },
+    {
       "company_name": "Mastercard",
       "ats_platform": "workday",
       "board_slug": "mastercard",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=mastercard.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://mastercard.wd1.myworkdayjobs.com/wday/cxs/mastercard/CorporateCareers"
     },
     {
       "company_name": "McKinsey",
@@ -1545,7 +1571,8 @@
       "ats_platform": "workday",
       "board_slug": "salesforce",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=salesforce.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://salesforce.wd12.myworkdayjobs.com/wday/cxs/salesforce/External_Career_Site"
     },
     {
       "company_name": "Scotiabank",
