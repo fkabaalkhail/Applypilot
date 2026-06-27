@@ -1,0 +1,1586 @@
+{
+  "companies": [
+    {
+      "company_name": "1Password",
+      "ats_platform": "ashby",
+      "board_slug": "1password",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=1password.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Axiom",
+      "ats_platform": "ashby",
+      "board_slug": "axiom",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=axiom.co&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Benevity",
+      "ats_platform": "ashby",
+      "board_slug": "benevity",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=benevity.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Clearco",
+      "ats_platform": "ashby",
+      "board_slug": "clearco",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=clear.co&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Coder",
+      "ats_platform": "ashby",
+      "board_slug": "coder",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=coder.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Cohere",
+      "ats_platform": "ashby",
+      "board_slug": "cohere",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=cohere.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Deel",
+      "ats_platform": "ashby",
+      "board_slug": "deel",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=deel.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Deepnote",
+      "ats_platform": "ashby",
+      "board_slug": "deepnote",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=deepnote.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Depot",
+      "ats_platform": "ashby",
+      "board_slug": "depot",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=depot.dev&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Dust",
+      "ats_platform": "ashby",
+      "board_slug": "dust",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=dust.tt&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "ElevenLabs",
+      "ats_platform": "ashby",
+      "board_slug": "elevenlabs",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=elevenlabs.io&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Ethyca",
+      "ats_platform": "ashby",
+      "board_slug": "ethyca",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=ethyca.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Float",
+      "ats_platform": "ashby",
+      "board_slug": "float",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=float.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Hightouch",
+      "ats_platform": "ashby",
+      "board_slug": "hightouch",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=hightouch.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Hopper",
+      "ats_platform": "ashby",
+      "board_slug": "hopper",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=hopper.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Inngest",
+      "ats_platform": "ashby",
+      "board_slug": "inngest",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=inngest.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Jane Software",
+      "ats_platform": "ashby",
+      "board_slug": "jane",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=jane.app&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Jobber",
+      "ats_platform": "ashby",
+      "board_slug": "jobber",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=jobber.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Klue",
+      "ats_platform": "ashby",
+      "board_slug": "klue",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=klue.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Knock",
+      "ats_platform": "ashby",
+      "board_slug": "knock",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=knock.app&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Koho",
+      "ats_platform": "ashby",
+      "board_slug": "koho",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=koho.ca&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "LangChain",
+      "ats_platform": "ashby",
+      "board_slug": "langchain",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=langchain.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Linear",
+      "ats_platform": "ashby",
+      "board_slug": "linear",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=linear.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "LlamaIndex",
+      "ats_platform": "ashby",
+      "board_slug": "llamaindex",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=llamaindex.ai&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Loom",
+      "ats_platform": "ashby",
+      "board_slug": "loom",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=loom.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Loopio",
+      "ats_platform": "ashby",
+      "board_slug": "loopio",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=loopio.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Materialize",
+      "ats_platform": "ashby",
+      "board_slug": "materialize",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=materialize.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Mercury",
+      "ats_platform": "ashby",
+      "board_slug": "mercury",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=mercury.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Mintlify",
+      "ats_platform": "ashby",
+      "board_slug": "mintlify",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=mintlify.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Modal",
+      "ats_platform": "ashby",
+      "board_slug": "modal",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=modal.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "n8n",
+      "ats_platform": "ashby",
+      "board_slug": "n8n",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=n8n.io&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Neo Financial",
+      "ats_platform": "ashby",
+      "board_slug": "neofinancial",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=neofinancial.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Notion (Ashby)",
+      "ats_platform": "ashby",
+      "board_slug": "notion",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=notion.so&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Oyster HR",
+      "ats_platform": "ashby",
+      "board_slug": "oyster",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=oysterhr.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Perplexity",
+      "ats_platform": "ashby",
+      "board_slug": "perplexity",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=perplexity.ai&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Plaid",
+      "ats_platform": "ashby",
+      "board_slug": "plaid",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=plaid.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Railway",
+      "ats_platform": "ashby",
+      "board_slug": "railway",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=railway.app&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Ramp",
+      "ats_platform": "ashby",
+      "board_slug": "ramp",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=ramp.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Render",
+      "ats_platform": "ashby",
+      "board_slug": "render",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=render.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Replit",
+      "ats_platform": "ashby",
+      "board_slug": "replit",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=replit.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Resend",
+      "ats_platform": "ashby",
+      "board_slug": "resend",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=resend.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Rewind",
+      "ats_platform": "ashby",
+      "board_slug": "rewind",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=rewind.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Runway",
+      "ats_platform": "ashby",
+      "board_slug": "runway",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=runwayml.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Sanity",
+      "ats_platform": "ashby",
+      "board_slug": "sanity",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=sanity.io&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Stytch",
+      "ats_platform": "ashby",
+      "board_slug": "stytch",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=stytch.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Top Hat",
+      "ats_platform": "ashby",
+      "board_slug": "top-hat",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=tophat.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Trulioo",
+      "ats_platform": "ashby",
+      "board_slug": "trulioo",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=trulioo.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Twenty",
+      "ats_platform": "ashby",
+      "board_slug": "twenty",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=twenty.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Vanta",
+      "ats_platform": "ashby",
+      "board_slug": "vanta",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=vanta.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Watershed",
+      "ats_platform": "ashby",
+      "board_slug": "watershed",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=watershed.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Wealthsimple",
+      "ats_platform": "ashby",
+      "board_slug": "wealthsimple",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=wealthsimple.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Weaviate",
+      "ats_platform": "ashby",
+      "board_slug": "weaviate",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=weaviate.io&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "6sense",
+      "ats_platform": "greenhouse",
+      "board_slug": "6sense",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=6sense.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Affirm",
+      "ats_platform": "greenhouse",
+      "board_slug": "affirm",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=affirm.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Airbnb",
+      "ats_platform": "greenhouse",
+      "board_slug": "airbnb",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=airbnb.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Airtable",
+      "ats_platform": "greenhouse",
+      "board_slug": "airtable",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=airtable.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "AlayaCare",
+      "ats_platform": "greenhouse",
+      "board_slug": "alayacare",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=alayacare.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Amplitude",
+      "ats_platform": "greenhouse",
+      "board_slug": "amplitude",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=amplitude.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Anthropic",
+      "ats_platform": "greenhouse",
+      "board_slug": "anthropic",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=anthropic.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Apollo Global",
+      "ats_platform": "greenhouse",
+      "board_slug": "apollo",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=apollo.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Appian",
+      "ats_platform": "greenhouse",
+      "board_slug": "appian",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=appian.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "AppLovin",
+      "ats_platform": "greenhouse",
+      "board_slug": "applovin",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=applovin.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Asana",
+      "ats_platform": "greenhouse",
+      "board_slug": "asana",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=asana.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "AssemblyAI",
+      "ats_platform": "greenhouse",
+      "board_slug": "assemblyai",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=assemblyai.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Astranis",
+      "ats_platform": "greenhouse",
+      "board_slug": "astranis",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=astranis.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Attentive",
+      "ats_platform": "greenhouse",
+      "board_slug": "attentive",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=attentive.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Bandwidth",
+      "ats_platform": "greenhouse",
+      "board_slug": "bandwidth",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=bandwidth.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "BigID",
+      "ats_platform": "greenhouse",
+      "board_slug": "bigid",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=bigid.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Blend",
+      "ats_platform": "greenhouse",
+      "board_slug": "blend",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=blend.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Block",
+      "ats_platform": "greenhouse",
+      "board_slug": "block",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=block.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Box",
+      "ats_platform": "greenhouse",
+      "board_slug": "boxinc",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=box.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Braze",
+      "ats_platform": "greenhouse",
+      "board_slug": "braze",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=braze.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Brex",
+      "ats_platform": "greenhouse",
+      "board_slug": "brex",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=brex.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Calendly",
+      "ats_platform": "greenhouse",
+      "board_slug": "calendly",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=calendly.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Calm",
+      "ats_platform": "greenhouse",
+      "board_slug": "calm",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=calm.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Canonical",
+      "ats_platform": "greenhouse",
+      "board_slug": "canonical",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=canonical.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Carvana",
+      "ats_platform": "greenhouse",
+      "board_slug": "carvana",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=carvana.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Cerebral",
+      "ats_platform": "greenhouse",
+      "board_slug": "cerebral",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=cerebral.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Chime",
+      "ats_platform": "greenhouse",
+      "board_slug": "chime",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=chime.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "CircleCI",
+      "ats_platform": "greenhouse",
+      "board_slug": "circleci",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=circleci.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Cloudflare",
+      "ats_platform": "greenhouse",
+      "board_slug": "cloudflare",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=cloudflare.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "CockroachDB",
+      "ats_platform": "greenhouse",
+      "board_slug": "cockroachlabs",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=cockroachlabs.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Coinbase",
+      "ats_platform": "greenhouse",
+      "board_slug": "coinbase",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=coinbase.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Collibra",
+      "ats_platform": "greenhouse",
+      "board_slug": "collibra",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=collibra.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Contentful",
+      "ats_platform": "greenhouse",
+      "board_slug": "contentful",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=contentful.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Coursera",
+      "ats_platform": "greenhouse",
+      "board_slug": "coursera",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=coursera.org&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Cresta",
+      "ats_platform": "greenhouse",
+      "board_slug": "cresta",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=cresta.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Databricks",
+      "ats_platform": "greenhouse",
+      "board_slug": "databricks",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=databricks.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Datadog",
+      "ats_platform": "greenhouse",
+      "board_slug": "datadog",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=datadoghq.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Descript",
+      "ats_platform": "greenhouse",
+      "board_slug": "descript",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=descript.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Discord",
+      "ats_platform": "greenhouse",
+      "board_slug": "discord",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=discord.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Doximity",
+      "ats_platform": "greenhouse",
+      "board_slug": "doximity",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=doximity.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Dropbox",
+      "ats_platform": "greenhouse",
+      "board_slug": "dropbox",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=dropbox.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Duolingo",
+      "ats_platform": "greenhouse",
+      "board_slug": "duolingo",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=duolingo.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Elastic",
+      "ats_platform": "greenhouse",
+      "board_slug": "elastic",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=elastic.co&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Epic Games",
+      "ats_platform": "greenhouse",
+      "board_slug": "epicgames",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=epicgames.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Faire",
+      "ats_platform": "greenhouse",
+      "board_slug": "faire",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=faire.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Fastly",
+      "ats_platform": "greenhouse",
+      "board_slug": "fastly",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=fastly.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Figma",
+      "ats_platform": "greenhouse",
+      "board_slug": "figma",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=figma.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Figma (Greenhouse)",
+      "ats_platform": "greenhouse",
+      "board_slug": "figma",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=figma.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Fivetran",
+      "ats_platform": "greenhouse",
+      "board_slug": "fivetran",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=fivetran.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Flexport",
+      "ats_platform": "greenhouse",
+      "board_slug": "flexport",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=flexport.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Flipp",
+      "ats_platform": "greenhouse",
+      "board_slug": "flipp",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=flipp.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Geotab",
+      "ats_platform": "greenhouse",
+      "board_slug": "geotab",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=geotab.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "GitLab",
+      "ats_platform": "greenhouse",
+      "board_slug": "gitlab",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=gitlab.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Glossier",
+      "ats_platform": "greenhouse",
+      "board_slug": "glossier",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=glossier.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Groupon",
+      "ats_platform": "greenhouse",
+      "board_slug": "groupon",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=groupon.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Gusto",
+      "ats_platform": "greenhouse",
+      "board_slug": "gusto",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=gusto.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Hootsuite",
+      "ats_platform": "greenhouse",
+      "board_slug": "hootsuite",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=hootsuite.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "HubSpot",
+      "ats_platform": "greenhouse",
+      "board_slug": "hubspot",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=hubspot.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Indeed",
+      "ats_platform": "greenhouse",
+      "board_slug": "indeed",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=indeed.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Instacart",
+      "ats_platform": "greenhouse",
+      "board_slug": "instacart",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=instacart.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Intercom",
+      "ats_platform": "greenhouse",
+      "board_slug": "intercom",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=intercom.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Iterable",
+      "ats_platform": "greenhouse",
+      "board_slug": "iterable",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=iterable.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Jane Street",
+      "ats_platform": "greenhouse",
+      "board_slug": "janestreet",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=janestreet.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "JetBrains",
+      "ats_platform": "greenhouse",
+      "board_slug": "jetbrains",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=jetbrains.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Klaviyo",
+      "ats_platform": "greenhouse",
+      "board_slug": "klaviyo",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=klaviyo.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Labelbox",
+      "ats_platform": "greenhouse",
+      "board_slug": "labelbox",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=labelbox.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Later",
+      "ats_platform": "greenhouse",
+      "board_slug": "later",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=later.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Lattice",
+      "ats_platform": "greenhouse",
+      "board_slug": "lattice",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=lattice.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "LaunchDarkly",
+      "ats_platform": "greenhouse",
+      "board_slug": "launchdarkly",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=launchdarkly.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Lucid Motors",
+      "ats_platform": "greenhouse",
+      "board_slug": "lucidmotors",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=lucidmotors.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Lyft",
+      "ats_platform": "greenhouse",
+      "board_slug": "lyft",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=lyft.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Marqeta",
+      "ats_platform": "greenhouse",
+      "board_slug": "marqeta",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=marqeta.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "MasterClass",
+      "ats_platform": "greenhouse",
+      "board_slug": "masterclass",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=masterclass.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Mixpanel",
+      "ats_platform": "greenhouse",
+      "board_slug": "mixpanel",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=mixpanel.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Mojio",
+      "ats_platform": "greenhouse",
+      "board_slug": "mojio",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=moj.io&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "MongoDB",
+      "ats_platform": "greenhouse",
+      "board_slug": "mongodb",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=mongodb.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Netlify",
+      "ats_platform": "greenhouse",
+      "board_slug": "netlify",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=netlify.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "New Relic",
+      "ats_platform": "greenhouse",
+      "board_slug": "newrelic",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=newrelic.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Nuro",
+      "ats_platform": "greenhouse",
+      "board_slug": "nuro",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=nuro.ai&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Okta",
+      "ats_platform": "greenhouse",
+      "board_slug": "okta",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=okta.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "OneTrust",
+      "ats_platform": "greenhouse",
+      "board_slug": "onetrust",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=onetrust.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Osano",
+      "ats_platform": "greenhouse",
+      "board_slug": "osano",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=osano.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Oscar Health",
+      "ats_platform": "greenhouse",
+      "board_slug": "oscar",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=oscarhealth.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Oura",
+      "ats_platform": "greenhouse",
+      "board_slug": "oura",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=ouraring.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "PagerDuty",
+      "ats_platform": "greenhouse",
+      "board_slug": "pagerduty",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=pagerduty.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Peloton",
+      "ats_platform": "greenhouse",
+      "board_slug": "peloton",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=onepeloton.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Pinterest",
+      "ats_platform": "greenhouse",
+      "board_slug": "pinterest",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=pinterest.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "PlanetScale",
+      "ats_platform": "greenhouse",
+      "board_slug": "planetscale",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=planetscale.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Postman (Greenhouse)",
+      "ats_platform": "greenhouse",
+      "board_slug": "postman",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=postman.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Reddit",
+      "ats_platform": "greenhouse",
+      "board_slug": "reddit",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=reddit.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Relativity",
+      "ats_platform": "greenhouse",
+      "board_slug": "relativity",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=relativity.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Riot Games",
+      "ats_platform": "greenhouse",
+      "board_slug": "riotgames",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=riotgames.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Robinhood",
+      "ats_platform": "greenhouse",
+      "board_slug": "robinhood",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=robinhood.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Roblox",
+      "ats_platform": "greenhouse",
+      "board_slug": "roblox",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=roblox.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Roku",
+      "ats_platform": "greenhouse",
+      "board_slug": "roku",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=roku.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Salesloft",
+      "ats_platform": "greenhouse",
+      "board_slug": "salesloft",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=salesloft.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Samsara",
+      "ats_platform": "greenhouse",
+      "board_slug": "samsara",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=samsara.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Scale AI",
+      "ats_platform": "greenhouse",
+      "board_slug": "scaleai",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=scale.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Sendbird",
+      "ats_platform": "greenhouse",
+      "board_slug": "sendbird",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=sendbird.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "SingleStore",
+      "ats_platform": "greenhouse",
+      "board_slug": "singlestore",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=singlestore.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "SoFi",
+      "ats_platform": "greenhouse",
+      "board_slug": "sofi",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=sofi.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "SpaceX",
+      "ats_platform": "greenhouse",
+      "board_slug": "spacex",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=spacex.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Squarespace",
+      "ats_platform": "greenhouse",
+      "board_slug": "squarespace",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=squarespace.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Starburst",
+      "ats_platform": "greenhouse",
+      "board_slug": "starburst",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=starburst.io&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Stripe",
+      "ats_platform": "greenhouse",
+      "board_slug": "stripe",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=stripe.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Sweetgreen",
+      "ats_platform": "greenhouse",
+      "board_slug": "sweetgreen",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=sweetgreen.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Thinkific",
+      "ats_platform": "greenhouse",
+      "board_slug": "thinkific",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=thinkific.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Toast",
+      "ats_platform": "greenhouse",
+      "board_slug": "toast",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=toasttab.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Twilio",
+      "ats_platform": "greenhouse",
+      "board_slug": "twilio",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=twilio.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Twitch",
+      "ats_platform": "greenhouse",
+      "board_slug": "twitch",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=twitch.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Typeface",
+      "ats_platform": "greenhouse",
+      "board_slug": "typeface",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=typeface.ai&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Unity",
+      "ats_platform": "greenhouse",
+      "board_slug": "unity3d",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=unity.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Vercel",
+      "ats_platform": "greenhouse",
+      "board_slug": "vercel",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=vercel.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Verkada",
+      "ats_platform": "greenhouse",
+      "board_slug": "verkada",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=verkada.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Vonage",
+      "ats_platform": "greenhouse",
+      "board_slug": "vonage",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=vonage.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Waymo",
+      "ats_platform": "greenhouse",
+      "board_slug": "waymo",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=waymo.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Webflow",
+      "ats_platform": "greenhouse",
+      "board_slug": "webflow",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=webflow.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Workleap",
+      "ats_platform": "greenhouse",
+      "board_slug": "workleap",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=workleap.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "ZoomInfo",
+      "ats_platform": "greenhouse",
+      "board_slug": "zoominfo",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=zoominfo.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Zscaler",
+      "ats_platform": "greenhouse",
+      "board_slug": "zscaler",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=zscaler.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Achievers",
+      "ats_platform": "lever",
+      "board_slug": "achievers",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=achievers.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Anyscale",
+      "ats_platform": "lever",
+      "board_slug": "anyscale",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=anyscale.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Fullscript",
+      "ats_platform": "lever",
+      "board_slug": "fullscript",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=fullscript.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "GoPuff",
+      "ats_platform": "lever",
+      "board_slug": "gopuff",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=gopuff.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Neon (Lever)",
+      "ats_platform": "lever",
+      "board_slug": "neon",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=neon.tech&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Netflix",
+      "ats_platform": "lever",
+      "board_slug": "netflix",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=netflix.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Palantir",
+      "ats_platform": "lever",
+      "board_slug": "palantir",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=palantir.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Plaid (Lever)",
+      "ats_platform": "lever",
+      "board_slug": "plaid",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=plaid.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "PointClickCare",
+      "ats_platform": "lever",
+      "board_slug": "pointclickcare",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=pointclickcare.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Shield AI",
+      "ats_platform": "lever",
+      "board_slug": "shieldai",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=shieldai.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Spotify",
+      "ats_platform": "lever",
+      "board_slug": "spotify",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=spotify.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "TextNow",
+      "ats_platform": "lever",
+      "board_slug": "textnow",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=textnow.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Veeva Systems",
+      "ats_platform": "lever",
+      "board_slug": "veeva",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=veevasystems.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Wattpad",
+      "ats_platform": "lever",
+      "board_slug": "wattpad",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=wattpad.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Zoox",
+      "ats_platform": "lever",
+      "board_slug": "zoox",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=zoox.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Accenture",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "Accenture1",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=accenture.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Adidas",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "Adidas",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=adidas.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Bosch",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "BoschGroup",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=bosch.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Deloitte",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "Deloitte4",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=deloitte.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "DHL",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "DHL",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=dhl.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Sanofi",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "Sanofi",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=sanofi.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Visa",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "Visa",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=visa.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Adobe",
+      "ats_platform": "workday",
+      "board_slug": "adobe",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=adobe.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Amazon",
+      "ats_platform": "workday",
+      "board_slug": "amazon",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=amazon.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Apple",
+      "ats_platform": "workday",
+      "board_slug": "apple",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=apple.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Bain & Company",
+      "ats_platform": "workday",
+      "board_slug": "bain",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=bain.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "BCG",
+      "ats_platform": "workday",
+      "board_slug": "bcg",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=bcg.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Bell Canada",
+      "ats_platform": "workday",
+      "board_slug": "bell",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=bell.ca&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "BMO",
+      "ats_platform": "workday",
+      "board_slug": "bmo",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=bmo.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Boeing",
+      "ats_platform": "workday",
+      "board_slug": "boeing",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=boeing.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Booz Allen Hamilton",
+      "ats_platform": "workday",
+      "board_slug": "boozallen",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=boozallen.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Capital One",
+      "ats_platform": "workday",
+      "board_slug": "capitalone",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=capitalone.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "CIBC",
+      "ats_platform": "workday",
+      "board_slug": "cibc",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=cibc.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "EY",
+      "ats_platform": "workday",
+      "board_slug": "ey",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=ey.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Goldman Sachs",
+      "ats_platform": "workday",
+      "board_slug": "goldmansachs",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=goldmansachs.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Google",
+      "ats_platform": "workday",
+      "board_slug": "google",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=google.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "JPMorgan Chase",
+      "ats_platform": "workday",
+      "board_slug": "jpmorgan",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=jpmorganchase.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "KPMG",
+      "ats_platform": "workday",
+      "board_slug": "kpmg",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=kpmg.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Leidos",
+      "ats_platform": "workday",
+      "board_slug": "leidos",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=leidos.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Mastercard",
+      "ats_platform": "workday",
+      "board_slug": "mastercard",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=mastercard.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "McKinsey",
+      "ats_platform": "workday",
+      "board_slug": "mckinsey",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=mckinsey.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Meta",
+      "ats_platform": "workday",
+      "board_slug": "meta",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=meta.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Microsoft",
+      "ats_platform": "workday",
+      "board_slug": "microsoft",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=microsoft.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Morgan Stanley",
+      "ats_platform": "workday",
+      "board_slug": "morganstanley",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=morganstanley.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "PwC",
+      "ats_platform": "workday",
+      "board_slug": "pwc",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=pwc.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "RBC",
+      "ats_platform": "workday",
+      "board_slug": "rbc",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=rbc.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Rogers",
+      "ats_platform": "workday",
+      "board_slug": "rogers",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=rogers.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "SAIC",
+      "ats_platform": "workday",
+      "board_slug": "saic",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=saic.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Salesforce",
+      "ats_platform": "workday",
+      "board_slug": "salesforce",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=salesforce.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Scotiabank",
+      "ats_platform": "workday",
+      "board_slug": "scotiabank",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=scotiabank.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "ServiceNow",
+      "ats_platform": "workday",
+      "board_slug": "servicenow",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=servicenow.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "TD Bank",
+      "ats_platform": "workday",
+      "board_slug": "td",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=td.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Telus",
+      "ats_platform": "workday",
+      "board_slug": "telus",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=telus.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Workday",
+      "ats_platform": "workday",
+      "board_slug": "workday",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=workday.com&sz=128",
+      "enabled": true
+    }
+  ]
+}

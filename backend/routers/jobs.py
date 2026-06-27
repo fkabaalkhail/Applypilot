@@ -37,6 +37,52 @@ def _sanitize_description(text: str) -> str:
     return nh3.clean(text, tags=set())
 
 
+def _compose_jobright_description(job_result: dict) -> str:
+    """Compose a clean plain-text description from a jobright jobResult object.
+
+    jobright no longer ships a single ``jdContent`` HTML blob. Instead it
+    exposes structured fields. We assemble them into a readable description:
+      - jobSummary            → intro paragraph
+      - coreResponsibilities  → "Responsibilities" bullets
+      - qualifications        → "Qualifications" bullets
+    Falls back gracefully when individual fields are missing.
+    """
+    import re as _re
+
+    def _clean(value: str) -> str:
+        # Strip any stray HTML and collapse whitespace.
+        value = _re.sub(r"<[^>]+>", " ", value or "")
+        value = value.replace("\u2022", " ").strip()
+        return _re.sub(r"\s{2,}", " ", value)
+
+    def _as_bullets(value) -> list[str]:
+        items: list[str] = []
+        if isinstance(value, list):
+            items = [str(v) for v in value]
+        elif isinstance(value, str) and value.strip():
+            # Split a single string on newlines or bullet separators.
+            items = _re.split(r"[\n\u2022]+", value)
+        return [b for b in (_clean(i) for i in items) if b]
+
+    sections: list[str] = []
+
+    summary = _clean(job_result.get("jobSummary", "") if isinstance(job_result.get("jobSummary"), str) else "")
+    if summary:
+        sections.append(summary)
+
+    responsibilities = _as_bullets(job_result.get("coreResponsibilities"))
+    if responsibilities:
+        sections.append("Responsibilities:\n" + "\n".join(f"• {b}" for b in responsibilities))
+
+    qualifications = _as_bullets(job_result.get("qualifications")) or _as_bullets(
+        job_result.get("detailQualifications")
+    )
+    if qualifications:
+        sections.append("Qualifications:\n" + "\n".join(f"• {b}" for b in qualifications))
+
+    return "\n\n".join(sections).strip()
+
+
 @router.get("", response_model=list[ScrapedJobOut])
 def list_jobs(
     status: Optional[JobStatus] = None,
@@ -489,7 +535,10 @@ async def fetch_job_details(
                 continue
 
         # Strategy 2: __NEXT_DATA__ (jobright.ai and other Next.js sites)
-        if not description:
+        # jobright exposes a rich jobResult object. We compose a clean, well
+        # structured description from its summary / responsibilities /
+        # qualifications fields, which reads better than the raw JSON-LD HTML.
+        if "jobright.ai" in job.url or not description:
             next_match = re.search(
                 r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
                 text, re.DOTALL
@@ -497,21 +546,38 @@ async def fetch_job_details(
             if next_match:
                 try:
                     next_data = json.loads(next_match.group(1))
-                    # jobright.ai structure
                     job_result = (next_data.get("props", {})
                                   .get("pageProps", {})
                                   .get("dataSource", {})
-                                  .get("jobResult", {}))
+                                  .get("jobResult", {})) or {}
                     if job_result:
-                        desc_html = job_result.get("jdContent", "") or job_result.get("description", "")
-                        if desc_html:
-                            desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
-                            desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                            if len(desc_text) > 50:
-                                description = desc_text
+                        composed = _compose_jobright_description(job_result)
+                        # Prefer the composed description when it's substantial.
+                        if composed and len(composed) > len(description or ""):
+                            description = composed
+
+                        # Capture accurate company logo from jobright's CDN.
                         logo = job_result.get("jdLogo", "")
-                        if logo and logo.startswith("http") and not job.company_logo:
+                        if logo and isinstance(logo, str) and logo.startswith("http") and not job.company_logo:
                             job.company_logo = logo
+
+                        # Capture salary, applicant count, and work model.
+                        salary = job_result.get("salaryDesc", "")
+                        if salary and not job.salary_range:
+                            job.salary_range = salary[:255]
+
+                        applicants = job_result.get("applicantsCount")
+                        if isinstance(applicants, int) and applicants >= 0 and job.applicant_count is None:
+                            job.applicant_count = applicants
+
+                        work_model = (job_result.get("workModel") or "").lower()
+                        if work_model:
+                            if "remote" in work_model:
+                                job.work_type = "remote"
+                            elif "hybrid" in work_model:
+                                job.work_type = "hybrid"
+                            elif "site" in work_model or "office" in work_model:
+                                job.work_type = "onsite"
                 except (json.JSONDecodeError, KeyError, TypeError):
                     pass
 
@@ -635,13 +701,18 @@ async def fetch_job_details(
         # Save results
         if description:
             job.description = _sanitize_description(description)
-            db.commit()
+        # Commit any field updates (description, logo, salary, applicants, work_type).
+        db.commit()
 
         return {
             "id": job.id,
             "description": job.description or "",
             "apply_url": apply_url,
             "company_logo": job.company_logo or "",
+            "company_domain": job.company_domain or "",
+            "salary_range": job.salary_range or "",
+            "applicant_count": job.applicant_count,
+            "work_type": job.work_type or "",
         }
     except Exception as e:
         logger.warning(f"Failed to fetch details for job {job_id}: {e}")

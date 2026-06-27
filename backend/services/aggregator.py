@@ -18,6 +18,7 @@ from backend.db.models import GitHubSource, ScrapedJob
 from backend.services.markdown_parser import MarkdownParser, ParsedJob
 from backend.services.country_filter import CountryFilter
 from backend.services.work_type_classifier import WorkTypeClassifier
+from backend.services.logo_resolver import resolve_logo
 
 logger = logging.getLogger(__name__)
 
@@ -494,8 +495,9 @@ class AggregatorService:
             # Exclude non-US/CA jobs
             return False
 
-        # Classify work type
-        work_type = self.work_type_classifier.classify(job.location)
+        # Work type: prefer the jobright "Work Model" column when present,
+        # otherwise infer it from the location string.
+        work_type = job.work_model or self.work_type_classifier.classify(job.location)
 
         # Determine role category: use section_category from parser if available,
         # otherwise fall back to source.role_category
@@ -503,6 +505,14 @@ class AggregatorService:
 
         # Determine experience level
         experience_level = self._get_experience_level(source)
+
+        # Resolve an accurate company logo + domain. The parser already resolves
+        # these from the company website URL; resolve again as a safety net for
+        # rows that lacked a website link.
+        company_logo = job.company_logo or ""
+        company_domain = job.company_domain or ""
+        if not company_domain:
+            company_logo, company_domain = resolve_logo(job.company, job.company_url)
 
         # Deduplication: check if URL already exists
         existing = (
@@ -528,7 +538,9 @@ class AggregatorService:
             role_category=role_category,
             country=country,
             experience_level=experience_level,
-            company_logo=job.company_logo or "",
+            company_logo=company_logo,
+            company_domain=company_domain,
+            company_url=job.company_url or "",
         )
         self.db.add(scraped_job)
         try:

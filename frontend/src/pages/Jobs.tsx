@@ -4,6 +4,7 @@ import JobDetailView from "../components/JobDetailView";
 import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
 import api from "../auth/api";
+import { resolveLogoUrl, avatarColor } from "../lib/companyLogo";
 
 
 
@@ -30,6 +31,8 @@ interface Job {
   industry_score: number;
   applicant_count: number | null;
   company_logo: string;
+  company_domain?: string;
+  company_url?: string;
   work_type: string;
   role_category: string;
   country: string;
@@ -51,157 +54,15 @@ interface Filters {
   experience_level: string;
 }
 
-// Company logo colors based on first letter
-const LOGO_COLORS: Record<string, string> = {
-  A: "#FF6B35", B: "#4ECDC4", C: "#45B7D1", D: "#96CEB4",
-  E: "#FFEAA7", F: "#2D3436", G: "#4285F4", H: "#E17055",
-  I: "#6C5CE7", J: "#00B894", K: "#FDCB6E", L: "#E84393",
-  M: "#0984E3", N: "#E50914", O: "#FF9F43", P: "#6C5CE7",
-  Q: "#00CEC9", R: "#D63031", S: "#C0392B", T: "#2ECC71",
-  U: "#3498DB", V: "#1ABC9C", W: "#9B59B6", X: "#34495E",
-  Y: "#F39C12", Z: "#1ABC9C",
-};
-
+// Logo + letter-avatar resolution is centralized in lib/companyLogo.
 function getLogoColor(company: string): string {
-  const letter = company.charAt(0).toUpperCase();
-  return LOGO_COLORS[letter] || "#6B7280";
+  return avatarColor(company);
 }
 
-// Known company → domain mappings for accurate logos
-const COMPANY_DOMAINS: Record<string, string> = {
-  "pwc canada": "pwc.com", "pwc": "pwc.com",
-  "deloitte canada": "deloitte.com", "deloitte": "deloitte.com",
-  "kpmg canada": "kpmg.com", "kpmg": "kpmg.com",
-  "ey canada": "ey.com", "ey": "ey.com",
-  "accenture canada": "accenture.com", "accenture": "accenture.com",
-  "mckinsey": "mckinsey.com", "mckinsey (canada)": "mckinsey.com",
-  "capgemini canada": "capgemini.com", "capgemini": "capgemini.com",
-  "td bank": "td.com", "td": "td.com",
-  "rbc": "rbc.com", "royal bank": "rbc.com",
-  "cibc": "cibc.com",
-  "bmo": "bmo.com", "bank of montreal": "bmo.com",
-  "scotiabank": "scotiabank.com",
-  "national bank": "nbc.ca", "national bank of canada": "nbc.ca",
-  "cgi": "cgi.com",
-  "manulife": "manulife.com",
-  "sun life": "sunlife.com",
-  "shopify": "shopify.com",
-  "kinaxis": "kinaxis.com",
-  "ciena": "ciena.com",
-  "ross video": "rossvideo.com",
-  "trend micro": "trendmicro.com",
-  "magnet forensics": "magnetforensics.com",
-  "ribbon communications": "ribboncommunications.com",
-  "assent compliance": "assentcompliance.com",
-  "you.i tv": "youi.tv",
-  "electronic arts": "ea.com", "electronic arts (ea)": "ea.com",
-  "capital one": "capitalone.com",
-  "jp morgan": "jpmorgan.com", "jpmorgan": "jpmorgan.com",
-  "goldman sachs": "goldmansachs.com",
-  "two sigma": "twosigma.com",
-  "de shaw": "deshaw.com",
-  "jane street": "janestreet.com",
-  "meta": "meta.com", "facebook": "meta.com",
-  "google": "google.com", "alphabet": "google.com",
-  "amazon": "amazon.com", "aws": "amazon.com",
-  "apple": "apple.com",
-  "microsoft": "microsoft.com",
-  "netflix": "netflix.com",
-  "uber": "uber.com",
-  "airbnb": "airbnb.com",
-  "stripe": "stripe.com",
-  "openai": "openai.com",
-  "anthropic": "anthropic.com",
-  "nvidia": "nvidia.com",
-  "databricks": "databricks.com",
-  "snowflake": "snowflake.com",
-  "salesforce": "salesforce.com",
-  "oracle": "oracle.com",
-  "adobe": "adobe.com",
-  "intuit": "intuit.com",
-  "spotify": "spotify.com",
-  "twitter": "x.com",
-  "snap": "snap.com", "snapchat": "snap.com",
-  "discord": "discord.com",
-  "figma": "figma.com",
-  "notion": "notion.so",
-  "bytedance": "bytedance.com", "tiktok": "tiktok.com",
-  "bloomberg": "bloomberg.com",
-  "palantir": "palantir.com",
-  "coinbase": "coinbase.com",
-  "robinhood": "robinhood.com",
-  "doordash": "doordash.com",
-  "roblox": "roblox.com",
-  "tesla": "tesla.com",
-  "spacex": "spacex.com",
-  "wealthsimple": "wealthsimple.com",
-  "clio": "clio.com",
-  "fullscript": "fullscript.com",
-  "solace": "solace.com",
-  "calian": "calian.com",
-  "ericsson": "ericsson.com",
-  "blackberry": "blackberry.com",
-  "nokia": "nokia.com",
-  "mitel": "mitel.com",
-  "coveo": "coveo.com",
-  "huawei": "huawei.com", "huawei canada": "huawei.com",
-  "fortinet": "fortinet.com",
-  "mongodb": "mongodb.com",
-};
-
-function getCompanyLogoUrl(company: string, companyLogo: string): string | null {
-  // If we have a direct URL (LinkedIn CDN, etc.), use it
-  if (companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("clearbit") && !companyLogo.includes("icon.horse") && !companyLogo.includes("google.com/s2") && !companyLogo.includes("apistemic") && !companyLogo.includes("hunter.io")) {
-    return companyLogo;
-  }
-  // Check known domain mapping first
-  const lowerCompany = company.toLowerCase().trim();
-  let domain = COMPANY_DOMAINS[lowerCompany] || "";
-
-  // If not in mapping, try extracting from stored logo URL
-  if (!domain && companyLogo) {
-    if (companyLogo.includes("logo.clearbit.com/")) {
-      domain = companyLogo.split("logo.clearbit.com/")[1] || "";
-    } else if (companyLogo.includes("icon.horse/icon/")) {
-      domain = companyLogo.split("icon.horse/icon/")[1] || "";
-    } else if (companyLogo.includes("apistemic.com/domain:")) {
-      const match = companyLogo.match(/domain:([^?]+)/);
-      if (match) domain = match[1];
-    }
-  }
-
-  // Fallback: guess domain from company name
-  if (!domain) {
-    // Remove common suffixes like "Inc.", "Ltd.", "Corp.", "Canada", etc.
-    const cleaned = lowerCompany
-      .replace(/\s*(inc\.?|ltd\.?|corp\.?|llc|canada|usa|us|uk|group|technologies|solutions)\s*/gi, "")
-      .replace(/[^a-z0-9]/g, "");
-    if (cleaned.length < 2) return null;
-    domain = `${cleaned}.com`;
-  }
-
-  return `https://logos-api.apistemic.com/domain:${domain}?fallback=404`;
-}
-
-// On error: try Hunter.io, then hide
-function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, company: string, _companyLogo: string) {
-  const img = e.target as HTMLImageElement;
-  const src = img.src;
-  const lowerCompany = company.toLowerCase().trim();
-  const knownDomain = COMPANY_DOMAINS[lowerCompany];
-  const cleaned = company.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const domain = knownDomain || (cleaned.length >= 2 ? `${cleaned}.com` : "");
-
-  if (src.includes("apistemic.com") && domain) {
-    // Try hunter.io as second attempt
-    img.src = `https://logos.hunter.io/${domain}`;
-  } else if (src.includes("hunter.io") && domain) {
-    // Try Google favicon as last resort
-    img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-  } else {
-    // All failed — hide the img, letter initial will show through
-    img.style.display = "none";
-  }
+// On error: fall back to the letter avatar (no broken-image flashes, no
+// cascade of third-party providers). The placeholder sits behind the <img>.
+function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>) {
+  (e.target as HTMLImageElement).style.display = "none";
 }
 
 function timeAgo(dateStr: string): string {
@@ -458,13 +319,14 @@ export default function Jobs() {
                       {job.company.charAt(0).toUpperCase()}
                     </div>
                     {(() => {
-                      const logoUrl = getCompanyLogoUrl(job.company, job.company_logo);
+                      const logoUrl = resolveLogoUrl(job);
                       return logoUrl ? (
                         <img
                           src={logoUrl}
                           alt=""
                           className="company-logo-img-overlay"
-                          onError={(e) => handleLogoError(e, job.company, job.company_logo)}
+                          loading="lazy"
+                          onError={handleLogoError}
                         />
                       ) : null;
                     })()}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { resolveLogoUrl } from "../lib/companyLogo";
 
 const API_BASE = "";
 
@@ -28,6 +29,8 @@ interface Job {
   salary_range: string;
   status: string;
   company_logo?: string;
+  company_domain?: string;
+  company_url?: string;
   work_type?: string;
   role_category?: string;
   country?: string;
@@ -315,31 +318,22 @@ export default function JobDetailView({ job, onClose }: Props) {
       <div className="job-detail-header-section">
         <div className="job-detail-company-row">
           {(() => {
-            const cleaned = job.company.toLowerCase().replace(/[^a-z0-9]/g, "");
-            let domain = "";
-            if (companyLogo && companyLogo.includes("logo.clearbit.com/")) {
-              domain = companyLogo.split("logo.clearbit.com/")[1] || "";
-            } else if (companyLogo && companyLogo.includes("icon.horse/icon/")) {
-              domain = companyLogo.split("icon.horse/icon/")[1] || "";
-            }
-            if (!domain) domain = cleaned.length >= 2 ? `${cleaned}.com` : "";
-            const logoUrl = companyLogo && companyLogo.startsWith("http") && !companyLogo.includes("clearbit") && !companyLogo.includes("icon.horse") && !companyLogo.includes("google.com/s2") && !companyLogo.includes("hunter.io") && !companyLogo.includes("apistemic")
-              ? companyLogo
-              : domain ? `https://logos-api.apistemic.com/domain:${domain}?fallback=404` : null;
+            const logoUrl = resolveLogoUrl({
+              company: job.company,
+              company_logo: companyLogo || job.company_logo,
+              company_domain: job.company_domain,
+              company_url: job.company_url,
+            });
             return logoUrl ? (
               <img
                 src={logoUrl}
                 alt={`${job.company} logo`}
                 className="detail-company-logo"
+                loading="lazy"
                 onError={(e) => {
                   const img = e.target as HTMLImageElement;
-                  const src = img.src;
-                  if (src.includes("apistemic.com") && domain) {
-                    img.src = `https://logos.hunter.io/${domain}`;
-                  } else {
-                    img.style.display = "none";
-                    (img.nextElementSibling as HTMLElement)?.classList.remove("hidden-logo");
-                  }
+                  img.style.display = "none";
+                  (img.nextElementSibling as HTMLElement)?.classList.remove("hidden-logo");
                 }}
               />
             ) : null;

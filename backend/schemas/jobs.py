@@ -29,6 +29,8 @@ class ScrapedJobOut(BaseModel):
     company_size: str = ""
     company_description: str = ""
     company_logo: str = ""
+    company_domain: str = ""
+    company_url: str = ""
     ats_type: str = ""
 
     # Multi-source and match breakdown fields

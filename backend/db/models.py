@@ -125,6 +125,11 @@ class ScrapedJob(Base):
     country = Column(String, default="")
     experience_level = Column(String, default="")
 
+    # Logo accuracy: the resolved company website domain (e.g. "stripe.com")
+    # and the raw company website URL captured from the source listing.
+    company_domain = Column(String, default="")
+    company_url = Column(String, default="")
+
 
 class PendingQuestion(Base):
     """A question the bot got stuck on during an application. User must answer."""

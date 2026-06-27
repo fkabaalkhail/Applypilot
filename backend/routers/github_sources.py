@@ -132,10 +132,13 @@ async def cron_ats(
         from backend.services.ats_scraper import ATSScraper
         from backend.services.country_filter import CountryFilter
         from backend.services.work_type_classifier import WorkTypeClassifier
+        from backend.services.logo_resolver import resolve_logo
+        from backend.data.company_registry import load_logo_map
 
         scraper = ATSScraper(filter_entry_level=True, filter_north_america=True)
         country_filter = CountryFilter()
         work_type_classifier = WorkTypeClassifier()
+        logo_map = load_logo_map()
 
         jobs = await scraper.scrape_all()
 
@@ -163,6 +166,11 @@ async def cron_ats(
             else:
                 experience_level = "new_grad"
 
+            # Resolve an accurate logo: prefer the curated registry logo,
+            # otherwise derive one from the company domain.
+            resolved_logo, resolved_domain = resolve_logo(job.company)
+            company_logo = logo_map.get(job.company.strip().lower()) or resolved_logo
+
             scraped_job = ScrapedJob(
                 title=job.title,
                 company=job.company,
@@ -176,7 +184,8 @@ async def cron_ats(
                 role_category=job.department or "",
                 country=country,
                 experience_level=experience_level,
-                company_logo=f"https://www.google.com/s2/favicons?domain={job.company.lower().replace(' ', '')}.com&sz=128",
+                company_logo=company_logo,
+                company_domain=resolved_domain,
             )
             db.add(scraped_job)
             try:

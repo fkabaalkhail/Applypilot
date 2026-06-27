@@ -37,9 +37,10 @@ class ATSJob:
 
 # ─── Company → ATS mapping ───────────────────────────────────────────────────
 # Each entry: (ats_platform, slug, company_display_name)
-# Built from jobright-ai repos + manual verification
-
-ATS_COMPANIES: list[tuple[str, str, str]] = [
+# DEPRECATED: the canonical source of truth is backend/data/ats_companies.json,
+# loaded via company_registry.load_companies(). This list is kept only as an
+# emergency fallback if the registry file cannot be read at runtime.
+_LEGACY_ATS_COMPANIES: list[tuple[str, str, str]] = [
     # === Greenhouse companies (69) ===
     ("greenhouse", "affirm", "Affirm"),
     ("greenhouse", "airbnb", "Airbnb"),
@@ -112,8 +113,6 @@ ATS_COMPANIES: list[tuple[str, str, str]] = [
     ("greenhouse", "doordash", "DoorDash"),
     ("greenhouse", "snap", "Snap"),
     ("greenhouse", "openai", "OpenAI"),
-    ("greenhouse", "wealthsimple", "Wealthsimple"),
-    ("greenhouse", "clio", "Clio"),
     # === Lever companies ===
     ("lever", "anyscale", "Anyscale"),
     ("lever", "gopuff", "GoPuff"),
@@ -141,6 +140,32 @@ ATS_COMPANIES: list[tuple[str, str, str]] = [
     ("ashby", "rippling", "Rippling"),
     ("ashby", "openphone", "OpenPhone"),
     ("ashby", "loom", "Loom"),
+    # === Canadian tech (verified to contain CA jobs: Ottawa/Toronto/Waterloo/Montreal/Vancouver) ===
+    ("greenhouse", "geotab", "Geotab"),
+    ("greenhouse", "workleap", "Workleap"),
+    ("greenhouse", "alayacare", "AlayaCare"),
+    ("greenhouse", "flipp", "Flipp"),
+    ("greenhouse", "later", "Later"),
+    ("greenhouse", "hootsuite", "Hootsuite"),
+    ("greenhouse", "thinkific", "Thinkific"),
+    ("greenhouse", "canonical", "Canonical"),
+    ("greenhouse", "mojio", "Mojio"),
+    ("lever", "pointclickcare", "PointClickCare"),
+    ("lever", "achievers", "Achievers"),
+    ("ashby", "neofinancial", "Neo Financial"),
+    ("ashby", "cohere", "Cohere"),
+    ("ashby", "wealthsimple", "Wealthsimple"),
+    ("ashby", "1password", "1Password"),
+    ("ashby", "jobber", "Jobber"),
+    ("ashby", "benevity", "Benevity"),
+    ("ashby", "jane", "Jane Software"),
+    ("ashby", "trulioo", "Trulioo"),
+    ("ashby", "hopper", "Hopper"),
+    ("ashby", "float", "Float"),
+    ("ashby", "klue", "Klue"),
+    ("ashby", "loopio", "Loopio"),
+    ("ashby", "rewind", "Rewind"),
+    ("ashby", "top-hat", "Top Hat"),
     # === SmartRecruiters companies ===
     ("smartrecruiters", "Visa", "Visa"),
     ("smartrecruiters", "BoschGroup", "Bosch"),
@@ -151,6 +176,19 @@ ATS_COMPANIES: list[tuple[str, str, str]] = [
     ("smartrecruiters", "Ubisoft", "Ubisoft"),
     ("smartrecruiters", "Deloitte4", "Deloitte"),
 ]
+
+
+# Canonical company list — loaded from backend/data/ats_companies.json.
+# Falls back to the legacy hardcoded list if the registry can't be read.
+try:
+    from backend.data.company_registry import load_companies
+
+    ATS_COMPANIES: list[tuple[str, str, str]] = load_companies() or _LEGACY_ATS_COMPANIES
+    if ATS_COMPANIES is _LEGACY_ATS_COMPANIES:
+        logger.warning("Company registry empty; using legacy fallback list")
+except Exception as e:  # pragma: no cover - defensive
+    logger.error("Failed to load company registry, using legacy list: %s", e)
+    ATS_COMPANIES = _LEGACY_ATS_COMPANIES
 
 
 # Keywords that indicate intern/new-grad level roles
@@ -222,6 +260,11 @@ CA_CITIES = [
     "toronto", "vancouver", "montreal", "ottawa", "calgary",
     "edmonton", "winnipeg", "quebec", "hamilton", "kitchener",
     "waterloo", "mississauga", "brampton", "markham",
+    "london", "victoria", "halifax", "burnaby", "richmond",
+    "gatineau", "kanata", "scarborough", "north york", "etobicoke",
+    "vaughan", "richmond hill", "oakville", "burlington", "guelph",
+    "saskatoon", "regina", "fredericton", "moncton", "kelowna",
+    "windsor", "laval", "longueuil", "sherbrooke", "barrie",
 ]
 
 

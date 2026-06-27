@@ -15,6 +15,8 @@ import datetime
 from dataclasses import dataclass
 from typing import Optional
 
+from backend.services.logo_resolver import resolve_logo
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,6 +53,8 @@ class ParsedJob:
     posted_date: Optional[datetime.datetime] = None
     company_logo: Optional[str] = None
     company_url: Optional[str] = None  # company website URL (e.g., https://www.tiktok.com)
+    company_domain: Optional[str] = None  # registrable domain resolved from company_url/name
+    work_model: Optional[str] = None  # parsed "Work Model" column: remote/hybrid/onsite
     section_category: Optional[str] = None  # from section headers (mega-repo)
 
 
@@ -320,20 +324,11 @@ class MarkdownParser:
                 text, link = self._extract_markdown_link(cell)
                 if text is not None:
                     data[field] = text
-                    # Store company URL (e.g., https://www.tiktok.com)
+                    # jobright tables put the company WEBSITE in this link, e.g.
+                    # **[Repligen Corporation](http://www.repligen.com)** — this is
+                    # the authoritative source for an accurate logo.
                     if link and not link.startswith("https://jobright.ai"):
                         data["company_url"] = link
-                        # Generate logo from company domain using icon.horse
-                        if not logo_url:
-                            try:
-                                from urllib.parse import urlparse
-                                domain = urlparse(link).netloc
-                                if domain:
-                                    if domain.startswith("www."):
-                                        domain = domain[4:]
-                                    data["company_logo"] = f"https://icon.horse/icon/{domain}"
-                            except Exception:
-                                pass
                 else:
                     # Remove image syntax to get plain company name
                     clean = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", cell).strip()
@@ -352,6 +347,11 @@ class MarkdownParser:
                 logo_url = self._extract_image_url(cell)
                 if logo_url:
                     data[field] = logo_url
+            elif field == "work_model":
+                # jobright's "Work Model" column: Remote / Hybrid / On Site
+                clean = re.sub(r'<[^>]+>', ' ', cell).strip()
+                clean = re.sub(r'\s{2,}', ' ', clean)
+                data[field] = self._normalize_work_model(clean)
             else:
                 # For location and other text fields, strip HTML tags
                 clean = re.sub(r'<[^>]+>', ' ', cell).strip()
@@ -361,14 +361,45 @@ class MarkdownParser:
         if not data.get("url") or not data.get("title"):
             return None
 
+        # Resolve an accurate, stable logo from the company website URL the
+        # jobright table provides (falling back to a known map / name guess).
+        # Only override the logo if the table did not embed an explicit image.
+        company_url = data.get("company_url")
+        company_name = data.get("company", "")
+        resolved_logo, resolved_domain = resolve_logo(company_name, company_url)
+        company_logo = data.get("company_logo") or resolved_logo or None
+
         return ParsedJob(
             title=data.get("title", ""),
-            company=data.get("company", ""),
+            company=company_name,
             location=data.get("location", ""),
             url=data.get("url", ""),
             posted_date=data.get("posted_date"),
-            company_logo=data.get("company_logo"),
+            company_logo=company_logo,
+            company_url=company_url,
+            company_domain=resolved_domain or None,
+            work_model=data.get("work_model"),
         )
+
+    @staticmethod
+    def _normalize_work_model(value: str) -> Optional[str]:
+        """Normalize a Work Model cell to 'remote' / 'hybrid' / 'onsite'.
+
+        Returns None when the cell is empty or unrecognized so callers can
+        fall back to inferring work type from the location.
+        """
+        if not value:
+            return None
+        lower = value.lower()
+        if "remote" in lower:
+            return "remote"
+        if "hybrid" in lower:
+            return "hybrid"
+        if "on" in lower and "site" in lower:  # "On Site", "On-Site", "Onsite"
+            return "onsite"
+        if "in office" in lower or "in-person" in lower or "in person" in lower:
+            return "onsite"
+        return None
 
     def _parse_date(self, date_str: str) -> Optional[datetime.datetime]:
         """Parse various date formats from GitHub job tables."""
