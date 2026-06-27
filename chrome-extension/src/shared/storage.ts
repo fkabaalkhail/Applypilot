@@ -122,8 +122,10 @@ export async function saveAuth(auth: StoredAuth): Promise<void> {
     [KEYS.auth]: { refreshToken: auth.refreshToken, email: auth.email },
   });
   try {
-    await chrome.storage.session.set({ [KEYS.authAccess]: auth.accessToken });
-    await chrome.storage.session.set({ [KEYS.authAccessExp]: readJwtExp(auth.accessToken) });
+    await chrome.storage.session.set({
+      [KEYS.authAccess]: auth.accessToken,
+      [KEYS.authAccessExp]: readJwtExp(auth.accessToken),
+    });
   } catch {
     // session storage unavailable — the access token just won't persist
   }
