@@ -38,11 +38,13 @@ def _refresh_ttl_days(client: str) -> int:
     return EXTENSION_REFRESH_TOKEN_EXPIRE_DAYS if client == "extension" else REFRESH_TOKEN_EXPIRE_DAYS
 
 
-def create_refresh_token(user_id: int, client: str = "web") -> str:
+def create_refresh_token(user_id: int, client: str = "web", sid: str | None = None) -> str:
     """Create a long-lived refresh token with a unique JTI for revocation.
 
     The TTL depends on ``client``: extension tokens last
     ``EXTENSION_REFRESH_TOKEN_EXPIRE_DAYS``, web tokens ``REFRESH_TOKEN_EXPIRE_DAYS``.
+    ``sid`` ties the token to a row in the session registry so it can be listed
+    and revoked from "Connected Devices"; it survives rotation.
     """
     expire = datetime.now(timezone.utc) + timedelta(days=_refresh_ttl_days(client))
     payload = {
@@ -52,6 +54,8 @@ def create_refresh_token(user_id: int, client: str = "web") -> str:
         "client": client,
         "jti": str(uuid.uuid4()),
     }
+    if sid:
+        payload["sid"] = sid
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 

@@ -37,3 +37,25 @@ def test_session_model_persists(db_session, user):
     assert found is not None
     assert found.client == "extension"
     assert found.revoked_at is None
+
+
+def test_refresh_token_carries_sid():
+    tok = create_refresh_token(TEST_USER_ID, client="extension", sid="sid-xyz")
+    payload = decode_token(tok)
+    assert payload["sid"] == "sid-xyz"
+    assert payload["client"] == "extension"
+
+
+def test_start_session_captures_client(db_session, user):
+    from backend.services import sessions
+
+    class _Req:
+        client = type("C", (), {"host": "1.2.3.4"})()
+        headers = {"user-agent": "TestAgent/1.0"}
+
+    s = sessions.start_session(db_session, TEST_USER_ID, "extension", _Req())
+    assert s.sid and len(s.sid) >= 32
+    assert s.client == "extension"
+    assert s.last_ip == "1.2.3.4"
+    assert s.user_agent == "TestAgent/1.0"
+    assert sessions.get_active(db_session, s.sid) is not None
