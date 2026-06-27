@@ -372,6 +372,10 @@ def refresh(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
+    # Preserve the issuing surface across rotation (web vs extension) so the
+    # extension keeps its longer refresh TTL.
+    client = payload.get("client", "web")
+
     # Revoke the old refresh token (rotation)
     if jti:
         revoked_token = RevokedToken(
@@ -387,11 +391,14 @@ def refresh(
         user_id=user_id, success=True,
     )
 
-    refresh_tok = create_refresh_token(user_id)
-    _set_refresh_cookie(response, refresh_tok)
+    refresh_tok = create_refresh_token(user_id, client=client)
+    # Only the web client uses the HttpOnly cookie; the extension carries the
+    # token in the response body and stores it itself.
+    if client != "extension":
+        _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponseWithVerification(
-        access_token=create_access_token(user_id),
+        access_token=create_access_token(user_id, client=client),
         refresh_token=refresh_tok,
         email_verified=user.email_verified,
     )

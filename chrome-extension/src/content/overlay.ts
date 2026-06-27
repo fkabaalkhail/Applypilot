@@ -532,11 +532,8 @@ interface Refs {
   infoSidebar: HTMLDivElement;
   infoForm: HTMLDivElement;
   loginView: HTMLDivElement;
-  loginEmail: HTMLInputElement;
-  loginPassword: HTMLInputElement;
   loginError: HTMLDivElement;
-  btnLogin: HTMLButtonElement;
-  btnGoogleLogin: HTMLButtonElement;
+  btnConnect: HTMLButtonElement;
 }
 
 let refs: Refs | null = null;
@@ -654,28 +651,14 @@ function buildHTML(): string {
           </div>
         </div>
 
-        <!-- Login view (shown when signed out) -->
+        <!-- Onboarding / connect view (shown when signed out) -->
         <div class="ap-login-view" id="ap-login-view">
           <div class="ap-login-card">
-            <h2>Connect your account</h2>
-            <p class="ap-muted">Sign in to Tailrd to autofill with your profile.</p>
-            <label class="ap-form-label" for="ap-login-email">Email</label>
-            <input id="ap-login-email" class="ap-input" type="email" autocomplete="username" />
-            <label class="ap-form-label" for="ap-login-password">Password</label>
-            <input id="ap-login-password" class="ap-input" type="password" autocomplete="current-password" />
+            <h2>Connect your Tailrd account</h2>
+            <p class="ap-muted">Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters — kept in sync automatically.</p>
             <div id="ap-login-error" class="ap-error" style="display:none"></div>
-            <button id="ap-btn-login" class="ap-btn-login" type="button">Sign in</button>
-            <div class="ap-login-divider"><span>or</span></div>
-            <button id="ap-btn-google-login" class="ap-google-btn" type="button">
-              <svg viewBox="0 0 24 24" width="18" height="18">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-              </svg>
-              Sign in with Google
-            </button>
-            <button id="ap-btn-use-mock" class="ap-btn-mock" type="button">Continue with sample data</button>
+            <button id="ap-btn-connect" class="ap-btn-login" type="button">Connect your Tailrd account</button>
+            <button id="ap-btn-use-mock" class="ap-btn-mock" type="button">Try with sample data</button>
           </div>
         </div>
       </div>
@@ -738,11 +721,8 @@ function collectRefs(root: HTMLDivElement): Refs {
     infoSidebar: q("#ap-info-sidebar"),
     infoForm: q("#ap-info-form"),
     loginView: q("#ap-login-view"),
-    loginEmail: q("#ap-login-email"),
-    loginPassword: q("#ap-login-password"),
     loginError: q("#ap-login-error"),
-    btnLogin: q("#ap-btn-login"),
-    btnGoogleLogin: q("#ap-btn-google-login"),
+    btnConnect: q("#ap-btn-connect"),
   };
 }
 
@@ -820,17 +800,10 @@ function wireEvents(root: HTMLDivElement): void {
     hideInfoView();
   });
 
-  // Login
-  root.querySelector("#ap-btn-login")!.addEventListener("click", () => void doEmailLogin());
-  root.querySelector("#ap-login-email")!.addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Enter") void doEmailLogin();
-  });
-  root.querySelector("#ap-login-password")!.addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Enter") void doEmailLogin();
-  });
-  root.querySelector("#ap-btn-google-login")!.addEventListener("click", () => void doGoogleLogin());
+  // Connect (web handshake) + sample-data fallback
+  root.querySelector("#ap-btn-connect")!.addEventListener("click", () => void doConnect());
   root.querySelector("#ap-btn-use-mock")!.addEventListener("click", () => {
-    void saveConfig({ useMockData: true }).then(() => void initPanel());
+    void saveConfig({ useMockData: true }).then(() => void reInit());
   });
 }
 
@@ -1167,52 +1140,29 @@ function esc(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Login
+// Connect (web handshake)
 // ---------------------------------------------------------------------------
 
-async function doEmailLogin(): Promise<void> {
+async function doConnect(): Promise<void> {
   if (!refs) return;
-  const email = refs.loginEmail.value.trim();
-  const password = refs.loginPassword.value;
   refs.loginError.style.display = "none";
-
-  refs.btnLogin.disabled = true;
-  refs.btnLogin.textContent = "Signing in\u2026";
+  refs.btnConnect.disabled = true;
+  refs.btnConnect.textContent = "Connecting\u2026";
   try {
-    const resp = await bg<LoginResponse>({ type: "LOGIN", email, password });
+    // The background opens the secure web handshake (chrome.identity); this
+    // tab's panel stays put and reflects the result.
+    const resp = await bg<LoginResponse>({ type: "CONNECT" });
     if (!resp.ok) {
       refs.loginError.style.display = "block";
-      refs.loginError.textContent = resp.error ?? "Login failed";
+      refs.loginError.textContent = resp.error ?? "Could not connect your account";
       return;
     }
     await saveConfig({ useMockData: false });
     await reInit();
   } finally {
     if (refs) {
-      refs.btnLogin.disabled = false;
-      refs.btnLogin.textContent = "Sign in";
-    }
-  }
-}
-
-async function doGoogleLogin(): Promise<void> {
-  if (!refs) return;
-  refs.loginError.style.display = "none";
-  refs.btnGoogleLogin.disabled = true;
-  refs.btnGoogleLogin.textContent = "Signing in\u2026";
-  try {
-    const resp = await bg<LoginResponse>({ type: "GOOGLE_LOGIN" });
-    if (!resp.ok) {
-      refs.loginError.style.display = "block";
-      refs.loginError.textContent = resp.error ?? "Google sign-in failed";
-      return;
-    }
-    await saveConfig({ useMockData: false });
-    await reInit();
-  } finally {
-    if (refs) {
-      refs.btnGoogleLogin.disabled = false;
-      refs.btnGoogleLogin.textContent = "Sign in with Google";
+      refs.btnConnect.disabled = false;
+      refs.btnConnect.textContent = "Connect your Tailrd account";
     }
   }
 }

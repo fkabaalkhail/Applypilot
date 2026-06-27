@@ -61,13 +61,71 @@ export interface UserApplicationProfile {
 /** Where a profile came from — shown in the popup so the user always knows. */
 export type ProfileSource = "api" | "api-settings" | "cache" | "mock";
 
-/** A resume available for syncing / auto-upload (mirrors a GET /resumes item). */
+/** A resume available for syncing / auto-upload (mirrors a sync snapshot item). */
 export interface ResumeSummary {
   id: number;
   name: string;
   isPrimary: boolean;
   /** True when the original PDF/DOCX is stored and can be auto-uploaded. */
   hasFile: boolean;
+  fileName?: string;
+  fileContentType?: string;
+  updatedAt?: string | null;
+}
+
+/** A saved cover letter (mirrors a sync snapshot item). */
+export interface CoverLetterSummary {
+  id: number;
+  jobTitle: string;
+  company: string;
+  text: string;
+  tone: string;
+  isActive: boolean;
+  updatedAt?: string | null;
+}
+
+/** A job-specific / AI / user resume version (mirrors a sync snapshot item). */
+export interface CustomResumeSummary {
+  id: number;
+  label: string;
+  jobId: number | null;
+  source: string;
+  createdAt?: string | null;
+}
+
+/** Subscription status — forward-compatible stub until billing exists. */
+export interface Subscription {
+  tier: string;
+  status: string;
+}
+
+/** Usage limits — forward-compatible stub until metering exists. */
+export interface Usage {
+  aiCreditsUsed: number;
+  aiCreditsLimit: number | null;
+}
+
+/** Server-side settings the extension cares about. */
+export interface SyncSettings {
+  jobTitle: string;
+  prefilledAnswers: Record<string, string>;
+}
+
+/**
+ * One-shot snapshot of everything the extension syncs from the web app.
+ * Mirrors GET /api/extension/sync. The web app is the source of truth.
+ */
+export interface ExtensionSyncSnapshot {
+  version: number;
+  updatedAt: string | null;
+  profile: UserApplicationProfile;
+  resumes: ResumeSummary[];
+  activeResumeId: number | null;
+  coverLetters: CoverLetterSummary[];
+  customResumes: CustomResumeSummary[];
+  settings: SyncSettings;
+  subscription: Subscription;
+  usage: Usage;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,23 +258,35 @@ export interface FieldsUpdatedEvent {
 
 export type BackgroundRequest =
   | { type: "GET_STATUS" }
-  | { type: "LOGIN"; email: string; password: string }
-  | { type: "GOOGLE_LOGIN" }
+  | { type: "CONNECT" }
   | { type: "LOGOUT" }
   | { type: "GET_PROFILE"; forceRefresh?: boolean }
   | { type: "GET_RESUMES" }
+  | { type: "GET_SYNC"; forceRefresh?: boolean }
   | { type: "DOWNLOAD_RESUME"; resumeId: number }
   | { type: "OPEN_DASHBOARD" };
 
 export interface StatusResponse {
   ok: boolean;
-  /** mock = sample data, connected = signed in, signedOut = needs login */
+  /** mock = sample data, connected = signed in, signedOut = needs to connect */
   mode: "mock" | "connected" | "signedOut";
   email?: string;
   /** Account name from /auth/me — used for the avatar before the profile loads. */
   firstName?: string;
   lastName?: string;
   apiBaseUrl: string;
+  /** Subscription + usage from the cached snapshot (when connected). */
+  subscription?: Subscription;
+  usage?: Usage;
+}
+
+/** Full sync snapshot for the popup, with provenance. */
+export interface SyncResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  snapshot?: ExtensionSyncSnapshot;
+  source?: ProfileSource;
 }
 
 export interface ProfileResponse {

@@ -19,6 +19,7 @@ from backend.db.models import UserSettings
 from backend.auth.dependencies import get_verified_user_id
 from backend.schemas.settings import SettingsUpdate, SettingsOut
 from backend.services.crypto import encrypt, decrypt
+from backend.services.profile_version import bump_profile_version
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -181,6 +182,9 @@ def update_settings(
 
     db.commit()
     db.refresh(s)
+
+    # Settings are a sync target — bump so the extension picks up the change.
+    bump_profile_version(db, user_id)
     return _settings_to_out(s)
 
 
@@ -220,6 +224,7 @@ async def upload_resume(
     db.commit()
     db.refresh(s)
 
+    bump_profile_version(db, user_id)
     logger.info("Resume uploaded: %s (%d bytes)", save_path, len(content))
     return _settings_to_out(s)
 

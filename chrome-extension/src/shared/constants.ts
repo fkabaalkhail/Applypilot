@@ -4,15 +4,10 @@
 export const DEFAULT_API_BASE_URL = "https://www.tailrd.ca";
 export const DEFAULT_DASHBOARD_URL = "https://www.tailrd.ca";
 
-/**
- * Placeholder profile endpoint. If the backend does not implement it yet,
- * the API client falls back to the existing GET /settings endpoint and
- * finally to mock data (see src/api/client.ts).
- */
-export const PROFILE_ENDPOINT = "/api/user/application-profile";
-/** Cheap staleness check — returns just the sync version. */
-export const PROFILE_VERSION_ENDPOINT = "/api/user/profile-version";
-export const SETTINGS_ENDPOINT = "/settings";
+/** One-shot snapshot of everything the extension syncs from the web app. */
+export const SYNC_ENDPOINT = "/api/extension/sync";
+/** Cheap staleness check — returns just the global sync version. */
+export const SYNC_VERSION_ENDPOINT = "/api/extension/sync/version";
 
 /** Fields at or above this confidence are pre-selected for autofill. */
 export const AUTOFILL_CONFIDENCE_THRESHOLD = 0.7;

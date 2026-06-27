@@ -16,8 +16,9 @@ from backend.migrations.add_email_verification import run_migration
 from backend.migrations.add_admin_role import run_migration as run_admin_migration
 from backend.migrations.add_security_fields import run_migration as run_security_migration
 from backend.migrations.add_extension_sync_fields import run_migration as run_extension_sync_migration
+from backend.migrations.add_extension_auth_codes import run_migration as run_extension_auth_codes_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile
-from backend.routers import auth
+from backend.routers import auth, auth_extension, extension
 from backend.routers.feedback import router as feedback_router
 
 
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
     run_admin_migration()
     run_security_migration()
     run_extension_sync_migration()
+    run_extension_auth_codes_migration()
     yield
 
 
@@ -69,8 +71,10 @@ async def add_security_headers(request: Request, call_next):
 
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(auth_extension.router, prefix="/auth/extension", tags=["auth-extension"])
 app.include_router(fill.router, prefix="/api", tags=["fill"])
 app.include_router(profile.router, prefix="/api", tags=["profile"])
+app.include_router(extension.router, prefix="/api/extension", tags=["extension-sync"])
 app.include_router(resumes.router, prefix="/resumes", tags=["resumes"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(settings.router, prefix="/settings", tags=["settings"])

@@ -200,14 +200,13 @@ def _map_education(raw: object) -> list[EducationEntry]:
 
 # ─── Endpoint ────────────────────────────────────────────────────────────────
 
-@router.get("/user/application-profile", response_model=ApplicationProfileOut)
-def get_application_profile(
-    user: User = Depends(get_verified_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Return the current user's ready-to-fill application profile, merged from
-    their resume, settings, and account. 404 only when none of those exist.
+def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfileOut, bool]:
+    """Merge a user's resume + settings + account into a ready-to-fill profile.
+
+    Returns ``(profile, has_data)`` where ``has_data`` is False when the user has
+    neither a resume nor a settings row yet. Shared by the GET endpoint (which
+    404s when ``has_data`` is False) and the extension sync snapshot (which uses
+    the profile regardless, falling back to account basics).
     """
     resume = (
         db.query(ResumeProfileDB)
@@ -216,12 +215,7 @@ def get_application_profile(
         .first()
     )
     settings = db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
-
-    if resume is None and settings is None:
-        raise HTTPException(
-            status_code=404,
-            detail="No application profile yet. Upload a resume or fill in your settings first.",
-        )
+    has_data = not (resume is None and settings is None)
 
     # Name: prefer a manual settings override, then the resume's parsed name,
     # then the account. (Settings-first so edits made in the app/extension win.)
@@ -264,7 +258,7 @@ def get_application_profile(
 
     version = settings.data_version if settings and settings.data_version else 1
 
-    return ApplicationProfileOut(
+    profile = ApplicationProfileOut(
         firstName=first_name,
         lastName=last_name,
         email=_first_non_empty(
@@ -303,6 +297,25 @@ def get_application_profile(
         resumeFileName=(resume.file_name if resume else "") or "",
         hasResumeFile=bool(resume.file_blob_url) if resume else False,
     )
+    return profile, has_data
+
+
+@router.get("/user/application-profile", response_model=ApplicationProfileOut)
+def get_application_profile(
+    user: User = Depends(get_verified_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return the current user's ready-to-fill application profile, merged from
+    their resume, settings, and account. 404 only when none of those exist.
+    """
+    profile, has_data = build_application_profile(user, db)
+    if not has_data:
+        raise HTTPException(
+            status_code=404,
+            detail="No application profile yet. Upload a resume or fill in your settings first.",
+        )
+    return profile
 
 
 @router.put("/user/application-profile", response_model=ProfileVersionOut)

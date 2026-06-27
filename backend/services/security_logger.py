@@ -31,6 +31,8 @@ class SecurityLogger:
     PASSWORD_CHANGE = "password_change"
     RATE_LIMITED = "rate_limited"
     GOOGLE_AUTH = "google_auth"
+    EXTENSION_AUTHORIZE = "extension_authorize"  # web session issued a handshake code
+    EXTENSION_TOKEN = "extension_token"          # extension redeemed a code for tokens
 
     @staticmethod
     def get_client_ip(request: Request) -> str:

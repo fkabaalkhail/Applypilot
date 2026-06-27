@@ -503,6 +503,9 @@ def save_resume_version(
     db.add(row)
     db.commit()
     db.refresh(row)
+
+    # Custom resumes are a sync target — bump so the extension picks it up.
+    bump_profile_version(db, user_id)
     return _version_out(row)
 
 

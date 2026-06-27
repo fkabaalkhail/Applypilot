@@ -1,24 +1,18 @@
 /**
  * Background service worker (MV3).
  *
- * Owns everything that talks to the ApplyPilot backend — the popup and
- * content scripts never fetch directly. Also opens the dashboard tab.
+ * Owns everything that talks to the Tailrd backend — the popup and content
+ * scripts never fetch directly. Authentication is obtained through the web
+ * handshake (api/handshake.ts); data is kept in a single synced snapshot
+ * (api/sync.ts) that the UI reads from, online or offline.
  *
- * Note: extension contexts with (optional) host permissions bypass CORS,
- * so the FastAPI backend needs no CORS changes for the extension.
+ * Note: extension contexts with (optional) host permissions bypass CORS, so the
+ * FastAPI backend needs no CORS changes for the extension.
  */
-import {
-  AuthRequiredError,
-  checkAuthStatus,
-  downloadResumeFile,
-  fetchApplicationProfile,
-  fetchResumes,
-  googleLogin,
-  login,
-  logout,
-  syncProfileIfStale,
-} from "../api/client";
-import { getConfig } from "../shared/storage";
+import { connectAccount } from "../api/handshake";
+import { AuthRequiredError, checkAuthStatus, logout } from "../api/client";
+import { downloadResumeFile, getSnapshotForUi, syncIfStale } from "../api/sync";
+import { getConfig, getSnapshot, saveConfig } from "../shared/storage";
 import type {
   BackgroundRequest,
   FieldsUpdatedEvent,
@@ -28,10 +22,11 @@ import type {
   ResumesResponse,
   SimpleResponse,
   StatusResponse,
+  SyncResponse,
 } from "../shared/types";
 
-/** Periodic profile-sync alarm — keeps the cached profile fresh while active. */
-const SYNC_ALARM = "tailrd-profile-sync";
+/** Periodic sync alarm — keeps the cached snapshot fresh while active. */
+const SYNC_ALARM = "tailrd-sync";
 
 function ensureSyncAlarm(): void {
   chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 5 });
@@ -40,16 +35,17 @@ function ensureSyncAlarm(): void {
 chrome.runtime.onInstalled.addListener(() => {
   // getConfig() merges defaults, so no seeding is required.
   ensureSyncAlarm();
+  void syncIfStale().catch(() => {});
 });
 
 // Re-arm the alarm and sync once whenever the worker spins up (startup).
 chrome.runtime.onStartup.addListener(() => {
   ensureSyncAlarm();
-  void syncProfileIfStale().catch(() => {});
+  void syncIfStale().catch(() => {});
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === SYNC_ALARM) void syncProfileIfStale().catch(() => {});
+  if (alarm.name === SYNC_ALARM) void syncIfStale().catch(() => {});
 });
 
 // When the user clicks the extension icon in the toolbar, inject the content
@@ -113,6 +109,7 @@ async function handle(
   | SimpleResponse
   | ResumesResponse
   | ResumeFileResponse
+  | SyncResponse
 > {
   switch (message.type) {
     case "GET_STATUS": {
@@ -121,67 +118,34 @@ async function handle(
         return { ok: true, mode: "mock", apiBaseUrl: config.apiBaseUrl };
       }
       const status = await checkAuthStatus();
+      if (!status.connected) {
+        return { ok: true, mode: "signedOut", apiBaseUrl: config.apiBaseUrl };
+      }
+      // Surface subscription + usage from the cached snapshot when available.
+      const cached = await getSnapshot();
       return {
         ok: true,
-        mode: status.connected ? "connected" : "signedOut",
+        mode: "connected",
         email: status.email,
         firstName: status.firstName,
         lastName: status.lastName,
         apiBaseUrl: config.apiBaseUrl,
+        subscription: cached?.snapshot.subscription,
+        usage: cached?.snapshot.usage,
       };
     }
 
-    case "LOGIN": {
+    case "CONNECT": {
       try {
-        await login(message.email, message.password);
+        await connectAccount();
+        // Connecting always means leaving sample-data mode.
+        await saveConfig({ useMockData: false });
+        await syncIfStale().catch(() => {});
         return { ok: true };
       } catch (err) {
         return {
           ok: false,
-          error: err instanceof Error ? err.message : "Login failed",
-        };
-      }
-    }
-
-    case "GOOGLE_LOGIN": {
-      try {
-        // Use chrome.identity to get a Google ID token via OAuth
-        const redirectUrl = chrome.identity.getRedirectURL();
-        const clientId = "333525816538-1e7099ljo24tprl2atgi3k81q4s1s112.apps.googleusercontent.com";
-        const nonce = crypto.randomUUID();
-        const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-        authUrl.searchParams.set("client_id", clientId);
-        authUrl.searchParams.set("response_type", "id_token");
-        authUrl.searchParams.set("redirect_uri", redirectUrl);
-        authUrl.searchParams.set("scope", "openid email profile");
-        authUrl.searchParams.set("nonce", nonce);
-        authUrl.searchParams.set("prompt", "select_account");
-
-        const responseUrl = await chrome.identity.launchWebAuthFlow({
-          url: authUrl.toString(),
-          interactive: true,
-        });
-
-        if (!responseUrl) {
-          return { ok: false, error: "Google sign-in was cancelled" };
-        }
-
-        // Extract id_token from the URL fragment
-        const url = new URL(responseUrl);
-        const fragment = new URLSearchParams(url.hash.substring(1));
-        const idToken = fragment.get("id_token");
-
-        if (!idToken) {
-          return { ok: false, error: "Could not get Google ID token" };
-        }
-
-        // Send the ID token to our backend's /auth/google endpoint
-        await googleLogin(idToken);
-        return { ok: true };
-      } catch (err) {
-        return {
-          ok: false,
-          error: err instanceof Error ? err.message : "Google sign-in failed",
+          error: err instanceof Error ? err.message : "Could not connect your account",
         };
       }
     }
@@ -193,11 +157,11 @@ async function handle(
 
     case "GET_PROFILE": {
       try {
-        // On open, cheaply check the sync version; drop the cache if the web
-        // app changed something so the fetch below pulls the latest.
-        if (!message.forceRefresh) await syncProfileIfStale().catch(() => false);
-        const { profile, source } = await fetchApplicationProfile(message.forceRefresh);
-        return { ok: true, profile, source };
+        // Cheaply check the sync version; pull a fresh snapshot only if the web
+        // app changed something.
+        if (!message.forceRefresh) await syncIfStale().catch(() => false);
+        const { snapshot, source } = await getSnapshotForUi(message.forceRefresh);
+        return { ok: true, profile: snapshot.profile, source };
       } catch (err) {
         if (err instanceof AuthRequiredError) {
           return { ok: false, needsLogin: true, error: err.message };
@@ -211,8 +175,8 @@ async function handle(
 
     case "GET_RESUMES": {
       try {
-        const resumes = await fetchResumes();
-        return { ok: true, resumes };
+        const { snapshot } = await getSnapshotForUi();
+        return { ok: true, resumes: snapshot.resumes };
       } catch (err) {
         if (err instanceof AuthRequiredError) {
           return { ok: false, needsLogin: true, resumes: [], error: err.message };
@@ -221,6 +185,22 @@ async function handle(
           ok: false,
           resumes: [],
           error: err instanceof Error ? err.message : "Could not load resumes",
+        };
+      }
+    }
+
+    case "GET_SYNC": {
+      try {
+        if (!message.forceRefresh) await syncIfStale().catch(() => false);
+        const { snapshot, source } = await getSnapshotForUi(message.forceRefresh);
+        return { ok: true, snapshot, source };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, error: err.message };
+        }
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Could not sync",
         };
       }
     }

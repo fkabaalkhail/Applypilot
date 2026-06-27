@@ -772,71 +772,46 @@ function pageMessage(text: string, spinner = false): HTMLElement {
 // Login & settings
 // ---------------------------------------------------------------------------
 
-async function handleLogin(event: Event): Promise<void> {
-  event.preventDefault();
-  const email = $<HTMLInputElement>("login-email").value.trim();
-  const password = $<HTMLInputElement>("login-password").value;
-  const errorEl = $("login-error");
-  const btn = $<HTMLButtonElement>("btn-login");
-  errorEl.hidden = true;
-
-  // The backend origin must be granted before the service worker can fetch it.
-  const pattern = originPattern(state.config.apiBaseUrl);
-  if (pattern) {
-    const granted = await chrome.permissions.request({ origins: [pattern] }).catch(() => false);
-    if (!granted) {
-      errorEl.hidden = false;
-      errorEl.textContent = "Permission to reach your ApplyPilot server was declined.";
-      return;
-    }
+/** Ensure host permission for the API + dashboard origins before connecting. */
+async function ensureHostPermissions(): Promise<boolean> {
+  const origins = new Set<string>();
+  for (const url of [state.config.apiBaseUrl, state.config.dashboardUrl]) {
+    const pattern = originPattern(url);
+    if (pattern) origins.add(pattern);
   }
-
-  btn.disabled = true;
-  btn.textContent = "Signing in…";
-  try {
-    const resp = await sendToBackground<LoginResponse>({ type: "LOGIN", email, password });
-    if (!resp.ok) {
-      errorEl.hidden = false;
-      errorEl.textContent = resp.error ?? "Login failed";
-      return;
-    }
-    await saveConfig({ useMockData: false });
-    await restart();
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Sign in";
-  }
+  if (origins.size === 0) return true;
+  return chrome.permissions.request({ origins: [...origins] }).catch(() => false);
 }
 
-async function handleGoogleLogin(): Promise<void> {
+async function handleConnect(): Promise<void> {
   const errorEl = $("login-error");
-  const btn = $<HTMLButtonElement>("btn-google-login");
+  const btn = $<HTMLButtonElement>("btn-connect");
   errorEl.hidden = true;
 
-  const pattern = originPattern(state.config.apiBaseUrl);
-  if (pattern) {
-    const granted = await chrome.permissions.request({ origins: [pattern] }).catch(() => false);
-    if (!granted) {
-      errorEl.hidden = false;
-      errorEl.textContent = "Permission to reach your ApplyPilot server was declined.";
-      return;
-    }
+  const granted = await ensureHostPermissions();
+  if (!granted) {
+    errorEl.hidden = false;
+    errorEl.textContent = "Permission to reach tailrd.ca was declined.";
+    return;
   }
 
   btn.disabled = true;
-  btn.textContent = "Signing in…";
+  btn.textContent = "Connecting…";
   try {
-    const resp = await sendToBackground<LoginResponse>({ type: "GOOGLE_LOGIN" });
+    // The web auth window steals focus and may close this popup — that's fine,
+    // the background completes the handshake regardless. If we're still open,
+    // reflect the result.
+    const resp = await sendToBackground<LoginResponse>({ type: "CONNECT" });
     if (!resp.ok) {
       errorEl.hidden = false;
-      errorEl.textContent = resp.error ?? "Google sign-in failed";
+      errorEl.textContent = resp.error ?? "Could not connect your account";
       return;
     }
     await saveConfig({ useMockData: false });
     await restart();
   } finally {
     btn.disabled = false;
-    btn.textContent = "Sign in with Google";
+    btn.textContent = "Connect your Tailrd account";
   }
 }
 
@@ -918,8 +893,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("btn-settings-save").addEventListener("click", () => void handleSettingsSave());
   $("btn-logout").addEventListener("click", () => void handleLogout());
-  $("login-form").addEventListener("submit", (e) => void handleLogin(e));
-  $("btn-google-login").addEventListener("click", () => void handleGoogleLogin());
+  $("btn-connect").addEventListener("click", () => void handleConnect());
   $("btn-use-mock").addEventListener("click", () => {
     void saveConfig({ useMockData: true }).then(restart);
   });

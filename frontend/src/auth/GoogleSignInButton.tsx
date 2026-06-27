@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "./useAuth";
+import { safeNextPath } from "./nextRedirect";
 
 declare global {
   interface Window {
@@ -30,6 +31,7 @@ declare global {
 
 export function GoogleSignInButton() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { loginWithGoogle } = useAuth();
   const buttonRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
@@ -48,7 +50,7 @@ export function GoogleSignInButton() {
           setError("");
           try {
             await loginWithGoogle(response.credential);
-            navigate("/app");
+            navigate(safeNextPath(searchParams.get("next")));
           } catch (err: unknown) {
             if (err && typeof err === "object" && "response" in err) {
               const axiosErr = err as { response?: { data?: { detail?: string } } };
@@ -86,7 +88,7 @@ export function GoogleSignInButton() {
         clearTimeout(timeout);
       };
     }
-  }, [clientId, loginWithGoogle, navigate]);
+  }, [clientId, loginWithGoogle, navigate, searchParams]);
 
   if (!clientId) return null;
 

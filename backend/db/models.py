@@ -465,6 +465,28 @@ class RevokedToken(Base):
     expires_at = Column(DateTime, nullable=False)
 
 
+# ─── Extension Auth Codes (PKCE handshake) ──────────────────────────────────
+
+class ExtensionAuthCode(Base):
+    """Short-lived, single-use authorization code for the extension handshake.
+
+    Issued by ``POST /auth/extension/authorize`` to an authenticated web session
+    and redeemed once by ``POST /auth/extension/token`` with the matching PKCE
+    verifier. Bound to a user and a SHA-256 ``code_challenge``; expires in ~60s.
+    This is how the extension obtains tokens without ever handling credentials.
+    """
+    __tablename__ = "extension_auth_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(255), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    code_challenge = Column(String(255), nullable=False)
+    redirect_uri = Column(String, nullable=False)
+    used = Column(Boolean, default=False, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 # ─── Security Event Log ──────────────────────────────────────────────────────
 
 class SecurityEvent(Base):

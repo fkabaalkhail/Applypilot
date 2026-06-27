@@ -1,10 +1,12 @@
 import { useState, FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import { GoogleSignInButton } from "../auth/GoogleSignInButton";
+import { safeNextPath } from "../auth/nextRedirect";
 
 export default function SignInPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -19,7 +21,7 @@ export default function SignInPage() {
 
     try {
       await login(email, password);
-      navigate("/app");
+      navigate(safeNextPath(searchParams.get("next")));
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string }; status?: number } };
