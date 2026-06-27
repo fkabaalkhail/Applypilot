@@ -1317,6 +1317,20 @@
       "enabled": true
     },
     {
+      "company_name": "RTX",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "raytheontechnologies",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=rtx.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Morguard",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "Morguard",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=morguard.com&sz=128",
+      "enabled": true
+    },
+    {
       "company_name": "Adidas",
       "ats_platform": "smartrecruiters",
       "board_slug": "Adidas",
