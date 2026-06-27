@@ -119,6 +119,29 @@ def test_profile_version_and_put_roundtrip(client, db_session, user):
     assert v2 > v1
 
 
+def test_profile_version_sentinel_changes_on_first_write(db_session, user):
+    """Regression: the first synced write must change the reported version.
+
+    A brand-new user (no ``user_settings`` row) must report version 0, and the
+    first ``bump_profile_version`` (which creates the row — e.g. the first resume
+    upload) must move it to a *different* value. Both used to be 1, so an
+    extension that synced before the first upload stayed stuck on the empty
+    snapshot and kept telling the user to upload a resume.
+    """
+    from backend.services.profile_version import bump_profile_version, get_profile_version
+
+    v0, ts0 = get_profile_version(db_session, user.id)
+    assert v0 == 0  # nothing synced yet
+    assert ts0 is None
+
+    new = bump_profile_version(db_session, user.id)
+    assert new >= 1
+
+    v1, _ = get_profile_version(db_session, user.id)
+    assert v1 == new
+    assert v1 != v0  # the staleness check now fires → extension re-downloads
+
+
 # ── Cover letters (Phase 3) ───────────────────────────────────────────────────
 
 def test_cover_letter_crud_and_active(client, db_session):

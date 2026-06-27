@@ -51,8 +51,17 @@ def bump_profile_version(db: Session, user_id: int | None) -> int:
 def get_profile_version(
     db: Session, user_id: int
 ) -> tuple[int, datetime.datetime | None]:
-    """Return ``(version, updated_at)`` for cheap staleness polling."""
+    """Return ``(version, updated_at)`` for cheap staleness polling.
+
+    A user with no ``user_settings`` row yet reports version ``0`` — the
+    "nothing synced yet" sentinel. This MUST be distinct from the value the
+    first :func:`bump_profile_version` assigns (``1``); otherwise the very first
+    synced write (e.g. uploading the first resume, which creates the settings
+    row) would leave the version unchanged, and an already-connected extension —
+    having cached the pre-write version — would never re-download and would keep
+    showing "no resume". (Both used to return ``1``; that was the bug.)
+    """
     settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
     if settings is None:
-        return 1, None
+        return 0, None
     return (settings.data_version or 1), settings.data_updated_at

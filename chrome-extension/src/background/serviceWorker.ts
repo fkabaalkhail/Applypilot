@@ -48,36 +48,62 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === SYNC_ALARM) void syncIfStale().catch(() => {});
 });
 
-// When the user clicks the extension icon in the toolbar, inject the content
-// script (if needed) and tell it to toggle the side panel open.
+// When the user clicks the extension icon in the toolbar, make sure the content
+// script is in the TOP frame (which hosts the side-panel overlay) and tell it to
+// toggle the panel open.
+//
+// We deal with the top frame *specifically* (frameId 0) rather than broadcasting:
+//  - A broadcast PING can be answered by a sub-frame (an embedded ATS form, or a
+//    reCAPTCHA iframe), which would make us think the page is injected when the
+//    top frame — the only place the overlay can mount — actually isn't. The panel
+//    would then silently fail to open.
+//  - A single all-frames injection can reject when a page has cross-origin or
+//    sandboxed frames (very common on pages that use reCAPTCHA). The old code let
+//    that rejection abort the whole open. We now inject the top frame on its own,
+//    and only best-effort the sub-frames so their failure can't block the panel.
 chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id || !tab.url || !/^https?:/i.test(tab.url)) return;
+  const tabId = tab.id;
+  if (!tabId || !tab.url || !/^https?:/i.test(tab.url)) return;
 
-  // Ensure content script is injected
+  // Is the content script already in the TOP frame?
+  let topFrameReady = false;
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: "PING" });
+    await chrome.tabs.sendMessage(tabId, { type: "PING" }, { frameId: 0 });
+    topFrameReady = true;
   } catch {
-    // Not injected yet — inject it
+    topFrameReady = false;
+  }
+
+  if (!topFrameReady) {
+    // Inject the top frame first — this is what the overlay needs. The content
+    // script self-guards against double injection, so this is harmless if a
+    // race already added it.
     try {
       await chrome.scripting.executeScript({
-        target: { tabId: tab.id, allFrames: true },
+        target: { tabId, frameIds: [0] },
         files: ["contentScript.js"],
       });
     } catch {
-      return; // Can't inject (chrome://, web store, etc.)
+      return; // Restricted page (chrome://, Web Store, PDF viewer, …) — can't open.
     }
+
+    // Best-effort: also inject sub-frames so embedded application forms get
+    // scanned/filled. This can reject on cross-origin / sandboxed frames (e.g.
+    // reCAPTCHA), which must NOT prevent the panel from opening — hence its own
+    // detached catch.
+    chrome.scripting
+      .executeScript({ target: { tabId, allFrames: true }, files: ["contentScript.js"] })
+      .catch(() => {});
   }
 
-  // Send toggle message to show the side panel
+  // Toggle the panel in the top frame specifically.
+  const toggleTop = () =>
+    chrome.tabs.sendMessage(tabId, { type: "TOGGLE_PANEL" }, { frameId: 0 });
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_PANEL" });
+    await toggleTop();
   } catch {
-    // Content script may not be ready yet, retry after a brief delay
-    setTimeout(async () => {
-      try {
-        await chrome.tabs.sendMessage(tab.id!, { type: "TOGGLE_PANEL" });
-      } catch { /* give up */ }
-    }, 300);
+    // Content script may not be ready yet — retry once after a brief delay.
+    setTimeout(() => void toggleTop().catch(() => {}), 300);
   }
 });
 

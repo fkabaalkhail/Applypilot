@@ -37,6 +37,14 @@ export interface OverlayCallbacks {
   onListResumes: () => Promise<ResumeSummary[]>;
   /** Inject the chosen resume's file into the page's upload control. */
   onUploadResume: (resumeId: number) => Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * Hand the resolved account profile to the content script so it can compute
+   * each field's proposed value. Without this the scanner has no data, every
+   * field's `proposedValue` is null, nothing is pre-selected, and the Autofill
+   * button stays disabled. The content script re-scans and pushes the enriched
+   * fields back via `updateOverlay`.
+   */
+  onProfileResolved: (profile: UserApplicationProfile | null) => void;
 }
 
 export interface OverlayViewState {
@@ -57,6 +65,11 @@ export function showOverlay(state: OverlayViewState, cb: OverlayCallbacks): void
 export function updateOverlay(state: OverlayViewState): void {
   overlayState.fields = state.fields;
   overlayState.tabUrl = state.tabUrl;
+  // Re-derive the default selection so the Autofill button reflects the latest
+  // scan. Selection is purely computed from the fields (there is no per-field
+  // toggle UI), so recomputing it on every update is safe — and necessary, since
+  // proposed values only appear after the profile reaches the scanner.
+  applyDefaultSelection();
   if (panelExpanded) refreshMainView();
 }
 
@@ -835,6 +848,10 @@ async function loadProfile(): Promise<void> {
     overlayState.profile = resp.profile ?? null;
     overlayState.source = resp.source ?? null;
   }
+  // Feed the profile to the scanner so fields get proposed values; it re-scans
+  // and calls updateOverlay() (which re-derives the selection). Done before our
+  // own applyDefaultSelection() so the button reflects the enriched fields.
+  callbacks?.onProfileResolved(overlayState.profile);
   overlayState.scanned = true;
   applyDefaultSelection();
   refreshMainView();

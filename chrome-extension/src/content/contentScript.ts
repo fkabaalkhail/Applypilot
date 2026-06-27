@@ -111,6 +111,16 @@ function initialize(): void {
       const resp = await sendToBackground<ResumesResponse>({ type: "GET_RESUMES" });
       return resp?.ok ? resp.resumes : [];
     },
+    onProfileResolved: (profile) => {
+      // The overlay resolved the account profile. Remember it and re-scan so
+      // every field gets a proposed value; then push the enriched fields back so
+      // the overlay can pre-select them and enable the Autofill button. Without
+      // this the scanner only ever ran with a null profile (the legacy popup was
+      // the only thing that sent SCAN_PAGE), so nothing was ever fillable.
+      lastProfile = profile;
+      runScan();
+      updateOverlay({ fields: lastFields, tabUrl: location.href });
+    },
     onUploadResume: async (resumeId: number) => {
       const field = lastFields.find(
         (f) => f.category === "resumeUpload" && f.controlType === "file"
