@@ -667,8 +667,8 @@ function buildHTML(): string {
         <!-- Onboarding / connect view (shown when signed out) -->
         <div class="ap-login-view" id="ap-login-view">
           <div class="ap-login-card">
-            <h2>Connect your Tailrd account</h2>
-            <p class="ap-muted">Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters — kept in sync automatically.</p>
+            <h2 class="ap-login-title">Connect your Tailrd account</h2>
+            <p class="ap-muted ap-login-sub">Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters — kept in sync automatically.</p>
             <div id="ap-login-error" class="ap-error" style="display:none"></div>
             <button id="ap-btn-connect" class="ap-btn-login" type="button">Connect your Tailrd account</button>
             <button id="ap-btn-use-mock" class="ap-btn-mock" type="button">Try with sample data</button>
@@ -839,7 +839,12 @@ async function initPanel(): Promise<void> {
   overlayState.status = status;
 
   if (status && status.mode === "signedOut") {
-    showLoginView();
+    showLoginView(false);
+    return;
+  }
+  if (status && status.mode === "sessionExpired") {
+    // Keep the scanned-page view usable; prompt a reconnect. Never show mock.
+    showLoginView(true);
     return;
   }
 
@@ -886,9 +891,18 @@ function setExpanded(val: boolean): void {
   refs.root.classList.toggle("ap-collapsed", !val);
 }
 
-function showLoginView(): void {
+function showLoginView(expired = false): void {
   if (!refs) return;
   refs.loginView.classList.add("visible");
+  refs.loginView.classList.toggle("ap-expired", expired);
+  const heading = refs.loginView.querySelector<HTMLElement>(".ap-login-title");
+  const sub = refs.loginView.querySelector<HTMLElement>(".ap-login-sub");
+  if (heading) heading.textContent = expired ? "Session expired" : "Connect your Tailrd account";
+  if (sub) {
+    sub.textContent = expired
+      ? "Reconnect to keep syncing your profile and résumés. Your data is still here."
+      : "Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters — kept in sync automatically.";
+  }
 }
 
 function hideLoginView(): void {
