@@ -149,19 +149,21 @@ export async function handle(
       }
       const status = await checkAuthStatus();
       if (!status.connected) {
-        const cached = await getSnapshot();
-        if ((await getSessionExpired()) && cached) {
-          const p = cached.snapshot.profile;
-          return {
-            ok: true,
-            mode: "sessionExpired",
-            email: p.email || undefined,
-            firstName: p.firstName || undefined,
-            lastName: p.lastName || undefined,
-            apiBaseUrl: config.apiBaseUrl,
-            subscription: cached.snapshot.subscription,
-            usage: cached.snapshot.usage,
-          };
+        if (await getSessionExpired()) {
+          const cached = await getSnapshot();
+          if (cached) {
+            const p = cached.snapshot.profile;
+            return {
+              ok: true,
+              mode: "sessionExpired",
+              email: p.email || undefined,
+              firstName: p.firstName || undefined,
+              lastName: p.lastName || undefined,
+              apiBaseUrl: config.apiBaseUrl,
+              subscription: cached.snapshot.subscription,
+              usage: cached.snapshot.usage,
+            };
+          }
         }
         return { ok: true, mode: "signedOut", apiBaseUrl: config.apiBaseUrl };
       }

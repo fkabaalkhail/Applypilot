@@ -124,9 +124,32 @@ describe("GET_STATUS sessionExpired mode", () => {
 
     // No auth → checkAuthStatus returns not-connected without any fetch.
     const sw = await import("../src/background/serviceWorker");
-    const status = await (sw as any).handle({ type: "GET_STATUS" });
+    const status = await sw.handle({ type: "GET_STATUS" } as const);
     expect(status.mode).toBe("sessionExpired");
     expect(status.email).toBe("ada@e.com");
     expect(status.firstName).toBe("Ada");
+  });
+
+  it("reports signedOut when the flag is set but no snapshot exists", async () => {
+    const storage = await import("../src/shared/storage");
+    await storage.setSessionExpired();
+    // No snapshot saved.
+
+    const sw = await import("../src/background/serviceWorker");
+    const status = await sw.handle({ type: "GET_STATUS" } as const);
+    expect(status.mode).toBe("signedOut");
+  });
+
+  it("reports signedOut when a snapshot exists but the flag is not set", async () => {
+    const storage = await import("../src/shared/storage");
+    await storage.saveSnapshot({
+      version: 1,
+      profile: { firstName: "Ada", lastName: "Lovelace", email: "ada@e.com" },
+    } as any);
+    // Flag NOT set.
+
+    const sw = await import("../src/background/serviceWorker");
+    const status = await sw.handle({ type: "GET_STATUS" } as const);
+    expect(status.mode).toBe("signedOut");
   });
 });
