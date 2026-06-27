@@ -3,9 +3,10 @@ Vercel Blob storage for original resume files (PDF/DOCX).
 
 The resume binary is what the Chrome extension auto-uploads into ATS forms, so
 we must keep the bytes the parser used to discard. Files are stored with an
-unguessable UUID path. Authorization is enforced by the API layer
-(``GET /resumes/{id}/file`` proxies the bytes only to the owning user) — the
-public Blob URL is never handed to clients.
+unguessable UUID path in a private store. Authorization is enforced by the API
+layer (``GET /resumes/{id}/file`` proxies the bytes only to the owning user) —
+the private Blob URL (which 403s without the store token) is never handed to
+clients.
 
 Configuration: set ``BLOB_READ_WRITE_TOKEN`` (locally in .env, and in the
 Vercel project env). When the token is absent, storage degrades gracefully:
@@ -21,7 +22,6 @@ import httpx
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://blob.vercel-storage.com"
-_API_VERSION = "7"
 _TIMEOUT = httpx.Timeout(30.0)
 
 
@@ -64,11 +64,17 @@ async def upload_resume(
                 content=content,
                 headers={
                     "authorization": f"Bearer {token}",
-                    "x-api-version": _API_VERSION,
+                    # The Blob store is configured for private access, so uploads
+                    # MUST declare access="private" — a public upload is rejected
+                    # with HTTP 400 ("Cannot use public access on a private
+                    # store"), which is what silently broke every resume upload.
+                    # Private is also correct for résumés (PII): the blob URL
+                    # 403s without auth, and download() below reads it with the
+                    # token, behind the authenticated /resumes/{id}/file proxy.
+                    "x-vercel-blob-access": "private",
                     "x-content-type": content_type or "application/octet-stream",
                     # We supply our own UUID, so no random suffix is needed.
                     "x-add-random-suffix": "0",
-                    "x-cache-control-max-age": "0",
                 },
             )
             res.raise_for_status()
@@ -85,12 +91,19 @@ async def upload_resume(
 
 
 async def download(url: str) -> bytes | None:
-    """Fetch stored bytes by Blob URL (called server-side, behind authz)."""
+    """Fetch stored bytes by Blob URL (called server-side, behind authz).
+
+    The store is private, so the blob URL 403s without credentials — the
+    read-write token must be sent as a Bearer header. (Harmless for a public
+    store too.)
+    """
     if not url:
         return None
+    token = _token()
+    headers = {"authorization": f"Bearer {token}"} if token else {}
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            res = await client.get(url)
+            res = await client.get(url, headers=headers)
             res.raise_for_status()
             return res.content
     except Exception:
@@ -109,7 +122,6 @@ async def delete(url: str) -> None:
                 f"{_API_BASE}/delete",
                 headers={
                     "authorization": f"Bearer {token}",
-                    "x-api-version": _API_VERSION,
                     "content-type": "application/json",
                 },
                 json={"urls": [url]},
