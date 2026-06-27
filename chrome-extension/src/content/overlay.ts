@@ -828,6 +828,13 @@ async function initPanel(): Promise<void> {
   initialized = true;
   overlayState.config = await getConfig();
 
+  // Paint the current scan immediately so the panel always shows a real status
+  // (field count / "No form fields detected") instead of a blank, greyed shell.
+  // Without this, a slow or unanswered background call — e.g. on a login-gated
+  // SPA like Greenhouse's candidate portal — leaves the panel stuck on its
+  // pristine pre-render state with no feedback.
+  refreshMainView();
+
   const status = await bg<StatusResponse>({ type: "GET_STATUS" }).catch(() => null);
   overlayState.status = status;
 
