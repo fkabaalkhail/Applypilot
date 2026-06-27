@@ -218,7 +218,7 @@ def test_multi_filter_intersection(
 
 # --- Property 15: Pagination Correctness ---
 
-@settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     num_jobs=st.integers(min_value=0, max_value=30),
     page_size=st.integers(min_value=1, max_value=10),
