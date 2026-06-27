@@ -492,6 +492,26 @@ class ExtensionAuthCode(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+# ─── Sessions (Connected Devices registry) ──────────────────────────────────
+
+class Session(Base):
+    """A long-lived auth session (one per connect / login), keyed by a stable
+    ``sid`` that survives refresh-token rotation. Backs the "Connected Devices"
+    dashboard and per-device revocation. ``revoked_at`` set => the session's next
+    refresh is rejected. Labels/UA-parsing are intentionally omitted (YAGNI)."""
+    __tablename__ = "sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sid = Column(String(36), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    client = Column(String(20), nullable=False, default="web")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    last_seen_at = Column(DateTime, default=datetime.datetime.utcnow)
+    revoked_at = Column(DateTime, nullable=True)
+    last_ip = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
+
+
 # ─── Security Event Log ──────────────────────────────────────────────────────
 
 class SecurityEvent(Base):
