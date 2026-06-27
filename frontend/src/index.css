@@ -934,6 +934,18 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   font-size: 0.8rem;
 }
 
+.job-detail-item svg {
+  color: var(--stripe-primary);
+  flex-shrink: 0;
+}
+
+.badge-time svg,
+.applicant-text svg {
+  color: var(--stripe-ink-mute);
+  flex-shrink: 0;
+  vertical-align: -2px;
+}
+
 .job-detail-item .salary {
   color: var(--accent);
   font-weight: 600;
@@ -947,8 +959,8 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   justify-content: center;
   padding: 0.75rem 1rem;
   min-width: 90px;
-  background: #faf8ff;
-  border-left: 1px solid #e8e0f0;
+  background: #f5f4ff;
+  border-left: 1px solid #e3e0ff;
   border-radius: 0 12px 12px 0;
 }
 
@@ -969,8 +981,9 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   left: 50%;
   transform: translate(-50%, -50%);
   font-size: 0.9rem;
-  font-weight: 700;
-  color: #7c3aed;
+  font-weight: 500;
+  color: var(--stripe-primary);
+  font-feature-settings: "tnum";
 }
 
 .match-pct small {
@@ -979,8 +992,8 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 
 .match-label-sm {
   font-size: 0.6rem;
-  font-weight: 600;
-  color: #7c3aed;
+  font-weight: 500;
+  color: var(--stripe-primary);
   margin-top: 0.25rem;
   text-align: center;
   letter-spacing: 0.5px;
@@ -1312,14 +1325,15 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 .detail-tag {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  background: var(--bg-page);
-  border: 1px solid var(--border);
-  padding: 0.35rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-  font-weight: 500;
+  gap: 0.4rem;
+  background: var(--stripe-canvas-soft);
+  border: 1px solid var(--stripe-hairline);
+  padding: 0.4rem 0.8rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  color: var(--stripe-ink-secondary);
+  font-weight: 400;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .detail-tag i {
@@ -1327,30 +1341,39 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   color: var(--text-muted);
 }
 
-.detail-tag-highlight {
-  background: var(--accent-light);
-  border-color: var(--accent-border);
-  color: var(--accent);
+.detail-tag svg {
+  color: var(--stripe-ink-mute);
+  flex-shrink: 0;
 }
 
-.detail-tag-highlight i {
-  color: var(--accent);
+.detail-tag-highlight {
+  background: #eef0ff;
+  border-color: var(--stripe-primary-subdued);
+  color: var(--stripe-primary-deep);
+}
+
+.detail-tag-highlight i,
+.detail-tag-highlight svg {
+  color: var(--stripe-primary);
 }
 
 .detail-tag-salary {
-  color: #059669;
-  background: #ecfdf5;
-  border-color: #a7f3d0;
+  color: var(--stripe-primary-deep);
+  background: #eef0ff;
+  border-color: var(--stripe-primary-subdued);
+  font-feature-settings: "tnum";
+  letter-spacing: -0.3px;
 }
 
-.detail-tag-salary i {
-  color: #059669;
+.detail-tag-salary i,
+.detail-tag-salary svg {
+  color: var(--stripe-primary);
 }
 
 .detail-tag-category {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #2563eb;
+  background: #fde9f4;
+  border-color: #f9b5d0;
+  color: #c01a55;
 }
 
 /* Action buttons */
@@ -2062,18 +2085,21 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 }
 
 .desc-section-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #1f2937;
+  font-size: 1.05rem;
+  font-weight: 400;
+  color: var(--stripe-ink);
+  letter-spacing: -0.2px;
   margin-bottom: 0.75rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.desc-section-title i {
-  color: #10b981;
+.desc-section-title i,
+.desc-section-title svg {
+  color: var(--stripe-primary);
   font-size: 0.9rem;
+  flex-shrink: 0;
 }
 
 .desc-section-list {
