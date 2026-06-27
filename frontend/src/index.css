@@ -391,7 +391,10 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 
 /* Header Bar */
 .jobs-header {
-  background: var(--bg-white);
+  background:
+    radial-gradient(ellipse 50% 180% at 100% 0%, rgba(249, 107, 238, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 200% at 70% 0%, rgba(83, 58, 253, 0.08) 0%, transparent 60%),
+    var(--bg-white);
   height: var(--header-height);
   display: flex;
   align-items: center;
@@ -402,10 +405,11 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 }
 
 .jobs-header h1 {
-  font-size: 1.2rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text);
+  font-size: 1.35rem;
+  font-weight: 300;
+  letter-spacing: -0.4px;
+  color: var(--stripe-ink);
+  font-feature-settings: "ss01";
 }
 
 /* Toolbar: Tabs + Filters in one row */
@@ -1081,11 +1085,11 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 }
 
 .match-badge.strong {
-  background: var(--bg-match-strong);
+  background: linear-gradient(150deg, #533afd 0%, #4434d4 45%, #1c1e54 100%);
 }
 
 .match-badge.fair {
-  background: var(--bg-match-fair);
+  background: linear-gradient(150deg, #665efd 0%, #533afd 50%, #2e2b8c 100%);
 }
 
 .match-circle {
@@ -3949,4 +3953,95 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
     max-height: none;
     border-radius: 0;
   }
+}
+
+
+/* ============================================================
+   Stripe palette — dashboard color variety
+   Uses the full mesh set (indigo / soft-indigo / ruby / magenta /
+   cream / navy) so the dashboard isn't mono-indigo.
+   ============================================================ */
+
+/* Active filter pills cycle through the Stripe gradient-stop colors */
+.filter-bar .filter-pill.active:nth-of-type(5n+1) {
+  background: #eef0ff;
+  border-color: #c3b9fd;
+  color: #4434d4;
+}
+.filter-bar .filter-pill.active:nth-of-type(5n+2) {
+  background: #fde9f4;
+  border-color: #f9b5d0;
+  color: #c01a55;
+}
+.filter-bar .filter-pill.active:nth-of-type(5n+3) {
+  background: #fef0fd;
+  border-color: #f9b5f3;
+  color: #b3299f;
+}
+.filter-bar .filter-pill.active:nth-of-type(5n+4) {
+  background: #f6f0e3;
+  border-color: #e8d4ad;
+  color: #8a5a1f;
+}
+.filter-bar .filter-pill.active:nth-of-type(5n+5) {
+  background: #e9eaf3;
+  border-color: #b9bcd6;
+  color: #1c1e54;
+}
+
+/* Sidebar active nav — slim indigo rail + soft wash */
+.nav-item.active {
+  background: linear-gradient(90deg, rgba(83, 58, 253, 0.10), rgba(83, 58, 253, 0.02));
+}
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: -0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #665efd, #533afd);
+}
+
+/* Source badges rotate through secondary stops for at-a-glance variety */
+.badge-source:nth-of-type(3n+1) {
+  color: #4434d4;
+  background: #eef0ff;
+}
+.badge-source:nth-of-type(3n+2) {
+  color: #c01a55;
+  background: #fde9f4;
+}
+.badge-source:nth-of-type(3n+3) {
+  color: #8a5a1f;
+  background: #f6f0e3;
+}
+
+/* Tab pills: colored count chips by polarity */
+.tab-btn.active {
+  background: linear-gradient(180deg, #eef0ff, #e7e4ff);
+}
+
+/* Stat / metric accent helpers (drop-in classes for cards) */
+.accent-indigo { color: var(--stripe-primary); }
+.accent-ruby   { color: var(--stripe-ruby); }
+.accent-magenta{ color: var(--stripe-magenta); }
+.accent-navy   { color: var(--stripe-dark-900); }
+
+.stat-card-indigo  { background: linear-gradient(135deg, #f3f1ff, #ffffff); border: 1px solid #e3e0ff; }
+.stat-card-ruby    { background: linear-gradient(135deg, #fdeef4, #ffffff); border: 1px solid #f8d3e1; }
+.stat-card-magenta { background: linear-gradient(135deg, #fdeffc, #ffffff); border: 1px solid #f6d2f2; }
+.stat-card-cream   { background: linear-gradient(135deg, #f9f2e2, #ffffff); border: 1px solid #ecdcbd; }
+
+/* Bookmark saved-state pops ruby instead of indigo for contrast */
+.btn-bookmark.saved {
+  color: var(--stripe-ruby);
+}
+
+/* Salary keeps the financial-data signal — tabular figures */
+.job-detail-item .salary {
+  font-feature-settings: "tnum";
+  letter-spacing: -0.3px;
 }
