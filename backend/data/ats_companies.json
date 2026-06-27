@@ -1331,6 +1331,13 @@
       "enabled": true
     },
     {
+      "company_name": "WTW",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "Wtw",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=wtwco.com&sz=128",
+      "enabled": true
+    },
+    {
       "company_name": "Adidas",
       "ats_platform": "smartrecruiters",
       "board_slug": "Adidas",
