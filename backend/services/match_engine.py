@@ -104,7 +104,18 @@ class MatchEngine:
 
     def __init__(self, db: Session):
         self.db = db
-        self.llm = get_llm_service()
+        self._llm = None
+
+    @property
+    def llm(self):
+        """Lazily construct the LLM service.
+
+        Deferred so that pure helpers (e.g. JSON parsing) and unit tests can
+        use MatchEngine without an ANTHROPIC_API_KEY in the environment.
+        """
+        if self._llm is None:
+            self._llm = get_llm_service()
+        return self._llm
 
     async def compute_breakdown(
         self, resume_text: str, job_description: str

@@ -16,14 +16,21 @@ import { pathToFileURL } from "node:url";
 
 const here = import.meta.dirname;
 
-// --- resolve jsdom from the frontend workspace -------------------------------
+// --- resolve jsdom -----------------------------------------------------------
+// Prefer this package's own jsdom (devDependency); fall back to the frontend
+// workspace for local setups that share it. CI only installs the extension's
+// deps, so the local resolution must succeed on its own.
 let JSDOM;
 try {
-  const req = createRequire(path.join(here, "..", "..", "frontend", "package.json"));
-  ({ JSDOM } = req("jsdom"));
+  ({ JSDOM } = await import("jsdom"));
 } catch {
-  console.error("jsdom not found — run `npm install` in ../frontend first.");
-  process.exit(1);
+  try {
+    const req = createRequire(path.join(here, "..", "..", "frontend", "package.json"));
+    ({ JSDOM } = req("jsdom"));
+  } catch {
+    console.error("jsdom not found — run `npm install` in chrome-extension first.");
+    process.exit(1);
+  }
 }
 
 // --- bundle the engine for node -----------------------------------------------

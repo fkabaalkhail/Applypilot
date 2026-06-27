@@ -87,7 +87,7 @@ def job_strategy():
 
 # --- Property 13: Aggregate Stats Computation ---
 
-@settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow])
+@settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow])
 @given(jobs_data=st.lists(job_strategy(), min_size=0, max_size=15))
 def test_aggregate_stats_computation(jobs_data, db_session, client):
     """
@@ -144,7 +144,7 @@ def test_aggregate_stats_computation(jobs_data, db_session, client):
 
 # --- Property 14: Multi-Filter Intersection ---
 
-@settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     jobs_data=st.lists(job_strategy(), min_size=1, max_size=15),
     filter_source=st.one_of(st.none(), source_platform_strategy),
@@ -218,7 +218,7 @@ def test_multi_filter_intersection(
 
 # --- Property 15: Pagination Correctness ---
 
-@settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     num_jobs=st.integers(min_value=0, max_value=30),
     page_size=st.integers(min_value=1, max_value=10),

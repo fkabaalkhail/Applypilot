@@ -499,9 +499,18 @@ class AggregatorService:
         # otherwise infer it from the location string.
         work_type = job.work_model or self.work_type_classifier.classify(job.location)
 
-        # Determine role category: use section_category from parser if available,
-        # otherwise fall back to source.role_category
-        role_category = job.section_category if job.section_category else source.role_category
+        # Determine role category, normalised to the canonical taxonomy:
+        #   1. section header from the parser (mega-repos), else
+        #   2. the source repo's configured category, else
+        #   3. classify from the job title.
+        from backend.services.role_classifier import classify, normalize_category
+
+        raw_category = job.section_category or source.role_category or ""
+        role_category = normalize_category(raw_category) or (
+            raw_category if raw_category else ""
+        )
+        if not role_category:
+            role_category = classify(job.title)
 
         # Determine experience level
         experience_level = self._get_experience_level(source)

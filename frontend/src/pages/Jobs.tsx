@@ -5,6 +5,24 @@ import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
 import api from "../auth/api";
 import { resolveLogoUrl, avatarColor } from "../lib/companyLogo";
+import {
+  MagnifyingGlass,
+  Sliders,
+  Clock,
+  BookmarkSimple,
+  MapPin,
+  Briefcase,
+  House,
+  GraduationCap,
+  Money,
+  Users,
+  ThumbsDown,
+  ShareNetwork,
+  MagicWand,
+  Envelope,
+  CaretLeft,
+  CaretRight,
+} from "@phosphor-icons/react";
 
 
 
@@ -250,7 +268,7 @@ export default function Jobs() {
         <h1>Jobs</h1>
         <div className="header-right">
           <div className="search-wrapper">
-            <i className="fa-solid fa-magnifying-glass"></i>
+            <MagnifyingGlass size={16} weight="bold" />
             <input
               type="text"
               placeholder="Search by title or company"
@@ -284,7 +302,7 @@ export default function Jobs() {
             onClick={() => setFiltersVisible(!filtersVisible)}
             aria-label={filtersVisible ? "Hide filters" : "Show filters"}
           >
-            <i className="fa-solid fa-sliders"></i>
+            <Sliders size={15} weight="bold" />
             {filtersVisible ? "Hide Filters" : "Show Filters"}
           </button>
         </div>
@@ -334,7 +352,7 @@ export default function Jobs() {
                   <div className="job-card-info">
                     <div className="job-card-badges">
                       <span className="badge-time">
-                        <i className="fa-regular fa-clock"></i> {job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}
+                        <Clock size={13} weight="duotone" /> {job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}
                       </span>
                     </div>
                     <h2 className="job-title">{job.title}</h2>
@@ -348,31 +366,31 @@ export default function Jobs() {
                     onClick={(e) => { e.stopPropagation(); toggleSave(job); }}
                     aria-label={job.saved ? "Unsave job" : "Save job"}
                   >
-                    <i className={job.saved ? "fa-solid fa-bookmark" : "fa-regular fa-bookmark"}></i>
+                    <BookmarkSimple size={20} weight={job.saved ? "fill" : "regular"} />
                   </button>
                 </div>
 
                 {/* Details Grid */}
                 <div className="job-details-grid">
                   <div className="job-detail-item">
-                    <i className="fa-solid fa-location-dot"></i>
+                    <MapPin size={15} weight="duotone" />
                     <span>{job.location || "Remote"}</span>
                   </div>
                   <div className="job-detail-item">
-                    <i className="fa-solid fa-briefcase"></i>
+                    <Briefcase size={15} weight="duotone" />
                     <span>Full-time</span>
                   </div>
                   <div className="job-detail-item">
-                    <i className="fa-solid fa-laptop-house"></i>
+                    <House size={15} weight="duotone" />
                     <span>{job.work_type === "remote" ? "Remote" : job.work_type === "hybrid" ? "Hybrid" : "On Site"}</span>
                   </div>
                   <div className="job-detail-item">
-                    <i className="fa-solid fa-graduation-cap"></i>
+                    <GraduationCap size={15} weight="duotone" />
                     <span>{job.experience_level === "internship" ? "Internship" : "Entry, New Grad"}</span>
                   </div>
                   {job.salary_range && !job.salary_range.startsWith("{") && (
                     <div className="job-detail-item">
-                      <i className="fa-solid fa-sack-dollar"></i>
+                      <Money size={15} weight="duotone" />
                       <span className="salary">{job.salary_range}</span>
                     </div>
                   )}
@@ -382,27 +400,27 @@ export default function Jobs() {
                 <div className="job-card-footer" onClick={(e) => e.stopPropagation()}>
                   <span className="applicant-text">
                     {job.applicant_count
-                      ? <><i className="fa-solid fa-users"></i> {job.applicant_count}+ applicants</>
+                      ? <><Users size={14} weight="duotone" /> {job.applicant_count}+ applicants</>
                       : ""}
                   </span>
                   <div className="job-actions">
                     <button className="btn-icon" title="Not interested">
-                      <i className="fa-solid fa-thumbs-down"></i>
+                      <ThumbsDown size={15} weight="bold" />
                     </button>
                     <button className="btn-icon" title="Share">
-                      <i className="fa-solid fa-share-nodes"></i>
+                      <ShareNetwork size={15} weight="bold" />
                     </button>
                     <button
                       className="btn-ai"
                       onClick={(e) => { e.stopPropagation(); setRewriteJob({ id: job.id, title: job.title, company: job.company, url: job.url }); }}
                     >
-                      <i className="fa-solid fa-wand-magic-sparkles"></i> Custom Resume
+                      <MagicWand size={15} weight="fill" /> Custom Resume
                     </button>
                     <button
                       className="btn-ai"
                       onClick={(e) => { e.stopPropagation(); setCoverJob({ id: job.id, title: job.title, company: job.company, url: job.url }); }}
                     >
-                      <i className="fa-solid fa-envelope"></i> Cover Letter
+                      <Envelope size={15} weight="fill" /> Cover Letter
                     </button>
                     <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply">APPLY WITH AUTOFILL</a>
                   </div>
@@ -414,8 +432,8 @@ export default function Jobs() {
                 <div className="match-score-badge">
                   <div className="match-circle-sm">
                     <svg viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="40" fill="none" stroke="#e8e0f0" strokeWidth="8" />
-                      <circle cx="50" cy="50" r="40" fill="none" stroke="#7c3aed" strokeWidth="8"
+                      <circle cx="50" cy="50" r="40" fill="none" stroke="#e3e8ee" strokeWidth="8" />
+                      <circle cx="50" cy="50" r="40" fill="none" stroke="#533afd" strokeWidth="8"
                         strokeDasharray={`${job.match_score * 2.51} 251`}
                         strokeLinecap="round"
                         style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
@@ -439,7 +457,7 @@ export default function Jobs() {
                 disabled={page === 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
-                <i className="fa-solid fa-chevron-left"></i> Previous
+                <CaretLeft size={14} weight="bold" /> Previous
               </button>
               <span className="page-indicator">Page {page}</span>
               <button
@@ -447,7 +465,7 @@ export default function Jobs() {
                 disabled={!hasMore}
                 onClick={() => setPage((p) => p + 1)}
               >
-                Next <i className="fa-solid fa-chevron-right"></i>
+                Next <CaretRight size={14} weight="bold" />
               </button>
             </div>
           )}

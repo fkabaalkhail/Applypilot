@@ -1,7 +1,41 @@
 import { useState, useEffect } from "react";
 import { resolveLogoUrl } from "../lib/companyLogo";
+import {
+  X,
+  MapPin,
+  House,
+  Flag,
+  GraduationCap,
+  CurrencyDollar,
+  GithubLogo,
+  LinkedinLogo,
+  PaperPlaneTilt,
+  ArrowSquareOut,
+  Users,
+  ClipboardText,
+  Star,
+  Gift,
+  Buildings,
+  Code,
+  ListBullets,
+  Info,
+  FileText,
+  type Icon,
+} from "@phosphor-icons/react";
 
 const API_BASE = "";
+
+// Maps the client-side parser's icon keys to Phosphor icon components
+const SECTION_ICONS: Record<string, Icon> = {
+  "clipboard-list": ClipboardText,
+  "graduation-cap": GraduationCap,
+  star: Star,
+  gift: Gift,
+  building: Buildings,
+  code: Code,
+  list: ListBullets,
+  "info-circle": Info,
+};
 
 interface MatchBreakdown {
   experience_score: number;
@@ -39,9 +73,9 @@ interface Job {
 }
 
 function getMatchColor(score: number): string {
-  if (score >= 80) return "#5B5BFF";
+  if (score >= 80) return "#533afd";
   if (score >= 60) return "#f59e0b";
-  return "#6b7280";
+  return "#64748d";
 }
 
 function getMatchLabel(score: number): string {
@@ -310,7 +344,7 @@ export default function JobDetailView({ job, onClose }: Props) {
       {/* Close button */}
       {onClose && (
         <button className="btn-close-detail" onClick={onClose} aria-label="Close detail panel">
-          <i className="fa-solid fa-xmark"></i>
+          <X size={18} weight="bold" />
         </button>
       )}
 
@@ -353,27 +387,27 @@ export default function JobDetailView({ job, onClose }: Props) {
         <div className="job-detail-tags">
           {job.location && (
             <span className="detail-tag">
-              <i className="fa-solid fa-location-dot"></i> {job.location}
+              <MapPin size={14} weight="duotone" /> {job.location}
             </span>
           )}
           {job.work_type && (
             <span className="detail-tag">
-              <i className="fa-solid fa-laptop-house"></i> {formatWorkType(job.work_type)}
+              <House size={14} weight="duotone" /> {formatWorkType(job.work_type)}
             </span>
           )}
           {job.country && (
             <span className="detail-tag">
-              <i className="fa-solid fa-flag"></i> {formatCountry(job.country)}
+              <Flag size={14} weight="duotone" /> {formatCountry(job.country)}
             </span>
           )}
           {job.experience_level && (
             <span className="detail-tag detail-tag-highlight">
-              <i className="fa-solid fa-graduation-cap"></i> {formatExperienceLevel(job.experience_level)}
+              <GraduationCap size={14} weight="duotone" /> {formatExperienceLevel(job.experience_level)}
             </span>
           )}
           {job.salary_range && (
             <span className="detail-tag detail-tag-salary">
-              <i className="fa-solid fa-dollar-sign"></i> {job.salary_range}
+              <CurrencyDollar size={14} weight="duotone" /> {job.salary_range}
             </span>
           )}
           {job.role_category && (
@@ -384,9 +418,9 @@ export default function JobDetailView({ job, onClose }: Props) {
           {job.source_platform && (
             <span className="detail-tag">
               {job.source_platform === "github" ? (
-                <><i className="fa-brands fa-github"></i> GitHub</>
+                <><GithubLogo size={14} weight="fill" /> GitHub</>
               ) : (
-                <><i className="fa-brands fa-linkedin"></i> LinkedIn</>
+                <><LinkedinLogo size={14} weight="fill" /> LinkedIn</>
               )}
             </span>
           )}
@@ -395,10 +429,10 @@ export default function JobDetailView({ job, onClose }: Props) {
         {/* Action buttons */}
         <div className="job-detail-actions">
           <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-apply-detail">
-            <i className="fa-solid fa-paper-plane"></i> Apply with Autofill
+            <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
           </a>
           <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-outline-detail">
-            <i className="fa-solid fa-arrow-up-right-from-square"></i> View Original Post
+            <ArrowSquareOut size={16} weight="bold" /> View Original Post
           </a>
         </div>
       </div>
@@ -425,10 +459,12 @@ export default function JobDetailView({ job, onClose }: Props) {
                   </div>
                 )}
                 {/* Sections */}
-                {structured.sections.map((section: any, i: number) => (
+                {structured.sections.map((section: any, i: number) => {
+                  const SectionIcon = SECTION_ICONS[section.icon] || ListBullets;
+                  return (
                   <div key={i} className="desc-section">
                     <h3 className="desc-section-title">
-                      <i className={`fa-solid fa-${section.icon || 'list'}`}></i> {section.title}
+                      <SectionIcon size={16} weight="duotone" /> {section.title}
                     </h3>
                     {section.items && (
                       <ul className="desc-section-list">
@@ -448,14 +484,15 @@ export default function JobDetailView({ job, onClose }: Props) {
                       </div>
                     ))}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : description ? (
               <div className="description-content" dangerouslySetInnerHTML={{ __html: description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n') }} />
             ) : (
               <div className="description-empty">
                 <div className="description-empty-icon">
-                  <i className="fa-regular fa-file-lines"></i>
+                  <FileText size={32} weight="duotone" />
                 </div>
                 <p className="description-empty-title">No description available</p>
                 <p className="description-empty-subtitle">
@@ -467,7 +504,7 @@ export default function JobDetailView({ job, onClose }: Props) {
 
           {job.applicant_count != null && job.applicant_count > 0 && (
             <div className="job-detail-meta-row">
-              <i className="fa-solid fa-users"></i>
+              <Users size={15} weight="duotone" />
               <span>{job.applicant_count}+ applicants</span>
             </div>
           )}

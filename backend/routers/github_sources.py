@@ -21,6 +21,7 @@ from backend.db.database import get_db
 from backend.db.models import GitHubSource
 from backend.schemas.github_source import GitHubSourceOut, GitHubSourceCreate
 from backend.services.github_scraper import GitHubScraper, validate_github_repo_url
+from backend.services.role_classifier import classify as classify_role
 from backend.auth.dependencies import get_admin_user_id, verify_cron_secret
 
 logger = logging.getLogger(__name__)
@@ -214,7 +215,7 @@ async def cron_ats(
                 posted_date=job.posted_date,
                 easy_apply=0,
                 work_type=work_type,
-                role_category=job.department or "",
+                role_category=classify_role(job.title, job.department or ""),
                 country=country,
                 experience_level=experience_level,
                 company_logo=company_logo,
@@ -328,7 +329,7 @@ async def scrape_linkedin_jobs(
                 posted_date=None,
                 easy_apply=0,
                 work_type=work_type,
-                role_category="",
+                role_category=classify_role(job.title),
                 country=country,
                 experience_level=experience_level,
                 company_logo=company_logo,
@@ -455,3 +456,49 @@ async def poll_source(
     except Exception:
         logger.error(f"Poll failed for source {source_id}: {traceback.format_exc()}")
         raise HTTPException(status_code=502, detail="Internal server error")
+
+
+@router.post("/backfill-role-categories")
+def backfill_role_categories(
+    apply: bool = False,
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
+    """Remap existing scraped_jobs.role_category to the canonical taxonomy.
+
+    Dry-run by default (returns the counts that would change). Pass ?apply=true
+    to write the changes. Rows already canonical are left untouched; known
+    legacy aliases are mapped; empty/free-text values are reclassified by title.
+    """
+    from backend.db.models import ScrapedJob
+    from backend.services.role_classifier import (
+        CANONICAL_CATEGORIES, classify, normalize_category,
+    )
+
+    def target(title: str, current: str) -> str:
+        cur = (current or "").strip()
+        if cur in CANONICAL_CATEGORIES:
+            return cur
+        mapped = normalize_category(cur)
+        if mapped:
+            return mapped
+        return classify(title or "", cur)
+
+    rows = db.query(ScrapedJob).all()
+    changes: dict[int, str] = {}
+    for r in rows:
+        new = target(r.title, r.role_category)
+        if new != (r.role_category or ""):
+            changes[r.id] = new
+
+    if apply:
+        for r in rows:
+            if r.id in changes:
+                r.role_category = changes[r.id]
+        db.commit()
+
+    return {
+        "total_rows": len(rows),
+        "changed": len(changes),
+        "applied": apply,
+    }
