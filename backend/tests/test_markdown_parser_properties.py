@@ -146,7 +146,9 @@ def test_column_order_independence(company, title, location, url, column_order):
 
     assert parsed.company == company, f"Company mismatch for order {column_order}"
     assert parsed.title == title, f"Title mismatch for order {column_order}"
-    assert parsed.location == location, f"Location mismatch for order {column_order}"
+    # Parser normalizes runs of whitespace in location; compare normalized.
+    assert " ".join(parsed.location.split()) == " ".join(location.split()), \
+        f"Location mismatch for order {column_order}"
     assert parsed.url == url, f"URL mismatch for order {column_order}"
 
 

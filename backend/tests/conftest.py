@@ -7,6 +7,20 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+# --- Hypothesis: disable timing-based deadlines globally ---------------------
+# Property tests do real DB/HTTP-client work; on shared CI runners the first
+# example is often slow enough to trip Hypothesis' default 200ms deadline,
+# producing FlakyFailures unrelated to correctness. Register a CI profile that
+# removes the deadline and load it for every test session.
+from hypothesis import settings as _hyp_settings, HealthCheck as _HealthCheck
+
+_hyp_settings.register_profile(
+    "ci",
+    deadline=None,
+    suppress_health_check=[_HealthCheck.too_slow],
+)
+_hyp_settings.load_profile("ci")
+
 from backend.db.database import Base, get_db
 from backend.auth.dependencies import get_current_user_id, get_optional_user_id, get_verified_user_id
 from backend.main import app
