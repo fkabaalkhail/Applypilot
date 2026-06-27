@@ -37,6 +37,37 @@ def _sanitize_description(text: str) -> str:
     return nh3.clean(text, tags=set())
 
 
+def _workday_cxs_url(public_url: str) -> str:
+    """Convert a public Workday job URL into its CXS detail-API endpoint.
+
+    Workday renders job pages as a JavaScript SPA, so the raw HTML carries no
+    description. The data lives behind the CXS REST API instead:
+
+        public:  https://{tenant}.{wdN}.myworkdayjobs.com[/{locale}]/{site}{/job/...}
+        cxs:     https://{tenant}.{wdN}.myworkdayjobs.com/wday/cxs/{tenant}/{site}{/job/...}
+
+    A GET on the CXS URL returns JSON with ``jobPostingInfo.jobDescription``.
+    Returns "" if the URL is not a recognizable Workday job URL.
+    """
+    m = re.match(r"(https://([^.]+)\.[^/]*myworkdayjobs\.com)(/.*)", public_url)
+    if not m:
+        return ""
+    host_root, tenant, path = m.group(1), m.group(2), m.group(3)
+    # The detail path always starts at "/job/".
+    idx = path.find("/job/")
+    if idx == -1:
+        return ""
+    segments = [s for s in path[:idx].split("/") if s]
+    # Drop an optional locale segment (e.g. "en-US") so we land on the site id.
+    if segments and re.match(r"^[a-z]{2}-[A-Za-z]{2}$", segments[0]):
+        segments = segments[1:]
+    if not segments:
+        return ""
+    site = segments[0]
+    external_path = path[idx:]
+    return f"{host_root}/wday/cxs/{tenant}/{site}{external_path}"
+
+
 def _compose_jobright_description(job_result: dict) -> str:
     """Compose a clean plain-text description from a jobright jobResult object.
 
@@ -346,6 +377,8 @@ async def fetch_job_details(
         "smartrecruiters.com",
         "icims.com",
         "taleo.net",
+        "oraclecloud.com",
+        "jobs.nokia.com",
         "jobright.ai", "www.jobright.ai",
         "indeed.com", "www.indeed.com",
         "glassdoor.com", "www.glassdoor.com",
@@ -676,6 +709,38 @@ async def fetch_job_details(
                     desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
                     if len(desc_text) > 50:
                         description = desc_text
+
+        # Strategy 4b: Workday job board — the page is a JS SPA with no inline
+        # description, so hit the CXS detail API and read jobPostingInfo.
+        if not description and "myworkdayjobs.com" in job.url:
+            cxs_url = _workday_cxs_url(job.url)
+            if cxs_url:
+                try:
+                    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as api_client:
+                        api_resp = await api_client.get(
+                            cxs_url, headers={"Accept": "application/json"}
+                        )
+                        if api_resp.status_code == 200:
+                            info = api_resp.json().get("jobPostingInfo", {}) or {}
+                            desc_html = info.get("jobDescription", "") or ""
+                            if desc_html:
+                                from html import unescape
+                                desc_text = unescape(desc_html)
+                                desc_text = re.sub(r'<[^>]+>', '\n', desc_text)
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                if len(desc_text) > 50:
+                                    description = desc_text
+                            # Opportunistic enrichment from the same payload.
+                            if not job.location:
+                                loc = info.get("location", "")
+                                if isinstance(loc, str) and loc:
+                                    job.location = loc[:255]
+                            if not job.salary_range:
+                                pay = info.get("payRangeStr") or ""
+                                if pay:
+                                    job.salary_range = pay[:255]
+                except Exception:
+                    pass
 
         # Strategy 5: Generic fallback — extract from meta tags and main content
         if not description:
