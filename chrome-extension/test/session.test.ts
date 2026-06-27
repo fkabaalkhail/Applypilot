@@ -72,3 +72,35 @@ describe("ensureFreshAccessToken", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("refresh failure classification", () => {
+  it("on a 401 refresh: clears tokens, sets sessionExpired, keeps the snapshot", async () => {
+    const storage = await import("../src/shared/storage");
+    await storage.saveAuth({ accessToken: "", refreshToken: "r-dead", email: "u@e.com" });
+    await storage.saveSnapshot({ version: 1 } as any);
+
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ detail: "Token has been revoked" }), { status: 401 })
+    ) as unknown as typeof fetch;
+
+    const client = await import("../src/api/client");
+    await expect(client.authedRequest("/auth/me")).rejects.toThrow();
+
+    expect(await storage.getAuth()).toBeNull();           // tokens cleared
+    expect(await storage.getSessionExpired()).toBe(true); // flag set
+    expect(await storage.getSnapshot()).not.toBeNull();   // snapshot preserved
+  });
+
+  it("on a network error during refresh: keeps tokens and does not set the flag", async () => {
+    const storage = await import("../src/shared/storage");
+    await storage.saveAuth({ accessToken: "", refreshToken: "r-live", email: "u@e.com" });
+
+    globalThis.fetch = vi.fn(async () => { throw new TypeError("network down"); }) as unknown as typeof fetch;
+
+    const client = await import("../src/api/client");
+    await expect(client.authedRequest("/auth/me")).rejects.toThrow();
+
+    expect(await storage.getAuth()).not.toBeNull();        // tokens kept
+    expect(await storage.getSessionExpired()).toBe(false); // flag NOT set
+  });
+});

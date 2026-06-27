@@ -19,6 +19,7 @@ import {
   getAuth,
   getConfig,
   saveAuth,
+  setSessionExpired,
 } from "../shared/storage";
 import type { ApiErrorBody, MeResponse, TokenResponse } from "./types";
 
@@ -86,10 +87,17 @@ async function refreshTokens(): Promise<void> {
           refreshToken: tokens.refresh_token,
           email: auth.email,
         });
-      } catch {
-        // Refresh token expired/revoked — force a clean reconnect.
-        await clearAuth();
-        throw new AuthRequiredError();
+      } catch (err) {
+        // Terminal only on an auth rejection (invalid/revoked/expired refresh
+        // token). Clear tokens + mark the session expired, but KEEP the cached
+        // snapshot so the UI can show data + a reconnect prompt.
+        if (err instanceof ApiError && err.status === 401) {
+          await clearAuth();
+          await setSessionExpired();
+          throw new AuthRequiredError();
+        }
+        // Transient (network / 5xx): keep tokens + snapshot; let the caller retry later.
+        throw err;
       }
     })().finally(() => {
       refreshInFlight = null;

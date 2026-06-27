@@ -21,6 +21,9 @@ const KEYS = {
   snapshot: "ap_sync",
   // Per-resume original file cache (base64), keyed by resume id.
   resumeFilePrefix: "ap_resume_file_",
+  // Persistent: set when a refresh fails on an invalid/revoked/expired refresh
+  // token, so the UI can show "session expired" instead of "never connected".
+  sessionExpired: "ap_session_expired",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -139,6 +142,19 @@ export async function clearAuth(): Promise<void> {
   } catch {
     // ignore
   }
+}
+
+export async function setSessionExpired(): Promise<void> {
+  await chrome.storage.local.set({ [KEYS.sessionExpired]: true });
+}
+
+export async function getSessionExpired(): Promise<boolean> {
+  const data = await chrome.storage.local.get(KEYS.sessionExpired);
+  return data[KEYS.sessionExpired] === true;
+}
+
+export async function clearSessionExpired(): Promise<void> {
+  await chrome.storage.local.remove(KEYS.sessionExpired);
 }
 
 // ---------------------------------------------------------------------------
