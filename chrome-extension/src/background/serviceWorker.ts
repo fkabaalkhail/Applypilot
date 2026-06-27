@@ -12,7 +12,7 @@
 import { connectAccount } from "../api/handshake";
 import { AuthRequiredError, checkAuthStatus, ensureFreshAccessToken, logout } from "../api/client";
 import { downloadResumeFile, getSnapshotForUi, syncIfStale } from "../api/sync";
-import { getConfig, getSnapshot, saveConfig } from "../shared/storage";
+import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import type {
   BackgroundRequest,
   FieldsUpdatedEvent,
@@ -130,7 +130,7 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
-async function handle(
+export async function handle(
   message: BackgroundRequest
 ): Promise<
   | StatusResponse
@@ -149,6 +149,20 @@ async function handle(
       }
       const status = await checkAuthStatus();
       if (!status.connected) {
+        const cached = await getSnapshot();
+        if ((await getSessionExpired()) && cached) {
+          const p = cached.snapshot.profile;
+          return {
+            ok: true,
+            mode: "sessionExpired",
+            email: p.email || undefined,
+            firstName: p.firstName || undefined,
+            lastName: p.lastName || undefined,
+            apiBaseUrl: config.apiBaseUrl,
+            subscription: cached.snapshot.subscription,
+            usage: cached.snapshot.usage,
+          };
+        }
         return { ok: true, mode: "signedOut", apiBaseUrl: config.apiBaseUrl };
       }
       // Surface subscription + usage from the cached snapshot when available.
@@ -168,6 +182,7 @@ async function handle(
     case "CONNECT": {
       try {
         await connectAccount();
+        await clearSessionExpired();
         // Connecting always means leaving sample-data mode.
         await saveConfig({ useMockData: false });
         await syncIfStale().catch(() => {});

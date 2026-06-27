@@ -11,9 +11,17 @@ function makeStorageArea() {
   };
 }
 
+function makeListener() {
+  return { addListener: vi.fn() };
+}
+
 beforeEach(() => {
   (globalThis as any).chrome = {
     storage: { local: makeStorageArea(), session: makeStorageArea() },
+    runtime: { onInstalled: makeListener(), onStartup: makeListener(), onMessage: makeListener() },
+    alarms: { create: vi.fn(), onAlarm: makeListener() },
+    action: { onClicked: makeListener() },
+    tabs: { sendMessage: vi.fn(), executeScript: vi.fn() },
   };
 });
 
@@ -102,5 +110,23 @@ describe("refresh failure classification", () => {
 
     expect(await storage.getAuth()).not.toBeNull();        // tokens kept
     expect(await storage.getSessionExpired()).toBe(false); // flag NOT set
+  });
+});
+
+describe("GET_STATUS sessionExpired mode", () => {
+  it("reports sessionExpired when the flag is set and a snapshot exists", async () => {
+    const storage = await import("../src/shared/storage");
+    await storage.setSessionExpired();
+    await storage.saveSnapshot({
+      version: 1,
+      profile: { firstName: "Ada", lastName: "Lovelace", email: "ada@e.com" },
+    } as any);
+
+    // No auth → checkAuthStatus returns not-connected without any fetch.
+    const sw = await import("../src/background/serviceWorker");
+    const status = await (sw as any).handle({ type: "GET_STATUS" });
+    expect(status.mode).toBe("sessionExpired");
+    expect(status.email).toBe("ada@e.com");
+    expect(status.firstName).toBe("Ada");
   });
 });

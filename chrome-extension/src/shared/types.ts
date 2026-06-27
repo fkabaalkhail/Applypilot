@@ -268,8 +268,8 @@ export type BackgroundRequest =
 
 export interface StatusResponse {
   ok: boolean;
-  /** mock = sample data, connected = signed in, signedOut = needs to connect */
-  mode: "mock" | "connected" | "signedOut";
+  /** mock = sample data, connected = signed in, sessionExpired = was connected but refresh failed, signedOut = needs to connect */
+  mode: "mock" | "connected" | "sessionExpired" | "signedOut";
   email?: string;
   /** Account name from /auth/me — used for the avatar before the profile loads. */
   firstName?: string;
