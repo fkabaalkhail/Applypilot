@@ -103,6 +103,14 @@ def list_jobs(
     """List scraped jobs, optionally filtered by status, match score, source, country, work_type, etc."""
 
     q = db.query(ScrapedJob).filter(ScrapedJob.match_score >= min_score)
+    # Never surface jobs with no usable company name — they render as blank,
+    # logoless cards. (The scraper now rejects these at write time; this also
+    # hides historical rows until they're cleaned up.)
+    q = q.filter(
+        ScrapedJob.company.isnot(None),
+        func.trim(ScrapedJob.company) != "",
+        ScrapedJob.company != "Unknown",
+    )
     if status:
         q = q.filter(ScrapedJob.status == status)
     if source:
@@ -206,10 +214,16 @@ def create_job(
 @router.get("/stats")
 def job_stats(db: Session = Depends(get_db)):
     """Return aggregate job stats with breakdowns by country, work_type, role_category, experience_level."""
-    total = db.query(ScrapedJob).count()
-    applied = db.query(ScrapedJob).filter(ScrapedJob.status == JobStatus.APPLIED).count()
-    new = db.query(ScrapedJob).filter(ScrapedJob.status == JobStatus.NEW).count()
-    saved_count = db.query(ScrapedJob).filter(ScrapedJob.saved == 1).count()
+    # Exclude blank-company jobs to match the listing query.
+    _has_company = (
+        ScrapedJob.company.isnot(None)
+        & (func.trim(ScrapedJob.company) != "")
+        & (ScrapedJob.company != "Unknown")
+    )
+    total = db.query(ScrapedJob).filter(_has_company).count()
+    applied = db.query(ScrapedJob).filter(_has_company, ScrapedJob.status == JobStatus.APPLIED).count()
+    new = db.query(ScrapedJob).filter(_has_company, ScrapedJob.status == JobStatus.NEW).count()
+    saved_count = db.query(ScrapedJob).filter(_has_company, ScrapedJob.saved == 1).count()
 
     avg_score = db.query(func.avg(ScrapedJob.match_score)).scalar()
     avg_match_score = round(avg_score) if avg_score else 0

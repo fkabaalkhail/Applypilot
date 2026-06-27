@@ -119,14 +119,15 @@ def cleanup_jobright_jobs(
 @router.post("/cleanup-blank-companies")
 def cleanup_blank_companies(
     dry_run: bool = True,
-    _admin: int = Depends(get_admin_user_id),
+    _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
 ):
     """Remove jobs with empty/placeholder company names.
 
     These render as blank cards with no logo on the dashboard (mostly old
     LinkedIn rows whose company failed to parse). The scraper now rejects
-    these at write time; this cleans up the historical ones.
+    these at write time and the listing API hides them; this permanently
+    removes the historical ones. Authenticated via cron secret.
 
     Defaults to dry_run=True (counts only). Pass ?dry_run=false to delete.
     """
