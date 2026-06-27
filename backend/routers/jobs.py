@@ -68,6 +68,144 @@ def _workday_cxs_url(public_url: str) -> str:
     return f"{host_root}/wday/cxs/{tenant}/{site}{external_path}"
 
 
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+async def _extract_description_from_url(client, url: str) -> str:
+    """Fetch a job posting URL and extract a plain-text description.
+
+    Tries clean ATS APIs first (Greenhouse, Lever, Workday, SmartRecruiters,
+    Ashby, Recruitee), then schema.org JSON-LD, then a generic HTML fallback.
+    Domain-agnostic so it also works for redirect links (Simplify, jobright)
+    that land on the real ATS. Used by the batch backfill endpoint.
+    """
+    import re
+    import json
+    from html import unescape
+
+    def _clean(html: str) -> str:
+        text = re.sub(r"<[^>]+>", "\n", unescape(html or ""))
+        return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+    try:
+        resp = await client.get(url, headers=_BROWSER_HEADERS)
+    except Exception:
+        return ""
+    text = resp.text
+    final_url = str(resp.url)
+    u = f"{url or ''} {final_url}"
+
+    async def _get_json(api_url, **kw):
+        try:
+            r = await client.get(api_url, headers={"Accept": "application/json"}, **kw)
+            if r.status_code == 200:
+                return r.json()
+        except Exception:
+            return None
+        return None
+
+    # Greenhouse
+    if "greenhouse.io" in u:
+        m = re.search(r'boards(?:-api)?\.greenhouse\.io/(?:v1/boards/)?([^/]+)/jobs/(\d+)', u)
+        if m:
+            d = await _get_json(f"https://boards-api.greenhouse.io/v1/boards/{m.group(1)}/jobs/{m.group(2)}")
+            if d and d.get("content"):
+                t = _clean(d["content"])
+                if len(t) > 50:
+                    return t[:6000]
+    # Lever
+    if "lever.co" in u:
+        m = re.search(r'lever\.co/([^/]+)/([a-f0-9-]{8,})', u)
+        if m:
+            d = await _get_json(f"https://api.lever.co/v0/postings/{m.group(1)}/{m.group(2)}")
+            if d:
+                t = d.get("descriptionPlain") or _clean(d.get("description", ""))
+                for lst in d.get("lists", []) or []:
+                    t += "\n\n" + lst.get("text", "") + "\n" + _clean(lst.get("content", ""))
+                if len(t.strip()) > 50:
+                    return t.strip()[:6000]
+    # Workday
+    if "myworkdayjobs.com" in u:
+        cxs = _workday_cxs_url(url if "myworkdayjobs.com" in (url or "") else final_url)
+        if cxs:
+            d = await _get_json(cxs)
+            if d:
+                t = _clean((d.get("jobPostingInfo") or {}).get("jobDescription", ""))
+                if len(t) > 50:
+                    return t[:6000]
+    # SmartRecruiters
+    if "smartrecruiters.com" in u:
+        m = re.search(r'smartrecruiters\.com/([^/?]+)/(\d{6,})', u)
+        if m:
+            d = await _get_json(f"https://api.smartrecruiters.com/v1/companies/{m.group(1)}/postings/{m.group(2)}")
+            if d:
+                secs = (d.get("jobAd") or {}).get("sections", {}) or {}
+                parts = [(secs.get(k) or {}).get("text", "") for k in
+                         ("companyDescription", "jobDescription", "qualifications", "additionalInformation")]
+                t = _clean("\n".join(p for p in parts if p))
+                if len(t) > 50:
+                    return t[:6000]
+    # Ashby
+    if "ashbyhq.com" in u:
+        m = re.search(r'ashbyhq\.com/([^/?#]+)/([a-f0-9-]{8,})', u)
+        if m:
+            d = await _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{m.group(1)}")
+            if d:
+                for jd in d.get("jobs", []) or []:
+                    if m.group(2) in (jd.get("jobId", ""), jd.get("id", "")):
+                        t = _clean(jd.get("descriptionHtml") or jd.get("descriptionPlain") or "")
+                        if len(t) > 50:
+                            return t[:6000]
+                        break
+    # Recruitee
+    if "recruitee.com" in u:
+        m = re.search(r'https?://([^.]+)\.recruitee\.com/o/([^/?#]+)', u)
+        if m:
+            d = await _get_json(f"https://{m.group(1)}.recruitee.com/api/offers/{m.group(2)}")
+            if d:
+                o = d.get("offer") or {}
+                t = _clean((o.get("description") or "") + (o.get("requirements") or ""))
+                if len(t) > 50:
+                    return t[:6000]
+    # LinkedIn
+    if "linkedin.com/jobs" in u:
+        m = re.search(r'show-more-less-html__markup[^>]*>(.*?)</div>', text, re.DOTALL)
+        if m:
+            t = _clean(m.group(1))
+            if len(t) > 50:
+                return t[:6000]
+    # schema.org JSON-LD JobPosting (universal)
+    for blk in re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', text, re.DOTALL):
+        try:
+            data = json.loads(blk)
+            if isinstance(data, list):
+                data = next((x for x in data if isinstance(x, dict) and x.get("@type") == "JobPosting"), None)
+            if isinstance(data, dict) and data.get("@type") == "JobPosting":
+                t = _clean(data.get("description", ""))
+                if len(t) > 50:
+                    return t[:6000]
+        except (json.JSONDecodeError, TypeError):
+            continue
+    # Generic: main/article content, else meta description
+    main = re.search(r'<(?:main|article)[^>]*>(.*?)</(?:main|article)>', text, re.DOTALL | re.IGNORECASE)
+    if main:
+        body = re.sub(r'<(?:script|style)[^>]*>.*?</(?:script|style)>', '', main.group(1), flags=re.DOTALL)
+        t = _clean(body)
+        if len(t) > 120:
+            return t[:6000]
+    meta = re.search(r'<meta\s+(?:name|property)="(?:description|og:description)"[^>]*content="([^"]*)"', text, re.IGNORECASE)
+    if meta and len(meta.group(1).strip()) > 50:
+        return meta.group(1).strip()
+    return ""
+
+
 def _compose_jobright_description(job_result: dict) -> str:
     """Compose a clean plain-text description from a jobright jobResult object.
 
@@ -370,53 +508,44 @@ async def fetch_job_details(
     import ipaddress
     from urllib.parse import urlparse
 
-    # SSRF protection: validate URL against allowlist
-    ALLOWED_DOMAINS = [
-        "linkedin.com", "www.linkedin.com",
-        "greenhouse.io", "boards.greenhouse.io",
-        "lever.co", "jobs.lever.co",
-        "myworkdayjobs.com",
-        "ashbyhq.com",
-        "smartrecruiters.com",
-        "icims.com",
-        "taleo.net",
-        "oraclecloud.com",
-        "jobs.nokia.com",
-        "jobright.ai", "www.jobright.ai",
-        "indeed.com", "www.indeed.com",
-        "glassdoor.com", "www.glassdoor.com",
-    ]
+    # SSRF protection: allow any PUBLIC host (job postings live on countless
+    # company/ATS domains), but resolve DNS and block any host that maps to a
+    # private/loopback/link-local/reserved address, plus non-http(s) schemes.
+    import socket
 
-    BLOCKED_IP_RANGES = [
-        ipaddress.ip_network("10.0.0.0/8"),
-        ipaddress.ip_network("172.16.0.0/12"),
-        ipaddress.ip_network("192.168.0.0/16"),
-        ipaddress.ip_network("169.254.0.0/16"),
-        ipaddress.ip_network("127.0.0.0/8"),
-        ipaddress.ip_network("::1/128"),
-    ]
+    def _ip_is_internal(ip_str: str) -> bool:
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return True  # unparseable → treat as unsafe
+        return (
+            ip.is_private or ip.is_loopback or ip.is_link_local
+            or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+        )
 
     def _is_url_allowed(url: str) -> bool:
-        """Check if URL is safe to fetch (not internal, matches allowlist)."""
+        """Safe to fetch: public http(s) host that doesn't resolve internally."""
         try:
             parsed = urlparse(url)
-            hostname = parsed.hostname or ""
-            # Block non-http(s) schemes
             if parsed.scheme not in ("http", "https"):
                 return False
-            # Block IP addresses in private ranges
+            host = parsed.hostname or ""
+            if not host:
+                return False
+            # Literal IP in the URL.
             try:
-                ip = ipaddress.ip_address(hostname)
-                for network in BLOCKED_IP_RANGES:
-                    if ip in network:
-                        return False
+                ipaddress.ip_address(host)
+                return not _ip_is_internal(host)
             except ValueError:
-                pass  # Not an IP, it's a hostname — check domain allowlist
-            # Check domain allowlist
-            for allowed in ALLOWED_DOMAINS:
-                if hostname == allowed or hostname.endswith(f".{allowed}"):
-                    return True
-            return False
+                pass
+            # Resolve DNS; block if ANY resolved address is internal.
+            try:
+                infos = socket.getaddrinfo(host, None)
+            except Exception:
+                return False
+            if not infos:
+                return False
+            return not any(_ip_is_internal(info[4][0]) for info in infos)
         except Exception:
             return False
 
@@ -450,7 +579,15 @@ async def fetch_job_details(
 
     # Fetch the page and try multiple extraction strategies
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+        _browser_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=_browser_headers) as client:
             response = await client.get(job.url)
             text = response.text
             final_url = str(response.url)
@@ -715,8 +852,8 @@ async def fetch_job_details(
 
         # Strategy 4b: Workday job board — the page is a JS SPA with no inline
         # description, so hit the CXS detail API and read jobPostingInfo.
-        if not description and "myworkdayjobs.com" in job.url:
-            cxs_url = _workday_cxs_url(job.url)
+        if not description and ("myworkdayjobs.com" in job.url or "myworkdayjobs.com" in final_url):
+            cxs_url = _workday_cxs_url(job.url if "myworkdayjobs.com" in job.url else final_url)
             if cxs_url:
                 try:
                     async with httpx.AsyncClient(timeout=12, follow_redirects=True) as api_client:
@@ -742,6 +879,88 @@ async def fetch_job_details(
                                 pay = info.get("payRangeStr") or ""
                                 if pay:
                                     job.salary_range = pay[:255]
+                except Exception:
+                    pass
+
+        # Strategy 4c: SmartRecruiters — posting detail API has rich sections.
+        if not description and ("smartrecruiters.com" in job.url or "smartrecruiters.com" in final_url):
+            sr_m = re.search(r'smartrecruiters\.com/([^/?]+)/(\d{6,})', final_url) \
+                or re.search(r'smartrecruiters\.com/([^/?]+)/(\d{6,})', job.url)
+            if sr_m:
+                company_id, posting_id = sr_m.group(1), sr_m.group(2)
+                try:
+                    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as api_client:
+                        api_resp = await api_client.get(
+                            f"https://api.smartrecruiters.com/v1/companies/{company_id}/postings/{posting_id}",
+                            headers={"Accept": "application/json"},
+                        )
+                        if api_resp.status_code == 200:
+                            from html import unescape
+                            sections = (api_resp.json().get("jobAd", {}) or {}).get("sections", {}) or {}
+                            parts = []
+                            for key in ("companyDescription", "jobDescription",
+                                        "qualifications", "additionalInformation"):
+                                sec = sections.get(key) or {}
+                                txt = sec.get("text") or ""
+                                if txt:
+                                    parts.append(txt)
+                            if parts:
+                                desc_text = unescape("\n".join(parts))
+                                desc_text = re.sub(r'<[^>]+>', '\n', desc_text)
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                if len(desc_text) > 50:
+                                    description = desc_text
+                except Exception:
+                    pass
+
+        # Strategy 4d: Recruitee — offer detail API.
+        if not description and ("recruitee.com" in job.url or "recruitee.com" in final_url):
+            rc_m = re.search(r'https?://([^.]+)\.recruitee\.com/o/([^/?#]+)', final_url) \
+                or re.search(r'https?://([^.]+)\.recruitee\.com/o/([^/?#]+)', job.url)
+            if rc_m:
+                sub, slug = rc_m.group(1), rc_m.group(2)
+                try:
+                    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as api_client:
+                        api_resp = await api_client.get(
+                            f"https://{sub}.recruitee.com/api/offers/{slug}",
+                            headers={"Accept": "application/json"},
+                        )
+                        if api_resp.status_code == 200:
+                            from html import unescape
+                            offer = api_resp.json().get("offer", {}) or {}
+                            raw = (offer.get("description") or "") + "\n" + (offer.get("requirements") or "")
+                            if raw.strip():
+                                desc_text = re.sub(r'<[^>]+>', '\n', unescape(raw))
+                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                if len(desc_text) > 50:
+                                    description = desc_text
+                except Exception:
+                    pass
+
+        # Strategy 4e: Ashby — board API includes descriptionHtml per posting.
+        if not description and ("ashbyhq.com" in job.url or "ashbyhq.com" in final_url):
+            ash_m = re.search(r'ashbyhq\.com/([^/?#]+)/([a-f0-9-]{8,})', final_url) \
+                or re.search(r'ashbyhq\.com/([^/?#]+)/([a-f0-9-]{8,})', job.url)
+            if ash_m:
+                org, posting_id = ash_m.group(1), ash_m.group(2)
+                try:
+                    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as api_client:
+                        api_resp = await api_client.get(
+                            f"https://api.ashbyhq.com/posting-api/job-board/{org}",
+                            params={"includeCompensation": "true"},
+                            headers={"Accept": "application/json"},
+                        )
+                        if api_resp.status_code == 200:
+                            from html import unescape
+                            for jd in api_resp.json().get("jobs", []) or []:
+                                if jd.get("jobId") == posting_id or jd.get("id") == posting_id:
+                                    html_desc = jd.get("descriptionHtml") or jd.get("descriptionPlain") or ""
+                                    if html_desc:
+                                        desc_text = re.sub(r'<[^>]+>', '\n', unescape(html_desc))
+                                        desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
+                                        if len(desc_text) > 50:
+                                            description = desc_text
+                                    break
                 except Exception:
                     pass
 
@@ -1030,85 +1249,8 @@ async def batch_fix_descriptions(
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
         for job in jobs_to_fix:
-            description = ""
             try:
-                # LinkedIn jobs
-                if "linkedin.com/jobs" in (job.url or ""):
-                    resp = await client.get(job.url)
-                    text = resp.text
-                    # Extract from show-more-less-html__markup div
-                    li_match = re.search(
-                        r'show-more-less-html__markup[^>]*>(.*?)</div>',
-                        text, re.DOTALL
-                    )
-                    if li_match:
-                        desc_html = li_match.group(1)
-                        desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
-                        desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                        if len(desc_text) > 50:
-                            description = desc_text
-
-                # Greenhouse jobs
-                elif "greenhouse.io" in (job.url or ""):
-                    gh_match = re.search(r'boards\.greenhouse\.io/([^/]+)/jobs/(\d+)', job.url)
-                    if gh_match:
-                        slug, gh_job_id = gh_match.group(1), gh_match.group(2)
-                        api_url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{gh_job_id}"
-                        api_resp = await client.get(api_url)
-                        if api_resp.status_code == 200:
-                            gh_data = api_resp.json()
-                            desc_html = gh_data.get("content", "")
-                            if desc_html:
-                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
-                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                                if len(desc_text) > 50:
-                                    description = desc_text
-
-                # Lever jobs
-                elif "lever.co" in (job.url or ""):
-                    lever_match = re.search(r'jobs\.lever\.co/([^/]+)/([a-f0-9-]+)', job.url)
-                    if lever_match:
-                        slug, lever_id = lever_match.group(1), lever_match.group(2)
-                        api_url = f"https://api.lever.co/v0/postings/{slug}/{lever_id}"
-                        api_resp = await client.get(api_url)
-                        if api_resp.status_code == 200:
-                            lever_data = api_resp.json()
-                            desc_text = lever_data.get("descriptionPlain", "")
-                            if not desc_text:
-                                desc_html = lever_data.get("description", "")
-                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
-                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                            if len(desc_text) > 50:
-                                description = desc_text
-
-                # Generic: try schema.org JSON-LD
-                else:
-                    resp = await client.get(job.url)
-                    text = resp.text
-                    schema_matches = re.findall(
-                        r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
-                        text, re.DOTALL
-                    )
-                    for schema_raw in schema_matches:
-                        try:
-                            schema_data = json.loads(schema_raw)
-                            if isinstance(schema_data, list):
-                                for item in schema_data:
-                                    if isinstance(item, dict) and item.get("@type") == "JobPosting":
-                                        schema_data = item
-                                        break
-                                else:
-                                    continue
-                            if isinstance(schema_data, dict) and schema_data.get("@type") == "JobPosting":
-                                desc_html = schema_data.get("description", "")
-                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
-                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                                if len(desc_text) > 50:
-                                    description = desc_text
-                                    break
-                        except (json.JSONDecodeError, TypeError):
-                            continue
-
+                description = await _extract_description_from_url(client, job.url or "")
                 if description:
                     job.description = _sanitize_description(description)
                     db.commit()
@@ -1117,7 +1259,6 @@ async def batch_fix_descriptions(
                 else:
                     failed += 1
                     results.append({"id": job.id, "company": job.company, "status": "no_description_found"})
-
             except Exception as e:
                 failed += 1
                 results.append({"id": job.id, "company": job.company, "status": f"error: {str(e)[:50]}"})
