@@ -116,6 +116,38 @@ def cleanup_jobright_jobs(
     return {"deleted_jobs": count, "deleted_sources": source_count}
 
 
+@router.post("/cleanup-blank-companies")
+def cleanup_blank_companies(
+    dry_run: bool = True,
+    _admin: int = Depends(get_admin_user_id),
+    db: Session = Depends(get_db),
+):
+    """Remove jobs with empty/placeholder company names.
+
+    These render as blank cards with no logo on the dashboard (mostly old
+    LinkedIn rows whose company failed to parse). The scraper now rejects
+    these at write time; this cleans up the historical ones.
+
+    Defaults to dry_run=True (counts only). Pass ?dry_run=false to delete.
+    """
+    from backend.db.models import ScrapedJob as SJ
+    from sqlalchemy import or_, func
+
+    blank_filter = or_(
+        SJ.company.is_(None),
+        func.trim(SJ.company) == "",
+        SJ.company == "Unknown",
+    )
+    q = db.query(SJ).filter(blank_filter)
+    count = q.count()
+    if dry_run:
+        return {"dry_run": True, "would_delete": count}
+
+    deleted = q.delete(synchronize_session=False)
+    db.commit()
+    return {"dry_run": False, "deleted_jobs": deleted}
+
+
 @router.post("/cron-ats")
 async def cron_ats(
     _cron: None = Depends(verify_cron_secret),
