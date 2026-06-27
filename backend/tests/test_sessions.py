@@ -59,3 +59,12 @@ def test_start_session_captures_client(db_session, user):
     assert s.last_ip == "1.2.3.4"
     assert s.user_agent == "TestAgent/1.0"
     assert sessions.get_active(db_session, s.sid) is not None
+
+
+def test_touch_and_revoke(db_session, user):
+    from backend.services import sessions
+    s = sessions.start_session(db_session, TEST_USER_ID, "web", None)  # request=None path
+    sessions.touch(db_session, s)
+    assert s.last_seen_at is not None
+    sessions.revoke(db_session, s)
+    assert sessions.get_active(db_session, s.sid) is None
