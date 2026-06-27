@@ -25,21 +25,22 @@ const COUNTRY_OPTIONS = [
 
 const JOB_FUNCTION_OPTIONS = [
   "Software Engineering",
+  "Engineering and Development",
   "Data Analysis",
-  "Machine Learning/AI",
-  "Product Management",
-  "Marketing",
-  "Design",
-  "DevOps/Infrastructure",
-  "Cybersecurity",
-  "Business Analyst",
-  "Accounting/Finance",
+  "Machine Learning and AI",
+  "Accounting and Finance",
+  "Management and Executive",
   "Sales",
+  "Marketing",
   "Human Resources",
-  "Legal",
+  "Product Management",
+  "Business Analyst",
+  "Creatives and Design",
+  "Legal and Compliance",
+  "Customer Service and Support",
   "Operations",
-  "Customer Support",
-  "Hardware Engineering",
+  "Consultant",
+  "Other",
 ];
 
 const EXPERIENCE_OPTIONS = [

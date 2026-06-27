@@ -183,7 +183,10 @@ def list_jobs(
     if role_category:
         category_values = [c.strip() for c in role_category.split(",") if c.strip()]
         if category_values:
-            q = q.filter(ScrapedJob.role_category.in_(category_values))
+            # Expand to legacy spellings so rows written by older scrape paths
+            # (e.g. "Machine Learning/AI") still match the canonical filter.
+            from backend.services.role_classifier import expand_filter_values
+            q = q.filter(ScrapedJob.role_category.in_(expand_filter_values(category_values)))
     if experience_level:
         level_values = [l.strip().lower() for l in experience_level.split(",") if l.strip()]
         if level_values:
