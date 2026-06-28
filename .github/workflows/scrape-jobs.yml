@@ -28,7 +28,7 @@ jobs:
 
       - name: Trigger ATS scraper
         run: |
-          curl -X POST "https://www.tailrd.ca/github-sources/scrape-ats" \
+          curl -X POST "https://www.tailrd.ca/github-sources/cron-ats" \
             -H "Content-Type: application/json" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             --max-time 300 || true
