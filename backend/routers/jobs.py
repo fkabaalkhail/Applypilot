@@ -20,6 +20,11 @@ from backend.db.database import get_db
 from backend.db.models import ScrapedJob, JobStatus, ApplicationRecord, UserSavedJob
 from backend.auth.dependencies import get_verified_user_id, get_optional_user_id, get_admin_user_id
 from backend.schemas.jobs import ScrapedJobOut
+from backend.services.description_extractor import (
+    BROWSER_HEADERS,
+    extract_description_from_html,
+    extract_description_from_url,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,221 +42,6 @@ def _sanitize_description(text: str) -> str:
     return nh3.clean(text, tags=set())
 
 
-def _workday_cxs_url(public_url: str) -> str:
-    """Convert a public Workday job URL into its CXS detail-API endpoint.
-
-    Workday renders job pages as a JavaScript SPA, so the raw HTML carries no
-    description. The data lives behind the CXS REST API instead:
-
-        public:  https://{tenant}.{wdN}.myworkdayjobs.com[/{locale}]/{site}{/job/...}
-        cxs:     https://{tenant}.{wdN}.myworkdayjobs.com/wday/cxs/{tenant}/{site}{/job/...}
-
-    A GET on the CXS URL returns JSON with ``jobPostingInfo.jobDescription``.
-    Returns "" if the URL is not a recognizable Workday job URL.
-    """
-    m = re.match(r"(https://([^.]+)\.[^/]*myworkdayjobs\.com)(/.*)", public_url)
-    if not m:
-        return ""
-    host_root, tenant, path = m.group(1), m.group(2), m.group(3)
-    # The detail path always starts at "/job/".
-    idx = path.find("/job/")
-    if idx == -1:
-        return ""
-    segments = [s for s in path[:idx].split("/") if s]
-    # Drop an optional locale segment (e.g. "en-US") so we land on the site id.
-    if segments and re.match(r"^[a-z]{2}-[A-Za-z]{2}$", segments[0]):
-        segments = segments[1:]
-    if not segments:
-        return ""
-    site = segments[0]
-    external_path = path[idx:]
-    return f"{host_root}/wday/cxs/{tenant}/{site}{external_path}"
-
-
-_BROWSER_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-}
-
-
-async def _extract_description_from_url(client, url: str) -> str:
-    """Fetch a job posting URL and extract a plain-text description.
-
-    Tries clean ATS APIs first (Greenhouse, Lever, Workday, SmartRecruiters,
-    Ashby, Recruitee), then schema.org JSON-LD, then a generic HTML fallback.
-    Domain-agnostic so it also works for redirect links (Simplify, jobright)
-    that land on the real ATS. Used by the batch backfill endpoint.
-    """
-    import re
-    import json
-    from html import unescape
-
-    def _clean(html: str) -> str:
-        text = re.sub(r"<[^>]+>", "\n", unescape(html or ""))
-        return re.sub(r"\n{3,}", "\n\n", text).strip()
-
-    try:
-        resp = await client.get(url, headers=_BROWSER_HEADERS)
-    except Exception:
-        return ""
-    text = resp.text
-    final_url = str(resp.url)
-    u = f"{url or ''} {final_url}"
-
-    async def _get_json(api_url, **kw):
-        try:
-            r = await client.get(api_url, headers={"Accept": "application/json"}, **kw)
-            if r.status_code == 200:
-                return r.json()
-        except Exception:
-            return None
-        return None
-
-    # Greenhouse
-    if "greenhouse.io" in u:
-        m = re.search(r'boards(?:-api)?\.greenhouse\.io/(?:v1/boards/)?([^/]+)/jobs/(\d+)', u)
-        if m:
-            d = await _get_json(f"https://boards-api.greenhouse.io/v1/boards/{m.group(1)}/jobs/{m.group(2)}")
-            if d and d.get("content"):
-                t = _clean(d["content"])
-                if len(t) > 50:
-                    return t[:6000]
-    # Lever
-    if "lever.co" in u:
-        m = re.search(r'lever\.co/([^/]+)/([a-f0-9-]{8,})', u)
-        if m:
-            d = await _get_json(f"https://api.lever.co/v0/postings/{m.group(1)}/{m.group(2)}")
-            if d:
-                t = d.get("descriptionPlain") or _clean(d.get("description", ""))
-                for lst in d.get("lists", []) or []:
-                    t += "\n\n" + lst.get("text", "") + "\n" + _clean(lst.get("content", ""))
-                if len(t.strip()) > 50:
-                    return t.strip()[:6000]
-    # Workday
-    if "myworkdayjobs.com" in u:
-        cxs = _workday_cxs_url(url if "myworkdayjobs.com" in (url or "") else final_url)
-        if cxs:
-            d = await _get_json(cxs)
-            if d:
-                t = _clean((d.get("jobPostingInfo") or {}).get("jobDescription", ""))
-                if len(t) > 50:
-                    return t[:6000]
-    # SmartRecruiters
-    if "smartrecruiters.com" in u:
-        m = re.search(r'smartrecruiters\.com/([^/?]+)/(\d{6,})', u)
-        if m:
-            d = await _get_json(f"https://api.smartrecruiters.com/v1/companies/{m.group(1)}/postings/{m.group(2)}")
-            if d:
-                secs = (d.get("jobAd") or {}).get("sections", {}) or {}
-                parts = [(secs.get(k) or {}).get("text", "") for k in
-                         ("companyDescription", "jobDescription", "qualifications", "additionalInformation")]
-                t = _clean("\n".join(p for p in parts if p))
-                if len(t) > 50:
-                    return t[:6000]
-    # Ashby
-    if "ashbyhq.com" in u:
-        m = re.search(r'ashbyhq\.com/([^/?#]+)/([a-f0-9-]{8,})', u)
-        if m:
-            d = await _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{m.group(1)}")
-            if d:
-                for jd in d.get("jobs", []) or []:
-                    if m.group(2) in (jd.get("jobId", ""), jd.get("id", "")):
-                        t = _clean(jd.get("descriptionHtml") or jd.get("descriptionPlain") or "")
-                        if len(t) > 50:
-                            return t[:6000]
-                        break
-    # Recruitee
-    if "recruitee.com" in u:
-        m = re.search(r'https?://([^.]+)\.recruitee\.com/o/([^/?#]+)', u)
-        if m:
-            d = await _get_json(f"https://{m.group(1)}.recruitee.com/api/offers/{m.group(2)}")
-            if d:
-                o = d.get("offer") or {}
-                t = _clean((o.get("description") or "") + (o.get("requirements") or ""))
-                if len(t) > 50:
-                    return t[:6000]
-    # LinkedIn
-    if "linkedin.com/jobs" in u:
-        m = re.search(r'show-more-less-html__markup[^>]*>(.*?)</div>', text, re.DOTALL)
-        if m:
-            t = _clean(m.group(1))
-            if len(t) > 50:
-                return t[:6000]
-    # schema.org JSON-LD JobPosting (universal)
-    for blk in re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', text, re.DOTALL):
-        try:
-            data = json.loads(blk)
-            if isinstance(data, list):
-                data = next((x for x in data if isinstance(x, dict) and x.get("@type") == "JobPosting"), None)
-            if isinstance(data, dict) and data.get("@type") == "JobPosting":
-                t = _clean(data.get("description", ""))
-                if len(t) > 50:
-                    return t[:6000]
-        except (json.JSONDecodeError, TypeError):
-            continue
-    # Generic: main/article content, else meta description
-    main = re.search(r'<(?:main|article)[^>]*>(.*?)</(?:main|article)>', text, re.DOTALL | re.IGNORECASE)
-    if main:
-        body = re.sub(r'<(?:script|style)[^>]*>.*?</(?:script|style)>', '', main.group(1), flags=re.DOTALL)
-        t = _clean(body)
-        if len(t) > 120:
-            return t[:6000]
-    meta = re.search(r'<meta\s+(?:name|property)="(?:description|og:description)"[^>]*content="([^"]*)"', text, re.IGNORECASE)
-    if meta and len(meta.group(1).strip()) > 50:
-        return meta.group(1).strip()
-    return ""
-
-
-def _compose_jobright_description(job_result: dict) -> str:
-    """Compose a clean plain-text description from a jobright jobResult object.
-
-    jobright no longer ships a single ``jdContent`` HTML blob. Instead it
-    exposes structured fields. We assemble them into a readable description:
-      - jobSummary            → intro paragraph
-      - coreResponsibilities  → "Responsibilities" bullets
-      - qualifications        → "Qualifications" bullets
-    Falls back gracefully when individual fields are missing.
-    """
-    import re as _re
-
-    def _clean(value: str) -> str:
-        # Strip any stray HTML and collapse whitespace.
-        value = _re.sub(r"<[^>]+>", " ", value or "")
-        value = value.replace("\u2022", " ").strip()
-        return _re.sub(r"\s{2,}", " ", value)
-
-    def _as_bullets(value) -> list[str]:
-        items: list[str] = []
-        if isinstance(value, list):
-            items = [str(v) for v in value]
-        elif isinstance(value, str) and value.strip():
-            # Split a single string on newlines or bullet separators.
-            items = _re.split(r"[\n\u2022]+", value)
-        return [b for b in (_clean(i) for i in items) if b]
-
-    sections: list[str] = []
-
-    summary = _clean(job_result.get("jobSummary", "") if isinstance(job_result.get("jobSummary"), str) else "")
-    if summary:
-        sections.append(summary)
-
-    responsibilities = _as_bullets(job_result.get("coreResponsibilities"))
-    if responsibilities:
-        sections.append("Responsibilities:\n" + "\n".join(f"• {b}" for b in responsibilities))
-
-    qualifications = _as_bullets(job_result.get("qualifications")) or _as_bullets(
-        job_result.get("detailQualifications")
-    )
-    if qualifications:
-        sections.append("Qualifications:\n" + "\n".join(f"• {b}" for b in qualifications))
-
-    return "\n\n".join(sections).strip()
-
-
 @router.get("", response_model=list[ScrapedJobOut])
 def list_jobs(
     status: Optional[JobStatus] = None,
@@ -264,22 +54,25 @@ def list_jobs(
     work_type: Optional[str] = None,
     role_category: Optional[str] = None,
     experience_level: Optional[str] = None,
+    date_posted: Optional[str] = None,
     sort: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     """List scraped jobs, optionally filtered by status, match score, source, country, work_type, etc."""
+    from backend.services.job_filters import (
+        date_posted_cutoff,
+        expand_experience_filter_values,
+    )
 
     q = db.query(ScrapedJob).filter(ScrapedJob.match_score >= min_score)
-    # Never surface jobs with no usable company name — they render as blank,
-    # logoless cards. (The scraper now rejects these at write time; this also
-    # hides historical rows until they're cleaned up.)
     q = q.filter(
         ScrapedJob.company.isnot(None),
         func.trim(ScrapedJob.company) != "",
         ScrapedJob.company != "Unknown",
     )
+
     if status:
         q = q.filter(ScrapedJob.status == status)
     if source:
@@ -295,12 +88,6 @@ def list_jobs(
                     ScrapedJob.company.ilike(f"%{search_term}%"),
                 )
             )
-    if status:
-        q = q.filter(ScrapedJob.status == status)
-    if source:
-        q = q.filter(ScrapedJob.source_platform == source)
-    if saved is not None:
-        q = q.filter(ScrapedJob.saved == saved)
     if location:
         city_values = [c.strip() for c in location.split(",") if c.strip()]
         if city_values:
@@ -309,7 +96,6 @@ def list_jobs(
             ]
             q = q.filter(or_(*location_conditions))
 
-    # Aggregator filters (AND logic across different filter types, OR within same filter)
     if country:
         country_values = [c.strip().upper() for c in country.split(",") if c.strip()]
         if country_values:
@@ -321,22 +107,28 @@ def list_jobs(
     if role_category:
         category_values = [c.strip() for c in role_category.split(",") if c.strip()]
         if category_values:
-            # Expand to legacy spellings so rows written by older scrape paths
-            # (e.g. "Machine Learning/AI") still match the canonical filter.
             from backend.services.role_classifier import expand_filter_values
             q = q.filter(ScrapedJob.role_category.in_(expand_filter_values(category_values)))
     if experience_level:
-        level_values = [l.strip().lower() for l in experience_level.split(",") if l.strip()]
+        level_values = [l.strip() for l in experience_level.split(",") if l.strip()]
         if level_values:
-            q = q.filter(ScrapedJob.experience_level.in_(level_values))
+            q = q.filter(
+                ScrapedJob.experience_level.in_(expand_experience_filter_values(level_values))
+            )
 
-    # Sort
+    effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
+    cutoff = date_posted_cutoff(date_posted or "")
+    if cutoff is not None:
+        q = q.filter(effective_date >= cutoff)
+
     if sort == "match":
-        # Sort by match score descending (best matches first), then by date
-        q = q.order_by(ScrapedJob.match_score.desc(), ScrapedJob.posted_date.desc().nullslast())
+        q = q.order_by(
+            ScrapedJob.match_score.desc(),
+            effective_date.desc().nullslast(),
+        )
     else:
-        # Default sort: posted_date descending (newest first)
-        q = q.order_by(ScrapedJob.posted_date.desc().nullslast())
+        q = q.order_by(effective_date.desc().nullslast())
+
     q = q.offset((page - 1) * page_size).limit(page_size)
     return q.all()
 
@@ -491,40 +283,24 @@ async def fetch_job_details(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Fetch job description from the job page on-demand.
-
-    Tries multiple extraction strategies:
-    1. schema.org JSON-LD (JobPosting structured data)
-    2. JSON-LD array format (some sites wrap in an array)
-    3. __NEXT_DATA__ (Next.js sites like jobright.ai)
-    4. Greenhouse/Lever API-style JSON embedded in page
-    5. Generic HTML content extraction (meta description + main content)
-
-    Caches the result in the database.
-    """
-    import re
+    """Fetch job description from the apply URL on-demand and cache it."""
     import json
     import httpx
     import ipaddress
-    from urllib.parse import urlparse
-
-    # SSRF protection: allow any PUBLIC host (job postings live on countless
-    # company/ATS domains), but resolve DNS and block any host that maps to a
-    # private/loopback/link-local/reserved address, plus non-http(s) schemes.
     import socket
+    from urllib.parse import urlparse
 
     def _ip_is_internal(ip_str: str) -> bool:
         try:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
-            return True  # unparseable → treat as unsafe
+            return True
         return (
             ip.is_private or ip.is_loopback or ip.is_link_local
             or ip.is_reserved or ip.is_multicast or ip.is_unspecified
         )
 
     def _is_url_allowed(url: str) -> bool:
-        """Safe to fetch: public http(s) host that doesn't resolve internally."""
         try:
             parsed = urlparse(url)
             if parsed.scheme not in ("http", "https"):
@@ -532,13 +308,11 @@ async def fetch_job_details(
             host = parsed.hostname or ""
             if not host:
                 return False
-            # Literal IP in the URL.
             try:
                 ipaddress.ip_address(host)
                 return not _ip_is_internal(host)
             except ValueError:
                 pass
-            # Resolve DNS; block if ANY resolved address is internal.
             try:
                 infos = socket.getaddrinfo(host, None)
             except Exception:
@@ -553,7 +327,6 @@ async def fetch_job_details(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    # Validate URL before fetching
     if not job.url or not _is_url_allowed(job.url):
         return {
             "id": job.id,
@@ -562,9 +335,7 @@ async def fetch_job_details(
             "company_logo": job.company_logo or "",
         }
 
-    # If we already have a good description, return cached data
     if job.description and len(job.description) > 50:
-        # Reject known garbage descriptions (LinkedIn UI text)
         if "This button displays the currently selected search type" not in job.description:
             return {
                 "id": job.id,
@@ -572,191 +343,76 @@ async def fetch_job_details(
                 "apply_url": job.url,
                 "company_logo": job.company_logo,
             }
-        else:
-            # Clear garbage description so we re-fetch
-            job.description = ""
-            db.commit()
+        job.description = ""
+        db.commit()
 
-    # Fetch the page and try multiple extraction strategies
     try:
-        _browser_headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=_browser_headers) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
             response = await client.get(job.url)
             text = response.text
             final_url = str(response.url)
 
-        description = ""
-        apply_url = final_url if final_url != job.url else job.url
+            description = await extract_description_from_html(client, job.url, text, final_url)
+            apply_url = final_url if final_url != job.url else job.url
 
-        # Strategy 0: LinkedIn job pages (special handling - must come first)
-        if "linkedin.com/jobs" in job.url:
-            # LinkedIn guest view has description in show-more-less-html__markup div
-            li_match = re.search(
-                r'show-more-less-html__markup[^>]*>(.*?)</div>',
-                text, re.DOTALL
-            )
-            if li_match:
-                desc_html = li_match.group(1)
-                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
-                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                if len(desc_text) > 50:
-                    description = desc_text
-            # Fallback: og:description (truncated but better than nothing)
-            if not description:
-                og_match = re.search(
-                    r'(?:og:description|name="description")[^>]*content="([^"]*)"',
-                    text, re.IGNORECASE
-                )
-                if og_match:
-                    og_desc = og_match.group(1).strip()
-                    # Remove "Posted X. " prefix and "...See this and similar jobs" suffix
-                    og_desc = re.sub(r'^Posted [^.]+\.\s*', '', og_desc)
-                    og_desc = re.sub(r'…See this and similar jobs on LinkedIn\.', '', og_desc)
-                    if len(og_desc) > 30:
-                        description = og_desc
-
-            # Extract company name from LinkedIn page if missing/empty
-            if not job.company or job.company.strip() == "":
-                # Try og:title format: "Job Title at Company Name"
-                og_title_match = re.search(
-                    r'<meta\s+property="og:title"\s+content="([^"]*)"',
-                    text, re.IGNORECASE
-                )
-                if og_title_match:
-                    og_title = og_title_match.group(1)
-                    # Pattern: "Title hiring Job at Location" or "Company hiring Title"
-                    at_match = re.search(r'\s+at\s+(.+?)(?:\s*\||\s*-|\s*$)', og_title)
-                    hiring_match = re.search(r'^(.+?)\s+hiring\s+', og_title)
-                    if at_match:
-                        job.company = at_match.group(1).strip()
-                    elif hiring_match:
-                        job.company = hiring_match.group(1).strip()
-                # Fallback: look for company name in sub-header
+            linkedin_url = "linkedin.com/jobs" in job.url or "linkedin.com/jobs" in final_url
+            if linkedin_url:
                 if not job.company or job.company.strip() == "":
-                    company_match = re.search(
-                        r'class="[^"]*topcard[^"]*company[^"]*"[^>]*>([^<]+)<',
-                        text, re.IGNORECASE
+                    og_title_match = re.search(
+                        r'<meta\s+property="og:title"\s+content="([^"]*)"',
+                        text, re.IGNORECASE,
                     )
-                    if not company_match:
-                        company_match = re.search(
-                            r'<a[^>]*class="[^"]*topcard__org-name[^"]*"[^>]*>([^<]+)<',
-                            text, re.IGNORECASE
+                    if og_title_match:
+                        og_title = og_title_match.group(1)
+                        at_match = re.search(r'\s+at\s+(.+?)(?:\s*\||\s*-|\s*$)', og_title)
+                        hiring_match = re.search(r'^(.+?)\s+hiring\s+', og_title)
+                        if at_match:
+                            job.company = at_match.group(1).strip()
+                        elif hiring_match:
+                            job.company = hiring_match.group(1).strip()
+
+                if not job.company_logo:
+                    logo_match = re.search(
+                        r'<img[^>]*class="[^"]*artdeco-entity-image[^"]*"[^>]*src="([^"]+)"',
+                        text, re.IGNORECASE,
+                    )
+                    if not logo_match:
+                        logo_match = re.search(
+                            r'<meta\s+property="og:image"\s+content="([^"]*)"',
+                            text, re.IGNORECASE,
                         )
-                    if company_match:
-                        job.company = company_match.group(1).strip()
+                    if logo_match:
+                        logo_url = logo_match.group(1)
+                        if logo_url.startswith("http") and "linkedin" not in logo_url.lower():
+                            job.company_logo = logo_url
+                    if not job.company_logo and job.company:
+                        cleaned = re.sub(r'[^a-z0-9]', '', job.company.lower())
+                        if len(cleaned) >= 2:
+                            job.company_logo = f"https://logos-api.apistemic.com/domain:{cleaned}.com?fallback=404"
 
-            # Extract company logo from LinkedIn page if missing
-            if not job.company_logo:
-                # LinkedIn puts company logo in img tags with specific classes
-                logo_match = re.search(
-                    r'<img[^>]*class="[^"]*artdeco-entity-image[^"]*"[^>]*src="([^"]+)"',
-                    text, re.IGNORECASE
-                )
-                if not logo_match:
-                    logo_match = re.search(
-                        r'<img[^>]*data-delayed-url="([^"]+)"[^>]*class="[^"]*artdeco-entity-image',
-                        text, re.IGNORECASE
-                    )
-                if not logo_match:
-                    # Try og:image as fallback (sometimes it's the company logo)
-                    logo_match = re.search(
-                        r'<meta\s+property="og:image"\s+content="([^"]*)"',
-                        text, re.IGNORECASE
-                    )
-                if logo_match:
-                    logo_url = logo_match.group(1)
-                    if logo_url.startswith("http") and "linkedin" not in logo_url.lower():
-                        job.company_logo = logo_url
-
-                # If still no logo but we have company name, use apistemic
-                if not job.company_logo and job.company:
-                    cleaned = re.sub(r'[^a-z0-9]', '', job.company.lower())
-                    if len(cleaned) >= 2:
-                        job.company_logo = f"https://logos-api.apistemic.com/domain:{cleaned}.com?fallback=404"
-
-            if description:
-                job.description = _sanitize_description(description)
-            db.commit()
-            return {
-                "id": job.id,
-                "description": job.description or "",
-                "apply_url": job.url,
-                "company_logo": job.company_logo or "",
-                "company": job.company or "",
-            }
-
-        # Strategy 1: Extract schema.org JSON-LD JobPosting
-        schema_matches = re.findall(
-            r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
-            text, re.DOTALL
-        )
-        for schema_raw in schema_matches:
-            try:
-                schema_data = json.loads(schema_raw)
-                # Handle array format: [{"@type": "JobPosting", ...}]
-                if isinstance(schema_data, list):
-                    for item in schema_data:
-                        if isinstance(item, dict) and item.get("@type") == "JobPosting":
-                            schema_data = item
-                            break
-                    else:
-                        continue
-                if isinstance(schema_data, dict) and schema_data.get("@type") == "JobPosting":
-                    desc_html = schema_data.get("description", "")
-                    desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
-                    desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                    if desc_text and len(desc_text) > 50:
-                        description = desc_text
-                        # Also try to get apply URL from structured data
-                        if schema_data.get("directApply"):
-                            apply_url = schema_data.get("url", apply_url)
-                        break
-            except (json.JSONDecodeError, KeyError, TypeError):
-                continue
-
-        # Strategy 2: __NEXT_DATA__ (jobright.ai and other Next.js sites)
-        # jobright exposes a rich jobResult object. We compose a clean, well
-        # structured description from its summary / responsibilities /
-        # qualifications fields, which reads better than the raw JSON-LD HTML.
-        if "jobright.ai" in job.url or not description:
             next_match = re.search(
                 r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
-                text, re.DOTALL
+                text, re.DOTALL,
             )
             if next_match:
                 try:
                     next_data = json.loads(next_match.group(1))
-                    job_result = (next_data.get("props", {})
-                                  .get("pageProps", {})
-                                  .get("dataSource", {})
-                                  .get("jobResult", {})) or {}
+                    job_result = (
+                        next_data.get("props", {})
+                        .get("pageProps", {})
+                        .get("dataSource", {})
+                        .get("jobResult", {})
+                    ) or {}
                     if job_result:
-                        composed = _compose_jobright_description(job_result)
-                        # Prefer the composed description when it's substantial.
-                        if composed and len(composed) > len(description or ""):
-                            description = composed
-
-                        # Capture accurate company logo from jobright's CDN.
                         logo = job_result.get("jdLogo", "")
                         if logo and isinstance(logo, str) and logo.startswith("http") and not job.company_logo:
                             job.company_logo = logo
-
-                        # Capture salary, applicant count, and work model.
                         salary = job_result.get("salaryDesc", "")
                         if salary and not job.salary_range:
                             job.salary_range = salary[:255]
-
                         applicants = job_result.get("applicantsCount")
                         if isinstance(applicants, int) and applicants >= 0 and job.applicant_count is None:
                             job.applicant_count = applicants
-
                         work_model = (job_result.get("workModel") or "").lower()
                         if work_model:
                             if "remote" in work_model:
@@ -768,253 +424,32 @@ async def fetch_job_details(
                 except (json.JSONDecodeError, KeyError, TypeError):
                     pass
 
-        # Strategy 3: Greenhouse job board — use API for reliable description
-        if not description and "greenhouse.io" in job.url:
-            # Extract board slug and job ID from URL
-            # Format: https://boards.greenhouse.io/{slug}/jobs/{id}
-            gh_api_match = re.search(r'boards\.greenhouse\.io/([^/]+)/jobs/(\d+)', job.url)
-            if gh_api_match:
-                slug = gh_api_match.group(1)
-                gh_job_id = gh_api_match.group(2)
-                try:
-                    async with httpx.AsyncClient(timeout=10) as api_client:
-                        api_url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{gh_job_id}"
-                        api_resp = await api_client.get(api_url)
-                        if api_resp.status_code == 200:
-                            gh_data = api_resp.json()
-                            desc_html = gh_data.get("content", "")
-                            if desc_html:
-                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
-                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                                if len(desc_text) > 50:
-                                    description = desc_text
-                except Exception:
-                    pass
-            # Fallback: try HTML scraping if API didn't work
-            if not description:
-                gh_match = re.search(
-                    r'<div\s+id="content"[^>]*>(.*?)</div>\s*</div>\s*</div>',
-                    text, re.DOTALL
+            if not job.company_logo:
+                logo_match = re.search(
+                    r'<meta\s+property="og:image"\s+content="([^"]*)"',
+                    text, re.IGNORECASE,
                 )
-                if not gh_match:
-                    gh_match = re.search(
-                        r'<div\s+class="[^"]*job-post[^"]*"[^>]*>(.*?)</div>\s*(?:</div>\s*)*</section>',
-                        text, re.DOTALL
-                    )
-                if gh_match:
-                    desc_text = re.sub(r'<[^>]+>', '\n', gh_match.group(1))
-                    desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                    if len(desc_text) > 50:
-                        description = desc_text
+                if logo_match:
+                    logo_url = logo_match.group(1)
+                    if logo_url.startswith("http"):
+                        job.company_logo = logo_url
 
-        # Strategy 4: Lever job page — use API for reliable description
-        if not description and "lever.co" in job.url:
-            # Extract company slug and job ID from URL
-            # Format: https://jobs.lever.co/{slug}/{id}
-            lever_match = re.search(r'jobs\.lever\.co/([^/]+)/([a-f0-9-]+)', job.url)
-            if lever_match:
-                slug = lever_match.group(1)
-                lever_job_id = lever_match.group(2)
-                try:
-                    async with httpx.AsyncClient(timeout=10) as api_client:
-                        api_url = f"https://api.lever.co/v0/postings/{slug}/{lever_job_id}"
-                        api_resp = await api_client.get(api_url)
-                        if api_resp.status_code == 200:
-                            lever_data = api_resp.json()
-                            desc_html = lever_data.get("descriptionPlain", "") or lever_data.get("description", "")
-                            if desc_html:
-                                desc_text = re.sub(r'<[^>]+>', '\n', desc_html)
-                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                                if len(desc_text) > 50:
-                                    description = desc_text
-                            # Also get lists (requirements, responsibilities)
-                            lists = lever_data.get("lists", [])
-                            for lst in lists:
-                                list_title = lst.get("text", "")
-                                list_content = lst.get("content", "")
-                                if list_content:
-                                    list_text = re.sub(r'<[^>]+>', '\n', list_content).strip()
-                                    if list_text:
-                                        description += f"\n\n{list_title}\n{list_text}"
-                except Exception:
-                    pass
-            # Fallback: HTML scraping
-            if not description:
-                lever_html_match = re.search(
-                    r'<div\s+class="[^"]*posting-page[^"]*"[^>]*>(.*?)<div\s+class="[^"]*posting-apply',
-                    text, re.DOTALL
-                )
-                if lever_html_match:
-                    desc_text = re.sub(r'<[^>]+>', '\n', lever_html_match.group(1))
-                    desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                    if len(desc_text) > 50:
-                        description = desc_text
+            if description:
+                job.description = _sanitize_description(description)
 
-        # Strategy 4b: Workday job board — the page is a JS SPA with no inline
-        # description, so hit the CXS detail API and read jobPostingInfo.
-        if not description and ("myworkdayjobs.com" in job.url or "myworkdayjobs.com" in final_url):
-            cxs_url = _workday_cxs_url(job.url if "myworkdayjobs.com" in job.url else final_url)
-            if cxs_url:
-                try:
-                    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as api_client:
-                        api_resp = await api_client.get(
-                            cxs_url, headers={"Accept": "application/json"}
-                        )
-                        if api_resp.status_code == 200:
-                            info = api_resp.json().get("jobPostingInfo", {}) or {}
-                            desc_html = info.get("jobDescription", "") or ""
-                            if desc_html:
-                                from html import unescape
-                                desc_text = unescape(desc_html)
-                                desc_text = re.sub(r'<[^>]+>', '\n', desc_text)
-                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                                if len(desc_text) > 50:
-                                    description = desc_text
-                            # Opportunistic enrichment from the same payload.
-                            if not job.location:
-                                loc = info.get("location", "")
-                                if isinstance(loc, str) and loc:
-                                    job.location = loc[:255]
-                            if not job.salary_range:
-                                pay = info.get("payRangeStr") or ""
-                                if pay:
-                                    job.salary_range = pay[:255]
-                except Exception:
-                    pass
+            db.commit()
 
-        # Strategy 4c: SmartRecruiters — posting detail API has rich sections.
-        if not description and ("smartrecruiters.com" in job.url or "smartrecruiters.com" in final_url):
-            sr_m = re.search(r'smartrecruiters\.com/([^/?]+)/(\d{6,})', final_url) \
-                or re.search(r'smartrecruiters\.com/([^/?]+)/(\d{6,})', job.url)
-            if sr_m:
-                company_id, posting_id = sr_m.group(1), sr_m.group(2)
-                try:
-                    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as api_client:
-                        api_resp = await api_client.get(
-                            f"https://api.smartrecruiters.com/v1/companies/{company_id}/postings/{posting_id}",
-                            headers={"Accept": "application/json"},
-                        )
-                        if api_resp.status_code == 200:
-                            from html import unescape
-                            sections = (api_resp.json().get("jobAd", {}) or {}).get("sections", {}) or {}
-                            parts = []
-                            for key in ("companyDescription", "jobDescription",
-                                        "qualifications", "additionalInformation"):
-                                sec = sections.get(key) or {}
-                                txt = sec.get("text") or ""
-                                if txt:
-                                    parts.append(txt)
-                            if parts:
-                                desc_text = unescape("\n".join(parts))
-                                desc_text = re.sub(r'<[^>]+>', '\n', desc_text)
-                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                                if len(desc_text) > 50:
-                                    description = desc_text
-                except Exception:
-                    pass
-
-        # Strategy 4d: Recruitee — offer detail API.
-        if not description and ("recruitee.com" in job.url or "recruitee.com" in final_url):
-            rc_m = re.search(r'https?://([^.]+)\.recruitee\.com/o/([^/?#]+)', final_url) \
-                or re.search(r'https?://([^.]+)\.recruitee\.com/o/([^/?#]+)', job.url)
-            if rc_m:
-                sub, slug = rc_m.group(1), rc_m.group(2)
-                try:
-                    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as api_client:
-                        api_resp = await api_client.get(
-                            f"https://{sub}.recruitee.com/api/offers/{slug}",
-                            headers={"Accept": "application/json"},
-                        )
-                        if api_resp.status_code == 200:
-                            from html import unescape
-                            offer = api_resp.json().get("offer", {}) or {}
-                            raw = (offer.get("description") or "") + "\n" + (offer.get("requirements") or "")
-                            if raw.strip():
-                                desc_text = re.sub(r'<[^>]+>', '\n', unescape(raw))
-                                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                                if len(desc_text) > 50:
-                                    description = desc_text
-                except Exception:
-                    pass
-
-        # Strategy 4e: Ashby — board API includes descriptionHtml per posting.
-        if not description and ("ashbyhq.com" in job.url or "ashbyhq.com" in final_url):
-            ash_m = re.search(r'ashbyhq\.com/([^/?#]+)/([a-f0-9-]{8,})', final_url) \
-                or re.search(r'ashbyhq\.com/([^/?#]+)/([a-f0-9-]{8,})', job.url)
-            if ash_m:
-                org, posting_id = ash_m.group(1), ash_m.group(2)
-                try:
-                    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as api_client:
-                        api_resp = await api_client.get(
-                            f"https://api.ashbyhq.com/posting-api/job-board/{org}",
-                            params={"includeCompensation": "true"},
-                            headers={"Accept": "application/json"},
-                        )
-                        if api_resp.status_code == 200:
-                            from html import unescape
-                            for jd in api_resp.json().get("jobs", []) or []:
-                                if jd.get("jobId") == posting_id or jd.get("id") == posting_id:
-                                    html_desc = jd.get("descriptionHtml") or jd.get("descriptionPlain") or ""
-                                    if html_desc:
-                                        desc_text = re.sub(r'<[^>]+>', '\n', unescape(html_desc))
-                                        desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                                        if len(desc_text) > 50:
-                                            description = desc_text
-                                    break
-                except Exception:
-                    pass
-
-        # Strategy 5: Generic fallback — extract from meta tags and main content
-        if not description:
-            # Try meta description first
-            meta_match = re.search(
-                r'<meta\s+(?:name|property)="(?:description|og:description)"[^>]*content="([^"]*)"',
-                text, re.IGNORECASE
-            )
-            # Try to find main content area
-            main_match = re.search(
-                r'<(?:main|article|div\s+(?:class|id)="[^"]*(?:content|description|job|detail)[^"]*")[^>]*>(.*?)</(?:main|article|div)>',
-                text, re.DOTALL | re.IGNORECASE
-            )
-            if main_match:
-                desc_text = re.sub(r'<script[^>]*>.*?</script>', '', main_match.group(1), flags=re.DOTALL)
-                desc_text = re.sub(r'<style[^>]*>.*?</style>', '', desc_text, flags=re.DOTALL)
-                desc_text = re.sub(r'<[^>]+>', '\n', desc_text)
-                desc_text = re.sub(r'\n{3,}', '\n\n', desc_text).strip()
-                if len(desc_text) > 100:
-                    description = desc_text[:5000]  # Cap at 5000 chars
-            elif meta_match:
-                description = meta_match.group(1).strip()
-
-        # Try to get company logo if we don't have one
-        if not job.company_logo:
-            # From __NEXT_DATA__ (already handled above)
-            # From og:image or logo in page
-            logo_match = re.search(
-                r'<meta\s+property="og:image"\s+content="([^"]*)"',
-                text, re.IGNORECASE
-            )
-            if logo_match:
-                logo_url = logo_match.group(1)
-                if logo_url.startswith("http"):
-                    job.company_logo = logo_url
-
-        # Save results
-        if description:
-            job.description = _sanitize_description(description)
-        # Commit any field updates (description, logo, salary, applicants, work_type).
-        db.commit()
-
-        return {
-            "id": job.id,
-            "description": job.description or "",
-            "apply_url": apply_url,
-            "company_logo": job.company_logo or "",
-            "company_domain": job.company_domain or "",
-            "salary_range": job.salary_range or "",
-            "applicant_count": job.applicant_count,
-            "work_type": job.work_type or "",
-        }
+            return {
+                "id": job.id,
+                "description": job.description or "",
+                "apply_url": apply_url if not linkedin_url else job.url,
+                "company_logo": job.company_logo or "",
+                "company": job.company or "",
+                "company_domain": job.company_domain or "",
+                "salary_range": job.salary_range or "",
+                "applicant_count": job.applicant_count,
+                "work_type": job.work_type or "",
+            }
     except Exception as e:
         logger.warning(f"Failed to fetch details for job {job_id}: {e}")
         return {
@@ -1250,7 +685,7 @@ async def batch_fix_descriptions(
     async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
         for job in jobs_to_fix:
             try:
-                description = await _extract_description_from_url(client, job.url or "")
+                description = await extract_description_from_url(client, job.url or "")
                 if description:
                     job.description = _sanitize_description(description)
                     db.commit()

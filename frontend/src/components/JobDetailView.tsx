@@ -256,7 +256,8 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [structured, setStructured] = useState<any>(null);
 
   useEffect(() => {
-    // Reset local state when job changes to avoid stale data from previous job
+    let cancelled = false;
+
     setApplyUrl(job.url);
     setDescription(job.description || "");
     setCompanyLogo(job.company_logo || "");
@@ -264,10 +265,6 @@ export default function JobDetailView({ job, onClose }: Props) {
     setError("");
     setStructured(null);
 
-    // Fetch actual job URL and description
-    fetchJobDetails();
-
-    // Instantly parse description client-side (no AI call needed)
     if (job.description && job.description.length > 50) {
       const parsed = parseDescriptionClientSide(job.description);
       if (parsed) setStructured(parsed);
@@ -281,22 +278,37 @@ export default function JobDetailView({ job, onClose }: Props) {
         overall_score: job.match_score,
         match_label: job.match_label || getMatchLabel(job.match_score),
       });
-    } else if (job.match_score === 0) {
-      triggerAnalysis();
     }
+
+    (async () => {
+      const fetchedDescription = await fetchJobDetails();
+      if (cancelled) return;
+
+      const effectiveDescription = fetchedDescription || job.description || "";
+      if (effectiveDescription.length > 50) {
+        const parsed = parseDescriptionClientSide(effectiveDescription);
+        if (parsed) setStructured(parsed);
+      }
+
+      if (job.match_score === 0 && effectiveDescription.length > 50) {
+        triggerAnalysis();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [job.id]);
 
   useEffect(() => {
-    // If description was fetched (didn't exist before), parse it client-side
-    if (description && description.length > 50 && !structured && !job.description) {
+    if (description && description.length > 50 && !structured) {
       const parsed = parseDescriptionClientSide(description);
       if (parsed) setStructured(parsed);
     }
   }, [description]);
 
-  async function fetchJobDetails() {
-    // Use job.description directly to avoid stale closure from state
-    if (job.description && job.description.length > 50) return; // Already have description
+  async function fetchJobDetails(): Promise<string> {
+    if (job.description && job.description.length > 50) return job.description;
     setFetchingDetails(true);
     try {
       const res = await fetch(`${API_BASE}/jobs/${job.id}/fetch-details`, { method: "POST" });
@@ -305,12 +317,14 @@ export default function JobDetailView({ job, onClose }: Props) {
         if (data.apply_url) setApplyUrl(data.apply_url);
         if (data.description) setDescription(data.description);
         if (data.company_logo) setCompanyLogo(data.company_logo);
+        return data.description || "";
       }
     } catch {
-      // Silently fail — keep original URL
+      // Keep original URL if fetch fails
     } finally {
       setFetchingDetails(false);
     }
+    return "";
   }
 
   async function triggerAnalysis() {
@@ -321,6 +335,8 @@ export default function JobDetailView({ job, onClose }: Props) {
       if (!res.ok) {
         if (res.status === 503) {
           setError("AI analysis unavailable. Connect Gemini or Ollama to enable match scoring.");
+        } else if (res.status === 422) {
+          setError("Could not fetch a job description to analyze. Try opening the apply link directly.");
         } else {
           setError("Failed to analyze job match.");
         }
@@ -489,6 +505,16 @@ export default function JobDetailView({ job, onClose }: Props) {
               </div>
             ) : description ? (
               <div className="description-content" dangerouslySetInnerHTML={{ __html: description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n') }} />
+            ) : fetchingDetails ? (
+              <div className="description-empty">
+                <div className="description-empty-icon">
+                  <FileText size={32} weight="duotone" />
+                </div>
+                <p className="description-empty-title">Fetching job description…</p>
+                <p className="description-empty-subtitle">
+                  Pulling details from the company apply page.
+                </p>
+              </div>
             ) : (
               <div className="description-empty">
                 <div className="description-empty-icon">

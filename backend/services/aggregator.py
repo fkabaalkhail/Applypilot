@@ -352,37 +352,30 @@ class AggregatorService:
     async def poll_source(self, source: GitHubSource) -> int:
         """Poll a single source: check SHA → fetch → parse → classify → store.
 
-        Returns count of new jobs added.
+        Returns count of new jobs added. Always updates last_polled_at so cron
+        rotation advances even when the README commit has not changed.
         """
         try:
-            # Step 1: Check if commit SHA has changed
             changed, new_sha = await self._check_commit_sha(source)
-            if not changed:
-                return 0
-
-            # Step 2: Fetch README content
-            content = await self._fetch_readme(source)
-
-            # Step 3: Determine if this is the mega-repo (Internship)
-            is_mega_repo = "Internship" in source.repo_name
-
-            # Step 4: Parse markdown content
-            parsed_jobs = self.parser.parse(content, is_mega_repo=is_mega_repo)
-
-            # Step 5: Classify and store each job
             new_count = 0
-            for job in parsed_jobs:
-                stored = self._classify_and_store(job, source)
-                if stored:
-                    new_count += 1
 
-            # Step 6: Update source metadata
+            if changed:
+                content = await self._fetch_readme(source)
+                is_mega_repo = "Internship" in source.repo_name
+                parsed_jobs = self.parser.parse(content, is_mega_repo=is_mega_repo)
+
+                for job in parsed_jobs:
+                    stored = self._classify_and_store(job, source)
+                    if stored:
+                        new_count += 1
+
+                source.last_commit_sha = new_sha
+                await self._enrich_missing_descriptions(source.id, limit=8)
+
             source.last_polled_at = datetime.datetime.utcnow()
-            source.last_commit_sha = new_sha
             source.status = "active"
             source.error_message = ""
             self.db.commit()
-
             return new_count
 
         except httpx.HTTPStatusError as e:
@@ -559,3 +552,73 @@ class AggregatorService:
             self.db.rollback()
             return False
         return True
+
+    async def _enrich_missing_descriptions(
+        self, source_id: int | None = None, limit: int = 10
+    ) -> int:
+        """Fetch descriptions for jobs that only have metadata + apply URL."""
+        from sqlalchemy import or_
+        from backend.services.description_extractor import (
+            BROWSER_HEADERS,
+            extract_description_from_url,
+            sanitize_description,
+        )
+
+        query = self.db.query(ScrapedJob).filter(
+            or_(ScrapedJob.description == "", ScrapedJob.description.is_(None))
+        )
+        if source_id is not None:
+            query = query.filter(ScrapedJob.github_source_id == source_id)
+        jobs = query.order_by(ScrapedJob.id.desc()).limit(limit).all()
+
+        enriched = 0
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
+            for job in jobs:
+                if not job.url:
+                    continue
+                try:
+                    description = await extract_description_from_url(client, job.url)
+                    if description:
+                        job.description = sanitize_description(description)
+                        enriched += 1
+                except Exception as exc:
+                    logger.debug("Description enrich failed for job %s: %s", job.id, exc)
+
+        if enriched:
+            self.db.commit()
+        return enriched
+
+    async def _enrich_missing_descriptions(
+        self, source_id: int | None = None, limit: int = 10
+    ) -> int:
+        """Fetch descriptions for jobs that only have metadata + apply URL."""
+        from sqlalchemy import or_
+        from backend.services.description_extractor import (
+            BROWSER_HEADERS,
+            extract_description_from_url,
+            sanitize_description,
+        )
+
+        query = self.db.query(ScrapedJob).filter(
+            or_(ScrapedJob.description == "", ScrapedJob.description.is_(None))
+        )
+        if source_id is not None:
+            query = query.filter(ScrapedJob.github_source_id == source_id)
+        jobs = query.order_by(ScrapedJob.id.desc()).limit(limit).all()
+
+        enriched = 0
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
+            for job in jobs:
+                if not job.url:
+                    continue
+                try:
+                    description = await extract_description_from_url(client, job.url)
+                    if description:
+                        job.description = sanitize_description(description)
+                        enriched += 1
+                except Exception as exc:
+                    logger.debug("Description enrich failed for job %s: %s", job.id, exc)
+
+        if enriched:
+            self.db.commit()
+        return enriched

@@ -358,36 +358,47 @@ async def cron_poll(
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
 ):
-    """Seed sources (if needed) and poll the next overdue source.
-
-    Designed to be called by Vercel Cron Jobs on a schedule.
-    Seeds first (idempotent), then polls ONE source (the most overdue).
-    Call multiple times to poll all sources.
-    """
+    """Seed sources (if needed) and poll the next batch of overdue GitHub sources."""
     try:
         from backend.services.aggregator import AggregatorService
         aggregator = AggregatorService(db)
 
-        # Seed first (idempotent — no-op if already seeded)
         seed_result = await aggregator.seed_sources()
 
-        # Poll just the most overdue source (to stay within Vercel timeout)
-        source = (
+        sources = (
             db.query(GitHubSource)
             .filter(GitHubSource.status == "active")
             .order_by(GitHubSource.last_polled_at.asc().nullsfirst())
-            .first()
+            .limit(5)
+            .all()
         )
 
-        if not source:
+        if not sources:
             return {"status": "no_sources", "sources_seeded": seed_result["created"]}
 
-        new_count = await aggregator.poll_source(source)
+        polled: list[dict] = []
+        total_new = 0
+        total_enriched = 0
+        for source in sources:
+            new_count = await aggregator.poll_source(source)
+            enriched = await aggregator._enrich_missing_descriptions(source.id, limit=3)
+            total_new += new_count
+            total_enriched += enriched
+            polled.append(
+                {
+                    "source": source.repo_name,
+                    "new_jobs": new_count,
+                    "descriptions_enriched": enriched,
+                }
+            )
+
         return {
             "status": "completed",
             "sources_seeded": seed_result["created"],
-            "source_polled": source.repo_name,
-            "new_jobs": new_count,
+            "sources_polled": len(sources),
+            "new_jobs": total_new,
+            "descriptions_enriched": total_enriched,
+            "polled": polled,
         }
     except Exception:
         logger.error(f"Cron poll failed: {traceback.format_exc()}")

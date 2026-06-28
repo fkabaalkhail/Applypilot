@@ -129,9 +129,29 @@ async def match_breakdown(
     job = _get_job(job_id, db)
     resume_text = _get_resume_text(db, user_id)
 
+    description = job.description or ""
+    if len(description.strip()) < 50 and job.url:
+        from backend.services.description_extractor import (
+            BROWSER_HEADERS,
+            extract_description_from_url,
+            sanitize_description,
+        )
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
+                fetched = await extract_description_from_url(client, job.url)
+            if fetched:
+                job.description = sanitize_description(fetched)
+                db.commit()
+                description = job.description
+        except Exception:
+            pass
+
+    if len(description.strip()) < 50:
+        raise HTTPException(status_code=422, detail="No job description available to analyze.")
+
     try:
         engine = MatchEngine(db)
-        return await engine.compute_breakdown(resume_text, job.description)
+        return await engine.compute_breakdown(resume_text, description)
     except (ConnectionError, httpx.ConnectError):
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
 

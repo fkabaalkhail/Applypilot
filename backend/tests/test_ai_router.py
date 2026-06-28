@@ -105,7 +105,7 @@ class TestMatchBreakdown:
             title="Software Engineer",
             company="TestCo",
             url="https://example.com/job/2",
-            description="Build things",
+            description="Build things with Python, distributed systems, and modern cloud infrastructure.",
         )
         db_session.add(job)
 
