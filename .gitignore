@@ -9,6 +9,7 @@ __pycache__/
 .pytest_cache/
 test.db
 test_*.db
+ci_test.db
 .hypothesis/
 node_modules/
 dist/
