@@ -3574,11 +3574,15 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   border-radius: 20px;
   padding: 2.75rem 2.5rem;
   margin-bottom: 1.75rem;
+  /* Stripe signature gradient mesh on light canvas */
   background:
-    radial-gradient(900px circle at 0% 0%, rgba(99, 102, 241, 0.18), transparent 45%),
-    radial-gradient(700px circle at 100% 100%, rgba(168, 85, 247, 0.16), transparent 45%),
-    linear-gradient(135deg, #0f172a, #1e1b4b);
-  color: #fff;
+    radial-gradient(ellipse 50% 80% at 92% 6%, rgba(249, 107, 238, 0.20) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 90% at 72% 0%, rgba(83, 58, 253, 0.18) 0%, transparent 62%),
+    radial-gradient(ellipse 55% 80% at 22% 4%, rgba(195, 185, 253, 0.40) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 70% at 2% 0%, rgba(255, 217, 168, 0.45) 0%, transparent 58%),
+    linear-gradient(135deg, #f5e9d4 0%, #f6f9fc 42%, #ffffff 100%);
+  border: 1px solid var(--stripe-hairline);
+  color: var(--stripe-ink);
 }
 
 .interview-hero-badge {
@@ -3586,28 +3590,31 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   align-items: center;
   gap: 0.4rem;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 0.35rem 0.8rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #c7d2fe;
+  background: #eef0ff;
+  border: 1px solid var(--stripe-primary-subdued);
+  color: var(--stripe-primary-deep);
 }
 
 .interview-hero h1 {
-  font-size: 2rem;
-  font-weight: 800;
-  line-height: 1.15;
+  font-size: 2.5rem;
+  font-weight: 300;
+  line-height: 1.08;
   margin: 1rem 0 0.6rem;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.96px;
+  color: var(--stripe-ink);
+  font-feature-settings: "ss01";
 }
 
 .interview-hero p {
-  font-size: 0.95rem;
+  font-size: 1rem;
+  font-weight: 300;
   line-height: 1.55;
-  color: rgba(226, 232, 240, 0.85);
+  color: var(--stripe-ink-secondary);
   max-width: 600px;
 }
 
@@ -3623,15 +3630,17 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 }
 
 .interview-hero-stat strong {
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: #fff;
+  font-size: 1.75rem;
+  font-weight: 300;
+  color: var(--stripe-ink);
   line-height: 1;
+  letter-spacing: -0.5px;
+  font-feature-settings: "tnum";
 }
 
 .interview-hero-stat span {
   font-size: 0.78rem;
-  color: rgba(199, 210, 254, 0.8);
+  color: var(--stripe-ink-mute);
   margin-top: 0.3rem;
 }
 

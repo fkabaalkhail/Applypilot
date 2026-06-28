@@ -50,6 +50,7 @@
 }
 
 .landing-logo-img { height: 28px; width: auto; }
+.landing-logo-full { height: 32px; width: auto; display: block; }
 .landing-logo-text {
   font-size: 1.2rem;
   font-weight: 300;

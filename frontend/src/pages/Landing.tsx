@@ -316,8 +316,7 @@ export default function Landing() {
       <nav className="landing-nav">
         <div className="landing-nav-inner">
           <div className="landing-brand">
-            <img src="/logo-icon.png" alt="Tailrd" className="landing-logo-img" />
-            <span className="landing-logo-text">Tailrd</span>
+            <img src="/logo-full.png" alt="Tailrd" className="landing-logo-full" />
           </div>
           <div className="landing-nav-links">
             <a href="#features" className="nav-link-item">Features</a>
@@ -1097,8 +1096,7 @@ export default function Landing() {
         <div className="footer-inner">
           <div className="footer-col">
             <div className="footer-brand">
-              <img src="/logo-icon.png" alt="Tailrd" className="landing-logo-img" />
-              <span className="landing-logo-text">Tailrd</span>
+              <img src="/logo-full.png" alt="Tailrd" className="landing-logo-full" />
             </div>
             <p className="footer-tagline">AI-powered job applications.<br />Apply smarter, not harder.</p>
           </div>
