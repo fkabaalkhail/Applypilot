@@ -63,7 +63,7 @@ function writeTextLike(
   value: string
 ): WriteResult {
   if (isStale(el)) return { written: false, reason: STALE };
-  el.focus();
+  el.focus({ preventScroll: true });
   setNativeValue(el, value);
   dispatchInputEvents(el, value);
   el.blur(); // many ATS validate on blur
@@ -74,7 +74,7 @@ function writeSelect(el: HTMLSelectElement, value: string): WriteResult {
   if (isStale(el)) return { written: false, reason: STALE };
   const match = matchSelectOption(el, value);
   if (!match) return { written: false, reason: `No option matches "${truncate(value)}"` };
-  el.focus();
+  el.focus({ preventScroll: true });
   setNativeValue(el, match.value);
   dispatchInputEvents(el);
   el.blur();
@@ -101,7 +101,7 @@ function writeRadioGroup(radios: HTMLInputElement[], value: string): WriteResult
 
 function writeContentEditable(el: HTMLElement, value: string): WriteResult {
   if (isStale(el)) return { written: false, reason: STALE };
-  el.focus();
+  el.focus({ preventScroll: true });
   const doc = el.ownerDocument;
   const selection = doc.getSelection();
   if (selection) {

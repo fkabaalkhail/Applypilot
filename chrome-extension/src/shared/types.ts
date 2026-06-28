@@ -202,6 +202,50 @@ export interface DetectedField {
 }
 
 // ---------------------------------------------------------------------------
+// AI-assisted fill (backend POST /api/fill)
+// ---------------------------------------------------------------------------
+
+/** A field handed to the backend AI fill endpoint (mirrors backend FormField). */
+export interface AiFillField {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select" | "radio" | "checkbox";
+  options: string[];
+  required: boolean;
+}
+
+/** Scraped page context that improves AI answers. Empty strings are fine. */
+export interface JobContext {
+  jobDescription: string;
+  jobTitle: string;
+  company: string;
+}
+
+/** One AI answer from the backend (mirrors backend FieldAnswer). */
+export interface AiFillAnswer {
+  id: string;
+  label: string;
+  answer: string;
+  confidence: string;
+}
+
+/** Background-worker reply for an AI_FILL request. */
+export interface AiFillResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  answers: AiFillAnswer[];
+  errors: string[];
+}
+
+/** A long-form AI answer awaiting user review before insertion. */
+export interface AiDraft {
+  fieldId: string;
+  label: string;
+  value: string;
+}
+
+// ---------------------------------------------------------------------------
 // Popup <-> content script messages
 // ---------------------------------------------------------------------------
 
@@ -264,7 +308,8 @@ export type BackgroundRequest =
   | { type: "GET_RESUMES" }
   | { type: "GET_SYNC"; forceRefresh?: boolean }
   | { type: "DOWNLOAD_RESUME"; resumeId: number }
-  | { type: "OPEN_DASHBOARD" };
+  | { type: "OPEN_DASHBOARD" }
+  | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext };
 
 export interface StatusResponse {
   ok: boolean;

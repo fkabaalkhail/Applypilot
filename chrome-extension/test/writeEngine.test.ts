@@ -141,3 +141,46 @@ describe("idempotency", () => {
     expect(verifyControl(control, "stable")).toBe(true);
   });
 });
+
+describe("writeControl — never scrolls the page", () => {
+  it("focuses text inputs with preventScroll", () => {
+    const el = mount(`<input type="text" />`) as HTMLInputElement;
+    let opts: FocusOptions | undefined = "untouched" as unknown as FocusOptions;
+    const orig = el.focus.bind(el);
+    el.focus = (o?: FocusOptions) => {
+      opts = o;
+      orig(o);
+    };
+    writeControl(textControl(el), "Wissam");
+    expect(opts).toEqual({ preventScroll: true });
+  });
+
+  it("focuses selects with preventScroll", () => {
+    const el = mount(
+      `<select><option value="">Pick…</option><option value="ca">Canada</option></select>`
+    ) as HTMLSelectElement;
+    let opts: FocusOptions | undefined = "untouched" as unknown as FocusOptions;
+    const orig = el.focus.bind(el);
+    el.focus = (o?: FocusOptions) => {
+      opts = o;
+      orig(o);
+    };
+    writeControl({ id: "s-1", controlType: "select", el }, "Canada");
+    expect(opts).toEqual({ preventScroll: true });
+  });
+
+  it("focuses contenteditable with preventScroll", () => {
+    const el = mount(`<div contenteditable="true"></div>`) as HTMLElement;
+    let opts: FocusOptions | undefined = "untouched" as unknown as FocusOptions;
+    const orig = el.focus.bind(el);
+    el.focus = (o?: FocusOptions) => {
+      opts = o;
+      orig(o);
+    };
+    // Mock execCommand since jsdom doesn't support it
+    const doc = el.ownerDocument;
+    doc.execCommand = () => false;
+    writeControl({ id: "ce-1", controlType: "contenteditable", el }, "hello");
+    expect(opts).toEqual({ preventScroll: true });
+  });
+});
