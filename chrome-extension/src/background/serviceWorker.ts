@@ -12,8 +12,10 @@
 import { connectAccount } from "../api/handshake";
 import { AuthRequiredError, checkAuthStatus, ensureFreshAccessToken, logout } from "../api/client";
 import { downloadResumeFile, getSnapshotForUi, syncIfStale } from "../api/sync";
+import { aiFillFields } from "../api/aiFill";
 import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import type {
+  AiFillResponse,
   BackgroundRequest,
   FieldsUpdatedEvent,
   LoginResponse,
@@ -140,6 +142,7 @@ export async function handle(
   | ResumesResponse
   | ResumeFileResponse
   | SyncResponse
+  | AiFillResponse
 > {
   switch (message.type) {
     case "GET_STATUS": {
@@ -265,6 +268,22 @@ export async function handle(
           name: "",
           contentType: "",
           error: err instanceof Error ? err.message : "Could not download resume",
+        };
+      }
+    }
+
+    case "AI_FILL": {
+      try {
+        const { answers, errors } = await aiFillFields(message.fields, message.jobContext);
+        return { ok: true, answers, errors };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, answers: [], errors: [err.message] };
+        }
+        return {
+          ok: false,
+          answers: [],
+          errors: [err instanceof Error ? err.message : "AI fill failed"],
         };
       }
     }

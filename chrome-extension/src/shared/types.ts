@@ -308,7 +308,8 @@ export type BackgroundRequest =
   | { type: "GET_RESUMES" }
   | { type: "GET_SYNC"; forceRefresh?: boolean }
   | { type: "DOWNLOAD_RESUME"; resumeId: number }
-  | { type: "OPEN_DASHBOARD" };
+  | { type: "OPEN_DASHBOARD" }
+  | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext };
 
 export interface StatusResponse {
   ok: boolean;
