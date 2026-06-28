@@ -42,8 +42,8 @@ describe("isAiCandidate", () => {
     expect(isAiCandidate(field({ controlType: "select", sensitive: true, options: ["Male", "Female"] }))).toBe(false);
   });
   it("excludes file and custom dropdowns", () => {
-    expect(isAiCandidate(field({ controlType: "file", fillable: false }))).toBe(false);
-    expect(isAiCandidate(field({ controlType: "customDropdown", fillable: false }))).toBe(false);
+    expect(isAiCandidate(field({ controlType: "file" }))).toBe(false);
+    expect(isAiCandidate(field({ controlType: "customDropdown" }))).toBe(false);
   });
   it("includes option-based screening fields", () => {
     expect(isAiCandidate(field({ controlType: "radioGroup", options: ["Yes", "No"] }))).toBe(true);
@@ -87,11 +87,13 @@ describe("planAiFill", () => {
       field({ id: "essay", controlType: "textarea", label: "Why us?" }),
       field({ id: "auth", controlType: "radioGroup", label: "Authorized to work?", options: ["Yes", "No"] }),
       field({ id: "blank", controlType: "text", label: "Years?" }),
+      field({ id: "ws", controlType: "text", label: "Notice period?" }),
     ];
     const answers = [
       { id: "essay", answer: "Because I love it." },
       { id: "auth", answer: "Yes" },
       { id: "blank", answer: "" }, // empty → ignored
+      { id: "ws", answer: "   " },
     ];
     const plan = planAiFill(candidates, answers);
     expect(plan.drafts).toEqual([{ fieldId: "essay", label: "Why us?", value: "Because I love it." }]);

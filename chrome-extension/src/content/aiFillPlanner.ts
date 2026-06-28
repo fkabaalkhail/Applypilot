@@ -10,7 +10,7 @@ import type { AiDraft, AiFillField, DetectedField } from "../shared/types";
 
 /** Labels that signal a free-text answer we should draft rather than guess inline. */
 const LONGFORM_LABEL =
-  /\b(why|describe|tell us|tell me|explain|cover letter|in your own words|what makes you|motivat)\b/i;
+  /\b(why|describe|tell us|tell me|explain|cover letter|in your own words|what makes you|motivat\w*)\b/i;
 
 /** Labels that read like a question worth answering even on a plain text input. */
 const QUESTION_LABEL =
