@@ -835,8 +835,12 @@ async function initPanel(): Promise<void> {
   // pristine pre-render state with no feedback.
   refreshMainView();
 
-  const status = await bg<StatusResponse>({ type: "GET_STATUS" }).catch(() => null);
+  const status = await bg<StatusResponse>({ type: "GET_STATUS" }).catch((e) => {
+    console.log("[Tailrd overlay] GET_STATUS failed:", (e as Error)?.message);
+    return null;
+  });
   overlayState.status = status;
+  console.log("[Tailrd overlay] initPanel: status mode =", status?.mode ?? "NULL (request failed)");
 
   if (status && status.mode === "signedOut") {
     showLoginView(false);
@@ -853,7 +857,15 @@ async function initPanel(): Promise<void> {
 }
 
 async function loadProfile(): Promise<void> {
-  const resp = await bg<ProfileResponse>({ type: "GET_PROFILE" }).catch(() => null);
+  const resp = await bg<ProfileResponse>({ type: "GET_PROFILE" }).catch((e) => {
+    console.log("[Tailrd overlay] GET_PROFILE failed:", (e as Error)?.message);
+    return null;
+  });
+  console.log(
+    "[Tailrd overlay] loadProfile: ok =", resp?.ok,
+    "needsLogin =", resp?.needsLogin,
+    "hasProfile =", Boolean(resp?.profile)
+  );
   if (!resp || !resp.ok) {
     if (resp?.needsLogin) { showLoginView(); return; }
   } else {

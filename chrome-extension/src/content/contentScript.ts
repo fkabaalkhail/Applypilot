@@ -208,9 +208,12 @@ function initialize(): void {
     const state = { fields: lastFields, tabUrl: location.href };
     if (!overlayShown && recognizedCount(lastFields) >= MIN_FIELDS_FOR_OVERLAY) {
       overlayShown = true;
+      console.log(`[Tailrd overlay] mounting panel (recognized=${recognizedCount(lastFields)} of ${lastFields.length} fields)`);
       showOverlay(state, overlayCallbacks);
     } else if (overlayShown) {
       updateOverlay(state);
+    } else if (!overlayShown) {
+      console.log(`[Tailrd overlay] NOT mounting — only ${recognizedCount(lastFields)} recognized fields in TOP frame`);
     }
   }
 
