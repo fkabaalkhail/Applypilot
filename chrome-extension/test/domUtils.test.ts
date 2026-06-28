@@ -1,8 +1,30 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { deepQueryAll } from "../src/content/domUtils";
+import { deepQueryAll, reattachIfDetached } from "../src/content/domUtils";
 
 beforeEach(() => {
   document.body.innerHTML = "";
+});
+
+describe("reattachIfDetached", () => {
+  it("re-appends a node the page tore out of the document", () => {
+    const node = document.createElement("div");
+    document.documentElement.appendChild(node);
+    node.remove(); // simulate an SPA re-render removing our overlay host
+    expect(node.isConnected).toBe(false);
+
+    const reattached = reattachIfDetached(node, document.documentElement);
+
+    expect(reattached).toBe(true);
+    expect(node.isConnected).toBe(true);
+  });
+
+  it("leaves an already-attached node alone", () => {
+    const node = document.createElement("div");
+    document.documentElement.appendChild(node);
+    expect(reattachIfDetached(node, document.documentElement)).toBe(false);
+    expect(node.isConnected).toBe(true);
+    node.remove();
+  });
 });
 
 describe("deepQueryAll — traversal", () => {

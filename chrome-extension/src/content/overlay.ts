@@ -11,6 +11,7 @@
  *  - "Upload Cover Letter" section with "Generate Cover Letter" (coming soon)
  */
 
+import { reattachIfDetached } from "./domUtils";
 import { defaultSelectedIds } from "../shared/selection";
 import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
@@ -63,6 +64,7 @@ export function showOverlay(state: OverlayViewState, cb: OverlayCallbacks): void
 }
 
 export function updateOverlay(state: OverlayViewState): void {
+  if (host) reattachIfDetached(host, document.documentElement || document.body);
   overlayState.fields = state.fields;
   overlayState.tabUrl = state.tabUrl;
   // Re-derive the default selection so the Autofill button reflects the latest
@@ -508,7 +510,9 @@ interface PanelState {
   infoCategory: string;
 }
 
+let host: HTMLElement | null = null;
 let shadow: ShadowRoot | null = null;
+let mountObserver: MutationObserver | null = null;
 let callbacks: OverlayCallbacks | null = null;
 let panelExpanded = false;
 let initialized = false;
@@ -564,9 +568,9 @@ function bg<T>(msg: BackgroundRequest): Promise<T> {
 // ---------------------------------------------------------------------------
 
 function ensureMounted(): void {
-  if (shadow && document.getElementById(HOST_ID)) return;
+  if (host && host.isConnected && shadow) return;
 
-  const host = document.createElement("div");
+  host = document.createElement("div");
   host.id = HOST_ID;
   host.style.cssText = "all: initial;";
   shadow = host.attachShadow({ mode: "open" });
@@ -583,6 +587,23 @@ function ensureMounted(): void {
 
   wireEvents(root);
   refs = collectRefs(root);
+  installMountWatchdog();
+}
+
+/**
+ * SPA frameworks (React/Angular on Greenhouse, Workday…) rebuild the DOM and
+ * tear our host out of it. The shadow root, rendered views and refs all survive
+ * inside the detached host, so we just re-append it — instantly restoring the
+ * panel without re-rendering. Without this the overlay silently dies after the
+ * first client-side render: a frozen/blank panel updating elements no longer on
+ * the page.
+ */
+function installMountWatchdog(): void {
+  if (mountObserver) mountObserver.disconnect();
+  mountObserver = new MutationObserver(() => {
+    if (host) reattachIfDetached(host, document.documentElement || document.body);
+  });
+  mountObserver.observe(document.documentElement, { childList: true });
 }
 
 function buildHTML(): string {

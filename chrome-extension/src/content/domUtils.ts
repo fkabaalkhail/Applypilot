@@ -9,6 +9,18 @@ export function cleanText(text: string | null | undefined): string {
 }
 
 /**
+ * Keep a node attached: if the page (a SPA re-render or client-side navigation)
+ * tore `node` out of the document, re-append it to `parent`. Returns true if it
+ * had to re-attach. This is what stops the in-page overlay from silently dying
+ * on React/Angular sites that rebuild the DOM out from under it.
+ */
+export function reattachIfDetached(node: HTMLElement, parent: ParentNode): boolean {
+  if (node.isConnected) return false;
+  parent.appendChild(node);
+  return true;
+}
+
+/**
  * querySelectorAll that also descends into open shadow roots AND same-origin
  * iframes. Several ATS embed their form in an iframe (Greenhouse/Lever boards)
  * or render widgets inside shadow DOM. Cross-origin iframes throw on access and
