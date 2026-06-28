@@ -106,12 +106,16 @@ def test_refresh_rotates_and_touches_session(client, db_session, user):
 
 def test_refresh_rejected_after_session_revoked(client, db_session, user):
     from backend.services import sessions
+    from backend.db.models import RevokedToken
     refresh = _connect_extension(client)
-    sid = decode_token(refresh)["sid"]
+    decoded = decode_token(refresh)
+    sid = decoded["sid"]
     sessions.revoke(db_session, sessions.get_active(db_session, sid))
 
     res = client.post("/auth/refresh", json={"refresh_token": refresh})
     assert res.status_code == 401
+    # Defense-in-depth: the presented token's jti is revoked even on the 401 path.
+    assert db_session.query(RevokedToken).filter(RevokedToken.jti == decoded["jti"]).first() is not None
 
 
 def test_legacy_refresh_without_sid_is_migrated(client, db_session, user):

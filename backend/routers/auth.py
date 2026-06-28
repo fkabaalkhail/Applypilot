@@ -163,7 +163,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
         logger.warning(f"Failed to send verification email to {user.email}: {e}")
 
     _web_session = session_service.start_session(db, user.id, "web", request)
-    refresh_tok = create_refresh_token(user.id, sid=_web_session.sid)
+    refresh_tok = create_refresh_token(user.id, client="web", sid=_web_session.sid)
     _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponseWithVerification(
@@ -240,7 +240,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     )
 
     _web_session = session_service.start_session(db, user.id, "web", request)
-    refresh_tok = create_refresh_token(user.id, sid=_web_session.sid)
+    refresh_tok = create_refresh_token(user.id, client="web", sid=_web_session.sid)
     _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponseWithVerification(
@@ -320,7 +320,7 @@ def google_auth(body: GoogleAuthRequest, request: Request, response: Response, d
         db.refresh(user)
 
     _web_session = session_service.start_session(db, user.id, "web", request)
-    refresh_tok = create_refresh_token(user.id, sid=_web_session.sid)
+    refresh_tok = create_refresh_token(user.id, client="web", sid=_web_session.sid)
     _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponseWithVerification(
@@ -387,6 +387,13 @@ def refresh(
     if sid:
         session = session_service.get_active(db, sid)
         if session is None:
+            if jti:
+                db.add(RevokedToken(
+                    jti=jti,
+                    user_id=user_id,
+                    expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+                ))
+                db.commit()
             security_logger.log_event(
                 db, SecurityLogger.TOKEN_REFRESH, request,
                 user_id=user_id, success=False,
@@ -536,7 +543,7 @@ def verify_email(body: VerifyEmailRequest, request: Request, response: Response,
     mark_verified(user, db)
 
     _web_session = session_service.start_session(db, user.id, "web", request)
-    refresh_tok = create_refresh_token(user.id, sid=_web_session.sid)
+    refresh_tok = create_refresh_token(user.id, client="web", sid=_web_session.sid)
     _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponseWithVerification(
