@@ -640,7 +640,7 @@ export default function Settings() {
                     {s.is_current && <span className="device-current"> · This device</span>}
                   </span>
                   <span className="device-times">
-                    Connected {new Date(s.created_at).toLocaleDateString()} · Last seen {new Date(s.last_seen_at).toLocaleDateString()}
+                    Connected {new Date(s.created_at).toLocaleDateString()} · Last seen {new Date(s.last_seen_at).toLocaleString()}
                     {s.last_ip && ` · ${s.last_ip}`}
                   </span>
                 </div>
