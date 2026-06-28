@@ -29,6 +29,7 @@ import type {
   ScanResponse,
   UserApplicationProfile,
 } from "../shared/types";
+import { deepQueryAll } from "./domUtils";
 import { base64ToFile, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, type RuntimeControl } from "./formScanner";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
@@ -56,6 +57,41 @@ if (!window.__apContentScriptLoaded) {
 
 function sendToBackground<T>(message: BackgroundRequest): Promise<T> {
   return chrome.runtime.sendMessage(message) as Promise<T>;
+}
+
+// --- TEMP diagnostics (remove before shipping) ------------------------------
+// Logs, per frame, what the scanner actually sees so we can tell whether the
+// form is missed entirely, partially detected, or living in a cross-origin
+// iframe the panel can't reach. Deduped so dynamic pages don't spam.
+let lastScanSig = "";
+function logScanDiagnostics(isTopFrame: boolean, fields: DetectedField[]): void {
+  try {
+    const rawControls = deepQueryAll(document, "input, textarea, select").length;
+    const iframes = Array.from(document.querySelectorAll("iframe"));
+    let crossOrigin = 0;
+    for (const f of iframes) {
+      try {
+        if (!f.contentDocument) crossOrigin++;
+      } catch {
+        crossOrigin++;
+      }
+    }
+    const sig = `${rawControls}|${fields.length}|${fields.map((f) => f.category).join(",")}|${iframes.length}|${crossOrigin}`;
+    if (sig === lastScanSig) return; // only log when the picture changes
+    lastScanSig = sig;
+    console.log(
+      `[Tailrd scan] frame=${isTopFrame ? "TOP" : "child"} url=${location.href.slice(0, 90)}`,
+      {
+        rawControlsSeen: rawControls,
+        detectedFields: fields.length,
+        categories: fields.map((f) => f.category),
+        iframesOnPage: iframes.length,
+        crossOriginIframes: crossOrigin,
+      }
+    );
+  } catch {
+    // diagnostics must never break scanning
+  }
 }
 
 /** Turn a reconciliation report into the popup's per-field outcome shape. */
@@ -93,6 +129,7 @@ function initialize(): void {
     const result = scanPage(lastProfile, lastFillEEO);
     registry = result.registry;
     lastFields = result.fields;
+    logScanDiagnostics(isTopFrame, result.fields);
     return {
       ok: true,
       url: location.href,
