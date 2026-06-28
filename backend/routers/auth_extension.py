@@ -37,6 +37,7 @@ from backend.db.database import get_db
 from backend.db.models import ExtensionAuthCode, User
 from backend.auth.dependencies import get_verified_user
 from backend.auth.tokens import create_access_token, create_refresh_token
+from backend.services import sessions as session_service
 from backend.services.rate_limiter import rate_limiter
 from backend.services.security_logger import security_logger, SecurityLogger
 
@@ -225,6 +226,8 @@ def token(
     if not user:
         _reject("user_not_found")
 
+    session = session_service.start_session(db, user.id, "extension", request)
+
     security_logger.log_event(
         db, SecurityLogger.EXTENSION_TOKEN, request,
         user_id=user.id, success=True,
@@ -232,7 +235,7 @@ def token(
 
     return ExtensionTokenResponse(
         access_token=create_access_token(user.id, client="extension"),
-        refresh_token=create_refresh_token(user.id, client="extension"),
+        refresh_token=create_refresh_token(user.id, client="extension", sid=session.sid),
         email=user.email,
         email_verified=user.email_verified,
     )

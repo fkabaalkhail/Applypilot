@@ -38,6 +38,7 @@ from backend.services.verification_service import (
 )
 from backend.services.email_service import email_service
 from backend.services.rate_limiter import rate_limiter
+from backend.services import sessions as session_service
 from backend.services.security_logger import security_logger, SecurityLogger
 
 logger = logging.getLogger(__name__)
@@ -161,7 +162,8 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     except Exception as e:
         logger.warning(f"Failed to send verification email to {user.email}: {e}")
 
-    refresh_tok = create_refresh_token(user.id)
+    _web_session = session_service.start_session(db, user.id, "web", request)
+    refresh_tok = create_refresh_token(user.id, sid=_web_session.sid)
     _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponseWithVerification(
@@ -237,7 +239,8 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         user_id=user.id, success=True,
     )
 
-    refresh_tok = create_refresh_token(user.id)
+    _web_session = session_service.start_session(db, user.id, "web", request)
+    refresh_tok = create_refresh_token(user.id, sid=_web_session.sid)
     _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponseWithVerification(
@@ -248,7 +251,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
 
 
 @router.post("/google", response_model=TokenResponseWithVerification)
-def google_auth(body: GoogleAuthRequest, response: Response, db: Session = Depends(get_db)):
+def google_auth(body: GoogleAuthRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """Authenticate or register with a Google ID token."""
     if not GOOGLE_CLIENT_ID:
         logger.error("GOOGLE_CLIENT_ID env var is not set")
@@ -316,7 +319,8 @@ def google_auth(body: GoogleAuthRequest, response: Response, db: Session = Depen
         db.commit()
         db.refresh(user)
 
-    refresh_tok = create_refresh_token(user.id)
+    _web_session = session_service.start_session(db, user.id, "web", request)
+    refresh_tok = create_refresh_token(user.id, sid=_web_session.sid)
     _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponseWithVerification(
@@ -376,6 +380,24 @@ def refresh(
     # extension keeps its longer refresh TTL.
     client = payload.get("client", "web")
 
+    # Session registry gate (Connected Devices). A token with a sid must map to a
+    # live session; revoked/unknown => 401. Legacy tokens (no sid) are migrated:
+    # a fresh session is created so existing users aren't logged out by deploy.
+    sid = payload.get("sid")
+    if sid:
+        session = session_service.get_active(db, sid)
+        if session is None:
+            security_logger.log_event(
+                db, SecurityLogger.TOKEN_REFRESH, request,
+                user_id=user_id, success=False,
+                details={"reason": "session_revoked_or_unknown"},
+            )
+            raise HTTPException(status_code=401, detail="Session has been revoked")
+        session_service.touch(db, session)
+    else:
+        session = session_service.start_session(db, user_id, client, request)
+        sid = session.sid
+
     # Revoke the old refresh token (rotation)
     if jti:
         revoked_token = RevokedToken(
@@ -391,7 +413,7 @@ def refresh(
         user_id=user_id, success=True,
     )
 
-    refresh_tok = create_refresh_token(user_id, client=client)
+    refresh_tok = create_refresh_token(user_id, client=client, sid=sid)
     # Only the web client uses the HttpOnly cookie; the extension carries the
     # token in the response body and stores it itself.
     if client != "extension":
@@ -497,7 +519,7 @@ def update_me(
 
 
 @router.post("/verify-email", response_model=TokenResponseWithVerification)
-def verify_email(body: VerifyEmailRequest, response: Response, db: Session = Depends(get_db)):
+def verify_email(body: VerifyEmailRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """Verify a user's email with the provided token."""
     user, error = verify_token(body.token, db)
 
@@ -513,7 +535,8 @@ def verify_email(body: VerifyEmailRequest, response: Response, db: Session = Dep
     # Mark user as verified
     mark_verified(user, db)
 
-    refresh_tok = create_refresh_token(user.id)
+    _web_session = session_service.start_session(db, user.id, "web", request)
+    refresh_tok = create_refresh_token(user.id, sid=_web_session.sid)
     _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponseWithVerification(

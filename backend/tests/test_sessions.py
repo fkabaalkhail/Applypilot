@@ -68,3 +68,56 @@ def test_touch_and_revoke(db_session, user):
     assert s.last_seen_at is not None
     sessions.revoke(db_session, s)
     assert sessions.get_active(db_session, s.sid) is None
+
+
+def _connect_extension(client):
+    """Run the PKCE handshake and return the extension's refresh token + sid."""
+    import base64, hashlib, secrets
+    verifier = secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()
+    ).rstrip(b"=").decode()
+    redirect = "https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/"
+    code = client.post("/auth/extension/authorize",
+                       json={"code_challenge": challenge, "redirect_uri": redirect}).json()["code"]
+    body = client.post("/auth/extension/token",
+                       json={"code": code, "code_verifier": verifier}).json()
+    return body["refresh_token"]
+
+
+def test_extension_token_registers_session(client, db_session, user):
+    refresh = _connect_extension(client)
+    sid = decode_token(refresh)["sid"]
+    assert sid
+    assert db_session.query(DBSession).filter(DBSession.sid == sid).first() is not None
+
+
+def test_refresh_rotates_and_touches_session(client, db_session, user):
+    refresh = _connect_extension(client)
+    sid = decode_token(refresh)["sid"]
+
+    res = client.post("/auth/refresh", json={"refresh_token": refresh})
+    assert res.status_code == 200, res.text
+    new_refresh = res.json()["refresh_token"]
+    # sid is preserved across rotation; client stays "extension".
+    assert decode_token(new_refresh)["sid"] == sid
+    assert decode_token(new_refresh)["client"] == "extension"
+
+
+def test_refresh_rejected_after_session_revoked(client, db_session, user):
+    from backend.services import sessions
+    refresh = _connect_extension(client)
+    sid = decode_token(refresh)["sid"]
+    sessions.revoke(db_session, sessions.get_active(db_session, sid))
+
+    res = client.post("/auth/refresh", json={"refresh_token": refresh})
+    assert res.status_code == 401
+
+
+def test_legacy_refresh_without_sid_is_migrated(client, db_session, user):
+    # A refresh token minted the old way (no sid) must still work once and gain a sid.
+    legacy = create_refresh_token(TEST_USER_ID, client="extension")  # no sid
+    assert "sid" not in decode_token(legacy)
+    res = client.post("/auth/refresh", json={"refresh_token": legacy})
+    assert res.status_code == 200, res.text
+    assert decode_token(res.json()["refresh_token"])["sid"]

@@ -77,6 +77,9 @@ def test_authorize_then_token_happy_path(client, user):
     assert decode_token(body["access_token"])["client"] == "extension"
     assert decode_token(body["refresh_token"])["client"] == "extension"
 
+    # The refresh token is tied to a session (Connected Devices).
+    assert decode_token(body["refresh_token"]).get("sid")
+
 
 def test_token_rejects_wrong_verifier(client, user):
     _, challenge = _pkce()
