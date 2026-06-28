@@ -15,6 +15,7 @@ import { reattachIfDetached } from "./domUtils";
 import { defaultSelectedIds } from "../shared/selection";
 import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
+  AiDraft,
   BackgroundRequest,
   DetectedField,
   FillOutcome,
@@ -32,7 +33,10 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface OverlayCallbacks {
-  onAutofill: (fieldIds: string[]) => Promise<{ ok: number; fail: number; total: number }>;
+  onAutofill: (
+    fieldIds: string[]
+  ) => Promise<{ ok: number; fail: number; total: number; drafts: AiDraft[] }>;
+  onInsertAnswer: (fieldId: string, value: string) => Promise<{ ok: boolean; reason?: string }>;
   onRescan: () => void;
   /** List the user's resumes for the picker / auto-upload. */
   onListResumes: () => Promise<ResumeSummary[]>;
@@ -483,6 +487,18 @@ const STYLES = `
   vertical-align: -2px; margin-right: 6px;
 }
 @keyframes ap-spin { to { transform: rotate(360deg); } }
+.ap-review { margin: 0 16px 12px; }
+.ap-review-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; color: #444; margin-bottom: 8px; }
+.ap-review-all { font-size: 12px; color: #7c6cff; background: none; border: none; cursor: pointer; padding: 2px 4px; }
+.ap-review-card { border: 1px solid #eee; border-radius: 10px; padding: 10px; margin-bottom: 8px; background: #fafafa; }
+.ap-review-label { font-size: 12.5px; color: #333; margin-bottom: 6px; font-weight: 500; }
+.ap-review-text { width: 100%; box-sizing: border-box; font-size: 12.5px; padding: 8px; border: 1px solid #ddd; border-radius: 8px; resize: vertical; font-family: inherit; }
+.ap-review-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ap-review-insert, .ap-review-skip { font-size: 12px; padding: 5px 12px; border-radius: 8px; cursor: pointer; border: 1px solid #ddd; background: #fff; }
+.ap-review-insert { background: #7c6cff; color: #fff; border-color: #7c6cff; }
+.ap-review-status { font-size: 12px; color: #888; }
+.ap-review-status.ok { color: #1a7f37; }
+.ap-review-status.error { color: #c0392b; }
 `;
 
 
@@ -541,6 +557,7 @@ interface Refs {
   btnAutofill: HTMLButtonElement;
   fieldCount: HTMLDivElement;
   banner: HTMLDivElement;
+  review: HTMLDivElement;
   resumeName: HTMLDivElement;
   resumeSelect: HTMLSelectElement;
   btnUploadResume: HTMLButtonElement;
@@ -634,6 +651,9 @@ function buildHTML(): string {
 
         <!-- Banner -->
         <div class="ap-banner" id="ap-banner" style="display:none"></div>
+
+        <!-- AI long-form answers to review -->
+        <div class="ap-review" id="ap-review" style="display:none"></div>
 
         <!-- Your Autofill Information -->
         <div class="ap-section">
@@ -747,6 +767,7 @@ function collectRefs(root: HTMLDivElement): Refs {
     btnAutofill: q("#ap-btn-autofill"),
     fieldCount: q("#ap-field-count"),
     banner: q("#ap-banner"),
+    review: q("#ap-review"),
     resumeName: q("#ap-resume-name"),
     resumeSelect: q("#ap-resume-select"),
     btnUploadResume: q("#ap-btn-upload-resume"),
@@ -1110,17 +1131,77 @@ async function doAutofill(): Promise<void> {
   showBanner("", "ok", true);
 
   try {
-    const { ok, fail, total } = await callbacks.onAutofill(ids);
+    const { ok, fail, total, drafts } = await callbacks.onAutofill(ids);
     const txt =
       `Filled ${ok} of ${total} field${total === 1 ? "" : "s"}` +
       (fail > 0 ? ` (${fail} need attention)` : "") +
+      (drafts.length > 0 ? ` · ${drafts.length} to review below` : "") +
       ". Review before submitting.";
     showBanner(txt, fail > 0 ? "warn" : "ok");
+    renderReviewSection(drafts);
   } catch (err) {
     showBanner(`Autofill failed: ${err instanceof Error ? err.message : "unknown error"}`, "error");
   } finally {
     overlayState.busy = false;
     refreshMainView();
+  }
+}
+
+function renderReviewSection(drafts: AiDraft[]): void {
+  if (!refs) return;
+  const host = refs.review;
+  if (drafts.length === 0) {
+    host.style.display = "none";
+    host.innerHTML = "";
+    return;
+  }
+  host.style.display = "block";
+  host.innerHTML =
+    `<div class="ap-review-head"><span>AI answers to review</span>` +
+    `<button class="ap-review-all" id="ap-review-all" type="button">Insert all</button></div>` +
+    drafts
+      .map(
+        (d, i) => `
+      <div class="ap-review-card" data-field="${esc(d.fieldId)}">
+        <div class="ap-review-label">${esc(d.label)}</div>
+        <textarea class="ap-review-text" id="ap-review-text-${i}" rows="4">${esc(d.value)}</textarea>
+        <div class="ap-review-actions">
+          <button class="ap-review-insert" data-i="${i}" type="button">Insert</button>
+          <button class="ap-review-skip" data-i="${i}" type="button">Skip</button>
+          <span class="ap-review-status" id="ap-review-status-${i}"></span>
+        </div>
+      </div>`
+      )
+      .join("");
+
+  host.querySelectorAll<HTMLButtonElement>(".ap-review-insert").forEach((btn) => {
+    btn.addEventListener("click", () => void insertDraft(Number(btn.dataset.i), drafts));
+  });
+  host.querySelectorAll<HTMLButtonElement>(".ap-review-skip").forEach((btn) => {
+    btn.addEventListener("click", () => btn.closest(".ap-review-card")?.remove());
+  });
+  host.querySelector("#ap-review-all")?.addEventListener("click", () => void insertAllDrafts(drafts));
+}
+
+async function insertDraft(i: number, drafts: AiDraft[]): Promise<void> {
+  if (!refs || !callbacks) return;
+  const ta = refs.review.querySelector<HTMLTextAreaElement>(`#ap-review-text-${i}`);
+  const statusEl = refs.review.querySelector<HTMLSpanElement>(`#ap-review-status-${i}`);
+  const insertBtn = refs.review.querySelector<HTMLButtonElement>(`.ap-review-insert[data-i="${i}"]`);
+  if (!ta) return;
+  const res = await callbacks.onInsertAnswer(drafts[i].fieldId, ta.value);
+  if (statusEl) {
+    statusEl.textContent = res.ok ? "Inserted ✓" : res.reason ?? "Could not insert";
+    statusEl.className = "ap-review-status" + (res.ok ? " ok" : " error");
+  }
+  if (res.ok && insertBtn) insertBtn.textContent = "Re-insert";
+}
+
+async function insertAllDrafts(drafts: AiDraft[]): Promise<void> {
+  for (let i = 0; i < drafts.length; i++) {
+    if (refs?.review.querySelector(`#ap-review-text-${i}`)) {
+      await insertDraft(i, drafts);
+    }
   }
 }
 

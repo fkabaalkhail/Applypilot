@@ -18,6 +18,8 @@
  *    that owns the fields responds.
  */
 import type {
+  AiDraft,
+  AiFillResponse,
   BackgroundRequest,
   ContentRequest,
   DetectedField,
@@ -34,6 +36,9 @@ import { base64ToFile, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, type RuntimeControl } from "./formScanner";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
+import { extractJobContext } from "./jobContext";
+import { aiFillCandidates, planAiFill, tallyOutcomes, toAiFillField } from "./aiFillPlanner";
+import { verifyControl, writeControl } from "./writeEngine";
 import {
   showOverlay,
   updateOverlay,
@@ -155,13 +160,47 @@ function initialize(): void {
 
   const overlayCallbacks: OverlayCallbacks = {
     onAutofill: async (ids: string[]) => {
+      // Phase 1 — local profile fill (unchanged behavior).
       const wanted = new Set(ids);
       const targets = lastFields
         .filter((f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null)
         .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
-      const reports = await getEngine().run(targets, registry);
-      const ok = reports.filter((r) => r.ok).length;
-      return { ok, fail: reports.length - ok, total: targets.length };
+      const localReports = await getEngine().run(targets, registry);
+
+      // Phase 2 — AI fill for fields the profile couldn't answer (best-effort).
+      const candidates = aiFillCandidates(lastFields);
+      const drafts: AiDraft[] = [];
+      let aiReports: FieldReport[] = [];
+      if (candidates.length > 0) {
+        try {
+          const resp = await sendToBackground<AiFillResponse>({
+            type: "AI_FILL",
+            fields: candidates.map(toAiFillField),
+            jobContext: extractJobContext(),
+          });
+          if (resp?.ok) {
+            const plan = planAiFill(candidates, resp.answers);
+            drafts.push(...plan.drafts);
+            if (plan.simpleTargets.length > 0) {
+              aiReports = await getEngine().addTargets(plan.simpleTargets, registry);
+            }
+          }
+        } catch {
+          // AI fill is additive — the local pass already happened. Swallow.
+        }
+      }
+
+      const { ok, fail, total } = tallyOutcomes(localReports, aiReports);
+      return { ok, fail, total, drafts };
+    },
+    onInsertAnswer: async (fieldId: string, value: string) => {
+      const control = registry.get(fieldId);
+      if (!control) return { ok: false, reason: "Field is no longer on the page — rescan." };
+      const res = writeControl(control, value);
+      if (!res.written) return { ok: false, reason: res.reason };
+      return verifyControl(control, value)
+        ? { ok: true }
+        : { ok: false, reason: "Value did not stick — please check the field." };
     },
     onRescan: () => {
       runScan();
