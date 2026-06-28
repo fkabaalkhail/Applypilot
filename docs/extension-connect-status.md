@@ -1,6 +1,6 @@
 # Extension Connect Flow — Status & Pick-Up Doc
 
-**Last updated:** 2026-06-27
+**Last updated:** 2026-06-27 (Phase 2 silent session management built)
 **Owner:** Wissam
 **Purpose:** Single source of truth for the Chrome-extension "Connect" (web-authenticated handshake) work. Point the next session here to resume exactly where we left off.
 
@@ -111,6 +111,27 @@ Recommended order:
 5. Then move to the next phase of the Jobright-style refactor → **Silent session management** (token refresh) or the **Autofill engine** (see project architecture doc).
 
 ### Where connect sits in the bigger roadmap
-- **Phase 1 — Connect flow (web-authenticated handshake): ✅ built, ⚠️ needs prod env + live verify** ← *we are here*
-- Phase 2 — Silent session management (refresh/recovery, no re-login UI)
+- **Phase 1 — Connect flow (web-authenticated handshake): ✅ built + live-verified**
+- **Phase 2 — Silent session management: ✅ built + tested, ⚠️ pending browser live-verify** ← *we are here*
 - Phase 3 — Jobright-level autofill engine (frame + shadow-DOM traversal, semantic detection, mutation-observer retries)
+
+---
+
+## Phase 2 — Silent Session Management (built 2026-06-27)
+
+Branch: `phase-2-silent-session-management`. Spec: `docs/superpowers/specs/2026-06-27-extension-silent-session-management-design.md`. Plan: `docs/superpowers/plans/2026-06-27-extension-silent-session-management.md`.
+
+**What shipped (9 tasks, subagent-driven, each spec+quality reviewed):**
+1. **Proactive refresh** (extension) — `client.ts` `ensureFreshAccessToken()` refreshes the 15-min access token within a 120s skew, called at the top of `authedRequest`/`authedRaw` and on the 5-min sync alarm. Access-token `exp` persisted in `chrome.storage.session`.
+2. **Recovery UX** (extension) — a 401 refresh failure is terminal (clears tokens, sets a persistent `sessionExpired` flag, **keeps the cached snapshot**); non-401 (network/5xx) is transient (keeps everything). New `GET_STATUS` mode `sessionExpired` + an overlay "Session expired — reconnect" prompt that never falls back to sample data.
+3. **Tests** — extension vitest (15) + backend `test_sessions.py` (14) covering rotation/claim-preservation/60-day TTL/revocation/legacy-migration/IDOR.
+4. **Connected Devices** (backend + web) — new `Session` registry table (`sid` stable across rotation), `sid` claim on refresh tokens, session-aware `/refresh` (revoked/unknown sid → 401; **legacy no-`sid` tokens lazily migrated so the deploy logs nobody out**), `GET/DELETE /auth/sessions` + `POST /auth/sessions/revoke-all`, and a "Connected Devices" section in `frontend/src/pages/Settings.tsx`.
+
+**Test status:** all session/auth/extension suites green; extension build clean. Full backend suite = 169 passed / 8 pre-existing failures in `test_resume_properties.py` / `test_apply_properties.py` / `test_aggregator_properties.py` (confirmed identical on the branch base — **unrelated to Phase 2**).
+
+**Known follow-ups (not blockers):**
+- `is_current` is always `false` (no dependency surfaces the caller's token `sid`); consequently `revoke-all` **ignores `except_current`** and "Sign out everywhere" also drops the current dashboard session (logs out on next refresh). To honor `except_current`, surface the caller's `sid` to the sessions endpoints.
+- Migration DDL omits a `REFERENCES users(id)` FK on `sessions.user_id` to match the `extension_auth_codes` convention (the ORM `ForeignKey` is declared).
+- Pre-existing: `frontend` `tsc` has 4 `@phosphor-icons/react` errors (App/JobDetailView/JobFilterBar/Jobs.tsx) — not from this work; `Settings.tsx` is type-clean.
+
+**⬜ Remaining: browser live-verify (human + Chrome):** load `chrome-extension/dist/` unpacked, connect, confirm the device appears in Settings → Connected Devices; revoke it and confirm the panel flips to "Session expired — reconnect" (cached data still shown, no sample data); reconnect clears it.
