@@ -682,7 +682,7 @@ async def batch_fix_descriptions(
     failed = 0
     results = []
 
-    async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
         for job in jobs_to_fix:
             try:
                 description = await extract_description_from_url(client, job.url or "")

@@ -587,38 +587,3 @@ class AggregatorService:
         if enriched:
             self.db.commit()
         return enriched
-
-    async def _enrich_missing_descriptions(
-        self, source_id: int | None = None, limit: int = 10
-    ) -> int:
-        """Fetch descriptions for jobs that only have metadata + apply URL."""
-        from sqlalchemy import or_
-        from backend.services.description_extractor import (
-            BROWSER_HEADERS,
-            extract_description_from_url,
-            sanitize_description,
-        )
-
-        query = self.db.query(ScrapedJob).filter(
-            or_(ScrapedJob.description == "", ScrapedJob.description.is_(None))
-        )
-        if source_id is not None:
-            query = query.filter(ScrapedJob.github_source_id == source_id)
-        jobs = query.order_by(ScrapedJob.id.desc()).limit(limit).all()
-
-        enriched = 0
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
-            for job in jobs:
-                if not job.url:
-                    continue
-                try:
-                    description = await extract_description_from_url(client, job.url)
-                    if description:
-                        job.description = sanitize_description(description)
-                        enriched += 1
-                except Exception as exc:
-                    logger.debug("Description enrich failed for job %s: %s", job.id, exc)
-
-        if enriched:
-            self.db.commit()
-        return enriched

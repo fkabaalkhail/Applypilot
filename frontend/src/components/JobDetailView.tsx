@@ -22,8 +22,7 @@ import {
   FileText,
   type Icon,
 } from "@phosphor-icons/react";
-
-const API_BASE = "";
+import api from "../auth/api";
 
 // Maps the client-side parser's icon keys to Phosphor icon components
 const SECTION_ICONS: Record<string, Icon> = {
@@ -311,14 +310,11 @@ export default function JobDetailView({ job, onClose }: Props) {
     if (job.description && job.description.length > 50) return job.description;
     setFetchingDetails(true);
     try {
-      const res = await fetch(`${API_BASE}/jobs/${job.id}/fetch-details`, { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.apply_url) setApplyUrl(data.apply_url);
-        if (data.description) setDescription(data.description);
-        if (data.company_logo) setCompanyLogo(data.company_logo);
-        return data.description || "";
-      }
+      const { data } = await api.post(`/jobs/${job.id}/fetch-details`);
+      if (data.apply_url) setApplyUrl(data.apply_url);
+      if (data.description) setDescription(data.description);
+      if (data.company_logo) setCompanyLogo(data.company_logo);
+      return data.description || "";
     } catch {
       // Keep original URL if fetch fails
     } finally {
@@ -331,21 +327,19 @@ export default function JobDetailView({ job, onClose }: Props) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/ai/match-breakdown/${job.id}`, { method: "POST" });
-      if (!res.ok) {
-        if (res.status === 503) {
-          setError("AI analysis unavailable. Connect Gemini or Ollama to enable match scoring.");
-        } else if (res.status === 422) {
-          setError("Could not fetch a job description to analyze. Try opening the apply link directly.");
-        } else {
-          setError("Failed to analyze job match.");
-        }
-        return;
-      }
-      const data: MatchBreakdown = await res.json();
+      const { data } = await api.post<MatchBreakdown>(`/ai/match-breakdown/${job.id}`);
       setBreakdown(data);
-    } catch {
-      setError("Failed to connect to the server.");
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 503) {
+        setError("AI analysis unavailable. Connect Gemini or Ollama to enable match scoring.");
+      } else if (status === 422) {
+        setError("Could not fetch a job description to analyze. Try opening the apply link directly.");
+      } else if (status) {
+        setError("Failed to analyze job match.");
+      } else {
+        setError("Failed to connect to the server.");
+      }
     } finally {
       setLoading(false);
     }

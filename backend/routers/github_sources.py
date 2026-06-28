@@ -392,12 +392,15 @@ async def cron_poll(
                 }
             )
 
+        global_enriched = await aggregator._enrich_missing_descriptions(None, limit=40)
+
         return {
             "status": "completed",
             "sources_seeded": seed_result["created"],
             "sources_polled": len(sources),
             "new_jobs": total_new,
             "descriptions_enriched": total_enriched,
+            "global_descriptions_enriched": global_enriched,
             "polled": polled,
         }
     except Exception:
