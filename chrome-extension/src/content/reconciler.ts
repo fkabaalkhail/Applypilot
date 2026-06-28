@@ -142,6 +142,40 @@ export class AutofillReconciler {
   }
 
   /**
+   * Add more targets and reconcile them WITHOUT discarding fields already being
+   * tracked. Unlike run(), this merges into the existing `states` map, so a
+   * second fill pass (e.g. AI answers after the local profile pass) does not
+   * wipe drift-tracking of the first pass. Returns reports for the new targets.
+   */
+  async addTargets(
+    targets: ReconcileTarget[],
+    registry: Map<string, RuntimeControl>
+  ): Promise<FieldReport[]> {
+    this.registry = registry;
+    const newIds = new Set(targets.map((t) => t.fieldId));
+    for (const t of targets) {
+      this.states.set(t.fieldId, {
+        fieldId: t.fieldId,
+        value: t.value,
+        status: "mapped",
+        attempts: 0,
+        terminal: false,
+      });
+    }
+    try {
+      for (let cycle = 0; cycle < this.maxCycles; cycle++) {
+        for (const s of this.active()) this.fillOnce(s);
+        await this.sleep(this.window());
+        this.confirmStability();
+        if (this.allSettled()) break;
+      }
+      return this.reports().filter((r) => newIds.has(r.fieldId));
+    } finally {
+      if (this.observe) this.startObserver();
+    }
+  }
+
+  /**
    * Point the engine at a freshly-scanned registry (ids are stable across
    * rescans). Lets background reconciliation keep tracking surviving controls
    * after the page re-renders, without restarting the fill.

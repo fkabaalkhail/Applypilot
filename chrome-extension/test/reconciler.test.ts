@@ -168,3 +168,28 @@ describe("AutofillReconciler — observer-driven background reconciliation", () 
     expect(a.el.value).toBe("Z"); // observer-driven reconciliation restored it
   });
 });
+
+describe("addTargets — merges without resetting existing tracking", () => {
+  it("fills new targets and keeps prior fields in the engine state", async () => {
+    document.body.innerHTML = `<input id="a" /><input id="b" />`;
+    const a = document.getElementById("a") as HTMLInputElement;
+    const b = document.getElementById("b") as HTMLInputElement;
+    const registry = new Map<string, RuntimeControl>([
+      ["a", { id: "a", controlType: "text", el: a }],
+      ["b", { id: "b", controlType: "text", el: b }],
+    ]);
+    const engine = new AutofillReconciler({ sleep: async () => {}, settleWindowMs: 0, observe: false });
+
+    const first = await engine.run([{ fieldId: "a", value: "alpha" }], registry);
+    expect(first.find((r) => r.fieldId === "a")?.ok).toBe(true);
+
+    const second = await engine.addTargets([{ fieldId: "b", value: "beta" }], registry);
+
+    // Only the new target is reported back…
+    expect(second.map((r) => r.fieldId)).toEqual(["b"]);
+    expect(second[0].ok).toBe(true);
+    expect(b.value).toBe("beta");
+    // …and the original field is still filled (not wiped).
+    expect(a.value).toBe("alpha");
+  });
+});
