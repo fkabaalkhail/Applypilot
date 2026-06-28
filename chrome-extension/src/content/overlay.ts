@@ -904,7 +904,15 @@ function setExpanded(val: boolean): void {
 }
 
 function showLoginView(expired = false): void {
-  if (!refs) return;
+  if (!refs) {
+    console.log("[Tailrd overlay] showLoginView: refs is NULL — cannot render");
+    return;
+  }
+  console.log(
+    "[Tailrd overlay] showLoginView called expired=", expired,
+    "loginViewConnected=", refs.loginView.isConnected,
+    "hostInDoc=", Boolean(document.getElementById(HOST_ID))
+  );
   refs.loginView.classList.add("visible");
   refs.loginView.classList.toggle("ap-expired", expired);
   const heading = refs.loginView.querySelector<HTMLElement>(".ap-login-title");
@@ -945,6 +953,14 @@ function refreshMainView(): void {
   if (!refs) return;
   const { fields, selected } = overlayState;
   const count = selected.size;
+  console.log(
+    "[Tailrd overlay] refreshMainView selected=", count,
+    "of fields=", fields.length,
+    "withValue=", fields.filter((f) => f.proposedValue !== null).length,
+    "busy=", overlayState.busy,
+    "btnConnected=", refs.btnAutofill.isConnected,
+    "hostInDoc=", Boolean(document.getElementById(HOST_ID))
+  );
 
   refs.btnAutofill.disabled = overlayState.busy || count === 0;
   refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Autofill";
