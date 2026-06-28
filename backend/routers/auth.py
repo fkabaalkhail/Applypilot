@@ -654,7 +654,7 @@ def revoke_session(
 @router.post("/sessions/revoke-all")
 def revoke_all_sessions(
     request: Request,
-    body: Optional[RevokeAllRequest] = None,
+    body: RevokeAllRequest = RevokeAllRequest(),
     user: User = Depends(get_verified_user),
     db: Session = Depends(get_db),
 ):

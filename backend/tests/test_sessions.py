@@ -149,6 +149,36 @@ def test_revoke_all_sessions(client, db_session, user):
     assert client.get("/auth/sessions").json()["sessions"] == []
 
 
+def test_revoke_session_cross_user_returns_404(client, db_session, user):
+    from backend.db.models import User
+    from backend.services import sessions
+    other = User(id=2, email="other@example.com", email_verified=True, auth_provider="local")
+    db_session.add(other)
+    db_session.commit()
+    s = sessions.start_session(db_session, 2, "web", None)
+
+    res = client.delete(f"/auth/sessions/{s.sid}")
+    assert res.status_code == 404
+    # The other user's session must remain active.
+    assert sessions.get_active(db_session, s.sid) is not None
+
+
+def test_revoke_already_revoked_session_returns_404(client, db_session, user):
+    from backend.services import sessions
+    s = sessions.start_session(db_session, TEST_USER_ID, "extension", None)
+    sessions.revoke(db_session, s)
+    res = client.delete(f"/auth/sessions/{s.sid}")
+    assert res.status_code == 404
+
+
+def test_revoke_all_accepts_except_current_flag(client, db_session, user):
+    from backend.services import sessions
+    sessions.start_session(db_session, TEST_USER_ID, "web", None)
+    res = client.post("/auth/sessions/revoke-all", json={"except_current": True})
+    assert res.status_code == 200
+    assert "revoked" in res.json()
+
+
 def test_legacy_refresh_without_sid_is_migrated(client, db_session, user):
     # A refresh token minted the old way (no sid) must still work once and gain a sid.
     legacy = create_refresh_token(TEST_USER_ID, client="extension")  # no sid
