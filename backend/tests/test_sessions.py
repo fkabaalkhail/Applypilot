@@ -179,6 +179,18 @@ def test_revoke_all_accepts_except_current_flag(client, db_session, user):
     assert "revoked" in res.json()
 
 
+def test_logout_revokes_session(client, db_session, user):
+    from backend.services import sessions
+    refresh = _connect_extension(client)
+    sid = decode_token(refresh)["sid"]
+    assert sessions.get_active(db_session, sid) is not None
+
+    res = client.post("/auth/logout", json={"refresh_token": refresh})
+    assert res.status_code == 200, res.text
+    # The session is revoked, so it no longer appears as active.
+    assert sessions.get_active(db_session, sid) is None
+
+
 def test_legacy_refresh_without_sid_is_migrated(client, db_session, user):
     # A refresh token minted the old way (no sid) must still work once and gain a sid.
     legacy = create_refresh_token(TEST_USER_ID, client="extension")  # no sid

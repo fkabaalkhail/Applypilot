@@ -492,6 +492,12 @@ def logout(
             db.add(revoked_token)
             db.commit()
 
+    sid = payload.get("sid")
+    if sid:
+        session = session_service.get_active(db, sid)
+        if session is not None:
+            session_service.revoke(db, session)
+
     security_logger.log_event(
         db, SecurityLogger.LOGOUT, request,
         user_id=user_id, success=True,

@@ -658,7 +658,7 @@ export default function Settings() {
         )}
 
         <button type="button" className="device-revoke-all" onClick={() => void signOutEverywhere()}>
-          Sign out everywhere
+          Sign out of all devices (including this one)
         </button>
       </div>
 
