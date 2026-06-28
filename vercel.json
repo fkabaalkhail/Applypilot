@@ -23,6 +23,11 @@
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": null,
+  "functions": {
+    "api/**/*.py": {
+      "excludeFiles": "{backend/tests/**,**/test_*.py,**/*.test.py,**/__pycache__/**,**/.pytest_cache/**}"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
