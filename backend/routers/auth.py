@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 import httpx
 
 from backend.db.database import get_db
-from backend.db.models import User, RevokedToken
+from backend.db.models import User, RevokedToken, Session as DBSession
 from backend.auth.passwords import hash_password, verify_password
 from backend.auth.tokens import (
     create_access_token, create_refresh_token, decode_token,
@@ -118,6 +118,21 @@ class ResendVerificationResponse(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh_token: str = ""
+
+class SessionInfo(BaseModel):
+    sid: str
+    client: str
+    created_at: datetime
+    last_seen_at: datetime
+    last_ip: Optional[str] = None
+    user_agent: Optional[str] = None
+    is_current: bool = False
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionInfo]
+
+class RevokeAllRequest(BaseModel):
+    except_current: bool = False
 
 
 # --- Endpoints ---
@@ -583,3 +598,80 @@ def resend_verification(
         )
 
     return ResendVerificationResponse(message="Verification email sent")
+
+
+# --- Session management endpoints ---
+
+@router.get("/sessions", response_model=SessionListResponse)
+def list_sessions(
+    user: User = Depends(get_verified_user),
+    db: Session = Depends(get_db),
+):
+    """List the caller's active (non-revoked) sessions for Connected Devices."""
+    rows = (
+        db.query(DBSession)
+        .filter(DBSession.user_id == user.id, DBSession.revoked_at.is_(None))
+        .order_by(DBSession.last_seen_at.desc())
+        .all()
+    )
+    # is_current is always False: no dependency surfaces the caller's token sid claims.
+    return SessionListResponse(
+        sessions=[
+            SessionInfo(
+                sid=r.sid,
+                client=r.client,
+                created_at=r.created_at,
+                last_seen_at=r.last_seen_at,
+                last_ip=r.last_ip,
+                user_agent=r.user_agent,
+                is_current=False,
+            )
+            for r in rows
+        ]
+    )
+
+
+@router.delete("/sessions/{sid}")
+def revoke_session(
+    sid: str,
+    request: Request,
+    user: User = Depends(get_verified_user),
+    db: Session = Depends(get_db),
+):
+    """Revoke one of the caller's sessions."""
+    row = (
+        db.query(DBSession)
+        .filter(DBSession.sid == sid, DBSession.user_id == user.id, DBSession.revoked_at.is_(None))
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_service.revoke(db, row)
+    security_logger.log_event(db, SecurityLogger.LOGOUT, request, user_id=user.id, success=True)
+    return {"status": "revoked"}
+
+
+@router.post("/sessions/revoke-all")
+def revoke_all_sessions(
+    request: Request,
+    body: Optional[RevokeAllRequest] = None,
+    user: User = Depends(get_verified_user),
+    db: Session = Depends(get_db),
+):
+    """Revoke all of the caller's active sessions ('sign out everywhere').
+
+    Note: except_current=True has no effect because is_current tracking is not
+    yet implemented (no dependency surfaces the caller's token sid claims).
+    All active sessions are revoked regardless.
+    """
+    rows = (
+        db.query(DBSession)
+        .filter(DBSession.user_id == user.id, DBSession.revoked_at.is_(None))
+        .all()
+    )
+    count = 0
+    for r in rows:
+        session_service.revoke(db, r)
+        count += 1
+    security_logger.log_event(db, SecurityLogger.LOGOUT, request, user_id=user.id, success=True)
+    return {"revoked": count}

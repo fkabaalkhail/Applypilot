@@ -118,6 +118,37 @@ def test_refresh_rejected_after_session_revoked(client, db_session, user):
     assert db_session.query(RevokedToken).filter(RevokedToken.jti == decoded["jti"]).first() is not None
 
 
+def test_list_sessions_excludes_revoked(client, db_session, user):
+    from backend.services import sessions
+    s1 = sessions.start_session(db_session, TEST_USER_ID, "extension", None)
+    s2 = sessions.start_session(db_session, TEST_USER_ID, "web", None)
+    sessions.revoke(db_session, s2)
+
+    res = client.get("/auth/sessions")
+    assert res.status_code == 200, res.text
+    sids = [s["sid"] for s in res.json()["sessions"]]
+    assert s1.sid in sids
+    assert s2.sid not in sids
+
+
+def test_revoke_one_session(client, db_session, user):
+    from backend.services import sessions
+    s = sessions.start_session(db_session, TEST_USER_ID, "extension", None)
+    res = client.delete(f"/auth/sessions/{s.sid}")
+    assert res.status_code == 200, res.text
+    assert sessions.get_active(db_session, s.sid) is None
+
+
+def test_revoke_all_sessions(client, db_session, user):
+    from backend.services import sessions
+    sessions.start_session(db_session, TEST_USER_ID, "extension", None)
+    sessions.start_session(db_session, TEST_USER_ID, "web", None)
+    res = client.post("/auth/sessions/revoke-all", json={})
+    assert res.status_code == 200, res.text
+    assert res.json()["revoked"] >= 2
+    assert client.get("/auth/sessions").json()["sessions"] == []
+
+
 def test_legacy_refresh_without_sid_is_migrated(client, db_session, user):
     # A refresh token minted the old way (no sid) must still work once and gain a sid.
     legacy = create_refresh_token(TEST_USER_ID, client="extension")  # no sid
