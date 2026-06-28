@@ -19,6 +19,7 @@ import {
   isVisible,
   type FieldSignals,
 } from "./domUtils";
+import { isCaptchaField } from "./captcha";
 import { classifyField, resolveProfileValue } from "./fieldMatcher";
 
 /** Live handle for a detected field — never leaves the content script. */
@@ -149,6 +150,8 @@ export function scanPage(
   for (const el of candidates) {
     const controlType = controlTypeOf(el);
     if (controlType === null) continue;
+    // Never surface or fill a captcha widget's own controls — fill around it.
+    if (isCaptchaField(el)) continue;
     if ((el as HTMLInputElement).disabled) continue;
     if (el instanceof HTMLInputElement && el.readOnly) continue;
 

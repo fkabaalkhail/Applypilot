@@ -61,12 +61,7 @@ function sendToBackground<T>(message: BackgroundRequest): Promise<T> {
 /** Turn a reconciliation report into the popup's per-field outcome shape. */
 function reportToOutcome(r: FieldReport): { fieldId: string; ok: boolean; reason?: string } {
   if (r.ok) return { fieldId: r.fieldId, ok: true };
-  const reason =
-    r.reason ??
-    (r.status === "blocked_captcha"
-      ? "Paused for verification — complete the CAPTCHA, then retry"
-      : "Could not fill — please check manually");
-  return { fieldId: r.fieldId, ok: false, reason };
+  return { fieldId: r.fieldId, ok: false, reason: r.reason ?? "Could not fill — please check manually" };
 }
 
 function initialize(): void {

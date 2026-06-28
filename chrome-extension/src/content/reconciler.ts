@@ -6,7 +6,7 @@
  * a one-shot write. Each field runs a small state machine:
  *
  *   discovered → mapped → filled → verified → stable
- *                            ↘ drifted ↗ (reapply)        ↘ blocked_captcha
+ *                            ↘ drifted ↗ (reapply)
  *
  * - Write + immediate read-back (Layer B), retried up to `maxWriteAttempts`.
  * - A field is only *complete* (`stable`) once it still verifies after the
@@ -18,11 +18,11 @@
  * - A MutationObserver gives drift *priority*: structural changes trigger an
  *   immediate reconcile pass that reverts affected fields to `mapped` and
  *   refills them.
- * - CAPTCHA suspends the entire form group (never a bypass); the engine waits
- *   it out and resumes once the page stabilizes.
+ * - CAPTCHA is never bypassed and never blocks the form: the captcha widget is
+ *   excluded at discovery (see captcha.ts / formScanner), and the engine fills
+ *   every other field normally around it.
  * - Idempotent: verify-before-write means re-running never corrupts a field.
  */
-import { detectCaptcha } from "./captcha";
 import type { RuntimeControl } from "./formScanner";
 import { verifyControl, writeControl } from "./writeEngine";
 
@@ -32,8 +32,7 @@ export type FieldStatus =
   | "filled"
   | "verified"
   | "stable"
-  | "drifted"
-  | "blocked_captcha";
+  | "drifted";
 
 export interface ReconcileTarget {
   fieldId: string;
@@ -58,15 +57,11 @@ export interface ReconcilerOptions {
   maxCycles?: number;
   /** Max write attempts per field within one cycle. Default 2. */
   maxWriteAttempts?: number;
-  /** How many settle windows to wait out a CAPTCHA before giving up. */
-  maxSuspendTicks?: number;
   /** Whether to run a background MutationObserver. Default true. */
   observe?: boolean;
   /** Debounce for observer-triggered reconcile passes (ms). Default 120. */
   observerDebounceMs?: number;
-  /** CAPTCHA probe — injectable for tests. Default: scan the root. */
-  captchaPresent?: () => boolean;
-  /** Scope for the observer + CAPTCHA scan. Default: document. */
+  /** Scope for the background observer. Default: document. */
   root?: Document | ShadowRoot;
 }
 
@@ -91,10 +86,8 @@ export class AutofillReconciler {
   private readonly settleWindowMs?: number;
   private readonly maxCycles: number;
   private readonly maxWriteAttempts: number;
-  private readonly maxSuspendTicks: number;
   private readonly observe: boolean;
   private readonly observerDebounceMs: number;
-  private readonly captchaPresent: () => boolean;
   private readonly root: Document | ShadowRoot;
 
   private states = new Map<string, FieldState>();
@@ -110,11 +103,9 @@ export class AutofillReconciler {
     this.settleWindowMs = options.settleWindowMs;
     this.maxCycles = options.maxCycles ?? 3;
     this.maxWriteAttempts = options.maxWriteAttempts ?? 2;
-    this.maxSuspendTicks = options.maxSuspendTicks ?? 10;
     this.observe = options.observe ?? true;
     this.observerDebounceMs = options.observerDebounceMs ?? 120;
     this.root = options.root ?? document;
-    this.captchaPresent = options.captchaPresent ?? (() => detectCaptcha(this.root));
   }
 
   /**
@@ -136,16 +127,7 @@ export class AutofillReconciler {
     );
 
     try {
-      await this.waitOutCaptcha();
-      if (this.captchaPresent()) return this.reports(); // suspended — still blocked
-
       for (let cycle = 0; cycle < this.maxCycles; cycle++) {
-        if (this.captchaPresent()) {
-          this.blockAll();
-          await this.sleep(this.window());
-          continue;
-        }
-        this.unblock();
         for (const s of this.active()) this.fillOnce(s);
         await this.sleep(this.window());
         this.confirmStability();
@@ -175,11 +157,6 @@ export class AutofillReconciler {
    */
   async reconcileNow(): Promise<FieldReport[]> {
     if (this.states.size === 0) return [];
-    if (this.captchaPresent()) {
-      this.blockAll();
-      return this.reports();
-    }
-    this.unblock();
     for (const s of this.states.values()) {
       if (s.terminal) continue;
       const control = this.registry.get(s.fieldId);
@@ -249,31 +226,9 @@ export class AutofillReconciler {
     }
   }
 
-  private async waitOutCaptcha(): Promise<void> {
-    let ticks = 0;
-    while (this.captchaPresent() && ticks < this.maxSuspendTicks) {
-      this.blockAll();
-      await this.sleep(this.window());
-      ticks++;
-    }
-    if (!this.captchaPresent()) this.unblock();
-  }
-
-  private blockAll(): void {
-    for (const s of this.states.values()) {
-      if (!s.terminal && s.status !== "stable") s.status = "blocked_captcha";
-    }
-  }
-
-  private unblock(): void {
-    for (const s of this.states.values()) {
-      if (s.status === "blocked_captcha") s.status = "mapped";
-    }
-  }
-
   private active(): FieldState[] {
     return [...this.states.values()].filter(
-      (s) => !s.terminal && s.status !== "stable" && s.status !== "blocked_captcha"
+      (s) => !s.terminal && s.status !== "stable"
     );
   }
 

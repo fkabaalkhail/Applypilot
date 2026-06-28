@@ -24,26 +24,16 @@
     "service_worker": "serviceWorker.js"
   },
   "permissions": ["activeTab", "storage", "scripting", "identity", "alarms"],
-  "host_permissions": ["http://localhost/*", "https://www.tailrd.ca/*"],
-  "optional_host_permissions": ["https://*/*", "http://localhost/*"],
+  "host_permissions": ["http://*/*", "https://*/*"],
   "content_scripts": [
     {
-      "matches": [
-        "https://*.greenhouse.io/*",
-        "https://*.lever.co/*",
-        "https://*.myworkdayjobs.com/*",
-        "https://*.myworkdaysite.com/*",
-        "https://*.ashbyhq.com/*",
-        "https://*.bamboohr.com/*",
-        "https://*.smartrecruiters.com/*",
-        "https://*.icims.com/*",
-        "https://*.jobvite.com/*",
-        "https://*.workable.com/*",
-        "https://*.taleo.net/*",
-        "https://*.successfactors.com/*",
-        "https://*.successfactors.eu/*",
-        "https://*.sapsf.com/*",
-        "https://*.sapsf.eu/*"
+      "matches": ["<all_urls>"],
+      "exclude_matches": [
+        "https://www.google.com/recaptcha/*",
+        "https://recaptcha.net/*",
+        "https://www.recaptcha.net/*",
+        "https://*.hcaptcha.com/*",
+        "https://challenges.cloudflare.com/*"
       ],
       "js": ["contentScript.js"],
       "run_at": "document_idle",

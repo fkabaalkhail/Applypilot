@@ -52,3 +52,21 @@ export function detectCaptcha(root: ParentNode = document): boolean {
 
   return false;
 }
+
+/** A control's name/id when it is the captcha widget's own response field. */
+const CAPTCHA_FIELD_NAME =
+  /g-recaptcha-response|h-captcha-response|cf-turnstile-response|recaptcha[-_]?token|\bcaptcha\b/i;
+
+/** Containers a captcha widget renders its controls inside. */
+const CAPTCHA_CONTAINER = ".g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]";
+
+/**
+ * True when a single control IS part of a captcha widget — its response field
+ * or a control nested in a captcha container. Discovery skips these so we fill
+ * every real field around the captcha without ever touching the captcha itself.
+ */
+export function isCaptchaField(el: HTMLElement): boolean {
+  const nameId = `${el.getAttribute("name") ?? ""} ${el.id ?? ""}`;
+  if (CAPTCHA_FIELD_NAME.test(nameId)) return true;
+  return Boolean(el.closest(CAPTCHA_CONTAINER));
+}

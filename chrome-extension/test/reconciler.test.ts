@@ -94,37 +94,19 @@ describe("AutofillReconciler — idempotency", () => {
   });
 });
 
-describe("AutofillReconciler — CAPTCHA policy", () => {
-  it("suspends the whole form while a CAPTCHA is present and writes nothing", async () => {
+describe("AutofillReconciler — fills around CAPTCHA (never suspends the form)", () => {
+  it("fills the normal fields even when a reCAPTCHA widget is on the page", async () => {
+    // A reCAPTCHA widget present on the page must NOT stop the rest of the form
+    // from filling — we skip the captcha itself and fill everything else.
+    document.body.innerHTML = `<div class="g-recaptcha" data-sitekey="abc"></div>`;
     const a = input("f-1");
-    const engine = new AutofillReconciler({
-      sleep: instant,
-      observe: false,
-      captchaPresent: () => true,
-      maxSuspendTicks: 3,
-    });
+    const engine = new AutofillReconciler({ sleep: instant, observe: false });
 
-    const reports = await engine.run([{ fieldId: "f-1", value: "X" }], reg([a.control]));
+    const reports = await engine.run([{ fieldId: "f-1", value: "Wissam" }], reg([a.control]));
     engine.dispose();
 
-    expect(reports[0].status).toBe("blocked_captcha");
-    expect(a.el.value).toBe(""); // never touched
-  });
-
-  it("auto-resumes within a run once the CAPTCHA clears", async () => {
-    const a = input("f-1");
-    let checks = 0;
-    const captchaPresent = (): boolean => {
-      checks++;
-      return checks <= 2; // present for the first two checks, then gone
-    };
-    const engine = new AutofillReconciler({ sleep: instant, observe: false, captchaPresent });
-
-    const reports = await engine.run([{ fieldId: "f-1", value: "X" }], reg([a.control]));
-    engine.dispose();
-
+    expect(a.el.value).toBe("Wissam");
     expect(reports[0].status).toBe("stable");
-    expect(a.el.value).toBe("X");
   });
 });
 
