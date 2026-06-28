@@ -33,6 +33,7 @@ import { deepQueryAll } from "./domUtils";
 import { base64ToFile, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, type RuntimeControl } from "./formScanner";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
+import { defaultSelectedIds } from "../shared/selection";
 import {
   showOverlay,
   updateOverlay,
@@ -64,7 +65,11 @@ function sendToBackground<T>(message: BackgroundRequest): Promise<T> {
 // form is missed entirely, partially detected, or living in a cross-origin
 // iframe the panel can't reach. Deduped so dynamic pages don't spam.
 let lastScanSig = "";
-function logScanDiagnostics(isTopFrame: boolean, fields: DetectedField[]): void {
+function logScanDiagnostics(
+  isTopFrame: boolean,
+  fields: DetectedField[],
+  profileLoaded: boolean
+): void {
   try {
     const rawControls = deepQueryAll(document, "input, textarea, select").length;
     const iframes = Array.from(document.querySelectorAll("iframe"));
@@ -76,7 +81,9 @@ function logScanDiagnostics(isTopFrame: boolean, fields: DetectedField[]): void 
         crossOrigin++;
       }
     }
-    const sig = `${rawControls}|${fields.length}|${fields.map((f) => f.category).join(",")}|${iframes.length}|${crossOrigin}`;
+    const withValue = fields.filter((f) => f.proposedValue !== null).length;
+    const wouldAutoSelect = defaultSelectedIds(fields).size;
+    const sig = `${rawControls}|${fields.length}|${withValue}|${wouldAutoSelect}|${profileLoaded}|${crossOrigin}`;
     if (sig === lastScanSig) return; // only log when the picture changes
     lastScanSig = sig;
     console.log(
@@ -84,7 +91,9 @@ function logScanDiagnostics(isTopFrame: boolean, fields: DetectedField[]): void 
       {
         rawControlsSeen: rawControls,
         detectedFields: fields.length,
-        categories: fields.map((f) => f.category),
+        profileLoaded, // did a profile reach the scanner?
+        withProposedValue: withValue, // fields the profile produced a value for
+        wouldAutoSelect, // fields the Autofill button would act on (drives enable/count)
         iframesOnPage: iframes.length,
         crossOriginIframes: crossOrigin,
       }
@@ -129,7 +138,7 @@ function initialize(): void {
     const result = scanPage(lastProfile, lastFillEEO);
     registry = result.registry;
     lastFields = result.fields;
-    logScanDiagnostics(isTopFrame, result.fields);
+    logScanDiagnostics(isTopFrame, result.fields, lastProfile !== null);
     return {
       ok: true,
       url: location.href,
