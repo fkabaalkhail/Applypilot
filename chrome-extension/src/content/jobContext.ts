@@ -20,8 +20,6 @@ const DESC_SELECTORS = [
   "main",
 ];
 
-const SKIP_BLOCK = new Set(["NAV", "FOOTER", "HEADER", "SCRIPT", "STYLE", "NOSCRIPT"]);
-
 function visibleText(el: Element | null): string {
   if (!el) return "";
   return (el.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -37,7 +35,7 @@ function extractDescription(doc: Document): string {
   let best = "";
   for (const el of Array.from(doc.querySelectorAll("section, article, div, p"))) {
     if (el.closest("nav, footer, header")) continue;
-    if (SKIP_BLOCK.has(el.tagName)) continue;
+    if (el.querySelector("nav, footer")) continue; // skip wrappers that contain site chrome
     const text = visibleText(el);
     if (text.length > best.length) best = text;
   }

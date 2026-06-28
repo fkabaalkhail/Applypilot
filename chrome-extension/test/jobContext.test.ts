@@ -36,4 +36,10 @@ describe("extractJobContext", () => {
     const ctx = extractJobContext(document);
     expect(ctx).toEqual({ jobDescription: "", jobTitle: "", company: "" });
   });
+
+  it("truncates an over-long description to the max length", () => {
+    document.body.innerHTML = `<div class="job-description">${"x ".repeat(5000)}</div>`;
+    const ctx = extractJobContext(document);
+    expect(ctx.jobDescription.length).toBeLessThanOrEqual(6000);
+  });
 });
