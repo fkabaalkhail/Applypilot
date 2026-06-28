@@ -35,6 +35,16 @@ interface Toast {
   message: string;
 }
 
+interface DeviceSession {
+  sid: string;
+  client: string;
+  created_at: string;
+  last_seen_at: string;
+  last_ip: string | null;
+  user_agent: string | null;
+  is_current: boolean;
+}
+
 // ─── Helper Functions ────────────────────────────────────────────────────────
 
 function computeDiff(
@@ -217,6 +227,8 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [sessions, setSessions] = useState<DeviceSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
 
   // ─── Toast helpers ───────────────────────────────────────────────────────
 
@@ -231,6 +243,38 @@ export default function Settings() {
   function dismissToast(id: string) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }
+
+  // ─── Sessions ───────────────────────────────────────────────────────────
+
+  const loadSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      const { data } = await api.get<{ sessions: DeviceSession[] }>("/auth/sessions");
+      setSessions(data.sessions);
+    } catch {
+      setSessions([]);
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const revokeSession = async (sid: string) => {
+    try {
+      await api.delete(`/auth/sessions/${sid}`);
+      setSessions((prev) => prev.filter((s) => s.sid !== sid));
+    } catch {
+      showToast("error", "Failed to revoke session.");
+    }
+  };
+
+  const signOutEverywhere = async () => {
+    try {
+      await api.post("/auth/sessions/revoke-all", { except_current: true });
+      await loadSessions();
+    } catch {
+      // no-op
+    }
+  };
 
   // ─── Data Fetching ───────────────────────────────────────────────────────
 
@@ -270,6 +314,7 @@ export default function Settings() {
 
   useEffect(() => {
     fetchSettings();
+    void loadSessions();
   }, []);
 
   // ─── Save Settings ──────────────────────────────────────────────────────
@@ -569,6 +614,52 @@ export default function Settings() {
           label="Follow Companies"
           description="Automatically follow companies when applying"
         />
+      </div>
+
+      {/* Connected Devices */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <i className="fa-solid fa-laptop"></i>
+          <h2>Connected Devices</h2>
+        </div>
+        <p className="settings-section-sub">
+          Browsers and the Tailrd extension currently signed in to your account.
+        </p>
+
+        {sessionsLoading ? (
+          <p className="settings-section-sub">Loading…</p>
+        ) : sessions.length === 0 ? (
+          <p className="settings-section-sub">No active sessions.</p>
+        ) : (
+          <ul className="device-list">
+            {sessions.map((s) => (
+              <li key={s.sid} className="device-row">
+                <div className="device-meta">
+                  <span className="device-client">
+                    {s.client === "extension" ? "Chrome extension" : "Web"}
+                    {s.is_current && <span className="device-current"> · This device</span>}
+                  </span>
+                  <span className="device-times">
+                    Connected {new Date(s.created_at).toLocaleDateString()} · Last seen {new Date(s.last_seen_at).toLocaleDateString()}
+                    {s.last_ip && ` · ${s.last_ip}`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="device-revoke"
+                  onClick={() => void revokeSession(s.sid)}
+                  disabled={s.is_current}
+                >
+                  Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <button type="button" className="device-revoke-all" onClick={() => void signOutEverywhere()}>
+          Sign out everywhere
+        </button>
       </div>
 
       {/* Save Bar */}
