@@ -62,16 +62,18 @@ for (const key of [
   "HTMLInputElement",
   "HTMLTextAreaElement",
   "HTMLSelectElement",
+  "HTMLIFrameElement",
   "Event",
   "InputEvent",
+  "FocusEvent",
+  "MutationObserver",
 ]) {
   globalThis[key] = window[key];
 }
 globalThis.getComputedStyle = window.getComputedStyle.bind(window);
 
-const { scanPage, fillFields, MOCK_PROFILE, AUTOFILL_CONFIDENCE_THRESHOLD } = await import(
-  pathToFileURL(bundlePath).href
-);
+const { scanPage, AutofillReconciler, MOCK_PROFILE, AUTOFILL_CONFIDENCE_THRESHOLD } =
+  await import(pathToFileURL(bundlePath).href);
 rmSync(bundlePath);
 
 // --- scan ---------------------------------------------------------------------
@@ -102,10 +104,15 @@ const toFill = fields.filter(
     !f.sensitive &&
     f.confidence >= AUTOFILL_CONFIDENCE_THRESHOLD
 );
-const outcomes = fillFields(
+// Drive the real reconciliation engine: instant settle window, no background
+// observer — this exercises the production fill+verify path headlessly.
+const engine = new AutofillReconciler({ sleep: async () => {}, observe: false });
+const reports = await engine.run(
   toFill.map((f) => ({ fieldId: f.id, value: f.proposedValue })),
   registry
 );
+engine.dispose();
+const outcomes = reports.map((r) => ({ fieldId: r.fieldId, ok: r.ok, reason: r.reason }));
 
 console.log(`\nAutofill: attempted ${outcomes.length}`);
 let failures = 0;

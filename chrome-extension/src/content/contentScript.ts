@@ -29,9 +29,9 @@ import type {
   ScanResponse,
   UserApplicationProfile,
 } from "../shared/types";
-import { fillFields } from "./autofill";
 import { base64ToFile, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, type RuntimeControl } from "./formScanner";
+import { AutofillReconciler, type FieldReport } from "./reconciler";
 import {
   showOverlay,
   updateOverlay,
@@ -58,6 +58,17 @@ function sendToBackground<T>(message: BackgroundRequest): Promise<T> {
   return chrome.runtime.sendMessage(message) as Promise<T>;
 }
 
+/** Turn a reconciliation report into the popup's per-field outcome shape. */
+function reportToOutcome(r: FieldReport): { fieldId: string; ok: boolean; reason?: string } {
+  if (r.ok) return { fieldId: r.fieldId, ok: true };
+  const reason =
+    r.reason ??
+    (r.status === "blocked_captcha"
+      ? "Paused for verification — complete the CAPTCHA, then retry"
+      : "Could not fill — please check manually");
+  return { fieldId: r.fieldId, ok: false, reason };
+}
+
 function initialize(): void {
   let registry: Map<string, RuntimeControl> = new Map();
   let lastFields: DetectedField[] = [];
@@ -66,6 +77,14 @@ function initialize(): void {
   let lastFillEEO = false;
   let observer: MutationObserver | null = null;
   let overlayShown = false;
+
+  // One reconciliation engine per frame, created on first fill. It keeps a
+  // MutationObserver alive afterwards to correct post-fill drift.
+  let engine: AutofillReconciler | null = null;
+  const getEngine = (): AutofillReconciler => {
+    if (!engine) engine = new AutofillReconciler({ root: document });
+    return engine;
+  };
 
   const isTopFrame = ((): boolean => {
     try {
@@ -96,12 +115,12 @@ function initialize(): void {
   const overlayCallbacks: OverlayCallbacks = {
     onAutofill: async (ids: string[]) => {
       const wanted = new Set(ids);
-      const instructions = lastFields
+      const targets = lastFields
         .filter((f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null)
         .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
-      const outcomes = fillFields(instructions, registry);
-      const ok = outcomes.filter((o) => o.ok).length;
-      return { ok, fail: outcomes.length - ok, total: instructions.length };
+      const reports = await getEngine().run(targets, registry);
+      const ok = reports.filter((r) => r.ok).length;
+      return { ok, fail: reports.length - ok, total: targets.length };
     },
     onRescan: () => {
       runScan();
@@ -167,6 +186,9 @@ function initialize(): void {
     observer = observePage(() => {
       const before = lastFields.length;
       runScan();
+      // Keep the reconciler pointed at the freshly-scanned controls so its
+      // background drift correction tracks surviving fields after re-renders.
+      engine?.updateRegistry(registry);
       if (lastFields.length !== before) {
         // Let the toolbar popup know (it refreshes if open).
         const event: FieldsUpdatedEvent = {
@@ -233,19 +255,29 @@ function initialize(): void {
             i.fieldId.startsWith(`${FRAME_TOKEN}-`)
           );
           if (mine.length > 0) {
-            const response: FillResponse = { ok: true, outcomes: fillFields(mine, registry) };
-            sendResponse(response);
-            return false;
+            void getEngine()
+              .run(mine, registry)
+              .then((reports) => {
+                const response: FillResponse = {
+                  ok: true,
+                  outcomes: reports.map(reportToOutcome),
+                };
+                sendResponse(response);
+              });
+            return true; // engine resolves after the stability window
           }
           if (isTopFrame) {
             // Fallback so the popup always gets *some* answer if the owning
-            // frame disappeared (e.g. iframe navigated away).
+            // frame disappeared (e.g. iframe navigated away). The owning frame
+            // now answers only after its reconciliation settles (up to a few
+            // ~800ms cycles), so this must wait long enough not to beat a real
+            // owner whose form lives in a child iframe.
             const response: FillResponse = {
               ok: false,
               error: "The form's frame is gone — rescan the page",
               outcomes: [],
             };
-            setTimeout(() => sendResponse(response), 600);
+            setTimeout(() => sendResponse(response), 3000);
             return true;
           }
           return false; // not ours, stay silent

@@ -9,20 +9,39 @@ export function cleanText(text: string | null | undefined): string {
 }
 
 /**
- * querySelectorAll that also descends into open shadow roots.
- * Several ATS widgets (and embeddable career sites) render inside shadow DOM.
+ * querySelectorAll that also descends into open shadow roots AND same-origin
+ * iframes. Several ATS embed their form in an iframe (Greenhouse/Lever boards)
+ * or render widgets inside shadow DOM. Cross-origin iframes throw on access and
+ * are skipped silently — those frames run their own copy of the content script.
  */
 export function deepQueryAll(root: ParentNode, selector: string): HTMLElement[] {
   const out: HTMLElement[] = [];
+  const seen = new Set<Document | ShadowRoot>();
   const visit = (node: ParentNode): void => {
     node.querySelectorAll(selector).forEach((el) => out.push(el as HTMLElement));
     node.querySelectorAll("*").forEach((el) => {
       const shadow = (el as HTMLElement).shadowRoot;
       if (shadow) visit(shadow);
+      if (el instanceof HTMLIFrameElement) {
+        const doc = sameOriginDocument(el);
+        if (doc && !seen.has(doc)) {
+          seen.add(doc);
+          visit(doc);
+        }
+      }
     });
   };
   visit(root);
   return out;
+}
+
+/** A same-origin iframe's document, or null if cross-origin / not ready. */
+function sameOriginDocument(iframe: HTMLIFrameElement): Document | null {
+  try {
+    return iframe.contentDocument;
+  } catch {
+    return null; // cross-origin — accessing contentDocument throws
+  }
 }
 
 /** Visible enough to be a real, user-facing field. */
