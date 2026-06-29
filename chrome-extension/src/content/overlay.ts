@@ -22,9 +22,12 @@ import type {
   LoginResponse,
   ProfileResponse,
   ProfileSource,
+  ResumeDoc,
   ResumeSummary,
   SimpleResponse,
   StatusResponse,
+  TailorResult,
+  TailorResumeOpts,
   UserApplicationProfile,
 } from "../shared/types";
 
@@ -42,6 +45,14 @@ export interface OverlayCallbacks {
   onListResumes: () => Promise<ResumeSummary[]>;
   /** Inject the chosen resume's file into the page's upload control. */
   onUploadResume: (resumeId: number) => Promise<{ ok: boolean; reason?: string }>;
+  /** Tailor the active résumé to this page's job; returns scores + keywords. */
+  onTailorResume: (
+    opts: TailorResumeOpts
+  ) => Promise<{ ok: boolean; needsLogin?: boolean; reason?: string; result?: TailorResult }>;
+  /** Render the tailored document to PDF and attach it to the upload field. */
+  onAttachTailored: (document: ResumeDoc) => Promise<{ ok: boolean; reason?: string }>;
+  /** Render the tailored document to PDF and download it. */
+  onDownloadTailored: (document: ResumeDoc) => Promise<{ ok: boolean; reason?: string }>;
   /**
    * Hand the resolved account profile to the content script so it can compute
    * each field's proposed value. Without this the scanner has no data, every

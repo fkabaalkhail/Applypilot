@@ -354,7 +354,15 @@ export type BackgroundRequest =
   | { type: "GET_SYNC"; forceRefresh?: boolean }
   | { type: "DOWNLOAD_RESUME"; resumeId: number }
   | { type: "OPEN_DASHBOARD" }
-  | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext };
+  | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext }
+  | {
+      type: "TAILOR_RESUME";
+      resumeId: number | null;
+      jobContext: JobContext;
+      sections?: string[];
+      addKeywords?: string[] | null;
+    }
+  | { type: "RENDER_RESUME"; document: ResumeDoc; filename?: string };
 
 export interface StatusResponse {
   ok: boolean;

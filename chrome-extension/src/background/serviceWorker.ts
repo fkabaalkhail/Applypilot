@@ -13,6 +13,7 @@ import { connectAccount } from "../api/handshake";
 import { AuthRequiredError, checkAuthStatus, ensureFreshAccessToken, logout } from "../api/client";
 import { downloadResumeFile, getSnapshotForUi, syncIfStale } from "../api/sync";
 import { aiFillFields } from "../api/aiFill";
+import { renderResume, tailorResume } from "../api/tailorResume";
 import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import type {
   AiFillResponse,
@@ -20,11 +21,13 @@ import type {
   FieldsUpdatedEvent,
   LoginResponse,
   ProfileResponse,
+  RenderResumeResponse,
   ResumeFileResponse,
   ResumesResponse,
   SimpleResponse,
   StatusResponse,
   SyncResponse,
+  TailorResumeResponse,
 } from "../shared/types";
 
 /** Periodic sync alarm — keeps the cached snapshot fresh while active. */
@@ -143,6 +146,8 @@ export async function handle(
   | ResumeFileResponse
   | SyncResponse
   | AiFillResponse
+  | TailorResumeResponse
+  | RenderResumeResponse
 > {
   switch (message.type) {
     case "GET_STATUS": {
@@ -285,6 +290,32 @@ export async function handle(
           answers: [],
           errors: [err instanceof Error ? err.message : "AI fill failed"],
         };
+      }
+    }
+
+    case "TAILOR_RESUME": {
+      try {
+        const result = await tailorResume(
+          message.resumeId, message.jobContext, message.sections, message.addKeywords
+        );
+        return { ok: true, result };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, error: err.message };
+        }
+        return { ok: false, error: err instanceof Error ? err.message : "Tailoring failed" };
+      }
+    }
+
+    case "RENDER_RESUME": {
+      try {
+        const { dataBase64, name, contentType } = await renderResume(message.document, message.filename);
+        return { ok: true, dataBase64, name, contentType };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, name: "", contentType: "", error: err.message };
+        }
+        return { ok: false, name: "", contentType: "", error: err instanceof Error ? err.message : "Render failed" };
       }
     }
 
