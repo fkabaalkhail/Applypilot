@@ -21,6 +21,7 @@ import {
 } from "./domUtils";
 import { isCaptchaField } from "./captcha";
 import { isConsentField } from "./consent";
+import { isAriaCombobox } from "./comboboxEngine";
 import { classifyField, resolveProfileValue } from "./fieldMatcher";
 
 /** Live handle for a detected field — never leaves the content script. */
@@ -44,8 +45,10 @@ const CANDIDATE_SELECTOR = [
   "select",
   '[contenteditable="true"]',
   '[role="textbox"]',
-  // Workday-style custom dropdowns — detectable, but not safely fillable.
-  'button[aria-haspopup="listbox"]',
+  // ARIA comboboxes / custom dropdowns (react-select, Headless UI, Workday…).
+  // Driven by opening the listbox and clicking an option (see comboboxEngine).
+  '[role="combobox"]',
+  '[aria-haspopup="listbox"]',
 ].join(", ");
 
 /** Input types that are never application fields. */
@@ -76,6 +79,10 @@ function ensureFieldId(el: HTMLElement): string {
 }
 
 function controlTypeOf(el: HTMLElement): ControlType | null {
+  // ARIA combobox / listbox dropdown — checked first so a react-select
+  // <input role="combobox"> is driven by the listbox engine, not typed into,
+  // and a Workday <button aria-haspopup="listbox"> is now fillable.
+  if (isAriaCombobox(el)) return "combobox";
   if (el instanceof HTMLInputElement) {
     if (SKIPPED_INPUT_TYPES.has(el.type)) return null;
     if (el.type === "checkbox") return "checkbox";
@@ -160,9 +167,14 @@ export function scanPage(
     if ((el as HTMLInputElement).disabled) continue;
     if (el instanceof HTMLInputElement && el.readOnly) continue;
 
-    // Visibility: checkbox/radio/file are often visually hidden behind
-    // styled replacements but still operable — allow them when labeled.
-    const relaxed = controlType === "checkbox" || controlType === "radioGroup" || controlType === "file";
+    // Visibility: checkbox/radio/file/combobox are often visually hidden behind
+    // styled replacements (e.g. react-select's tiny input) but still operable —
+    // allow them when labeled.
+    const relaxed =
+      controlType === "checkbox" ||
+      controlType === "radioGroup" ||
+      controlType === "file" ||
+      controlType === "combobox";
     if (!isVisible(el) && !(relaxed && isHiddenButLabeled(el))) continue;
 
     if (el instanceof HTMLInputElement && el.type === "radio") {

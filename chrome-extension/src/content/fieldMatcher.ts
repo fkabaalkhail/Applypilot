@@ -385,6 +385,12 @@ function hasYesNoOptions(options: string[] | undefined): boolean {
   return norm.some((o) => o.startsWith("yes")) && norm.some((o) => o.startsWith("no"));
 }
 
+/** A control answered with a Yes/No choice: explicit Yes/No options, or a
+ *  custom dropdown whose options we can't read at scan time. */
+function isYesNoChoice(control: { controlType: ControlType; options?: string[] }): boolean {
+  return hasYesNoOptions(control.options) || control.controlType === "combobox";
+}
+
 /** "Authorized to work in Canada" → Yes; "Not authorized" / "No" → No. */
 function toYesNo(statement: string): string {
   return /^\s*(no\b|not\b|none\b)/i.test(statement) ? "No" : "Yes";
@@ -460,13 +466,15 @@ export function resolveProfileValue(
     case "workAuthorization": {
       const v = orNull(profile.workAuthorization);
       if (!v) return null;
-      // Yes/No controls get a Yes/No answer; free-text gets the statement.
-      return hasYesNoOptions(control.options) ? toYesNo(v) : v;
+      // Yes/No controls get a Yes/No answer; free-text gets the statement. A
+      // custom dropdown's options aren't known at scan time, but these screeners
+      // are virtually always Yes/No — so a combobox is treated as a choice.
+      return isYesNoChoice(control) ? toYesNo(v) : v;
     }
     case "sponsorship": {
       const v = orNull(profile.requiresSponsorship);
       if (!v) return null;
-      return hasYesNoOptions(control.options) ? toYesNo(v) : v;
+      return isYesNoChoice(control) ? toYesNo(v) : v;
     }
 
     case "coverLetter":

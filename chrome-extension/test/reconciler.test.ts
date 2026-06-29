@@ -17,6 +17,15 @@ function input(id: string, value = ""): { control: RuntimeControl; el: HTMLInput
   return { control: { id, controlType: "text", el }, el };
 }
 
+/**
+ * Dispatch an event that stands in for genuine user interaction. The reconciler
+ * tells its own synthetic writes apart from the user by a write-in-progress
+ * window, so any event we fire outside a reconciler write counts as the user.
+ */
+function userEvent(el: HTMLElement, type: string): void {
+  el.dispatchEvent(new Event(type, { bubbles: true }));
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
 });
@@ -166,6 +175,85 @@ describe("AutofillReconciler — observer-driven background reconciliation", () 
     engine.dispose();
 
     expect(a.el.value).toBe("Z"); // observer-driven reconciliation restored it
+  });
+});
+
+describe("AutofillReconciler — stops churning on unfillable fields", () => {
+  it("does not keep refilling a field it gave up on after the cycle budget", async () => {
+    const a = input("f-1");
+    // The value never sticks across the settle window — mirrors a custom
+    // dropdown the text writer can't actually drive.
+    const engine = new AutofillReconciler({
+      sleep: async () => {
+        a.el.value = "";
+      },
+      observe: false,
+      maxCycles: 3,
+    });
+
+    const reports = await engine.run([{ fieldId: "f-1", value: "X" }], reg([a.control]));
+    expect(reports[0].ok).toBe(false); // honestly reported as not filled
+
+    // A later background pass must write NOTHING: refilling a field we can't
+    // fill just steals its focus on every page mutation (the dropdown churn).
+    let writes = 0;
+    a.el.addEventListener("input", () => writes++);
+    await engine.reconcileNow();
+    engine.dispose();
+
+    expect(writes).toBe(0);
+  });
+});
+
+describe("AutofillReconciler — respects the user after autofill", () => {
+  it("does not revert a field the user edits after it was filled", async () => {
+    const a = input("f-1");
+    const engine = new AutofillReconciler({ sleep: instant, observerDebounceMs: 5 });
+
+    await engine.run([{ fieldId: "f-1", value: "Wissam" }], reg([a.control]));
+    expect(a.el.value).toBe("Wissam");
+
+    // User clicks into the field and types their own answer.
+    userEvent(a.el, "pointerdown");
+    a.el.value = "My own answer";
+    userEvent(a.el, "input");
+
+    // The page re-renders (a structural mutation the observer reacts to).
+    document.body.appendChild(document.createElement("div"));
+    await new Promise((r) => setTimeout(r, 40));
+    engine.dispose();
+
+    // Background drift correction must treat the user's edit as authoritative.
+    expect(a.el.value).toBe("My own answer");
+  });
+
+  it("does not steal focus from a field the user is editing", async () => {
+    const a = input("f-1", "Alpha"); // already correct → stays stable, never written
+    const b = input("f-2");
+    const engine = new AutofillReconciler({ sleep: instant, observerDebounceMs: 5 });
+
+    await engine.run(
+      [
+        { fieldId: "f-1", value: "Alpha" },
+        { fieldId: "f-2", value: "Beta" },
+      ],
+      reg([a.control, b.control])
+    );
+    expect(b.el.value).toBe("Beta");
+
+    // User is actively editing field A.
+    a.el.focus();
+    expect(document.activeElement).toBe(a.el);
+
+    // Meanwhile the framework wipes field B and re-renders.
+    b.el.value = "";
+    document.body.appendChild(document.createElement("div"));
+    await new Promise((r) => setTimeout(r, 40));
+    engine.dispose();
+
+    // Refilling B would focus()/blur() it and yank the caret out of A. The
+    // reconciler must defer while the user is mid-edit.
+    expect(document.activeElement).toBe(a.el);
   });
 });
 

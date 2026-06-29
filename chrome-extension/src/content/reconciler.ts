@@ -73,6 +73,11 @@ interface FieldState {
   reason?: string;
   /** Permanently unfillable this session (no matching option, stale, etc.). */
   terminal: boolean;
+  /**
+   * The user has taken ownership of this field (clicked/typed into it after the
+   * fill). Background reconciliation must never overwrite it or steal its focus.
+   */
+  released: boolean;
 }
 
 const PERMANENT_REASONS = [/cannot be scripted/i, /no option matches/i];
@@ -96,6 +101,12 @@ export class AutofillReconciler {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private reconciling = false;
   private pending = false;
+  /** True only while the engine is performing its own write — lets the
+   *  interaction guard tell the user's events apart from our synthetic ones. */
+  private writing = false;
+  /** Capture-phase listener that flags fields the user has taken over. */
+  private interactionHandler: ((e: Event) => void) | null = null;
+  private readonly interactionEvents = ["pointerdown", "keydown", "input", "change"] as const;
 
   constructor(options: ReconcilerOptions = {}) {
     this.sleep =
@@ -122,7 +133,7 @@ export class AutofillReconciler {
     this.states = new Map(
       targets.map((t) => [
         t.fieldId,
-        { fieldId: t.fieldId, value: t.value, status: "mapped" as FieldStatus, attempts: 0, terminal: false },
+        { fieldId: t.fieldId, value: t.value, status: "mapped" as FieldStatus, attempts: 0, terminal: false, released: false },
       ])
     );
 
@@ -135,6 +146,7 @@ export class AutofillReconciler {
       }
       return this.reports();
     } finally {
+      this.retireUnfillable();
       // Start background drift correction only after the initial pass, so the
       // observer never races the deterministic cycle logic above.
       if (this.observe) this.startObserver();
@@ -160,6 +172,7 @@ export class AutofillReconciler {
         status: "mapped",
         attempts: 0,
         terminal: false,
+        released: false,
       });
     }
     try {
@@ -171,6 +184,7 @@ export class AutofillReconciler {
       }
       return this.reports().filter((r) => newIds.has(r.fieldId));
     } finally {
+      this.retireUnfillable();
       if (this.observe) this.startObserver();
     }
   }
@@ -192,7 +206,7 @@ export class AutofillReconciler {
   async reconcileNow(): Promise<FieldReport[]> {
     if (this.states.size === 0) return [];
     for (const s of this.states.values()) {
-      if (s.terminal) continue;
+      if (s.terminal || s.released) continue; // a field the user owns is never reverted
       const control = this.registry.get(s.fieldId);
       if (s.status === "stable" && (!control || !verifyControl(control, s.value))) {
         s.status = "mapped"; // drift detected — restart this field's reconciliation
@@ -213,9 +227,59 @@ export class AutofillReconciler {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+    if (this.interactionHandler) {
+      const doc = this.doc();
+      for (const type of this.interactionEvents) {
+        doc.removeEventListener(type, this.interactionHandler, true);
+      }
+      this.interactionHandler = null;
+    }
   }
 
   // -- internals -------------------------------------------------------------
+
+  /** The document this engine operates in (resolves a ShadowRoot to its doc). */
+  private doc(): Document {
+    return this.root instanceof Document ? this.root : this.root.ownerDocument ?? document;
+  }
+
+  /** Perform one write inside the write-in-progress window. */
+  private write(control: RuntimeControl, value: string): ReturnType<typeof writeControl> {
+    this.writing = true;
+    try {
+      return writeControl(control, value);
+    } finally {
+      this.writing = false;
+    }
+  }
+
+  /** True when the user currently has focus inside this control. */
+  private isActiveElement(control: RuntimeControl): boolean {
+    const active = this.doc().activeElement;
+    if (!active) return false;
+    if (control.el && (control.el === active || control.el.contains(active))) return true;
+    return Boolean(control.radios?.some((r) => r === active));
+  }
+
+  /** True when the user is actively focused in some editable form control. */
+  private userIsEditing(): boolean {
+    const el = this.doc().activeElement as HTMLElement | null;
+    if (!el || el === this.doc().body || el === this.doc().documentElement) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+  }
+
+  /** Find the tracked field (if any) that owns an interaction event's target. */
+  private findStateForTarget(target: EventTarget | null): FieldState | null {
+    if (!(target instanceof Node)) return null;
+    for (const s of this.states.values()) {
+      const control = this.registry.get(s.fieldId);
+      if (!control) continue;
+      if (control.el && (control.el === target || control.el.contains(target))) return s;
+      if (control.radios?.some((r) => r === target || r.contains(target))) return s;
+    }
+    return null;
+  }
 
   /** Single write+verify attempt for one field, advancing its state machine. */
   private fillOnce(s: FieldState): void {
@@ -231,10 +295,14 @@ export class AutofillReconciler {
       s.reason = undefined;
       return;
     }
+    // Never wrest focus from a control the user is currently in — that is the
+    // "I click a field and it immediately unclicks" symptom. Leave it for a
+    // later pass once the user has moved on.
+    if (this.isActiveElement(control)) return;
     for (let attempt = 0; attempt < this.maxWriteAttempts; attempt++) {
       s.attempts++;
       s.status = "filled";
-      const res = writeControl(control, s.value);
+      const res = this.write(control, s.value);
       if (!res.written) {
         s.status = "drifted";
         s.reason = res.reason;
@@ -251,6 +319,20 @@ export class AutofillReconciler {
     s.reason = "Value did not stick — fill manually";
   }
 
+  /**
+   * After the full cycle budget, a field still drifting will not be rescued by
+   * more background writes — most often a custom dropdown / combobox the text
+   * writer can't actually drive. Retire it so the observer stops re-focusing it
+   * on every page mutation (the "dropdown keeps flickering / form unclicks"
+   * churn). Stable fields are untouched, so genuine post-render drift is still
+   * corrected.
+   */
+  private retireUnfillable(): void {
+    for (const s of this.states.values()) {
+      if (s.status === "drifted" && !s.terminal) s.terminal = true;
+    }
+  }
+
   /** Promote fields that survived the settle window; demote those that drifted. */
   private confirmStability(): void {
     for (const s of this.states.values()) {
@@ -262,7 +344,7 @@ export class AutofillReconciler {
 
   private active(): FieldState[] {
     return [...this.states.values()].filter(
-      (s) => !s.terminal && s.status !== "stable"
+      (s) => !s.terminal && !s.released && s.status !== "stable"
     );
   }
 
@@ -287,6 +369,7 @@ export class AutofillReconciler {
   // -- observer --------------------------------------------------------------
 
   private startObserver(): void {
+    this.ensureInteractionGuard();
     if (this.observer) return;
     const target =
       this.root instanceof Document ? this.root.documentElement : this.root;
@@ -297,6 +380,29 @@ export class AutofillReconciler {
       attributes: true,
       characterData: true,
     });
+  }
+
+  /**
+   * Watch for genuine user interaction so background reconciliation backs off
+   * the moment the user takes over a field. Our own writes happen inside the
+   * `writing` window, so those synthetic input/change events are ignored.
+   */
+  private ensureInteractionGuard(): void {
+    if (this.interactionHandler) return;
+    const handler = (e: Event): void => {
+      if (this.writing) return; // our own synthetic event — not the user
+      const s = this.findStateForTarget(e.target);
+      if (s && !s.released) {
+        s.released = true; // the user owns this field now
+        s.status = "stable";
+        s.reason = undefined;
+      }
+    };
+    this.interactionHandler = handler;
+    const doc = this.doc();
+    for (const type of this.interactionEvents) {
+      doc.addEventListener(type, handler, true);
+    }
   }
 
   /** Mutations take priority: schedule a debounced reconcile pass. */
@@ -311,6 +417,17 @@ export class AutofillReconciler {
   private async reconcilePass(): Promise<void> {
     if (this.reconciling) {
       this.pending = true;
+      return;
+    }
+    // Don't reconcile while the user is mid-edit: a write would focus()/blur()
+    // a control and yank the caret out of whatever they're typing in. Re-check
+    // shortly so drift is still corrected once they move on.
+    if (this.userIsEditing()) {
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+      this.debounceTimer = setTimeout(() => {
+        this.debounceTimer = null;
+        void this.reconcilePass();
+      }, 400);
       return;
     }
     this.reconciling = true;

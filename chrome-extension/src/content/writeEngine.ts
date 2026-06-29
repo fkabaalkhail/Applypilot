@@ -48,6 +48,7 @@ export function writeControl(control: RuntimeControl, value: string): WriteResul
       return writeContentEditable(control.el as HTMLElement, value);
     case "file":
     case "customDropdown":
+    case "combobox": // driven asynchronously by comboboxEngine, never here
       return { written: false, reason: UNFILLABLE };
   }
 }
@@ -156,6 +157,7 @@ export function verifyControl(control: RuntimeControl, value: string): boolean {
     }
     case "file":
     case "customDropdown":
+    case "combobox":
       return false;
   }
 }

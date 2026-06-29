@@ -47,6 +47,7 @@ import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext } from "./jobContext";
 import { aiFillCandidates, planAiFill, tallyOutcomes, toAiFillField } from "./aiFillPlanner";
+import { fillAriaCombobox } from "./comboboxEngine";
 import { verifyControl, writeControl } from "./writeEngine";
 import {
   showOverlay,
@@ -167,14 +168,46 @@ function initialize(): void {
     return fields.filter((f) => f.category !== "unknown").length;
   }
 
+  /**
+   * Fill custom ARIA dropdowns one at a time by opening the listbox and clicking
+   * the matching option (comboboxEngine). Sequential so two menus never fight,
+   * and deliberately NOT handed to the reconciler — re-driving a dropdown on
+   * every mutation is the churn we avoid. Returns popup-style outcomes.
+   */
+  async function fillComboboxFields(
+    fields: DetectedField[]
+  ): Promise<{ fieldId: string; ok: boolean }[]> {
+    const outcomes: { fieldId: string; ok: boolean }[] = [];
+    for (const f of fields) {
+      const el = registry.get(f.id)?.el;
+      if (!el || f.proposedValue === null) {
+        outcomes.push({ fieldId: f.id, ok: false });
+        continue;
+      }
+      const res = await fillAriaCombobox(el, f.proposedValue);
+      outcomes.push({ fieldId: f.id, ok: res.filled });
+    }
+    return outcomes;
+  }
+
   const overlayCallbacks: OverlayCallbacks = {
     onAutofill: async (ids: string[]) => {
-      // Phase 1 — local profile fill (unchanged behavior).
       const wanted = new Set(ids);
-      const targets = lastFields
-        .filter((f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null)
+      const selected = lastFields.filter(
+        (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
+      );
+
+      // Phase 1a — deterministic local fill via the reconciler for everything
+      // the synchronous write engine can drive (text/select/checkbox/radio).
+      const targets = selected
+        .filter((f) => f.controlType !== "combobox")
         .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
       const localReports = await getEngine().run(targets, registry);
+
+      // Phase 1b — custom ARIA dropdowns, driven one-shot by the listbox engine.
+      const comboOutcomes = await fillComboboxFields(
+        selected.filter((f) => f.controlType === "combobox")
+      );
 
       // Phase 2 — AI fill for fields the profile couldn't answer (best-effort).
       const candidates = aiFillCandidates(lastFields);
@@ -199,7 +232,7 @@ function initialize(): void {
         }
       }
 
-      const { ok, fail, total } = tallyOutcomes(localReports, aiReports);
+      const { ok, fail, total } = tallyOutcomes(localReports, aiReports, comboOutcomes);
       return { ok, fail, total, drafts };
     },
     onInsertAnswer: async (fieldId: string, value: string) => {

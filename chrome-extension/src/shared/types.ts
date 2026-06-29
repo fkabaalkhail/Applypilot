@@ -171,6 +171,7 @@ export type ControlType =
   | "radioGroup"
   | "file"
   | "contenteditable"
+  | "combobox"
   | "customDropdown";
 
 /**
