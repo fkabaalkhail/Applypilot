@@ -127,6 +127,49 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
+    // --- Cross-frame relay (form lives in a child iframe) --------------------
+    // These messages move between frames of one tab; they need sender identity,
+    // so they're handled here (not in handle()).
+    const tabId = _sender.tab?.id;
+    if (message.type === "FORM_HOST_ANNOUNCE") {
+      // A child frame owns a form — tell the top frame which frame, plus fields.
+      if (tabId !== undefined && _sender.frameId !== undefined && _sender.frameId !== 0) {
+        void chrome.tabs
+          .sendMessage(
+            tabId,
+            {
+              type: "REMOTE_FORM_AVAILABLE",
+              frameId: _sender.frameId,
+              recognized: message.recognized,
+              fields: message.fields,
+            },
+            { frameId: 0 }
+          )
+          .catch(() => {});
+      }
+      return false;
+    }
+    if (message.type === "RELAY_TO_TOP") {
+      if (tabId !== undefined) {
+        void chrome.tabs.sendMessage(tabId, message.payload, { frameId: 0 }).catch(() => {});
+      }
+      return false;
+    }
+    if (message.type === "RELAY_FORM_OP") {
+      // Top frame → owning child frame; bridge the response back.
+      if (tabId === undefined) {
+        sendResponse({ ok: false, error: "No tab" });
+        return false;
+      }
+      chrome.tabs
+        .sendMessage(tabId, { type: "FORM_OP", op: message.op, args: message.args }, { frameId: message.frameId })
+        .then(sendResponse)
+        .catch((err: unknown) => {
+          sendResponse({ ok: false, error: err instanceof Error ? err.message : "Frame unreachable" });
+        });
+      return true; // async response
+    }
+
     handle(message)
       .then(sendResponse)
       .catch((err: unknown) => {
@@ -368,5 +411,10 @@ export async function handle(
       await chrome.tabs.create({ url: dashboardUrl });
       return { ok: true };
     }
+    default:
+      // Cross-frame relay messages (FORM_HOST_ANNOUNCE / RELAY_FORM_OP /
+      // RELAY_TO_TOP) are intercepted in the onMessage listener before handle()
+      // runs, so reaching here means an unrecognized message.
+      return { ok: false, error: "Unhandled background message" };
   }
 }

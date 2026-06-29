@@ -342,7 +342,10 @@ export type ContentRequest =
       profile: UserApplicationProfile | null;
       fillEEO: boolean;
     }
-  | { type: "FILL_FIELDS"; instructions: FillInstruction[] };
+  | { type: "FILL_FIELDS"; instructions: FillInstruction[] }
+  | FormOpRequest
+  | RemoteFormAvailable
+  | RemoteFieldsUpdated;
 
 export interface PingResponse {
   ok: true;
@@ -382,6 +385,76 @@ export interface FieldsUpdatedEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-frame form support (form lives in a child iframe; panel in top frame)
+// ---------------------------------------------------------------------------
+
+/** Every OverlayCallbacks method name — the generic form-op surface. */
+export type FormOpName =
+  | "onAutofill"
+  | "onInsertAnswer"
+  | "onSaveAnswer"
+  | "onRescan"
+  | "onListResumes"
+  | "onUploadResume"
+  | "onTailorResume"
+  | "onAttachTailored"
+  | "onDownloadTailored"
+  | "onGenerateCoverLetter"
+  | "onInsertCoverLetter"
+  | "onDownloadCoverLetter"
+  | "onCopyCoverLetter"
+  | "onProfileResolved";
+
+/** One overlay operation, marshaled for execution in the form-owning frame. */
+export interface FormOpRequest {
+  type: "FORM_OP";
+  op: FormOpName;
+  args: unknown[];
+}
+
+/** Result of a FORM_OP, wrapping the callback's return value. */
+export interface FormOpResult {
+  ok: boolean;
+  value?: unknown;
+  error?: string;
+}
+
+/** A child frame telling the top frame it owns a real form. */
+export interface RemoteFormAvailable {
+  type: "REMOTE_FORM_AVAILABLE";
+  frameId: number;
+  recognized: number;
+  fields: DetectedField[];
+}
+
+/** A child host pushing fresh fields (rescan / profile / mutation) to the top. */
+export interface RemoteFieldsUpdated {
+  type: "REMOTE_FIELDS_UPDATED";
+  fields: DetectedField[];
+}
+
+/** Child → background: "I own a form." Background forwards as REMOTE_FORM_AVAILABLE. */
+export interface FormHostAnnounce {
+  type: "FORM_HOST_ANNOUNCE";
+  recognized: number;
+  fields: DetectedField[];
+}
+
+/** Top → background → host frame: run this overlay op in the owning frame. */
+export interface RelayFormOp {
+  type: "RELAY_FORM_OP";
+  frameId: number;
+  op: FormOpName;
+  args: unknown[];
+}
+
+/** Host → background → top frame (frameId 0): deliver a push payload. */
+export interface RelayToTop {
+  type: "RELAY_TO_TOP";
+  payload: RemoteFormAvailable | RemoteFieldsUpdated;
+}
+
+// ---------------------------------------------------------------------------
 // Popup <-> background messages
 // ---------------------------------------------------------------------------
 
@@ -411,7 +484,10 @@ export type BackgroundRequest =
       tone?: string | null;
       baseText?: string | null;
     }
-  | { type: "RENDER_COVER_LETTER"; text: string; filename?: string };
+  | { type: "RENDER_COVER_LETTER"; text: string; filename?: string }
+  | FormHostAnnounce
+  | RelayFormOp
+  | RelayToTop;
 
 export interface StatusResponse {
   ok: boolean;
