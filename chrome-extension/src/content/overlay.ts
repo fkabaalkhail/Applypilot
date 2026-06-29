@@ -18,6 +18,7 @@ import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
   AiDraft,
   BackgroundRequest,
+  CoverLetterGenOpts,
   DetectedField,
   FillOutcome,
   LoginResponse,
@@ -56,6 +57,16 @@ export interface OverlayCallbacks {
   onAttachTailored: (document: ResumeDoc) => Promise<{ ok: boolean; reason?: string }>;
   /** Render the tailored document to PDF and download it. */
   onDownloadTailored: (document: ResumeDoc) => Promise<{ ok: boolean; reason?: string }>;
+  /** Generate (or rewrite) a cover letter for this page's job. */
+  onGenerateCoverLetter: (
+    opts: CoverLetterGenOpts
+  ) => Promise<{ ok: boolean; needsLogin?: boolean; reason?: string; text?: string }>;
+  /** Insert the cover letter into the page (textarea, else attach a PDF). */
+  onInsertCoverLetter: (text: string) => Promise<{ ok: boolean; reason?: string }>;
+  /** Render the cover letter to PDF and download it. */
+  onDownloadCoverLetter: (text: string) => Promise<{ ok: boolean; reason?: string }>;
+  /** Copy the cover letter to the clipboard. */
+  onCopyCoverLetter: (text: string) => Promise<{ ok: boolean; reason?: string }>;
   /**
    * Hand the resolved account profile to the content script so it can compute
    * each field's proposed value. Without this the scanner has no data, every
