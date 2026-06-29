@@ -367,23 +367,19 @@ async def rewrite_resume(
     original_text = document_to_text(original_document)
 
     try:
-        engine = MatchEngine(db)
-        before = await engine.analyze_job(
-            original_text, job.title, job.company, job.description
-        )
-
-        tailor = ResumeTailor(db)
-        document = await tailor.llm.tailor_resume_structured(
-            original_document, job.description, opts.sections, opts.add_keywords
-        )
-        tailored_text = document_to_text(document)
-        diff_summary = tailor.compute_diff(original_text, tailored_text)
-
-        after = await engine.analyze_job(
-            tailored_text, job.title, job.company, job.description
+        from backend.services.resume_tailor import tailor_document
+        result = await tailor_document(
+            db, original_document, job.title, job.company, job.description,
+            opts.sections, opts.add_keywords,
         )
     except (ConnectionError, httpx.ConnectError):
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
+
+    before = result.before
+    after = result.after
+    document = result.document
+    tailored_text = result.tailored_text
+    diff_summary = result.diff_summary
 
     version = ResumeVersion(
         user_id=user_id,
