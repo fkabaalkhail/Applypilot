@@ -33,4 +33,10 @@ describe("buildTailorCardHtml", () => {
     const html = buildTailorCardHtml({ ...result, missingKeywords: [] }, new Set());
     expect(html).not.toContain("ap-kw-row");
   });
+  it("escapes HTML in keyword chips", () => {
+    const evil: TailorResult = { ...result, missingKeywords: ['"><img src=x onerror=alert(1)>'] };
+    const html = buildTailorCardHtml(evil, new Set());
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  });
 });

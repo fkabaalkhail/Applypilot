@@ -107,3 +107,9 @@ class TestRenderResume:
         resp = client.post("/api/render-resume", json={"document": doc, "filename": "My Resume.pdf"})
         assert resp.status_code == 200
         assert resp.json()["name"] == "my-resume.pdf"
+
+    def test_invalid_theme_returns_422(self, client):
+        doc = {"header": {"name": "Jane"}, "sections": [],
+               "theme": {"accent_color": "not-a-real-color"}}
+        resp = client.post("/api/render-resume", json={"document": doc})
+        assert resp.status_code == 422

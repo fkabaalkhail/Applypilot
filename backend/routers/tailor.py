@@ -73,7 +73,11 @@ def render_resume_endpoint(
     user_id: int = Depends(get_verified_user_id),
 ):
     """Render a structured résumé document to a PDF, returned as base64."""
-    pdf = render_resume_pdf(body.document)
+    try:
+        pdf = render_resume_pdf(body.document)
+    except Exception as e:
+        logger.warning("Resume PDF render failed: %s", e)
+        raise HTTPException(status_code=422, detail="Could not render this résumé document.")
     base = body.filename or "resume"
     if base.lower().endswith(".pdf"):
         base = base[:-4]
