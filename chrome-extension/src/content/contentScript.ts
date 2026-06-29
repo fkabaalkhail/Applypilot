@@ -436,6 +436,27 @@ function initialize(): void {
     maybeShowOrUpdateOverlay();
   }
 
+  // Career sites (Databricks/Greenhouse, Workday…) lazily mount the real form
+  // after the page settles, the consent banner, or on scroll. When the panel is
+  // opened and nothing fillable is visible yet, briefly re-scan so a form that
+  // mounts a moment later is still detected. Bounded + stops as soon as a
+  // recognized field appears, so it never polls indefinitely.
+  let lateMountTimer: ReturnType<typeof setTimeout> | null = null;
+  function watchForLateMount(attemptsLeft = 12): void {
+    if (lateMountTimer) clearTimeout(lateMountTimer);
+    if (attemptsLeft <= 0) {
+      lateMountTimer = null;
+      return;
+    }
+    lateMountTimer = setTimeout(() => {
+      lateMountTimer = null;
+      runScan();
+      engine?.updateRegistry(registry);
+      maybeShowOrUpdateOverlay();
+      if (recognizedCount(lastFields) === 0) watchForLateMount(attemptsLeft - 1);
+    }, 1000);
+  }
+
   // ---- Popup-driven messaging ------------------------------------------------
 
   chrome.runtime.onMessage.addListener(
@@ -457,6 +478,8 @@ function initialize(): void {
             ensureObserver();
             const state = { fields: lastFields, tabUrl: location.href };
             toggleOverlay(state, overlayCallbacks);
+            // Nothing fillable yet? Watch briefly for a lazy-mounted form.
+            if (recognizedCount(lastFields) === 0) watchForLateMount();
           }
           sendResponse({ ok: true });
           return false;
