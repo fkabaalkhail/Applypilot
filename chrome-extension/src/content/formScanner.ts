@@ -20,6 +20,7 @@ import {
   type FieldSignals,
 } from "./domUtils";
 import { isCaptchaField } from "./captcha";
+import { isConsentField } from "./consent";
 import { classifyField, resolveProfileValue } from "./fieldMatcher";
 
 /** Live handle for a detected field — never leaves the content script. */
@@ -152,6 +153,10 @@ export function scanPage(
     if (controlType === null) continue;
     // Never surface or fill a captcha widget's own controls — fill around it.
     if (isCaptchaField(el)) continue;
+    // Skip cookie-consent / privacy-banner controls — they are real form
+    // controls but never application fields; counting them leaves the panel
+    // stuck on a consent dialog when the real form is lazy-mounted.
+    if (isConsentField(el)) continue;
     if ((el as HTMLInputElement).disabled) continue;
     if (el instanceof HTMLInputElement && el.readOnly) continue;
 

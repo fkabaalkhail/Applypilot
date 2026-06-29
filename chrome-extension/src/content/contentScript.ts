@@ -449,6 +449,12 @@ function initialize(): void {
 
         case "TOGGLE_PANEL": {
           if (isTopFrame) {
+            // Re-scan on open so a lazily-/late-mounted form (common on SPA
+            // career sites, where the real form mounts after the consent
+            // banner) is reflected immediately, and keep watching for mounts
+            // that happen while the panel is open.
+            runScan();
+            ensureObserver();
             const state = { fields: lastFields, tabUrl: location.href };
             toggleOverlay(state, overlayCallbacks);
           }
