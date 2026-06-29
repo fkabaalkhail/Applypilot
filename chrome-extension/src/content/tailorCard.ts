@@ -25,7 +25,7 @@ export function buildTailorCardHtml(result: TailorResult, selected: Set<string>)
   const chips = result.missingKeywords
     .map(
       (k) =>
-        `<button class="ap-kw ${selected.has(k) ? "on" : ""}" data-kw="${esc(k)}" type="button">${esc(k)}</button>`
+        `<button class="ap-kw${selected.has(k) ? " on" : ""}" data-kw="${esc(k)}" type="button">${esc(k)}</button>`
     )
     .join("");
   const kwBlock = result.missingKeywords.length

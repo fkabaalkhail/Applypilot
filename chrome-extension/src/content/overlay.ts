@@ -736,7 +736,7 @@ function buildHTML(): string {
             <span class="ap-section-arrow">${I_CHEVRON_DOWN}</span>
           </div>
           <div class="ap-section-sub" id="ap-tailor-sub" style="display:none">
-            <button class="ap-btn-tailor" id="ap-btn-tailor" type="button">
+            <button class="ap-btn-tailor" id="ap-btn-tailor" type="button" disabled>
               ${icon('<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/>', 14)}
               Tailor my résumé for this job
             </button>
@@ -1086,6 +1086,7 @@ function refreshMainView(): void {
 
   // Keep the r\u00e9sum\u00e9-upload button in sync as the form is (re)scanned.
   updateUploadButtonState();
+  updateTailorButtonState();
 }
 
 // ---------------------------------------------------------------------------
@@ -1104,6 +1105,11 @@ function updateUploadButtonState(): void {
   const canUpload =
     hasResumeField() && overlayState.resumes.some((r) => r.hasFile) && !overlayState.busy;
   refs.btnUploadResume.disabled = !canUpload;
+}
+
+function updateTailorButtonState(): void {
+  if (!refs) return;
+  refs.btnTailor.disabled = !overlayState.profile || overlayState.tailorBusy;
 }
 
 function setUploadStatus(text: string, kind: "ok" | "warn" | "error" | ""): void {
@@ -1414,6 +1420,9 @@ async function reInit(): Promise<void> {
   overlayState.outcomes = new Map();
   overlayState.busy = false;
   overlayState.scanned = false;
+  overlayState.tailorResult = null;
+  overlayState.tailorKeywords = new Set();
+  overlayState.tailorBusy = false;
   initialized = false;
   hideInfoView();
   await initPanel();
@@ -1463,8 +1472,10 @@ async function doTailor(addKeywords?: string[] | null): Promise<void> {
   } finally {
     overlayState.tailorBusy = false;
     if (refs) {
-      refs.btnTailor.disabled = false;
-      refs.btnTailor.textContent = "Re-tailor for this job";
+      updateTailorButtonState();
+      refs.btnTailor.textContent = overlayState.tailorResult
+        ? "Re-tailor for this job"
+        : "Tailor my résumé for this job";
     }
   }
 }
