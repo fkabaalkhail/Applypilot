@@ -7,8 +7,8 @@
  * Simplified layout inspired by Jobright:
  *  - Big "Autofill" button at top
  *  - "Your Autofill Information" expands into a categorized form editor
- *  - "Upload Resume" section with "Generate Custom Resume" (coming soon)
- *  - "Upload Cover Letter" section with "Generate Cover Letter" (coming soon)
+ *  - "Upload Resume" section with "Generate Custom Resume"
+ *  - "Upload Cover Letter" section with "Generate Cover Letter"
  */
 
 import { reattachIfDetached } from "./domUtils";
@@ -1728,5 +1728,8 @@ function setCoverStatus(text: string, kind: "ok" | "warn" | "error" | ""): void 
   if (el) {
     el.textContent = text;
     el.className = "ap-upload-status" + (kind ? ` ${kind}` : "");
+  } else if (refs) {
+    // No card yet (e.g. a first-generation failure) — fall back to the résumé status line.
+    setUploadStatus(text, kind);
   }
 }
