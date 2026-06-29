@@ -300,6 +300,36 @@ export interface RenderResumeResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Cover-letter generation (backend POST /api/cover-letter, /api/render-cover-letter)
+// ---------------------------------------------------------------------------
+
+/** Options for a cover-letter generate request, chosen in the overlay. */
+export interface CoverLetterGenOpts {
+  resumeId: number | null;
+  tone?: string | null;
+  /** null/undefined -> fresh letter; a string -> rewrite this text in `tone`. */
+  baseText?: string | null;
+}
+
+/** Background reply for GENERATE_COVER_LETTER. */
+export interface GenerateCoverLetterResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  text?: string;
+}
+
+/** Background reply for RENDER_COVER_LETTER (mirrors RenderResumeResponse). */
+export interface RenderCoverLetterResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  dataBase64?: string;
+  name: string;
+  contentType: string;
+}
+
+// ---------------------------------------------------------------------------
 // Popup <-> content script messages
 // ---------------------------------------------------------------------------
 
@@ -372,7 +402,15 @@ export type BackgroundRequest =
       sections?: string[];
       addKeywords?: string[] | null;
     }
-  | { type: "RENDER_RESUME"; document: ResumeDoc; filename?: string };
+  | { type: "RENDER_RESUME"; document: ResumeDoc; filename?: string }
+  | {
+      type: "GENERATE_COVER_LETTER";
+      resumeId: number | null;
+      jobContext: JobContext;
+      tone?: string | null;
+      baseText?: string | null;
+    }
+  | { type: "RENDER_COVER_LETTER"; text: string; filename?: string };
 
 export interface StatusResponse {
   ok: boolean;

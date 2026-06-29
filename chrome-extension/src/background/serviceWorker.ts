@@ -15,13 +15,16 @@ import { downloadResumeFile, getSnapshotForUi, syncIfStale } from "../api/sync";
 import { aiFillFields } from "../api/aiFill";
 import { saveAnswer } from "../api/answers";
 import { renderResume, tailorResume } from "../api/tailorResume";
+import { generateCoverLetter, renderCoverLetter } from "../api/coverLetter";
 import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import type {
   AiFillResponse,
   BackgroundRequest,
   FieldsUpdatedEvent,
+  GenerateCoverLetterResponse,
   LoginResponse,
   ProfileResponse,
+  RenderCoverLetterResponse,
   RenderResumeResponse,
   ResumeFileResponse,
   ResumesResponse,
@@ -149,6 +152,8 @@ export async function handle(
   | AiFillResponse
   | TailorResumeResponse
   | RenderResumeResponse
+  | GenerateCoverLetterResponse
+  | RenderCoverLetterResponse
 > {
   switch (message.type) {
     case "GET_STATUS": {
@@ -323,6 +328,32 @@ export async function handle(
     case "RENDER_RESUME": {
       try {
         const { dataBase64, name, contentType } = await renderResume(message.document, message.filename);
+        return { ok: true, dataBase64, name, contentType };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, name: "", contentType: "", error: err.message };
+        }
+        return { ok: false, name: "", contentType: "", error: err instanceof Error ? err.message : "Render failed" };
+      }
+    }
+
+    case "GENERATE_COVER_LETTER": {
+      try {
+        const { text } = await generateCoverLetter(
+          message.resumeId, message.jobContext, message.tone, message.baseText
+        );
+        return { ok: true, text };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, error: err.message };
+        }
+        return { ok: false, error: err instanceof Error ? err.message : "Cover-letter generation failed" };
+      }
+    }
+
+    case "RENDER_COVER_LETTER": {
+      try {
+        const { dataBase64, name, contentType } = await renderCoverLetter(message.text, message.filename);
         return { ok: true, dataBase64, name, contentType };
       } catch (err) {
         if (err instanceof AuthRequiredError) {

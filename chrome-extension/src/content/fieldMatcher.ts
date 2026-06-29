@@ -408,7 +408,7 @@ function formatEducation(profile: UserApplicationProfile): string | null {
   return parts ? `${parts}${ed.graduationYear ? ` (${ed.graduationYear})` : ""}` : null;
 }
 
-const LONG_TEXT: ControlType[] = ["textarea", "contenteditable"];
+export const LONG_TEXT: ControlType[] = ["textarea", "contenteditable"];
 
 /**
  * Map a classified field to the profile value it should receive.

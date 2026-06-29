@@ -7,17 +7,19 @@
  * Simplified layout inspired by Jobright:
  *  - Big "Autofill" button at top
  *  - "Your Autofill Information" expands into a categorized form editor
- *  - "Upload Resume" section with "Generate Custom Resume" (coming soon)
- *  - "Upload Cover Letter" section with "Generate Cover Letter" (coming soon)
+ *  - "Upload Resume" section with "Generate Custom Resume"
+ *  - "Upload Cover Letter" section with "Generate Cover Letter"
  */
 
 import { reattachIfDetached } from "./domUtils";
 import { buildTailorCardHtml } from "./tailorCard";
+import { buildCoverLetterCardHtml } from "./coverLetterCard";
 import { defaultSelectedIds } from "../shared/selection";
 import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
   AiDraft,
   BackgroundRequest,
+  CoverLetterGenOpts,
   DetectedField,
   FillOutcome,
   LoginResponse,
@@ -56,6 +58,16 @@ export interface OverlayCallbacks {
   onAttachTailored: (document: ResumeDoc) => Promise<{ ok: boolean; reason?: string }>;
   /** Render the tailored document to PDF and download it. */
   onDownloadTailored: (document: ResumeDoc) => Promise<{ ok: boolean; reason?: string }>;
+  /** Generate (or rewrite) a cover letter for this page's job. */
+  onGenerateCoverLetter: (
+    opts: CoverLetterGenOpts
+  ) => Promise<{ ok: boolean; needsLogin?: boolean; reason?: string; text?: string }>;
+  /** Insert the cover letter into the page (textarea, else attach a PDF). */
+  onInsertCoverLetter: (text: string) => Promise<{ ok: boolean; reason?: string }>;
+  /** Render the cover letter to PDF and download it. */
+  onDownloadCoverLetter: (text: string) => Promise<{ ok: boolean; reason?: string }>;
+  /** Copy the cover letter to the clipboard. */
+  onCopyCoverLetter: (text: string) => Promise<{ ok: boolean; reason?: string }>;
   /**
    * Hand the resolved account profile to the content script so it can compute
    * each field's proposed value. Without this the scanner has no data, every
@@ -536,6 +548,13 @@ const STYLES = `
 .ap-kw.on { background: #7c6cff; border-color: #7c6cff; color: #fff; }
 .ap-tailor-actions { display: flex; gap: 8px; margin-top: 12px; }
 .ap-tailor-actions .ap-btn-upload { width: auto; flex: 1; }
+.ap-cover-controls { display: flex; gap: 8px; align-items: center; }
+.ap-cover-tone { flex: 0 0 auto; padding: 8px; border: 1px solid #e7e4ff; border-radius: 8px;
+  font-size: 12px; background: #fff; color: #1a1a2e; }
+.ap-cover-controls .ap-btn-tailor { flex: 1; }
+.ap-cover-text { width: 100%; box-sizing: border-box; margin-top: 10px; min-height: 160px;
+  padding: 10px; border: 1px solid #e7e4ff; border-radius: 8px; font-size: 12.5px;
+  line-height: 1.5; resize: vertical; color: #1a1a2e; font-family: inherit; }
 `;
 
 
@@ -564,6 +583,8 @@ interface PanelState {
   tailorResult: TailorResult | null;
   tailorKeywords: Set<string>;
   tailorBusy: boolean;
+  coverLetterText: string | null;
+  coverLetterBusy: boolean;
 }
 
 let host: HTMLElement | null = null;
@@ -590,6 +611,8 @@ const overlayState: PanelState = {
   tailorResult: null,
   tailorKeywords: new Set(),
   tailorBusy: false,
+  coverLetterText: null,
+  coverLetterBusy: false,
 };
 
 interface Refs {
@@ -607,6 +630,9 @@ interface Refs {
   uploadStatus: HTMLDivElement;
   btnTailor: HTMLButtonElement;
   tailorResult: HTMLDivElement;
+  btnCover: HTMLButtonElement;
+  coverTone: HTMLSelectElement;
+  coverResult: HTMLDivElement;
   modalBackdrop: HTMLDivElement;
   infoSidebar: HTMLDivElement;
   infoForm: HTMLDivElement;
@@ -759,12 +785,21 @@ function buildHTML(): string {
             <span class="ap-section-arrow">${I_CHEVRON_DOWN}</span>
           </div>
           <div class="ap-section-sub" id="ap-cover-sub" style="display:none">
-            <div class="ap-file-name" id="ap-cover-name">No cover letter uploaded</div>
-            <div class="ap-section-action">
-              ${icon('<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/>', 14)}
-              Generate Cover Letter
-              <span class="ap-coming-soon">Coming soon</span>
+            <div class="ap-cover-controls">
+              <select id="ap-cover-tone" class="ap-cover-tone" aria-label="Cover letter tone">
+                <option value="">Default tone</option>
+                <option value="professional">Professional</option>
+                <option value="formal">Formal</option>
+                <option value="enthusiastic">Enthusiastic</option>
+                <option value="concise">Concise</option>
+                <option value="technical">Technical</option>
+              </select>
+              <button class="ap-btn-tailor" id="ap-btn-cover" type="button" disabled>
+                ${icon('<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/>', 14)}
+                Generate Cover Letter
+              </button>
             </div>
+            <div id="ap-cover-result"></div>
           </div>
         </div>
 
@@ -837,6 +872,9 @@ function collectRefs(root: HTMLDivElement): Refs {
     uploadStatus: q("#ap-upload-status"),
     btnTailor: q("#ap-btn-tailor"),
     tailorResult: q("#ap-tailor-result"),
+    btnCover: q("#ap-btn-cover"),
+    coverTone: q("#ap-cover-tone"),
+    coverResult: q("#ap-cover-result"),
     modalBackdrop: q("#ap-modal-backdrop"),
     infoSidebar: q("#ap-info-sidebar"),
     infoForm: q("#ap-info-form"),
@@ -893,6 +931,9 @@ function wireEvents(root: HTMLDivElement): void {
 
   // Tailor button
   root.querySelector("#ap-btn-tailor")!.addEventListener("click", () => void doTailor());
+
+  // Generate Cover Letter button
+  root.querySelector("#ap-btn-cover")!.addEventListener("click", () => void doGenerateCoverLetter());
 
   // Cover letter section toggle
   root.querySelector("#ap-section-cover")!.addEventListener("click", () => {
@@ -1092,6 +1133,7 @@ function refreshMainView(): void {
   // Keep the r\u00e9sum\u00e9-upload button in sync as the form is (re)scanned.
   updateUploadButtonState();
   updateTailorButtonState();
+  updateCoverButtonState();
 }
 
 // ---------------------------------------------------------------------------
@@ -1448,6 +1490,8 @@ async function reInit(): Promise<void> {
   overlayState.tailorResult = null;
   overlayState.tailorKeywords = new Set();
   overlayState.tailorBusy = false;
+  overlayState.coverLetterText = null;
+  overlayState.coverLetterBusy = false;
   initialized = false;
   hideInfoView();
   await initPanel();
@@ -1563,6 +1607,129 @@ function setTailorStatus(text: string, kind: "ok" | "warn" | "error" | ""): void
     el.className = "ap-upload-status" + (kind ? ` ${kind}` : "");
   } else if (refs) {
     // No card yet (e.g. not signed in) — fall back to the résumé status line.
+    setUploadStatus(text, kind);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generate Cover Letter (on the spot + insert)
+// ---------------------------------------------------------------------------
+
+function updateCoverButtonState(): void {
+  if (!refs) return;
+  refs.btnCover.disabled = !overlayState.profile || overlayState.coverLetterBusy;
+}
+
+/** "Insert to form" when a cover-letter textarea exists; "Attach PDF" for a file field. */
+function coverInsertLabel(): { label: string; enabled: boolean } {
+  const hasText = overlayState.fields.some(
+    (f) =>
+      f.category === "coverLetter" &&
+      (f.controlType === "textarea" || f.controlType === "contenteditable")
+  );
+  if (hasText) return { label: "Insert to form", enabled: true };
+  const hasFile = overlayState.fields.some(
+    (f) => f.category === "coverLetter" && f.controlType === "file"
+  );
+  if (hasFile) return { label: "Attach PDF", enabled: true };
+  return { label: "Insert to form", enabled: false };
+}
+
+/** The (possibly edited) text in the preview textarea, falling back to state. */
+function currentCoverText(): string {
+  const ta = refs?.coverResult.querySelector<HTMLTextAreaElement>("#ap-cover-text");
+  return ta ? ta.value : overlayState.coverLetterText ?? "";
+}
+
+async function doGenerateCoverLetter(baseText?: string): Promise<void> {
+  if (!refs || !callbacks || overlayState.coverLetterBusy) return;
+  if (!overlayState.profile) {
+    setCoverStatus("Connect your Tailrd account to generate a cover letter.", "warn");
+    return;
+  }
+  overlayState.coverLetterBusy = true;
+  refs.btnCover.disabled = true;
+  refs.btnCover.textContent = baseText ? "Rewriting…" : "Generating…";
+  try {
+    const res = await callbacks.onGenerateCoverLetter({
+      resumeId: selectedResumeId(),
+      tone: refs.coverTone.value || null,
+      baseText: baseText ?? null,
+    });
+    if (!res.ok || typeof res.text !== "string") {
+      setCoverStatus(res.reason ?? "Couldn't generate a cover letter.", "error");
+      return;
+    }
+    overlayState.coverLetterText = res.text;
+    renderCoverLetterResult();
+  } catch (err) {
+    setCoverStatus(err instanceof Error ? err.message : "Generation failed.", "error");
+  } finally {
+    overlayState.coverLetterBusy = false;
+    if (refs) {
+      updateCoverButtonState();
+      refs.btnCover.textContent = overlayState.coverLetterText
+        ? "Regenerate cover letter"
+        : "Generate Cover Letter";
+    }
+  }
+}
+
+function renderCoverLetterResult(): void {
+  if (!refs || overlayState.coverLetterText === null) return;
+  const { label, enabled } = coverInsertLabel();
+  refs.coverResult.innerHTML = buildCoverLetterCardHtml(overlayState.coverLetterText, label);
+
+  refs.coverResult
+    .querySelector("#ap-cover-regen")
+    ?.addEventListener("click", () => void doGenerateCoverLetter(currentCoverText()));
+  refs.coverResult
+    .querySelector("#ap-cover-insert")
+    ?.addEventListener("click", () => void insertCoverLetter());
+  refs.coverResult
+    .querySelector("#ap-cover-copy")
+    ?.addEventListener("click", () => void copyCoverLetter());
+  refs.coverResult
+    .querySelector("#ap-cover-download")
+    ?.addEventListener("click", () => void downloadCoverLetter());
+
+  const insertBtn = refs.coverResult.querySelector<HTMLButtonElement>("#ap-cover-insert");
+  if (insertBtn && !enabled) {
+    insertBtn.disabled = true;
+    insertBtn.title = "No cover-letter field on this page — use Copy or Download instead.";
+  }
+}
+
+async function insertCoverLetter(): Promise<void> {
+  if (!refs || !callbacks) return;
+  setCoverStatus("Inserting…", "");
+  const res = await callbacks.onInsertCoverLetter(currentCoverText());
+  setCoverStatus(
+    res.ok ? "Inserted. Review before submitting." : res.reason ?? "Could not insert.",
+    res.ok ? "ok" : "error"
+  );
+}
+
+async function copyCoverLetter(): Promise<void> {
+  if (!refs || !callbacks) return;
+  const res = await callbacks.onCopyCoverLetter(currentCoverText());
+  setCoverStatus(res.ok ? "Copied to clipboard." : res.reason ?? "Could not copy.", res.ok ? "ok" : "error");
+}
+
+async function downloadCoverLetter(): Promise<void> {
+  if (!refs || !callbacks) return;
+  setCoverStatus("Preparing download…", "");
+  const res = await callbacks.onDownloadCoverLetter(currentCoverText());
+  setCoverStatus(res.ok ? "Downloaded." : res.reason ?? "Could not download.", res.ok ? "ok" : "error");
+}
+
+function setCoverStatus(text: string, kind: "ok" | "warn" | "error" | ""): void {
+  const el = refs?.coverResult.querySelector<HTMLDivElement>("#ap-cover-status");
+  if (el) {
+    el.textContent = text;
+    el.className = "ap-upload-status" + (kind ? ` ${kind}` : "");
+  } else if (refs) {
+    // No card yet (e.g. a first-generation failure) — fall back to the résumé status line.
     setUploadStatus(text, kind);
   }
 }

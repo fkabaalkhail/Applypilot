@@ -22,10 +22,13 @@ import type {
   AiFillResponse,
   BackgroundRequest,
   ContentRequest,
+  CoverLetterGenOpts,
   DetectedField,
   FieldsUpdatedEvent,
   FillResponse,
+  GenerateCoverLetterResponse,
   PingResponse,
+  RenderCoverLetterResponse,
   RenderResumeResponse,
   ResumeDoc,
   ResumeFileResponse,
@@ -39,6 +42,7 @@ import type {
 import { deepQueryAll } from "./domUtils";
 import { base64ToFile, downloadBase64File, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, type RuntimeControl } from "./formScanner";
+import { LONG_TEXT } from "./fieldMatcher";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext } from "./jobContext";
@@ -307,6 +311,76 @@ function initialize(): void {
       }
       downloadBase64File(file.dataBase64, file.name, file.contentType);
       return { ok: true };
+    },
+    onGenerateCoverLetter: async (opts: CoverLetterGenOpts) => {
+      const resp = await sendToBackground<GenerateCoverLetterResponse>({
+        type: "GENERATE_COVER_LETTER",
+        resumeId: opts.resumeId,
+        jobContext: extractJobContext(),
+        tone: opts.tone,
+        baseText: opts.baseText,
+      });
+      if (!resp?.ok || typeof resp.text !== "string") {
+        return {
+          ok: false,
+          needsLogin: resp?.needsLogin,
+          reason: resp?.error ?? "Could not generate a cover letter.",
+        };
+      }
+      return { ok: true, text: resp.text };
+    },
+    onInsertCoverLetter: async (text: string) => {
+      // Prefer a cover-letter textarea; fall back to a cover-letter file field.
+      const textField = lastFields.find(
+        (f) => f.category === "coverLetter" && LONG_TEXT.includes(f.controlType)
+      );
+      if (textField) {
+        const control = registry.get(textField.id);
+        if (!control) return { ok: false, reason: "Cover-letter field is no longer on the page — rescan." };
+        const res = writeControl(control, text);
+        if (!res.written) return { ok: false, reason: res.reason };
+        return verifyControl(control, text)
+          ? { ok: true }
+          : { ok: false, reason: "Text did not stick — please check the field." };
+      }
+      const fileField = lastFields.find(
+        (f) => f.category === "coverLetter" && f.controlType === "file"
+      );
+      const fileControl = fileField ? registry.get(fileField.id) : undefined;
+      if (fileControl?.el) {
+        const company = extractJobContext().company;
+        const file = await sendToBackground<RenderCoverLetterResponse>({
+          type: "RENDER_COVER_LETTER",
+          text,
+          filename: company ? `cover-letter-${company}` : "cover-letter",
+        });
+        if (!file?.ok || !file.dataBase64) {
+          return { ok: false, reason: file?.error ?? "Could not render your cover letter." };
+        }
+        return injectResumeFile(fileControl.el, base64ToFile(file.dataBase64, file.name, file.contentType));
+      }
+      return { ok: false, reason: "No cover-letter field found on this page." };
+    },
+    onDownloadCoverLetter: async (text: string) => {
+      const company = extractJobContext().company;
+      const file = await sendToBackground<RenderCoverLetterResponse>({
+        type: "RENDER_COVER_LETTER",
+        text,
+        filename: company ? `cover-letter-${company}` : "cover-letter",
+      });
+      if (!file?.ok || !file.dataBase64) {
+        return { ok: false, reason: file?.error ?? "Could not render your cover letter." };
+      }
+      downloadBase64File(file.dataBase64, file.name, file.contentType);
+      return { ok: true };
+    },
+    onCopyCoverLetter: async (text: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        return { ok: true };
+      } catch {
+        return { ok: false, reason: "Clipboard blocked — select the text and copy manually." };
+      }
     },
   };
 

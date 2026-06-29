@@ -20,7 +20,7 @@ from backend.migrations.add_extension_auth_codes import run_migration as run_ext
 from backend.migrations.add_company_domain import run_migration as run_company_domain_migration
 from backend.migrations.add_sessions import run_migration as run_sessions_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile, answers
-from backend.routers import auth, auth_extension, extension, tailor
+from backend.routers import auth, auth_extension, extension, tailor, cover_letter
 from backend.routers.feedback import router as feedback_router
 
 
@@ -79,6 +79,7 @@ app.include_router(auth_extension.router, prefix="/auth/extension", tags=["auth-
 app.include_router(fill.router, prefix="/api", tags=["fill"])
 app.include_router(answers.router, prefix="/api", tags=["answers"])
 app.include_router(tailor.router, prefix="/api", tags=["tailor"])
+app.include_router(cover_letter.router, prefix="/api", tags=["cover-letter"])
 app.include_router(profile.router, prefix="/api", tags=["profile"])
 app.include_router(extension.router, prefix="/api/extension", tags=["extension-sync"])
 app.include_router(resumes.router, prefix="/resumes", tags=["resumes"])
