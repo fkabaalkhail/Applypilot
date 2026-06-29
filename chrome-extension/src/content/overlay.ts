@@ -41,6 +41,8 @@ export interface OverlayCallbacks {
     fieldIds: string[]
   ) => Promise<{ ok: number; fail: number; total: number; drafts: AiDraft[] }>;
   onInsertAnswer: (fieldId: string, value: string) => Promise<{ ok: boolean; reason?: string }>;
+  /** Persist an accepted/edited answer to the Question Memory (best-effort). */
+  onSaveAnswer: (question: string, answer: string) => Promise<{ ok: boolean }>;
   onRescan: () => void;
   /** List the user's resumes for the picker / auto-upload. */
   onListResumes: () => Promise<ResumeSummary[]>;
@@ -504,6 +506,9 @@ const STYLES = `
 .ap-review-all { font-size: 12px; color: #7c6cff; background: none; border: none; cursor: pointer; padding: 2px 4px; }
 .ap-review-card { border: 1px solid #eee; border-radius: 10px; padding: 10px; margin-bottom: 8px; background: #fafafa; }
 .ap-review-label { font-size: 12.5px; color: #333; margin-bottom: 6px; font-weight: 500; }
+.ap-review-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; font-weight: 600; }
+.ap-review-badge.mem { background: #eef0ff; color: #4b3fd6; }
+.ap-review-badge.ai { background: #fff4e6; color: #b9690b; }
 .ap-review-text { width: 100%; box-sizing: border-box; font-size: 12.5px; padding: 8px; border: 1px solid #ddd; border-radius: 8px; resize: vertical; font-family: inherit; }
 .ap-review-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .ap-review-insert, .ap-review-skip { font-size: 12px; padding: 5px 12px; border-radius: 8px; cursor: pointer; border: 1px solid #ddd; background: #fff; }
@@ -1232,21 +1237,26 @@ function renderReviewSection(drafts: AiDraft[]): void {
   }
   host.style.display = "block";
   host.innerHTML =
-    `<div class="ap-review-head"><span>AI answers to review</span>` +
-    `<button class="ap-review-all" id="ap-review-all" type="button">Insert all</button></div>` +
+    `<div class="ap-review-head"><span>Answers to review</span>` +
+    `<button class="ap-review-all" id="ap-review-all" type="button">Accept all</button></div>` +
     drafts
-      .map(
-        (d, i) => `
+      .map((d, i) => {
+        const badge =
+          d.source === "memory"
+            ? `<span class="ap-review-badge mem">↩ From a previous application</span>`
+            : `<span class="ap-review-badge ai">✨ AI suggestion</span>`;
+        return `
       <div class="ap-review-card" data-field="${esc(d.fieldId)}">
+        ${badge}
         <div class="ap-review-label">${esc(d.label)}</div>
         <textarea class="ap-review-text" id="ap-review-text-${i}" rows="4">${esc(d.value)}</textarea>
         <div class="ap-review-actions">
-          <button class="ap-review-insert" data-i="${i}" type="button">Insert</button>
+          <button class="ap-review-insert" data-i="${i}" type="button">Accept</button>
           <button class="ap-review-skip" data-i="${i}" type="button">Skip</button>
           <span class="ap-review-status" id="ap-review-status-${i}"></span>
         </div>
-      </div>`
-      )
+      </div>`;
+      })
       .join("");
 
   host.querySelectorAll<HTMLButtonElement>(".ap-review-insert").forEach((btn) => {
@@ -1265,11 +1275,26 @@ async function insertDraft(i: number, drafts: AiDraft[]): Promise<void> {
   const insertBtn = refs.review.querySelector<HTMLButtonElement>(`.ap-review-insert[data-i="${i}"]`);
   if (!ta) return;
   const res = await callbacks.onInsertAnswer(drafts[i].fieldId, ta.value);
-  if (statusEl) {
-    statusEl.textContent = res.ok ? "Inserted ✓" : res.reason ?? "Could not insert";
-    statusEl.className = "ap-review-status" + (res.ok ? " ok" : " error");
+  if (!res.ok) {
+    if (statusEl) {
+      statusEl.textContent = res.reason ?? "Could not insert";
+      statusEl.className = "ap-review-status error";
+    }
+    return;
   }
-  if (res.ok && insertBtn) insertBtn.textContent = "Re-insert";
+  // Filled — now remember it for next time (best-effort; the field stays filled
+  // even if the save fails).
+  let saved = false;
+  try {
+    saved = (await callbacks.onSaveAnswer(drafts[i].label, ta.value)).ok;
+  } catch {
+    saved = false;
+  }
+  if (statusEl) {
+    statusEl.textContent = saved ? "Accepted ✓" : "Filled (not saved)";
+    statusEl.className = "ap-review-status" + (saved ? " ok" : " error");
+  }
+  if (insertBtn) insertBtn.textContent = "Re-accept";
 }
 
 async function insertAllDrafts(drafts: AiDraft[]): Promise<void> {

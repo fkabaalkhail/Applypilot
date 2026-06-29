@@ -31,6 +31,7 @@ import type {
   ResumeFileResponse,
   ResumesResponse,
   ScanResponse,
+  SimpleResponse,
   TailorResumeOpts,
   TailorResumeResponse,
   UserApplicationProfile,
@@ -205,6 +206,20 @@ function initialize(): void {
       return verifyControl(control, value)
         ? { ok: true }
         : { ok: false, reason: "Value did not stick — please check the field." };
+    },
+    onSaveAnswer: async (question: string, answer: string) => {
+      // Best-effort: the field is already filled; remembering it is a bonus.
+      try {
+        const resp = await sendToBackground<SimpleResponse>({
+          type: "SAVE_ANSWER",
+          question,
+          answer,
+          jobContext: extractJobContext(),
+        });
+        return { ok: !!resp?.ok };
+      } catch {
+        return { ok: false };
+      }
     },
     onRescan: () => {
       runScan();

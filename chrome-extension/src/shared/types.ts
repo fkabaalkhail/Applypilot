@@ -221,12 +221,18 @@ export interface JobContext {
   company: string;
 }
 
-/** One AI answer from the backend (mirrors backend FieldAnswer). */
+/** One answer from the backend (mirrors backend FieldAnswer). */
 export interface AiFillAnswer {
   id: string;
   label: string;
   answer: string;
   confidence: string;
+  /** rule | profile | memory | ai — how the answer was produced. */
+  source?: string;
+  /** AI suggestions + company-specific memory matches need user review. */
+  needsReview?: boolean;
+  category?: string;
+  canonicalQuestion?: string;
 }
 
 /** Background-worker reply for an AI_FILL request. */
@@ -238,11 +244,14 @@ export interface AiFillResponse {
   errors: string[];
 }
 
-/** A long-form AI answer awaiting user review before insertion. */
+/** An answer awaiting user review (Accept/Edit/Skip) before it fills + saves. */
 export interface AiDraft {
   fieldId: string;
   label: string;
   value: string;
+  /** "memory" (from a past application) | "ai" (suggestion) — drives the badge. */
+  source?: string;
+  category?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +364,7 @@ export type BackgroundRequest =
   | { type: "DOWNLOAD_RESUME"; resumeId: number }
   | { type: "OPEN_DASHBOARD" }
   | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext }
+  | { type: "SAVE_ANSWER"; question: string; answer: string; jobContext: JobContext }
   | {
       type: "TAILOR_RESUME";
       resumeId: number | null;

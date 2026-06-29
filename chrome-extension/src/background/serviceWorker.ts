@@ -13,6 +13,7 @@ import { connectAccount } from "../api/handshake";
 import { AuthRequiredError, checkAuthStatus, ensureFreshAccessToken, logout } from "../api/client";
 import { downloadResumeFile, getSnapshotForUi, syncIfStale } from "../api/sync";
 import { aiFillFields } from "../api/aiFill";
+import { saveAnswer } from "../api/answers";
 import { renderResume, tailorResume } from "../api/tailorResume";
 import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import type {
@@ -290,6 +291,18 @@ export async function handle(
           answers: [],
           errors: [err instanceof Error ? err.message : "AI fill failed"],
         };
+      }
+    }
+
+    case "SAVE_ANSWER": {
+      try {
+        await saveAnswer(message.question, message.answer, message.jobContext);
+        return { ok: true };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, error: err.message };
+        }
+        return { ok: false, error: err instanceof Error ? err.message : "Save failed" };
       }
     }
 

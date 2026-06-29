@@ -75,19 +75,45 @@ export interface AiFillPlan {
   drafts: AiDraft[];
 }
 
-/** Split backend answers into inline (simple) fills and long-form review drafts. */
+/** The subset of a backend FieldAnswer the planner needs (see AiFillAnswer). */
+export interface PlannedAnswer {
+  id: string;
+  answer: string;
+  /** Backend's verdict: AI suggestions + company-specific matches need review. */
+  needsReview?: boolean;
+  /** "memory" | "ai" | "rule" | "profile" — drives the review-card badge. */
+  source?: string;
+  category?: string;
+}
+
+/**
+ * Split backend answers into inline (silent) fills and review drafts.
+ *
+ * The backend decides what needs review: rule/profile answers and generic memory
+ * matches fill silently; AI suggestions and company-specific memory matches are
+ * drafted for Accept/Edit/Skip — regardless of field length.
+ */
 export function planAiFill(
   candidates: DetectedField[],
-  answers: { id: string; answer: string }[]
+  answers: PlannedAnswer[]
 ): AiFillPlan {
-  const byId = new Map(answers.map((a) => [a.id, a.answer]));
+  const byId = new Map(answers.map((a) => [a.id, a]));
   const simpleTargets: { fieldId: string; value: string }[] = [];
   const drafts: AiDraft[] = [];
   for (const f of candidates) {
-    const answer = byId.get(f.id);
-    if (!answer || !answer.trim()) continue;
-    if (isLongform(f)) drafts.push({ fieldId: f.id, label: f.label, value: answer });
-    else simpleTargets.push({ fieldId: f.id, value: answer });
+    const a = byId.get(f.id);
+    if (!a || !a.answer || !a.answer.trim()) continue;
+    if (a.needsReview) {
+      drafts.push({
+        fieldId: f.id,
+        label: f.label,
+        value: a.answer,
+        source: a.source,
+        category: a.category,
+      });
+    } else {
+      simpleTargets.push({ fieldId: f.id, value: a.answer });
+    }
   }
   return { simpleTargets, drafts };
 }

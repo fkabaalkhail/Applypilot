@@ -82,22 +82,32 @@ describe("toAiFillField", () => {
 });
 
 describe("planAiFill", () => {
-  it("routes long-form to drafts and simple to inline targets", () => {
+  it("routes by needsReview, not length (divergent cases pin the behavior)", () => {
     const candidates = [
       field({ id: "essay", controlType: "textarea", label: "Why us?" }),
-      field({ id: "auth", controlType: "radioGroup", label: "Authorized to work?", options: ["Yes", "No"] }),
+      // Long-form but a trusted generic memory match → must fill silently.
+      field({ id: "summary", controlType: "textarea", label: "Professional summary" }),
+      // Short field but an AI suggestion → must go to review.
+      field({ id: "exp", controlType: "text", label: "Years of experience?" }),
+      field({ id: "auth", controlType: "radioGroup", label: "Authorized?", options: ["Yes", "No"] }),
       field({ id: "blank", controlType: "text", label: "Years?" }),
-      field({ id: "ws", controlType: "text", label: "Notice period?" }),
     ];
     const answers = [
-      { id: "essay", answer: "Because I love it." },
-      { id: "auth", answer: "Yes" },
-      { id: "blank", answer: "" }, // empty → ignored
-      { id: "ws", answer: "   " },
+      { id: "essay", answer: "Because I love it.", needsReview: true, source: "ai", category: "company_specific" },
+      { id: "summary", answer: "Seasoned engineer.", needsReview: false, source: "memory", category: "general" },
+      { id: "exp", answer: "5 years", needsReview: true, source: "ai", category: "general" },
+      { id: "auth", answer: "Yes", needsReview: false, source: "rule", category: "work_authorization" },
+      { id: "blank", answer: "   ", needsReview: true, source: "ai", category: "general" }, // empty → ignored
     ];
     const plan = planAiFill(candidates, answers);
-    expect(plan.drafts).toEqual([{ fieldId: "essay", label: "Why us?", value: "Because I love it." }]);
-    expect(plan.simpleTargets).toEqual([{ fieldId: "auth", value: "Yes" }]);
+    expect(plan.drafts).toEqual([
+      { fieldId: "essay", label: "Why us?", value: "Because I love it.", source: "ai", category: "company_specific" },
+      { fieldId: "exp", label: "Years of experience?", value: "5 years", source: "ai", category: "general" },
+    ]);
+    expect(plan.simpleTargets).toEqual([
+      { fieldId: "summary", value: "Seasoned engineer." },
+      { fieldId: "auth", value: "Yes" },
+    ]);
   });
 });
 
