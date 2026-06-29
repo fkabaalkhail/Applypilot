@@ -1,8 +1,8 @@
-"""LLM service — uses AnthropicService (Claude)."""
+"""LLM service — uses OpenAIService (OpenAI Chat Completions)."""
 
-from backend.services.anthropic_service import AnthropicService
+from backend.services.openai_service import OpenAIService
 
 
 def get_llm_service():
     """Return the configured LLM service instance."""
-    return AnthropicService()
+    return OpenAIService()

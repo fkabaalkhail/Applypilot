@@ -1,9 +1,13 @@
 """
-AnthropicService — Anthropic Claude API client for AI-powered features.
+OpenAIService — OpenAI Chat Completions client for AI-powered features.
 
-Same interface as the former GeminiService: analyze_resume, generate_cover_letter,
-answer_question, suggest_job_titles, tailor_resume, extract_experience_years,
-generate_connection_message, match_job, analyze_resume_quality.
+Drop-in replacement for the former AnthropicService: same public interface
+(analyze_resume, generate_cover_letter, answer_question, suggest_job_titles,
+tailor_resume*, edit_snippet, extract_experience_years,
+generate_connection_message, match_job, analyze_resume_quality) so every caller
+that goes through get_llm_service() works unchanged. Only the transport
+(_generate) and configuration (__init__) are OpenAI-specific; all prompt
+building and parsing is provider-agnostic.
 """
 
 import os
@@ -53,35 +57,36 @@ def _extract_json(response: str) -> str:
     return text
 
 
-class AnthropicService:
-    """Async client for the Anthropic Messages API (Claude)."""
+class OpenAIService:
+    """Async client for the OpenAI Chat Completions API."""
 
     def __init__(self):
-        self.api_key = os.getenv("ANTHROPIC_API_KEY", "").strip().strip("\ufeff")
-        self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514").strip().strip("\ufeff")
-        self.timeout = float(os.getenv("ANTHROPIC_TIMEOUT", "60"))
-        self.max_tokens = int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096"))
+        self.api_key = os.getenv("OPENAI_API_KEY", "").strip().strip("﻿")
+        self.model = os.getenv("OPENAI_MODEL", "gpt-4o").strip().strip("﻿")
+        self.timeout = float(os.getenv("OPENAI_TIMEOUT", "60"))
+        self.max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "4096"))
         if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not set in environment")
+            raise ValueError("OPENAI_API_KEY not set in environment")
 
     async def _generate(self, prompt: str, system: str = None) -> str:
         import asyncio
 
-        url = "https://api.anthropic.com/v1/messages"
+        url = "https://api.openai.com/v1/chat/completions"
 
-        messages = [{"role": "user", "content": prompt}]
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
         body: dict = {
             "model": self.model,
             "max_tokens": self.max_tokens,
             "messages": messages,
         }
-        if system:
-            body["system"] = system
 
         headers = {
             "Content-Type": "application/json",
-            "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01",
+            "Authorization": f"Bearer {self.api_key}",
         }
 
         max_retries = 4
@@ -91,15 +96,15 @@ class AnthropicService:
                 if r.status_code == 429:
                     wait_time = (2 ** attempt) * 3
                     logger.warning(
-                        f"Anthropic rate limited (429), retrying in {wait_time}s "
+                        f"OpenAI rate limited (429), retrying in {wait_time}s "
                         f"(attempt {attempt + 1}/{max_retries})"
                     )
                     await asyncio.sleep(wait_time)
                     continue
-                if r.status_code == 529:
+                if r.status_code in (500, 502, 503):
                     wait_time = (2 ** attempt) * 5
                     logger.warning(
-                        f"Anthropic overloaded (529), retrying in {wait_time}s "
+                        f"OpenAI server error ({r.status_code}), retrying in {wait_time}s "
                         f"(attempt {attempt + 1}/{max_retries})"
                     )
                     await asyncio.sleep(wait_time)
@@ -109,15 +114,15 @@ class AnthropicService:
                 break
         else:
             raise ConnectionError(
-                "Anthropic API rate limited after retries. Please try again in a minute."
+                "OpenAI API rate limited after retries. Please try again in a minute."
             )
 
         try:
-            # Anthropic response: { "content": [{ "type": "text", "text": "..." }] }
-            return data["content"][0]["text"]
+            # OpenAI response: { "choices": [{ "message": { "content": "..." } }] }
+            return data["choices"][0]["message"]["content"]
         except (KeyError, IndexError):
-            logger.error("Unexpected Anthropic response: %s", json.dumps(data)[:500])
-            raise ValueError("Anthropic returned an unexpected response format")
+            logger.error("Unexpected OpenAI response: %s", json.dumps(data)[:500])
+            raise ValueError("OpenAI returned an unexpected response format")
 
     async def analyze_resume(self, raw_text: str) -> ResumeProfile:
         template = _load_prompt("analyze_resume.txt")

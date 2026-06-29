@@ -1,7 +1,7 @@
 """
-MatchEngine — computes detailed match score breakdowns via Claude.
+MatchEngine — computes detailed match score breakdowns via the LLM service.
 
-Extends the existing AnthropicService.match_job with breakdown scores
+Extends the existing OpenAIService.match_job with breakdown scores
 for experience, skills, and industry.
 """
 
@@ -111,7 +111,7 @@ class MatchEngine:
         """Lazily construct the LLM service.
 
         Deferred so that pure helpers (e.g. JSON parsing) and unit tests can
-        use MatchEngine without an ANTHROPIC_API_KEY in the environment.
+        use MatchEngine without an OPENAI_API_KEY in the environment.
         """
         if self._llm is None:
             self._llm = get_llm_service()

@@ -19,7 +19,7 @@ async def health_check():
     except Exception:
         checks["database"] = False
 
-    checks["anthropic"] = bool(os.getenv("ANTHROPIC_API_KEY"))
+    checks["openai"] = bool(os.getenv("OPENAI_API_KEY"))
 
     all_ok = all(checks.values())
     return {"status": "healthy" if all_ok else "degraded", "checks": checks}

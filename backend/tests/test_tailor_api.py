@@ -26,10 +26,10 @@ def _seed_resume(db):
 
 class TestTailorResume:
     def test_auto_weaves_all_missing_keywords(self, client, db_session, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         _seed_resume(db_session)
         gen = AsyncMock(side_effect=[BEFORE, EDITED, AFTER])
-        with patch("backend.services.anthropic_service.AnthropicService._generate", gen):
+        with patch("backend.services.openai_service.OpenAIService._generate", gen):
             resp = client.post("/api/tailor-resume", json={
                 "job_title": "Engineer", "company": "Acme",
                 "job_description": "We need Python, AWS and TypeScript.",
@@ -47,10 +47,10 @@ class TestTailorResume:
         assert "weave in these keywords: AWS, TypeScript." in tailor_prompt
 
     def test_explicit_keywords_used_exactly(self, client, db_session, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         _seed_resume(db_session)
         gen = AsyncMock(side_effect=[BEFORE, EDITED, AFTER])
-        with patch("backend.services.anthropic_service.AnthropicService._generate", gen):
+        with patch("backend.services.openai_service.OpenAIService._generate", gen):
             resp = client.post("/api/tailor-resume", json={
                 "job_title": "Engineer", "company": "Acme",
                 "job_description": "JD", "add_keywords": ["AWS"],
@@ -61,10 +61,10 @@ class TestTailorResume:
         assert resp.json()["missing_keywords"] == ["AWS", "TypeScript"]
 
     def test_explicit_empty_keywords_skip_weaving(self, client, db_session, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         _seed_resume(db_session)
         gen = AsyncMock(side_effect=[BEFORE, EDITED, AFTER])
-        with patch("backend.services.anthropic_service.AnthropicService._generate", gen):
+        with patch("backend.services.openai_service.OpenAIService._generate", gen):
             resp = client.post("/api/tailor-resume", json={
                 "job_title": "Engineer", "company": "Acme",
                 "job_description": "JD", "add_keywords": [],
@@ -74,18 +74,18 @@ class TestTailorResume:
         assert "weave in these keywords:" not in tailor_prompt
 
     def test_503_on_llm_connection_error(self, client, db_session, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         _seed_resume(db_session)
         import httpx
         gen = AsyncMock(side_effect=httpx.ConnectError("boom"))
-        with patch("backend.services.anthropic_service.AnthropicService._generate", gen):
+        with patch("backend.services.openai_service.OpenAIService._generate", gen):
             resp = client.post("/api/tailor-resume", json={
                 "job_title": "Engineer", "company": "Acme", "job_description": "JD",
             })
         assert resp.status_code == 503
 
     def test_400_when_no_resume(self, client, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         resp = client.post("/api/tailor-resume", json={"job_description": "JD"})
         assert resp.status_code == 400
 
