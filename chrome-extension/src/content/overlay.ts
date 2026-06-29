@@ -12,6 +12,7 @@
  */
 
 import { reattachIfDetached } from "./domUtils";
+import { buildTailorCardHtml } from "./tailorCard";
 import { defaultSelectedIds } from "../shared/selection";
 import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
@@ -510,6 +511,26 @@ const STYLES = `
 .ap-review-status { font-size: 12px; color: #888; }
 .ap-review-status.ok { color: #1a7f37; }
 .ap-review-status.error { color: #c0392b; }
+.ap-btn-soft { padding: 9px 12px; border: 1px solid #e7e4ff; border-radius: 8px;
+  background: #f9f8ff; color: #7c6cff; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.ap-btn-soft:hover:not(:disabled) { background: #f0edff; }
+.ap-btn-soft:disabled { opacity: 0.5; cursor: default; }
+.ap-btn-tailor { width: 100%; padding: 11px; border: none; border-radius: 9px;
+  background: linear-gradient(135deg, #7c6cff 0%, #9f6bff 100%); color: #fff;
+  font-size: 13.5px; font-weight: 700; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; gap: 7px; }
+.ap-btn-tailor:disabled { opacity: 0.5; cursor: default; }
+.ap-tailor-scores { display: flex; justify-content: space-between; align-items: baseline;
+  margin-top: 10px; }
+.ap-tailor-jump { font-weight: 700; font-size: 14px; color: #1a1a2e; }
+.ap-tailor-stats { font-size: 11.5px; color: #888; }
+.ap-kw-label { font-size: 11.5px; color: #666; margin: 10px 0 5px; }
+.ap-kw-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.ap-kw { font-size: 11.5px; padding: 4px 9px; border-radius: 999px; cursor: pointer;
+  border: 1px solid #ddd; background: #fff; color: #555; }
+.ap-kw.on { background: #7c6cff; border-color: #7c6cff; color: #fff; }
+.ap-tailor-actions { display: flex; gap: 8px; margin-top: 12px; }
+.ap-tailor-actions .ap-btn-upload { width: auto; flex: 1; }
 `;
 
 
@@ -535,6 +556,9 @@ interface PanelState {
   scanned: boolean;
   view: View;
   infoCategory: string;
+  tailorResult: TailorResult | null;
+  tailorKeywords: Set<string>;
+  tailorBusy: boolean;
 }
 
 let host: HTMLElement | null = null;
@@ -558,6 +582,9 @@ const overlayState: PanelState = {
   scanned: false,
   view: "main",
   infoCategory: "personal",
+  tailorResult: null,
+  tailorKeywords: new Set(),
+  tailorBusy: false,
 };
 
 interface Refs {
@@ -573,6 +600,8 @@ interface Refs {
   resumeSelect: HTMLSelectElement;
   btnUploadResume: HTMLButtonElement;
   uploadStatus: HTMLDivElement;
+  btnTailor: HTMLButtonElement;
+  tailorResult: HTMLDivElement;
   modalBackdrop: HTMLDivElement;
   infoSidebar: HTMLDivElement;
   infoForm: HTMLDivElement;
@@ -697,6 +726,24 @@ function buildHTML(): string {
           </div>
         </div>
 
+        <!-- Generate Custom Resume -->
+        <div class="ap-section">
+          <div class="ap-section-header" id="ap-section-tailor">
+            <div class="ap-section-left">
+              <span class="ap-section-icon">${icon('<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/>', 18)}</span>
+              <span class="ap-section-title">Generate Custom Resume</span>
+            </div>
+            <span class="ap-section-arrow">${I_CHEVRON_DOWN}</span>
+          </div>
+          <div class="ap-section-sub" id="ap-tailor-sub" style="display:none">
+            <button class="ap-btn-tailor" id="ap-btn-tailor" type="button">
+              ${icon('<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/>', 14)}
+              Tailor my résumé for this job
+            </button>
+            <div id="ap-tailor-result"></div>
+          </div>
+        </div>
+
         <!-- Upload Cover Letter -->
         <div class="ap-section">
           <div class="ap-section-header" id="ap-section-cover">
@@ -783,6 +830,8 @@ function collectRefs(root: HTMLDivElement): Refs {
     resumeSelect: q("#ap-resume-select"),
     btnUploadResume: q("#ap-btn-upload-resume"),
     uploadStatus: q("#ap-upload-status"),
+    btnTailor: q("#ap-btn-tailor"),
+    tailorResult: q("#ap-tailor-result"),
     modalBackdrop: q("#ap-modal-backdrop"),
     infoSidebar: q("#ap-info-sidebar"),
     infoForm: q("#ap-info-form"),
@@ -830,6 +879,15 @@ function wireEvents(root: HTMLDivElement): void {
 
   // Upload résumé to the current form
   root.querySelector("#ap-btn-upload-resume")!.addEventListener("click", () => void doUploadResume());
+
+  // Generate Custom Resume section toggle
+  root.querySelector("#ap-section-tailor")!.addEventListener("click", () => {
+    const sub = root.querySelector<HTMLElement>("#ap-tailor-sub")!;
+    sub.style.display = sub.style.display === "none" ? "block" : "none";
+  });
+
+  // Tailor button
+  root.querySelector("#ap-btn-tailor")!.addEventListener("click", () => void doTailor());
 
   // Cover letter section toggle
   root.querySelector("#ap-section-cover")!.addEventListener("click", () => {
@@ -1359,4 +1417,116 @@ async function reInit(): Promise<void> {
   initialized = false;
   hideInfoView();
   await initPanel();
+}
+
+// ---------------------------------------------------------------------------
+// Generate Custom Resume (tailor on the spot + attach)
+// ---------------------------------------------------------------------------
+
+function selectedResumeId(): number | null {
+  const { resumes } = overlayState;
+  if (resumes.length === 0) return null;
+  if (refs && refs.resumeSelect.style.display !== "none" && refs.resumeSelect.value) {
+    return Number(refs.resumeSelect.value);
+  }
+  const primary = resumes.find((r) => r.isPrimary) ?? resumes[0];
+  return primary.id;
+}
+
+async function doTailor(addKeywords?: string[] | null): Promise<void> {
+  if (!refs || !callbacks || overlayState.tailorBusy) return;
+  if (!overlayState.profile) {
+    setTailorStatus("Connect your Tailrd account to tailor your résumé.", "warn");
+    return;
+  }
+  overlayState.tailorBusy = true;
+  refs.btnTailor.disabled = true;
+  refs.btnTailor.textContent = "Tailoring…";
+  try {
+    const res = await callbacks.onTailorResume({
+      resumeId: selectedResumeId(),
+      // First pass: undefined -> server auto-weaves all missing keywords.
+      addKeywords: addKeywords,
+    });
+    if (!res.ok || !res.result) {
+      setTailorStatus(res.reason ?? "Couldn't tailor your résumé.", "error");
+      return;
+    }
+    overlayState.tailorResult = res.result;
+    // Pre-check the keywords that were actually woven in.
+    overlayState.tailorKeywords = new Set(
+      addKeywords ?? res.result.missingKeywords
+    );
+    renderTailorResult();
+  } catch (err) {
+    setTailorStatus(err instanceof Error ? err.message : "Tailoring failed.", "error");
+  } finally {
+    overlayState.tailorBusy = false;
+    if (refs) {
+      refs.btnTailor.disabled = false;
+      refs.btnTailor.textContent = "Re-tailor for this job";
+    }
+  }
+}
+
+function renderTailorResult(): void {
+  if (!refs || !overlayState.tailorResult) return;
+  refs.tailorResult.innerHTML = buildTailorCardHtml(
+    overlayState.tailorResult,
+    overlayState.tailorKeywords
+  );
+
+  refs.tailorResult.querySelectorAll<HTMLButtonElement>(".ap-kw").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const kw = chip.dataset.kw ?? "";
+      if (overlayState.tailorKeywords.has(kw)) overlayState.tailorKeywords.delete(kw);
+      else overlayState.tailorKeywords.add(kw);
+      chip.classList.toggle("on");
+    });
+  });
+
+  refs.tailorResult
+    .querySelector("#ap-tailor-regen")
+    ?.addEventListener("click", () => void doTailor([...overlayState.tailorKeywords]));
+  refs.tailorResult
+    .querySelector("#ap-tailor-attach")
+    ?.addEventListener("click", () => void attachTailored());
+  refs.tailorResult
+    .querySelector("#ap-tailor-download")
+    ?.addEventListener("click", () => void downloadTailored());
+
+  // "Attach to form" only works when the page actually has a résumé field.
+  const attachBtn = refs.tailorResult.querySelector<HTMLButtonElement>("#ap-tailor-attach");
+  if (attachBtn && !hasResumeField()) {
+    attachBtn.disabled = true;
+    attachBtn.title = "No résumé upload field on this page — use Download instead.";
+  }
+}
+
+async function attachTailored(): Promise<void> {
+  if (!refs || !callbacks || !overlayState.tailorResult) return;
+  setTailorStatus("Attaching…", "");
+  const res = await callbacks.onAttachTailored(overlayState.tailorResult.document);
+  setTailorStatus(
+    res.ok ? "Résumé attached. Review before submitting." : res.reason ?? "Could not attach.",
+    res.ok ? "ok" : "error"
+  );
+}
+
+async function downloadTailored(): Promise<void> {
+  if (!refs || !callbacks || !overlayState.tailorResult) return;
+  setTailorStatus("Preparing download…", "");
+  const res = await callbacks.onDownloadTailored(overlayState.tailorResult.document);
+  setTailorStatus(res.ok ? "Downloaded." : res.reason ?? "Could not download.", res.ok ? "ok" : "error");
+}
+
+function setTailorStatus(text: string, kind: "ok" | "warn" | "error" | ""): void {
+  const el = refs?.tailorResult.querySelector<HTMLDivElement>("#ap-tailor-status");
+  if (el) {
+    el.textContent = text;
+    el.className = "ap-upload-status" + (kind ? ` ${kind}` : "");
+  } else if (refs) {
+    // No card yet (e.g. not signed in) — fall back to the résumé status line.
+    setUploadStatus(text, kind);
+  }
 }
