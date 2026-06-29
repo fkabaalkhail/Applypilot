@@ -11,3 +11,4 @@ bcrypt==4.2.0
 PyJWT[crypto]==2.9.0
 cryptography==44.0.0
 nh3==0.2.18
+reportlab==4.2.5
