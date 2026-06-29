@@ -13,9 +13,16 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import UserSettings, ResumeProfileDB
+from backend.db.models import UserSettings, ResumeProfileDB, SavedAnswer
 from backend.auth.dependencies import get_verified_user_id
 from backend.services.llm import get_llm_service
+from backend.services.embeddings import EmbeddingsService
+from backend.services.answer_memory import (
+    canonicalize_question,
+    categorize_question,
+    best_match,
+    MATCH_THRESHOLD,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -40,11 +47,15 @@ class FillRequest(BaseModel):
 
 
 class FieldAnswer(BaseModel):
-    """AI-generated answer for a single field."""
+    """An answer for a single field, tagged with how it was produced."""
     id: str
     label: str
     answer: str
     confidence: str = "high"  # high, medium, low
+    source: str = "rule"  # rule | profile | memory | ai
+    needsReview: bool = False  # AI suggestions + company-specific matches
+    category: str = "general"
+    canonicalQuestion: str = ""
 
 
 class FillResponse(BaseModel):
@@ -119,18 +130,63 @@ async def fill_form(
             resume_text = resume.raw_text or ""
 
     answers: list[FieldAnswer] = []
-    ai_fields: list[FormField] = []
+    remaining: list[FormField] = []
+    errors: list[str] = []
 
-    # Pass 1: rule-based answers
+    # Pass 1: rule-based / profile answers — filled silently.
     for field in request.fields:
         rule_answer = _rule_based_answer(field.label, field.options, settings)
         if rule_answer:
-            answers.append(FieldAnswer(id=field.id, label=field.label, answer=rule_answer))
+            answers.append(FieldAnswer(
+                id=field.id, label=field.label, answer=rule_answer, source="rule"
+            ))
         else:
-            ai_fields.append(field)
+            remaining.append(field)
 
-    # Pass 2: AI answers for remaining fields
-    errors: list[str] = []
+    # Pass 2: Question Memory — reuse previously approved answers by meaning.
+    # Generic matches fill silently; company-specific matches are flagged for
+    # review so one company's answer isn't pasted blind into another's form.
+    ai_fields: list[tuple[FormField, str]] = []
+    if remaining:
+        canonicals = [
+            canonicalize_question(f.label, request.company, request.jobTitle)
+            for f in remaining
+        ]
+        saved_rows = db.query(SavedAnswer).filter(SavedAnswer.user_id == user_id).all()
+        vectors = None
+        if saved_rows:
+            try:
+                vectors = await EmbeddingsService().embed_batch(canonicals)
+            except Exception as e:  # missing key, network — degrade to AI
+                logger.warning("Memory search unavailable: %s", e)
+                vectors = None
+
+        reused = False
+        for idx, field in enumerate(remaining):
+            canonical = canonicals[idx]
+            matched = None
+            if vectors is not None:
+                cand, score = best_match(vectors[idx], saved_rows)
+                if cand is not None and score >= MATCH_THRESHOLD:
+                    matched = cand
+            if matched is not None:
+                needs_review = matched.category == "company_specific"
+                if not needs_review:
+                    matched.times_reused = (matched.times_reused or 0) + 1
+                    reused = True
+                answers.append(FieldAnswer(
+                    id=field.id, label=field.label, answer=matched.answer,
+                    confidence="high", source="memory", needsReview=needs_review,
+                    category=matched.category, canonicalQuestion=canonical,
+                ))
+            else:
+                ai_fields.append((field, canonical))
+        if reused:
+            db.commit()
+
+    # Pass 3: AI generation for anything still unanswered. Suggestions are
+    # returned for review (needsReview) and never auto-saved — POST /api/answers
+    # is the only write path, used after the user accepts/edits.
     if ai_fields:
         try:
             llm = get_llm_service()
@@ -148,7 +204,7 @@ async def fill_form(
 
             context = "\n\n".join(context_parts)
 
-            for field in ai_fields:
+            for field, canonical in ai_fields:
                 try:
                     q = field.label
                     if field.options:
@@ -158,12 +214,14 @@ async def fill_form(
 
                     # Match to options if applicable
                     if field.options:
-                        matched = _match_option(answer, field.options)
-                        answer = matched or field.options[0]
+                        matched_opt = _match_option(answer, field.options)
+                        answer = matched_opt or field.options[0]
 
                     answers.append(FieldAnswer(
                         id=field.id, label=field.label, answer=answer,
-                        confidence="medium",
+                        confidence="medium", source="ai", needsReview=True,
+                        category=categorize_question(field.label),
+                        canonicalQuestion=canonical,
                     ))
                 except Exception as e:
                     logger.warning("AI failed for field '%s': %s", field.label, e)

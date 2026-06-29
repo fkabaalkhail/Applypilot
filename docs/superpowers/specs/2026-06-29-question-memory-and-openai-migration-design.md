@@ -112,7 +112,9 @@ a small keyword pass (e.g. "why … this company / why us / about us" → `compa
 work-auth from their existing categories) → the six-value enum, default `general`.
 
 **Matching:** embed the incoming canonical question → cosine against the user's rows → best
-match. Threshold **0.86** (constant, tunable). On save, **upsert/dedup**: if an existing
+match. Threshold **0.80** (constant, tunable; empirically set for
+text-embedding-3-small — a reworded same-question scores ~0.81, a merely-topical
+question ~0.55). On save, **upsert/dedup**: if an existing
 row has the same canonical text or cosine ≥ **0.97**, update its answer + bump
 `updated_at`/`times_reused` instead of inserting a duplicate.
 

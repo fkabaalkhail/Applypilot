@@ -146,6 +146,29 @@ class PendingQuestion(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class SavedAnswer(Base):
+    """A previously approved application answer, reusable across applications.
+
+    Searched by semantic similarity (embedding cosine) so the same question is
+    recognized regardless of company/role wording. Written only after the user
+    accepts or edits a suggestion — see POST /api/answers."""
+    __tablename__ = "saved_answers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    question_raw = Column(Text, nullable=False)
+    question_canonical = Column(Text, nullable=False, index=True)
+    answer = Column(Text, nullable=False)
+    category = Column(String, default="general")
+    embedding = Column(JSON, default=list)
+    embedding_model = Column(String, default="")
+    source = Column(String, default="ai")
+    times_reused = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                        onupdate=datetime.datetime.utcnow)
+
+
 class ResumeProfileDB(Base):
     """Stores a parsed resume profile in the database."""
     __tablename__ = "resume_profiles"
