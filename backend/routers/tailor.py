@@ -74,9 +74,10 @@ def render_resume_endpoint(
 ):
     """Render a structured résumé document to a PDF, returned as base64."""
     pdf = render_resume_pdf(body.document)
-    name = body.filename or "resume"
-    if not name.lower().endswith(".pdf"):
-        name = f"{_slug(name)}.pdf"
+    base = body.filename or "resume"
+    if base.lower().endswith(".pdf"):
+        base = base[:-4]
+    name = f"{_slug(base)}.pdf"
     return RenderResumeOut(
         data_base64=base64.b64encode(pdf).decode("ascii"),
         name=name,
