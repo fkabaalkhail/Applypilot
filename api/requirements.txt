@@ -16,3 +16,4 @@ nh3>=0.2.18
 pdfplumber>=0.11.0
 python-docx>=1.1.0
 pymupdf>=1.24.0
+reportlab>=4.2.5
