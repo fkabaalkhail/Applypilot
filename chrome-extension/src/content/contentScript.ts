@@ -26,13 +26,17 @@ import type {
   FieldsUpdatedEvent,
   FillResponse,
   PingResponse,
+  RenderResumeResponse,
+  ResumeDoc,
   ResumeFileResponse,
   ResumesResponse,
   ScanResponse,
+  TailorResumeOpts,
+  TailorResumeResponse,
   UserApplicationProfile,
 } from "../shared/types";
 import { deepQueryAll } from "./domUtils";
-import { base64ToFile, injectResumeFile } from "./fileUpload";
+import { base64ToFile, downloadBase64File, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, type RuntimeControl } from "./formScanner";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
@@ -239,6 +243,55 @@ function initialize(): void {
         control.el,
         base64ToFile(file.dataBase64, file.name, file.contentType)
       );
+    },
+    onTailorResume: async (opts: TailorResumeOpts) => {
+      const resp = await sendToBackground<TailorResumeResponse>({
+        type: "TAILOR_RESUME",
+        resumeId: opts.resumeId,
+        jobContext: extractJobContext(),
+        sections: opts.sections,
+        addKeywords: opts.addKeywords,
+      });
+      if (!resp?.ok || !resp.result) {
+        return {
+          ok: false,
+          needsLogin: resp?.needsLogin,
+          reason: resp?.error ?? "Could not tailor your résumé.",
+        };
+      }
+      return { ok: true, result: resp.result };
+    },
+    onAttachTailored: async (document: ResumeDoc) => {
+      const field = lastFields.find(
+        (f) => f.category === "resumeUpload" && f.controlType === "file"
+      );
+      const control = field ? registry.get(field.id) : undefined;
+      if (!control?.el) {
+        return { ok: false, reason: "No résumé upload field found on this page." };
+      }
+      const company = extractJobContext().company;
+      const file = await sendToBackground<RenderResumeResponse>({
+        type: "RENDER_RESUME",
+        document,
+        filename: company ? `resume-${company}` : "resume",
+      });
+      if (!file?.ok || !file.dataBase64) {
+        return { ok: false, reason: file?.error ?? "Could not render your résumé." };
+      }
+      return injectResumeFile(control.el, base64ToFile(file.dataBase64, file.name, file.contentType));
+    },
+    onDownloadTailored: async (document: ResumeDoc) => {
+      const company = extractJobContext().company;
+      const file = await sendToBackground<RenderResumeResponse>({
+        type: "RENDER_RESUME",
+        document,
+        filename: company ? `resume-${company}` : "resume",
+      });
+      if (!file?.ok || !file.dataBase64) {
+        return { ok: false, reason: file?.error ?? "Could not render your résumé." };
+      }
+      downloadBase64File(file.dataBase64, file.name, file.contentType);
+      return { ok: true };
     },
   };
 

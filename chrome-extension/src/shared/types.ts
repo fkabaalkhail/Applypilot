@@ -246,6 +246,51 @@ export interface AiDraft {
 }
 
 // ---------------------------------------------------------------------------
+// Résumé retailoring (backend POST /api/tailor-resume, /api/render-resume)
+// ---------------------------------------------------------------------------
+
+/** Opaque structured résumé document (backend ResumeDocument); passed through. */
+export type ResumeDoc = Record<string, unknown>;
+
+/** Options for a tailor request, chosen in the overlay. */
+export interface TailorResumeOpts {
+  resumeId: number | null;
+  sections?: string[];
+  /** null/undefined -> weave all missing keywords; a list -> exactly that set. */
+  addKeywords?: string[] | null;
+}
+
+/** Normalized tailor result the overlay renders (camelCase). */
+export interface TailorResult {
+  document: ResumeDoc;
+  originalScore: number;
+  newScore: number;
+  atsScore: number;
+  keywordCoverage: number;
+  matchedKeywords: string[];
+  missingKeywords: string[];
+  diffSummary: string;
+}
+
+/** Background reply for TAILOR_RESUME. */
+export interface TailorResumeResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  result?: TailorResult;
+}
+
+/** Background reply for RENDER_RESUME (mirrors ResumeFileResponse). */
+export interface RenderResumeResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  dataBase64?: string;
+  name: string;
+  contentType: string;
+}
+
+// ---------------------------------------------------------------------------
 // Popup <-> content script messages
 // ---------------------------------------------------------------------------
 
@@ -309,7 +354,15 @@ export type BackgroundRequest =
   | { type: "GET_SYNC"; forceRefresh?: boolean }
   | { type: "DOWNLOAD_RESUME"; resumeId: number }
   | { type: "OPEN_DASHBOARD" }
-  | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext };
+  | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext }
+  | {
+      type: "TAILOR_RESUME";
+      resumeId: number | null;
+      jobContext: JobContext;
+      sections?: string[];
+      addKeywords?: string[] | null;
+    }
+  | { type: "RENDER_RESUME"; document: ResumeDoc; filename?: string };
 
 export interface StatusResponse {
   ok: boolean;

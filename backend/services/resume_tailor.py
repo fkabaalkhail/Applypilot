@@ -7,11 +7,14 @@ relevant to the target job. Stores tailored versions linked to specific jobs.
 
 import difflib
 import logging
+from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from backend.db.models import TailoredResume, ScrapedJob, ResumeProfileDB
-from backend.schemas.ai import TailoredResumeOut
+from backend.schemas.ai import JobAnalysisOut, TailoredResumeOut
+from backend.schemas.resume_document import ResumeDocument
 from backend.services.llm import get_llm_service
+from backend.services.resume_document import document_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -101,3 +104,51 @@ class ResumeTailor:
             return None
 
         return await self.tailor_resume(profile.raw_text, job.description, job_id)
+
+
+@dataclass
+class TailorResult:
+    """Output of one tailoring pass: the rewritten doc + before/after scores."""
+    document: ResumeDocument
+    original_text: str
+    tailored_text: str
+    before: JobAnalysisOut
+    after: JobAnalysisOut
+    diff_summary: str
+
+
+async def tailor_document(
+    db: Session,
+    original_document: ResumeDocument,
+    job_title: str,
+    company: str,
+    job_description: str,
+    sections: list[str] | None = None,
+    add_keywords: list[str] | None = None,
+) -> TailorResult:
+    """Tailor a structured résumé to a job and score it before/after.
+
+    Shared by the web ``/ai/custom-resume`` flow and the extension
+    ``/api/tailor-resume`` endpoint so the two cannot drift.
+
+    Keyword semantics: when ``add_keywords`` is None, all of the job's missing
+    keywords are woven in (best one-click result); when a list is given (even
+    empty), exactly that set is used.
+    """
+    from backend.services.match_engine import MatchEngine  # local: avoid import cycle
+
+    engine = MatchEngine(db)
+    tailor = ResumeTailor(db)
+    original_text = document_to_text(original_document)
+    before = await engine.analyze_job(original_text, job_title, company, job_description)
+    keywords = add_keywords if add_keywords is not None else list(before.missing_keywords)
+    document = await tailor.llm.tailor_resume_structured(
+        original_document, job_description, sections, keywords
+    )
+    tailored_text = document_to_text(document)
+    after = await engine.analyze_job(tailored_text, job_title, company, job_description)
+    diff_summary = tailor.compute_diff(original_text, tailored_text)
+    return TailorResult(
+        document=document, original_text=original_text, tailored_text=tailored_text,
+        before=before, after=after, diff_summary=diff_summary,
+    )

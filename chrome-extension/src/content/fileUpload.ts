@@ -97,3 +97,14 @@ export function injectResumeFile(target: HTMLElement, file: File): UploadResult 
     };
   }
 }
+
+/** Trigger a browser download of base64 bytes (the "Download PDF" action). */
+export function downloadBase64File(b64: string, name: string, type: string): void {
+  const file = base64ToFile(b64, name, type);
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
