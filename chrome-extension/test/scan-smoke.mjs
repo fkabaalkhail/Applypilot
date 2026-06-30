@@ -57,6 +57,7 @@ window.HTMLElement.prototype.getClientRects = function () {
 
 for (const key of [
   "document",
+  "Document",
   "Node",
   "HTMLElement",
   "HTMLInputElement",
