@@ -204,7 +204,8 @@ function valueReflects(written: string, current: string): boolean {
  * Option matching, strictest first:
  *  1. exact value / exact visible text
  *  2. one contains the other ("No" → "No, I do not require sponsorship")
- *  3. token overlap ("Ottawa, ON, Canada" → option "Canada")
+ *  3. numeric-range containment ("about 3 years" → option "2-3 years")
+ *  4. token overlap ("Ottawa, ON, Canada" → option "Canada")
  */
 export function matchOption<T>(
   items: T[],
@@ -225,6 +226,21 @@ export function matchOption<T>(
     if (text.includes(t) || t.includes(text)) return item;
   }
 
+  // Bucketed numeric options ("2-3 years", "$90,000-$110,000", "6+ years") all
+  // reduce to the same handful of tokens ("years" / "000") once normalized, so
+  // generic token overlap can't tell them apart — it would always pick the
+  // first bucket. The AI is told to answer with exact option text but often
+  // answers conversationally with just the number ("about 3 years"); check
+  // whether the target's number actually falls inside an option's range
+  // before falling back to plain token overlap.
+  const targetNum = firstNumber(target);
+  if (targetNum !== null) {
+    for (const item of items) {
+      const range = parseRange(getText(item));
+      if (range && targetNum >= range[0] && targetNum <= range[1]) return item;
+    }
+  }
+
   const targetTokens = new Set(t.split(" ").filter((w) => w.length > 2));
   let best: { item: T; score: number } | null = null;
   for (const item of items) {
@@ -237,6 +253,31 @@ export function matchOption<T>(
     if (overlap > 0 && (!best || score > best.score)) best = { item, score };
   }
   return best ? best.item : null;
+}
+
+/** The first number (comma thousands-separators tolerated) mentioned in text, or null. */
+function firstNumber(text: string): number | null {
+  const m = text.replace(/,/g, "").match(/\d+(?:\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+}
+
+/**
+ * Parse a bucketed-range option label ("2-3 years", "$90,000-$110,000",
+ * "6+ years", "Under 1 year") into an inclusive [min, max] (Infinity for an
+ * open end) — or null when the text isn't a recognizable numeric range.
+ */
+function parseRange(text: string): [number, number] | null {
+  // Strip thousands separators and currency symbols so "$50,000-$70,000"
+  // reads as "50000-70000" — a "$" between the dash and the second number
+  // would otherwise break the separator match below.
+  const cleaned = text.replace(/,/g, "").replace(/[$€£¥]/g, "");
+  const between = cleaned.match(/(\d+(?:\.\d+)?)\s*(?:-|to|–|—)\s*(\d+(?:\.\d+)?)/i);
+  if (between) return [parseFloat(between[1]), parseFloat(between[2])];
+  const plus = cleaned.match(/(\d+(?:\.\d+)?)\s*\+/);
+  if (plus) return [parseFloat(plus[1]), Infinity];
+  const under = cleaned.match(/(?:under|less than|<)\s*(\d+(?:\.\d+)?)/i);
+  if (under) return [-Infinity, parseFloat(under[1])];
+  return null;
 }
 
 function matchSelectOption(el: HTMLSelectElement, value: string): HTMLOptionElement | null {

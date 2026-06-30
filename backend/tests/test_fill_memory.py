@@ -182,3 +182,40 @@ def test_ai_answer_snaps_to_a_matching_option(client):
     assert resp.status_code == 200
     ans = resp.json()["answers"][0]
     assert ans["answer"] == "Silver"  # snapped to the real option, original casing
+
+
+def test_ai_answer_snaps_to_a_numeric_range_bucket(client):
+    # Bucketed options ("2-3 years") all share the substring "years", so a plain
+    # contains-check can't tell them apart; the AI is told to answer with exact
+    # option text but often answers conversationally with just the number.
+    body = {
+        "fields": [{
+            "id": "f1",
+            "label": "Years of experience?",
+            "type": "select",
+            "options": ["0-1 years", "2-3 years", "4-5 years", "6+ years"],
+        }]
+    }
+    with patch(_EMBED, AsyncMock(return_value=[[0.0, 1.0]])), \
+         patch(_ANSWER, AsyncMock(return_value="I have approximately 3 years of experience")):
+        resp = client.post("/api/fill", json=body)
+    assert resp.status_code == 200
+    ans = resp.json()["answers"][0]
+    assert ans["answer"] == "2-3 years"  # not the first bucket
+
+
+def test_ai_answer_snaps_to_a_salary_range_bucket(client):
+    body = {
+        "fields": [{
+            "id": "f1",
+            "label": "Expected salary?",
+            "type": "select",
+            "options": ["$50,000-$70,000", "$70,000-$90,000", "$90,000-$110,000", "$110,000+"],
+        }]
+    }
+    with patch(_EMBED, AsyncMock(return_value=[[0.0, 1.0]])), \
+         patch(_ANSWER, AsyncMock(return_value="My expected salary is around $95,000")):
+        resp = client.post("/api/fill", json=body)
+    assert resp.status_code == 200
+    ans = resp.json()["answers"][0]
+    assert ans["answer"] == "$90,000-$110,000"  # not the first bucket

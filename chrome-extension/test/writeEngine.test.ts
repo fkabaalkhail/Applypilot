@@ -94,6 +94,66 @@ describe("writeControl — select", () => {
   });
 });
 
+// Bucketed numeric-range options ("2-3 years", "$90,000-$110,000") are common
+// for experience/salary dropdowns. The AI is told to answer with the exact
+// option text but often answers conversationally with just the number instead
+// ("I have about 3 years of experience") — token-overlap alone can't tell
+// these options apart (every "_-_ years" option reduces to the same "years"
+// token), so without range-aware matching the FIRST bucket always wins
+// regardless of the number actually stated.
+describe("writeControl — select (bucketed numeric ranges)", () => {
+  it("picks the range option that actually contains the stated number, not the first option", () => {
+    const el = mount(
+      `<select>
+         <option value="">Select…</option>
+         <option value="a">0-1 years</option>
+         <option value="b">2-3 years</option>
+         <option value="c">4-5 years</option>
+         <option value="d">6+ years</option>
+       </select>`
+    ) as HTMLSelectElement;
+    const control: RuntimeControl = { id: "s-3", controlType: "select", el };
+
+    const res = writeControl(control, "I have approximately 3 years of experience");
+
+    expect(res.written).toBe(true);
+    expect(el.value).toBe("b"); // "2-3 years" — not "0-1 years"
+    expect(verifyControl(control, "I have approximately 3 years of experience")).toBe(true);
+  });
+
+  it("matches an open-ended '+' bucket", () => {
+    const el = mount(
+      `<select>
+         <option value="a">0-1 years</option>
+         <option value="b">2-3 years</option>
+         <option value="c">4-5 years</option>
+         <option value="d">6+ years</option>
+       </select>`
+    ) as HTMLSelectElement;
+    const control: RuntimeControl = { id: "s-4", controlType: "select", el };
+
+    writeControl(control, "Around 8 years");
+
+    expect(el.value).toBe("d"); // "6+ years"
+  });
+
+  it("matches a comma-formatted salary-range bucket", () => {
+    const el = mount(
+      `<select>
+         <option value="a">$50,000-$70,000</option>
+         <option value="b">$70,000-$90,000</option>
+         <option value="c">$90,000-$110,000</option>
+         <option value="d">$110,000+</option>
+       </select>`
+    ) as HTMLSelectElement;
+    const control: RuntimeControl = { id: "s-5", controlType: "select", el };
+
+    writeControl(control, "My expected salary is around $95,000");
+
+    expect(el.value).toBe("c"); // "$90,000-$110,000" — not the first bucket
+  });
+});
+
 describe("writeControl — checkbox", () => {
   it("checks for an affirmative value and verifies", () => {
     const el = mount(`<input type="checkbox" />`) as HTMLInputElement;

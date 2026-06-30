@@ -6,6 +6,7 @@ Used by both the Plasmo extension and the React frontend.
 """
 
 import logging
+import re
 from typing import Optional
 
 from pydantic import BaseModel
@@ -237,6 +238,29 @@ async def fill_form(
     return FillResponse(answers=answers, errors=errors)
 
 
+def _first_number(text: str) -> Optional[float]:
+    """The first number (comma thousands-separators tolerated) in text, or None."""
+    m = re.search(r"\d+(?:\.\d+)?", text.replace(",", ""))
+    return float(m.group()) if m else None
+
+
+def _parse_range(text: str) -> Optional[tuple[float, float]]:
+    """Parse a bucketed-range option ("2-3 years", "$90,000-$110,000", "6+
+    years", "Under 1 year") into an inclusive (min, max) — Infinity for an
+    open end — or None when the text isn't a recognizable numeric range."""
+    cleaned = re.sub(r"[,$€£¥]", "", text)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to|–|—)\s*(\d+(?:\.\d+)?)", cleaned, re.IGNORECASE)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    m = re.search(r"(\d+(?:\.\d+)?)\s*\+", cleaned)
+    if m:
+        return float(m.group(1)), float("inf")
+    m = re.search(r"(?:under|less than|<)\s*(\d+(?:\.\d+)?)", cleaned, re.IGNORECASE)
+    if m:
+        return float("-inf"), float(m.group(1))
+    return None
+
+
 def _match_option(answer: str, options: list[str]) -> str | None:
     """Match AI answer text to one of the available options."""
     a = answer.lower().strip()
@@ -246,4 +270,14 @@ def _match_option(answer: str, options: list[str]) -> str | None:
     for opt in options:
         if opt.lower().strip() in a or a in opt.lower():
             return opt
+    # Bucketed numeric options ("2-3 years", "$90,000-$110,000") share no
+    # literal substring with a conversational answer ("about 3 years") even
+    # though the AI is told to answer with exact option text — check whether
+    # the answer's number actually falls inside an option's range.
+    target_num = _first_number(answer)
+    if target_num is not None:
+        for opt in options:
+            rng = _parse_range(opt)
+            if rng and rng[0] <= target_num <= rng[1]:
+                return opt
     return None
