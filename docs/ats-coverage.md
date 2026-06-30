@@ -2,7 +2,7 @@
 
 Track which ATS systems have been tested and confirmed working with the Tailrd extension.
 
-**Progress:** 2 / 15 covered
+**Progress:** 3 / 15 covered
 
 ---
 
@@ -52,7 +52,7 @@ Track which ATS systems have been tested and confirmed working with the Tailrd e
 - [x] **iCIMS** *(iCIMS Inc.)*
   Heavy use of nested iframes — each section of the form often lives in its own iframe. FRAME_TOKEN and iframe coordination logic is critical here. Commonly used by large enterprises and retailers.
 
-- [ ] **Taleo** *(Oracle)*
+- [x] **Taleo** *(Oracle)*
   Legacy Oracle product built on old Java-based web tech. Expect unusual form structures, non-standard inputs, and iframe-heavy layouts. Very common in government, healthcare, and large enterprises. Notoriously painful to autofill.
 
 - [ ] **ADP Recruiting Management** *(ADP Inc.)*
