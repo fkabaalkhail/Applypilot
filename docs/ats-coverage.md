@@ -2,7 +2,7 @@
 
 Track which ATS systems have been tested and confirmed working with the Tailrd extension.
 
-**Progress:** 4 / 15 covered
+**Progress:** 5 / 15 covered
 
 ---
 
@@ -58,7 +58,7 @@ Track which ATS systems have been tested and confirmed working with the Tailrd e
 - [x] **ADP Recruiting Management** *(ADP Inc.)*
   Legacy tech, iframes, and inconsistent field naming. ADP's frontend varies between clients. Common in large US corporations, especially in finance and manufacturing.
 
-- [ ] **SAP SuccessFactors** *(SAP SE)*
+- [x] **SAP SuccessFactors** *(SAP SE)*
   Complex multi-step forms built on SAP's own UI framework — not standard HTML. Heavy shadow DOM usage and custom components throughout. One of the hardest ATSs to reliably autofill. Common in European multinationals.
 
 ---
