@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import JobDetailView from "../components/JobDetailView";
+import type { ReactElement } from "react";
+import { ApplyTrackingProvider } from "../context/ApplyTracking";
+
+function renderWithProviders(ui: ReactElement) {
+  return render(<ApplyTrackingProvider>{ui}</ApplyTrackingProvider>);
+}
 
 const mockJob = {
   id: 1,
@@ -37,7 +43,7 @@ describe("JobDetailView", () => {
   });
 
   it("renders job details with full match breakdown", () => {
-    render(<JobDetailView job={mockJob} />);
+    renderWithProviders(<JobDetailView job={mockJob} />);
 
     expect(screen.getByText("Senior Software Engineer")).toBeInTheDocument();
     expect(screen.getByText("TechCorp")).toBeInTheDocument();
@@ -48,7 +54,7 @@ describe("JobDetailView", () => {
   });
 
   it("renders match breakdown bars", () => {
-    render(<JobDetailView job={mockJob} />);
+    renderWithProviders(<JobDetailView job={mockJob} />);
 
     expect(screen.getByText("Match Breakdown")).toBeInTheDocument();
     expect(screen.getByText("Experience")).toBeInTheDocument();
@@ -59,19 +65,19 @@ describe("JobDetailView", () => {
   });
 
   it("displays correct match label for strong match", () => {
-    render(<JobDetailView job={mockJob} />);
+    renderWithProviders(<JobDetailView job={mockJob} />);
     expect(screen.getByText("STRONG MATCH")).toBeInTheDocument();
   });
 
   it("displays correct match label for good match", () => {
     const goodMatchJob = { ...mockJob, match_score: 65, match_label: "GOOD MATCH", experience_score: 65, skill_score: 60, industry_score: 70 };
-    render(<JobDetailView job={goodMatchJob} />);
+    renderWithProviders(<JobDetailView job={goodMatchJob} />);
     expect(screen.getByText("GOOD MATCH")).toBeInTheDocument();
   });
 
   it("displays correct match label for fair match", () => {
     const fairMatchJob = { ...mockJob, match_score: 45, match_label: "FAIR MATCH", experience_score: 40, skill_score: 50, industry_score: 45 };
-    render(<JobDetailView job={fairMatchJob} />);
+    renderWithProviders(<JobDetailView job={fairMatchJob} />);
     expect(screen.getByText("FAIR MATCH")).toBeInTheDocument();
   });
 
@@ -88,7 +94,7 @@ describe("JobDetailView", () => {
     });
     global.fetch = mockFetch;
 
-    render(<JobDetailView job={mockJobNoMatch} />);
+    renderWithProviders(<JobDetailView job={mockJobNoMatch} />);
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith("/ai/match-breakdown/2", { method: "POST" });
@@ -98,7 +104,7 @@ describe("JobDetailView", () => {
   it("shows loading state during analysis", () => {
     global.fetch = vi.fn().mockReturnValue(new Promise(() => {})); // Never resolves
 
-    render(<JobDetailView job={mockJobNoMatch} />);
+    renderWithProviders(<JobDetailView job={mockJobNoMatch} />);
     expect(screen.getByText("Analyzing match...")).toBeInTheDocument();
   });
 });

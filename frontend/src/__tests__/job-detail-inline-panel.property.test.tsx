@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import * as fc from "fast-check";
 import React from "react";
+import { ApplyTrackingProvider } from "../context/ApplyTracking";
 
 /**
  * Feature: job-detail-inline-panel
@@ -242,7 +243,11 @@ describe("Feature: job-detail-inline-panel, Property 1: Inline rendering without
 
     fc.assert(
       fc.property(jobArb, (job) => {
-        const { container } = render(<Jobs />);
+        const { container } = render(
+          <ApplyTrackingProvider>
+            <Jobs />
+          </ApplyTrackingProvider>
+        );
 
         // Even with the actual component, no overlay should exist
         const overlay = container.querySelector(".job-detail-overlay");
@@ -331,7 +336,9 @@ describe("Feature: job-detail-inline-panel, Property 2: Detail panel content com
     fc.assert(
       fc.property(populatedJobArb, (job) => {
         const { container } = render(
-          <RealJobDetailView job={job as any} onClose={() => {}} />
+          <ApplyTrackingProvider>
+            <RealJobDetailView job={job as any} onClose={() => {}} />
+          </ApplyTrackingProvider>
         );
 
         // Title should be present
