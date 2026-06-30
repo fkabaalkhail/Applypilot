@@ -180,8 +180,10 @@ function findMountedListbox(trigger: HTMLElement): HTMLElement | null {
   }
   // Same-container fallback: a listbox rendered next to the trigger (not a
   // document-wide search, which could grab an unrelated open menu at scan time).
+  // [role="combobox"] is intentionally excluded — the trigger is often that
+  // element itself, and closest() would then return it (no listbox descendant).
   const container =
-    trigger.closest('[class*="select" i], [class*="combobox" i], [role="combobox"]') ?? trigger.parentElement;
+    trigger.closest('[class*="select" i], [class*="combobox" i]') ?? trigger.parentElement;
   const lb = container?.querySelector('[role="listbox"]') as HTMLElement | null;
   return lb && hasOptions(lb) ? lb : null;
 }
@@ -214,8 +216,13 @@ function activeDescendantText(trigger: HTMLElement): string {
 
 /** Texts of react-select-style single/multi-value display elements near the trigger. */
 function valueContainerTexts(trigger: HTMLElement): string[] {
+  // NB: do not include [role="combobox"] here — the trigger itself is often the
+  // role=combobox element, and closest() would return it (an <input> has no
+  // value-display descendant). Climb to the select/combobox wrapper instead;
+  // querySelectorAll is recursive, so a value nested under a classless
+  // div[role=combobox] is still found via the trigger's parent.
   const container =
-    trigger.closest('[class*="select" i], [class*="combobox" i], [role="combobox"]') ??
+    trigger.closest('[class*="select" i], [class*="combobox" i]') ??
     trigger.parentElement ??
     trigger;
   return Array.from(
