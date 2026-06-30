@@ -199,20 +199,25 @@ function initialize(): void {
    * and deliberately NOT handed to the reconciler — re-driving a dropdown on
    * every mutation is the churn we avoid. Returns popup-style outcomes.
    */
-  async function fillComboboxFields(
-    fields: DetectedField[]
+  async function fillComboboxTargets(
+    targets: { fieldId: string; value: string }[]
   ): Promise<{ fieldId: string; ok: boolean }[]> {
     const outcomes: { fieldId: string; ok: boolean }[] = [];
-    for (const f of fields) {
-      const el = registry.get(f.id)?.el;
-      if (!el || f.proposedValue === null) {
-        outcomes.push({ fieldId: f.id, ok: false });
+    for (const t of targets) {
+      const el = registry.get(t.fieldId)?.el;
+      if (!el) {
+        outcomes.push({ fieldId: t.fieldId, ok: false });
         continue;
       }
-      const res = await fillAriaCombobox(el, f.proposedValue);
-      outcomes.push({ fieldId: f.id, ok: res.filled });
+      const res = await fillAriaCombobox(el, t.value);
+      outcomes.push({ fieldId: t.fieldId, ok: res.filled });
     }
     return outcomes;
+  }
+
+  /** Whether a tracked field is a custom ARIA dropdown (filled by comboboxEngine). */
+  function isComboboxField(fieldId: string): boolean {
+    return registry.get(fieldId)?.controlType === "combobox";
   }
 
   const overlayCallbacks: OverlayCallbacks = {
@@ -230,14 +235,17 @@ function initialize(): void {
       const localReports = await getEngine().run(targets, registry);
 
       // Phase 1b — custom ARIA dropdowns, driven one-shot by the listbox engine.
-      const comboOutcomes = await fillComboboxFields(
-        selected.filter((f) => f.controlType === "combobox")
+      const comboOutcomes = await fillComboboxTargets(
+        selected
+          .filter((f) => f.controlType === "combobox")
+          .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }))
       );
 
       // Phase 2 — AI fill for fields the profile couldn't answer (best-effort).
       const candidates = aiFillCandidates(lastFields);
       const drafts: AiDraft[] = [];
       let aiReports: FieldReport[] = [];
+      let aiComboOutcomes: { fieldId: string; ok: boolean }[] = [];
       if (candidates.length > 0) {
         try {
           const resp = await sendToBackground<AiFillResponse>({
@@ -248,8 +256,15 @@ function initialize(): void {
           if (resp?.ok) {
             const plan = planAiFill(candidates, resp.answers);
             drafts.push(...plan.drafts);
-            if (plan.simpleTargets.length > 0) {
-              aiReports = await getEngine().addTargets(plan.simpleTargets, registry);
+            // Silent answers: custom dropdowns go through the listbox engine
+            // (writeControl can't script them); everything else via the reconciler.
+            const aiCombo = plan.simpleTargets.filter((t) => isComboboxField(t.fieldId));
+            const aiSimple = plan.simpleTargets.filter((t) => !isComboboxField(t.fieldId));
+            if (aiSimple.length > 0) {
+              aiReports = await getEngine().addTargets(aiSimple, registry);
+            }
+            if (aiCombo.length > 0) {
+              aiComboOutcomes = await fillComboboxTargets(aiCombo);
             }
           }
         } catch {
@@ -257,12 +272,21 @@ function initialize(): void {
         }
       }
 
-      const { ok, fail, total } = tallyOutcomes(localReports, aiReports, comboOutcomes);
+      const { ok, fail, total } = tallyOutcomes(localReports, aiReports, comboOutcomes, aiComboOutcomes);
       return { ok, fail, total, drafts };
     },
     onInsertAnswer: async (fieldId: string, value: string) => {
       const control = registry.get(fieldId);
       if (!control) return { ok: false, reason: "Field is no longer on the page — rescan." };
+      // Custom dropdowns can't be scripted by writeControl — open the listbox
+      // and click the option matching the (accepted) answer instead.
+      if (control.controlType === "combobox") {
+        if (!control.el) return { ok: false, reason: "Dropdown is no longer on the page — rescan." };
+        const res = await fillAriaCombobox(control.el, value);
+        return res.filled
+          ? { ok: true }
+          : { ok: false, reason: res.reason ?? "Couldn't select that option — choose it manually." };
+      }
       const res = writeControl(control, value);
       if (!res.written) return { ok: false, reason: res.reason };
       return verifyControl(control, value)

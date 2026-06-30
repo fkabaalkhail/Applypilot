@@ -25,15 +25,15 @@ export function isLongform(field: DetectedField): boolean {
 export function isAiCandidate(field: DetectedField): boolean {
   if (!field.fillable || field.sensitive) return false;
   if (field.controlType === "file" || field.controlType === "customDropdown") return false;
-  // Comboboxes are filled by the listbox engine during the local pass, not via
-  // the AI text-fill path (which can't drive a custom dropdown). Out of scope
-  // for AI fill for now.
-  if (field.controlType === "combobox") return false;
   if (field.controlType === "textarea" || field.controlType === "contenteditable") return true;
   if (
     field.controlType === "select" ||
     field.controlType === "radioGroup" ||
-    field.controlType === "checkbox"
+    field.controlType === "checkbox" ||
+    // Custom ARIA dropdowns: the AI answers them like any choice field; the
+    // answer is then driven into the widget by the listbox engine (see
+    // contentScript), since writeControl can't script a combobox directly.
+    field.controlType === "combobox"
   ) {
     return true;
   }

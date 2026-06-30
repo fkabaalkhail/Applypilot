@@ -49,6 +49,11 @@ describe("isAiCandidate", () => {
     expect(isAiCandidate(field({ controlType: "radioGroup", options: ["Yes", "No"] }))).toBe(true);
     expect(isAiCandidate(field({ controlType: "select", options: ["A", "B"] }))).toBe(true);
   });
+  it("includes custom dropdowns (comboboxes) so the AI answers them", () => {
+    expect(isAiCandidate(field({ controlType: "combobox" }))).toBe(true);
+    // …but still skips a sensitive (EEO) dropdown.
+    expect(isAiCandidate(field({ controlType: "combobox", sensitive: true }))).toBe(false);
+  });
   it("includes long-form free text", () => {
     expect(isAiCandidate(field({ controlType: "textarea" }))).toBe(true);
   });
