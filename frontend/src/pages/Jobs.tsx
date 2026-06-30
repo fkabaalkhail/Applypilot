@@ -4,6 +4,7 @@ import JobDetailView from "../components/JobDetailView";
 import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
 import api from "../auth/api";
+import { useApplyTracking } from "../context/ApplyTracking";
 import { resolveLogoUrl, avatarColor } from "../lib/companyLogo";
 import {
   MagnifyingGlass,
@@ -114,6 +115,7 @@ export default function Jobs() {
   const [rewriteJob, setRewriteJob] = useState<AIJob | null>(null);
   const [coverJob, setCoverJob] = useState<AIJob | null>(null);
   const [filtersVisible, setFiltersVisible] = useState(true);
+  const { registerApplyClick } = useApplyTracking();
 
   const jobsListRef = useRef<HTMLDivElement>(null);
   const prevSelectedJobRef = useRef<Job | null>(null);
@@ -243,11 +245,9 @@ export default function Jobs() {
   const TABS = [
     { label: "All", count: null },
     { label: "Liked", count: stats.saved_count },
-    { label: "Applied", count: stats.applied },
   ];
 
   const filteredJobs = jobs.filter((j) => {
-    if (activeTab === "Applied") return j.status === "applied";
     if (activeTab === "Liked") return j.saved;
     return true;
   });
@@ -420,7 +420,15 @@ export default function Jobs() {
                     >
                       <Envelope size={15} weight="fill" /> Cover Letter
                     </button>
-                    <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-apply">APPLY WITH AUTOFILL</a>
+                    <a
+                      href={job.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-apply"
+                      onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company })}
+                    >
+                      APPLY WITH AUTOFILL
+                    </a>
                   </div>
                 </div>
               </div>

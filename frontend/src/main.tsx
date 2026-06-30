@@ -7,6 +7,7 @@ import App from "./App";
 import Landing from "./pages/Landing";
 import Jobs from "./pages/Jobs";
 import JobsList from "./pages/JobsList";
+import Applications from "./pages/Applications";
 import Resume from "./pages/Resume";
 import ResumeDetail from "./pages/ResumeDetail";
 import Profile from "./pages/Profile";
@@ -49,7 +50,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="refer" element={<Refer />} />
             <Route path="feedback" element={<Feedback />} />
             <Route path="interview" element={<Interview />} />
-            <Route path="applications" element={<div className="page-stub"><h1>📋 Applications</h1><p>Track your applied jobs. Coming soon.</p></div>} />
+            <Route path="applications" element={<Applications />} />
           </Route>
         </Routes>
       </BrowserRouter>

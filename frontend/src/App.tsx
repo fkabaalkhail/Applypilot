@@ -19,6 +19,8 @@ import {
   LinkedinLogo,
   XLogo,
 } from "@phosphor-icons/react";
+import { ApplyTrackingProvider } from "./context/ApplyTracking";
+import ApplyConfirmModal from "./components/ApplyConfirmModal";
 
 export default function App() {
   const { user, logout } = useAuth();
@@ -36,6 +38,7 @@ export default function App() {
   };
 
   return (
+    <ApplyTrackingProvider>
     <div className={`app-layout${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         {/* Logo */}
@@ -189,6 +192,8 @@ export default function App() {
           </div>
         </div>
       )}
+      <ApplyConfirmModal />
     </div>
+    </ApplyTrackingProvider>
   );
 }

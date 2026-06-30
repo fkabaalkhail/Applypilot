@@ -19,7 +19,6 @@ interface Job {
 // Replicate the tab filtering logic from Jobs.tsx
 function filterByTab(jobs: Job[], activeTab: string): Job[] {
   return jobs.filter((j) => {
-    if (activeTab === "Applied") return j.status === "applied";
     if (activeTab === "Liked") return j.saved;
     return true; // "All" shows everything
   });
@@ -41,20 +40,6 @@ describe("Property 12: Tab Filter Correctness and Sort Order", () => {
       fc.property(jobsArb, (jobs) => {
         const result = filterByTab(jobs, "All");
         expect(result.length).toBe(jobs.length);
-      })
-    );
-  });
-
-  it("Applied tab returns only jobs with status 'applied'", () => {
-    fc.assert(
-      fc.property(jobsArb, (jobs) => {
-        const result = filterByTab(jobs, "Applied");
-        for (const job of result) {
-          expect(job.status).toBe("applied");
-        }
-        // All applied jobs should be included
-        const expectedCount = jobs.filter((j) => j.status === "applied").length;
-        expect(result.length).toBe(expectedCount);
       })
     );
   });
@@ -85,7 +70,6 @@ describe("Property 12: Tab Filter Correctness and Sort Order", () => {
   it("filtered results are a subset of the original jobs", () => {
     const tabArb = fc.oneof(
       fc.constant("All"),
-      fc.constant("Applied"),
       fc.constant("Liked")
     );
 

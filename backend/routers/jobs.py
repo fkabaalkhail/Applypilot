@@ -8,6 +8,7 @@ POST /jobs/{id}/save   — save a job
 POST /jobs/{id}/unsave — unsave a job
 """
 
+import datetime
 import logging
 import re
 from typing import Optional
@@ -20,6 +21,7 @@ from backend.db.database import get_db
 from backend.db.models import ScrapedJob, JobStatus, ApplicationRecord, UserSavedJob
 from backend.auth.dependencies import get_verified_user_id, get_optional_user_id, get_admin_user_id
 from backend.schemas.jobs import ScrapedJobOut
+from backend.schemas.application import ApplicationOut
 from backend.services.description_extractor import (
     BROWSER_HEADERS,
     extract_description_from_html,
@@ -283,7 +285,7 @@ def job_stats(
     }
 
 
-@router.get("/applications")
+@router.get("/applications", response_model=list[ApplicationOut])
 def list_applications(
     user_id: int = Depends(get_verified_user_id),
     page: int = Query(1, ge=1),
@@ -620,6 +622,43 @@ def unsave_job(
     ).delete()
     db.commit()
     return _overlay_saved(db, [job], user_id)[0]
+
+
+@router.post("/{job_id}/mark-applied", response_model=ApplicationOut)
+def mark_applied(
+    job_id: int,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Record that the current user applied to a job (manual apply confirmation)."""
+    job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    job.status = JobStatus.APPLIED
+
+    record = (
+        db.query(ApplicationRecord)
+        .filter(ApplicationRecord.user_id == user_id, ApplicationRecord.job_id == job_id)
+        .first()
+    )
+    if record:
+        record.applied_at = datetime.datetime.utcnow()
+    else:
+        record = ApplicationRecord(
+            user_id=user_id,
+            job_id=job_id,
+            platform=job.source_platform or "linkedin",
+            company=job.company,
+            role=job.title,
+            url=job.url,
+            applied_at=datetime.datetime.utcnow(),
+        )
+        db.add(record)
+
+    db.commit()
+    db.refresh(record)
+    return record
 
 
 @router.post("/fix-empty-companies")

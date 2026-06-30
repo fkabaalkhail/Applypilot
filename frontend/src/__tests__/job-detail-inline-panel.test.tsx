@@ -3,6 +3,11 @@ import { render, screen, cleanup } from "@testing-library/react";
 import React from "react";
 import fs from "fs";
 import path from "path";
+import { ApplyTrackingProvider } from "../context/ApplyTracking";
+
+function renderWithProviders(ui: React.ReactElement) {
+  return render(<ApplyTrackingProvider>{ui}</ApplyTrackingProvider>);
+}
 
 /**
  * Unit tests for job-detail-inline-panel layout and accessibility.
@@ -61,7 +66,7 @@ describe("Job Detail Inline Panel - Unit Tests (Task 6.7)", () => {
    */
   it("default state renders full-width list without detail panel (Req 1.4)", async () => {
     const { default: Jobs } = await import("../pages/Jobs");
-    const { container } = render(<Jobs />);
+    const { container } = renderWithProviders(<Jobs />);
 
     // The content area should exist
     const contentArea = container.querySelector(".jobs-content-area");
@@ -126,7 +131,7 @@ describe("Job Detail Inline Panel - Unit Tests (Task 6.7)", () => {
       typeof import("../components/JobDetailView")
     >("../components/JobDetailView");
 
-    render(<JobDetailView job={mockJob as any} onClose={() => {}} />);
+    renderWithProviders(<JobDetailView job={mockJob as any} onClose={() => {}} />);
 
     // Find the close button by aria-label
     const closeButton = screen.getByRole("button", { name: "Close detail panel" });
@@ -145,7 +150,7 @@ describe("Job Detail Inline Panel - Unit Tests (Task 6.7)", () => {
    */
   it("no job-detail-overlay element exists in the rendered output (Req 2.2)", async () => {
     const { default: Jobs } = await import("../pages/Jobs");
-    const { container } = render(<Jobs />);
+    const { container } = renderWithProviders(<Jobs />);
 
     // No overlay element should exist
     const overlay = container.querySelector(".job-detail-overlay");
@@ -161,7 +166,7 @@ describe("Job Detail Inline Panel - Unit Tests (Task 6.7)", () => {
       typeof import("../components/JobDetailView")
     >("../components/JobDetailView");
 
-    render(<JobDetailView job={mockJob as any} onClose={() => {}} />);
+    renderWithProviders(<JobDetailView job={mockJob as any} onClose={() => {}} />);
 
     // Check for "Apply with Autofill" button/link
     const applyButton = screen.getByText(/Apply with Autofill/i);
