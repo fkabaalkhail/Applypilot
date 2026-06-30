@@ -869,6 +869,10 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   font-weight: 500;
 }
 
+.applied-date-badge {
+  color: var(--accent);
+}
+
 .badge-source {
   font-size: 0.72rem;
   color: var(--accent);
