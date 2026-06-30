@@ -80,7 +80,7 @@ class ScrapedJob(Base):
     __tablename__ = "scraped_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     platform = Column(String, default="linkedin")
     title = Column(String, nullable=False)
     company = Column(String, nullable=False)
@@ -136,7 +136,7 @@ class PendingQuestion(Base):
     __tablename__ = "pending_questions"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     job_id = Column(Integer, nullable=False)
     task_id = Column(String, nullable=True)
     question = Column(Text, nullable=False)
@@ -155,7 +155,7 @@ class SavedAnswer(Base):
     __tablename__ = "saved_answers"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     question_raw = Column(Text, nullable=False)
     question_canonical = Column(Text, nullable=False, index=True)
     answer = Column(Text, nullable=False)
@@ -174,7 +174,7 @@ class ResumeProfileDB(Base):
     __tablename__ = "resume_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String, default="Untitled Resume")
     target_job_title = Column(String, nullable=True)
     is_primary = Column(Integer, default=0)
@@ -219,7 +219,7 @@ class ApplicationRecord(Base):
     __tablename__ = "application_records"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     platform = Column(String, nullable=False, default="linkedin")
     company = Column(String, nullable=False)
     role = Column(String, nullable=False)
@@ -243,7 +243,7 @@ class UserSettings(Base):
     __tablename__ = "user_settings"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, unique=True, index=True)
 
     # LinkedIn credentials
     linkedin_email = Column(String, default="")
@@ -318,7 +318,7 @@ class BotRun(Base):
     __tablename__ = "bot_runs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     task_id = Column(String, unique=True, index=True)
     status = Column(String, default="idle")
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -334,7 +334,7 @@ class ConnectionRequest(Base):
     __tablename__ = "connection_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     job_id = Column(Integer, nullable=True)
     contact_name = Column(String, nullable=False)
     contact_title = Column(String, default="")
@@ -350,7 +350,7 @@ class AutopilotRun(Base):
     __tablename__ = "autopilot_runs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     task_id = Column(String, unique=True, index=True)
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
     stopped_at = Column(DateTime, nullable=True)
@@ -387,7 +387,7 @@ class TailoredResume(Base):
     __tablename__ = "tailored_resumes"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     job_id = Column(Integer, nullable=False)
     original_text = Column(Text, nullable=False)
     tailored_text = Column(Text, nullable=False)
@@ -405,7 +405,7 @@ class ResumeVersion(Base):
     __tablename__ = "resume_versions"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     resume_id = Column(Integer, ForeignKey("resume_profiles.id"), nullable=True, index=True)
     job_id = Column(Integer, nullable=True, index=True)
     label = Column(String, default="")
@@ -424,7 +424,7 @@ class CoverLetter(Base):
     __tablename__ = "cover_letters"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     resume_id = Column(Integer, nullable=True)
     job_id = Column(Integer, nullable=True, index=True)
     job_title = Column(String, default="")
@@ -444,7 +444,7 @@ class InsiderConnection(Base):
     __tablename__ = "insider_connections"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     company = Column(String, nullable=False, index=True)
     name = Column(String, nullable=False)
     title = Column(String, default="")
@@ -475,7 +475,7 @@ class UserSavedJob(Base):
     __tablename__ = "user_saved_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     job_id = Column(Integer, ForeignKey("scraped_jobs.id"), nullable=False, index=True)
     saved_at = Column(DateTime, default=datetime.datetime.utcnow)
 
@@ -488,7 +488,7 @@ class RevokedToken(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     jti = Column(String(255), unique=True, nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     revoked_at = Column(DateTime, default=datetime.datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)
 
@@ -507,7 +507,7 @@ class ExtensionAuthCode(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String(255), unique=True, nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     code_challenge = Column(String(255), nullable=False)
     redirect_uri = Column(String, nullable=False)
     used = Column(Boolean, default=False, nullable=False)
@@ -526,7 +526,7 @@ class Session(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     sid = Column(String(36), unique=True, nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     client = Column(String(20), nullable=False, default="web")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     last_seen_at = Column(DateTime, default=datetime.datetime.utcnow)
