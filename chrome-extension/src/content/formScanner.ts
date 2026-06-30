@@ -294,19 +294,59 @@ function noteFor(controlType: ControlType, category: string): string | undefined
 // Dynamic page support
 // ---------------------------------------------------------------------------
 
+const OBSERVE_OPTS: MutationObserverInit = { childList: true, subtree: true };
+
 /**
- * Watch for DOM changes (SPA navigation, multi-step Workday forms) and call
- * back, debounced. Attribute changes are ignored — we cause those ourselves
- * when assigning field ids and flashing highlights.
+ * Every open shadow root reachable from `root` (nested included). SuccessFactors-
+ * style UI5 fields live in open shadow roots, which are the SAME JS realm as the top
+ * document — so the scanner already classifies them, but a top-documentElement
+ * MutationObserver never sees mutations inside them. Same-origin iframes are NOT
+ * included: their fields are a different realm the top frame can't classify (they
+ * run their own content-script instance), so observing them would only cause
+ * pointless rescans.
+ */
+export function openShadowRoots(root: Document | ShadowRoot): ShadowRoot[] {
+  const out: ShadowRoot[] = [];
+  const visit = (node: Document | ShadowRoot): void => {
+    node.querySelectorAll("*").forEach((el) => {
+      const sr = (el as HTMLElement).shadowRoot;
+      if (sr) {
+        out.push(sr);
+        visit(sr);
+      }
+    });
+  };
+  visit(root);
+  return out;
+}
+
+/**
+ * Watch for DOM changes (SPA navigation, multi-step Workday forms, UI5 shadow-DOM
+ * steps) and call back, debounced. Observes the top document AND every open shadow
+ * root, re-attaching to roots that appear later. Attribute changes are ignored — we
+ * cause those ourselves when assigning field ids and flashing highlights.
  */
 export function observePage(onChange: () => void): MutationObserver {
   let timer: ReturnType<typeof setTimeout> | null = null;
+  const observed = new Set<Node>();
+  const attach = (): void => {
+    if (!observed.has(document.documentElement)) {
+      observed.add(document.documentElement);
+      observer.observe(document.documentElement, OBSERVE_OPTS);
+    }
+    for (const root of openShadowRoots(document)) {
+      if (observed.has(root)) continue;
+      observed.add(root);
+      observer.observe(root, OBSERVE_OPTS);
+    }
+  };
   const observer = new MutationObserver((mutations) => {
     const relevant = mutations.some((m) => m.addedNodes.length > 0 || m.removedNodes.length > 0);
     if (!relevant) return;
+    attach(); // pick up newly-added shadow roots
     if (timer) clearTimeout(timer);
     timer = setTimeout(onChange, 500);
   });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  attach();
   return observer;
 }
