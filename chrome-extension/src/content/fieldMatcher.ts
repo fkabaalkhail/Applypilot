@@ -313,6 +313,7 @@ const SOURCE_WEIGHTS: Array<{ key: keyof FieldSignals; weight: number }> = [
   { key: "ariaLabel", weight: 0.92 },
   { key: "placeholder", weight: 0.82 },
   { key: "nameAttr", weight: 0.72 },
+  { key: "testId", weight: 0.7 },
   { key: "idAttr", weight: 0.66 },
   { key: "nearby", weight: 0.6 },
 ];

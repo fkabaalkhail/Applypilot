@@ -137,6 +137,23 @@ export interface FieldSignals {
   autocomplete: string;
   /** Native input type ("email", "tel", "url"…) — a strong category hint. */
   typeHint: string;
+  /** Developer-assigned test ids (Workday's data-automation-id, data-testid…) —
+   *  stable semantic anchors when labels are generic or missing. */
+  testId: string;
+}
+
+/**
+ * First present developer-assigned test id. Workday's `data-automation-id` is the
+ * most valuable; the `data-testid` / `data-test` / `data-qa` family covers most
+ * React/Vue/Angular apps. These are author-declared semantics, so they make a
+ * strong matching signal where visible labels are generic or missing.
+ */
+function testIdOf(el: HTMLElement): string {
+  for (const attr of ["data-automation-id", "data-testid", "data-test", "data-qa"]) {
+    const v = el.getAttribute(attr);
+    if (v) return v;
+  }
+  return "";
 }
 
 export function collectSignals(el: HTMLElement): FieldSignals {
@@ -150,6 +167,7 @@ export function collectSignals(el: HTMLElement): FieldSignals {
     idAttr: el.id ?? "",
     autocomplete: (el.getAttribute("autocomplete") ?? "").trim().toLowerCase(),
     typeHint: el instanceof HTMLInputElement ? el.type : "",
+    testId: testIdOf(el),
   };
 }
 
