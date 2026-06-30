@@ -44,6 +44,8 @@ export function writeControl(control: RuntimeControl, value: string): WriteResul
       return writeCheckbox(control.el as HTMLInputElement, value);
     case "radioGroup":
       return writeRadioGroup(control.radios ?? [], value);
+    case "checkboxGroup":
+      return writeCheckboxGroup(control.checkboxes ?? [], value);
     case "contenteditable":
       return writeContentEditable(control.el as HTMLElement, value);
     case "ariaRadioGroup":
@@ -152,6 +154,14 @@ export function verifyControl(control: RuntimeControl, value: string): boolean {
       const match = matchRadio(live, value);
       return Boolean(match) && match!.checked;
     }
+    case "checkboxGroup": {
+      const live = (control.checkboxes ?? []).filter((c) => c.isConnected);
+      if (live.length === 0) return false;
+      const matched = answerParts(value)
+        .map((p) => matchCheckbox(live, p))
+        .filter((c): c is HTMLInputElement => c !== null);
+      return matched.length > 0 && matched.every((c) => c.checked);
+    }
     case "contenteditable": {
       const el = control.el;
       if (isStale(el)) return false;
@@ -238,6 +248,33 @@ function matchRadio(radios: HTMLInputElement[], value: string): HTMLInputElement
   const labelOf = (r: HTMLInputElement): string =>
     cleanText(r.labels?.[0]?.textContent) || r.value;
   return matchOption(radios, labelOf, (r) => r.value, value);
+}
+
+// Native checkbox groups ("select all that apply") — a multi-select answer may
+// name one or more options; check each matching box (additive, never unchecks).
+function answerParts(value: string): string[] {
+  const parts = value.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+  return parts.length > 0 ? parts : [value.trim()].filter(Boolean);
+}
+
+function matchCheckbox(boxes: HTMLInputElement[], value: string): HTMLInputElement | null {
+  const labelOf = (c: HTMLInputElement): string => cleanText(c.labels?.[0]?.textContent) || c.value;
+  return matchOption(boxes, labelOf, (c) => c.value, value);
+}
+
+function writeCheckboxGroup(checkboxes: HTMLInputElement[], value: string): WriteResult {
+  const live = checkboxes.filter((c) => c.isConnected);
+  if (live.length === 0) return { written: false, reason: STALE };
+  let any = false;
+  for (const part of answerParts(value)) {
+    const match = matchCheckbox(live, part);
+    if (match) {
+      if (!match.checked) match.click();
+      any = true;
+    }
+  }
+  if (!any) return { written: false, reason: `No option matches "${truncate(value)}"` };
+  return { written: true };
 }
 
 // ARIA radio groups (role=radiogroup with role=radio divs) — selected by clicking

@@ -169,6 +169,7 @@ export type ControlType =
   | "select"
   | "checkbox"
   | "radioGroup"
+  | "checkboxGroup"
   | "file"
   | "contenteditable"
   | "combobox"

@@ -30,6 +30,7 @@ export function isAiCandidate(field: DetectedField): boolean {
     field.controlType === "select" ||
     field.controlType === "radioGroup" ||
     field.controlType === "checkbox" ||
+    field.controlType === "checkboxGroup" ||
     // Custom ARIA dropdowns: the AI answers them like any choice field; the
     // answer is then driven into the widget by the listbox engine (see
     // contentScript), since writeControl can't script a combobox directly.
@@ -59,6 +60,8 @@ function mapType(controlType: DetectedField["controlType"]): AiFillField["type"]
       return "radio";
     case "checkbox":
       return "checkbox";
+    case "checkboxGroup":
+      return "select";
     // Custom ARIA dropdown — a single-choice control; the backend snaps the
     // answer to one of `options` when present (see backend/routers/fill.py).
     case "combobox":

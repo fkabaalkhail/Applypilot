@@ -32,6 +32,8 @@ export interface RuntimeControl {
   el?: HTMLElement;
   /** Radio groups: all members, in DOM order. */
   radios?: HTMLInputElement[];
+  /** Native checkbox groups ("select all that apply"): all members, in DOM order. */
+  checkboxes?: HTMLInputElement[];
 }
 
 export interface ScanResult {
@@ -130,9 +132,9 @@ function radioOptionLabel(radio: HTMLInputElement): string {
  * Signals for a radio group come from its container (fieldset legend,
  * role=radiogroup label) rather than the individual buttons.
  */
-function radioGroupSignals(radios: HTMLInputElement[]): FieldSignals {
-  const first = radios[0];
-  const container = first.closest('fieldset, [role="radiogroup"]');
+function groupSignals(members: HTMLInputElement[], containerSelector: string): FieldSignals {
+  const first = members[0];
+  const container = first.closest(containerSelector);
   let label = "";
   if (container) {
     const legend = container.querySelector("legend");
@@ -168,6 +170,7 @@ export function scanPage(
 
   const candidates = deepQueryAll(document, CANDIDATE_SELECTOR);
   const radioGroups = new Map<string, HTMLInputElement[]>();
+  const checkboxGroups = new Map<Element, HTMLInputElement[]>();
 
   for (const el of candidates) {
     const controlType = controlTypeOf(el);
@@ -197,6 +200,19 @@ export function scanPage(
       group.push(el);
       radioGroups.set(groupKey, group);
       continue; // grouped below
+    }
+
+    // "Select all that apply": checkboxes sharing a fieldset / [role=group] with
+    // ≥2 of them are one multi-select field. A standalone checkbox (no such
+    // container, or only one inside it) falls through to the single-control path.
+    if (el instanceof HTMLInputElement && el.type === "checkbox") {
+      const container = el.closest('fieldset, [role="group"]');
+      if (container && container.querySelectorAll('input[type="checkbox"]').length >= 2) {
+        const group = checkboxGroups.get(container) ?? [];
+        group.push(el);
+        checkboxGroups.set(container, group);
+        continue; // emitted as one checkboxGroup below
+      }
     }
 
     const id = ensureFieldId(el);
@@ -239,7 +255,7 @@ export function scanPage(
   for (const radios of radioGroups.values()) {
     const first = radios[0];
     const id = ensureFieldId(first);
-    const signals = radioGroupSignals(radios);
+    const signals = groupSignals(radios, 'fieldset, [role="radiogroup"]');
     const { category, confidence, sensitive } = classifyField(signals);
     const options = radios.map(radioOptionLabel).filter(Boolean).slice(0, 30);
 
@@ -263,6 +279,38 @@ export function scanPage(
       note: noteFor("radioGroup", category),
       options,
       currentValue: checked ? radioOptionLabel(checked) : undefined,
+    });
+  }
+
+  // Native checkbox groups ("select all that apply") — one logical multi-select
+  // field each, classified by the group question (not the option text).
+  for (const checkboxes of checkboxGroups.values()) {
+    const first = checkboxes[0];
+    const id = ensureFieldId(first);
+    const signals = groupSignals(checkboxes, 'fieldset, [role="group"]');
+    const { category, confidence, sensitive } = classifyField(signals);
+    const options = checkboxes.map(radioOptionLabel).filter(Boolean).slice(0, 30);
+
+    registry.set(id, { id, controlType: "checkboxGroup", checkboxes });
+
+    const proposedValue = profile
+      ? resolveProfileValue(category, profile, { controlType: "checkboxGroup", options }, fillEEO)
+      : null;
+
+    const checkedLabels = checkboxes.filter((c) => c.checked).map(radioOptionLabel).filter(Boolean);
+    fields.push({
+      id,
+      category,
+      confidence,
+      label: bestDisplayLabel(signals),
+      controlType: "checkboxGroup",
+      required: checkboxes.some((c) => isRequiredField(c, signals)),
+      proposedValue,
+      fillable: true,
+      sensitive,
+      note: noteFor("checkboxGroup", category),
+      options,
+      currentValue: checkedLabels.length ? checkedLabels.join(", ") : undefined,
     });
   }
 
