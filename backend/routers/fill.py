@@ -212,10 +212,14 @@ async def fill_form(
                     raw = await llm.answer_question(question=q, context=context)
                     answer = raw.strip().strip('"')
 
-                    # Match to options if applicable
+                    # Match to options if applicable. Keep the AI's raw answer
+                    # when nothing matches — the client fuzzy-matches (writeSelect
+                    # / fillAriaCombobox); snapping to options[0] used to silently
+                    # select a "Select…" placeholder.
                     if field.options:
                         matched_opt = _match_option(answer, field.options)
-                        answer = matched_opt or field.options[0]
+                        if matched_opt:
+                            answer = matched_opt
 
                     answers.append(FieldAnswer(
                         id=field.id, label=field.label, answer=answer,
