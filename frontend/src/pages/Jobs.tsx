@@ -243,11 +243,9 @@ export default function Jobs() {
   const TABS = [
     { label: "All", count: null },
     { label: "Liked", count: stats.saved_count },
-    { label: "Applied", count: stats.applied },
   ];
 
   const filteredJobs = jobs.filter((j) => {
-    if (activeTab === "Applied") return j.status === "applied";
     if (activeTab === "Liked") return j.saved;
     return true;
   });
