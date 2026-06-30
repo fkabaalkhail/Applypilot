@@ -35,6 +35,26 @@ Backend context: `fill.py` snaps the AI's answer to a real option **only when
 AI answers as free text. Separately, `fill.py:218` falls back to `options[0]` when
 no option matches, which can silently select a "Select…" placeholder.
 
+## Implementation status (as of 2026-06-29)
+
+Commit `4eace4d` ("wire custom dropdowns into the AI fill pipeline"), recovered
+onto `feat/dropdown-ai-fill`, already landed the **routing half** of this design:
+
+- **Part 2 (AI candidacy):** `isAiCandidate` treats a combobox as a choice field
+  (still skips sensitive/EEO). Done. *Remaining:* `mapType(combobox) → "select"`
+  is not yet done — it still falls through to the `"text"` default.
+- **Part 3 (route AI answers to the live filler):** `fillComboboxFields` was
+  generalised to `fillComboboxTargets({ fieldId, value }[])`; the `isComboboxField`
+  helper, the silent-target combobox/non-combobox split, the `onInsertAnswer`
+  combobox branch, and the extra `tallyOutcomes` group are all in place. Done.
+- **Part 5 (tests):** the `isAiCandidate` combobox test is added. Partial.
+
+The implementation plan therefore covers only the **remaining** work: part 1
+(cheap option reading in `comboboxEngine` + `formScanner`), the `mapType` tweak,
+part 4 (backend `fill.py`), and the remaining tests. The blind-AI behaviour that
+`4eace4d` shipped is most likely why dropdowns still fail in practice — part 1 is
+what lets the AI see the real options and snap to them.
+
 ## Goal
 
 Make custom dropdowns first-class in the read → suggest → fill pipeline, matching
