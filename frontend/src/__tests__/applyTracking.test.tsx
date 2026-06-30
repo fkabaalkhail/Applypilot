@@ -9,15 +9,27 @@ function initialState(): ApplyQueueState {
 }
 
 describe("applyQueueReducer", () => {
-  it("REGISTER appends to the queue when nothing is current", () => {
+  it("REGISTER appends to the queue, never sets current directly", () => {
     const state = applyQueueReducer(initialState(), { type: "REGISTER", job: jobA });
-    expect(state.queue).toEqual([]);
-    expect(state.current).toEqual(jobA);
+    expect(state.queue).toEqual([jobA]);
+    expect(state.current).toBeNull();
   });
 
   it("REGISTER queues behind an already-current job", () => {
     let state = applyQueueReducer(initialState(), { type: "REGISTER", job: jobA });
+    state = applyQueueReducer(state, { type: "SHOW_NEXT" });
     state = applyQueueReducer(state, { type: "REGISTER", job: jobB });
+    expect(state.current).toEqual(jobA);
+    expect(state.queue).toEqual([jobB]);
+  });
+
+  it("registers two jobs while nothing is current, then SHOW_NEXT promotes only the first", () => {
+    let state = applyQueueReducer(initialState(), { type: "REGISTER", job: jobA });
+    state = applyQueueReducer(state, { type: "REGISTER", job: jobB });
+    expect(state.current).toBeNull();
+    expect(state.queue).toEqual([jobA, jobB]);
+
+    state = applyQueueReducer(state, { type: "SHOW_NEXT" });
     expect(state.current).toEqual(jobA);
     expect(state.queue).toEqual([jobB]);
   });
@@ -54,6 +66,7 @@ describe("applyQueueReducer", () => {
     let state = initialState();
     state = applyQueueReducer(state, { type: "REGISTER", job: jobA });
     state = applyQueueReducer(state, { type: "REGISTER", job: jobB });
+    state = applyQueueReducer(state, { type: "SHOW_NEXT" });
     expect(state.current).toEqual(jobA);
     state = applyQueueReducer(state, { type: "DEQUEUE" });
     expect(state.current).toEqual(jobB);

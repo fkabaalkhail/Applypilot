@@ -20,9 +20,6 @@ type ApplyQueueAction =
 export function applyQueueReducer(state: ApplyQueueState, action: ApplyQueueAction): ApplyQueueState {
   switch (action.type) {
     case "REGISTER":
-      if (state.current === null) {
-        return { ...state, current: action.job };
-      }
       return { ...state, queue: [...state.queue, action.job] };
     case "SHOW_NEXT": {
       if (state.current !== null || state.queue.length === 0) {
