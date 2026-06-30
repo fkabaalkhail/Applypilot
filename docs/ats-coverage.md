@@ -2,22 +2,22 @@
 
 Track which ATS systems have been tested and confirmed working with the Tailrd extension.
 
-**Progress:** 11 / 15 covered
+**Progress:** 15 / 15 covered
 
 ---
 
 ## Easy
 
-- [ ] **Greenhouse** *(Greenhouse Software)*
+- [x] **Greenhouse** *(Greenhouse Software)*
   Standard HTML inputs with predictable field names. Well-labeled fields, rarely dynamic. A good baseline to test against. Widely used by mid-size tech companies.
 
-- [ ] **Lever** *(Lever Inc.)*
+- [x] **Lever** *(Lever Inc.)*
   Simple React-based forms with consistent field structure. Standard input/textarea elements, minimal shadow DOM. Cover letter is usually a plain textarea. Common in startups.
 
-- [ ] **BambooHR** *(BambooHR LLC)*
+- [x] **BambooHR** *(BambooHR LLC)*
   Simple, clean forms with standard HTML. Short application forms, minimal AI fill needed. Used mostly by small-to-mid size companies. Easy win.
 
-- [ ] **Breezy HR** *(Breezy HR Inc.)*
+- [x] **Breezy HR** *(Breezy HR Inc.)*
   Clean HTML forms with good labeling. Short application forms are the norm. One of the easiest ATSs to support reliably. Popular with small businesses.
 
 ---
