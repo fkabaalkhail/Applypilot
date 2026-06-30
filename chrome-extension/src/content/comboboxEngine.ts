@@ -211,6 +211,88 @@ function optionText(option: HTMLElement): string {
   return cleanText(labelled) || cleanText(option.textContent);
 }
 
+/**
+ * Read a combobox's option labels WITHOUT opening it — only when the listbox is
+ * already mounted in the DOM. Many widgets keep a hidden listbox; react-select
+ * mounts it lazily on open, so this returns undefined there (the AI then answers
+ * from the label alone). Visibility is ignored on purpose: a mounted-but-hidden
+ * listbox is a valid source.
+ */
+export function readComboboxOptions(trigger: HTMLElement): string[] | undefined {
+  const listbox = findMountedListbox(trigger);
+  if (!listbox) return undefined;
+  const labels = deepQueryAll(listbox, '[role="option"]')
+    .filter((o) => o.getAttribute("aria-disabled") !== "true")
+    .map((o) => optionText(o))
+    .filter((t) => t.length > 0)
+    .slice(0, 60);
+  return labels.length > 0 ? labels : undefined;
+}
+
+/** The combobox's listbox if it is already in the DOM (no opening, any visibility). */
+function findMountedListbox(trigger: HTMLElement): HTMLElement | null {
+  const doc = trigger.ownerDocument;
+  const ids = `${trigger.getAttribute("aria-controls") ?? ""} ${trigger.getAttribute("aria-owns") ?? ""}`.trim();
+  for (const id of ids.split(/\s+/).filter(Boolean)) {
+    const el = doc.getElementById(id);
+    if (!el) continue;
+    const lb = (el.getAttribute("role") === "listbox" ? el : el.querySelector('[role="listbox"]')) as HTMLElement | null;
+    if (lb && hasOptions(lb)) return lb;
+  }
+  // Same-container fallback: a listbox rendered next to the trigger (not a
+  // document-wide search, which could grab an unrelated open menu at scan time).
+  // [role="combobox"] is intentionally excluded — the trigger is often that
+  // element itself, and closest() would then return it (no listbox descendant).
+  const container =
+    trigger.closest('[class*="select" i], [class*="combobox" i]') ?? trigger.parentElement;
+  const lb = container?.querySelector('[role="listbox"]') as HTMLElement | null;
+  return lb && hasOptions(lb) ? lb : null;
+}
+
+/**
+ * The combobox's currently-displayed value, if one is committed — best-effort,
+ * for scan-time "already answered?" detection. Deliberately ignores raw <button>
+ * text (often a "Select…" placeholder) and reads only strong selection signals.
+ */
+export function readComboboxValue(trigger: HTMLElement): string | undefined {
+  const candidates = [
+    trigger instanceof HTMLInputElement ? trigger.value : "",
+    activeDescendantText(trigger),
+    ...valueContainerTexts(trigger),
+  ];
+  for (const c of candidates) {
+    const v = cleanText(c);
+    if (v) return v;
+  }
+  return undefined;
+}
+
+/** Text of the option referenced by aria-activedescendant, if any. */
+function activeDescendantText(trigger: HTMLElement): string {
+  const active = trigger.getAttribute("aria-activedescendant");
+  if (!active) return "";
+  const opt = trigger.ownerDocument.getElementById(active);
+  return opt ? optionText(opt) : "";
+}
+
+/** Texts of react-select-style single/multi-value display elements near the trigger. */
+function valueContainerTexts(trigger: HTMLElement): string[] {
+  // NB: do not include [role="combobox"] here — the trigger itself is often the
+  // role=combobox element, and closest() would return it (an <input> has no
+  // value-display descendant). Climb to the select/combobox wrapper instead;
+  // querySelectorAll is recursive, so a value nested under a classless
+  // div[role=combobox] is still found via the trigger's parent.
+  const container =
+    trigger.closest('[class*="select" i], [class*="combobox" i]') ??
+    trigger.parentElement ??
+    trigger;
+  return Array.from(
+    container.querySelectorAll(
+      '[class*="single-value" i], [class*="singlevalue" i], [class*="multi-value" i], [class*="multivalue" i]'
+    )
+  ).map((e) => cleanText(e.textContent));
+}
+
 // ---------------------------------------------------------------------------
 // Verification
 // ---------------------------------------------------------------------------
@@ -224,21 +306,9 @@ function comboboxShowsValue(trigger: HTMLElement, value: string): boolean {
   const candidates: string[] = [];
   if (trigger instanceof HTMLInputElement && trigger.value) candidates.push(trigger.value);
   if (trigger.tagName === "BUTTON") candidates.push(cleanText(trigger.textContent));
-
-  const active = trigger.getAttribute("aria-activedescendant");
-  if (active) {
-    const opt = trigger.ownerDocument.getElementById(active);
-    if (opt) candidates.push(optionText(opt));
-  }
-
-  const container =
-    trigger.closest('[class*="select" i], [class*="combobox" i], [role="combobox"]') ??
-    trigger.parentElement ??
-    trigger;
-  container
-    .querySelectorAll('[class*="single-value" i], [class*="singlevalue" i], [class*="multi-value" i], [class*="multivalue" i]')
-    .forEach((e) => candidates.push(cleanText(e.textContent)));
-
+  const active = activeDescendantText(trigger);
+  if (active) candidates.push(active);
+  candidates.push(...valueContainerTexts(trigger));
   return candidates.some((c) => textMatches(c, value));
 }
 

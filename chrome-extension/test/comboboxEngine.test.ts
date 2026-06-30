@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { fillAriaCombobox, isAriaCombobox } from "../src/content/comboboxEngine";
+import {
+  fillAriaCombobox,
+  isAriaCombobox,
+  readComboboxOptions,
+  readComboboxValue,
+} from "../src/content/comboboxEngine";
 
 const instant = async (): Promise<void> => {};
 /** Deterministic, fast options for the engine's bounded polling. */
@@ -103,6 +108,40 @@ function buttonListbox(options: string[]): HTMLButtonElement {
   return btn;
 }
 
+/** A combobox whose listbox is ALREADY mounted (optionally hidden), referenced
+ *  by aria-controls — what readComboboxOptions reads without opening. */
+function staticCombobox(
+  options: string[],
+  opts: { value?: string; hidden?: boolean } = {}
+): HTMLInputElement {
+  const wrap = document.createElement("div");
+  wrap.className = "select";
+  const input = document.createElement("input");
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-expanded", "false");
+  const lbId = `lb-${Math.random().toString(36).slice(2)}`;
+  input.setAttribute("aria-controls", lbId);
+  if (opts.value) {
+    const sv = document.createElement("div");
+    sv.className = "select__single-value";
+    sv.textContent = opts.value;
+    wrap.append(sv);
+  }
+  const lb = document.createElement("div");
+  lb.id = lbId;
+  lb.setAttribute("role", "listbox");
+  if (opts.hidden) lb.setAttribute("hidden", "");
+  for (const label of options) {
+    const o = document.createElement("div");
+    o.setAttribute("role", "option");
+    o.textContent = label;
+    lb.append(o);
+  }
+  wrap.append(input, lb);
+  document.body.append(wrap);
+  return input;
+}
+
 describe("isAriaCombobox", () => {
   it("detects role=combobox inputs that toggle a listbox", () => {
     const el = reactSelect(["A", "B"]);
@@ -204,5 +243,47 @@ describe("fillAriaCombobox — guards", () => {
     document.body.append(el); // connected but inert — no listbox ever appears
     const res = await fillAriaCombobox(el, "Canada", fast);
     expect(res.filled).toBe(false);
+  });
+});
+
+describe("readComboboxOptions", () => {
+  it("reads options from a mounted listbox without opening", () => {
+    const el = staticCombobox(["United States", "Canada", "Mexico"]);
+    expect(readComboboxOptions(el)).toEqual(["United States", "Canada", "Mexico"]);
+    expect(el.getAttribute("aria-expanded")).toBe("false"); // never opened
+  });
+
+  it("reads options even when the listbox is hidden", () => {
+    const el = staticCombobox(["A", "B"], { hidden: true });
+    expect(readComboboxOptions(el)).toEqual(["A", "B"]);
+  });
+
+  it("returns undefined when the menu is not mounted (react-select, closed)", () => {
+    const el = reactSelect(["A", "B"]); // listbox only renders on open
+    expect(readComboboxOptions(el)).toBeUndefined();
+    expect(el.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("skips aria-disabled options", () => {
+    const el = staticCombobox(["A", "B"]);
+    el.ownerDocument.querySelectorAll('[role="option"]')[1].setAttribute("aria-disabled", "true");
+    expect(readComboboxOptions(el)).toEqual(["A"]);
+  });
+});
+
+describe("readComboboxValue", () => {
+  it("reads a committed single-value", () => {
+    const el = staticCombobox(["A", "B"], { value: "B" });
+    expect(readComboboxValue(el)).toBe("B");
+  });
+
+  it("ignores a button placeholder (no real selection)", () => {
+    const btn = buttonListbox(["A", "B"]); // textContent is the 'Select…' placeholder
+    expect(readComboboxValue(btn)).toBeUndefined();
+  });
+
+  it("returns undefined when nothing is selected", () => {
+    const el = staticCombobox(["A", "B"]);
+    expect(readComboboxValue(el)).toBeUndefined();
   });
 });
