@@ -27,6 +27,12 @@ export default function CoverLetterModal({ job, onClose }: { job: AIJob; onClose
   const [error, setError] = useState("");
   const [busyTone, setBusyTone] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Edit + save parity with the resume flow: track unsaved edits + a transient
+  // "Saved ✓" confirmation. Fresh/regenerated text is considered already-clean.
+  const [tone, setTone] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   async function generate(rid: number | null, tone?: string, base?: string) {
     if (tone) setBusyTone(tone);
@@ -39,11 +45,36 @@ export default function CoverLetterModal({ job, onClose }: { job: AIJob; onClose
         base_text: base ?? null,
       });
       setText(res.data.text);
+      setTone(tone?.toLowerCase() ?? null);
+      setDirty(false);
+      setSaved(false);
     } catch (err) {
       setError(errorMessage(err, "Couldn't generate the cover letter. Please try again."));
     } finally {
       setLoading(false);
       setBusyTone(null);
+    }
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.post("/ai/cover-letters", {
+        job_id: job.id,
+        company: job.company,
+        job_title: job.title,
+        job_url: job.url,
+        text,
+        tone: tone ?? "",
+        set_active: true,
+      });
+      setDirty(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't save the cover letter. Please try again."));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -133,7 +164,11 @@ export default function CoverLetterModal({ job, onClose }: { job: AIJob; onClose
               <textarea
                 className="ai-cl-textarea"
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setDirty(true);
+                  setSaved(false);
+                }}
                 spellCheck
               />
               <div className="ai-card-label" style={{ marginTop: 16 }}>Adjust tone</div>
@@ -158,6 +193,9 @@ export default function CoverLetterModal({ job, onClose }: { job: AIJob; onClose
             Regenerate
           </button>
           <button className="ai-btn ai-btn-ghost" onClick={copy} disabled={busy || !text}>{copied ? "Copied!" : "Copy"}</button>
+          <button className="ai-btn ai-btn-soft" onClick={save} disabled={busy || saving || !text || !dirty}>
+            {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
+          </button>
           <button className="ai-btn ai-btn-soft" onClick={download} disabled={busy || !text}>Download .docx</button>
           <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>
         </div>

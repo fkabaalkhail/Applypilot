@@ -30,6 +30,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _overlay_saved(db: Session, jobs: list[ScrapedJob], user_id: Optional[int]) -> list[ScrapedJobOut]:
+    """Attach the requesting user's saved/liked status (UserSavedJob is per-user, not global)."""
+    saved_ids: set[int] = set()
+    if user_id is not None and jobs:
+        rows = (
+            db.query(UserSavedJob.job_id)
+            .filter(UserSavedJob.user_id == user_id, UserSavedJob.job_id.in_([j.id for j in jobs]))
+            .all()
+        )
+        saved_ids = {row[0] for row in rows}
+    results = []
+    for job in jobs:
+        out = ScrapedJobOut.model_validate(job)
+        out.saved = 1 if job.id in saved_ids else 0
+        results.append(out)
+    return results
+
+
 def _escape_like(term: str) -> str:
     """Escape SQL LIKE wildcards to prevent DoS via expensive patterns."""
     return re.sub(r'([%_])', r'\\\1', term)
@@ -58,6 +76,7 @@ def list_jobs(
     sort: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    user_id: Optional[int] = Depends(get_optional_user_id),
     db: Session = Depends(get_db),
 ):
     """List scraped jobs, optionally filtered by status, match score, source, country, work_type, etc."""
@@ -77,8 +96,13 @@ def list_jobs(
         q = q.filter(ScrapedJob.status == status)
     if source:
         q = q.filter(ScrapedJob.source_platform == source)
-    if saved is not None:
-        q = q.filter(ScrapedJob.saved == saved)
+    if saved:
+        # "Liked" jobs are per-user (UserSavedJob), not a global flag on the job.
+        if user_id is None:
+            return []
+        q = q.join(UserSavedJob, UserSavedJob.job_id == ScrapedJob.id).filter(
+            UserSavedJob.user_id == user_id
+        )
     if search:
         search_term = _escape_like(search.strip())
         if search_term:
@@ -130,7 +154,7 @@ def list_jobs(
         q = q.order_by(effective_date.desc().nullslast())
 
     q = q.offset((page - 1) * page_size).limit(page_size)
-    return q.all()
+    return _overlay_saved(db, q.all(), user_id)
 
 
 @router.post("/create")
@@ -176,7 +200,10 @@ def create_job(
 
 
 @router.get("/stats")
-def job_stats(db: Session = Depends(get_db)):
+def job_stats(
+    user_id: Optional[int] = Depends(get_optional_user_id),
+    db: Session = Depends(get_db),
+):
     """Return aggregate job stats with breakdowns by country, work_type, role_category, experience_level."""
     # Exclude blank-company jobs to match the listing query.
     _has_company = (
@@ -187,7 +214,14 @@ def job_stats(db: Session = Depends(get_db)):
     total = db.query(ScrapedJob).filter(_has_company).count()
     applied = db.query(ScrapedJob).filter(_has_company, ScrapedJob.status == JobStatus.APPLIED).count()
     new = db.query(ScrapedJob).filter(_has_company, ScrapedJob.status == JobStatus.NEW).count()
-    saved_count = db.query(ScrapedJob).filter(_has_company, ScrapedJob.saved == 1).count()
+    saved_count = 0
+    if user_id is not None:
+        saved_count = (
+            db.query(UserSavedJob)
+            .join(ScrapedJob, ScrapedJob.id == UserSavedJob.job_id)
+            .filter(UserSavedJob.user_id == user_id, _has_company)
+            .count()
+        )
 
     avg_score = db.query(func.avg(ScrapedJob.match_score)).scalar()
     avg_match_score = round(avg_score) if avg_score else 0
@@ -269,12 +303,16 @@ def list_applications(
 
 
 @router.get("/{job_id}", response_model=ScrapedJobOut)
-def get_job(job_id: int, db: Session = Depends(get_db)):
+def get_job(
+    job_id: int,
+    user_id: Optional[int] = Depends(get_optional_user_id),
+    db: Session = Depends(get_db),
+):
     """Get a single job by ID."""
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
-    return job
+    return _overlay_saved(db, [job], user_id)[0]
 
 
 @router.post("/{job_id}/fetch-details")
@@ -563,8 +601,7 @@ def save_job(
         saved_entry = UserSavedJob(user_id=user_id, job_id=job_id)
         db.add(saved_entry)
         db.commit()
-    db.refresh(job)
-    return job
+    return _overlay_saved(db, [job], user_id)[0]
 
 
 @router.post("/{job_id}/unsave", response_model=ScrapedJobOut)
@@ -582,8 +619,7 @@ def unsave_job(
         UserSavedJob.job_id == job_id,
     ).delete()
     db.commit()
-    db.refresh(job)
-    return job
+    return _overlay_saved(db, [job], user_id)[0]
 
 
 @router.post("/fix-empty-companies")

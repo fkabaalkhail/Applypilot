@@ -20,9 +20,8 @@ interface Job {
 function filterByTab(jobs: Job[], activeTab: string): Job[] {
   return jobs.filter((j) => {
     if (activeTab === "Applied") return j.status === "applied";
-    if (activeTab === "New") return j.status === "new";
-    if (activeTab === "Saved") return j.saved;
-    return true; // "Recommended" shows all
+    if (activeTab === "Liked") return j.saved;
+    return true; // "All" shows everything
   });
 }
 
@@ -37,10 +36,10 @@ const jobArb = fc.record({
 const jobsArb = fc.array(jobArb, { minLength: 0, maxLength: 50 });
 
 describe("Property 12: Tab Filter Correctness and Sort Order", () => {
-  it("Recommended tab returns all jobs", () => {
+  it("All tab returns all jobs", () => {
     fc.assert(
       fc.property(jobsArb, (jobs) => {
-        const result = filterByTab(jobs, "Recommended");
+        const result = filterByTab(jobs, "All");
         expect(result.length).toBe(jobs.length);
       })
     );
@@ -60,23 +59,10 @@ describe("Property 12: Tab Filter Correctness and Sort Order", () => {
     );
   });
 
-  it("New tab returns only jobs with status 'new'", () => {
+  it("Liked tab returns only saved jobs", () => {
     fc.assert(
       fc.property(jobsArb, (jobs) => {
-        const result = filterByTab(jobs, "New");
-        for (const job of result) {
-          expect(job.status).toBe("new");
-        }
-        const expectedCount = jobs.filter((j) => j.status === "new").length;
-        expect(result.length).toBe(expectedCount);
-      })
-    );
-  });
-
-  it("Saved tab returns only saved jobs", () => {
-    fc.assert(
-      fc.property(jobsArb, (jobs) => {
-        const result = filterByTab(jobs, "Saved");
+        const result = filterByTab(jobs, "Liked");
         for (const job of result) {
           expect(job.saved).toBe(true);
         }
@@ -89,19 +75,18 @@ describe("Property 12: Tab Filter Correctness and Sort Order", () => {
   it("tab filters are exhaustive - every job appears in at least one tab", () => {
     fc.assert(
       fc.property(jobsArb, (jobs) => {
-        // Every job appears in Recommended
-        const recommended = filterByTab(jobs, "Recommended");
-        expect(recommended.length).toBe(jobs.length);
+        // Every job appears in "All"
+        const all = filterByTab(jobs, "All");
+        expect(all.length).toBe(jobs.length);
       })
     );
   });
 
   it("filtered results are a subset of the original jobs", () => {
     const tabArb = fc.oneof(
-      fc.constant("Recommended"),
+      fc.constant("All"),
       fc.constant("Applied"),
-      fc.constant("New"),
-      fc.constant("Saved")
+      fc.constant("Liked")
     );
 
     fc.assert(

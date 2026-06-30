@@ -168,7 +168,15 @@ class MatchEngine:
         data = self._parse_json_response(response)
 
         def _strs(key: str) -> list[str]:
-            return [str(v).strip() for v in data.get(key, []) if str(v).strip()]
+            # The model sometimes returns a single string where the schema asks
+            # for a list (e.g. one suggestion). Iterating a str yields its
+            # characters, so coerce a lone string into a one-element list first.
+            val = data.get(key, [])
+            if isinstance(val, str):
+                val = [val]
+            elif not isinstance(val, list):
+                val = []
+            return [str(v).strip() for v in val if str(v).strip()]
 
         def _score(key: str) -> int:
             try:

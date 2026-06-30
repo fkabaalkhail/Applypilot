@@ -197,6 +197,11 @@ async def cover_letter(
             job.company,
             tone=body.tone if body else None,
             base_text=body.base_text if body else None,
+            name=resume.profile_name,
+            email=resume.email,
+            phone=resume.phone,
+            location=resume.location,
+            linkedin=resume.linkedin_url,
         )
         # Persist + sync so it's accessible from the web app and extension.
         _persist_active_cover_letter(db, user_id, job, text, body.tone if body else None)

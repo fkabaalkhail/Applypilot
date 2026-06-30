@@ -160,7 +160,9 @@ export default function CustomResumeModal({ job, onClose }: { job: AIJob; onClos
 
   // Visual editor: edited document + undo/redo history, seeded on generate.
   const [editing, setEditing] = useState(false);
-  const [highlightOn, setHighlightOn] = useState(false);
+  // Default ON so the review opens with the woven-in keywords highlighted
+  // (the printed PDF/DOCX stay clean — see printResume + the schema-built DOCX).
+  const [highlightOn, setHighlightOn] = useState(true);
   const {
     doc: editedDoc,
     set: setEditedDoc,

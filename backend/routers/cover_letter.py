@@ -49,6 +49,8 @@ async def cover_letter_endpoint(
         text = await CoverLetterGenerator().generate(
             resume.raw_text, body.job_description, body.company,
             tone=body.tone, base_text=body.base_text,
+            name=resume.profile_name, email=resume.email, phone=resume.phone,
+            location=resume.location, linkedin=resume.linkedin_url,
         )
     except (ConnectionError, httpx.ConnectError):
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)

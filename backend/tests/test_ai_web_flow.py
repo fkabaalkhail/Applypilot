@@ -156,6 +156,27 @@ class TestJobAnalysis:
         # coverage = round(100 * 2 / 4) = 50
         assert data["keyword_coverage"] == 50
 
+    def test_string_list_fields_are_not_exploded_into_chars(self, client, db_session):
+        """When the model returns a list field as a single string, it must
+        become a one-element list — not one item per character."""
+        job = _seed(db_session)
+        json_with_string_suggestions = """
+        {
+          "overall_score": 68, "ats_score": 60,
+          "matched_keywords": ["Python"], "missing_keywords": ["AWS"],
+          "strengths": [], "weaknesses": [],
+          "suggestions": "To improve, add a cloud project."
+        }
+        """
+        with patch(
+            "backend.services.openai_service.OpenAIService._generate",
+            new_callable=AsyncMock,
+            return_value=json_with_string_suggestions,
+        ):
+            resp = client.post(f"/ai/job-analysis/{job.id}", json={})
+        assert resp.status_code == 200
+        assert resp.json()["suggestions"] == ["To improve, add a cloud project."]
+
     def test_404_for_missing_job(self, client):
         resp = client.post("/ai/job-analysis/9999", json={})
         assert resp.status_code == 404
