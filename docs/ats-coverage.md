@@ -2,7 +2,7 @@
 
 Track which ATS systems have been tested and confirmed working with the Tailrd extension.
 
-**Progress:** 5 / 15 covered
+**Progress:** 11 / 15 covered
 
 ---
 
@@ -24,22 +24,22 @@ Track which ATS systems have been tested and confirmed working with the Tailrd e
 
 ## Medium
 
-- [ ] **Ashby** *(Ashby HQ)*
+- [x] **Ashby** *(Ashby HQ)*
   Modern React SPA that rebuilds the DOM constantly as the user progresses through form steps. MutationObserver and reconciler are especially important here. Custom dropdowns are common. Growing fast among tech companies.
 
-- [ ] **Workable** *(Workable Technology)*
+- [x] **Workable** *(Workable Technology)*
   Standard form structure but uses custom dropdowns for things like country/location. Multi-step forms are common. Watch for dynamic field injection. Widely used by SMBs and European companies.
 
-- [ ] **SmartRecruiters** *(SmartRecruiters Inc.)*
+- [x] **SmartRecruiters** *(SmartRecruiters Inc.)*
   Multi-step React-based forms. Custom question sections are very common, making the AI fill phase important. Used by large global companies like Visa and Bosch.
 
-- [ ] **Jobvite** *(Jobvite Inc.)*
+- [x] **Jobvite** *(Jobvite Inc.)*
   React-based frontend with some non-standard field patterns, especially for EEO questions. Multi-step forms are the norm. Watch for custom radio group implementations.
 
-- [ ] **Rippling** *(Rippling Inc.)*
+- [x] **Rippling** *(Rippling Inc.)*
   Modern React SPA with dynamic form rendering. Field labels are generally clean and consistent. Growing fast — many startups and mid-size tech companies now use it.
 
-- [ ] **Bullhorn** *(Bullhorn Inc.)*
+- [x] **Bullhorn** *(Bullhorn Inc.)*
   Primarily used by staffing and recruiting agencies. Forms tend to be simpler but candidates are applying to agencies, not specific roles. Field structure is fairly standard.
 
 ---
