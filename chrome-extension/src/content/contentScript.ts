@@ -26,6 +26,8 @@ import type {
   DetectedField,
   FieldsUpdatedEvent,
   FillResponse,
+  FormOpName,
+  FormOpResult,
   GenerateCoverLetterResponse,
   PingResponse,
   RenderCoverLetterResponse,
@@ -48,6 +50,7 @@ import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext } from "./jobContext";
 import { aiFillCandidates, planAiFill, tallyOutcomes, toAiFillField } from "./aiFillPlanner";
 import { fillAriaCombobox } from "./comboboxEngine";
+import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
 import { verifyControl, writeControl } from "./writeEngine";
 import {
   showOverlay,
@@ -132,6 +135,28 @@ function initialize(): void {
   let lastFillEEO = false;
   let observer: MutationObserver | null = null;
   let overlayShown = false;
+  // The top frame has adopted a form that lives in a child frame; its own local
+  // scans must then never overwrite the panel with the (formless) top-frame DOM.
+  let adoptedRemote = false;
+  // The adopted child frame's fields + proxy callbacks (top frame only), kept
+  // separate from this frame's own scan so local scans never clobber the panel.
+  let remoteFields: DetectedField[] = [];
+  let remoteCallbacks: OverlayCallbacks | null = null;
+  // When this frame is a child that owns the form, it has no panel of its own —
+  // it pushes field changes up to the top frame's panel instead of mounting one.
+  let actingAsRemoteHost = false;
+
+  /** Push current fields to wherever the panel lives (local overlay, or — when
+   *  this frame is a child form-host — the top frame's panel). */
+  function reportFields(): void {
+    if (actingAsRemoteHost) {
+      void chrome.runtime
+        .sendMessage({ type: "RELAY_TO_TOP", payload: { type: "REMOTE_FIELDS_UPDATED", fields: lastFields } })
+        .catch(() => {});
+      return;
+    }
+    maybeShowOrUpdateOverlay();
+  }
 
   // One reconciliation engine per frame, created on first fill. It keeps a
   // MutationObserver alive afterwards to correct post-fill drift.
@@ -260,7 +285,7 @@ function initialize(): void {
     },
     onRescan: () => {
       runScan();
-      maybeUpdateOverlay();
+      reportFields();
     },
     onListResumes: async () => {
       const resp = await sendToBackground<ResumesResponse>({ type: "GET_RESUMES" });
@@ -274,7 +299,7 @@ function initialize(): void {
       // the only thing that sent SCAN_PAGE), so nothing was ever fillable.
       lastProfile = profile;
       runScan();
-      updateOverlay({ fields: lastFields, tabUrl: location.href });
+      reportFields();
     },
     onUploadResume: async (resumeId: number) => {
       const field = lastFields.find(
@@ -418,7 +443,7 @@ function initialize(): void {
   };
 
   function maybeShowOrUpdateOverlay(): void {
-    if (!isTopFrame) return;
+    if (!isTopFrame || adoptedRemote) return;
     const state = { fields: lastFields, tabUrl: location.href };
     if (!overlayShown && recognizedCount(lastFields) >= MIN_FIELDS_FOR_OVERLAY) {
       overlayShown = true;
@@ -429,11 +454,6 @@ function initialize(): void {
     } else if (!overlayShown) {
       console.log(`[Tailrd overlay] NOT mounting — only ${recognizedCount(lastFields)} recognized fields in TOP frame`);
     }
-  }
-
-  function maybeUpdateOverlay(): void {
-    if (!isTopFrame || !overlayShown) return;
-    updateOverlay({ fields: lastFields, tabUrl: location.href });
   }
 
   // ---- Observer ---------------------------------------------------------------
@@ -458,15 +478,34 @@ function initialize(): void {
           // Popup closed — nobody listening. That's fine.
         });
       }
-      maybeShowOrUpdateOverlay();
+      reportFields();
+      if (!isTopFrame) announceIfFormHost();
     });
   }
 
   function autoInit(): void {
-    if (!isTopFrame) return;
     runScan();
     ensureObserver();
-    maybeShowOrUpdateOverlay();
+    if (isTopFrame) {
+      maybeShowOrUpdateOverlay();
+    } else {
+      announceIfFormHost();
+    }
+  }
+
+  /**
+   * A child frame that owns a real form tells the top frame about it (the panel
+   * lives in the top frame; this frame can't reach it directly). Re-announcing
+   * on later scans is the retry if the top frame wasn't listening yet.
+   */
+  function announceIfFormHost(): void {
+    if (isTopFrame) return;
+    const recognized = recognizedCount(lastFields);
+    if (recognized < MIN_FIELDS_FOR_OVERLAY) return;
+    actingAsRemoteHost = true;
+    void chrome.runtime
+      .sendMessage({ type: "FORM_HOST_ANNOUNCE", recognized, fields: lastFields })
+      .catch(() => {});
   }
 
   // Career sites (Databricks/Greenhouse, Workday…) lazily mount the real form
@@ -485,7 +524,8 @@ function initialize(): void {
       lateMountTimer = null;
       runScan();
       engine?.updateRegistry(registry);
-      maybeShowOrUpdateOverlay();
+      reportFields();
+      if (!isTopFrame) announceIfFormHost();
       if (recognizedCount(lastFields) === 0) watchForLateMount(attemptsLeft - 1);
     }, 1000);
   }
@@ -502,7 +542,11 @@ function initialize(): void {
         }
 
         case "TOGGLE_PANEL": {
-          if (isTopFrame) {
+          if (isTopFrame && adoptedRemote && remoteCallbacks) {
+            // The form lives in a child frame — toggle the adopted panel as-is,
+            // never a local re-scan that would show the empty top-frame DOM.
+            toggleOverlay({ fields: remoteFields, tabUrl: location.href }, remoteCallbacks);
+          } else if (isTopFrame) {
             // Re-scan on open so a lazily-/late-mounted form (common on SPA
             // career sites, where the real form mounts after the consent
             // banner) is reflected immediately, and keep watching for mounts
@@ -568,6 +612,45 @@ function initialize(): void {
             return true;
           }
           return false; // not ours, stay silent
+        }
+
+        case "FORM_OP": {
+          // This frame owns the form; run the requested overlay op locally and
+          // return its result to the top-frame panel (via the background relay).
+          void dispatchFormOp(overlayCallbacks, message.op, message.args).then(sendResponse);
+          return true; // async
+        }
+
+        case "REMOTE_FORM_AVAILABLE": {
+          // A child frame owns a form. Adopt it only if WE have no form of our
+          // own and haven't already mounted a panel for it.
+          if (
+            isTopFrame &&
+            !overlayShown &&
+            shouldAdoptRemoteHost(recognizedCount(lastFields), message.recognized)
+          ) {
+            const frameId = message.frameId;
+            const send = (op: FormOpName, args: unknown[]): Promise<FormOpResult> =>
+              chrome.runtime.sendMessage({ type: "RELAY_FORM_OP", frameId, op, args }) as Promise<FormOpResult>;
+            remoteFields = message.fields;
+            remoteCallbacks = makeProxyCallbacks(send);
+            overlayShown = true;
+            adoptedRemote = true;
+            console.log(`[Tailrd overlay] adopting form in frame ${frameId} (${message.recognized} recognized fields)`);
+            showOverlay({ fields: remoteFields, tabUrl: location.href }, remoteCallbacks);
+          }
+          sendResponse({ ok: true });
+          return false;
+        }
+
+        case "REMOTE_FIELDS_UPDATED": {
+          // The child host re-scanned (profile / rescan / mutation) — refresh.
+          if (isTopFrame && adoptedRemote) {
+            remoteFields = message.fields;
+            updateOverlay({ fields: remoteFields, tabUrl: location.href });
+          }
+          sendResponse({ ok: true });
+          return false;
         }
 
         default:
