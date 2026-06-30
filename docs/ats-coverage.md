@@ -2,7 +2,7 @@
 
 Track which ATS systems have been tested and confirmed working with the Tailrd extension.
 
-**Progress:** 1 / 15 covered
+**Progress:** 2 / 15 covered
 
 ---
 
@@ -49,7 +49,7 @@ Track which ATS systems have been tested and confirmed working with the Tailrd e
 - [x] **Workday** *(Workday Inc.)*
   Most widely used enterprise ATS. Renders fields as custom web components inside shadow DOM — standard querySelector won't reach them. Aggressively re-renders on SPA navigation. The reconciler was specifically built for this. Very common in Fortune 500 companies.
 
-- [ ] **iCIMS** *(iCIMS Inc.)*
+- [x] **iCIMS** *(iCIMS Inc.)*
   Heavy use of nested iframes — each section of the form often lives in its own iframe. FRAME_TOKEN and iframe coordination logic is critical here. Commonly used by large enterprises and retailers.
 
 - [ ] **Taleo** *(Oracle)*
