@@ -17,6 +17,7 @@ import {
   isHiddenButLabeled,
   isRequiredField,
   isVisible,
+  nearbyText,
   type FieldSignals,
 } from "./domUtils";
 import { isCaptchaField } from "./captcha";
@@ -129,12 +130,12 @@ function radioOptionLabel(radio: HTMLInputElement): string {
 }
 
 /**
- * Signals for a radio group come from its container (fieldset legend,
- * role=radiogroup label) rather than the individual buttons.
+ * Signals for a group come from its container (fieldset legend, role=group/
+ * radiogroup label, or — for a container with none of those — the heading text
+ * immediately before it) rather than the individual buttons.
  */
-function groupSignals(members: HTMLInputElement[], containerSelector: string): FieldSignals {
+function groupSignals(members: HTMLInputElement[], container: Element | null): FieldSignals {
   const first = members[0];
-  const container = first.closest(containerSelector);
   let label = "";
   if (container) {
     const legend = container.querySelector("legend");
@@ -150,15 +151,53 @@ function groupSignals(members: HTMLInputElement[], containerSelector: string): F
         );
       }
     }
+    // No semantic label: a plain-<div> group's question is usually the heading
+    // text right before the option list (the container itself, not the first
+    // option, since the first option has no useful "previous sibling" text).
+    if (!label) label = nearbyText(container as HTMLElement);
   }
   const base = collectSignals(first);
   return {
     ...base,
-    // The group question; individual radio labels ("Yes"/"No") are options.
+    // The group question; individual radio/checkbox labels ("Yes"/"LinkedIn") are options.
     label: label || base.nearby,
     placeholder: "",
     typeHint: "",
   };
+}
+
+/** Form-field types other than checkboxes — finding one inside a candidate
+ *  checkbox-group container means we've climbed past the group's natural
+ *  boundary into an unrelated section. */
+const OTHER_FIELD_SELECTOR =
+  'input:not([type="checkbox"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]), select, textarea';
+
+/** Never accepted as a checkbox-group container even if it would otherwise qualify. */
+const CONTAINER_CLIMB_BOUNDARY = new Set(["FORM", "BODY", "HTML"]);
+
+/**
+ * The smallest enclosing container for a "select all that apply" checkbox
+ * cluster. Prefers an explicit `fieldset`/`[role=group]`; most real ATS render
+ * the same pattern with plain `<div>`s instead, so fall back to the closest
+ * ancestor (within a few levels, never the form/body/page itself) that encloses
+ * ≥2 checkboxes and no unrelated field — the natural list boundary.
+ */
+function checkboxGroupContainer(el: HTMLInputElement): Element | null {
+  const explicit = el.closest('fieldset, [role="group"]');
+  if (explicit && explicit.querySelectorAll('input[type="checkbox"]').length >= 2) {
+    return explicit;
+  }
+  let node: Element | null = el.closest("label") ?? el.parentElement;
+  for (let depth = 0; depth < 5 && node && !CONTAINER_CLIMB_BOUNDARY.has(node.tagName); depth++) {
+    if (
+      node.querySelectorAll('input[type="checkbox"]').length >= 2 &&
+      node.querySelectorAll(OTHER_FIELD_SELECTOR).length === 0
+    ) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
 }
 
 export function scanPage(
@@ -202,12 +241,14 @@ export function scanPage(
       continue; // grouped below
     }
 
-    // "Select all that apply": checkboxes sharing a fieldset / [role=group] with
-    // ≥2 of them are one multi-select field. A standalone checkbox (no such
-    // container, or only one inside it) falls through to the single-control path.
+    // "Select all that apply": checkboxes sharing a natural group container
+    // (fieldset/[role=group], or the closest plain-<div> ancestor enclosing
+    // ≥2 of them and nothing else) are one multi-select field. A standalone
+    // checkbox (no such container, or only one inside it) falls through to
+    // the single-control path.
     if (el instanceof HTMLInputElement && el.type === "checkbox") {
-      const container = el.closest('fieldset, [role="group"]');
-      if (container && container.querySelectorAll('input[type="checkbox"]').length >= 2) {
+      const container = checkboxGroupContainer(el);
+      if (container) {
         const group = checkboxGroups.get(container) ?? [];
         group.push(el);
         checkboxGroups.set(container, group);
@@ -255,7 +296,7 @@ export function scanPage(
   for (const radios of radioGroups.values()) {
     const first = radios[0];
     const id = ensureFieldId(first);
-    const signals = groupSignals(radios, 'fieldset, [role="radiogroup"]');
+    const signals = groupSignals(radios, first.closest('fieldset, [role="radiogroup"]'));
     const { category, confidence, sensitive } = classifyField(signals);
     const options = radios.map(radioOptionLabel).filter(Boolean).slice(0, 30);
 
@@ -284,10 +325,10 @@ export function scanPage(
 
   // Native checkbox groups ("select all that apply") — one logical multi-select
   // field each, classified by the group question (not the option text).
-  for (const checkboxes of checkboxGroups.values()) {
+  for (const [container, checkboxes] of checkboxGroups.entries()) {
     const first = checkboxes[0];
     const id = ensureFieldId(first);
-    const signals = groupSignals(checkboxes, 'fieldset, [role="group"]');
+    const signals = groupSignals(checkboxes, container);
     const { category, confidence, sensitive } = classifyField(signals);
     const options = checkboxes.map(radioOptionLabel).filter(Boolean).slice(0, 30);
 
