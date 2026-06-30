@@ -21,7 +21,7 @@ import {
 } from "./domUtils";
 import { isCaptchaField } from "./captcha";
 import { isConsentField } from "./consent";
-import { isAriaCombobox } from "./comboboxEngine";
+import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { classifyField, resolveProfileValue } from "./fieldMatcher";
 
 /** Live handle for a detected field — never leaves the content script. */
@@ -190,7 +190,11 @@ export function scanPage(
     const { category, confidence, sensitive } = classifyField(signals);
 
     const options =
-      el instanceof HTMLSelectElement ? selectOptions(el) : undefined;
+      el instanceof HTMLSelectElement
+        ? selectOptions(el)
+        : controlType === "combobox"
+          ? readComboboxOptions(el)
+          : undefined;
 
     const control: RuntimeControl = { id, controlType, el };
     registry.set(id, control);
@@ -267,6 +271,9 @@ function currentValueOf(el: HTMLElement, controlType: ControlType): string | und
   if (controlType === "contenteditable") {
     const v = cleanText(el.textContent);
     return v ? v : undefined;
+  }
+  if (controlType === "combobox") {
+    return readComboboxValue(el);
   }
   return undefined;
 }
