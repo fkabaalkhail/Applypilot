@@ -2,7 +2,7 @@
 
 Track which ATS systems have been tested and confirmed working with the Tailrd extension.
 
-**Progress:** 3 / 15 covered
+**Progress:** 4 / 15 covered
 
 ---
 
@@ -55,7 +55,7 @@ Track which ATS systems have been tested and confirmed working with the Tailrd e
 - [x] **Taleo** *(Oracle)*
   Legacy Oracle product built on old Java-based web tech. Expect unusual form structures, non-standard inputs, and iframe-heavy layouts. Very common in government, healthcare, and large enterprises. Notoriously painful to autofill.
 
-- [ ] **ADP Recruiting Management** *(ADP Inc.)*
+- [x] **ADP Recruiting Management** *(ADP Inc.)*
   Legacy tech, iframes, and inconsistent field naming. ADP's frontend varies between clients. Common in large US corporations, especially in finance and manufacturing.
 
 - [ ] **SAP SuccessFactors** *(SAP SE)*
