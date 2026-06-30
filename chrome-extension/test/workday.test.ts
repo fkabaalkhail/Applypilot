@@ -109,3 +109,47 @@ describe("Workday My Information — autofill", () => {
     expect((document.getElementById("wd-veteran") as HTMLSelectElement).value).toBe("");
   });
 });
+
+describe("Workday — EEO only when explicitly enabled", () => {
+  it("fills an EEO select when the toggle is on AND the profile has the answer", async () => {
+    mountWorkdayMyInfo(document);
+    const withEeo: UserApplicationProfile = {
+      ...MOCK_PROFILE,
+      eeo: {
+        gender: "Female",
+        race: "Asian",
+        hispanicLatino: "No",
+        veteranStatus: "I am not a veteran",
+        disabilityStatus: "No",
+      },
+    };
+    await autofill(withEeo, true);
+    expect((document.getElementById("wd-gender") as HTMLSelectElement).value).toBe("Female");
+    expect((document.getElementById("wd-veteran") as HTMLSelectElement).value).toBe("I am not a veteran");
+  });
+});
+
+describe("Workday — multi-step rescan", () => {
+  it("re-detects fields after a step transition replaces the form", () => {
+    mountWorkdayMyInfo(document);
+    const first = scanPage(MOCK_PROFILE, false);
+    expect(first.fields.some((f) => f.category === "firstName")).toBe(true);
+
+    // Workday SPA navigation: the next step replaces the form subtree.
+    document.body.innerHTML = "";
+    const wrap = document.createElement("div");
+    const label = document.createElement("label");
+    label.id = "cl-label";
+    label.setAttribute("for", "cl");
+    label.textContent = "Cover Letter";
+    const ta = document.createElement("textarea");
+    ta.id = "cl";
+    ta.setAttribute("aria-labelledby", "cl-label");
+    wrap.append(label, ta);
+    document.body.append(wrap);
+
+    const second = scanPage(MOCK_PROFILE, false);
+    expect(second.fields.some((f) => f.category === "coverLetter")).toBe(true);
+    expect(second.fields.some((f) => f.category === "firstName")).toBe(false);
+  });
+});
