@@ -214,7 +214,7 @@ export function flashHighlight(el: HTMLElement): void {
     style.id = "ap-autofill-style";
     style.textContent = `
       [data-ap-flash] {
-        outline: 2px solid #7C6CFF !important;
+        outline: 2px solid #533afd !important;
         outline-offset: 1px;
         transition: outline-color 0.4s ease;
       }`;
