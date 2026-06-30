@@ -23,6 +23,7 @@ import {
   type Icon,
 } from "@phosphor-icons/react";
 import api from "../auth/api";
+import { useApplyTracking } from "../context/ApplyTracking";
 
 // Maps the client-side parser's icon keys to Phosphor icon components
 const SECTION_ICONS: Record<string, Icon> = {
@@ -253,6 +254,7 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [companyLogo, setCompanyLogo] = useState(job.company_logo || "");
   const [fetchingDetails, setFetchingDetails] = useState(false);
   const [structured, setStructured] = useState<any>(null);
+  const { registerApplyClick } = useApplyTracking();
 
   useEffect(() => {
     let cancelled = false;
@@ -438,10 +440,22 @@ export default function JobDetailView({ job, onClose }: Props) {
 
         {/* Action buttons */}
         <div className="job-detail-actions">
-          <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-apply-detail">
+          <a
+            href={applyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-apply-detail"
+            onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company })}
+          >
             <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
           </a>
-          <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-outline-detail">
+          <a
+            href={applyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-outline-detail"
+            onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company })}
+          >
             <ArrowSquareOut size={16} weight="bold" /> View Original Post
           </a>
         </div>
