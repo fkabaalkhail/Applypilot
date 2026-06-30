@@ -29,7 +29,7 @@ from backend.auth.tokens import (
     create_access_token, create_refresh_token, decode_token,
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
-from backend.auth.dependencies import get_current_user, get_verified_user
+from backend.auth.dependencies import get_current_user, get_verified_user, effective_email_verified
 from backend.services.verification_service import (
     create_verification_token,
     verify_token,
@@ -184,7 +184,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     return TokenResponseWithVerification(
         access_token=create_access_token(user.id),
         refresh_token=refresh_tok,
-        email_verified=False,
+        email_verified=effective_email_verified(user),
     )
 
 
@@ -261,7 +261,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     return TokenResponseWithVerification(
         access_token=create_access_token(user.id),
         refresh_token=refresh_tok,
-        email_verified=user.email_verified,
+        email_verified=effective_email_verified(user),
     )
 
 
@@ -284,7 +284,9 @@ def google_auth(body: GoogleAuthRequest, request: Request, response: Response, d
         raise HTTPException(status_code=502, detail="Could not verify Google token")
 
     if resp.status_code != 200:
-        logger.warning(f"Google token verification failed: {resp.status_code} {resp.text}")
+        # Don't log the raw upstream body — it can carry token fragments / detail
+        # we don't want in our logs. The status code is enough to triage.
+        logger.warning(f"Google token verification failed: {resp.status_code}")
         raise HTTPException(status_code=401, detail="Invalid Google token")
 
     idinfo = resp.json()
@@ -292,7 +294,7 @@ def google_auth(body: GoogleAuthRequest, request: Request, response: Response, d
     # Verify the token was issued for our app
     token_aud = idinfo.get("aud")
     if token_aud != GOOGLE_CLIENT_ID:
-        logger.warning(f"Token audience mismatch: got {token_aud}, expected {GOOGLE_CLIENT_ID}")
+        logger.warning("Google token audience mismatch")
         raise HTTPException(status_code=401, detail="Token not issued for this application")
 
     email = idinfo.get("email")
@@ -444,7 +446,7 @@ def refresh(
     return TokenResponseWithVerification(
         access_token=create_access_token(user_id, client=client),
         refresh_token=refresh_tok,
-        email_verified=user.email_verified,
+        email_verified=effective_email_verified(user),
     )
 
 
@@ -515,7 +517,7 @@ def get_me(user: User = Depends(get_current_user)):
         "first_name": user.first_name,
         "last_name": user.last_name,
         "profile_image_url": user.profile_image_url,
-        "email_verified": user.email_verified,
+        "email_verified": effective_email_verified(user),
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 

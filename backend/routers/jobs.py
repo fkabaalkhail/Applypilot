@@ -58,13 +58,27 @@ def list_jobs(
     sort: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    user_id: Optional[int] = Depends(get_optional_user_id),
     db: Session = Depends(get_db),
 ):
-    """List scraped jobs, optionally filtered by status, match score, source, country, work_type, etc."""
+    """List scraped jobs, optionally filtered by status, match score, source, country, work_type, etc.
+
+    Saved state is per-user: it comes from the caller's ``user_saved_jobs`` rows,
+    not the global ``ScrapedJob.saved`` column. Anonymous callers see nothing
+    saved.
+    """
     from backend.services.job_filters import (
         date_posted_cutoff,
         expand_experience_filter_values,
     )
+
+    # The set of job ids this user has bookmarked (empty when unauthenticated).
+    saved_ids = set()
+    if user_id is not None:
+        saved_ids = {
+            row[0]
+            for row in db.query(UserSavedJob.job_id).filter(UserSavedJob.user_id == user_id).all()
+        }
 
     q = db.query(ScrapedJob).filter(ScrapedJob.match_score >= min_score)
     q = q.filter(
@@ -78,7 +92,11 @@ def list_jobs(
     if source:
         q = q.filter(ScrapedJob.source_platform == source)
     if saved is not None:
-        q = q.filter(ScrapedJob.saved == saved)
+        if saved:
+            # Only this user's bookmarks; none if unauthenticated / no saves.
+            q = q.filter(ScrapedJob.id.in_(saved_ids)) if saved_ids else q.filter(ScrapedJob.id.is_(None))
+        elif saved_ids:
+            q = q.filter(~ScrapedJob.id.in_(saved_ids))
     if search:
         search_term = _escape_like(search.strip())
         if search_term:
@@ -130,7 +148,13 @@ def list_jobs(
         q = q.order_by(effective_date.desc().nullslast())
 
     q = q.offset((page - 1) * page_size).limit(page_size)
-    return q.all()
+    results = q.all()
+
+    # Reflect this user's bookmark state in the response. Transient: we never
+    # commit, so the global ScrapedJob.saved column is left untouched.
+    for job in results:
+        job.saved = 1 if job.id in saved_ids else 0
+    return results
 
 
 @router.post("/create")
@@ -176,7 +200,10 @@ def create_job(
 
 
 @router.get("/stats")
-def job_stats(db: Session = Depends(get_db)):
+def job_stats(
+    user_id: Optional[int] = Depends(get_optional_user_id),
+    db: Session = Depends(get_db),
+):
     """Return aggregate job stats with breakdowns by country, work_type, role_category, experience_level."""
     # Exclude blank-company jobs to match the listing query.
     _has_company = (
@@ -187,7 +214,16 @@ def job_stats(db: Session = Depends(get_db)):
     total = db.query(ScrapedJob).filter(_has_company).count()
     applied = db.query(ScrapedJob).filter(_has_company, ScrapedJob.status == JobStatus.APPLIED).count()
     new = db.query(ScrapedJob).filter(_has_company, ScrapedJob.status == JobStatus.NEW).count()
-    saved_count = db.query(ScrapedJob).filter(_has_company, ScrapedJob.saved == 1).count()
+    # Saved count is per-user (the "Liked" tab), matching the listing's saved filter.
+    if user_id is not None:
+        saved_count = (
+            db.query(UserSavedJob)
+            .join(ScrapedJob, ScrapedJob.id == UserSavedJob.job_id)
+            .filter(UserSavedJob.user_id == user_id, _has_company)
+            .count()
+        )
+    else:
+        saved_count = 0
 
     avg_score = db.query(func.avg(ScrapedJob.match_score)).scalar()
     avg_match_score = round(avg_score) if avg_score else 0
@@ -564,6 +600,7 @@ def save_job(
         db.add(saved_entry)
         db.commit()
     db.refresh(job)
+    job.saved = 1  # transient: reflect this user's state in the response
     return job
 
 
@@ -583,6 +620,7 @@ def unsave_job(
     ).delete()
     db.commit()
     db.refresh(job)
+    job.saved = 0  # transient: reflect this user's state in the response
     return job
 
 

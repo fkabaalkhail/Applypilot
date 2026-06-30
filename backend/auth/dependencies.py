@@ -17,6 +17,28 @@ security = HTTPBearer(auto_error=False)
 CRON_SECRET = os.getenv("CRON_SECRET", "")
 
 
+def email_verification_required() -> bool:
+    """Whether the email-verification gate is enforced.
+
+    Defaults to True (secure). Set ``REQUIRE_EMAIL_VERIFICATION=false`` to let
+    users through without a verified email — used for the beta so testers aren't
+    blocked by email deliverability. Read at call time so it can be toggled from
+    the platform dashboard without a redeploy.
+    """
+    return os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").strip().lower() not in ("0", "false", "no")
+
+
+def effective_email_verified(user) -> bool:
+    """The verification state to report to clients.
+
+    True if the user is actually verified OR the gate is disabled for the beta.
+    Web (ProtectedRoute) and the extension key their own UI gates off this value,
+    so reporting the effective state keeps every surface unblocked without a
+    frontend rebuild. Reversible: flip the env var back and real status returns.
+    """
+    return bool(getattr(user, "email_verified", False)) or not email_verification_required()
+
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
@@ -95,8 +117,8 @@ async def get_verified_user(
     if user.auth_provider == "google":
         return user
 
-    # Verified local users always pass
-    if user.email_verified:
+    # Verified local users always pass; gate may be disabled for the beta
+    if user.email_verified or not email_verification_required():
         return user
 
     # Unverified local user — check if path is exempt
@@ -142,8 +164,8 @@ async def get_verified_user_id(
     if user.auth_provider == "google":
         return user.id
 
-    # Verified local users pass
-    if user.email_verified:
+    # Verified local users pass; gate may be disabled for the beta
+    if user.email_verified or not email_verification_required():
         return user.id
 
     # Unverified local user on a non-exempt path
@@ -178,8 +200,9 @@ async def get_admin_user(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    # Require email verification for admin access (Google users bypass)
-    if user.auth_provider != "google" and not user.email_verified:
+    # Require email verification for admin access (Google users bypass; gate may
+    # be disabled for the beta)
+    if user.auth_provider != "google" and not user.email_verified and email_verification_required():
         raise HTTPException(status_code=403, detail="Email verification required")
 
     if not user.is_admin:

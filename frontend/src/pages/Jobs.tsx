@@ -111,6 +111,7 @@ export default function Jobs() {
   const pageSize = 50;
   const [search, setSearch] = useState("");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [rewriteJob, setRewriteJob] = useState<AIJob | null>(null);
   const [coverJob, setCoverJob] = useState<AIJob | null>(null);
   const [filtersVisible, setFiltersVisible] = useState(true);
@@ -224,19 +225,36 @@ export default function Jobs() {
     }
   }
 
+  // Auto-dismiss the save error after a few seconds.
+  useEffect(() => {
+    if (!saveError) return;
+    const t = setTimeout(() => setSaveError(null), 4000);
+    return () => clearTimeout(t);
+  }, [saveError]);
+
   async function toggleSave(job: Job) {
-    const endpoint = job.saved
-      ? `/jobs/${job.id}/unsave`
-      : `/jobs/${job.id}/save`;
+    const next = !job.saved;
+    const endpoint = next ? `/jobs/${job.id}/save` : `/jobs/${job.id}/unsave`;
+
+    // Optimistic: flip the bookmark immediately so it feels responsive.
+    setJobs((prev) =>
+      prev.map((j) => (j.id === job.id ? { ...j, saved: next } : j))
+    );
 
     try {
       await api.post(endpoint);
-      setJobs((prev) =>
-        prev.map((j) => (j.id === job.id ? { ...j, saved: !j.saved } : j))
-      );
       fetchStats();
-    } catch {
-      // Silently fail
+    } catch (err) {
+      // Revert the optimistic change and tell the user it didn't stick.
+      setJobs((prev) =>
+        prev.map((j) => (j.id === job.id ? { ...j, saved: !next } : j))
+      );
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setSaveError(
+        status === 403
+          ? "Verify your email to save jobs."
+          : "Couldn't save the job. Please try again."
+      );
     }
   }
 
@@ -263,6 +281,11 @@ export default function Jobs() {
 
   return (
     <div className="jobs-page">
+      {saveError && (
+        <div className="toast toast-error" role="alert" style={{ margin: "0 0 12px" }}>
+          {saveError}
+        </div>
+      )}
       {/* Header Bar */}
       <header className="jobs-header">
         <h1>Jobs</h1>
