@@ -52,6 +52,7 @@ describe("scanPage — custom dropdowns", () => {
     labeledCombobox(["Yes", "No"], { label: "Authorized to work?" });
     const { fields } = scanPage(null, false);
     const combo = fields.find((f) => f.controlType === "combobox");
+    expect(combo).toBeDefined();
     expect(combo!.options).toEqual(["Yes", "No"]);
     expect(combo!.currentValue).toBeUndefined();
   });

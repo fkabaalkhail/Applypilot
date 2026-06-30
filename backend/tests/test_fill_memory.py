@@ -158,7 +158,8 @@ def test_ai_answer_kept_when_no_option_matches(client):
             "options": ["Select…", "Silver", "Bronze"],
         }]
     }
-    with patch(_ANSWER, AsyncMock(return_value="Gold")):
+    with patch(_EMBED, AsyncMock(return_value=[[0.0, 1.0]])), \
+         patch(_ANSWER, AsyncMock(return_value="Gold")):
         resp = client.post("/api/fill", json=body)
     assert resp.status_code == 200
     ans = resp.json()["answers"][0]
@@ -175,7 +176,8 @@ def test_ai_answer_snaps_to_a_matching_option(client):
             "options": ["Select…", "Silver", "Bronze"],
         }]
     }
-    with patch(_ANSWER, AsyncMock(return_value="silver")):
+    with patch(_EMBED, AsyncMock(return_value=[[0.0, 1.0]])), \
+         patch(_ANSWER, AsyncMock(return_value="silver")):
         resp = client.post("/api/fill", json=body)
     assert resp.status_code == 200
     ans = resp.json()["answers"][0]
