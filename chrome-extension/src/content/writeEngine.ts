@@ -46,6 +46,8 @@ export function writeControl(control: RuntimeControl, value: string): WriteResul
       return writeRadioGroup(control.radios ?? [], value);
     case "contenteditable":
       return writeContentEditable(control.el as HTMLElement, value);
+    case "ariaRadioGroup":
+      return writeAriaRadioGroup(control.el as HTMLElement, value);
     case "file":
     case "customDropdown":
     case "combobox": // driven asynchronously by comboboxEngine, never here
@@ -155,6 +157,12 @@ export function verifyControl(control: RuntimeControl, value: string): boolean {
       if (isStale(el)) return false;
       return valueReflects(value, cleanText(el!.textContent));
     }
+    case "ariaRadioGroup": {
+      const group = control.el;
+      if (isStale(group)) return false;
+      const match = findAriaRadio(group!, value);
+      return Boolean(match) && match!.getAttribute("aria-checked") === "true";
+    }
     case "file":
     case "customDropdown":
     case "combobox":
@@ -230,6 +238,31 @@ function matchRadio(radios: HTMLInputElement[], value: string): HTMLInputElement
   const labelOf = (r: HTMLInputElement): string =>
     cleanText(r.labels?.[0]?.textContent) || r.value;
   return matchOption(radios, labelOf, (r) => r.value, value);
+}
+
+// ARIA radio groups (role=radiogroup with role=radio divs) — selected by clicking
+// the matching radio; the framework flips its aria-checked.
+function ariaRadiosOf(group: HTMLElement): HTMLElement[] {
+  return Array.from(group.querySelectorAll('[role="radio"]')).filter(
+    (r) => r.getAttribute("aria-disabled") !== "true"
+  ) as HTMLElement[];
+}
+
+function findAriaRadio(group: HTMLElement, value: string): HTMLElement | null {
+  return matchOption(
+    ariaRadiosOf(group),
+    (r) => cleanText(r.getAttribute("aria-label")) || cleanText(r.textContent),
+    (r) => r.getAttribute("data-value") ?? r.getAttribute("value") ?? "",
+    value
+  );
+}
+
+function writeAriaRadioGroup(group: HTMLElement, value: string): WriteResult {
+  if (isStale(group)) return { written: false, reason: STALE };
+  const match = findAriaRadio(group, value);
+  if (!match) return { written: false, reason: `No option matches "${truncate(value)}"` };
+  if (match.getAttribute("aria-checked") !== "true") match.click();
+  return { written: true };
 }
 
 function parseDesiredBool(value: string): boolean | null {

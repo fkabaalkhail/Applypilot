@@ -172,6 +172,7 @@ export type ControlType =
   | "file"
   | "contenteditable"
   | "combobox"
+  | "ariaRadioGroup"
   | "customDropdown";
 
 /**

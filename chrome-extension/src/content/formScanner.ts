@@ -49,6 +49,9 @@ const CANDIDATE_SELECTOR = [
   // Driven by opening the listbox and clicking an option (see comboboxEngine).
   '[role="combobox"]',
   '[aria-haspopup="listbox"]',
+  // ARIA radio groups (react-aria / Radix custom radios — Jobvite, etc.): a
+  // role=radiogroup whose role=radio children are divs, not native inputs.
+  '[role="radiogroup"]',
 ].join(", ");
 
 /** Input types that are never application fields. */
@@ -83,6 +86,9 @@ function controlTypeOf(el: HTMLElement): ControlType | null {
   // <input role="combobox"> is driven by the listbox engine, not typed into,
   // and a Workday <button aria-haspopup="listbox"> is now fillable.
   if (isAriaCombobox(el)) return "combobox";
+  // ARIA radio group (role=radio children clicked to select) — checked before the
+  // generic element fallbacks so it is driven as a choice control, not skipped.
+  if (el.getAttribute("role") === "radiogroup") return "ariaRadioGroup";
   if (el instanceof HTMLInputElement) {
     if (SKIPPED_INPUT_TYPES.has(el.type)) return null;
     if (el.type === "checkbox") return "checkbox";
@@ -103,6 +109,14 @@ function selectOptions(el: HTMLSelectElement): string[] {
     .map((o) => cleanText(o.textContent))
     .filter((t) => t.length > 0)
     .slice(0, 60);
+}
+
+/** Option labels of an ARIA radio group (its role=radio children). */
+function ariaRadioOptions(group: HTMLElement): string[] {
+  return Array.from(group.querySelectorAll('[role="radio"]'))
+    .map((r) => cleanText(r.getAttribute("aria-label")) || cleanText(r.textContent))
+    .filter((t) => t.length > 0)
+    .slice(0, 30);
 }
 
 /** The label of one radio button (its own label, value as fallback). */
@@ -194,7 +208,9 @@ export function scanPage(
         ? selectOptions(el)
         : controlType === "combobox"
           ? readComboboxOptions(el)
-          : undefined;
+          : controlType === "ariaRadioGroup"
+            ? ariaRadioOptions(el)
+            : undefined;
 
     const control: RuntimeControl = { id, controlType, el };
     registry.set(id, control);
@@ -274,6 +290,11 @@ function currentValueOf(el: HTMLElement, controlType: ControlType): string | und
   }
   if (controlType === "combobox") {
     return readComboboxValue(el);
+  }
+  if (controlType === "ariaRadioGroup") {
+    const checked = el.querySelector('[role="radio"][aria-checked="true"]') as HTMLElement | null;
+    if (!checked) return undefined;
+    return (cleanText(checked.getAttribute("aria-label")) || cleanText(checked.textContent)) || undefined;
   }
   return undefined;
 }
