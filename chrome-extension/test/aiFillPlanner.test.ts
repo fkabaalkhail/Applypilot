@@ -84,6 +84,10 @@ describe("toAiFillField", () => {
     expect(toAiFillField(field({ controlType: "text" })).type).toBe("text");
     expect(toAiFillField(field({ id: "z", options: undefined })).options).toEqual([]);
   });
+  it("maps a custom dropdown (combobox) to a select choice field", () => {
+    expect(toAiFillField(field({ controlType: "combobox", options: ["A", "B"] })).type).toBe("select");
+    expect(toAiFillField(field({ controlType: "combobox", options: ["A", "B"] })).options).toEqual(["A", "B"]);
+  });
 });
 
 describe("planAiFill", () => {

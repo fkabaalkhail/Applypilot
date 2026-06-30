@@ -59,6 +59,10 @@ function mapType(controlType: DetectedField["controlType"]): AiFillField["type"]
       return "radio";
     case "checkbox":
       return "checkbox";
+    // Custom ARIA dropdown — a single-choice control; the backend snaps the
+    // answer to one of `options` when present (see backend/routers/fill.py).
+    case "combobox":
+      return "select";
     default:
       return "text";
   }
