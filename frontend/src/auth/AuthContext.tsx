@@ -9,6 +9,7 @@ export interface UserProfile {
   created_at?: string;
   email_verified: boolean;
   has_completed_onboarding?: boolean;
+  has_completed_setup?: boolean;
 }
 
 export interface AuthState {
@@ -26,6 +27,7 @@ export interface AuthContextValue extends AuthState {
   resendVerification: () => Promise<void>;
   isEmailVerified: boolean;
   setOnboardingComplete: (completed: boolean) => Promise<void>;
+  setSetupComplete: (completed: boolean) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
