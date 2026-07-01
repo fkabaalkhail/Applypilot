@@ -105,6 +105,9 @@ interface TourStep {
   placement?: Placement;        // default "auto"
   condition?: () => boolean;    // if false, step is skipped (breakpoint/feature)
   spotlightPadding?: number;    // px around target, default 8
+  prepare?: () => void | Promise<void>; // run before target lookup: open a job,
+                                         // expand a panel, etc. Errors are caught
+                                         // and the step is skipped gracefully.
 }
 
 interface TourAnalytics {
@@ -116,18 +119,30 @@ interface TourAnalytics {
 }
 ```
 
-### Proposed initial tour (~6 steps)
-Targets added as `data-tour="..."` attributes on existing elements:
+### Proposed tour (~12 steps, covering the full feature set)
+Targets added as `data-tour="..."` attributes on existing elements. Steps 5–7
+target the AI Tools sidebar, which lives inside a job's detail view — their
+`prepare` hook opens the first available job (via the Jobs page selection
+handler / `ApplyTracking` context) so the tools are on screen; if no job exists,
+the missing-target path skips them cleanly.
 
-1. **Welcome** — centered card (no target). "Welcome to Tailrd."
-2. **Dashboard / jobs** — `/app`, jobs list container. "Track and discover jobs here."
-3. **Resume** — `/app/resume`, resume panel. "Tailor your resume for each role."
-4. **Applications** — `/app/applications`, tracker. "Every application, tracked automatically."
-5. **Profile** — `/app/profile`, profile form. "Keep your details ready for autofill."
-6. **Settings / extension** — `/app/settings`, extension section. "Install the extension to autofill anywhere." (finish)
+1.  **Welcome** — centered card (no target). "Welcome to Tailrd — let's take a quick tour."
+2.  **Dashboard / jobs list** — `/app`, jobs list container (`data-tour="jobs-list"`). Discover & track roles.
+3.  **Job filters** — `/app`, filter bar (`data-tour="job-filters"`). Narrow by fit, location, work type.
+4.  **Open a job** — `/app`, a job card (`data-tour="job-card"`). "Open a job to see AI tools." (`prepare` opens the first job.)
+5.  **Customize resume** — AI Tools button (`data-tour="ai-tool-resume"`). Generate a resume tailored to this job.
+6.  **Cover letter** — AI Tools button (`data-tour="ai-tool-cover-letter"`). One-click tailored cover letter.
+7.  **Fit / ATS analysis** — AI Tools button (`data-tour="ai-tool-fit"`) + ATS panel. See how well you match and why.
+8.  **Resume library** — `/app/resume` (`data-tour="resume-page"`). Manage base resume versions.
+9.  **Applications tracker** — `/app/applications` (`data-tour="applications-page"`). Every application, tracked automatically.
+10. **Profile** — `/app/profile` (`data-tour="profile-page"`). Details used to autofill applications.
+11. **Interview prep** — `/app/interview` (`data-tour="interview-page"`). Practice for upcoming interviews.
+12. **Install the extension** — `/app/settings`, extension section (`data-tour="extension-settings"`). Autofill anywhere on the web. (finish)
 
-`data-tour` attributes are the stable contract between config and UI; changing
-markup/classes won't break the tour.
+Sidebar nav items (`Refer & Earn`, `Feedback`) are always-present and can be
+added as extra steps later by editing config only. `data-tour` attributes are
+the stable contract between config and UI; changing markup/classes won't break
+the tour.
 
 ## Behavior & Resilience
 
@@ -145,6 +160,9 @@ markup/classes won't break the tour.
   skipped via `condition` or the missing-target path. Works desktop→mobile.
 - **Route-aware:** if `step.route` differs from current path, provider navigates
   (React Router `useNavigate`) then waits for the target before showing.
+- **Prepare hook:** if `step.prepare` is set, the provider awaits it after any
+  route navigation and before target lookup (e.g. open the first job so the AI
+  Tools sidebar mounts). Wrapped in try/catch; a throw skips the step.
 - **Interaction guard:** full-screen overlay blocks clicks outside the spotlight;
   spotlight area remains visible (not necessarily interactive) per step.
 - **Keyboard:** `Esc` = skip, `ArrowRight` = next, `ArrowLeft` = prev. Tooltip is
