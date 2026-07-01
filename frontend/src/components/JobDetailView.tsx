@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { resolveLogoUrl } from "../lib/companyLogo";
 import {
   X,
@@ -116,6 +116,10 @@ function formatExperienceLevel(level: string): string {
 interface Props {
   job: Job;
   onClose?: () => void;
+  /** "apply" when arriving from an email "APPLY NOW" deep-link — surfaces the CTA. */
+  autoAction?: string | null;
+  /** Called once the autoAction has been handled so it doesn't re-fire. */
+  onConsumeAutoAction?: () => void;
 }
 
 /**
@@ -244,15 +248,31 @@ function extractSkills(text: string): string[] {
   return found;
 }
 
-export default function JobDetailView({ job, onClose }: Props) {
+export default function JobDetailView({ job, onClose, autoAction, onConsumeAutoAction }: Props) {
   const [breakdown, setBreakdown] = useState<MatchBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [applyUrl, setApplyUrl] = useState(job.url);
+  const applyRef = useRef<HTMLAnchorElement>(null);
   const [description, setDescription] = useState(job.description || "");
   const [companyLogo, setCompanyLogo] = useState(job.company_logo || "");
   const [fetchingDetails, setFetchingDetails] = useState(false);
   const [structured, setStructured] = useState<any>(null);
+
+  // When opened from an email "APPLY NOW" deep-link (?action=apply), bring the
+  // apply CTA into view and flash it so applying is one obvious click rather
+  // than a hunt through the panel.
+  useEffect(() => {
+    if (autoAction !== "apply") return;
+    const el = applyRef.current;
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("cta-flash");
+      el.focus({ preventScroll: true });
+      window.setTimeout(() => el.classList.remove("cta-flash"), 2400);
+    }
+    onConsumeAutoAction?.();
+  }, [autoAction, onConsumeAutoAction]);
 
   useEffect(() => {
     let cancelled = false;
@@ -438,7 +458,7 @@ export default function JobDetailView({ job, onClose }: Props) {
 
         {/* Action buttons */}
         <div className="job-detail-actions">
-          <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-apply-detail">
+          <a ref={applyRef} href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-apply-detail">
             <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
           </a>
           <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn-outline-detail">

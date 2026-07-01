@@ -27,6 +27,11 @@ DEFAULT_THRESHOLD = 80
 DEFAULT_COOLDOWN_HOURS = 24
 DEFAULT_DAILY_BUDGET = 80
 
+# The product's canonical URL. Match-alert emails only send from the scheduled
+# production sweep, so if FRONTEND_URL is ever unset we still want every
+# "APPLY NOW" button to land inside Tailrd, never on the raw external posting.
+DEFAULT_FRONTEND_URL = "https://www.tailrd.ca"
+
 
 def _env_int(name: str, default: int) -> int:
     try:
@@ -85,7 +90,7 @@ def _emails_sent_today(db: Session) -> int:
 
 
 def _frontend_base() -> str:
-    return (os.getenv("FRONTEND_URL") or "").rstrip("/")
+    return (os.getenv("FRONTEND_URL") or DEFAULT_FRONTEND_URL).rstrip("/")
 
 
 def _relative_time(when: Optional[datetime.datetime]) -> str:
@@ -134,12 +139,11 @@ def _resolve_logo_url(job: ScrapedJob) -> str:
 def _job_to_alert_dict(job: ScrapedJob, score: int) -> dict:
     """Shape a ScrapedJob into the dict the email template expects.
 
-    The 'APPLY NOW' button deep-links into the Tailrd dashboard so users tailor
-    and apply with our tools; falls back to the raw job URL if FRONTEND_URL is
-    unset.
+    The 'APPLY NOW' button always deep-links into the Tailrd dashboard (never the
+    raw external posting) so users tailor and apply with our tools. The
+    ``action=apply`` hint tells the dashboard to surface the apply CTA on arrival.
     """
-    base = _frontend_base()
-    apply_url = f"{base}/app?job={job.id}" if base else (job.url or "#")
+    apply_url = f"{_frontend_base()}/app?job={job.id}&action=apply"
     return {
         "title": job.title or "",
         "company": job.company or "",

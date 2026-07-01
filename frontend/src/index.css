@@ -1402,6 +1402,14 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 .btn-apply-detail:hover {
   background: var(--stripe-primary-press);
 }
+/* Transient emphasis when landing from an email "APPLY NOW" deep-link. */
+@keyframes ctaFlash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 91, 255, 0); }
+  35%      { box-shadow: 0 0 0 5px rgba(99, 91, 255, 0.45); }
+}
+.btn-apply-detail.cta-flash {
+  animation: ctaFlash 0.8s ease-in-out 3;
+}
 
 .btn-outline-detail {
   padding: 0.65rem 1.25rem;

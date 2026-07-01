@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
 import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
@@ -178,8 +178,12 @@ export default function Jobs() {
     prevSelectedJobRef.current = selectedJob;
   }, [selectedJob]);
 
-  // Open a specific job when arriving from a match-alert email (?job=<id>).
+  // Open a specific job when arriving from a match-alert email
+  // (?job=<id>&action=apply|tailor). "apply" surfaces the apply CTA in the
+  // detail panel; "tailor" opens the custom-resume flow for that job directly.
   const deepLinkHandledRef = useRef(false);
+  const [autoAction, setAutoAction] = useState<string | null>(null);
+  const consumeAutoAction = useCallback(() => setAutoAction(null), []);
   useEffect(() => {
     if (deepLinkHandledRef.current) return;
     const params = new URLSearchParams(window.location.search);
@@ -187,17 +191,25 @@ export default function Jobs() {
     if (!jobIdParam) return;
     deepLinkHandledRef.current = true;
     const jobId = Number(jobIdParam);
+    const action = params.get("action");
     (async () => {
       try {
         if (Number.isFinite(jobId)) {
           const res = await api.get(`/jobs/${jobId}`);
-          setSelectedJob(res.data);
+          const j = res.data;
+          setSelectedJob(j);
+          if (action === "tailor") {
+            setRewriteJob({ id: j.id, title: j.title, company: j.company, url: j.url });
+          } else if (action === "apply") {
+            setAutoAction("apply");
+          }
         }
       } catch {
         // Job not found or not accessible — fall back to the list.
       } finally {
-        // Strip the param so refreshes don't re-open the panel.
+        // Strip the params so refreshes don't re-open the panel/modal.
         params.delete("job");
+        params.delete("action");
         const qs = params.toString();
         window.history.replaceState(
           {},
@@ -527,7 +539,7 @@ export default function Jobs() {
         {/* Inline Job Detail Panel */}
         {selectedJob && (
           <div className="job-detail-inline">
-            <JobDetailView job={selectedJob} onClose={() => setSelectedJob(null)} />
+            <JobDetailView job={selectedJob} autoAction={autoAction} onConsumeAutoAction={consumeAutoAction} onClose={() => setSelectedJob(null)} />
           </div>
         )}
       </div>

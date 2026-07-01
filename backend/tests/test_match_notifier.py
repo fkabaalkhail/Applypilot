@@ -10,6 +10,36 @@ from backend.services import match_notifier
 from backend.services.email_service import EmailService
 
 
+# ─── Apply deep-link construction ────────────────────────────────────────────
+
+def _fake_job():
+    return types.SimpleNamespace(
+        id=42, title="Engineer", company="Kinaxis", location="Ottawa",
+        salary_range="", posted_date=None, url="https://boards.example.com/x",
+        company_logo="", company_domain="", company_url="",
+    )
+
+
+def test_apply_url_deep_links_into_dashboard_with_action(monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "https://www.tailrd.ca")
+    d = match_notifier._job_to_alert_dict(_fake_job(), 88)
+    assert d["apply_url"] == "https://www.tailrd.ca/app?job=42&action=apply"
+
+
+def test_apply_url_never_falls_back_to_external_posting(monkeypatch):
+    # Even with FRONTEND_URL unset, the button must stay inside Tailrd.
+    monkeypatch.delenv("FRONTEND_URL", raising=False)
+    d = match_notifier._job_to_alert_dict(_fake_job(), 88)
+    assert d["apply_url"] == f"{match_notifier.DEFAULT_FRONTEND_URL}/app?job=42&action=apply"
+    assert "boards.example.com" not in d["apply_url"]
+
+
+def test_apply_url_strips_trailing_slash(monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "https://www.tailrd.ca/")
+    d = match_notifier._job_to_alert_dict(_fake_job(), 88)
+    assert d["apply_url"] == "https://www.tailrd.ca/app?job=42&action=apply"
+
+
 # ─── Email HTML builder ──────────────────────────────────────────────────────
 
 def _sample_jobs():
