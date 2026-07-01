@@ -94,67 +94,67 @@ export default function ExtensionConnect() {
 
   return (
     <div className="auth-page">
-      <div className="auth-container" style={{ maxWidth: 440, margin: "0 auto" }}>
-        <div className="auth-form-panel" style={{ textAlign: "center" }}>
-          <img src="/logo-icon.png" alt="Tailrd" style={{ width: 56, height: 56, margin: "0 auto 1rem" }} />
-
-          {(status === "checking" || status === "authorizing") && (
-            <>
-              <h1 className="auth-form-title">Connecting your extension…</h1>
-              <p className="auth-form-subtitle">Securely linking your Tailrd account. One moment.</p>
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"
-                   style={{ margin: "1.5rem auto" }} />
-            </>
-          )}
-
-          {status === "done" && (
-            <>
-              <h1 className="auth-form-title">You're connected!</h1>
-              <p className="auth-form-subtitle">
-                You can close this tab and return to the Tailrd extension.
-              </p>
-            </>
-          )}
-
-          {status === "needs_verification" && (
-            <>
-              <h1 className="auth-form-title">Verify your email first</h1>
-              <p className="auth-form-subtitle">
-                Confirm your email address, then reopen the extension to connect.
-              </p>
-              <Link to="/verify-email" className="auth-submit" style={{ display: "inline-block", marginTop: "1rem" }}>
-                Verify email
-              </Link>
-            </>
-          )}
-
-          {status === "error" && (
-            <>
-              <h1 className="auth-form-title">Connection failed</h1>
-              <div className="auth-error" role="alert">{errorMsg}</div>
-              <button
-                className="auth-submit"
-                style={{ marginTop: "1rem" }}
-                onClick={() => {
-                  started.current = false;
-                  setStatus("checking");
-                }}
-              >
-                Try again
-              </button>
-            </>
-          )}
-
-          {status === "bad_request" && (
-            <>
-              <h1 className="auth-form-title">Open this from the extension</h1>
-              <p className="auth-form-subtitle">
-                This page links the Tailrd browser extension to your account. Click
-                “Connect your Tailrd account” inside the extension to start.
-              </p>
-            </>
-          )}
+      <div className="auth-card" style={{ textAlign: "center" }}>
+        <div className="auth-brand">
+          <img src="/logo-icon.png" alt="Tailrd" className="auth-brand-logo" />
         </div>
+
+        {(status === "checking" || status === "authorizing") && (
+          <>
+            <h1 className="auth-title">Connecting your extension…</h1>
+            <p className="auth-subtitle">Securely linking your Tailrd account. One moment.</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"
+                 style={{ margin: "1.5rem auto 0" }} />
+          </>
+        )}
+
+        {status === "done" && (
+          <>
+            <h1 className="auth-title">You're connected!</h1>
+            <p className="auth-subtitle">
+              You can close this tab and return to the Tailrd extension.
+            </p>
+          </>
+        )}
+
+        {status === "needs_verification" && (
+          <>
+            <h1 className="auth-title">Verify your email first</h1>
+            <p className="auth-subtitle">
+              Confirm your email address, then reopen the extension to connect.
+            </p>
+            <Link to="/verify-email" className="auth-submit" style={{ display: "inline-block", marginTop: "1.25rem" }}>
+              Verify email
+            </Link>
+          </>
+        )}
+
+        {status === "error" && (
+          <>
+            <h1 className="auth-title">Connection failed</h1>
+            <div className="auth-error" role="alert" style={{ marginTop: "1rem" }}>{errorMsg}</div>
+            <button
+              className="auth-submit"
+              style={{ marginTop: "1rem" }}
+              onClick={() => {
+                started.current = false;
+                setStatus("checking");
+              }}
+            >
+              Try again
+            </button>
+          </>
+        )}
+
+        {status === "bad_request" && (
+          <>
+            <h1 className="auth-title">Open this from the extension</h1>
+            <p className="auth-subtitle">
+              This page links the Tailrd browser extension to your account. Click
+              “Connect your Tailrd account” inside the extension to start.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

@@ -178,6 +178,36 @@ export default function Jobs() {
     prevSelectedJobRef.current = selectedJob;
   }, [selectedJob]);
 
+  // Open a specific job when arriving from a match-alert email (?job=<id>).
+  const deepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const jobIdParam = params.get("job");
+    if (!jobIdParam) return;
+    deepLinkHandledRef.current = true;
+    const jobId = Number(jobIdParam);
+    (async () => {
+      try {
+        if (Number.isFinite(jobId)) {
+          const res = await api.get(`/jobs/${jobId}`);
+          setSelectedJob(res.data);
+        }
+      } catch {
+        // Job not found or not accessible — fall back to the list.
+      } finally {
+        // Strip the param so refreshes don't re-open the panel.
+        params.delete("job");
+        const qs = params.toString();
+        window.history.replaceState(
+          {},
+          "",
+          window.location.pathname + (qs ? `?${qs}` : ""),
+        );
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     fetchJobs();
     fetchStats();

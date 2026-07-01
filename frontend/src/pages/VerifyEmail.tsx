@@ -124,12 +124,13 @@ export default function VerifyEmailPage() {
   if (state === "verifying") {
     return (
       <div className="auth-page">
-        <div className="auth-container">
-          <div className="auth-form-panel">
-            <div className="auth-form-header">
-              <h1 className="auth-form-title">Verifying Your Email</h1>
-              <p className="auth-form-subtitle">Please wait while we verify your email address...</p>
-            </div>
+        <div className="auth-card" style={{ textAlign: "center" }}>
+          <div className="auth-brand">
+            <img src="/logo-icon.png" alt="Resumate" className="auth-brand-logo" />
+          </div>
+          <div className="auth-head">
+            <h1 className="auth-title">Verifying your email</h1>
+            <p className="auth-subtitle">Please wait while we verify your email address...</p>
           </div>
         </div>
       </div>
@@ -140,14 +141,15 @@ export default function VerifyEmailPage() {
   if (state === "success") {
     return (
       <div className="auth-page">
-        <div className="auth-container">
-          <div className="auth-form-panel">
-            <div className="auth-form-header">
-              <h1 className="auth-form-title">Email Verified!</h1>
-              <p className="auth-form-subtitle">
-                Your email has been verified successfully. Redirecting you to the app...
-              </p>
-            </div>
+        <div className="auth-card" style={{ textAlign: "center" }}>
+          <div className="auth-brand">
+            <img src="/logo-icon.png" alt="Resumate" className="auth-brand-logo" />
+          </div>
+          <div className="auth-head">
+            <h1 className="auth-title">Email verified!</h1>
+            <p className="auth-subtitle">
+              Your email has been verified successfully. Redirecting you to the app...
+            </p>
           </div>
         </div>
       </div>
@@ -158,88 +160,13 @@ export default function VerifyEmailPage() {
   if (state === "expired") {
     return (
       <div className="auth-page">
-        <div className="auth-container">
-          <div className="auth-form-panel">
-            <div className="auth-form-header">
-              <h1 className="auth-form-title">Link Expired</h1>
-              <p className="auth-form-subtitle">{errorMessage}</p>
-            </div>
-
-            <div className="auth-form">
-              {resendSuccess && (
-                <div className="auth-success" role="status">
-                  Verification email sent! Check your inbox.
-                </div>
-              )}
-
-              <button
-                type="button"
-                className="auth-submit"
-                onClick={handleResend}
-                disabled={isResendDisabled}
-              >
-                {countdown > 0
-                  ? `Resend available in ${countdown}s`
-                  : isResending
-                    ? "Sending..."
-                    : "Resend Email"}
-              </button>
-            </div>
+        <div className="auth-card" style={{ textAlign: "center" }}>
+          <div className="auth-brand">
+            <img src="/logo-icon.png" alt="Resumate" className="auth-brand-logo" />
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Error state (invalid token or network error)
-  if (state === "error") {
-    return (
-      <div className="auth-page">
-        <div className="auth-container">
-          <div className="auth-form-panel">
-            <div className="auth-form-header">
-              <h1 className="auth-form-title">Verification Failed</h1>
-              <p className="auth-form-subtitle">{errorMessage}</p>
-            </div>
-
-            <div className="auth-form">
-              {resendSuccess && (
-                <div className="auth-success" role="status">
-                  Verification email sent! Check your inbox.
-                </div>
-              )}
-
-              <button
-                type="button"
-                className="auth-submit"
-                onClick={handleResend}
-                disabled={isResendDisabled}
-              >
-                {countdown > 0
-                  ? `Resend available in ${countdown}s`
-                  : isResending
-                    ? "Sending..."
-                    : "Resend Email"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Pending state — default (no token in URL)
-  return (
-    <div className="auth-page">
-      <div className="auth-container">
-        <div className="auth-form-panel">
-          <div className="auth-form-header">
-            <h1 className="auth-form-title">Check Your Inbox</h1>
-            <p className="auth-form-subtitle">
-              We've sent a verification email to{" "}
-              <strong>{user?.email || "your email address"}</strong>. Click the link in the email to
-              verify your account.
-            </p>
+          <div className="auth-head">
+            <h1 className="auth-title">Link expired</h1>
+            <p className="auth-subtitle">{errorMessage}</p>
           </div>
 
           <div className="auth-form">
@@ -248,16 +175,6 @@ export default function VerifyEmailPage() {
                 Verification email sent! Check your inbox.
               </div>
             )}
-
-            {errorMessage && (
-              <div className="auth-error" role="alert">
-                {errorMessage}
-              </div>
-            )}
-
-            <p className="auth-form-subtitle" style={{ fontSize: "0.875rem" }}>
-              Didn't receive the email? Check your spam folder or click below to resend.
-            </p>
 
             <button
               type="button"
@@ -273,14 +190,93 @@ export default function VerifyEmailPage() {
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
 
-        {/* Right overlay panel */}
-        <div className="auth-overlay auth-overlay--right">
-          <img src="/logo-icon.png" alt="Resumate" className="auth-overlay-logo" />
-          <h2 className="auth-overlay-title">Almost There!</h2>
-          <p className="auth-overlay-text">
-            Verify your email to unlock full access to your dashboard and job matches.
+  // Error state (invalid token or network error)
+  if (state === "error") {
+    return (
+      <div className="auth-page">
+        <div className="auth-card" style={{ textAlign: "center" }}>
+          <div className="auth-brand">
+            <img src="/logo-icon.png" alt="Resumate" className="auth-brand-logo" />
+          </div>
+          <div className="auth-head">
+            <h1 className="auth-title">Verification failed</h1>
+            <p className="auth-subtitle">{errorMessage}</p>
+          </div>
+
+          <div className="auth-form">
+            {resendSuccess && (
+              <div className="auth-success" role="status">
+                Verification email sent! Check your inbox.
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="auth-submit"
+              onClick={handleResend}
+              disabled={isResendDisabled}
+            >
+              {countdown > 0
+                ? `Resend available in ${countdown}s`
+                : isResending
+                  ? "Sending..."
+                  : "Resend Email"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Pending state — default (no token in URL)
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <img src="/logo-icon.png" alt="Resumate" className="auth-brand-logo" />
+        </div>
+        <div className="auth-head">
+          <h1 className="auth-title">Check your inbox</h1>
+          <p className="auth-subtitle">
+            We've sent a verification email to{" "}
+            <strong>{user?.email || "your email address"}</strong>. Click the link in the email to
+            verify your account.
           </p>
+        </div>
+
+        <div className="auth-form">
+          {resendSuccess && (
+            <div className="auth-success" role="status">
+              Verification email sent! Check your inbox.
+            </div>
+          )}
+
+          {errorMessage && (
+            <div className="auth-error" role="alert">
+              {errorMessage}
+            </div>
+          )}
+
+          <p className="auth-subtitle" style={{ fontSize: "0.85rem", textAlign: "center" }}>
+            Didn't receive the email? Check your spam folder or click below to resend.
+          </p>
+
+          <button
+            type="button"
+            className="auth-submit"
+            onClick={handleResend}
+            disabled={isResendDisabled}
+          >
+            {countdown > 0
+              ? `Resend available in ${countdown}s`
+              : isResending
+                ? "Sending..."
+                : "Resend Email"}
+          </button>
         </div>
       </div>
     </div>

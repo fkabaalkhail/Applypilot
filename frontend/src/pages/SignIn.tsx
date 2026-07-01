@@ -1,5 +1,6 @@
 import { useState, FormEvent } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { Envelope, Lock, Eye, EyeSlash } from "@phosphor-icons/react";
 import { useAuth } from "../auth/useAuth";
 import { GoogleSignInButton } from "../auth/GoogleSignInButton";
 import { safeNextPath } from "../auth/nextRedirect";
@@ -11,6 +12,7 @@ export default function SignInPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -51,37 +53,29 @@ export default function SignInPage() {
 
   return (
     <div className="auth-page">
-      <div className="auth-container">
-        {/* Left overlay panel */}
-        <div className="auth-overlay">
-          <img src="/logo-icon.png" alt="Resumate" className="auth-overlay-logo" />
-          <h2 className="auth-overlay-title">New Here?</h2>
-          <p className="auth-overlay-text">
-            Create an account and start matching with your dream jobs today.
-          </p>
-          <Link to="/sign-up" className="auth-overlay-btn">
-            Sign Up
-          </Link>
+      <div className="auth-card">
+        <div className="auth-brand">
+          <img src="/logo-icon.png" alt="Resumate" className="auth-brand-logo" />
         </div>
 
-        {/* Right form panel */}
-        <div className="auth-form-panel">
-          <div className="auth-form-header">
-            <h1 className="auth-form-title">Welcome Back</h1>
-            <p className="auth-form-subtitle">Sign in to your account</p>
-          </div>
+        <div className="auth-head">
+          <h1 className="auth-title">Sign in to Resumate</h1>
+          <p className="auth-subtitle">Welcome back. Let's find your next role.</p>
+        </div>
 
-          <form onSubmit={handleSubmit} className="auth-form">
-            {error && (
-              <div className="auth-error" role="alert">
-                {error}
-              </div>
-            )}
+        <form onSubmit={handleSubmit} className="auth-form">
+          {error && (
+            <div className="auth-error" role="alert">
+              {error}
+            </div>
+          )}
 
-            <div className="auth-field">
-              <label htmlFor="email" className="auth-label">
-                Email
-              </label>
+          <div className="auth-field">
+            <label htmlFor="email" className="auth-label">
+              Email
+            </label>
+            <div className="auth-input-wrap">
+              <Envelope className="auth-input-icon" size={18} weight="regular" />
               <input
                 id="email"
                 type="email"
@@ -93,41 +87,53 @@ export default function SignInPage() {
                 autoComplete="email"
               />
             </div>
+          </div>
 
-            <div className="auth-field">
-              <label htmlFor="password" className="auth-label">
-                Password
-              </label>
+          <div className="auth-field">
+            <label htmlFor="password" className="auth-label">
+              Password
+            </label>
+            <div className="auth-input-wrap">
+              <Lock className="auth-input-icon" size={18} weight="regular" />
               <input
                 id="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="auth-input"
-                placeholder="••••••••"
+                placeholder="Enter your password"
                 required
                 autoComplete="current-password"
               />
+              <button
+                type="button"
+                className="auth-input-toggle"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+              </button>
             </div>
+          </div>
 
-            <button
-              type="submit"
-              className="auth-submit"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Signing in..." : "Sign In"}
-            </button>
-          </form>
+          <button
+            type="submit"
+            className="auth-submit"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
 
-          <GoogleSignInButton />
+        <GoogleSignInButton />
 
-          <p className="auth-footer">
-            Don't have an account?{" "}
-            <Link to="/sign-up" className="auth-link">
-              Sign up
-            </Link>
-          </p>
-        </div>
+        <p className="auth-footer">
+          Don't have an account?{" "}
+          <Link to="/sign-up" className="auth-link">
+            Sign up
+          </Link>
+        </p>
       </div>
     </div>
   );
