@@ -50,6 +50,7 @@ import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext } from "./jobContext";
 import { aiFillCandidates, planAiFill, tallyOutcomes, toAiFillField } from "./aiFillPlanner";
 import { fillAriaCombobox } from "./comboboxEngine";
+import { driveField } from "./mainWorldClient";
 import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
 import { verifyControl, writeControl } from "./writeEngine";
 import {
@@ -215,10 +216,27 @@ function initialize(): void {
     return outcomes;
   }
 
+  /** Fill react-select / Workday fields via the MAIN-world driver. */
+  async function fillDriverTargets(
+    targets: { fieldId: string; value: string }[]
+  ): Promise<{ fieldId: string; ok: boolean }[]> {
+    const outcomes: { fieldId: string; ok: boolean }[] = [];
+    for (const t of targets) {
+      const control = registry.get(t.fieldId);
+      if (!control?.driver) { outcomes.push({ fieldId: t.fieldId, ok: false }); continue; }
+      const res = await driveField(t.fieldId, t.value, control.driver);
+      outcomes.push({ fieldId: t.fieldId, ok: res.ok });
+    }
+    return outcomes;
+  }
+
   /** Whether a tracked field is a custom ARIA dropdown (filled by comboboxEngine). */
   function isComboboxField(fieldId: string): boolean {
     return registry.get(fieldId)?.controlType === "combobox";
   }
+
+  /** Whether a tracked field is filled via the MAIN-world driver (react-select/Workday). */
+  const isDriverField = (fieldId: string): boolean => Boolean(registry.get(fieldId)?.driver);
 
   const overlayCallbacks: OverlayCallbacks = {
     onAutofill: async (ids: string[]) => {
@@ -229,17 +247,24 @@ function initialize(): void {
 
       // Phase 1a — deterministic local fill via the reconciler for everything
       // the synchronous write engine can drive (text/select/checkbox/radio).
+      const driverTargets = selected
+        .filter((f) => isDriverField(f.id))
+        .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
       const targets = selected
-        .filter((f) => f.controlType !== "combobox")
+        .filter((f) => !isDriverField(f.id) && f.controlType !== "combobox")
         .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
       const localReports = await getEngine().run(targets, registry);
 
-      // Phase 1b — custom ARIA dropdowns, driven one-shot by the listbox engine.
-      const comboOutcomes = await fillComboboxTargets(
-        selected
-          .filter((f) => f.controlType === "combobox")
-          .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }))
-      );
+      // Phase 1b — custom ARIA dropdowns (listbox engine) and react-select/Workday
+      // fields (MAIN-world driver), each driven one-shot outside the reconciler.
+      const comboOutcomes = [
+        ...(await fillComboboxTargets(
+          selected
+            .filter((f) => !isDriverField(f.id) && f.controlType === "combobox")
+            .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }))
+        )),
+        ...(await fillDriverTargets(driverTargets)),
+      ];
 
       // Phase 2 — AI fill for fields the profile couldn't answer (best-effort).
       const candidates = aiFillCandidates(lastFields);
@@ -258,13 +283,21 @@ function initialize(): void {
             drafts.push(...plan.drafts);
             // Silent answers: custom dropdowns go through the listbox engine
             // (writeControl can't script them); everything else via the reconciler.
-            const aiCombo = plan.simpleTargets.filter((t) => isComboboxField(t.fieldId));
-            const aiSimple = plan.simpleTargets.filter((t) => !isComboboxField(t.fieldId));
+            const aiDriver = plan.simpleTargets.filter((t) => isDriverField(t.fieldId));
+            const aiCombo = plan.simpleTargets.filter(
+              (t) => !isDriverField(t.fieldId) && isComboboxField(t.fieldId)
+            );
+            const aiSimple = plan.simpleTargets.filter(
+              (t) => !isDriverField(t.fieldId) && !isComboboxField(t.fieldId)
+            );
             if (aiSimple.length > 0) {
               aiReports = await getEngine().addTargets(aiSimple, registry);
             }
             if (aiCombo.length > 0) {
               aiComboOutcomes = await fillComboboxTargets(aiCombo);
+            }
+            if (aiDriver.length > 0) {
+              aiComboOutcomes = [...aiComboOutcomes, ...(await fillDriverTargets(aiDriver))];
             }
           }
         } catch {
@@ -278,6 +311,14 @@ function initialize(): void {
     onInsertAnswer: async (fieldId: string, value: string) => {
       const control = registry.get(fieldId);
       if (!control) return { ok: false, reason: "Field is no longer on the page — rescan." };
+      // react-select / Workday fields are scripted in the MAIN world (writeControl
+      // can't reach them) — hand off to the driver before the combobox branch.
+      if (control.driver) {
+        const res = await driveField(fieldId, value, control.driver);
+        return res.ok
+          ? { ok: true }
+          : { ok: false, reason: res.reason ?? "Couldn't select that option — choose it manually." };
+      }
       // Custom dropdowns can't be scripted by writeControl — open the listbox
       // and click the option matching the (accepted) answer instead.
       if (control.controlType === "combobox") {
