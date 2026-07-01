@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import api from "../auth/api";
 import interviewData from "../data/interview-questions.json";
+import { PageIntro } from "../onboarding";
 
 type Question = {
   title: string;
@@ -121,6 +122,7 @@ export default function Interview() {
 
   return (
     <div className="interview-page" data-tour="interview-page">
+      <PageIntro page="interview" />
       {/* Premium hero */}
       <div className="interview-hero">
         <span className="interview-hero-badge">

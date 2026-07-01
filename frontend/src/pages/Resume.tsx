@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../hooks/useAuthFetch";
 import "../resume.css";
+import { PageIntro } from "../onboarding";
 
 const MAX_RESUME_SLOTS = 3;
 
@@ -92,6 +93,7 @@ export default function Resume() {
 
   return (
     <div className="resume-page-new" data-tour="resume-page">
+      <PageIntro page="resume" />
       {/* Header */}
       <div className="resume-page-header">
         <div>

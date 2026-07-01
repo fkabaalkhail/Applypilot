@@ -1,0 +1,64 @@
+.pgi-overlay {
+  position: fixed; inset: 0; z-index: 9997; display: grid; place-items: center; padding: 20px;
+  background: rgba(15, 23, 42, 0.5);
+  animation: pgi-fade 0.18s ease both;
+}
+.pgi-card {
+  position: relative; width: 100%; max-width: 520px; background: var(--bg-white, #fff);
+  border-radius: 20px; box-shadow: 0 24px 60px rgba(0, 55, 112, 0.22); overflow: hidden;
+  animation: pgi-pop 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.pgi-close {
+  position: absolute; top: 14px; right: 14px; z-index: 2; width: 32px; height: 32px; border-radius: 9999px;
+  display: grid; place-items: center; background: rgba(255, 255, 255, 0.7); border: none; cursor: pointer;
+  color: var(--text-secondary, #555); transition: background 0.15s ease, color 0.15s ease;
+}
+.pgi-close:hover { background: #fff; color: var(--text, #1a1a1a); }
+
+.pgi-banner {
+  position: relative; padding: 44px 36px 32px; text-align: center;
+  /* Stripe-signature washes over a soft lavender base — our theme, not green */
+  background:
+    radial-gradient(ellipse 65% 60% at 82% 6%, rgba(249, 107, 238, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 60% at 20% 4%, rgba(83, 58, 253, 0.20) 0%, transparent 62%),
+    linear-gradient(160deg, var(--accent-light, #eef0ff) 0%, #efeaff 55%, #f7f4ff 100%);
+}
+.pgi-badge {
+  width: 60px; height: 60px; margin: 0 auto 16px; border-radius: 16px; display: grid; place-items: center;
+  background: #fff; box-shadow: 0 8px 20px rgba(0, 55, 112, 0.14);
+}
+.pgi-badge img { width: 34px; height: 34px; object-fit: contain; display: block; }
+.pgi-eyebrow {
+  display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent, #533afd); margin-bottom: 8px;
+}
+.pgi-title { font-size: 23px; line-height: 1.25; font-weight: 700; color: var(--text, #1a1a1a); margin: 0 0 10px; }
+.pgi-desc { font-size: 14px; line-height: 1.55; color: var(--text-secondary, #555); margin: 0 auto; max-width: 400px; }
+
+/* Subtle generic app-preview graphic under the copy */
+.pgi-preview {
+  margin: 24px auto 0; max-width: 380px; background: rgba(255, 255, 255, 0.75); border: 1px solid var(--border-light, #eef2f6);
+  border-radius: 12px; padding: 14px; text-align: left; box-shadow: 0 6px 18px rgba(0, 55, 112, 0.06);
+}
+.pgi-preview-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.pgi-preview-brand { display: flex; align-items: center; gap: 8px; }
+.pgi-preview-dot { width: 20px; height: 20px; border-radius: 6px; background: var(--accent-soft, #d8d4ff); }
+.pgi-preview-chip {
+  font-size: 10px; font-weight: 700; color: var(--accent-hover, #4434d4); background: var(--accent-light, #eef0ff);
+  padding: 3px 8px; border-radius: 9999px;
+}
+.pgi-bar { height: 9px; border-radius: 6px; background: var(--border-light, #eef2f6); margin-bottom: 8px; }
+.pgi-bar.w70 { width: 70%; } .pgi-bar.w45 { width: 45%; } .pgi-bar.w85 { width: 85%; }
+
+.pgi-footer { padding: 20px 36px 26px; display: flex; justify-content: center; }
+.pgi-btn {
+  font: inherit; font-size: 15px; font-weight: 650; cursor: pointer; border: none; border-radius: 9999px;
+  padding: 12px 44px; background: var(--accent, #533afd); color: #fff;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+.pgi-btn:hover { background: var(--accent-hover, #4434d4); }
+.pgi-btn:active { transform: scale(0.98); }
+
+@keyframes pgi-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pgi-pop { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .pgi-overlay, .pgi-card { animation: none; } }

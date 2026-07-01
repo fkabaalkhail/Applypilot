@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import api from "../auth/api";
 import { avatarColor, resolveLogoUrl } from "../lib/companyLogo";
 import { ArrowSquareOut, Calendar } from "@phosphor-icons/react";
+import { PageIntro } from "../onboarding";
 
 interface ApplicationRecord {
   id: number;
@@ -51,6 +52,7 @@ export default function Applications() {
 
   return (
     <div className="jobs-page" data-tour="applications-page">
+      <PageIntro page="applications" />
       <header className="jobs-header">
         <h1>Applications</h1>
       </header>
