@@ -456,6 +456,12 @@ export interface RelayToTop {
   payload: RemoteFormAvailable | RemoteFieldsUpdated;
 }
 
+/** Isolated-world client → background: inject the MAIN-world driver bundle
+ *  into the requesting frame (content scripts can't call chrome.scripting). */
+export interface InstallMainWorldDriverRequest {
+  type: "INSTALL_MAIN_WORLD_DRIVER";
+}
+
 // ---------------------------------------------------------------------------
 // Popup <-> background messages
 // ---------------------------------------------------------------------------
@@ -489,7 +495,8 @@ export type BackgroundRequest =
   | { type: "RENDER_COVER_LETTER"; text: string; filename?: string }
   | FormHostAnnounce
   | RelayFormOp
-  | RelayToTop;
+  | RelayToTop
+  | InstallMainWorldDriverRequest;
 
 export interface StatusResponse {
   ok: boolean;

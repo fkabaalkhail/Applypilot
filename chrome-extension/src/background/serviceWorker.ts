@@ -34,6 +34,21 @@ import type {
   TailorResumeResponse,
 } from "../shared/types";
 
+/** Inject the MAIN-world driver bundle into one frame. Idempotent (the script
+ *  self-guards with window.__tailrdMWInstalled), so re-injection is harmless. */
+export async function injectMainWorldDriver(tabId: number, frameId: number): Promise<SimpleResponse> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [frameId] },
+      world: "MAIN",
+      files: ["mainWorld.js"],
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Driver injection failed" };
+  }
+}
+
 /** Periodic sync alarm — keeps the cached snapshot fresh while active. */
 const SYNC_ALARM = "tailrd-sync";
 
@@ -167,6 +182,16 @@ chrome.runtime.onMessage.addListener(
         .catch((err: unknown) => {
           sendResponse({ ok: false, error: err instanceof Error ? err.message : "Frame unreachable" });
         });
+      return true; // async response
+    }
+    if (message.type === "INSTALL_MAIN_WORLD_DRIVER") {
+      const installTabId = _sender.tab?.id;
+      const frameId = _sender.frameId ?? 0;
+      if (installTabId === undefined) {
+        sendResponse({ ok: false, error: "No tab" });
+        return false;
+      }
+      void injectMainWorldDriver(installTabId, frameId).then(sendResponse);
       return true; // async response
     }
 
