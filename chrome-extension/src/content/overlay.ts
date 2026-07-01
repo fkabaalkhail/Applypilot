@@ -428,6 +428,9 @@ const STYLES = `
 }
 .ap-btn-upload:hover:not(:disabled) { background: var(--stripe-primary-press); box-shadow: 0 4px 14px rgba(var(--stripe-primary-rgb),0.3); }
 .ap-btn-upload:disabled { opacity: 0.5; cursor: default; }
+/* Constrain the inline SVG icons inside the pill buttons — without this the
+   256-viewBox Phosphor icons expand to fill the button. */
+.ap-btn-upload > svg, .ap-btn-tailor > svg { width: 16px; height: 16px; flex-shrink: 0; }
 .ap-upload-status { margin-top: 8px; font-size: 12px; min-height: 16px; }
 .ap-upload-status.ok { color: #1e9e6a; }
 .ap-upload-status.warn { color: #b97d10; }
