@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import SetupWizard from "../SetupWizard";
 import { AuthContext } from "../../auth/AuthContext";
@@ -43,5 +43,41 @@ describe("SetupWizard", () => {
   it("prefills name from the authenticated user", () => {
     renderWizard();
     expect((screen.getByPlaceholderText("Jane") as HTMLInputElement).value).toBe("Jane");
+  });
+
+  it("completing all steps persists settings, seeds filters, flips flag, and navigates", async () => {
+    const { setSetupComplete } = renderWizard();
+
+    // Step 1: welcome (name pre-filled) -> Next
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    // Step 2: role preferences
+    fireEvent.click(screen.getByText("Software Engineering"));
+    const countrySelect = screen.getByText("Select country").closest("select") as HTMLSelectElement;
+    fireEvent.change(countrySelect, { target: { value: "CA" } });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    // Step 3: experience
+    fireEvent.click(screen.getByText("Intern/New Grad"));
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    // Step 4: target titles (optional) -> Next
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    // Step 5: resume (final) -> Start Matching
+    fireEvent.click(screen.getByRole("button", { name: /start matching/i }));
+
+    await waitFor(() => expect(setSetupComplete).toHaveBeenCalledWith(true));
+
+    expect(putMock).toHaveBeenCalledWith(
+      "/settings",
+      expect.objectContaining({ job_title: "Software Engineering", regions: ["CA"] }),
+    );
+
+    const stored = JSON.parse(localStorage.getItem("job-aggregator-filters") as string);
+    expect(stored.country).toBe("CA");
+    expect(stored.role_category).toContain("Software Engineering");
+
+    expect(navigateMock).toHaveBeenCalledWith("/app");
   });
 });
