@@ -22,6 +22,7 @@ from backend.migrations.add_company_domain import run_migration as run_company_d
 from backend.migrations.add_sessions import run_migration as run_sessions_migration
 from backend.migrations.add_job_match_notifications import run_migration as run_job_match_notifications_migration
 from backend.migrations.add_onboarding_field import run_migration as run_onboarding_migration
+from backend.migrations.add_setup_field import run_migration as run_setup_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile, answers
 from backend.routers import auth, auth_extension, extension, tailor, cover_letter
 from backend.routers.feedback import router as feedback_router
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI):
     run_sessions_migration()
     run_job_match_notifications_migration()
     run_onboarding_migration()
+    run_setup_migration()
     yield
 
 

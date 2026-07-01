@@ -107,6 +107,9 @@ class ProfileUpdate(BaseModel):
 class OnboardingUpdate(BaseModel):
     completed: bool
 
+class SetupUpdate(BaseModel):
+    completed: bool
+
 class TokenResponseWithVerification(BaseModel):
     access_token: str
     refresh_token: str
@@ -529,6 +532,7 @@ def get_me(
         "email_verified": effective_email_verified(user),
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "has_completed_onboarding": bool(user.has_completed_onboarding),
+        "has_completed_setup": bool(user.has_completed_setup),
     }
 
 
@@ -556,6 +560,7 @@ def update_me(
         "email_verified": user.email_verified,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "has_completed_onboarding": bool(user.has_completed_onboarding),
+        "has_completed_setup": bool(user.has_completed_setup),
     }
 
 
@@ -581,6 +586,33 @@ def set_onboarding(
         "email_verified": user.email_verified,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "has_completed_onboarding": bool(user.has_completed_onboarding),
+        "has_completed_setup": bool(user.has_completed_setup),
+    }
+
+
+@router.post("/me/setup")
+def set_setup(
+    body: SetupUpdate,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Set the current user's setup-completion flag."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.has_completed_setup = body.completed
+    db.commit()
+    db.refresh(user)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "profile_image_url": user.profile_image_url,
+        "email_verified": user.email_verified,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "has_completed_onboarding": bool(user.has_completed_onboarding),
+        "has_completed_setup": bool(user.has_completed_setup),
     }
 
 

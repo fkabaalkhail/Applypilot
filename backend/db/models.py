@@ -52,6 +52,7 @@ class User(Base):
 
     # --- Onboarding ---
     has_completed_onboarding = Column(Boolean, default=False, nullable=False)
+    has_completed_setup = Column(Boolean, default=False, nullable=False)
 
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
