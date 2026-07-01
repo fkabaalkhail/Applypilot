@@ -8,6 +8,7 @@ export interface UserProfile {
   profile_image_url?: string;
   created_at?: string;
   email_verified: boolean;
+  has_completed_onboarding?: boolean;
 }
 
 export interface AuthState {
@@ -24,6 +25,7 @@ export interface AuthContextValue extends AuthState {
   getToken: () => string | null;
   resendVerification: () => Promise<void>;
   isEmailVerified: boolean;
+  setOnboardingComplete: (completed: boolean) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
