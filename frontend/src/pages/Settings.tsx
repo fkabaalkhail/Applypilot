@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../auth/api";
+import { useOnboarding } from "../onboarding";
 import "../settings.css";
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
@@ -229,6 +231,9 @@ export default function Settings() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sessions, setSessions] = useState<DeviceSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+
+  const { restart: restartTour } = useOnboarding();
+  const navigate = useNavigate();
 
   // ─── Toast helpers ───────────────────────────────────────────────────────
 
@@ -614,6 +619,23 @@ export default function Settings() {
           label="Follow Companies"
           description="Automatically follow companies when applying"
         />
+      </div>
+
+      {/* Product Tour */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <h2>Product Tour</h2>
+        </div>
+        <p className="settings-section-sub">
+          Replay the guided walkthrough of Tailrd's features from the beginning.
+        </p>
+        <button
+          type="button"
+          className="settings-upload-btn"
+          onClick={() => { void restartTour(); navigate("/app"); }}
+        >
+          Restart product tour
+        </button>
       </div>
 
       {/* Connected Devices */}
