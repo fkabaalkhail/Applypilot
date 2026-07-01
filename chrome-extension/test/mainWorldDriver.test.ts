@@ -43,3 +43,48 @@ describe("installDriver", () => {
     expect(res.ok).toBe(false);
   });
 });
+
+/** react-select container with a mock Fiber exposing selectOption(). */
+function reactSelectWithFiber(fieldId: string, options: string[]): { display: HTMLElement } {
+  const container = document.createElement("div");
+  container.className = "rs__container";
+  container.setAttribute(FIELD_ID_ATTR, fieldId);
+  const control = document.createElement("div");
+  control.className = "rs__control";
+  const single = document.createElement("div");
+  single.className = "rs__single-value";
+  const input = document.createElement("input");
+  input.id = "react-select-9-input";
+  input.setAttribute("role", "combobox");
+  control.append(single, input);
+  container.append(control);
+  document.body.append(container);
+
+  const opts = options.map((label) => ({ label, value: label }));
+  const instance = {
+    props: { options: opts, getOptionLabel: (o: { label: string }) => o.label },
+    selectOption: (o: { label: string }) => { single.textContent = o.label; },
+  };
+  const fiber = { return: null, stateNode: instance, memoizedProps: instance.props };
+  (container as unknown as Record<string, unknown>)["__reactFiber$abc"] = fiber;
+  return { display: single };
+}
+
+describe("fillReactSelect via Fiber", () => {
+  it("calls selectOption for the matching option and reports committed text", async () => {
+    installDriver(window);
+    const { display } = reactSelectWithFiber("rs-1", ["United States", "Canada", "Mexico"]);
+    const res = await drive("rs-1", "Canada", "react-select");
+    expect(res.ok).toBe(true);
+    expect(display.textContent).toBe("Canada");
+    expect(res.committed).toBe("Canada");
+  });
+
+  it("reports no-match when the option is absent", async () => {
+    installDriver(window);
+    reactSelectWithFiber("rs-2", ["United States", "Canada"]);
+    const res = await drive("rs-2", "Atlantis", "react-select");
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe("no-match");
+  });
+});

@@ -90,11 +90,85 @@ async function fillField(doc: Document, detail: MwFillDetail): Promise<MwResultD
   }
 }
 
-// react-select + Workday routines are added in Tasks 6 and 8; provide stubs now
-// so the bundle compiles and the bridge is exercised by tests.
-async function fillReactSelect(_el: HTMLElement, _value: string): Promise<string | null> {
-  return null;
+interface RsInstance {
+  props: {
+    options?: unknown[];
+    getOptionLabel?: (o: unknown) => string;
+    onChange?: (o: unknown, meta: { action: string }) => void;
+  };
+  selectOption?: (o: unknown) => void;
 }
+
+function rsLabel(inst: RsInstance, opt: unknown): string {
+  if (inst.props.getOptionLabel) return inst.props.getOptionLabel(opt);
+  const o = opt as { label?: string; value?: string };
+  return o.label ?? o.value ?? String(opt);
+}
+
+/** Flatten react-select options (supports grouped `{ options: [...] }`). */
+function rsFlatten(options: unknown[]): unknown[] {
+  const out: unknown[] = [];
+  for (const o of options) {
+    const grp = o as { options?: unknown[] };
+    if (grp && Array.isArray(grp.options)) out.push(...grp.options);
+    else out.push(o);
+  }
+  return out;
+}
+
+async function fillReactSelect(el: HTMLElement, value: string): Promise<string | null> {
+  const container = el.closest('[class*="-container"], [class*="__container"]') ?? el;
+  const inst = climbFiber(getFiber(container), (f) => {
+    const sn = f.stateNode as RsInstance | null;
+    return Boolean(sn && (typeof sn.selectOption === "function" || sn.props?.onChange) && Array.isArray(sn.props?.options));
+  })?.stateNode as RsInstance | undefined;
+
+  if (inst && inst.props.options) {
+    const flat = rsFlatten(inst.props.options);
+    const idx = pickOption(flat.map((o) => rsLabel(inst, o)), value);
+    if (idx < 0) return null;
+    const opt = flat[idx];
+    if (typeof inst.selectOption === "function") inst.selectOption(opt);
+    else inst.props.onChange?.(opt, { action: "select-option" });
+    return rsLabel(inst, opt);
+  }
+  return fillReactSelectByDom(container as HTMLElement, value);
+}
+
+/** Fallback when no instance is found: open, filter, click the option in page context. */
+async function fillReactSelectByDom(container: HTMLElement, value: string): Promise<string | null> {
+  const input = container.querySelector<HTMLInputElement>('input[id^="react-select"], input[role="combobox"]');
+  const opener = (input as HTMLElement) ?? container;
+  fireMouse(opener, "mousedown");
+  opener.focus?.();
+  if (input) setNativeInputValue(input, value);
+  await sleep(60);
+  const menu = document.querySelector('[class*="-menu"], [class*="__menu"], [role="listbox"]');
+  const options = menu ? Array.from(menu.querySelectorAll<HTMLElement>('[class*="-option"], [class*="__option"], [role="option"]')) : [];
+  const idx = pickOption(options.map((o) => norm(o.textContent ?? "")), value);
+  if (idx < 0) { fireKey(opener, "Escape"); return null; }
+  fireMouse(options[idx], "mousedown");
+  fireMouse(options[idx], "mouseup");
+  options[idx].click();
+  await sleep(30);
+  const single = container.querySelector('[class*="-singleValue"], [class*="__single-value"], [class*="-single-value"]');
+  return norm(single?.textContent ?? options[idx].textContent ?? "") || null;
+}
+
+function fireMouse(el: HTMLElement, type: string): void {
+  el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+}
+function fireKey(el: HTMLElement, key: string): void {
+  el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+}
+function setNativeInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  setter ? setter.call(input, value) : (input.value = value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+// Workday routine is added in Task 8; provide a stub now so the bundle
+// compiles and the bridge is exercised by tests.
 async function fillWorkday(_el: HTMLElement, _value: string): Promise<string | null> {
   return null;
 }
