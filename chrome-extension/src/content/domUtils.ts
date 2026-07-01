@@ -156,13 +156,63 @@ function testIdOf(el: HTMLElement): string {
   return "";
 }
 
+/**
+ * A drag-and-drop / "Select file" upload widget hides its real <input type=file>
+ * behind a styled zone, and the input itself is usually unlabeled — the
+ * describing text ("Upload your resume", "Drop file here") lives on the
+ * surrounding zone. True when `el` is the hidden file input of such a widget,
+ * so the scanner can still surface it (Workday, Greenhouse, Ashby dropzones).
+ */
+const UPLOAD_HINT = /file.?upload|fileupload|attach|resume|\bcv\b|drop.?zone|upload/i;
+
+export function isUploadAffordance(el: HTMLElement): boolean {
+  if (!(el instanceof HTMLInputElement) || el.type !== "file" || el.disabled) return false;
+  const testId = el.getAttribute("data-automation-id") || el.getAttribute("data-testid") || "";
+  const cls = el.className || "";
+  if (UPLOAD_HINT.test(testId) || UPLOAD_HINT.test(cls)) return true;
+  // Climb a few wrappers looking for an upload zone marker (testId/class).
+  let node: HTMLElement | null = el.parentElement;
+  for (let i = 0; i < 4 && node; i++) {
+    const id = node.getAttribute("data-automation-id") || node.getAttribute("data-testid") || "";
+    if (UPLOAD_HINT.test(id) || UPLOAD_HINT.test(node.className || "")) return true;
+    node = node.parentElement;
+  }
+  return /upload|drop file|select file|attach|resume|\bcv\b|drag/i.test(nearbyText(el));
+}
+
+/**
+ * Describing text of the upload widget wrapping a hidden file input — e.g.
+ * Workday's "Upload your resume…" heading, which sits a wrapper or two ABOVE the
+ * drop zone, not on the input. Climbs ancestors and returns the first container
+ * that names a document (resume/CV/cover letter); else the nearest small wrapper.
+ */
+export function uploadZoneText(el: HTMLElement): string {
+  if (!(el instanceof HTMLInputElement) || el.type !== "file") return "";
+  const DOC = /resume|résumé|curriculum vitae|\bcv\b|cover letter/i;
+  let node: HTMLElement | null = el.parentElement;
+  let widest = "";
+  for (let i = 0; i < 5 && node; i++) {
+    const t = cleanText(node.textContent).slice(0, 300);
+    if (t && DOC.test(t)) return t; // explicit document text → best signal
+    if (t && t.length <= 300) widest = t;
+    node = node.parentElement;
+  }
+  return widest;
+}
+
 export function collectSignals(el: HTMLElement): FieldSignals {
   const labelledBy = ariaLabelledByText(el);
+  const isFile = el instanceof HTMLInputElement && el.type === "file";
+  // A hidden upload input's identity lives on its zone, so fold the zone's
+  // describing text into `nearby` for classification (e.g. "…your resume…").
+  const nearby = isFile
+    ? [nearbyText(el), uploadZoneText(el)].filter(Boolean).join(" ").slice(0, 220)
+    : nearbyText(el);
   return {
     label: associatedLabelText(el) || labelledBy,
     ariaLabel: cleanText(el.getAttribute("aria-label")) || labelledBy,
     placeholder: cleanText(el.getAttribute("placeholder")),
-    nearby: nearbyText(el),
+    nearby,
     nameAttr: el.getAttribute("name") ?? "",
     idAttr: el.id ?? "",
     autocomplete: (el.getAttribute("autocomplete") ?? "").trim().toLowerCase(),

@@ -12,6 +12,7 @@
  */
 
 import { reattachIfDetached } from "./domUtils";
+import { base64ToFile } from "./fileUpload";
 import { buildTailorCardHtml } from "./tailorCard";
 import { buildCoverLetterCardHtml } from "./coverLetterCard";
 import { defaultSelectedIds } from "../shared/selection";
@@ -25,6 +26,7 @@ import type {
   LoginResponse,
   ProfileResponse,
   ProfileSource,
+  RenderResumeResponse,
   ResumeDoc,
   ResumeSummary,
   SimpleResponse,
@@ -133,18 +135,49 @@ export function toggleOverlay(state: OverlayViewState, cb: OverlayCallbacks): vo
 // Icons (minimal set)
 // ---------------------------------------------------------------------------
 
-const I_CLOSE =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-const I_CHEVRON_RIGHT =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
-const I_CHEVRON_DOWN =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-const I_GEAR =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
-
-function icon(paths: string, w = 24): string {
-  return `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+// Phosphor (regular weight) icons. Sized by CSS (viewBox 0 0 256 256, fill
+// currentColor) so every icon shares one minimalist visual language.
+function ph(pathData: string): string {
+  return `<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">${pathData}</svg>`;
 }
+
+const P_X = '<path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/>';
+const P_CARET_RIGHT = '<path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/>';
+const P_CARET_DOWN = '<path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/>';
+const P_GEAR = '<path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z"/>';
+const P_FILE = '<path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Zm-32-80a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,136Zm0,32a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,168Z"/>';
+const P_UPLOAD = '<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z"/>';
+const P_STAR = '<path d="M239.18,97.26A16.38,16.38,0,0,0,224.92,86l-59-4.76L143.14,26.15a16.36,16.36,0,0,0-30.27,0L90.11,81.23,31.08,86a16.46,16.46,0,0,0-9.37,28.86l45,38.83L53,211.75a16.38,16.38,0,0,0,24.5,17.82L128,198.49l50.53,31.08A16.4,16.4,0,0,0,203,211.75l-13.76-58.07,45-38.83A16.43,16.43,0,0,0,239.18,97.26Z"/>';
+const P_ENVELOPE = '<path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48Zm-96,85.15L52.57,64H203.43ZM98.71,128,40,181.81V74.19Zm11.84,10.85,12,11.05a8,8,0,0,0,10.82,0l12-11.05,58,53.15H52.57ZM157.29,128,216,74.18V181.82Z"/>';
+const P_REGEN = '<path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/>';
+const P_DOWNLOAD = '<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z"/>';
+const P_PAPERCLIP = '<path d="M209.66,122.34a8,8,0,0,1,0,11.32l-82.05,82a56,56,0,0,1-79.2-79.21L147.67,35.73a40,40,0,1,1,56.61,56.55L105,193A24,24,0,1,1,71,159L154.3,74.38A8,8,0,1,1,165.7,85.6L82.39,170.31a8,8,0,1,0,11.27,11.36L192.93,81A24,24,0,1,0,159,47L59.76,147.68a40,40,0,1,0,56.53,56.62l82.06-82A8,8,0,0,1,209.66,122.34Z"/>';
+const P_CHECK = '<path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/>';
+const P_DASH = '<path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128Z"/>';
+const P_INFO = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"/>';
+
+const I_CLOSE = ph(P_X);
+const I_CHEVRON_RIGHT = ph(P_CARET_RIGHT);
+const I_CHEVRON_DOWN = ph(P_CARET_DOWN);
+const I_GEAR = ph(P_GEAR);
+const I_FILE = ph(P_FILE);
+const I_UPLOAD = ph(P_UPLOAD);
+const I_STAR = ph(P_STAR);
+const I_ENVELOPE = ph(P_ENVELOPE);
+const I_REGEN = ph(P_REGEN);
+const I_DOWNLOAD = ph(P_DOWNLOAD);
+const I_PAPERCLIP = ph(P_PAPERCLIP);
+const I_CHECK = ph(P_CHECK);
+const I_DASH = ph(P_DASH);
+const I_INFO = ph(P_INFO);
+
+// The Tailrd brand mark, drawn as inline SVG (a purple paper-plane in a ring).
+// Inline SVG is immune to the page's img-src CSP, which blocks data:-URI <img>.
+const I_BRAND =
+  '<svg viewBox="0 0 256 256" fill="none" aria-hidden="true">' +
+  '<circle cx="128" cy="128" r="112" stroke="currentColor" stroke-width="13"/>' +
+  '<g transform="translate(40 42) scale(0.66)"><path fill="currentColor" d="M227.32,28.68a16,16,0,0,0-15.66-4.08l-.15,0L19.57,82.84a16,16,0,0,0-2.49,29.8L102,154l41.3,84.87A15.86,15.86,0,0,0,157.74,248q.69,0,1.38-.06a15.88,15.88,0,0,0,14-11.51l58.2-191.94c0-.05,0-.1,0-.15A16,16,0,0,0,227.32,28.68ZM157.83,231.85l-.05.14,0-.07-40.06-82.3,48-48a8,8,0,0,0-11.31-11.31l-48,48L24.08,98.25l-.07,0,.14,0L216,40Z"/></g>' +
+  "</svg>";
 
 
 // ---------------------------------------------------------------------------
@@ -233,11 +266,11 @@ const STYLES = `
 }
 .ap-brand { display: flex; align-items: center; gap: 10px; }
 .ap-brand-logo {
-  width: 34px; height: 34px; border-radius: 10px;
-  background: linear-gradient(135deg, var(--stripe-primary) 0%, var(--stripe-primary-deep) 100%);
+  width: 30px; height: 30px;
   display: flex; align-items: center; justify-content: center;
-  color: #fff; font-weight: 800; font-size: 14px;
+  color: var(--stripe-primary);
 }
+.ap-brand-logo svg { width: 28px; height: 28px; }
 .ap-brand-name { font-weight: 800; font-size: 18px; color: var(--stripe-ink); letter-spacing: -0.3px; }
 .ap-header-right { display: flex; align-items: center; gap: 6px; }
 .ap-icon-btn {
@@ -294,6 +327,50 @@ const STYLES = `
 }
 .ap-banner.warn { background: #fdf3e0; border-color: #f3ddb0; color: #b97d10; }
 .ap-banner.error { background: #fdecea; border-color: #f5c6c0; color: #c0392b; }
+
+/* ---- Detection checklist (field name → ✓ filled / – empty) ---- */
+.ap-checklist { margin: 14px 16px 2px; }
+.ap-chk-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--stripe-ink-mute); margin-bottom: 8px;
+}
+.ap-chk-count { text-transform: none; letter-spacing: 0; font-weight: 600; }
+.ap-chk-row { display: flex; align-items: center; gap: 9px; padding: 4px 0; font-size: 13px; }
+.ap-chk-ic { width: 16px; height: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.ap-chk-ic svg { width: 16px; height: 16px; }
+.ap-chk-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-chk-row.is-filled .ap-chk-ic { color: #16a34a; }
+.ap-chk-row.is-filled .ap-chk-label { color: var(--stripe-ink); }
+.ap-chk-row.is-empty .ap-chk-ic { color: var(--stripe-ink-mute); opacity: 0.55; }
+.ap-chk-row.is-empty .ap-chk-label { color: var(--stripe-ink-mute); }
+
+/* ---- Tailored résumé PDF preview (covers the side panel) ---- */
+.ap-pdf-modal {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 380px; max-width: 100vw;
+  background: var(--stripe-canvas);
+  z-index: 2147483646;
+  flex-direction: column;
+  box-shadow: -8px 0 30px rgba(var(--stripe-shadow-rgb), 0.18);
+  animation: ap-slide-in 0.18s ease-out;
+}
+.ap-pdf-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--stripe-hairline-soft); flex-shrink: 0;
+}
+.ap-pdf-title { font-weight: 700; font-size: 15px; color: var(--stripe-ink); }
+.ap-pdf-frame { flex: 1; width: 100%; border: none; background: #f1f3f6; }
+.ap-pdf-status { padding: 8px 16px; font-size: 12.5px; color: var(--stripe-ink-mute); }
+.ap-pdf-status.ok { color: #1e9e6a; }
+.ap-pdf-status.error { color: #c0392b; }
+.ap-pdf-actions {
+  display: flex; gap: 8px; padding: 12px 16px;
+  border-top: 1px solid var(--stripe-hairline-soft); flex-shrink: 0;
+}
+.ap-pdf-actions button { flex: 1; padding: 10px; font-size: 12.5px; }
+.ap-btn-icon { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.ap-btn-icon svg { width: 16px; height: 16px; flex-shrink: 0; }
 
 /* ---- Section rows (accordion style) ---- */
 .ap-section {
@@ -647,6 +724,7 @@ interface Refs {
   btnAutofill: HTMLButtonElement;
   fieldCount: HTMLDivElement;
   banner: HTMLDivElement;
+  checklist: HTMLDivElement;
   review: HTMLDivElement;
   resumeName: HTMLDivElement;
   resumeSelect: HTMLSelectElement;
@@ -727,7 +805,7 @@ function buildHTML(): string {
       <!-- Header -->
       <header class="ap-header">
         <div class="ap-brand">
-          <span class="ap-brand-logo">T</span>
+          <span class="ap-brand-logo">${I_BRAND}</span>
           <span class="ap-brand-name">Tailrd</span>
         </div>
         <div class="ap-header-right">
@@ -747,6 +825,9 @@ function buildHTML(): string {
         <!-- Banner -->
         <div class="ap-banner" id="ap-banner" style="display:none"></div>
 
+        <!-- Per-field detection checklist (name / email / university … → ✓ or –) -->
+        <div class="ap-checklist" id="ap-checklist" style="display:none"></div>
+
         <!-- AI long-form answers to review -->
         <div class="ap-review" id="ap-review" style="display:none"></div>
 
@@ -754,7 +835,7 @@ function buildHTML(): string {
         <div class="ap-section">
           <div class="ap-section-header" id="ap-section-info">
             <div class="ap-section-left">
-              <span class="ap-section-icon">${icon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>', 18)}</span>
+              <span class="ap-section-icon">${I_FILE}</span>
               <span class="ap-section-title">Your Autofill Information</span>
             </div>
             <span class="ap-section-arrow">${I_CHEVRON_RIGHT}</span>
@@ -765,7 +846,7 @@ function buildHTML(): string {
         <div class="ap-section">
           <div class="ap-section-header" id="ap-section-resume">
             <div class="ap-section-left">
-              <span class="ap-section-icon">${icon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>', 18)}</span>
+              <span class="ap-section-icon">${I_UPLOAD}</span>
               <span class="ap-section-title">Upload Resume</span>
             </div>
             <span class="ap-section-arrow">${I_CHEVRON_DOWN}</span>
@@ -774,7 +855,7 @@ function buildHTML(): string {
             <div class="ap-file-name" id="ap-resume-name">No resume uploaded</div>
             <select class="ap-resume-select" id="ap-resume-select" style="display:none"></select>
             <button class="ap-btn-upload" id="ap-btn-upload-resume" type="button" disabled>
-              ${icon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>', 14)}
+              ${I_UPLOAD}
               Upload résumé to this form
             </button>
             <div class="ap-upload-status" id="ap-upload-status"></div>
@@ -785,14 +866,14 @@ function buildHTML(): string {
         <div class="ap-section">
           <div class="ap-section-header" id="ap-section-tailor">
             <div class="ap-section-left">
-              <span class="ap-section-icon">${icon('<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/>', 18)}</span>
+              <span class="ap-section-icon">${I_STAR}</span>
               <span class="ap-section-title">Generate Custom Resume</span>
             </div>
             <span class="ap-section-arrow">${I_CHEVRON_DOWN}</span>
           </div>
           <div class="ap-section-sub" id="ap-tailor-sub" style="display:none">
             <button class="ap-btn-tailor" id="ap-btn-tailor" type="button" disabled>
-              ${icon('<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/>', 14)}
+              ${I_STAR}
               Tailor my résumé for this job
             </button>
             <div id="ap-tailor-result"></div>
@@ -803,7 +884,7 @@ function buildHTML(): string {
         <div class="ap-section">
           <div class="ap-section-header" id="ap-section-cover">
             <div class="ap-section-left">
-              <span class="ap-section-icon">${icon('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>', 18)}</span>
+              <span class="ap-section-icon">${I_ENVELOPE}</span>
               <span class="ap-section-title">Upload Cover Letter</span>
             </div>
             <span class="ap-section-arrow">${I_CHEVRON_DOWN}</span>
@@ -819,7 +900,7 @@ function buildHTML(): string {
                 <option value="technical">Technical</option>
               </select>
               <button class="ap-btn-tailor" id="ap-btn-cover" type="button" disabled>
-                ${icon('<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/>', 14)}
+                ${I_STAR}
                 Generate Cover Letter
               </button>
             </div>
@@ -853,7 +934,7 @@ function buildHTML(): string {
           <button class="ap-modal-close" id="ap-info-close">${I_CLOSE}</button>
         </div>
         <div class="ap-modal-notice">
-          <span class="ap-modal-notice-icon">${icon('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>', 14)}</span>
+          <span class="ap-modal-notice-icon">${I_INFO}</span>
           <span>Your autofill information updates automatically when you <b>change your upload resume</b> or <b>update information</b> in an application form.</span>
         </div>
         <div class="ap-modal-body">
@@ -869,6 +950,21 @@ function buildHTML(): string {
         <div class="ap-modal-footer">
           <button class="ap-btn-update" id="ap-btn-update">Update</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Tailored résumé PDF preview (covers the side panel) -->
+    <div class="ap-pdf-modal" id="ap-pdf-modal" style="display:none">
+      <div class="ap-pdf-head">
+        <span class="ap-pdf-title">Résumé preview</span>
+        <button class="ap-icon-btn" id="ap-pdf-close" title="Close preview">${I_CLOSE}</button>
+      </div>
+      <div class="ap-pdf-status" id="ap-pdf-status"></div>
+      <iframe class="ap-pdf-frame" id="ap-pdf-frame" title="Résumé preview"></iframe>
+      <div class="ap-pdf-actions">
+        <button class="ap-btn-soft ap-btn-icon" id="ap-pdf-regen" type="button">${I_REGEN}Regenerate</button>
+        <button class="ap-btn-soft ap-btn-icon" id="ap-pdf-download" type="button">${I_DOWNLOAD}Download PDF</button>
+        <button class="ap-btn-upload ap-btn-icon" id="ap-pdf-attach" type="button">${I_PAPERCLIP}Attach to form</button>
       </div>
     </div>
   `;
@@ -889,6 +985,7 @@ function collectRefs(root: HTMLDivElement): Refs {
     btnAutofill: q("#ap-btn-autofill"),
     fieldCount: q("#ap-field-count"),
     banner: q("#ap-banner"),
+    checklist: q("#ap-checklist"),
     review: q("#ap-review"),
     resumeName: q("#ap-resume-name"),
     resumeSelect: q("#ap-resume-select"),
@@ -999,6 +1096,12 @@ function wireEvents(root: HTMLDivElement): void {
   root.querySelector("#ap-btn-use-mock")!.addEventListener("click", () => {
     void saveConfig({ useMockData: true }).then(() => void reInit());
   });
+
+  // Tailored résumé PDF preview controls
+  root.querySelector("#ap-pdf-close")!.addEventListener("click", () => closeTailorPreview());
+  root.querySelector("#ap-pdf-regen")!.addEventListener("click", () => void regenFromPreview());
+  root.querySelector("#ap-pdf-download")!.addEventListener("click", () => void downloadFromPreview());
+  root.querySelector("#ap-pdf-attach")!.addEventListener("click", () => void attachFromPreview());
 }
 
 // ---------------------------------------------------------------------------
@@ -1154,10 +1257,94 @@ function refreshMainView(): void {
       : "Scanning page\u2026";
   }
 
+  renderChecklist();
+
   // Keep the r\u00e9sum\u00e9-upload button in sync as the form is (re)scanned.
   updateUploadButtonState();
   updateTailorButtonState();
   updateCoverButtonState();
+}
+
+/** Friendly fallback names when a field's own label is missing/too generic. */
+const CATEGORY_LABEL: Partial<Record<string, string>> = {
+  firstName: "First name",
+  lastName: "Last name",
+  fullName: "Full name",
+  email: "Email",
+  phone: "Phone",
+  location: "Location",
+  linkedin: "LinkedIn",
+  github: "GitHub",
+  portfolio: "Portfolio / website",
+  school: "University / school",
+  degree: "Degree",
+  workAuthorization: "Work authorization",
+  sponsorship: "Sponsorship",
+  coverLetter: "Cover letter",
+  resumeUpload: "R\u00e9sum\u00e9",
+  eeoGender: "Gender",
+  eeoRace: "Race / ethnicity",
+  eeoVeteran: "Veteran status",
+  eeoDisability: "Disability status",
+};
+
+/** Turn a programmatic id ("surveysResponses", "first_name") into "Surveys responses". */
+function humanize(raw: string): string {
+  const words = raw
+    .replace(/[_\-.]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1).toLowerCase() : raw;
+}
+
+function fieldDisplayName(f: DetectedField): string {
+  // Drop programmatic suffixes like "fields[firstname]" or "name (optional)".
+  let label = (f.label || "").trim().replace(/\s+/g, " ").replace(/[\s*:]+$/, "").replace(/\s*[\[(].*$/, "").trim();
+  const cat = CATEGORY_LABEL[f.category];
+  const looksRaw = !!label && (/[_\[\]]/.test(label) || (/[a-z][A-Z]/.test(label) && !label.includes(" ")));
+  if (cat && (looksRaw || !label || label.length > 36)) return cat;
+  if (looksRaw) return humanize(label);
+  if (label && label.length <= 40) return label;
+  return cat ?? (label ? label.slice(0, 38) + "\u2026" : "Field");
+}
+
+/**
+ * The "did it fill?" checklist: every meaningful detected field, with a green
+ * check when it currently holds a value or a muted dash when it is still empty.
+ * Driven purely off the (re-scanned) fields' currentValue, so it reflects reality
+ * after Autofill without any extra bookkeeping.
+ */
+function renderChecklist(): void {
+  if (!refs) return;
+  const host = refs.checklist;
+  const fillEEO = overlayState.config?.fillEEO ?? false;
+  const fields = overlayState.fields.filter(
+    (f) => (f.fillable || f.category !== "unknown") && !(f.sensitive && !fillEEO)
+  );
+  if (fields.length === 0) {
+    host.style.display = "none";
+    host.innerHTML = "";
+    return;
+  }
+  const isFilled = (f: DetectedField): boolean => Boolean(f.currentValue && f.currentValue.trim());
+  const filledCount = fields.filter(isFilled).length;
+  const rows = fields
+    .map((f) => {
+      const filled = isFilled(f);
+      const ic = filled ? I_CHECK : I_DASH;
+      return (
+        `<div class="ap-chk-row ${filled ? "is-filled" : "is-empty"}">` +
+        `<span class="ap-chk-ic">${ic}</span>` +
+        `<span class="ap-chk-label">${esc(fieldDisplayName(f))}</span>` +
+        `</div>`
+      );
+    })
+    .join("");
+  host.style.display = "block";
+  host.innerHTML =
+    `<div class="ap-chk-head"><span>Fields detected</span>` +
+    `<span class="ap-chk-count">${filledCount}/${fields.length} filled</span></div>` +
+    rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -1285,6 +1472,9 @@ async function doAutofill(): Promise<void> {
       ". Review before submitting.";
     showBanner(txt, fail > 0 ? "warn" : "ok");
     renderReviewSection(drafts);
+    // Re-scan so each field's currentValue reflects what just got written —
+    // this drives the ✓ / – checklist to its post-fill state.
+    callbacks.onRescan();
   } catch (err) {
     showBanner(`Autofill failed: ${err instanceof Error ? err.message : "unknown error"}`, "error");
   } finally {
@@ -1590,38 +1780,8 @@ function renderTailorResult(): void {
   });
 
   refs.tailorResult
-    .querySelector("#ap-tailor-regen")
-    ?.addEventListener("click", () => void doTailor([...overlayState.tailorKeywords]));
-  refs.tailorResult
-    .querySelector("#ap-tailor-attach")
-    ?.addEventListener("click", () => void attachTailored());
-  refs.tailorResult
-    .querySelector("#ap-tailor-download")
-    ?.addEventListener("click", () => void downloadTailored());
-
-  // "Attach to form" only works when the page actually has a résumé field.
-  const attachBtn = refs.tailorResult.querySelector<HTMLButtonElement>("#ap-tailor-attach");
-  if (attachBtn && !hasResumeField()) {
-    attachBtn.disabled = true;
-    attachBtn.title = "No résumé upload field on this page — use Download instead.";
-  }
-}
-
-async function attachTailored(): Promise<void> {
-  if (!refs || !callbacks || !overlayState.tailorResult) return;
-  setTailorStatus("Attaching…", "");
-  const res = await callbacks.onAttachTailored(overlayState.tailorResult.document);
-  setTailorStatus(
-    res.ok ? "Résumé attached. Review before submitting." : res.reason ?? "Could not attach.",
-    res.ok ? "ok" : "error"
-  );
-}
-
-async function downloadTailored(): Promise<void> {
-  if (!refs || !callbacks || !overlayState.tailorResult) return;
-  setTailorStatus("Preparing download…", "");
-  const res = await callbacks.onDownloadTailored(overlayState.tailorResult.document);
-  setTailorStatus(res.ok ? "Downloaded." : res.reason ?? "Could not download.", res.ok ? "ok" : "error");
+    .querySelector("#ap-tailor-preview")
+    ?.addEventListener("click", () => void openTailorPreview());
 }
 
 function setTailorStatus(text: string, kind: "ok" | "warn" | "error" | ""): void {
@@ -1633,6 +1793,83 @@ function setTailorStatus(text: string, kind: "ok" | "warn" | "error" | ""): void
     // No card yet (e.g. not signed in) — fall back to the résumé status line.
     setUploadStatus(text, kind);
   }
+}
+
+// ---- Tailored résumé PDF preview ------------------------------------------
+
+let pdfPreviewUrl: string | null = null;
+
+function setPdfStatus(text: string, kind: "ok" | "warn" | "error" | ""): void {
+  const el = refs?.root.querySelector<HTMLDivElement>("#ap-pdf-status");
+  if (!el) return;
+  el.textContent = text;
+  el.style.display = text ? "block" : "none";
+  el.className = "ap-pdf-status" + (kind ? ` ${kind}` : "");
+}
+
+/** Render the tailored résumé to PDF and show it in the in-panel preview. */
+async function openTailorPreview(): Promise<void> {
+  if (!refs || !overlayState.tailorResult) return;
+  const modal = refs.root.querySelector<HTMLDivElement>("#ap-pdf-modal");
+  const frame = refs.root.querySelector<HTMLIFrameElement>("#ap-pdf-frame");
+  if (!modal || !frame) return;
+  modal.style.display = "flex";
+  setPdfStatus("Rendering preview…", "");
+  const res = await bg<RenderResumeResponse>({
+    type: "RENDER_RESUME",
+    document: overlayState.tailorResult.document,
+    filename: "resume",
+  }).catch(() => null);
+  if (!res?.ok || !res.dataBase64) {
+    setPdfStatus(res?.error ?? "Could not render the résumé preview.", "error");
+    return;
+  }
+  if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+  const file = base64ToFile(res.dataBase64, res.name ?? "resume.pdf", res.contentType ?? "application/pdf");
+  pdfPreviewUrl = URL.createObjectURL(file);
+  frame.src = pdfPreviewUrl;
+  setPdfStatus("", "");
+  const attach = refs.root.querySelector<HTMLButtonElement>("#ap-pdf-attach");
+  if (attach) {
+    attach.disabled = !hasResumeField();
+    attach.title = hasResumeField() ? "" : "No résumé upload field on this page — use Download instead.";
+  }
+}
+
+function closeTailorPreview(): void {
+  const modal = refs?.root.querySelector<HTMLDivElement>("#ap-pdf-modal");
+  if (modal) modal.style.display = "none";
+  const frame = refs?.root.querySelector<HTMLIFrameElement>("#ap-pdf-frame");
+  if (frame) frame.removeAttribute("src");
+  if (pdfPreviewUrl) {
+    URL.revokeObjectURL(pdfPreviewUrl);
+    pdfPreviewUrl = null;
+  }
+}
+
+/** Regenerate from within the preview, then refresh the rendered PDF. */
+async function regenFromPreview(): Promise<void> {
+  if (overlayState.tailorBusy) return;
+  setPdfStatus("Regenerating…", "");
+  await doTailor([...overlayState.tailorKeywords]);
+  if (overlayState.tailorResult) await openTailorPreview();
+}
+
+async function downloadFromPreview(): Promise<void> {
+  if (!callbacks || !overlayState.tailorResult) return;
+  setPdfStatus("Preparing download…", "");
+  const res = await callbacks.onDownloadTailored(overlayState.tailorResult.document);
+  setPdfStatus(res.ok ? "Downloaded." : res.reason ?? "Could not download.", res.ok ? "ok" : "error");
+}
+
+async function attachFromPreview(): Promise<void> {
+  if (!callbacks || !overlayState.tailorResult) return;
+  setPdfStatus("Attaching…", "");
+  const res = await callbacks.onAttachTailored(overlayState.tailorResult.document);
+  setPdfStatus(
+    res.ok ? "Attached to the form. Review before submitting." : res.reason ?? "Could not attach.",
+    res.ok ? "ok" : "error"
+  );
 }
 
 // ---------------------------------------------------------------------------
