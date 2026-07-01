@@ -24,3 +24,4 @@ backend/data/autoapply.db
 
 # Third-party reference extensions / scratch
 tmp/
+1.15.0_0/
