@@ -20,6 +20,16 @@ export default function VerifyEmailPage() {
 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasVerified = useRef(false);
+  const hasRedirected = useRef(false);
+
+  // Full reload (not a client-side navigate) so AuthProvider re-fetches the now-
+  // verified user. A client navigate keeps the stale unverified state and
+  // ProtectedRoute would immediately bounce back to /verify-email.
+  const redirectToApp = useCallback(() => {
+    if (hasRedirected.current) return;
+    hasRedirected.current = true;
+    window.location.assign("/app");
+  }, []);
 
   // Start countdown timer
   const startCountdown = useCallback((seconds: number) => {
@@ -61,10 +71,18 @@ export default function VerifyEmailPage() {
         // Store access token on success (refresh token is set as HttpOnly cookie)
         localStorage.setItem("access_token", data.access_token);
         setState("success");
-        // Full page reload to refresh auth state with verified user
-        setTimeout(() => {
-          window.location.href = "/app";
-        }, 1500);
+        // Tell any other tab still sitting on the "Check your inbox" screen so it
+        // can advance to the app instantly instead of waiting for its next poll.
+        try {
+          if (typeof BroadcastChannel !== "undefined") {
+            const ch = new BroadcastChannel("email-verification");
+            ch.postMessage("verified");
+            ch.close();
+          }
+        } catch {
+          /* BroadcastChannel unavailable — the other tab's poll will catch it. */
+        }
+        setTimeout(redirectToApp, 1500);
       } catch (err: unknown) {
         if (err && typeof err === "object" && "response" in err) {
           const axiosErr = err as { response?: { status?: number; data?: { detail?: string } } };
@@ -89,7 +107,36 @@ export default function VerifyEmailPage() {
     }
 
     verifyToken();
-  }, [token, navigate]);
+  }, [token, navigate, redirectToApp]);
+
+  // While waiting on the "Check your inbox" screen, auto-advance to the app the
+  // moment the email is verified — whether the link was opened in another tab of
+  // this browser (BroadcastChannel, instant) or on another device (poll /auth/me).
+  useEffect(() => {
+    if (state !== "pending") return;
+
+    let channel: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== "undefined") {
+      channel = new BroadcastChannel("email-verification");
+      channel.onmessage = (event) => {
+        if (event.data === "verified") redirectToApp();
+      };
+    }
+
+    const poll = setInterval(async () => {
+      try {
+        const { data } = await api.get("/auth/me");
+        if (data?.email_verified) redirectToApp();
+      } catch {
+        /* transient network/auth blip — keep waiting */
+      }
+    }, 4000);
+
+    return () => {
+      clearInterval(poll);
+      channel?.close();
+    };
+  }, [state, redirectToApp]);
 
   // Handle resend button click
   async function handleResend() {
