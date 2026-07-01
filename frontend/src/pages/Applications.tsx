@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import api from "../auth/api";
-import { avatarColor } from "../lib/companyLogo";
+import { avatarColor, resolveLogoUrl } from "../lib/companyLogo";
 import { ArrowSquareOut, Calendar } from "@phosphor-icons/react";
 
 interface ApplicationRecord {
@@ -13,11 +13,20 @@ interface ApplicationRecord {
   applied_at: string;
   notes: string | null;
   resume_version: string | null;
+  company_logo?: string | null;
+  company_domain?: string | null;
+  company_url?: string | null;
 }
 
 function formatAppliedDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// Same fallback behavior as the dashboard: hide a broken logo image so the
+// letter avatar underneath shows through instead.
+function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>) {
+  (e.target as HTMLImageElement).style.display = "none";
 }
 
 export default function Applications() {
@@ -64,6 +73,18 @@ export default function Applications() {
                     >
                       {application.company.charAt(0).toUpperCase()}
                     </div>
+                    {(() => {
+                      const logoUrl = resolveLogoUrl(application);
+                      return logoUrl ? (
+                        <img
+                          src={logoUrl}
+                          alt=""
+                          className="company-logo-img-overlay"
+                          loading="lazy"
+                          onError={handleLogoError}
+                        />
+                      ) : null;
+                    })()}
                   </div>
                   <div className="job-card-info">
                     <div className="job-card-badges">

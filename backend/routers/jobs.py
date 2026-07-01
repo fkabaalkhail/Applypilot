@@ -293,15 +293,24 @@ def list_applications(
     db: Session = Depends(get_db),
 ):
     """List the current user's application records."""
-    records = (
-        db.query(ApplicationRecord)
+    rows = (
+        db.query(ApplicationRecord, ScrapedJob)
+        .outerjoin(ScrapedJob, ScrapedJob.id == ApplicationRecord.job_id)
         .filter(ApplicationRecord.user_id == user_id)
         .order_by(ApplicationRecord.applied_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )
-    return records
+    results = []
+    for record, job in rows:
+        out = ApplicationOut.model_validate(record)
+        if job:
+            out.company_logo = job.company_logo
+            out.company_domain = job.company_domain
+            out.company_url = job.company_url
+        results.append(out)
+    return results
 
 
 @router.get("/{job_id}", response_model=ScrapedJobOut)

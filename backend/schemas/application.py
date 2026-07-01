@@ -19,6 +19,9 @@ class ApplicationOut(BaseModel):
     applied_at: datetime.datetime
     notes: Optional[str] = None
     resume_version: Optional[str] = None
+    company_logo: Optional[str] = None
+    company_domain: Optional[str] = None
+    company_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
