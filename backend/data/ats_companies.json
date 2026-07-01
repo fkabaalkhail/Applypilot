@@ -1391,7 +1391,8 @@
       "ats_platform": "workday",
       "board_slug": "adobe",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=adobe.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external_experienced"
     },
     {
       "company_name": "Amazon",
@@ -1455,7 +1456,8 @@
       "ats_platform": "workday",
       "board_slug": "capitalone",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=capitalone.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://capitalone.wd12.myworkdayjobs.com/wday/cxs/capitalone/Capital_One"
     },
     {
       "company_name": "CIBC",
@@ -1557,7 +1559,8 @@
       "ats_platform": "workday",
       "board_slug": "morganstanley",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=morganstanley.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://ms.wd5.myworkdayjobs.com/wday/cxs/ms/External"
     },
     {
       "company_name": "PwC",
@@ -1614,7 +1617,8 @@
       "ats_platform": "workday",
       "board_slug": "td",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=td.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://td.wd3.myworkdayjobs.com/wday/cxs/td/TD_Bank_Careers"
     },
     {
       "company_name": "Telus",
@@ -1628,7 +1632,8 @@
       "ats_platform": "workday",
       "board_slug": "workday",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=workday.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://workday.wd5.myworkdayjobs.com/wday/cxs/workday/Workday"
     },
     {
       "company_name": "Coveo",
@@ -1748,6 +1753,102 @@
       "board_slug": "lightspeed",
       "company_logo_url": "",
       "enabled": true
+    },
+    {
+      "company_name": "Sun Life",
+      "ats_platform": "workday",
+      "board_slug": "sunlife",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=sunlife.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://sunlife.wd3.myworkdayjobs.com/wday/cxs/sunlife/Experienced-Jobs"
+    },
+    {
+      "company_name": "Manulife",
+      "ats_platform": "workday",
+      "board_slug": "manulife",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=manulife.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://manulife.wd3.myworkdayjobs.com/wday/cxs/manulife/MFCJH_Jobs"
+    },
+    {
+      "company_name": "Intact",
+      "ats_platform": "workday",
+      "board_slug": "intactfc",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=intact.ca&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://intactfc.wd3.myworkdayjobs.com/wday/cxs/intactfc/intactfc"
+    },
+    {
+      "company_name": "Thomson Reuters",
+      "ats_platform": "workday",
+      "board_slug": "thomsonreuters",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=thomsonreuters.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://thomsonreuters.wd5.myworkdayjobs.com/wday/cxs/thomsonreuters/External_Career_Site"
+    },
+    {
+      "company_name": "Canadian Tire",
+      "ats_platform": "workday",
+      "board_slug": "canadiantirecorporation",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=canadiantire.ca&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://canadiantirecorporation.wd3.myworkdayjobs.com/wday/cxs/canadiantirecorporation/Enterprise_External_Careers_Site"
+    },
+    {
+      "company_name": "TransUnion",
+      "ats_platform": "workday",
+      "board_slug": "transunion",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=transunion.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://transunion.wd5.myworkdayjobs.com/wday/cxs/transunion/TransUnion"
+    },
+    {
+      "company_name": "S&P Global",
+      "ats_platform": "workday",
+      "board_slug": "spgi",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=spglobal.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://spgi.wd5.myworkdayjobs.com/wday/cxs/spgi/SPGI_Careers"
+    },
+    {
+      "company_name": "NVIDIA",
+      "ats_platform": "workday",
+      "board_slug": "nvidia",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=nvidia.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite"
+    },
+    {
+      "company_name": "Autodesk",
+      "ats_platform": "workday",
+      "board_slug": "autodesk",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=autodesk.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://autodesk.wd1.myworkdayjobs.com/wday/cxs/autodesk/Ext"
+    },
+    {
+      "company_name": "HP",
+      "ats_platform": "workday",
+      "board_slug": "hp",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=hp.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://hp.wd5.myworkdayjobs.com/wday/cxs/hp/ExternalCareerSite"
+    },
+    {
+      "company_name": "Nasdaq",
+      "ats_platform": "workday",
+      "board_slug": "nasdaq",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=nasdaq.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://nasdaq.wd1.myworkdayjobs.com/wday/cxs/nasdaq/Global_External_Site"
+    },
+    {
+      "company_name": "Nike",
+      "ats_platform": "workday",
+      "board_slug": "nike",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=nike.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://nike.wd1.myworkdayjobs.com/wday/cxs/nike/nke"
     }
   ]
 }

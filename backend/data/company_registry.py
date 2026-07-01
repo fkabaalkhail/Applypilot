@@ -91,6 +91,54 @@ def load_companies(
     return out
 
 
+def load_workday_boards(include_disabled: bool = False) -> list[tuple[str, str, str]]:
+    """Return enabled Workday boards that carry a usable CXS URL template.
+
+    Workday is not part of :data:`SUPPORTED_PLATFORMS` because it needs a
+    per-tenant host + site path that the generic ``(platform, slug, name)``
+    tuple can't express. This loader returns the extra piece the scraper needs:
+
+        (board_slug, company_name, cxs_base)
+
+    where ``cxs_base`` is the Workday CXS API base
+    (``https://{tenant}.{wdN}.myworkdayjobs.com/wday/cxs/{tenant}/{site}``)
+    taken from each entry's ``workday_url_template``, with any trailing ``/`` or
+    ``/jobs`` stripped so callers can safely append ``/jobs``. Entries without a
+    template are skipped (the scraper has no way to reach them). Deduplicates on
+    ``cxs_base``.
+    """
+    out: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+
+    for entry in _load_raw():
+        try:
+            platform = (entry.get("ats_platform") or "").strip().lower()
+            slug = (entry.get("board_slug") or "").strip()
+            name = (entry.get("company_name") or "").strip()
+            template = (entry.get("workday_url_template") or "").strip()
+            enabled = entry.get("enabled", True)
+        except AttributeError:
+            continue
+
+        if platform != "workday" or not slug or not name or not template:
+            continue
+        if not include_disabled and not enabled:
+            continue
+
+        base = template.rstrip("/")
+        if base.lower().endswith("/jobs"):
+            base = base[: -len("/jobs")]
+        if "/wday/cxs/" not in base:
+            # Not a CXS endpoint we know how to call; skip rather than 404.
+            continue
+        if base in seen:
+            continue
+        seen.add(base)
+        out.append((slug, name, base))
+
+    return out
+
+
 def load_logo_map() -> dict[str, str]:
     """Return {company_name_lower: company_logo_url} for enrichment."""
     return {

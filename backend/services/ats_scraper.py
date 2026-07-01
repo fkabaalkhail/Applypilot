@@ -32,7 +32,9 @@ class ATSJob:
     url: str  # Direct apply link
     posted_date: Optional[datetime.datetime] = None
     department: Optional[str] = None
-    work_type: Optional[str] = None  # Remote, On Site, Hybrid
+    work_type: Optional[str] = None  # canonical: remote, hybrid, onsite
+    salary: Optional[str] = None  # e.g. "$95K – $112K" when the ATS exposes it
+    description: Optional[str] = None  # plain-text description when the ATS exposes it
 
 
 # ─── Company → ATS mapping ───────────────────────────────────────────────────
@@ -190,6 +192,48 @@ except Exception as e:  # pragma: no cover - defensive
     logger.error("Failed to load company registry, using legacy list: %s", e)
     ATS_COMPANIES = _LEGACY_ATS_COMPANIES
 
+# Workday boards carry a per-tenant CXS URL, so they're loaded separately as
+# (slug, name, cxs_base). Kept in its own try so a Workday-loader failure can't
+# discard the already-loaded ATS_COMPANIES.
+try:
+    from backend.data.company_registry import load_workday_boards
+
+    WORKDAY_BOARDS: list[tuple[str, str, str]] = load_workday_boards()
+except Exception as e:  # pragma: no cover - defensive
+    logger.error("Failed to load Workday boards: %s", e)
+    WORKDAY_BOARDS = []
+
+
+# Workday's CXS API rejects a `limit` above 20 (returns an empty page), so the
+# scraper must page in 20s. Ordering is newest-first, so a bounded page walk
+# still surfaces the freshest postings; URL dedup accretes the rest over runs.
+WORKDAY_PAGE_SIZE = 20
+WORKDAY_HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+}
+# Early-career searchText terms used to target entry-level roles on big Workday
+# boards. Each also appears in ENTRY_LEVEL_KEYWORDS, so Workday's relevance-ranked
+# matches survive the entry-level filter instead of being discarded as senior.
+WORKDAY_ENTRY_SEARCHES = (
+    "intern",
+    "new grad",
+    "co-op",
+    "associate",
+    "analyst",
+    "junior",
+)
+
+# SmartRecruiters returns 100 postings per page; large employers (Bosch: 4600+)
+# need pagination. Cap the walk so a single huge board can't dominate a run.
+SMARTRECRUITERS_PAGE_SIZE = 100
+SMARTRECRUITERS_MAX_PAGES = 10
+
 
 # Keywords that indicate intern/new-grad level roles
 ENTRY_LEVEL_KEYWORDS = [
@@ -271,9 +315,21 @@ CA_CITIES = [
 class ATSScraper:
     """Scrapes job listings from public ATS APIs."""
 
-    def __init__(self, filter_entry_level: bool = True, filter_north_america: bool = True):
+    def __init__(
+        self,
+        filter_entry_level: bool = True,
+        filter_north_america: bool = True,
+        workday_max_pages: int = 10,
+        workday_search_pages: int = 2,
+    ):
         self.filter_entry_level = filter_entry_level
         self.filter_north_america = filter_north_america
+        # Workday boards are large (banks/consulting post thousands of roles), so
+        # bound the crawl. ``workday_max_pages`` caps the default page walk (used
+        # when not filtering to entry-level); ``workday_search_pages`` caps pages
+        # per early-career search term when the entry-level filter is on.
+        self.workday_max_pages = workday_max_pages
+        self.workday_search_pages = workday_search_pages
 
     async def scrape_all(self) -> list[ATSJob]:
         """Scrape all configured ATS companies. Returns filtered job list."""
@@ -303,6 +359,21 @@ class ATSScraper:
                 except Exception as e:
                     logger.warning(f"Error scraping {platform}/{slug}: {e}")
 
+            # Workday boards (banks, consulting, telecom, big tech) are scraped
+            # separately because each needs a per-tenant CXS URL. This is where
+            # most finance / marketing / HR / operations roles live.
+            for slug, company_name, cxs_base in WORKDAY_BOARDS:
+                try:
+                    jobs = await self._scrape_workday(client, cxs_base, company_name)
+                    all_jobs.extend(jobs)
+                    logger.info(f"Scraped {len(jobs)} jobs from workday/{slug}")
+                except httpx.HTTPStatusError as e:
+                    logger.warning(f"HTTP error scraping workday/{slug}: {e.response.status_code}")
+                except httpx.TimeoutException:
+                    logger.warning(f"Timeout scraping workday/{slug}")
+                except Exception as e:
+                    logger.warning(f"Error scraping workday/{slug}: {e}")
+
         return all_jobs
 
     async def scrape_company(self, platform: str, slug: str, company_name: str) -> list[ATSJob]:
@@ -316,6 +387,13 @@ class ATSScraper:
                 return await self._scrape_ashby(client, slug, company_name)
             elif platform == "smartrecruiters":
                 return await self._scrape_smartrecruiters(client, slug, company_name)
+            elif platform == "workday":
+                cxs_base = next(
+                    (base for s, _, base in WORKDAY_BOARDS if s == slug), None
+                )
+                if not cxs_base:
+                    return []
+                return await self._scrape_workday(client, cxs_base, company_name)
             return []
 
     async def _scrape_greenhouse(self, client: httpx.AsyncClient, slug: str, company_name: str) -> list[ATSJob]:
@@ -417,10 +495,15 @@ class ATSScraper:
         """Scrape jobs from Ashby posting API.
 
         API: https://api.ashbyhq.com/posting-api/job-board/{slug}
+
+        Ashby's public API is unusually rich: with ``includeCompensation=true`` it
+        returns a salary summary, plus a plain-text description, remote flag and a
+        direct apply URL — so we populate salary/description/work_type at scrape
+        time instead of leaving them for the (slower, lossy) enrichment pass.
         """
         url = f"https://api.ashbyhq.com/posting-api/job-board/{slug}"
 
-        response = await client.get(url)
+        response = await client.get(url, params={"includeCompensation": "true"})
         response.raise_for_status()
         data = response.json()
 
@@ -428,9 +511,10 @@ class ATSScraper:
         for job_data in data.get("jobs", []):
             title = job_data.get("title", "")
             location = job_data.get("location", "")
-            job_url = job_data.get("jobUrl", "")
+            # jobUrl is the public posting page; fall back to applyUrl.
+            job_url = job_data.get("jobUrl") or job_data.get("applyUrl") or ""
             published_at = job_data.get("publishedAt", "")
-            department = job_data.get("departmentName", "")
+            department = job_data.get("departmentName") or job_data.get("department", "")
 
             # Parse date
             posted_date = None
@@ -447,13 +531,44 @@ class ATSScraper:
                 url=job_url,
                 posted_date=posted_date,
                 department=department,
-                work_type=self._detect_work_type(location, title),
+                work_type=self._ashby_work_type(job_data, location, title),
+                salary=self._ashby_salary(job_data),
+                # descriptionHtml (not …Plain): the write path sanitizes HTML the
+                # same way as every other description source, so plain text isn't
+                # mangled by an HTML sanitizer.
+                description=(job_data.get("descriptionHtml") or "").strip() or None,
             )
 
             if self._passes_filters(job):
                 jobs.append(job)
 
         return jobs
+
+    def _ashby_work_type(self, job_data: dict, location: str, title: str) -> str:
+        """Prefer Ashby's explicit workplaceType/isRemote, else infer from text."""
+        wt = (job_data.get("workplaceType") or "").lower()
+        if "remote" in wt:
+            return "remote"
+        if "hybrid" in wt:
+            return "hybrid"
+        if "onsite" in wt or "on-site" in wt or "on site" in wt:
+            return "onsite"
+        if job_data.get("isRemote"):
+            return "remote"
+        return self._detect_work_type(location, title)
+
+    @staticmethod
+    def _ashby_salary(job_data: dict) -> Optional[str]:
+        """Extract a salary summary from Ashby, honouring the employer's display flag."""
+        if not job_data.get("shouldDisplayCompensationOnJobPostings", False):
+            return None
+        comp = job_data.get("compensation") or {}
+        summary = (
+            comp.get("scrapeableCompensationSalarySummary")
+            or comp.get("compensationTierSummary")
+            or ""
+        ).strip()
+        return summary[:255] or None
 
     async def _scrape_smartrecruiters(self, client: httpx.AsyncClient, identifier: str, company_name: str) -> list[ATSJob]:
         """Scrape jobs from SmartRecruiters postings API.
@@ -461,57 +576,209 @@ class ATSScraper:
         API: https://api.smartrecruiters.com/v1/companies/{identifier}/postings
         """
         url = f"https://api.smartrecruiters.com/v1/companies/{identifier}/postings"
-        params = {"limit": "100"}
-
-        response = await client.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-
+        # Large employers (e.g. Bosch has 4600+ postings) far exceed one page, so
+        # walk the offset instead of only fetching the first 100.
+        page_size = SMARTRECRUITERS_PAGE_SIZE
         jobs: list[ATSJob] = []
-        for job_data in data.get("content", []):
-            title = job_data.get("name", "")
+        offset = 0
 
-            # Build location from city, region, country
-            loc_info = job_data.get("location", {})
-            loc_parts = [
-                loc_info.get("city", ""),
-                loc_info.get("region", ""),
-                loc_info.get("country", ""),
-            ]
-            location = ", ".join(part for part in loc_parts if part)
+        for _ in range(SMARTRECRUITERS_MAX_PAGES):
+            try:
+                response = await client.get(
+                    url, params={"limit": str(page_size), "offset": str(offset)}
+                )
+                response.raise_for_status()
+                data = response.json()
+            except (httpx.HTTPError, ValueError) as e:
+                # Keep the pages already parsed rather than discarding a whole
+                # board because a later page returned an error.
+                logger.warning(f"SmartRecruiters page error ({identifier}): {e}")
+                break
 
-            # Use ref_url or construct from identifier + id
-            job_url = job_data.get("ref_url", "")
-            if not job_url:
-                job_id = job_data.get("id", "")
-                job_url = f"https://careers.smartrecruiters.com/{identifier}/{job_id}"
+            content = data.get("content", []) or []
+            if not content:
+                break
 
-            released_date = job_data.get("releasedDate", "")
-            department_info = job_data.get("department", {})
-            department = department_info.get("label", "") if department_info else ""
+            for job_data in content:
+                title = job_data.get("name", "")
 
-            # Parse date
-            posted_date = None
-            if released_date:
-                try:
-                    posted_date = datetime.datetime.fromisoformat(released_date.replace("Z", "+00:00"))
-                except (ValueError, TypeError):
-                    pass
+                # Build location from city, region, country
+                loc_info = job_data.get("location", {})
+                loc_parts = [
+                    loc_info.get("city", ""),
+                    loc_info.get("region", ""),
+                    loc_info.get("country", ""),
+                ]
+                location = ", ".join(part for part in loc_parts if part)
 
-            job = ATSJob(
-                title=title,
-                company=company_name,
-                location=location,
-                url=job_url,
-                posted_date=posted_date,
-                department=department,
-                work_type=self._detect_work_type(location, title),
-            )
+                # Use ref_url or construct from identifier + id
+                job_url = job_data.get("ref_url", "")
+                if not job_url:
+                    job_id = job_data.get("id", "")
+                    job_url = f"https://careers.smartrecruiters.com/{identifier}/{job_id}"
 
-            if self._passes_filters(job):
-                jobs.append(job)
+                released_date = job_data.get("releasedDate", "")
+                department_info = job_data.get("department", {})
+                department = department_info.get("label", "") if department_info else ""
+
+                # Parse date
+                posted_date = None
+                if released_date:
+                    try:
+                        posted_date = datetime.datetime.fromisoformat(released_date.replace("Z", "+00:00"))
+                    except (ValueError, TypeError):
+                        pass
+
+                job = ATSJob(
+                    title=title,
+                    company=company_name,
+                    location=location,
+                    url=job_url,
+                    posted_date=posted_date,
+                    department=department,
+                    work_type=self._detect_work_type(location, title),
+                )
+
+                if self._passes_filters(job):
+                    jobs.append(job)
+
+            offset += page_size
+            total = data.get("totalFound")
+            if isinstance(total, int) and offset >= total:
+                break
+            if len(content) < page_size:
+                break
 
         return jobs
+
+    async def _scrape_workday(
+        self, client: httpx.AsyncClient, cxs_base: str, company_name: str
+    ) -> list[ATSJob]:
+        """Scrape jobs from a Workday CXS job board.
+
+        Workday exposes a public JSON search API at ``{cxs_base}/jobs`` where
+        ``cxs_base`` is ``https://{tenant}.{wdN}.myworkdayjobs.com/wday/cxs/{tenant}/{site}``.
+        The API caps ``limit`` at 20, so we page in 20s.
+
+        Big-company boards (banks, consulting) are senior-heavy in their default
+        listing, so when filtering to entry-level we query Workday's ``searchText``
+        with early-career terms (Workday relevance-ranks matches first) and keep
+        only titles that pass the strict entry-level filter — far higher yield
+        per request than a blind page walk. Without the entry-level filter we
+        page the default listing instead. Each posting yields a direct apply link
+        built from the site's public front-end host + ``externalPath``.
+        """
+        apply_base = self._workday_apply_base(cxs_base)
+        jobs: list[ATSJob] = []
+        seen_paths: set[str] = set()
+
+        if self.filter_entry_level:
+            searches, pages_per_search = WORKDAY_ENTRY_SEARCHES, self.workday_search_pages
+        else:
+            searches, pages_per_search = ("",), self.workday_max_pages
+
+        for search_text in searches:
+            for page in range(pages_per_search):
+                payload = {
+                    "appliedFacets": {},
+                    "limit": WORKDAY_PAGE_SIZE,
+                    "offset": page * WORKDAY_PAGE_SIZE,
+                    "searchText": search_text,
+                }
+                try:
+                    response = await client.post(
+                        f"{cxs_base}/jobs", json=payload, headers=WORKDAY_HEADERS
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                except (httpx.HTTPError, ValueError) as e:
+                    # Keep whatever we've parsed for this board rather than
+                    # discarding it because a later page/search term errored.
+                    logger.warning(f"Workday page error ({cxs_base}): {e}")
+                    break
+
+                postings = data.get("jobPostings", []) or []
+                if not postings:
+                    break
+
+                for posting in postings:
+                    external_path = (posting.get("externalPath") or "").strip()
+                    # A posting can match several search terms / repeat near the
+                    # tail; skip ones already seen so we don't double-count.
+                    if external_path and external_path in seen_paths:
+                        continue
+                    if external_path:
+                        seen_paths.add(external_path)
+
+                    title = posting.get("title", "")
+                    location = posting.get("locationsText", "")
+                    job_url = f"{apply_base}{external_path}" if external_path else apply_base
+
+                    job = ATSJob(
+                        title=title,
+                        company=company_name,
+                        location=location,
+                        url=job_url,
+                        posted_date=self._parse_workday_posted(posting.get("postedOn", "")),
+                        department="",
+                        work_type=self._detect_work_type(location, title),
+                    )
+                    if self._passes_filters(job):
+                        jobs.append(job)
+
+                # Detect end of THIS search's results from the page itself — a
+                # short/last page or reaching `total` — not from dedup. Stopping
+                # on an all-duplicates page would abort later search terms early
+                # (seen_paths is shared), skipping their deeper, still-new pages.
+                total = data.get("total")
+                if len(postings) < WORKDAY_PAGE_SIZE:
+                    break
+                if isinstance(total, int) and (page + 1) * WORKDAY_PAGE_SIZE >= total:
+                    break
+
+        return jobs
+
+    @staticmethod
+    def _workday_apply_base(cxs_base: str) -> str:
+        """Derive the public apply-URL base from a Workday CXS base.
+
+        ``https://host/wday/cxs/{tenant}/{site}`` → ``https://host/{site}``.
+        Apply links are then ``{base}{externalPath}`` (Workday redirects to add
+        the locale, so no ``/en-US`` prefix is needed).
+        """
+        marker = "/wday/cxs/"
+        idx = cxs_base.find(marker)
+        if idx == -1:
+            return cxs_base.rstrip("/")
+        host = cxs_base[:idx]  # https://{tenant}.{wdN}.myworkdayjobs.com
+        tail = cxs_base[idx + len(marker):].strip("/")  # {tenant}/{site}[/...]
+        parts = tail.split("/", 1)
+        site = parts[1] if len(parts) > 1 else parts[0]
+        return f"{host}/{site}"
+
+    @staticmethod
+    def _parse_workday_posted(posted_on: str) -> Optional[datetime.datetime]:
+        """Convert Workday's relative ``postedOn`` text to an approximate date.
+
+        Handles "Posted Today", "Posted Yesterday", "Posted N Days Ago" and
+        "Posted 30+ Days Ago". Returns None when it can't be parsed.
+        """
+        if not posted_on:
+            return None
+        text = posted_on.lower()
+        # UTC to match scraped_at / the other scrapers (avoid local-clock skew).
+        now = datetime.datetime.utcnow()
+        if "today" in text:
+            return now
+        if "yesterday" in text:
+            return now - datetime.timedelta(days=1)
+        match = re.search(r"(\d+)\+?\s*day", text)
+        if match:
+            try:
+                return now - datetime.timedelta(days=int(match.group(1)))
+            except (ValueError, OverflowError):
+                return None
+        return None
 
     def _passes_filters(self, job: ATSJob) -> bool:
         """Check if a job passes the configured filters."""
@@ -576,12 +843,17 @@ class ATSScraper:
         return False
 
     def _detect_work_type(self, location: str, title: str) -> str:
-        """Detect Remote/Hybrid/On Site from location and title text."""
+        """Detect work arrangement from location/title text.
+
+        Returns the canonical lowercase tokens ("remote"/"hybrid"/"onsite") that
+        the listing filter, stats breakdown and the LinkedIn/aggregator path all
+        use — NOT "On Site"/"Remote", which wouldn't match the work_type filter.
+        """
         combined = f"{location} {title}".lower()
         if "remote" in combined:
             if "hybrid" in combined:
-                return "Hybrid"
-            return "Remote"
+                return "hybrid"
+            return "remote"
         if "hybrid" in combined:
-            return "Hybrid"
-        return "On Site"
+            return "hybrid"
+        return "onsite"

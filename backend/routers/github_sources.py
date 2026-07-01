@@ -206,12 +206,20 @@ async def cron_ats(
             resolved_logo, resolved_domain = resolve_logo(job.company)
             company_logo = logo_map.get(job.company.strip().lower()) or resolved_logo
 
+            # Some ATS APIs (e.g. Ashby) return salary + an HTML description up
+            # front; sanitize with the shared helper (same policy as the
+            # enrichment path) and store so we don't need a later fetch.
+            description = ""
+            if getattr(job, "description", None):
+                from backend.services.description_extractor import sanitize_description
+                description = sanitize_description(job.description)
+
             scraped_job = ScrapedJob(
                 title=job.title,
                 company=job.company,
                 location=job.location,
                 url=job.url,
-                description="",
+                description=description,
                 source_platform="ats",
                 posted_date=job.posted_date,
                 easy_apply=0,
@@ -221,6 +229,7 @@ async def cron_ats(
                 experience_level=experience_level,
                 company_logo=company_logo,
                 company_domain=resolved_domain,
+                salary_range=(getattr(job, "salary", None) or ""),
             )
             db.add(scraped_job)
             try:

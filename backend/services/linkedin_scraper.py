@@ -32,8 +32,12 @@ class LinkedInJob:
     posted_date: Optional[str] = None  # ISO date string from the card's <time> tag
 
 
-# Canadian cities to search (city, province)
+# Canadian cities to search (city, province). Beyond the major metros we include
+# neighbouring / satellite hubs (Ottawa's Kanata & Gatineau, Vancouver's Burnaby,
+# Toronto's Hamilton, plus Prairie and Atlantic centres) so coverage isn't limited
+# to the five biggest cities.
 CITIES: list[tuple[str, str]] = [
+    # Major metros
     ("Ottawa", "Ontario"),
     ("Toronto", "Ontario"),
     ("Vancouver", "British Columbia"),
@@ -44,15 +48,60 @@ CITIES: list[tuple[str, str]] = [
     ("Kitchener", "Ontario"),
     ("Mississauga", "Ontario"),
     ("Markham", "Ontario"),
+    # Neighbouring / satellite hubs and regional centres. The province qualifier
+    # (always appended as "{City}, {Province}, Canada") is what disambiguates
+    # names like London and St. John's on LinkedIn.
+    ("Kanata", "Ontario"),
+    ("Gatineau", "Quebec"),
+    ("Hamilton", "Ontario"),
+    ("Quebec City", "Quebec"),
+    ("Winnipeg", "Manitoba"),
+    ("Halifax", "Nova Scotia"),
+    ("Victoria", "British Columbia"),
+    ("London", "Ontario"),
+    ("Guelph", "Ontario"),
+    ("Windsor", "Ontario"),
+    ("Saskatoon", "Saskatchewan"),
+    ("Regina", "Saskatchewan"),
+    ("Kelowna", "British Columbia"),
+    ("St. John's", "Newfoundland and Labrador"),
+    ("Fredericton", "New Brunswick"),
 ]
 
-# Search queries targeting entry-level positions
+# Search queries. LinkedIn's guest API caps each keyword search at ~100 cards, so
+# high-volume generic terms ("intern") crowd out non-software roles. We therefore
+# give every major job function its own keyword so finance, marketing, HR, sales,
+# data, design, operations, product, consulting and comms roles each get an
+# un-truncated search — not just software. The f_E=1,2 filter still restricts all
+# of these to entry-level / internship postings.
 QUERIES: list[str] = [
+    # Field-agnostic anchors (all functions). f_E=1,2 already scopes these to
+    # entry-level/internship, so a few broad anchors cover early-career widely.
     "intern",
     "new grad",
     "co-op",
-    "entry level software engineer",
-    "entry level developer",
+    # Software / data (one software anchor — generic terms already surface most)
+    "software developer",
+    "data analyst",
+    # Finance / accounting
+    "financial analyst",
+    "accountant",
+    # Business / consulting / product
+    "business analyst",
+    "junior consultant",
+    "associate product manager",
+    # Operations / supply chain
+    "operations analyst",
+    "supply chain analyst",
+    # Marketing / communications
+    "marketing coordinator",
+    "communications specialist",
+    # HR / people
+    "human resources",
+    # Sales
+    "sales development representative",
+    # Design
+    "ux designer",
 ]
 
 # Headers to mimic a browser request

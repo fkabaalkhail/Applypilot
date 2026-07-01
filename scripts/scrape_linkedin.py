@@ -25,7 +25,8 @@ import httpx
 # Your deployed API base URL
 API_BASE = "https://resumate-smoky.vercel.app"
 
-# Canadian cities to search
+# Canadian cities to search — major metros plus neighbouring / satellite hubs and
+# regional centres (kept in sync with backend/services/linkedin_scraper.py).
 CITIES = [
     ("Ottawa", "Ontario"),
     ("Toronto", "Ontario"),
@@ -37,10 +38,45 @@ CITIES = [
     ("Kitchener", "Ontario"),
     ("Mississauga", "Ontario"),
     ("Markham", "Ontario"),
+    ("Kanata", "Ontario"),
+    ("Gatineau", "Quebec"),
+    ("Hamilton", "Ontario"),
+    ("Quebec City", "Quebec"),
+    ("Winnipeg", "Manitoba"),
+    ("Halifax", "Nova Scotia"),
+    ("Victoria", "British Columbia"),
+    ("London", "Ontario"),
+    ("Guelph", "Ontario"),
+    ("Windsor", "Ontario"),
+    ("Saskatoon", "Saskatchewan"),
+    ("Regina", "Saskatchewan"),
+    ("Kelowna", "British Columbia"),
+    ("St. John's", "Newfoundland and Labrador"),
+    ("Fredericton", "New Brunswick"),
 ]
 
-# Search queries
-QUERIES = ["intern", "new grad", "co-op", "entry level software engineer", "entry level developer"]
+# Search queries — one per major job function so non-software roles (finance,
+# marketing, HR, sales, data, ops, product, design, consulting) each get their
+# own un-truncated LinkedIn search (kept in sync with the backend scraper).
+QUERIES = [
+    "intern",
+    "new grad",
+    "co-op",
+    "software developer",
+    "data analyst",
+    "financial analyst",
+    "accountant",
+    "business analyst",
+    "junior consultant",
+    "associate product manager",
+    "operations analyst",
+    "supply chain analyst",
+    "marketing coordinator",
+    "communications specialist",
+    "human resources",
+    "sales development representative",
+    "ux designer",
+]
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

@@ -128,6 +128,11 @@ _KEYWORD_GROUPS: list[tuple[str, list[str]]] = [
         "m&a", "private equity", "venture capital", "private client", "wealth",
         "asset management", "capital markets", "assurance", "underwriting",
         "financial reporting",
+        # Retail / commercial banking roles (common on bank Workday boards). Dev
+        # and engineering titles are matched by earlier groups, so "... Banking
+        # Developer" still lands in Software, not here. " teller" keeps the leading
+        # space so it matches "Bank Teller" but not "Storyteller" (substring match).
+        "banker", "banking", " teller", "mortgage", "loan officer",
     ]),
     ("Sales", [
         "sales", "account executive", "account manager", "bdr", "sdr",
@@ -167,7 +172,8 @@ _KEYWORD_GROUPS: list[tuple[str, list[str]]] = [
     ("Customer Service and Support", [
         "customer support", "customer success", "customer service",
         "support engineer", "technical support", "help desk", "service desk",
-        "client support",
+        "client support", "client service", "call center", "call centre",
+        "contact center", "contact centre",
     ]),
     ("Operations", [
         "operations", "supply chain", "logistics", "procurement",
