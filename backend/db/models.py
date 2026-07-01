@@ -50,6 +50,9 @@ class User(Base):
     locked_until = Column(DateTime, nullable=True)
     last_failed_login_at = Column(DateTime, nullable=True)
 
+    # --- Onboarding ---
+    has_completed_onboarding = Column(Boolean, default=False, nullable=False)
+
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
 

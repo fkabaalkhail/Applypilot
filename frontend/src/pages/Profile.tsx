@@ -178,7 +178,7 @@ export default function Profile() {
   // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="profile-page">
+    <div className="profile-page" data-tour="profile-page">
       {/* Header */}
       <div className="profile-header">
         <h1>Profile</h1>

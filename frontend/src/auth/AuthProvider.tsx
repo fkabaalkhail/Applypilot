@@ -81,6 +81,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await api.post("/auth/resend-verification");
   }, []);
 
+  const setOnboardingComplete = useCallback(async (completed: boolean) => {
+    const { data } = await api.post("/auth/me/onboarding", { completed });
+    setUser(data);
+  }, []);
+
   const getToken = useCallback(() => {
     return localStorage.getItem("access_token");
   }, []);
@@ -98,6 +103,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     getToken,
     resendVerification,
     isEmailVerified,
+    setOnboardingComplete,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

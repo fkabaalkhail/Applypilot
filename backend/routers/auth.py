@@ -29,7 +29,7 @@ from backend.auth.tokens import (
     create_access_token, create_refresh_token, decode_token,
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
-from backend.auth.dependencies import get_current_user, get_verified_user, effective_email_verified
+from backend.auth.dependencies import get_current_user, get_verified_user, effective_email_verified, get_current_user_id
 from backend.services.verification_service import (
     create_verification_token,
     verify_token,
@@ -103,6 +103,9 @@ class ProfileUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     profile_image_url: Optional[str] = None
+
+class OnboardingUpdate(BaseModel):
+    completed: bool
 
 class TokenResponseWithVerification(BaseModel):
     access_token: str
@@ -509,8 +512,14 @@ def logout(
 
 
 @router.get("/me")
-def get_me(user: User = Depends(get_current_user)):
+def get_me(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Return the current authenticated user's profile."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
     return {
         "id": user.id,
         "email": user.email,
@@ -519,6 +528,7 @@ def get_me(user: User = Depends(get_current_user)):
         "profile_image_url": user.profile_image_url,
         "email_verified": effective_email_verified(user),
         "created_at": user.created_at.isoformat() if user.created_at else None,
+        "has_completed_onboarding": bool(user.has_completed_onboarding),
     }
 
 
@@ -545,6 +555,32 @@ def update_me(
         "profile_image_url": user.profile_image_url,
         "email_verified": user.email_verified,
         "created_at": user.created_at.isoformat() if user.created_at else None,
+        "has_completed_onboarding": bool(user.has_completed_onboarding),
+    }
+
+
+@router.post("/me/onboarding")
+def set_onboarding(
+    body: OnboardingUpdate,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Set the current user's onboarding completion flag."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.has_completed_onboarding = body.completed
+    db.commit()
+    db.refresh(user)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "profile_image_url": user.profile_image_url,
+        "email_verified": user.email_verified,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "has_completed_onboarding": bool(user.has_completed_onboarding),
     }
 
 

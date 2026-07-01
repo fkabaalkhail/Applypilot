@@ -50,7 +50,7 @@ export default function Applications() {
   }
 
   return (
-    <div className="jobs-page">
+    <div className="jobs-page" data-tour="applications-page">
       <header className="jobs-header">
         <h1>Applications</h1>
       </header>

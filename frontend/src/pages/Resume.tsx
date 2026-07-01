@@ -91,7 +91,7 @@ export default function Resume() {
   const canUpload = slotsUsed < MAX_RESUME_SLOTS;
 
   return (
-    <div className="resume-page-new">
+    <div className="resume-page-new" data-tour="resume-page">
       {/* Header */}
       <div className="resume-page-header">
         <div>
