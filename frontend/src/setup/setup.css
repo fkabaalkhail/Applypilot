@@ -1,6 +1,7 @@
 .setup-root { position: fixed; inset: 0; display: grid; grid-template-columns: 45% 55%; background: var(--bg-white, #fff); z-index: 60; }
 .setup-left {
-  position: relative; padding: 48px; display: flex; flex-direction: column; justify-content: center;
+  position: relative; padding: 48px; display: flex; flex-direction: column;
+  justify-content: center; align-items: center; text-align: center;
   /* Same Stripe-signature gradient mesh as the landing page hero (.hero-bg) */
   background:
     radial-gradient(ellipse 60% 50% at 88% 8%, rgba(249, 107, 238, 0.28) 0%, transparent 60%),
@@ -9,21 +10,21 @@
     radial-gradient(ellipse 55% 50% at 6% 0%, rgba(255, 217, 168, 0.40) 0%, transparent 58%),
     linear-gradient(180deg, #f5e9d4 0%, #f6f9fc 38%, #ffffff 70%);
 }
-.setup-assistant { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+.setup-assistant { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 24px; }
 .setup-assistant-avatar {
-  width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
-  background: #fff; box-shadow: var(--shadow-card, 0 1px 3px rgba(0, 55, 112, 0.08)); overflow: hidden;
+  width: 72px; height: 72px; border-radius: 18px; display: grid; place-items: center;
+  background: #fff; box-shadow: var(--shadow-card-hover, 0 8px 24px rgba(0, 55, 112, 0.10)); overflow: hidden;
 }
-.setup-assistant-logo { width: 30px; height: 30px; object-fit: contain; display: block; }
-.setup-assistant-name { font-weight: 650; font-size: 15px; color: var(--text, #1a1a1a); }
+.setup-assistant-logo { width: 48px; height: 48px; object-fit: contain; display: block; }
+.setup-assistant-name { font-weight: 650; font-size: 16px; color: var(--text, #1a1a1a); }
 .setup-assistant-sub { font-size: 12px; color: var(--text-secondary, #555); }
-.setup-headline { font-size: 30px; line-height: 1.2; font-weight: 600; color: var(--text, #1a1a1a); max-width: 460px; }
+.setup-headline { font-size: 30px; line-height: 1.2; font-weight: 600; color: var(--text, #1a1a1a); max-width: 460px; margin: 0 auto; }
 .setup-headline b { color: var(--accent, #533afd); font-weight: 750; }
 
-.setup-right { position: relative; padding: 40px 56px; overflow-y: auto; display: flex; flex-direction: column; }
+.setup-right { position: relative; padding: 40px 56px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .setup-logout { position: absolute; top: 20px; right: 24px; background: transparent; border: 1px solid var(--border, #e6e6e6); border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; color: var(--text-secondary, #555); }
 .setup-logout:hover { border-color: var(--accent, #533afd); color: var(--accent, #533afd); }
-.setup-dots { display: flex; gap: 6px; margin: 8px 0 28px; }
+.setup-dots { display: flex; gap: 6px; margin: 8px 0 28px; justify-content: center; }
 .setup-dot { width: 22px; height: 5px; border-radius: 9999px; background: var(--border, #e2e2e2); transition: background .2s ease; }
 .setup-dot.active { background: var(--accent, #533afd); }
 .setup-dot.done { background: var(--accent-soft, #d8d4ff); }
