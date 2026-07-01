@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
-import { ChatCircleDots } from "@phosphor-icons/react";
 import { useAuth } from "../auth/useAuth";
 
 interface Props {
@@ -17,11 +16,11 @@ export function SetupLayout({ headline, stepIndex, total, children }: Props) {
       <div className="setup-left">
         <div className="setup-assistant">
           <span className="setup-assistant-avatar">
-            <ChatCircleDots size={22} weight="fill" />
+            <img src="/logo-icon.png" alt="Tailrd" className="setup-assistant-logo" />
           </span>
           <span>
-            <div className="setup-assistant-name">Tailrd Assistant</div>
-            <div className="setup-assistant-sub">Your AI job copilot</div>
+            <div className="setup-assistant-name">Tailrd</div>
+            <div className="setup-assistant-sub">Your job search, tailored</div>
           </span>
         </div>
         <motion.h1
