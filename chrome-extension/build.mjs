@@ -27,6 +27,7 @@ const options = {
     // Output names must match the paths referenced in manifest.json.
     { in: "src/background/serviceWorker.ts", out: "serviceWorker" },
     { in: "src/content/contentScript.ts", out: "contentScript" },
+    { in: "src/content/mainWorld.ts", out: "mainWorld" },
   ],
   bundle: true,
   outdir: DIST,

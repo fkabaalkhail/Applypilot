@@ -39,5 +39,8 @@
       "run_at": "document_idle",
       "all_frames": true
     }
+  ],
+  "web_accessible_resources": [
+    { "resources": ["mainWorld.js"], "matches": ["<all_urls>"] }
   ]
 }
