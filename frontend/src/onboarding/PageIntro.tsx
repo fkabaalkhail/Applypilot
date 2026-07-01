@@ -29,7 +29,7 @@ export function PageIntro({ page }: { page: PageIntroId }) {
   useEffect(() => {
     if (!user || !isNewUser(user.created_at)) return;
     try {
-      if (localStorage.getItem(pageIntroSeenKey(page))) return;
+      if (localStorage.getItem(pageIntroSeenKey(page, user.id))) return;
     } catch {
       return;
     }
@@ -38,7 +38,7 @@ export function PageIntro({ page }: { page: PageIntroId }) {
 
   const dismiss = () => {
     try {
-      localStorage.setItem(pageIntroSeenKey(page), "1");
+      if (user) localStorage.setItem(pageIntroSeenKey(page, user.id), "1");
     } catch {
       /* ignore quota */
     }

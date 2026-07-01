@@ -22,9 +22,9 @@ export function useOnboarding(): OnboardingContextValue {
   return ctx;
 }
 
-function readProgress(): OnboardingProgress | null {
+function readProgress(key: string): OnboardingProgress | null {
   try {
-    const raw = localStorage.getItem(TOUR_PROGRESS_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as OnboardingProgress) : null;
   } catch {
     return null;
@@ -46,6 +46,10 @@ export function OnboardingProvider({
   const startedRef = useRef(false);
   const [stepReady, setStepReady] = useState(false);
 
+  // Namespace persisted progress per user so a different account on the same
+  // browser never inherits (and resumes into) another user's stale tour state.
+  const progressKey = user ? `${TOUR_PROGRESS_KEY}_${user.id}` : TOUR_PROGRESS_KEY;
+
   const step = state.index >= 0 ? TOUR_STEPS[state.index] : undefined;
 
   // Auto-start once for first-time users.
@@ -53,7 +57,7 @@ export function OnboardingProvider({
     if (startedRef.current) return;
     if (!user || user.has_completed_onboarding) return;
     startedRef.current = true;
-    const saved = readProgress();
+    const saved = readProgress(progressKey);
     analytics?.onTourStarted?.();
     if (saved && !saved.skipped) {
       const idx = TOUR_STEPS.findIndex((s) => s.id === saved.currentStepId);
@@ -90,7 +94,7 @@ export function OnboardingProvider({
       if (cancelled) return;
       try {
         localStorage.setItem(
-          TOUR_PROGRESS_KEY,
+          progressKey,
           JSON.stringify({ currentStepId: step.id, skipped: false } satisfies OnboardingProgress),
         );
       } catch { /* ignore quota */ }
@@ -99,7 +103,7 @@ export function OnboardingProvider({
     })();
 
     return () => { cancelled = true; };
-  }, [state.phase, state.index, step, navigate, location.pathname, analytics]);
+  }, [state.phase, state.index, step, navigate, location.pathname, analytics, progressKey]);
 
   const finish = useCallback(async (skipped: boolean) => {
     if (step) {
@@ -107,10 +111,10 @@ export function OnboardingProvider({
       else analytics?.onStepCompleted?.(step, state.index);
     }
     analytics?.onTourFinished?.();
-    try { localStorage.removeItem(TOUR_PROGRESS_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(progressKey); } catch { /* ignore */ }
     dispatch({ type: "FINISH" });
     try { await setOnboardingComplete(true); } catch { /* offline: DB sync retried next session */ }
-  }, [step, state.index, analytics, setOnboardingComplete]);
+  }, [step, state.index, analytics, setOnboardingComplete, progressKey]);
 
   const handleNext = useCallback(() => {
     const isLast = state.index >= TOUR_STEPS.length - 1;
@@ -128,11 +132,11 @@ export function OnboardingProvider({
 
   const start = useCallback(() => dispatch({ type: "START" }), []);
   const restart = useCallback(async () => {
-    try { localStorage.removeItem(TOUR_PROGRESS_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(progressKey); } catch { /* ignore */ }
     try { await setOnboardingComplete(false); } catch { /* ignore */ }
     startedRef.current = true;
     dispatch({ type: "START" });
-  }, [setOnboardingComplete]);
+  }, [setOnboardingComplete, progressKey]);
 
   const ctxValue = useMemo<OnboardingContextValue>(
     () => ({ start, restart, isRunning: state.phase === "running" }),

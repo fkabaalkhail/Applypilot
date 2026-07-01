@@ -57,8 +57,12 @@ export const PAGE_INTROS: Record<PageIntroId, PageIntroContent> = {
   },
 };
 
-/** localStorage key marking a page's intro as already seen. */
-export const pageIntroSeenKey = (id: PageIntroId): string => `tailrd_page_intro_${id}`;
+/**
+ * localStorage key marking a page's intro as already seen. Namespaced per user
+ * so a different account on the same browser is not treated as "already seen".
+ */
+export const pageIntroSeenKey = (id: PageIntroId, userId: number | string): string =>
+  `tailrd_page_intro_${userId}_${id}`;
 
 /** New users (recent signups) see the intros; established users are not interrupted. */
 export const NEW_USER_WINDOW_DAYS = 30;
