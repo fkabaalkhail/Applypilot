@@ -120,7 +120,7 @@ export default function Interview() {
   const totalCompanies = companies.length;
 
   return (
-    <div className="interview-page">
+    <div className="interview-page" data-tour="interview-page">
       {/* Premium hero */}
       <div className="interview-hero">
         <span className="interview-hero-badge">

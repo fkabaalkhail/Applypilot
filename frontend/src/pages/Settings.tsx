@@ -591,7 +591,7 @@ export default function Settings() {
       </div>
 
       {/* Extension Settings */}
-      <div className="settings-section">
+      <div className="settings-section" data-tour="extension-settings">
         <div className="settings-section-header">
           <i className="fa-solid fa-gear"></i>
           <h2>Extension Settings</h2>

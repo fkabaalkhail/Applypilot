@@ -21,6 +21,7 @@ import {
 } from "@phosphor-icons/react";
 import { ApplyTrackingProvider } from "./context/ApplyTracking";
 import ApplyConfirmModal from "./components/ApplyConfirmModal";
+import { OnboardingProvider } from "./onboarding";
 
 export default function App() {
   const { user, logout } = useAuth();
@@ -39,6 +40,7 @@ export default function App() {
 
   return (
     <ApplyTrackingProvider>
+    <OnboardingProvider>
     <div className={`app-layout${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         {/* Logo */}
@@ -194,6 +196,7 @@ export default function App() {
       )}
       <ApplyConfirmModal />
     </div>
+    </OnboardingProvider>
     </ApplyTrackingProvider>
   );
 }

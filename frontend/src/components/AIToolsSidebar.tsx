@@ -94,6 +94,12 @@ export default function AIToolsSidebar({ jobId }: Props) {
           <button
             key={type}
             className="ai-tool-btn"
+            data-tour={
+              type === "resume" ? "ai-tool-resume"
+              : type === "cover-letter" ? "ai-tool-cover-letter"
+              : type === "fit-analysis" ? "ai-tool-fit"
+              : undefined
+            }
             onClick={() => runTool(type)}
             disabled={tools[type].loading}
           >

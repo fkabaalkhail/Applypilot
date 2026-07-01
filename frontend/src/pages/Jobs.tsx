@@ -297,6 +297,7 @@ export default function Jobs() {
           </div>
           <button
             className="filter-toggle-btn"
+            data-tour="job-filters"
             onClick={() => setFiltersVisible(!filtersVisible)}
             aria-label={filtersVisible ? "Hide filters" : "Show filters"}
           >
@@ -316,14 +317,20 @@ export default function Jobs() {
       {/* Content Area: Job Feed + Detail Panel */}
       <div className={`jobs-content-area${selectedJob ? " has-detail" : ""}`}>
         {/* Job Feed */}
-        <div className="jobs-feed" ref={jobsListRef} tabIndex={-1}>
+        <div className="jobs-feed" data-tour="jobs-list" ref={jobsListRef} tabIndex={-1}>
           {loading && <p className="loading-text">Loading jobs...</p>}
           {!loading && filteredJobs.length === 0 && (
             <p className="empty-text">No jobs found. Start the scraper or adjust your filters.</p>
           )}
 
-          {filteredJobs.map((job) => (
-            <div key={job.id} className={`job-card${selectedJob?.id === job.id ? " selected" : ""}`} onClick={() => setSelectedJob(job)} style={{ cursor: "pointer" }}>
+          {filteredJobs.map((job, jobIndex) => (
+            <div
+              key={job.id}
+              data-tour={jobIndex === 0 ? "job-card" : undefined}
+              className={`job-card${selectedJob?.id === job.id ? " selected" : ""}`}
+              onClick={() => setSelectedJob(job)}
+              style={{ cursor: "pointer" }}
+            >
               <div className="job-card-body">
                 {/* Header: Logo + Info + Bookmark */}
                 <div className="job-card-header">
