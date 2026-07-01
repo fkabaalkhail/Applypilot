@@ -10,12 +10,18 @@
     "typecheck": "tsc --noEmit",
     "icons": "node scripts/gen-icons.mjs",
     "test:smoke": "node test/scan-smoke.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "node test/browser/gen-resume.mjs && node test/browser/build.mjs && node test/browser/run.mjs",
+    "test:extension": "node build.mjs && node test/browser/load-extension.mjs"
   },
   "devDependencies": {
+    "@phosphor-icons/core": "^2.1.1",
+    "@playwright/test": "^1.61.1",
     "@types/chrome": "^0.0.287",
     "esbuild": "^0.24.2",
     "jsdom": "^29.1.1",
+    "playwright": "^1.61.1",
+    "sharp": "^0.35.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.9"
   }

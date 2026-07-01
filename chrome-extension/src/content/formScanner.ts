@@ -15,6 +15,7 @@ import {
   collectSignals,
   deepQueryAll,
   isHiddenButLabeled,
+  isUploadAffordance,
   isRequiredField,
   isVisible,
   nearbyText,
@@ -231,7 +232,7 @@ export function scanPage(
       controlType === "radioGroup" ||
       controlType === "file" ||
       controlType === "combobox";
-    if (!isVisible(el) && !(relaxed && isHiddenButLabeled(el))) continue;
+    if (!isVisible(el) && !(relaxed && (isHiddenButLabeled(el) || isUploadAffordance(el)))) continue;
 
     if (el instanceof HTMLInputElement && el.type === "radio") {
       const groupKey = `${el.form?.id ?? "noform"}::${el.name || ensureFieldId(el)}`;

@@ -1,0 +1,43 @@
+# Tasks: Deep Scrape Pagination
+
+- [x] 1. Extract helper functions from content.js for testability
+  - [x] 1.1 Create `calculateMaxPages(maxJobs)` — returns `Math.ceil(maxJobs / 25)`
+  - [x] 1.2 Create `resolveMaxJobs(setting)` — validates and defaults maxJobsPerRun (default 25, max 500)
+  - [x] 1.3 Create `randomDelay(min, max)` — returns random ms in [min, max], default [2000, 5000]
+  - [x] 1.4 Create `deduplicateJobs(jobs)` — takes array, returns `{ unique: [], duplicatesSkipped: number }` using URL Set
+  - [x] 1.5 Create `formatProgressToast(page, totalJobs, maxJobs)` — returns formatted string
+  - [x] 1.6 Create `buildLinkedInSearchUrl(jobTitle, searchLocation, filters)` — constructs LinkedIn search URL with f_AL=true
+- [x] 2. Update content.js pagination loop to use dynamic maxJobs
+  - [x] 2.1 Replace hardcoded `maxPages: 10` with `maxPages = calculateMaxPages(maxJobs)` where maxJobs comes from the message
+  - [x] 2.2 Add early stop when `allJobs.length >= maxJobs`
+  - [x] 2.3 Integrate `deduplicateJobs` — maintain session URL Set, skip duplicates in `scrapeCurrentPage()`
+  - [x] 2.4 Add random delay (2–5s) between page navigations using `randomDelay()`
+  - [x] 2.5 Update scroll intervals to use 250–400ms between scroll steps
+  - [x] 2.6 Add error/rate-limit detection — check for "too many requests" text, stop and return collected jobs with reason
+  - [x] 2.7 Send progress messages with `{ type: 'scrapeProgress', page, totalJobs, maxJobs }` after each page
+  - [x] 2.8 Include `duplicatesSkipped` in the final sendResponse
+- [ ] 3. Update popup.js to pass maxJobs and show progress
+  - [x] 3.1 In `scrapeFromPage()`, read `maxJobsPerRun` from chrome.storage and pass as `maxJobs` (using `resolveMaxJobs`)
+  - [x] 3.2 Update progress toast handler to show "Scraping page X... (Y / Z jobs)" using `formatProgressToast`
+  - [x] 3.3 Update final toast to show saved count and duplicates from backend response
+  - [x] 3.4 Rewire `scrapeJobsFromBackend()` to use authenticated page-scraping: construct search URL via `buildLinkedInSearchUrl`, navigate tab, then trigger `scrapeFromPage` flow
+  - [x] 3.5 Add maxJobsPerRun input validation in settings — clamp to [1, 500]
+- [x] 4. Update backend save_job_batch endpoint
+  - [x] 4.1 Add `duplicates` counter that increments when a URL already exists in DB
+  - [x] 4.2 Return `{ "saved": saved, "duplicates": duplicates, "total": len(jobs) }` in response
+- [x] 5. Write property-based tests
+  - [x] 5.1 P1: maxPages calculation — fast-check: for any maxJobs in [1,500], verify ceil formula (Feature: deep-scrape-pagination, Property 1: maxPages calculation)
+  - [x] 5.2 P2: Pagination stops at job limit — fast-check: simulate page results, verify loop stops at maxJobs (Feature: deep-scrape-pagination, Property 2: Pagination stops at job limit)
+  - [x] 5.3 P3: maxJobsPerRun validation — fast-check: for any input, verify resolveMaxJobs returns [1,500] or default 25 (Feature: deep-scrape-pagination, Property 3: maxJobsPerRun input validation)
+  - [x] 5.4 P4: URL construction — fast-check: for any title/location, verify URL contains encoded values and f_AL=true (Feature: deep-scrape-pagination, Property 4: LinkedIn search URL construction)
+  - [x] 5.5 P5: Empty page stops pagination — fast-check: simulate sequence with empty page, verify loop terminates (Feature: deep-scrape-pagination, Property 5: Empty page stops pagination)
+  - [x] 5.6 P6: Progress message formatting — fast-check: for any page/total/max, verify string format (Feature: deep-scrape-pagination, Property 6: Progress message formatting)
+  - [x] 5.7 P7: Server dedup accounting — Hypothesis: for any batch with existing URLs, verify saved + duplicates == valid total (Feature: deep-scrape-pagination, Property 7: Server-side deduplication accounting)
+  - [x] 5.8 P8: Delay bounds — fast-check: for any call, verify result in [2000, 5000] (Feature: deep-scrape-pagination, Property 8: Rate limiting delay bounds)
+  - [x] 5.9 P9: Client dedup — fast-check: for any job array with dupes, verify unique URLs and correct skip count (Feature: deep-scrape-pagination, Property 9: Client-side session deduplication)
+- [x] 6. Write unit tests for edge cases
+  - [x] 6.1 Test resolveMaxJobs with undefined, null, 0, -1, NaN, "abc", 501, 500, 1
+  - [x] 6.2 Test calculateMaxPages boundary values: 1→1, 25→1, 26→2, 500→20
+  - [x] 6.3 Test buildLinkedInSearchUrl with special characters in title
+  - [x] 6.4 Test save_job_batch with empty batch, all-duplicates batch, mixed batch
+  - [x] 6.5 Test progress toast formatting with edge values (page=1, totalJobs=0)

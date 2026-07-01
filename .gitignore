@@ -16,3 +16,11 @@ dist/
 .vite/
 .vercel
 .superpowers/
+
+# Local SQLite databases (never commit)
+backend/data/autoapply.db
+*.sqlite
+*.sqlite3
+
+# Third-party reference extensions / scratch
+tmp/

@@ -18,16 +18,15 @@ describe("scoreJumpText", () => {
 });
 
 describe("buildTailorCardHtml", () => {
-  it("renders score, stats, keyword chips and action buttons", () => {
+  it("renders score, stats, keyword chips and the preview action", () => {
     const html = buildTailorCardHtml(result, new Set(["aws"]));
     expect(html).toContain("Match 7.2 → 8.5");
     expect(html).toContain("ATS 88 · 92% coverage");
     expect(html).toContain('data-kw="aws"');
     expect(html).toContain('data-kw="docker"');
     expect(html).toContain("ap-kw on"); // aws is selected
-    expect(html).toContain('id="ap-tailor-attach"');
-    expect(html).toContain('id="ap-tailor-regen"');
-    expect(html).toContain('id="ap-tailor-download"');
+    // Single primary action: open the PDF preview (regen/download/attach live inside it).
+    expect(html).toContain('id="ap-tailor-preview"');
   });
   it("omits the keyword row when there are no missing keywords", () => {
     const html = buildTailorCardHtml({ ...result, missingKeywords: [] }, new Set());

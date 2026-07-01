@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ExtensionAuthCode, User
-from backend.auth.dependencies import get_verified_user
+from backend.auth.dependencies import get_verified_user, effective_email_verified
 from backend.auth.tokens import create_access_token, create_refresh_token
 from backend.services import sessions as session_service
 from backend.services.rate_limiter import rate_limiter
@@ -237,5 +237,5 @@ def token(
         access_token=create_access_token(user.id, client="extension"),
         refresh_token=create_refresh_token(user.id, client="extension", sid=session.sid),
         email=user.email,
-        email_verified=user.email_verified,
+        email_verified=effective_email_verified(user),
     )

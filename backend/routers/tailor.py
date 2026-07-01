@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.auth.dependencies import get_verified_user_id
+from backend.services.usage_limiter import llm_guard
 from backend.db.database import get_db
 from backend.routers.ai import LLM_503_DETAIL, _resolve_resume
 from backend.schemas.tailor import (
@@ -41,7 +42,7 @@ def _slug(text: str) -> str:
 @router.post("/tailor-resume", response_model=TailorResumeOut)
 async def tailor_resume_endpoint(
     body: TailorResumeIn,
-    user_id: int = Depends(get_verified_user_id),
+    user_id: int = Depends(llm_guard),
     db: Session = Depends(get_db),
 ):
     """Tailor the caller's résumé to a scraped job description."""

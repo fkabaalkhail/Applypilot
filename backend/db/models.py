@@ -15,7 +15,7 @@ import enum
 import datetime
 from sqlalchemy import (
     Boolean, Column, Integer, String, Text, DateTime, Enum, JSON, Float,
-    ForeignKey, func,
+    ForeignKey, UniqueConstraint, func,
 )
 from backend.db.database import Base
 
@@ -212,6 +212,26 @@ class ResumeProfileDB(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow,
                         onupdate=datetime.datetime.utcnow)
+
+
+class JobMatchNotification(Base):
+    """Records that we emailed a user about a high-scoring job match.
+
+    One row per (user, job). Used to dedupe alert emails so a user is never
+    notified twice about the same job, whether the match was found during a
+    resume upload or by the recurring cron sweep.
+    """
+    __tablename__ = "job_match_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("scraped_jobs.id"), nullable=False, index=True)
+    match_score = Column(Integer, default=0)
+    sent_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "job_id", name="uq_job_match_notification_user_job"),
+    )
 
 
 class ApplicationRecord(Base):
@@ -549,3 +569,18 @@ class SecurityEvent(Base):
     details = Column(JSON, nullable=True)
     success = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), index=True)
+
+
+class RateCounter(Base):
+    """Fixed-window request counter, shared across serverless instances.
+
+    Each row is one (limit-name, identity, time-bucket) tuple. Because the
+    counter lives in the database rather than process memory, the limit holds
+    consistently across Vercel function invocations. Rows are disposable —
+    ``expires_at`` lets a periodic cleanup drop stale buckets.
+    """
+    __tablename__ = "rate_counters"
+
+    bucket_key = Column(String(255), primary_key=True)
+    count = Column(Integer, default=0, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)

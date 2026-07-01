@@ -414,6 +414,7 @@ async def upload_resume(
     # Trigger batch scoring for top jobs in background
     import asyncio
     from backend.services.match_engine import MatchEngine
+    from backend.services.match_notifier import notify_high_matches
 
     async def _score_top_jobs():
         try:
@@ -429,6 +430,7 @@ async def upload_resume(
                 .limit(10)
                 .all()
             )
+            scored: list[tuple[ScrapedJob, int]] = []
             for job in jobs_to_score:
                 if job.description and len(job.description) > 50:
                     try:
@@ -439,8 +441,14 @@ async def upload_resume(
                         job.industry_score = breakdown.industry_score
                         job.match_label = breakdown.match_label
                         db.commit()
+                        scored.append((job, breakdown.overall_score))
                     except Exception:
                         pass
+            # Email the user about any strong (>=80%) matches we just found.
+            try:
+                notify_high_matches(db, user_id, scored)
+            except Exception:
+                logger.exception("Failed to send match alert after resume upload")
         except Exception:
             pass
 

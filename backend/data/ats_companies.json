@@ -1629,6 +1629,125 @@
       "board_slug": "workday",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=workday.com&sz=128",
       "enabled": true
+    },
+    {
+      "company_name": "Coveo",
+      "ats_platform": "greenhouse",
+      "board_slug": "coveoen",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "AppDirect",
+      "ats_platform": "greenhouse",
+      "board_slug": "appdirect",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "D2L",
+      "ats_platform": "greenhouse",
+      "board_slug": "d2l",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Grafana Labs",
+      "ats_platform": "greenhouse",
+      "board_slug": "grafanalabs",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "League",
+      "ats_platform": "greenhouse",
+      "board_slug": "leagueinc",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Mozilla",
+      "ats_platform": "greenhouse",
+      "board_slug": "mozilla",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Sentry",
+      "ats_platform": "ashby",
+      "board_slug": "sentry",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Snowflake",
+      "ats_platform": "ashby",
+      "board_slug": "snowflake",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Ada",
+      "ats_platform": "greenhouse",
+      "board_slug": "ada18",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Digital Extremes",
+      "ats_platform": "greenhouse",
+      "board_slug": "digitalextremes",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Confluent",
+      "ats_platform": "ashby",
+      "board_slug": "confluent",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Planet Labs",
+      "ats_platform": "greenhouse",
+      "board_slug": "planetlabs",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "ServiceNow",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "servicenow",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Keywords Studios",
+      "ats_platform": "smartrecruiters",
+      "board_slug": "keywordsstudios",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Wikimedia Foundation",
+      "ats_platform": "greenhouse",
+      "board_slug": "wikimedia",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Zapier",
+      "ats_platform": "ashby",
+      "board_slug": "zapier",
+      "company_logo_url": "",
+      "enabled": true
+    },
+    {
+      "company_name": "Lightspeed",
+      "ats_platform": "ashby",
+      "board_slug": "lightspeed",
+      "company_logo_url": "",
+      "enabled": true
     }
   ]
 }
