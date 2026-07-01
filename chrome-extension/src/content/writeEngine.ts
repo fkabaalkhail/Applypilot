@@ -13,6 +13,8 @@
  */
 import { cleanText, dispatchInputEvents, setNativeValue } from "./domUtils";
 import { normalize } from "./fieldMatcher";
+import { countryAlias } from "./countryAliases";
+import { reinforceValue } from "./pageBridgeClient";
 import type { RuntimeControl } from "./formScanner";
 
 export interface WriteResult {
@@ -69,9 +71,18 @@ function writeTextLike(
 ): WriteResult {
   if (isStale(el)) return { written: false, reason: STALE };
   el.focus({ preventScroll: true });
+  // Clear-first when overwriting existing content: masked / autocomplete inputs
+  // (phone, date, currency) transform or APPEND typed text, so writing a full
+  // value onto residual content yields garbage. Empty fields (the usual autofill
+  // target) skip this, keeping the common path a single input/change pair.
+  if (el.value && el.value !== value) {
+    setNativeValue(el, "");
+    dispatchInputEvents(el, "");
+  }
   setNativeValue(el, value);
   dispatchInputEvents(el, value);
   el.blur(); // many ATS validate on blur
+  reinforceValue(el, value); // page-realm reinforcement (no-op if unavailable)
   return { written: true };
 }
 
@@ -201,12 +212,45 @@ function valueReflects(written: string, current: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Option matching, strictest first:
+ * Option matching. Tries the target then its country-alias expansions (so
+ * "…, USA" matches an option "United States"), strictest pass first for each.
+ */
+export function matchOption<T>(
+  items: T[],
+  getText: (item: T) => string,
+  getValue: (item: T) => string,
+  target: string
+): T | null {
+  for (const candidate of targetCandidates(target)) {
+    const hit = matchOneTarget(items, getText, getValue, candidate);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Candidate strings to match an option against: the raw target, plus the
+ * canonical country label for any comma/slash segment that is an alias (or the
+ * whole string). Lets "San Francisco, CA, USA" reach option "United States".
+ */
+function targetCandidates(target: string): string[] {
+  const out = [target];
+  const whole = countryAlias(target);
+  if (whole) out.push(whole);
+  for (const seg of target.split(/[,/|]/).map((s) => s.trim()).filter(Boolean)) {
+    const alias = countryAlias(seg);
+    if (alias) out.push(alias);
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * One target, strictest first:
  *  1. exact value / exact visible text
  *  2. one contains the other ("No" → "No, I do not require sponsorship")
  *  3. token overlap ("Ottawa, ON, Canada" → option "Canada")
  */
-export function matchOption<T>(
+function matchOneTarget<T>(
   items: T[],
   getText: (item: T) => string,
   getValue: (item: T) => string,

@@ -180,21 +180,89 @@ export function isUploadAffordance(el: HTMLElement): boolean {
   return /upload|drop file|select file|attach|resume|\bcv\b|drag/i.test(nearbyText(el));
 }
 
+/** data-automation-id / class markers that identify an upload drop zone. */
+const UPLOAD_ZONE_MARKER = /file-?upload|drop-?zone|dropzone|attachment/i;
+
 /**
- * Describing text of the upload widget wrapping a hidden file input — e.g.
- * Workday's "Upload your resume…" heading, which sits a wrapper or two ABOVE the
- * drop zone, not on the input. Climbs ancestors and returns the first container
- * that names a document (resume/CV/cover letter); else the nearest small wrapper.
+ * STRICT drop-zone phrasing — the wording a real upload widget uses that
+ * marketing/CTA copy and drag-to-reorder UIs do not. Deliberately narrower than
+ * generic "upload your resume" prose: it requires "drop … file/here", "drag and
+ * drop … file", or "select/choose/browse … file". Used for the marker-less
+ * fallback so a homepage blurb ("Upload your resume and we'll match you") or a
+ * reorder list ("drag and drop to reorder") is NOT treated as an upload zone.
+ */
+const DROPZONE_PHRASE =
+  /\bdrop\b[^.]{0,30}\b(?:file|files|resume|cv|document|documents|here)\b|\bdrag (?:and|&) drop\b[^.]{0,40}\b(?:file|files|resume|cv|document|upload|attach|here)\b|\b(?:select|choose|browse)\b[^.]{0,20}\bfiles?\b/i;
+
+/**
+ * True when `el` is an input-LESS drag-and-drop upload zone — a styled drop
+ * target whose real <input type=file> is created only on click (Workday's
+ * "Autofill with Resume" step is the canonical case). Such zones would otherwise
+ * be invisible to the scanner, which only looks at real form controls.
+ *
+ * Ordering is deliberately cheap-first so this is safe to call while sweeping
+ * every element: a text-free attribute-marker check and a child-count bound run
+ * BEFORE `textContent` is serialized, and the DOM query + layout read run last.
+ * A zone that already contains a file input is left to the normal input path.
+ */
+export function isUploadZoneElement(el: HTMLElement): boolean {
+  // Cheap, allocation-free gates first.
+  const attrHit =
+    UPLOAD_ZONE_MARKER.test(el.getAttribute("data-automation-id") || "") ||
+    UPLOAD_ZONE_MARKER.test(typeof el.className === "string" ? el.className : "");
+  // A real drop zone is a shallow widget, not a big container. Bail on deep
+  // subtrees before paying for textContent serialization on the whole document.
+  if (!attrHit && el.childElementCount > 12) return false;
+  // Bound the text cost: reject large subtrees on raw length before normalizing.
+  const raw = el.textContent ?? "";
+  if (!raw || raw.length > 400) return false;
+  const text = cleanText(raw);
+  if (!text || text.length > 220) return false;
+  // A marked-up zone (Workday et al.) is trusted; a marker-less one must use the
+  // strict drop-zone phrasing so plain prose / reorder UIs are not mistaken for it.
+  if (!attrHit && !DROPZONE_PHRASE.test(text)) return false;
+  // A nested real input means this is a normal (hidden-input) widget — skip it.
+  if (el.querySelector('input[type="file"]')) return false;
+  return isVisible(el);
+}
+
+/**
+ * Describing text of an upload widget — e.g. Workday's "Upload your resume…"
+ * heading, which sits a wrapper or two ABOVE the drop zone. Works for both a
+ * hidden file input (no text of its own) and an input-less drop-zone element
+ * (whose own text is the affordance). Prefers the narrowest text that names ONE
+ * document type: ancestor text spanning BOTH a résumé and a cover letter is too
+ * broad (it would flip a résumé zone to cover-letter via the classifier's veto),
+ * so such text is skipped in favor of the element's own/closer text.
  */
 export function uploadZoneText(el: HTMLElement): string {
-  if (!(el instanceof HTMLInputElement) || el.type !== "file") return "";
-  const DOC = /resume|résumé|curriculum vitae|\bcv\b|cover letter/i;
+  // To ACCEPT text as the classifying signal, a document mention must sit in an
+  // upload/attach context — a bare "CV" (as in "CV Axle") or the verb "resume"
+  // (a "Resume"/continue button) is not evidence of a résumé upload.
+  const RESUME_DOC =
+    /résumé|curriculum vitae|\b(?:upload|attach|submit|drop|choose|select|browse|add|provide|your)\b[^.]{0,24}\b(?:resume|cv)\b|\b(?:resume|cv)\b[^.]{0,16}\b(?:upload|attach|file|document)\b/i;
+  const COVER_DOC = /cover letter/i;
+  // To REJECT over-broad text (an ancestor spanning BOTH a résumé and a cover
+  // letter, or any doc token we don't want to fold blindly), use a lenient
+  // SUBSTRING test — adjacent block elements glue together in textContent
+  // ("Resume" + "Drop…" → "ResumeDrop…"), which would defeat \b word anchors.
+  const RESUME_ISH = /résum|resum|curriculum vitae/i;
+  const DOC_ISH = /résum|resum|curriculum vitae|\bcv\b|cover letter/i;
+  const spansBoth = (t: string): boolean => RESUME_ISH.test(t) && COVER_DOC.test(t);
+  const single = (t: string): boolean => !spansBoth(t) && (RESUME_DOC.test(t) || COVER_DOC.test(t));
+
+  // A drop-zone element carries the affordance text and often the heading; a
+  // file input has none, so this is "" and we fall straight to the ancestor climb.
+  const own = cleanText(el.textContent).slice(0, 300);
+  if (own && single(own)) return own;
   let node: HTMLElement | null = el.parentElement;
-  let widest = "";
+  // `widest` is a last-resort generic descriptor; never let it carry a doc token,
+  // which would let unrelated text (e.g. a "CV Axle" product name) mis-vote.
+  let widest = DOC_ISH.test(own) ? "" : own;
   for (let i = 0; i < 5 && node; i++) {
     const t = cleanText(node.textContent).slice(0, 300);
-    if (t && DOC.test(t)) return t; // explicit document text → best signal
-    if (t && t.length <= 300) widest = t;
+    if (t && single(t)) return t; // single-document text in context → best signal
+    if (t && t.length <= 300 && !DOC_ISH.test(t)) widest = t;
     node = node.parentElement;
   }
   return widest;
@@ -203,9 +271,12 @@ export function uploadZoneText(el: HTMLElement): string {
 export function collectSignals(el: HTMLElement): FieldSignals {
   const labelledBy = ariaLabelledByText(el);
   const isFile = el instanceof HTMLInputElement && el.type === "file";
-  // A hidden upload input's identity lives on its zone, so fold the zone's
-  // describing text into `nearby` for classification (e.g. "…your resume…").
-  const nearby = isFile
+  // An upload widget's identity lives on its zone, not the control — fold the
+  // zone's describing text into `nearby` for classification (e.g. "…your
+  // resume…"). This covers both a hidden <input type=file> and an input-less
+  // drop zone (Workday's "Autofill with Resume", where no input exists yet).
+  const isUpload = isFile || isUploadZoneElement(el);
+  const nearby = isUpload
     ? [nearbyText(el), uploadZoneText(el)].filter(Boolean).join(" ").slice(0, 220)
     : nearbyText(el);
   return {
@@ -265,13 +336,30 @@ export function setNativeValue(el: ValueElement, value: string): void {
 
 /**
  * Fire the events frameworks listen for. React uses "input"; Angular and
- * many validation libraries also want "change" and "blur".
+ * many validation libraries also want "change" and "blur". `composed: true` lets
+ * these cross shadow-DOM boundaries so web-component ATS (ADP-style sdf-* fields)
+ * whose listeners sit outside the shadow root still see them; a preceding
+ * `beforeinput` is what editor/mask libraries (Draft, some phone masks) key on.
  */
 export function dispatchInputEvents(el: HTMLElement, value?: string): void {
   el.dispatchEvent(
-    new InputEvent("input", { bubbles: true, data: value ?? null, inputType: "insertText" })
+    new InputEvent("beforeinput", {
+      bubbles: true,
+      composed: true,
+      cancelable: false,
+      data: value ?? null,
+      inputType: "insertText",
+    })
   );
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  el.dispatchEvent(
+    new InputEvent("input", {
+      bubbles: true,
+      composed: true,
+      data: value ?? null,
+      inputType: "insertText",
+    })
+  );
+  el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
 }
 
 /** Briefly outline a filled control so the user can review what changed. */

@@ -108,6 +108,151 @@ function buttonListbox(options: string[]): HTMLButtonElement {
   return btn;
 }
 
+/**
+ * A faithful real-Workday large dropdown (e.g. Country): the button opens a
+ * portaled popup containing a SEPARATE, auto-focused search box and a
+ * VIRTUALIZED listbox that only renders options matching the current search
+ * text. The target option is absent from the DOM until the user types — which
+ * is exactly what defeats a filler that only types into the trigger.
+ */
+function searchableButtonListbox(
+  options: string[],
+  opts: { initialRender?: number } = {}
+): HTMLButtonElement {
+  const initialRender = opts.initialRender ?? 0; // Workday renders none until typed
+  const btn = document.createElement("button");
+  btn.setAttribute("aria-haspopup", "listbox");
+  btn.setAttribute("aria-expanded", "false");
+  btn.textContent = "Select One";
+  const lbId = `lb-${Math.random().toString(36).slice(2)}`;
+  btn.setAttribute("aria-controls", lbId);
+  document.body.append(btn);
+
+  let popup: HTMLDivElement | null = null;
+  let lb: HTMLDivElement | null = null;
+  let search: HTMLInputElement | null = null;
+
+  const renderOptions = (filter: string): void => {
+    if (!lb) return;
+    lb.innerHTML = "";
+    const q = filter.trim().toLowerCase();
+    const matches = q
+      ? options.filter((o) => o.toLowerCase().includes(q))
+      : options.slice(0, initialRender); // virtualized: only a prefix when unfiltered
+    for (const label of matches) {
+      const o = document.createElement("div");
+      o.setAttribute("role", "option");
+      o.textContent = label;
+      o.addEventListener("click", () => {
+        btn.textContent = label;
+        btn.setAttribute("aria-expanded", "false");
+        popup?.remove();
+        popup = lb = search = null;
+      });
+      lb.append(o);
+    }
+  };
+
+  btn.addEventListener("click", () => {
+    if (btn.getAttribute("aria-expanded") === "true") return;
+    btn.setAttribute("aria-expanded", "true");
+    popup = document.createElement("div");
+    popup.className = "wd-popup"; // matches findSearchInput's popup scope
+    search = document.createElement("input");
+    search.type = "text";
+    search.setAttribute("aria-autocomplete", "list");
+    search.addEventListener("input", () => renderOptions(search!.value));
+    lb = document.createElement("div");
+    lb.id = lbId;
+    lb.setAttribute("role", "listbox");
+    popup.append(search, lb);
+    document.body.append(popup); // Workday portals the popup to the body
+    renderOptions("");
+    search.focus(); // Workday auto-focuses the search box on open
+  });
+
+  // Dismiss like a real widget: Escape on the trigger, or a pointer-down outside.
+  const dismiss = (): void => {
+    if (btn.getAttribute("aria-expanded") !== "true") return;
+    btn.setAttribute("aria-expanded", "false");
+    popup?.remove();
+    popup = lb = search = null;
+  };
+  btn.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Escape") dismiss();
+  });
+  document.body.addEventListener("mousedown", (e) => {
+    if (popup && !popup.contains(e.target as Node) && e.target !== btn) dismiss();
+  });
+  return btn;
+}
+
+/**
+ * A keyboard-only listbox: options render but clicking them does NOT commit
+ * (as with a virtualized list whose click target is intercepted). Selection is
+ * possible only by ArrowDown (moving aria-activedescendant) then Enter — exactly
+ * the path the keyboard fallback must cover.
+ */
+function keyboardOnlyListbox(options: string[]): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.setAttribute("aria-haspopup", "listbox");
+  btn.setAttribute("aria-expanded", "false");
+  btn.textContent = "Select…";
+  const lbId = `lb-${Math.random().toString(36).slice(2)}`;
+  btn.setAttribute("aria-controls", lbId);
+  document.body.append(btn);
+  const ids = options.map((_, i) => `${lbId}-opt-${i}`);
+  let active = -1;
+
+  const ensureOpen = (): void => {
+    if (btn.getAttribute("aria-expanded") === "true") return;
+    btn.setAttribute("aria-expanded", "true");
+    const lb = document.createElement("div");
+    lb.id = lbId;
+    lb.setAttribute("role", "listbox");
+    options.forEach((label, i) => {
+      const o = document.createElement("div");
+      o.id = ids[i];
+      o.setAttribute("role", "option");
+      o.setAttribute("aria-selected", "false");
+      o.textContent = label;
+      // No click handler: clicking never commits (keyboard-only widget).
+      lb.append(o);
+    });
+    document.body.append(lb);
+  };
+
+  btn.addEventListener("click", ensureOpen);
+  btn.addEventListener("keydown", (e) => {
+    const ke = e as KeyboardEvent;
+    ensureOpen();
+    const lb = document.getElementById(lbId);
+    if (!lb) return;
+    if (ke.key === "ArrowDown") {
+      active = Math.min(active + 1, options.length - 1);
+      btn.setAttribute("aria-activedescendant", ids[active]);
+      lb.querySelectorAll('[role="option"]').forEach((o, i) =>
+        o.setAttribute("aria-selected", i === active ? "true" : "false")
+      );
+    } else if (ke.key === "Enter" && active >= 0) {
+      btn.textContent = options[active];
+      btn.setAttribute("aria-expanded", "false");
+      btn.removeAttribute("aria-activedescendant");
+      lb.remove();
+    }
+  });
+  return btn;
+}
+
+describe("fillAriaCombobox — keyboard fallback", () => {
+  it("selects via ArrowDown+Enter when the option cannot be clicked", async () => {
+    const btn = keyboardOnlyListbox(["United States", "Canada", "Mexico"]);
+    const res = await fillAriaCombobox(btn, "Canada", fast);
+    expect(res.filled).toBe(true);
+    expect(btn.textContent).toBe("Canada");
+  });
+});
+
 /** A combobox whose listbox is ALREADY mounted (optionally hidden), referenced
  *  by aria-controls — what readComboboxOptions reads without opening. */
 function staticCombobox(
@@ -224,6 +369,52 @@ describe("fillAriaCombobox — button[aria-haspopup=listbox]", () => {
     const res = await fillAriaCombobox(btn, "Mexico", fast);
     expect(res.filled).toBe(true);
     expect(btn.textContent).toBe("Mexico");
+  });
+});
+
+describe("fillAriaCombobox — Workday searchable/virtualized dropdown", () => {
+  // ~200 countries; the target isn't rendered until the search box is typed in.
+  const COUNTRIES = ["Afghanistan", "Canada", "Germany", "Mexico", "United Kingdom", "United States"];
+
+  it("types into the popup search box to surface a virtualized option", async () => {
+    const btn = searchableButtonListbox(COUNTRIES); // initialRender: 0 — nothing shown until typed
+    const res = await fillAriaCombobox(btn, "United States", fast);
+    expect(res.filled).toBe(true);
+    expect(btn.textContent).toBe("United States");
+  });
+
+  it("still works when a prefix of options is pre-rendered but the target is not", async () => {
+    const btn = searchableButtonListbox(COUNTRIES, { initialRender: 3 }); // shows first 3, not the target
+    const res = await fillAriaCombobox(btn, "United States", fast);
+    expect(res.filled).toBe(true);
+    expect(btn.textContent).toBe("United States");
+  });
+
+  it("resolves a full location string by retrying with coarser segments", async () => {
+    const btn = searchableButtonListbox(COUNTRIES);
+    // Profile location is often "Austin, TX, United States". Typing that whole
+    // string into a country search filters to zero matches — the engine must
+    // fall back to a coarser segment ("United States") to surface the option.
+    // (This is the "Workday country dropdown literal-match bug".)
+    const res = await fillAriaCombobox(btn, "Austin, TX, United States", fast);
+    expect(res.filled).toBe(true);
+    expect(btn.textContent).toBe("United States");
+  });
+
+  it("resolves a 'USA' abbreviation to the 'United States' option", async () => {
+    const btn = searchableButtonListbox(COUNTRIES);
+    // Typing "USA" filters the list to zero (no option contains "usa"); the
+    // engine must also try the alias "United States" as a search query.
+    const res = await fillAriaCombobox(btn, "San Francisco, CA, USA", fast);
+    expect(res.filled).toBe(true);
+    expect(btn.textContent).toBe("United States");
+  });
+
+  it("reports failure and closes when the typed option truly has no match", async () => {
+    const btn = searchableButtonListbox(COUNTRIES);
+    const res = await fillAriaCombobox(btn, "Atlantis", fast);
+    expect(res.filled).toBe(false);
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
   });
 });
 

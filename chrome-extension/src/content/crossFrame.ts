@@ -15,6 +15,7 @@ const VOID_OPS: ReadonlySet<FormOpName> = new Set<FormOpName>(["onRescan", "onPr
 /** All OverlayCallbacks method names, in one place for the proxy factory. */
 const ALL_OPS: FormOpName[] = [
   "onAutofill",
+  "onAutoContinue",
   "onInsertAnswer",
   "onSaveAnswer",
   "onRescan",

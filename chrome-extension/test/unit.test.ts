@@ -58,4 +58,16 @@ describe("findFileInput", () => {
     expect(findFileInput(zone)).toBe(input);
     zone.remove();
   });
+
+  it("returns null for an input-less zone instead of grabbing an unrelated input elsewhere", () => {
+    const zone = document.createElement("div");
+    zone.setAttribute("data-automation-id", "file-upload-drop-zone");
+    zone.textContent = "Drop file here"; // no input inside
+    const unrelated = document.createElement("input");
+    unrelated.type = "file"; // a different upload elsewhere on the page
+    document.body.append(zone, unrelated);
+    expect(findFileInput(zone)).toBeNull();
+    zone.remove();
+    unrelated.remove();
+  });
 });

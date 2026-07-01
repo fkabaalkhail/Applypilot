@@ -405,6 +405,7 @@ export type FormOpName =
   | "onInsertCoverLetter"
   | "onDownloadCoverLetter"
   | "onCopyCoverLetter"
+  | "onAutoContinue"
   | "onProfileResolved";
 
 /** One overlay operation, marshaled for execution in the form-owning frame. */

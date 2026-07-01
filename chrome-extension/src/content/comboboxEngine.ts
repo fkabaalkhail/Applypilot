@@ -13,6 +13,7 @@
  */
 import { cleanText, deepQueryAll, dispatchInputEvents, setNativeValue } from "./domUtils";
 import { normalize } from "./fieldMatcher";
+import { countryAlias } from "./countryAliases";
 import { matchOption } from "./writeEngine";
 
 export interface ComboboxResult {
@@ -71,38 +72,174 @@ export async function fillAriaCombobox(
 
   open(trigger);
 
-  // Wait for the listbox to mount. Typeahead inputs may need the value typed in
-  // to surface (and filter) the options.
+  // Wait for the listbox to mount.
   let listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
-  if (isTypeahead(trigger) && (!listbox || !findOption(listbox, value))) {
-    typeInto(trigger as HTMLInputElement, value);
-    listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
+
+  // Filter step. When the wanted option isn't present yet, type into whatever
+  // search field this widget exposes so it filters/loads the option:
+  //   - react-select & typeahead comboboxes: the trigger IS the <input>.
+  //   - Workday and other large lists: a SEPARATE search box mounts inside the
+  //     opened popup (usually auto-focused) and the option list is virtualized,
+  //     so the target simply isn't in the DOM until you type.
+  // Without this, a button-triggered dropdown whose option isn't initially
+  // rendered can never be filled — the Workday country/location failure.
+  const search = findSearchInput(trigger, listbox);
+  if (!listbox || !findOption(listbox, value)) {
+    if (search) {
+      // Type each candidate query until the wanted option appears. A full
+      // location like "Austin, TX, United States" filters a country search to
+      // zero matches, so retry with coarser segments (country/region first).
+      let filtered: HTMLElement | null = null;
+      for (const query of searchQueries(value)) {
+        typeInto(search, query);
+        filtered = await waitFor(
+          () => {
+            const lb = getListbox(trigger);
+            return lb && findOption(lb, value) ? lb : null;
+          },
+          sleep,
+          openWaitMs,
+          pollMs
+        );
+        if (filtered) break;
+      }
+      listbox = filtered ?? getListbox(trigger) ?? listbox;
+    }
   }
   if (!listbox) {
     close(trigger);
     return { filled: false, reason: `Couldn't open the "${truncate(value)}" dropdown — select it manually` };
   }
 
+  // Primary: click the matching option element.
   const option = findOption(listbox, value);
-  if (!option) {
-    close(trigger);
-    return { filled: false, reason: `No option matches "${truncate(value)}" — select it manually` };
+  if (option) {
+    clickOption(option);
+    // Confirm: the committed value shows, or the popup closed after clicking a
+    // matching option (the standard "selected and dismissed" outcome).
+    const committed = await waitFor(
+      () => (comboboxShowsValue(trigger, value) || isCollapsed(trigger) ? true : null),
+      sleep,
+      commitWaitMs,
+      pollMs
+    );
+    if (committed) return { filled: true };
   }
 
-  clickOption(option);
-
-  // Confirm: either the committed value now shows, or the popup closed after we
-  // clicked a matching option (the standard "selected and dismissed" outcome).
-  const committed = await waitFor(
-    () => (comboboxShowsValue(trigger, value) || isCollapsed(trigger) ? true : null),
+  // Fallback: keyboard navigation. Virtualized listboxes (Ashby rc-virtual-list)
+  // may not render the target option in the DOM to click, and some typeaheads
+  // commit only on ArrowDown→Enter via aria-activedescendant. Arrow through the
+  // options and press Enter on the match.
+  const keyboardOk = await selectByKeyboard(
+    trigger,
+    search ?? trigger,
+    listbox,
+    value,
     sleep,
     commitWaitMs,
     pollMs
   );
-  if (!committed) {
-    return { filled: false, reason: "Selection didn't stick — select it manually" };
+  if (keyboardOk) return { filled: true };
+
+  close(trigger);
+  return {
+    filled: false,
+    reason: option
+      ? "Selection didn't stick — select it manually"
+      : `No option matches "${truncate(value)}" — select it manually`,
+  };
+}
+
+/**
+ * Keyboard-driven option selection: focus the search/trigger, ArrowDown through
+ * the options reading the active one each step, and Enter when it matches. Bounded
+ * so it never spins on a widget that ignores keys. Covers virtualized lists (the
+ * target isn't clickable in the DOM) and keyboard-commit typeaheads.
+ */
+async function selectByKeyboard(
+  trigger: HTMLElement,
+  focusTarget: HTMLElement,
+  listbox: HTMLElement | null,
+  value: string,
+  sleep: (ms: number) => Promise<void>,
+  commitWaitMs: number,
+  pollMs: number
+): Promise<boolean> {
+  focusTarget.focus?.({ preventScroll: true });
+  const optionCount = listbox ? deepQueryAll(listbox, '[role="option"]').length : 0;
+  const maxSteps = Math.min(80, Math.max(30, optionCount + 5));
+  let lastActiveKey = "";
+  let stalls = 0;
+  for (let i = 0; i < maxSteps; i++) {
+    pressKey(focusTarget, "ArrowDown", 40);
+    await sleep(pollMs);
+    const lb = listbox && listbox.isConnected ? listbox : getListbox(trigger);
+    const active = activeOption(trigger, focusTarget, lb);
+    // Commit only on the BEST/exact match (same precedence as the click path),
+    // never the first loosely-overlapping option — else we could pick the wrong
+    // country/option when an exact one exists further down.
+    const want = lb ? findOption(lb, value) : null;
+    const isMatch =
+      !!active &&
+      ((want !== null && active === want) || normalize(optionText(active)) === normalize(value));
+    if (isMatch) {
+      pressKey(focusTarget, "Enter", 13);
+      const committed = await waitFor(
+        () => (comboboxShowsValue(trigger, value) || isCollapsed(trigger) ? true : null),
+        sleep,
+        commitWaitMs,
+        pollMs
+      );
+      if (committed) return true;
+    }
+    // Stall detection keyed on option identity (id, else its text), so it also
+    // fires for listboxes whose options carry no id, and when none is active.
+    const activeKey = active ? active.id || optionText(active) : "__none__";
+    if (activeKey === lastActiveKey) {
+      if (++stalls >= 2) break; // highlight stopped moving — end of list
+    } else {
+      stalls = 0;
+    }
+    lastActiveKey = activeKey;
   }
-  return { filled: true };
+  return false;
+}
+
+/** A keydown+keyup pair carrying the legacy keyCode fields some widgets require. */
+function pressKey(el: HTMLElement, key: string, keyCode: number): void {
+  const init: KeyboardEventInit & { keyCode: number; which: number } = {
+    key,
+    code: key,
+    keyCode,
+    which: keyCode,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  };
+  el.dispatchEvent(new KeyboardEvent("keydown", init));
+  el.dispatchEvent(new KeyboardEvent("keyup", init));
+}
+
+/** The currently-highlighted option: aria-activedescendant first, then common
+ *  "active/focused/highlighted" markers within the listbox. */
+function activeOption(
+  trigger: HTMLElement,
+  focusTarget: HTMLElement,
+  listbox: HTMLElement | null
+): HTMLElement | null {
+  const activeId =
+    focusTarget.getAttribute("aria-activedescendant") ||
+    trigger.getAttribute("aria-activedescendant") ||
+    "";
+  if (activeId) {
+    const byId = trigger.ownerDocument.getElementById(activeId);
+    if (byId) return byId;
+  }
+  if (!listbox) return null;
+  return listbox.querySelector<HTMLElement>(
+    '[role="option"][aria-selected="true"], [role="option"][data-focused="true"], ' +
+      '[role="option"].active, [role="option"][class*="focus" i], [role="option"][class*="highlight" i]'
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -162,9 +299,70 @@ function isTypeahead(trigger: HTMLElement): boolean {
   return ac === "list" || ac === "both" || ac === "inline" || trigger.type === "text";
 }
 
+/**
+ * The text field used to filter/search a combobox's options, if any:
+ *   1. a typeahead trigger that is itself an <input> (react-select);
+ *   2. the widget's own search box, which large dropdowns (Workday country,
+ *      skills…) mount inside the opened popup and usually auto-focus — so the
+ *      active element right after opening is a strong signal;
+ *   3. otherwise the first visible text input inside the opened popup/listbox.
+ * Returns null for plain button dropdowns that render every option at once
+ * (nothing to type into) so their behaviour is unchanged.
+ */
+function findSearchInput(trigger: HTMLElement, listbox: HTMLElement | null): HTMLInputElement | null {
+  if (trigger instanceof HTMLInputElement && isTypeahead(trigger)) return trigger;
+
+  const NON_TEXT = new Set(["hidden", "checkbox", "radio", "file", "submit", "button", "range", "color"]);
+  const isSearchy = (el: Element | null): el is HTMLInputElement =>
+    el instanceof HTMLInputElement && el !== trigger && !NON_TEXT.has(el.type) && isVisible(el);
+
+  // The popup commonly moves focus to its search box on open.
+  const active = trigger.ownerDocument.activeElement;
+  if (isSearchy(active)) return active;
+
+  // Otherwise look for a search input inside the opened popup around the listbox.
+  if (listbox) {
+    const popup =
+      listbox.closest('[role="dialog"], [class*="popup" i], [class*="menu" i], [class*="dropdown" i]') ??
+      listbox.parentElement ??
+      listbox;
+    const input = popup.querySelector(
+      'input[type="text"], input[type="search"], input:not([type]), input[aria-autocomplete], input[role="combobox"]'
+    );
+    if (isSearchy(input)) return input;
+  }
+  return null;
+}
+
 function typeInto(input: HTMLInputElement, value: string): void {
   setNativeValue(input, value);
   dispatchInputEvents(input, value);
+}
+
+/**
+ * Search queries to try, in order, when filtering a typeahead/searchable list.
+ * The full value first; then each comma/slash/pipe segment, coarsest LAST-first
+ * (a "City, State, Country" location is searched by "Country" before "City"),
+ * since dropdowns that carry this problem — country/region prompts — key on the
+ * trailing segment. De-duplicated, so a value with no separators is just itself.
+ */
+function searchQueries(value: string): string[] {
+  const segments = value
+    .split(/[,/|]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const out = [value];
+  const wholeAlias = countryAlias(value);
+  if (wholeAlias) out.push(wholeAlias);
+  // Coarsest (trailing) segment first — a "City, State, Country" location is
+  // searched by country before city. Each segment also contributes its country
+  // alias ("USA" → "United States") so the widget's own search renders it.
+  for (let i = segments.length - 1; i >= 0; i--) {
+    out.push(segments[i]);
+    const alias = countryAlias(segments[i]);
+    if (alias) out.push(alias);
+  }
+  return [...new Set(out)];
 }
 
 // ---------------------------------------------------------------------------

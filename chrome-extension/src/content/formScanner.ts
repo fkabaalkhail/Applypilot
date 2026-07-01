@@ -16,6 +16,7 @@ import {
   deepQueryAll,
   isHiddenButLabeled,
   isUploadAffordance,
+  isUploadZoneElement,
   isRequiredField,
   isVisible,
   type FieldSignals,
@@ -162,6 +163,49 @@ function groupSignals(members: HTMLInputElement[], containerSelector: string): F
   };
 }
 
+/**
+ * Input-less drag-and-drop upload zones. Some ATS (Workday's "Autofill with
+ * Resume" step above all) render a styled drop zone whose real <input type=file>
+ * is created only when "Select file" is clicked — so at scan time there is no
+ * control for the normal candidate sweep to find. We locate the zone element
+ * itself and hand it back to be surfaced as an upload target (driven later by a
+ * simulated drop, or a manual pick). Zones that DO wrap a real file input are
+ * skipped here — the input path already handles those.
+ *
+ * Marker-based detection (Workday's data-automation-id / dropzone classes) runs
+ * first; only if it finds nothing do we fall back to a text-anchored sweep. Each
+ * candidate is cheaply pre-filtered by isUploadZoneElement (attribute markers and
+ * a child-count bound BEFORE any textContent read), so even the fallback stays
+ * cheap on large SPA pages.
+ */
+function collectUploadZones(): HTMLElement[] {
+  const marker =
+    '[data-automation-id="file-upload-drop-zone"],' +
+    '[data-automation-id*="file-upload" i],' +
+    '[data-automation-id*="drop-zone" i],' +
+    '[class*="dropzone" i],' +
+    '[class*="file-upload" i],' +
+    '[class*="fileupload" i]';
+  const found = new Set<HTMLElement>();
+  for (const el of deepQueryAll(document, marker)) {
+    if (isUploadZoneElement(el)) found.add(el);
+  }
+  // No author markers (non-Workday markup): anchor on strict drop-zone phrasing.
+  if (found.size === 0) {
+    for (const el of deepQueryAll(document, "div, section, label, button, a")) {
+      if (isUploadZoneElement(el)) found.add(el);
+    }
+  }
+  // Keep the INNERMOST zone of any nesting: a shared wrapper (e.g. one that holds
+  // BOTH a résumé and a cover-letter drop zone) must not swallow its children
+  // into a single, ambiguously-classified field. Dropping a zone that contains
+  // another matched zone yields one field per actual drop target, and anchors the
+  // field id on the stable inner element rather than a wrapper whose text (and so
+  // whose match) can change across rescans.
+  const zones = [...found];
+  return zones.filter((z) => !zones.some((other) => other !== z && z.contains(other)));
+}
+
 export function scanPage(
   profile: UserApplicationProfile | null,
   fillEEO: boolean
@@ -185,15 +229,21 @@ export function scanPage(
     if ((el as HTMLInputElement).disabled) continue;
     if (el instanceof HTMLInputElement && el.readOnly) continue;
 
-    // Visibility: checkbox/radio/file/combobox are often visually hidden behind
-    // styled replacements (e.g. react-select's tiny input) but still operable —
-    // allow them when labeled.
-    const relaxed =
-      controlType === "checkbox" ||
-      controlType === "radioGroup" ||
-      controlType === "file" ||
-      controlType === "combobox";
-    if (!isVisible(el) && !(relaxed && (isHiddenButLabeled(el) || isUploadAffordance(el)))) continue;
+    // File inputs are ALWAYS surfaced. A file input is inherently an upload
+    // affordance, and real drop-zone widgets (Workday, Greenhouse, Ashby) hide
+    // the native input behind a styled zone with NO label/aria and no upload
+    // hint on the input itself — which made the résumé field undetectable on
+    // those sites. Never gate a file input on visibility/labeling.
+    if (controlType !== "file") {
+      // Visibility: checkbox/radio/combobox are often visually hidden behind
+      // styled replacements (e.g. react-select's tiny input) but still operable —
+      // allow them when labeled.
+      const relaxed =
+        controlType === "checkbox" ||
+        controlType === "radioGroup" ||
+        controlType === "combobox";
+      if (!isVisible(el) && !(relaxed && (isHiddenButLabeled(el) || isUploadAffordance(el)))) continue;
+    }
 
     if (el instanceof HTMLInputElement && el.type === "radio") {
       const groupKey = `${el.form?.id ?? "noform"}::${el.name || ensureFieldId(el)}`;
@@ -312,6 +362,39 @@ export function scanPage(
       note: noteFor("checkboxGroup", category),
       options,
       currentValue: checkedLabels.length ? checkedLabels.join(", ") : undefined,
+    });
+  }
+
+  // Input-less drag-and-drop upload zones (Workday "Autofill with Resume", …):
+  // no <input type=file> exists yet, so surface the zone element itself as the
+  // upload target. Only zones we recognize as a résumé / cover-letter upload are
+  // kept — a bare "drop a photo here" zone is left alone.
+  for (const zone of collectUploadZones()) {
+    const id = ensureFieldId(zone);
+    if (registry.has(id)) continue;
+    const signals = collectSignals(zone);
+    const { category, confidence, sensitive } = classifyField(signals);
+    if (category !== "resumeUpload" && category !== "coverLetter") continue;
+    // The normal control sweep already surfaced a real <input type=file> for
+    // this document type — that input is the more reliable target, so don't add
+    // a second, zone-based field for the same widget.
+    if (fields.some((f) => f.category === category && f.controlType === "file")) continue;
+
+    registry.set(id, { id, controlType: "file", el: zone });
+
+    fields.push({
+      id,
+      category,
+      confidence,
+      label: bestDisplayLabel(signals),
+      controlType: "file",
+      required: isRequiredField(zone, signals),
+      proposedValue: null, // browsers do not allow scripted file selection
+      fillable: false,
+      sensitive,
+      note: noteFor("file", category),
+      options: undefined,
+      currentValue: undefined,
     });
   }
 

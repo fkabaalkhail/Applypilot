@@ -51,6 +51,13 @@ import { extractJobContext } from "./jobContext";
 import { aiFillCandidates, planAiFill, tallyOutcomes, toAiFillField } from "./aiFillPlanner";
 import { fillAriaCombobox } from "./comboboxEngine";
 import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
+import {
+  findNavButtons,
+  isApplicationComplete,
+  looksLikeTerminalStep,
+  runMultiStep,
+  stepSignature,
+} from "./multiStep";
 import { verifyControl, writeControl } from "./writeEngine";
 import {
   showOverlay,
@@ -220,60 +227,96 @@ function initialize(): void {
     return registry.get(fieldId)?.controlType === "combobox";
   }
 
-  const overlayCallbacks: OverlayCallbacks = {
-    onAutofill: async (ids: string[]) => {
-      const wanted = new Set(ids);
-      const selected = lastFields.filter(
-        (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
-      );
+  /**
+   * One full fill pass over the given field ids: deterministic reconciler write,
+   * then custom dropdowns, then a best-effort AI pass for unanswered fields.
+   * Shared by the single-page Autofill button and the multi-step orchestrator.
+   */
+  async function runFillPass(
+    ids: string[]
+  ): Promise<{ ok: number; fail: number; total: number; drafts: AiDraft[] }> {
+    const wanted = new Set(ids);
+    const selected = lastFields.filter(
+      (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
+    );
 
-      // Phase 1a — deterministic local fill via the reconciler for everything
-      // the synchronous write engine can drive (text/select/checkbox/radio).
-      const targets = selected
-        .filter((f) => f.controlType !== "combobox")
-        .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
-      const localReports = await getEngine().run(targets, registry);
+    // Phase 1a — deterministic local fill via the reconciler for everything
+    // the synchronous write engine can drive (text/select/checkbox/radio).
+    const targets = selected
+      .filter((f) => f.controlType !== "combobox")
+      .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
+    const localReports = await getEngine().run(targets, registry);
 
-      // Phase 1b — custom ARIA dropdowns, driven one-shot by the listbox engine.
-      const comboOutcomes = await fillComboboxTargets(
-        selected
-          .filter((f) => f.controlType === "combobox")
-          .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }))
-      );
+    // Phase 1b — custom ARIA dropdowns, driven one-shot by the listbox engine.
+    const comboOutcomes = await fillComboboxTargets(
+      selected
+        .filter((f) => f.controlType === "combobox")
+        .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }))
+    );
 
-      // Phase 2 — AI fill for fields the profile couldn't answer (best-effort).
-      const candidates = aiFillCandidates(lastFields);
-      const drafts: AiDraft[] = [];
-      let aiReports: FieldReport[] = [];
-      let aiComboOutcomes: { fieldId: string; ok: boolean }[] = [];
-      if (candidates.length > 0) {
-        try {
-          const resp = await sendToBackground<AiFillResponse>({
-            type: "AI_FILL",
-            fields: candidates.map(toAiFillField),
-            jobContext: extractJobContext(),
-          });
-          if (resp?.ok) {
-            const plan = planAiFill(candidates, resp.answers);
-            drafts.push(...plan.drafts);
-            // Silent answers: custom dropdowns go through the listbox engine
-            // (writeControl can't script them); everything else via the reconciler.
-            const aiCombo = plan.simpleTargets.filter((t) => isComboboxField(t.fieldId));
-            const aiSimple = plan.simpleTargets.filter((t) => !isComboboxField(t.fieldId));
-            if (aiSimple.length > 0) {
-              aiReports = await getEngine().addTargets(aiSimple, registry);
-            }
-            if (aiCombo.length > 0) {
-              aiComboOutcomes = await fillComboboxTargets(aiCombo);
-            }
+    // Phase 2 — AI fill for fields the profile couldn't answer (best-effort).
+    const candidates = aiFillCandidates(lastFields);
+    const drafts: AiDraft[] = [];
+    let aiReports: FieldReport[] = [];
+    let aiComboOutcomes: { fieldId: string; ok: boolean }[] = [];
+    if (candidates.length > 0) {
+      try {
+        const resp = await sendToBackground<AiFillResponse>({
+          type: "AI_FILL",
+          fields: candidates.map(toAiFillField),
+          jobContext: extractJobContext(),
+        });
+        if (resp?.ok) {
+          const plan = planAiFill(candidates, resp.answers);
+          drafts.push(...plan.drafts);
+          // Silent answers: custom dropdowns go through the listbox engine
+          // (writeControl can't script them); everything else via the reconciler.
+          const aiCombo = plan.simpleTargets.filter((t) => isComboboxField(t.fieldId));
+          const aiSimple = plan.simpleTargets.filter((t) => !isComboboxField(t.fieldId));
+          if (aiSimple.length > 0) {
+            aiReports = await getEngine().addTargets(aiSimple, registry);
           }
-        } catch {
-          // AI fill is additive — the local pass already happened. Swallow.
+          if (aiCombo.length > 0) {
+            aiComboOutcomes = await fillComboboxTargets(aiCombo);
+          }
         }
+      } catch {
+        // AI fill is additive — the local pass already happened. Swallow.
       }
+    }
 
-      const { ok, fail, total } = tallyOutcomes(localReports, aiReports, comboOutcomes, aiComboOutcomes);
-      return { ok, fail, total, drafts };
+    const { ok, fail, total } = tallyOutcomes(localReports, aiReports, comboOutcomes, aiComboOutcomes);
+    return { ok, fail, total, drafts };
+  }
+
+  const overlayCallbacks: OverlayCallbacks = {
+    onAutofill: (ids: string[]) => runFillPass(ids),
+    onAutoContinue: async () => {
+      // Drive a multi-page (Workday-style) flow: fill the current page, click
+      // Next, confirm the turn, re-scan + re-fill, halting at the review step.
+      // Never submits. Runs in whichever frame owns the form (this one).
+      const result = await runMultiStep(
+        {
+          fillCurrentPage: async () => {
+            runScan();
+            engine?.updateRegistry(registry);
+            const ids = [...defaultSelectedIds(lastFields)];
+            await runFillPass(ids);
+            reportFields();
+          },
+          signature: () => stepSignature(document, location),
+          navButtons: () => findNavButtons(document),
+          // Stop before any terminal/review step — Workday progress bar when
+          // present, else generic heading/submit-button detection.
+          atReviewStep: () => looksLikeTerminalStep(document),
+          isComplete: () => isApplicationComplete(location, document),
+          click: (el) => el.click(),
+          sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+          log: (msg) => console.log("[Tailrd multi-step]", msg),
+        },
+        {}
+      );
+      return result;
     },
     onInsertAnswer: async (fieldId: string, value: string) => {
       const control = registry.get(fieldId);

@@ -212,12 +212,12 @@ export interface UploadTestResult {
  * (DataTransfer-based) the overlay's "attach résumé" action uses. Reads back the
  * input's FileList — the real-browser capability jsdom cannot reproduce.
  */
-function testFileUpload(
+async function testFileUpload(
   name: string,
   b64: string,
   fileName: string,
   type: string
-): UploadTestResult {
+): Promise<UploadTestResult> {
   const mount = FIXTURES[name];
   if (!mount) throw new Error(`unknown fixture: ${name}`);
   mount(document);
@@ -230,7 +230,7 @@ function testFileUpload(
   let changeFired = false;
   el.addEventListener("change", () => (changeFired = true));
   const file = base64ToFile(b64, fileName, type);
-  const res = injectResumeFile(el, file);
+  const res = await injectResumeFile(el, file);
   const input = el as HTMLInputElement;
   return {
     ok: res.ok,

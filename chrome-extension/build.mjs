@@ -27,6 +27,9 @@ const options = {
     // Output names must match the paths referenced in manifest.json.
     { in: "src/background/serviceWorker.ts", out: "serviceWorker" },
     { in: "src/content/contentScript.ts", out: "contentScript" },
+    // MAIN-world page bridge — injected by the content script, listed in
+    // manifest web_accessible_resources so chrome.runtime.getURL resolves it.
+    { in: "src/content/pageBridge.ts", out: "pageBridge" },
   ],
   bundle: true,
   outdir: DIST,

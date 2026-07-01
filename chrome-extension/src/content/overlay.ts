@@ -44,6 +44,12 @@ export interface OverlayCallbacks {
   onAutofill: (
     fieldIds: string[]
   ) => Promise<{ ok: number; fail: number; total: number; drafts: AiDraft[] }>;
+  /**
+   * Fill THIS page then auto-advance through a multi-page (Workday-style) flow —
+   * click Next, re-fill each page, stop at the review step. Never submits.
+   * Resolves with how many pages were filled and why it stopped.
+   */
+  onAutoContinue: () => Promise<{ pagesFilled: number; stoppedReason: string }>;
   onInsertAnswer: (fieldId: string, value: string) => Promise<{ ok: boolean; reason?: string }>;
   /** Persist an accepted/edited answer to the Question Memory (best-effort). */
   onSaveAnswer: (question: string, answer: string) => Promise<{ ok: boolean }>;
@@ -325,6 +331,17 @@ const STYLES = `
   font-size: 12px;
   color: var(--stripe-ink-mute);
 }
+.ap-autocontinue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--stripe-ink-mute);
+  cursor: pointer;
+  user-select: none;
+}
+.ap-autocontinue input { cursor: pointer; margin: 0; }
 
 /* ---- Banner ---- */
 .ap-banner {
@@ -732,6 +749,7 @@ interface Refs {
   panel: HTMLDivElement;
   content: HTMLDivElement;
   btnAutofill: HTMLButtonElement;
+  autoContinue: HTMLInputElement;
   fieldCount: HTMLDivElement;
   banner: HTMLDivElement;
   checklist: HTMLDivElement;
@@ -773,7 +791,11 @@ function ensureMounted(): void {
   host = document.createElement("div");
   host.id = HOST_ID;
   host.style.cssText = "all: initial;";
-  shadow = host.attachShadow({ mode: "open" });
+  // CLOSED so the form scanner (which descends OPEN shadow roots via
+  // deepQueryAll) never reaches into our own panel and mis-detects its controls
+  // (the Autofill toggle, résumé picker…) as page fields. We keep the `shadow`
+  // reference for our own queries, so nothing else is affected.
+  shadow = host.attachShadow({ mode: "closed" });
 
   const styleEl = document.createElement("style");
   styleEl.textContent = STYLES;
@@ -830,6 +852,10 @@ function buildHTML(): string {
         <div class="ap-autofill-section">
           <button class="ap-btn-autofill" id="ap-btn-autofill" disabled>Autofill</button>
           <div class="ap-field-count" id="ap-field-count"></div>
+          <label class="ap-autocontinue" id="ap-autocontinue-row" title="After filling this page, click Next and fill each following page automatically, stopping at the Review step. Never submits.">
+            <input type="checkbox" id="ap-autocontinue" />
+            <span>Auto-continue multi-page forms (Workday)</span>
+          </label>
         </div>
 
         <!-- Banner -->
@@ -993,6 +1019,7 @@ function collectRefs(root: HTMLDivElement): Refs {
     panel: q(".ap-panel"),
     content: q("#ap-content"),
     btnAutofill: q("#ap-btn-autofill"),
+    autoContinue: q("#ap-autocontinue"),
     fieldCount: q("#ap-field-count"),
     banner: q("#ap-banner"),
     checklist: q("#ap-checklist"),
@@ -1466,22 +1493,39 @@ function applyDefaultSelection(): void {
 
 async function doAutofill(): Promise<void> {
   if (!callbacks || overlayState.busy) return;
+  const autoContinue = !!refs?.autoContinue?.checked;
   const ids = [...overlayState.selected];
-  if (ids.length === 0) return;
+  if (!autoContinue && ids.length === 0) return;
 
   overlayState.busy = true;
   refreshMainView();
   showBanner("", "ok", true);
 
   try {
-    const { ok, fail, total, drafts } = await callbacks.onAutofill(ids);
-    const txt =
-      `Filled ${ok} of ${total} field${total === 1 ? "" : "s"}` +
-      (fail > 0 ? ` (${fail} need attention)` : "") +
-      (drafts.length > 0 ? ` · ${drafts.length} to review below` : "") +
-      ". Review before submitting.";
-    showBanner(txt, fail > 0 ? "warn" : "ok");
-    renderReviewSection(drafts);
+    if (autoContinue) {
+      const { pagesFilled, stoppedReason } = await callbacks.onAutoContinue();
+      const tail =
+        stoppedReason === "review"
+          ? " Stopped at the review step — check everything, then submit."
+          : stoppedReason === "complete"
+            ? " The application looks complete."
+            : stoppedReason === "no-advance"
+              ? " A page didn't advance — a required field may still need attention."
+              : stoppedReason === "no-next"
+                ? " No further pages detected."
+                : " Review before submitting.";
+      const pages = `${pagesFilled} page${pagesFilled === 1 ? "" : "s"}`;
+      showBanner(`Auto-filled ${pages}.${tail}`, stoppedReason === "no-advance" ? "warn" : "ok");
+    } else {
+      const { ok, fail, total, drafts } = await callbacks.onAutofill(ids);
+      const txt =
+        `Filled ${ok} of ${total} field${total === 1 ? "" : "s"}` +
+        (fail > 0 ? ` (${fail} need attention)` : "") +
+        (drafts.length > 0 ? ` · ${drafts.length} to review below` : "") +
+        ". Review before submitting.";
+      showBanner(txt, fail > 0 ? "warn" : "ok");
+      renderReviewSection(drafts);
+    }
     // Re-scan so each field's currentValue reflects what just got written —
     // this drives the ✓ / – checklist to its post-fill state.
     callbacks.onRescan();

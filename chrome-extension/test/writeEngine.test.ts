@@ -28,6 +28,30 @@ describe("writeControl — text inputs", () => {
     expect(seen).toEqual(["focus", "input", "change", "blur"]);
   });
 
+  it("clears a non-empty field before writing (masked/autocomplete safety)", () => {
+    const el = mount(`<input type="text" />`) as HTMLInputElement;
+    el.value = "555"; // residual content a mask would otherwise append to
+    const inputValues: string[] = [];
+    el.addEventListener("input", () => inputValues.push(el.value));
+
+    const res = writeControl(textControl(el), "5551234567");
+
+    expect(res.written).toBe(true);
+    expect(el.value).toBe("5551234567");
+    expect(inputValues[0]).toBe(""); // cleared first, then set
+    expect(inputValues.at(-1)).toBe("5551234567");
+  });
+
+  it("does not clear an empty field (common autofill path stays a single write)", () => {
+    const el = mount(`<input type="text" />`) as HTMLInputElement;
+    const inputValues: string[] = [];
+    el.addEventListener("input", () => inputValues.push(el.value));
+
+    writeControl(textControl(el), "Wissam");
+
+    expect(inputValues).toEqual(["Wissam"]); // no clear pass
+  });
+
   it("sets the value through the native setter (bypasses an instance override)", () => {
     const el = mount(`<input type="text" />`) as HTMLInputElement;
     // Emulate React's value tracker: an own-property setter that swallows writes.
@@ -91,6 +115,31 @@ describe("writeControl — select", () => {
     const res = writeControl(control, "Atlantis");
     expect(res.written).toBe(false);
     expect(verifyControl(control, "Atlantis")).toBe(false);
+  });
+
+  it("matches a country option via alias from a full location string", () => {
+    // "San Francisco, CA, USA" has zero token overlap with "United States";
+    // the country-alias map is what bridges USA → United States.
+    const el = mount(
+      `<select><option value="">Pick…</option><option value="ca">Canada</option><option value="us">United States</option></select>`
+    ) as HTMLSelectElement;
+    const control: RuntimeControl = { id: "s-3", controlType: "select", el };
+
+    const res = writeControl(control, "San Francisco, CA, USA");
+
+    expect(res.written).toBe(true);
+    expect(el.value).toBe("us");
+    expect(verifyControl(control, "San Francisco, CA, USA")).toBe(true);
+  });
+
+  it("matches United Kingdom from a 'UK' abbreviation", () => {
+    const el = mount(
+      `<select><option value="">Pick…</option><option value="uk">United Kingdom</option><option value="us">United States</option></select>`
+    ) as HTMLSelectElement;
+    const control: RuntimeControl = { id: "s-4", controlType: "select", el };
+    const res = writeControl(control, "London, UK");
+    expect(res.written).toBe(true);
+    expect(el.value).toBe("uk");
   });
 });
 
