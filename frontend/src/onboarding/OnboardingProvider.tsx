@@ -78,7 +78,10 @@ export function OnboardingProvider({
       if (cancelled) return;
       if (step.prepare) {
         try {
-          await step.prepare();
+          await Promise.race([
+            Promise.resolve(step.prepare()),
+            new Promise<void>((resolve) => setTimeout(resolve, 4000)),
+          ]);
           await new Promise((r) => setTimeout(r, 60));
         } catch (e) {
           if (import.meta.env.DEV) console.warn(`[onboarding] prepare failed for "${step.id}"`, e);
@@ -110,10 +113,13 @@ export function OnboardingProvider({
   }, [step, state.index, analytics, setOnboardingComplete]);
 
   const handleNext = useCallback(() => {
-    if (step) analytics?.onStepCompleted?.(step, state.index);
     const isLast = state.index >= TOUR_STEPS.length - 1;
-    if (isLast) void finish(false);
-    else dispatch({ type: "NEXT" });
+    if (isLast) {
+      void finish(false);
+      return;
+    }
+    if (step) analytics?.onStepCompleted?.(step, state.index);
+    dispatch({ type: "NEXT" });
   }, [step, state.index, analytics, finish]);
 
   const handlePrev = useCallback(() => dispatch({ type: "PREV" }), []);

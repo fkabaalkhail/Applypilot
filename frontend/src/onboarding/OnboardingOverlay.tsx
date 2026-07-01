@@ -1,5 +1,4 @@
 import { useCallback, useEffect } from "react";
-import { AnimatePresence } from "framer-motion";
 import { Spotlight } from "./engine/Spotlight";
 import { TourTooltip } from "./engine/TourTooltip";
 import { useTargetElement } from "./engine/useTargetElement";
@@ -28,7 +27,7 @@ export function OnboardingOverlay(props: Props) {
       }
       props.onMissing();
     }
-  }, [status, props]);
+  }, [status, props.step.id, props.onMissing]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,7 +37,7 @@ export function OnboardingOverlay(props: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [props]);
+  }, [props.onSkip, props.onNext, props.onPrev, props.canPrev]);
 
   const swallow = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -48,23 +47,21 @@ export function OnboardingOverlay(props: Props) {
   if (status === "pending" || status === "missing") return null;
 
   return (
-    <AnimatePresence>
-      <div className="tour-overlay" onClickCapture={swallow}>
-        <Spotlight rect={rect} padding={props.step.spotlightPadding ?? 8} />
-        <TourTooltip
-          title={props.step.title}
-          description={props.step.description}
-          index={props.index}
-          total={props.total}
-          canPrev={props.canPrev}
-          isLast={props.isLast}
-          rect={rect}
-          placement={props.step.placement ?? "auto"}
-          onPrev={props.onPrev}
-          onNext={props.onNext}
-          onSkip={props.onSkip}
-        />
-      </div>
-    </AnimatePresence>
+    <div className="tour-overlay" onClickCapture={swallow}>
+      <Spotlight rect={rect} padding={props.step.spotlightPadding ?? 8} />
+      <TourTooltip
+        title={props.step.title}
+        description={props.step.description}
+        index={props.index}
+        total={props.total}
+        canPrev={props.canPrev}
+        isLast={props.isLast}
+        rect={rect}
+        placement={props.step.placement ?? "auto"}
+        onPrev={props.onPrev}
+        onNext={props.onNext}
+        onSkip={props.onSkip}
+      />
+    </div>
   );
 }
