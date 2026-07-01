@@ -15,3 +15,11 @@ node_modules/
 dist/
 .vite/
 .vercel
+
+# Local SQLite databases (never commit)
+backend/data/autoapply.db
+*.sqlite
+*.sqlite3
+
+# Third-party reference extensions / scratch
+tmp/
