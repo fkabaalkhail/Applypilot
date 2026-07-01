@@ -18,12 +18,12 @@ interface JobFilterBarProps {
 
 // --- Constants ---
 
-const COUNTRY_OPTIONS = [
+export const COUNTRY_OPTIONS = [
   { value: "US", label: "United States" },
   { value: "CA", label: "Canada" },
 ];
 
-const JOB_FUNCTION_OPTIONS = [
+export const JOB_FUNCTION_OPTIONS = [
   "Software Engineering",
   "Engineering and Development",
   "Data Analysis",
@@ -43,7 +43,7 @@ const JOB_FUNCTION_OPTIONS = [
   "Other",
 ];
 
-const EXPERIENCE_OPTIONS = [
+export const EXPERIENCE_OPTIONS = [
   { value: "intern_new_grad", label: "Intern/New Grad" },
   { value: "entry", label: "Entry Level" },
   { value: "mid", label: "Mid Level" },
