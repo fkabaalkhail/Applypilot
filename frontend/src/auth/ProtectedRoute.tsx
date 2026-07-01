@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, isEmailVerified } = useAuth();
+  const { isAuthenticated, isLoading, isEmailVerified, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -23,6 +23,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!isEmailVerified) {
     return <Navigate to="/verify-email" replace />;
+  }
+
+  if (user && user.has_completed_setup === false) {
+    return <Navigate to="/setup" replace />;
   }
 
   return <>{children}</>;

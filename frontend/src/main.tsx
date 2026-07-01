@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthProvider";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
+import { SetupRoute } from "./auth/SetupRoute";
 import App from "./App";
 import Landing from "./pages/Landing";
 import Jobs from "./pages/Jobs";
@@ -34,6 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/extension/connect" element={<ExtensionConnect />} />
           <Route path="/list" element={<JobsList />} />
           <Route path="/demo-apply" element={<DemoApply />} />
+          <Route path="/setup" element={<SetupRoute />} />
           <Route
             path="/app"
             element={
