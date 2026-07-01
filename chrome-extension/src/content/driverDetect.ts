@@ -7,19 +7,19 @@ import type { FillDriver } from "./mainWorldBridge";
 
 const WORKDAY_HOST = /(^|\.)(myworkdayjobs|myworkday|myworkdayjobs-impl|myworkdaysite)\.com$/i;
 
-/** react-select stamps its inputs `id="react-select-<n>-input"` and wraps the
- *  control in a `*__container` / `*__control` element pair (its classNamePrefix
- *  output). Require the container AND the react-select input id/class shape. */
+/**
+ * react-select stamps its editable input with `id="react-select-<n>-input"` by
+ * default (its internal instanceId) — an id no ordinary form uses. That marker is
+ * the strong, specific signal we key on. A custom `inputId` would evade it (rare);
+ * we accept that false-negative (the field falls back to the isolated combobox
+ * engine) rather than risk false-positives on generic markup such as Bootstrap's
+ * `.form-control` inside any `*-container` wrapper.
+ */
 function isReactSelect(el: HTMLElement): boolean {
-  const input =
-    el.matches('input[id^="react-select"]')
-      ? el
-      : el.querySelector<HTMLElement>('input[id^="react-select"]');
-  const container = el.closest('[class*="-container"], [class*="__container"]');
-  const control =
-    el.closest('[class*="-control"], [class*="__control"]') ??
-    container?.querySelector('[class*="-control"], [class*="__control"]');
-  return Boolean((input || control) && container);
+  return (
+    el.matches('input[id^="react-select"]') ||
+    el.querySelector('input[id^="react-select"]') !== null
+  );
 }
 
 function isWorkdayWidget(el: HTMLElement): boolean {

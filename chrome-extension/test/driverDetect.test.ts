@@ -49,4 +49,16 @@ describe("detectFillDriver", () => {
     document.body.append(input);
     expect(detectFillDriver(input, "example.com")).toBeNull();
   });
+
+  it("does NOT tag a Bootstrap select inside a generic *-container wrapper", () => {
+    document.body.innerHTML = `<div class="page-container"><select class="form-control"></select></div>`;
+    const sel = document.querySelector("select") as HTMLElement;
+    expect(detectFillDriver(sel, "boards.greenhouse.io")).toBeNull();
+  });
+
+  it("does NOT tag a hand-rolled ARIA combobox with generic BEM classes (no react-select id)", () => {
+    document.body.innerHTML = `<div class="dropdown__container"><input role="combobox" class="dropdown__control" aria-controls="lb" /></div>`;
+    const input = document.querySelector("input") as HTMLElement;
+    expect(detectFillDriver(input, "example.com")).toBeNull();
+  });
 });
