@@ -10,25 +10,26 @@
 .tour-tooltip {
   position: fixed;
   z-index: 9999;
-  width: 320px;
+  width: 380px;
   max-width: calc(100vw - 24px);
   background: var(--bg-white, #fff);
   color: var(--text, #1a1a1a);
   border: 1px solid var(--border, #e6e6e6);
   border-radius: var(--radius-card, 12px);
   box-shadow: var(--shadow-card-hover, 0 8px 24px rgba(0,55,112,0.12));
-  padding: 20px;
+  padding: 22px;
 }
 .tour-tooltip-title { font-size: 16px; font-weight: 650; margin: 0 0 6px; }
-.tour-tooltip-desc { font-size: 14px; line-height: 1.5; color: var(--text-secondary, #555); margin: 0 0 16px; }
-.tour-tooltip-footer { display: flex; align-items: center; justify-content: space-between; }
-.tour-dots { display: flex; gap: 6px; }
-.tour-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--border, #d9d9d9); }
+.tour-tooltip-desc { font-size: 14px; line-height: 1.5; color: var(--text-secondary, #555); margin: 0 0 18px; }
+.tour-tooltip-footer { display: flex; flex-direction: column; gap: 16px; }
+.tour-dots { display: flex; gap: 6px; justify-content: center; }
+.tour-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--border, #d9d9d9); transition: width .2s ease, background .2s ease; }
 .tour-dot.active { background: var(--accent, #533afd); width: 18px; }
-.tour-actions { display: flex; gap: 8px; }
+.tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tour-actions-right { display: flex; gap: 8px; }
 .tour-btn {
   font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-  border-radius: 8px; padding: 7px 14px; border: 1px solid transparent;
+  border-radius: 8px; padding: 8px 16px; border: 1px solid transparent; white-space: nowrap;
   transition: background .15s ease, border-color .15s ease, transform .05s ease;
 }
 .tour-btn:active { transform: scale(0.97); }

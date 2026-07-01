@@ -56,12 +56,14 @@ export function TourTooltip(props: Props) {
         </div>
         <div className="tour-actions">
           <button className="tour-skip" onClick={props.onSkip}>Skip</button>
-          {props.canPrev && (
-            <button className="tour-btn tour-btn-ghost" onClick={props.onPrev}>Back</button>
-          )}
-          <button className="tour-btn tour-btn-primary" onClick={props.onNext}>
-            {props.isLast ? "Finish" : "Next"}
-          </button>
+          <div className="tour-actions-right">
+            {props.canPrev && (
+              <button className="tour-btn tour-btn-ghost" onClick={props.onPrev}>Back</button>
+            )}
+            <button className="tour-btn tour-btn-primary" onClick={props.onNext}>
+              {props.isLast ? "Finish" : "Next"}
+            </button>
+          </div>
         </div>
       </div>
     </motion.div>

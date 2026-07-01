@@ -1,5 +1,5 @@
 .pgi-overlay {
-  position: fixed; inset: 0; z-index: 9997; display: grid; place-items: center; padding: 20px;
+  position: fixed; inset: 0; z-index: 10001; display: grid; place-items: center; padding: 20px;
   background: rgba(15, 23, 42, 0.5);
   animation: pgi-fade 0.18s ease both;
 }
@@ -35,20 +35,64 @@
 .pgi-title { font-size: 23px; line-height: 1.25; font-weight: 700; color: var(--text, #1a1a1a); margin: 0 0 10px; }
 .pgi-desc { font-size: 14px; line-height: 1.55; color: var(--text-secondary, #555); margin: 0 auto; max-width: 400px; }
 
-/* Subtle generic app-preview graphic under the copy */
-.pgi-preview {
-  margin: 24px auto 0; max-width: 380px; background: rgba(255, 255, 255, 0.75); border: 1px solid var(--border-light, #eef2f6);
-  border-radius: 12px; padding: 14px; text-align: left; box-shadow: 0 6px 18px rgba(0, 55, 112, 0.06);
+/* --- Detailed per-page preview mock --- */
+.pgi-mock {
+  margin: 22px auto 0; max-width: 400px; background: #fff; border: 1px solid var(--border-light, #eef2f6);
+  border-radius: 14px; overflow: hidden; box-shadow: 0 10px 26px rgba(0, 55, 112, 0.10); text-align: left;
 }
-.pgi-preview-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.pgi-preview-brand { display: flex; align-items: center; gap: 8px; }
-.pgi-preview-dot { width: 20px; height: 20px; border-radius: 6px; background: var(--accent-soft, #d8d4ff); }
-.pgi-preview-chip {
-  font-size: 10px; font-weight: 700; color: var(--accent-hover, #4434d4); background: var(--accent-light, #eef0ff);
-  padding: 3px 8px; border-radius: 9999px;
+.pgi-mock-bar {
+  display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;
+  border-bottom: 1px solid var(--border-light, #eef2f6); background: var(--bg-page, #fafbfc);
 }
-.pgi-bar { height: 9px; border-radius: 6px; background: var(--border-light, #eef2f6); margin-bottom: 8px; }
-.pgi-bar.w70 { width: 70%; } .pgi-bar.w45 { width: 45%; } .pgi-bar.w85 { width: 85%; }
+.pgi-mock-brand { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text, #1a1a1a); }
+.pgi-mock-brand img { width: 16px; height: 16px; object-fit: contain; }
+.pgi-mock-brand b { font-weight: 700; }
+.pgi-mock-dots { display: flex; gap: 4px; }
+.pgi-mock-dots i { width: 7px; height: 7px; border-radius: 9999px; background: var(--border, #e2e2e2); }
+.pgi-mock-body { padding: 14px; }
+
+.pgi-line { display: block; height: 8px; border-radius: 5px; background: var(--border-light, #eef2f6); margin-bottom: 7px; }
+.pgi-line.h { height: 9px; background: var(--accent-soft, #d8d4ff); }
+.pgi-line.hl { background: var(--accent, #533afd); opacity: 0.5; }
+.pgi-line.w30 { width: 30%; } .pgi-line.w40 { width: 40%; } .pgi-line.w45 { width: 45%; } .pgi-line.w50 { width: 50%; }
+.pgi-line.w60 { width: 60%; } .pgi-line.w65 { width: 65%; } .pgi-line.w70 { width: 70%; } .pgi-line.w75 { width: 75%; }
+.pgi-line.w80 { width: 80%; } .pgi-line.w85 { width: 85%; } .pgi-line.w90 { width: 90%; } .pgi-line.w95 { width: 95%; }
+
+/* applications tracker mock */
+.pgi-apps { display: flex; flex-direction: column; gap: 10px; }
+.pgi-app-row { display: flex; align-items: center; gap: 10px; }
+.pgi-app-logo { width: 26px; height: 26px; border-radius: 7px; flex: 0 0 auto; }
+.pgi-app-info { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+.pgi-app-info b { font-size: 11px; font-weight: 600; color: var(--text, #1a1a1a); }
+.pgi-app-info i { display: block; height: 6px; width: 55%; border-radius: 4px; background: var(--border-light, #eef2f6); }
+.pgi-pill { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 9999px; white-space: nowrap; }
+.pgi-pill.s-applied { color: #8a6d1e; background: #fdf3d7; }
+.pgi-pill.s-interview { color: var(--accent-hover, #4434d4); background: var(--accent-light, #eef0ff); }
+.pgi-pill.s-offer { color: #0a7d5a; background: #d8f5ea; }
+
+/* document mocks (resume / custom-resume / cover-letter / interview) */
+.pgi-doc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.pgi-doc-name { display: block; width: 40%; height: 11px; border-radius: 5px; background: var(--accent-soft, #d8d4ff); }
+.pgi-badge-tag {
+  font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 9999px; white-space: nowrap;
+  color: var(--text-secondary, #555); background: var(--border-light, #eef2f6);
+}
+.pgi-badge-tag.accent { color: #fff; background: var(--accent, #533afd); }
+.pgi-doc-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+
+/* interview answer block */
+.pgi-answer { margin-top: 12px; padding: 10px; border-radius: 9px; background: var(--accent-light, #eef0ff); }
+.pgi-answer-tag {
+  display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--accent-hover, #4434d4); margin-bottom: 7px;
+}
+
+/* profile form mock */
+.pgi-profile-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.pgi-avatar { width: 40px; height: 40px; border-radius: 9999px; background: var(--accent-soft, #d8d4ff); flex: 0 0 auto; }
+.pgi-profile-id { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.pgi-field { margin-bottom: 10px; }
+.pgi-input { display: block; height: 26px; border-radius: 8px; border: 1px solid var(--border, #e6e6e6); background: var(--bg-page, #fafbfc); }
 
 .pgi-footer { padding: 20px 36px 26px; display: flex; justify-content: center; }
 .pgi-btn {

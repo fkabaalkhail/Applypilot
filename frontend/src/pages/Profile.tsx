@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import api from "../auth/api";
+import { PageIntro } from "../onboarding";
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
 
@@ -179,6 +180,7 @@ export default function Profile() {
 
   return (
     <div className="profile-page" data-tour="profile-page">
+      <PageIntro page="profile" />
       {/* Header */}
       <div className="profile-header">
         <h1>Profile</h1>

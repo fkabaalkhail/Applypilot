@@ -1,15 +1,17 @@
 import { useEffect } from "react";
 import { X } from "@phosphor-icons/react";
-import type { PageIntroContent } from "./pageIntros";
+import type { PageIntroContent, PageIntroId } from "./pageIntros";
+import { PageIntroPreview } from "./PageIntroPreview";
 import "./page-intro.css";
 
 interface Props {
+  id: PageIntroId;
   content: PageIntroContent;
   onClose: () => void;
 }
 
 /** Presentational first-visit intro modal. Themed with our tokens. */
-export function PageIntroModal({ content, onClose }: Props) {
+export function PageIntroModal({ id, content, onClose }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -39,18 +41,7 @@ export function PageIntroModal({ content, onClose }: Props) {
           <h2 className="pgi-title">{content.title}</h2>
           <p className="pgi-desc">{content.description}</p>
 
-          <div className="pgi-preview" aria-hidden>
-            <div className="pgi-preview-head">
-              <div className="pgi-preview-brand">
-                <span className="pgi-preview-dot" />
-                <span className="pgi-bar w45" style={{ margin: 0, width: 64 }} />
-              </div>
-              <span className="pgi-preview-chip">STRONG MATCH · 96%</span>
-            </div>
-            <div className="pgi-bar w85" />
-            <div className="pgi-bar w70" />
-            <div className="pgi-bar w45" />
-          </div>
+          <PageIntroPreview id={id} />
         </div>
 
         <div className="pgi-footer">

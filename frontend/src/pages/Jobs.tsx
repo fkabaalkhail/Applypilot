@@ -3,6 +3,7 @@ import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
 import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
+import { PageIntro } from "../onboarding";
 import api from "../auth/api";
 import { useApplyTracking } from "../context/ApplyTracking";
 import { resolveLogoUrl, avatarColor } from "../lib/companyLogo";
@@ -545,8 +546,8 @@ export default function Jobs() {
         )}
       </div>
 
-      {rewriteJob && <CustomResumeModal job={rewriteJob} onClose={() => setRewriteJob(null)} />}
-      {coverJob && <CoverLetterModal job={coverJob} onClose={() => setCoverJob(null)} />}
+      {rewriteJob && <><PageIntro page="custom-resume" /><CustomResumeModal job={rewriteJob} onClose={() => setRewriteJob(null)} /></>}
+      {coverJob && <><PageIntro page="cover-letter" /><CoverLetterModal job={coverJob} onClose={() => setCoverJob(null)} /></>}
     </div>
   );
 }

@@ -46,5 +46,5 @@ export function PageIntro({ page }: { page: PageIntroId }) {
   };
 
   if (!open) return null;
-  return <PageIntroModal content={PAGE_INTROS[page]} onClose={dismiss} />;
+  return <PageIntroModal id={page} content={PAGE_INTROS[page]} onClose={dismiss} />;
 }
