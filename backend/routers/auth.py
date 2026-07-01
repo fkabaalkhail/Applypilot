@@ -609,7 +609,7 @@ def set_setup(
         "first_name": user.first_name,
         "last_name": user.last_name,
         "profile_image_url": user.profile_image_url,
-        "email_verified": user.email_verified,
+        "email_verified": effective_email_verified(user),
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "has_completed_onboarding": bool(user.has_completed_onboarding),
         "has_completed_setup": bool(user.has_completed_setup),

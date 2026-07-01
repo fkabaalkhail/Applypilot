@@ -8,6 +8,10 @@ import { ResumeStep } from "./steps/ResumeStep";
 import { answersToFilters } from "./answersToFilters";
 import { emptyAnswers, type SetupAnswers, type SetupStep } from "./types";
 
+// The appended resume step only needs id + headline: it is rendered specially
+// below (via the `step.id === "resume"` check), never through `step.Component`.
+type WizardStep = Pick<SetupStep, "id" | "headline"> & Partial<Omit<SetupStep, "id" | "headline">>;
+
 const FILTER_STORAGE_KEY = "job-aggregator-filters";
 
 export default function SetupWizard() {
@@ -24,11 +28,11 @@ export default function SetupWizard() {
   }));
 
   // Resume is the final step, appended after the config steps.
-  const resumeStep: SetupStep = useMemo(
-    () => ({ id: "resume", headline: "One last step — <b>level up</b> your search with your resume.", Component: () => null }),
+  const resumeStep: WizardStep = useMemo(
+    () => ({ id: "resume", headline: "One last step — <b>level up</b> your search with your resume." }),
     [],
   );
-  const steps = useMemo(() => [...SETUP_STEPS, resumeStep], [resumeStep]);
+  const steps: WizardStep[] = useMemo(() => [...SETUP_STEPS, resumeStep], [resumeStep]);
   const isLast = index === steps.length - 1;
   const step = steps[index];
 
@@ -98,7 +102,7 @@ export default function SetupWizard() {
     <SetupLayout headline={step.headline} stepIndex={index} total={steps.length}>
       {step.id === "resume"
         ? <ResumeStep answers={answers} update={update} file={resumeFile} onFile={setResumeFile} />
-        : <step.Component answers={answers} update={update} />}
+        : step.Component && <step.Component answers={answers} update={update} />}
       {error && <div className="setup-error" role="alert">{error}</div>}
       <div className="setup-footer">
         {index > 0

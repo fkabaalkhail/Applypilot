@@ -36,4 +36,18 @@ def run_migration() -> None:
                 "BOOLEAN NOT NULL DEFAULT false"
             )
         )
+        # One-time backfill: existing/established users should never see the
+        # new setup wizard, only new signups should. A user is "established"
+        # if they already completed onboarding, or already uploaded a resume.
+        # This runs exactly once, at column-add time, because the
+        # column-exists guard above makes the whole migration a no-op on
+        # every subsequent boot.
+        conn.execute(
+            text(
+                "UPDATE users SET has_completed_setup = true "
+                "WHERE has_completed_onboarding = true "
+                "OR id IN (SELECT user_id FROM user_settings "
+                "WHERE resume_file_path IS NOT NULL AND resume_file_path <> '')"
+            )
+        )
     logger.info("Setup migration completed successfully.")
