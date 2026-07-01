@@ -16,7 +16,9 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ScrapedJob, ResumeProfileDB, ResumeVersion, CoverLetter
-from backend.auth.dependencies import get_verified_user_id
+from backend.auth.dependencies import get_verified_user_id, verify_cron_secret
+from backend.services.usage_limiter import llm_guard
+from backend.services.match_notifier import sweep_match_alerts
 from backend.schemas.match import MatchBreakdown, FitAnalysis
 from backend.schemas.ai import (
     TailoredResumeOut,
@@ -122,7 +124,7 @@ def _persist_active_cover_letter(
 @router.post("/match-breakdown/{job_id}", response_model=MatchBreakdown)
 async def match_breakdown(
     job_id: int,
-    user_id: int = Depends(get_verified_user_id),
+    user_id: int = Depends(llm_guard),
     db: Session = Depends(get_db),
 ):
     """Compute match score breakdown for a job."""
@@ -159,7 +161,7 @@ async def match_breakdown(
 @router.post("/tailor-resume/{job_id}", response_model=TailoredResumeOut)
 async def tailor_resume(
     job_id: int,
-    user_id: int = Depends(get_verified_user_id),
+    user_id: int = Depends(llm_guard),
     db: Session = Depends(get_db),
 ):
     """Generate a tailored resume for a job."""
@@ -178,7 +180,7 @@ async def tailor_resume(
 async def cover_letter(
     job_id: int,
     body: CoverLetterIn | None = None,
-    user_id: int = Depends(get_verified_user_id),
+    user_id: int = Depends(llm_guard),
     db: Session = Depends(get_db),
 ):
     """Generate (or regenerate in a tone) a cover letter for a job.
@@ -303,7 +305,7 @@ def delete_cover_letter(
 @router.post("/analyze-fit/{job_id}", response_model=FitAnalysis)
 async def analyze_fit(
     job_id: int,
-    user_id: int = Depends(get_verified_user_id),
+    user_id: int = Depends(llm_guard),
     db: Session = Depends(get_db),
 ):
     """Get detailed fit analysis for a job."""
@@ -329,7 +331,7 @@ async def analyze_fit(
 async def job_analysis(
     job_id: int,
     body: RewriteIn | None = None,
-    user_id: int = Depends(get_verified_user_id),
+    user_id: int = Depends(llm_guard),
     db: Session = Depends(get_db),
 ):
     """Step 1 'See Your Difference': match score + matched/missing keywords."""
@@ -350,7 +352,7 @@ async def job_analysis(
 async def rewrite_resume(
     job_id: int,
     body: RewriteIn | None = None,
-    user_id: int = Depends(get_verified_user_id),
+    user_id: int = Depends(llm_guard),
     db: Session = Depends(get_db),
 ):
     """Step 3 'Review': tailor the resume (structured) with the chosen
@@ -410,7 +412,7 @@ async def rewrite_resume(
 @router.post("/batch-score")
 async def batch_score_jobs(
     batch_size: int = 10,
-    user_id: str = Depends(get_verified_user_id),
+    user_id: str = Depends(llm_guard),
     db: Session = Depends(get_db),
 ):
     """Score the newest unscored jobs against the user's resume.
@@ -561,7 +563,7 @@ def delete_resume_version(
 @router.post("/edit-snippet", response_model=SnippetEditOut)
 async def edit_snippet(
     body: SnippetEditIn,
-    user_id: int = Depends(get_verified_user_id),
+    user_id: int = Depends(llm_guard),
     db: Session = Depends(get_db),
 ):
     """Apply a single AI editing action to a selected snippet of resume text.
@@ -584,3 +586,19 @@ async def edit_snippet(
         return SnippetEditOut(text=edited or text)
     except (ConnectionError, httpx.ConnectError):
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
+
+
+@router.post("/cron-match-alerts")
+async def cron_match_alerts(
+    _cron: None = Depends(verify_cron_secret),
+    db: Session = Depends(get_db),
+):
+    """Manually trigger the match-alert sweep (also runs inside cron-poll).
+
+    For every verified user with a resume, score the newest jobs they haven't
+    been alerted about yet, then send a single deduped digest of the strong
+    (>=80%) matches. Kept as a standalone endpoint for manual runs / testing;
+    the scheduled trigger is folded into /github-sources/cron-poll so the app
+    stays within Vercel's 2-cron Hobby limit. Authenticated via the cron secret.
+    """
+    return await sweep_match_alerts(db)

@@ -29,6 +29,7 @@ class LinkedInJob:
     company: str
     location: str
     url: str
+    posted_date: Optional[str] = None  # ISO date string from the card's <time> tag
 
 
 # Canadian cities to search (city, province)
@@ -66,11 +67,18 @@ HEADERS = {
 }
 
 
+# The guest API returns ~10 cards per request. Walk the `start` offset to pull
+# deeper into the result set instead of just the first page.
+PAGE_SIZE = 10
+MAX_PAGES = 10  # up to ~100 cards per query/city
+
+
 class LinkedInScraper:
     """Scrapes job listings from LinkedIn's guest jobs API."""
 
-    def __init__(self, request_delay: float = 2.0):
+    def __init__(self, request_delay: float = 2.0, max_pages: int = MAX_PAGES):
         self.request_delay = request_delay
+        self.max_pages = max_pages
 
     async def scrape_all(self) -> list[LinkedInJob]:
         """Search all city/query combinations and return deduplicated jobs."""
@@ -138,23 +146,50 @@ class LinkedInScraper:
         city: str,
         province: str,
     ) -> list[LinkedInJob]:
-        """Search LinkedIn guest API for jobs in a city."""
+        """Search LinkedIn guest API for jobs in a city, paginating the result set.
+
+        The guest endpoint returns ~10 cards per request; walk the `start`
+        offset until a page is empty or we hit ``max_pages``. Stops early when a
+        page yields no new URLs (LinkedIn repeats the last page past the end).
+        """
         location = f"{city}, {province}, Canada"
-        url = (
-            f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-            f"?keywords={quote(query)}"
-            f"&location={quote(location)}"
-            f"&f_E=1%2C2"
-            f"&f_TPR=r604800"
-            f"&start=0"
-        )
+        jobs: list[LinkedInJob] = []
+        seen_urls: set[str] = set()
 
-        response = await client.get(url)
-        if response.status_code != 200:
-            return []
+        for page in range(self.max_pages):
+            url = (
+                f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+                f"?keywords={quote(query)}"
+                f"&location={quote(location)}"
+                f"&f_E=1%2C2"
+                f"&f_TPR=r604800"
+                f"&start={page * PAGE_SIZE}"
+            )
 
-        html = response.text
-        return self._parse_job_cards(html)
+            response = await client.get(url)
+            if response.status_code != 200:
+                break
+
+            page_jobs = self._parse_job_cards(response.text)
+            if not page_jobs:
+                break
+
+            new_on_page = 0
+            for job in page_jobs:
+                if job.url not in seen_urls:
+                    seen_urls.add(job.url)
+                    jobs.append(job)
+                    new_on_page += 1
+
+            # No new URLs means we've reached the end of the result set.
+            if new_on_page == 0:
+                break
+
+            # Be polite between page requests within a single search.
+            if page + 1 < self.max_pages:
+                await asyncio.sleep(self.request_delay)
+
+        return jobs
 
     def _parse_job_cards(self, html: str) -> list[LinkedInJob]:
         """Parse job cards from LinkedIn guest API HTML response."""
@@ -218,6 +253,17 @@ class LinkedInScraper:
                             location = re.sub(r'<[^>]+>', '', raw_loc).strip()
                             location = re.sub(r'\s+', ' ', location)
 
+                # Extract posted date - the card carries a <time datetime="YYYY-MM-DD">
+                posted_date = None
+                time_idx = card.find('datetime="')
+                if time_idx != -1:
+                    dt_start = time_idx + len('datetime="')
+                    dt_end = card.find('"', dt_start)
+                    if dt_end != -1:
+                        raw_dt = card[dt_start:dt_end].strip()
+                        if raw_dt:
+                            posted_date = raw_dt
+
                 # Clean HTML entities
                 title = title.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
                 company = company.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
@@ -228,6 +274,7 @@ class LinkedInScraper:
                         company=company,
                         location=location,
                         url=url,
+                        posted_date=posted_date,
                     ))
             except Exception:
                 continue

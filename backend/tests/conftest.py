@@ -2,6 +2,13 @@
 Shared test fixtures: in-memory DB, test client, sample data.
 """
 
+import os
+
+# Rate limiting is exercised by its own dedicated tests (which opt in
+# explicitly). Disable it everywhere else so unrelated suites that hammer an
+# endpoint in a loop aren't tripped by the per-minute/daily AI limits.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

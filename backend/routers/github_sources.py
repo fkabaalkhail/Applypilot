@@ -10,6 +10,7 @@ POST   /github-sources/{id}/poll → PollResult
 """
 
 import re
+import datetime
 import logging
 import traceback
 
@@ -319,6 +320,14 @@ async def scrape_linkedin_jobs(
             cleaned_company = re.sub(r'[^a-z0-9]', '', job.company.lower())
             company_logo = f"https://icon.horse/icon/{cleaned_company}.com"
 
+            # Parse the card's posted date (ISO "YYYY-MM-DD") when present.
+            posted_date = None
+            if job.posted_date:
+                try:
+                    posted_date = datetime.datetime.fromisoformat(job.posted_date)
+                except (ValueError, TypeError):
+                    posted_date = None
+
             scraped_job = ScrapedJob(
                 title=job.title,
                 company=job.company,
@@ -326,7 +335,7 @@ async def scrape_linkedin_jobs(
                 url=job.url,
                 description="",
                 source_platform="linkedin",
-                posted_date=None,
+                posted_date=posted_date,
                 easy_apply=0,
                 work_type=work_type,
                 role_category=classify_role(job.title),
@@ -394,6 +403,16 @@ async def cron_poll(
 
         global_enriched = await aggregator._enrich_missing_descriptions(None, limit=40)
 
+        # Email users about new strong matches. Folded in here (rather than a
+        # separate cron) so the app stays within Vercel's 2-cron Hobby limit.
+        # Best-effort: a failure here must not fail the poll.
+        match_alerts: dict = {}
+        try:
+            from backend.services.match_notifier import sweep_match_alerts
+            match_alerts = await sweep_match_alerts(db)
+        except Exception:
+            logger.error(f"Match-alert sweep failed: {traceback.format_exc()}")
+
         return {
             "status": "completed",
             "sources_seeded": seed_result["created"],
@@ -402,6 +421,7 @@ async def cron_poll(
             "descriptions_enriched": total_enriched,
             "global_descriptions_enriched": global_enriched,
             "polled": polled,
+            "match_alerts": match_alerts,
         }
     except Exception:
         logger.error(f"Cron poll failed: {traceback.format_exc()}")
