@@ -171,12 +171,19 @@ const I_CHECK = ph(P_CHECK);
 const I_DASH = ph(P_DASH);
 const I_INFO = ph(P_INFO);
 
-// The Tailrd brand mark, drawn as inline SVG (a purple paper-plane in a ring).
+// The Tailrd brand mark, drawn as inline SVG to match the front-page logo:
+// an outlined paper-plane with trailing motion lines inside a closed ring.
 // Inline SVG is immune to the page's img-src CSP, which blocks data:-URI <img>.
 const I_BRAND =
   '<svg viewBox="0 0 256 256" fill="none" aria-hidden="true">' +
   '<circle cx="128" cy="128" r="112" stroke="currentColor" stroke-width="13"/>' +
   '<g transform="translate(40 42) scale(0.66)"><path fill="currentColor" d="M227.32,28.68a16,16,0,0,0-15.66-4.08l-.15,0L19.57,82.84a16,16,0,0,0-2.49,29.8L102,154l41.3,84.87A15.86,15.86,0,0,0,157.74,248q.69,0,1.38-.06a15.88,15.88,0,0,0,14-11.51l58.2-191.94c0-.05,0-.1,0-.15A16,16,0,0,0,227.32,28.68ZM157.83,231.85l-.05.14,0-.07-40.06-82.3,48-48a8,8,0,0,0-11.31-11.31l-48,48L24.08,98.25l-.07,0,.14,0L216,40Z"/></g>' +
+  // Motion lines (speed dashes) trailing the tail, matching the front-page mark.
+  '<g stroke="currentColor" stroke-width="13" stroke-linecap="round">' +
+  '<line x1="74" y1="180" x2="92" y2="162"/>' +
+  '<line x1="63" y1="193" x2="81" y2="175"/>' +
+  '<line x1="54" y1="204" x2="72" y2="186"/>' +
+  "</g>" +
   "</svg>";
 
 
