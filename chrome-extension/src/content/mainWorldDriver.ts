@@ -155,8 +155,18 @@ async function fillReactSelectByDom(container: HTMLElement, value: string): Prom
   return norm(single?.textContent ?? options[idx].textContent ?? "") || null;
 }
 
+/**
+ * `view: window` matches real dispatched-event semantics (every Chrome
+ * version this extension targets has `window instanceof Window` true).
+ * Vitest's jsdom test environment aliases the global `window` to
+ * `globalThis` for realistic global-scope emulation, so it fails jsdom's
+ * `instanceof Window` brand check there and the constructor throws — guard
+ * with the same feature-detect fallback style as `escapeAttrValue` above,
+ * rather than drop `view` outright.
+ */
 function fireMouse(el: HTMLElement, type: string): void {
-  el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+  const view = typeof Window !== "undefined" && window instanceof Window ? window : undefined;
+  el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view }));
 }
 function fireKey(el: HTMLElement, key: string): void {
   el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
@@ -167,24 +177,72 @@ function setNativeInputValue(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-// Workday routine is added in Task 8; provide a stub now so the bundle
-// compiles and the bridge is exercised by tests.
-async function fillWorkday(_el: HTMLElement, _value: string): Promise<string | null> {
-  return null;
+interface WorkdayProps {
+  options?: unknown[];
+  onChange?: (o: unknown) => void;
+  onValueChange?: (o: unknown) => void;
 }
 
-/** Install the fill listener once per frame. Idempotent via a window guard. */
+/** Prefer the widget's React onChange (via memoizedProps on the fiber), else drive
+ *  Workday's `data-automation-id` prompt list in page context. */
+async function fillWorkday(el: HTMLElement, value: string): Promise<string | null> {
+  const widget = el.closest("[data-automation-id]") ?? el;
+
+  const propFiber = climbFiber(getFiber(widget), (f) => {
+    const p = f.memoizedProps as WorkdayProps | null;
+    return Boolean(p && Array.isArray(p.options) && (p.onChange || p.onValueChange));
+  });
+  const props = propFiber?.memoizedProps as WorkdayProps | undefined;
+  if (props?.options) {
+    const labels = props.options.map((o) => {
+      const x = o as { label?: string; value?: string };
+      return x.label ?? x.value ?? String(o);
+    });
+    const idx = pickOption(labels, value);
+    if (idx < 0) return null;
+    (props.onChange ?? props.onValueChange)?.(props.options[idx]);
+    return labels[idx];
+  }
+
+  // DOM fallback: open the prompt, wait for options, click the match.
+  const opener = widget.querySelector<HTMLElement>('[data-automation-id="promptButton"], button') ?? (widget as HTMLElement);
+  fireMouse(opener, "mousedown");
+  fireMouse(opener, "click");
+  await sleep(80);
+  const options = Array.from(
+    (widget.ownerDocument ?? document).querySelectorAll<HTMLElement>('[data-automation-id="promptOption"], [role="option"]')
+  );
+  const idx = pickOption(options.map((o) => norm(o.textContent ?? "")), value);
+  if (idx < 0) return null;
+  fireMouse(options[idx], "mousedown");
+  fireMouse(options[idx], "mouseup");
+  options[idx].click();
+  await sleep(30);
+  return norm(opener.textContent ?? options[idx].textContent ?? "") || null;
+}
+
+/**
+ * Install the fill listener once per frame. Idempotent via a window guard;
+ * also replaces any listener from a prior install that's still attached
+ * without the guard (e.g. a test harness that clears the guard between
+ * cases without tearing down `window`, unlike a real frame reload) so at
+ * most one listener is ever live — otherwise a stale listener races the
+ * current one on every dispatch, double-handling the same fill request.
+ */
 export function installDriver(win: Window & typeof globalThis): void {
-  const w = win as unknown as Record<string, unknown>;
+  const w = win as unknown as Record<string, unknown> & { __tailrdMWListener?: EventListener };
   if (w.__tailrdMWInstalled) return;
   w.__tailrdMWInstalled = true;
-  win.addEventListener(MW_FILL_EVENT, (e: Event) => {
+  if (w.__tailrdMWListener) win.removeEventListener(MW_FILL_EVENT, w.__tailrdMWListener);
+  const listener: EventListener = (e: Event) => {
     const detail = (e as CustomEvent<MwFillDetail>).detail;
     if (!detail || typeof detail.id !== "number") return;
     void fillField(win.document, detail).then((result) => {
       win.dispatchEvent(new CustomEvent(MW_RESULT_EVENT, { detail: result }));
     });
-  });
+  };
+  w.__tailrdMWListener = listener;
+  win.addEventListener(MW_FILL_EVENT, listener);
 }
 
 // Exported for tests only.

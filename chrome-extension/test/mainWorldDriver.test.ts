@@ -88,3 +88,56 @@ describe("fillReactSelect via Fiber", () => {
     expect(res.reason).toBe("no-match");
   });
 });
+
+/** Workday prompt: button + on-click list of [data-automation-id=promptOption]. */
+function workdayPrompt(fieldId: string, options: string[]): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.setAttribute("data-automation-id", "multiSelectContainer");
+  wrap.setAttribute(FIELD_ID_ATTR, fieldId);
+  const btn = document.createElement("button");
+  btn.setAttribute("data-automation-id", "promptButton");
+  btn.textContent = "Select One";
+  wrap.append(btn);
+  document.body.append(wrap);
+
+  btn.addEventListener("mousedown", () => {
+    if (wrap.querySelector('[data-automation-id="promptOption"]')) return;
+    for (const label of options) {
+      const o = document.createElement("div");
+      o.setAttribute("data-automation-id", "promptOption");
+      o.textContent = label;
+      o.addEventListener("mousedown", () => { btn.textContent = label; o.parentElement?.querySelectorAll('[data-automation-id="promptOption"]').forEach((n) => n.remove()); });
+      wrap.append(o);
+    }
+  });
+  return wrap;
+}
+
+describe("fillWorkday via DOM prompt", () => {
+  it("opens the prompt and selects the matching option", async () => {
+    installDriver(window);
+    const wrap = workdayPrompt("wd-1", ["United States", "Canada"]);
+    const res = await drive("wd-1", "Canada", "workday");
+    expect(res.ok).toBe(true);
+    expect(wrap.querySelector('[data-automation-id="promptButton"]')?.textContent).toBe("Canada");
+  });
+});
+
+describe("fillWorkday via Fiber onChange", () => {
+  it("invokes the widget's onChange with the matched option", async () => {
+    installDriver(window);
+    const wrap = document.createElement("div");
+    wrap.setAttribute("data-automation-id", "selectinput");
+    wrap.setAttribute(FIELD_ID_ATTR, "wd-2");
+    document.body.append(wrap);
+    let chosen: string | null = null;
+    const props = {
+      options: [{ label: "Female", value: "f" }, { label: "Male", value: "m" }],
+      onChange: (o: { label: string }) => { chosen = o.label; },
+    };
+    (wrap as unknown as Record<string, unknown>)["__reactFiber$z"] = { return: null, stateNode: null, memoizedProps: props };
+    const res = await drive("wd-2", "Female", "workday");
+    expect(res.ok).toBe(true);
+    expect(chosen).toBe("Female");
+  });
+});
