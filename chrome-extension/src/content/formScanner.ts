@@ -25,6 +25,8 @@ import { isCaptchaField } from "./captcha";
 import { isConsentField } from "./consent";
 import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { classifyField, resolveProfileValue } from "./fieldMatcher";
+import { detectFillDriver } from "./driverDetect";
+import type { FillDriver } from "./mainWorldBridge";
 
 /** Live handle for a detected field — never leaves the content script. */
 export interface RuntimeControl {
@@ -36,6 +38,8 @@ export interface RuntimeControl {
   radios?: HTMLInputElement[];
   /** Native checkbox groups ("select all that apply"): all members, in DOM order. */
   checkboxes?: HTMLInputElement[];
+  /** For customDropdown/combobox: which MAIN-world driver fills it, if any. */
+  driver?: FillDriver;
 }
 
 export interface ScanResult {
@@ -270,7 +274,11 @@ export function scanPage(
             ? ariaRadioOptions(el)
             : undefined;
 
-    const control: RuntimeControl = { id, controlType, el };
+    const driver =
+      controlType === "combobox" || controlType === "customDropdown"
+        ? detectFillDriver(el) ?? undefined
+        : undefined;
+    const control: RuntimeControl = { id, controlType, el, driver };
     registry.set(id, control);
 
     const proposedValue = profile
@@ -285,7 +293,9 @@ export function scanPage(
       controlType,
       required: isRequiredField(el, signals),
       proposedValue,
-      fillable: controlType !== "file" && controlType !== "customDropdown",
+      fillable:
+        driver !== undefined ||
+        (controlType !== "file" && controlType !== "customDropdown"),
       sensitive,
       note: noteFor(controlType, category),
       options,

@@ -57,3 +57,29 @@ describe("scanPage — custom dropdowns", () => {
     expect(combo!.currentValue).toBeUndefined();
   });
 });
+
+describe("driver tagging", () => {
+  it("tags a react-select control and marks it fillable", () => {
+    document.body.innerHTML = `
+      <label for="react-select-2-input">Country</label>
+      <div class="rs__container"><div class="rs__control">
+        <input id="react-select-2-input" role="combobox" aria-controls="lb" aria-expanded="false" />
+      </div></div>`;
+    const { fields, registry } = scanPage(null, false);
+    const field = fields.find((f) => f.controlType === "combobox");
+    expect(field).toBeTruthy();
+    const control = registry.get(field!.id);
+    expect(control?.driver).toBe("react-select");
+    expect(field!.fillable).toBe(true);
+  });
+
+  it("leaves a plain ARIA combobox untagged", () => {
+    document.body.innerHTML = `
+      <label for="c">City</label>
+      <input id="c" role="combobox" aria-controls="lb2" aria-expanded="false" />`;
+    const { fields, registry } = scanPage(null, false);
+    const field = fields.find((f) => f.controlType === "combobox");
+    const control = field ? registry.get(field.id) : undefined;
+    expect(control?.driver).toBeUndefined();
+  });
+});
