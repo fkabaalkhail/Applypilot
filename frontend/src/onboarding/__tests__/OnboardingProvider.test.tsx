@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { OnboardingProvider } from "../OnboardingProvider";
 import { AuthContext } from "../../auth/AuthContext";
@@ -36,5 +36,24 @@ describe("OnboardingProvider auto-start", () => {
     renderWith(true);
     await waitFor(() => {}, { timeout: 50 });
     expect(screen.queryByText(/Welcome to Tailrd/i)).not.toBeInTheDocument();
+  });
+
+  it("clicking Next on the welcome step advances to the next step", async () => {
+    renderWith(false);
+    expect(await screen.findByText(/Welcome to Tailrd/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(await screen.findByText(/Your job feed/i)).toBeInTheDocument();
+  });
+
+  it("clicking Skip completes onboarding and clears saved progress", async () => {
+    const { setOnboardingComplete } = renderWith(false);
+    expect(await screen.findByText(/Welcome to Tailrd/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+
+    await waitFor(() => expect(setOnboardingComplete).toHaveBeenCalledWith(true));
+    expect(localStorage.getItem("tailrd_tour_progress")).toBeNull();
   });
 });

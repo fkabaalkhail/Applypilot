@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { Spotlight } from "./engine/Spotlight";
 import { TourTooltip } from "./engine/TourTooltip";
 import { useTargetElement } from "./engine/useTargetElement";
@@ -39,15 +39,10 @@ export function OnboardingOverlay(props: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [props.onSkip, props.onNext, props.onPrev, props.canPrev]);
 
-  const swallow = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
   if (status === "pending" || status === "missing") return null;
 
   return (
-    <div className="tour-overlay" onClickCapture={swallow}>
+    <div className="tour-overlay">
       <Spotlight rect={rect} padding={props.step.spotlightPadding ?? 8} />
       <TourTooltip
         title={props.step.title}
