@@ -168,6 +168,7 @@ export default function Profile() {
   if (noResume) {
     return (
       <div className="profile-page">
+        <PageIntro page="profile" />
         <div className="profile-empty">
           <h2>No Profile Found</h2>
           <p>Upload your resume first to populate your profile.</p>

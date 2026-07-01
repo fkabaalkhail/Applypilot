@@ -42,47 +42,28 @@ function renderBody(id: PageIntroId) {
       );
 
     case "resume":
-    case "custom-resume":
       return (
         <div className="pgi-doc">
           <div className="pgi-doc-head">
             <span className="pgi-doc-name" />
-            <span className={id === "custom-resume" ? "pgi-badge-tag accent" : "pgi-badge-tag"}>
-              {id === "custom-resume" ? "Tailored · 96%" : "Base resume"}
-            </span>
+            <span className="pgi-badge-tag">Base resume</span>
           </div>
           <span className="pgi-line w90" />
           <span className="pgi-line w70" />
           <div className="pgi-doc-cols">
             <div>
               <span className="pgi-line w60 h" />
-              <span className={`pgi-line w80${id === "custom-resume" ? " hl" : ""}`} />
+              <span className="pgi-line w80" />
               <span className="pgi-line w70" />
-              <span className={`pgi-line w85${id === "custom-resume" ? " hl" : ""}`} />
+              <span className="pgi-line w85" />
             </div>
             <div>
               <span className="pgi-line w50 h" />
               <span className="pgi-line w75" />
-              <span className={`pgi-line w65${id === "custom-resume" ? " hl" : ""}`} />
+              <span className="pgi-line w65" />
               <span className="pgi-line w70" />
             </div>
           </div>
-        </div>
-      );
-
-    case "cover-letter":
-      return (
-        <div className="pgi-doc">
-          <div className="pgi-doc-head">
-            <span className="pgi-doc-name" />
-            <span className="pgi-badge-tag accent">Generated</span>
-          </div>
-          <span className="pgi-line w40 h" />
-          <span className="pgi-line w95" />
-          <span className="pgi-line w90" />
-          <span className="pgi-line w95" />
-          <span className="pgi-line w80" />
-          <span className="pgi-line w60" style={{ marginTop: 10 }} />
         </div>
       );
 

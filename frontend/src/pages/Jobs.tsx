@@ -3,7 +3,6 @@ import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
 import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
-import { PageIntro } from "../onboarding";
 import api from "../auth/api";
 import { useApplyTracking } from "../context/ApplyTracking";
 import { resolveLogoUrl, avatarColor } from "../lib/companyLogo";
@@ -351,7 +350,6 @@ export default function Jobs() {
           </div>
           <button
             className="filter-toggle-btn"
-            data-tour="job-filters"
             onClick={() => setFiltersVisible(!filtersVisible)}
             aria-label={filtersVisible ? "Hide filters" : "Show filters"}
           >
@@ -360,11 +358,13 @@ export default function Jobs() {
           </button>
         </div>
         {filtersVisible && (
-          <JobFilterBar
-            filters={aggFilters}
-            onChange={(newFilters) => { setAggFilters(newFilters); setPage(1); }}
-            totalCount={stats.total}
-          />
+          <div data-tour="job-filters">
+            <JobFilterBar
+              filters={aggFilters}
+              onChange={(newFilters) => { setAggFilters(newFilters); setPage(1); }}
+              totalCount={stats.total}
+            />
+          </div>
         )}
       </div>
 
@@ -546,8 +546,8 @@ export default function Jobs() {
         )}
       </div>
 
-      {rewriteJob && <><PageIntro page="custom-resume" /><CustomResumeModal job={rewriteJob} onClose={() => setRewriteJob(null)} /></>}
-      {coverJob && <><PageIntro page="cover-letter" /><CoverLetterModal job={coverJob} onClose={() => setCoverJob(null)} /></>}
+      {rewriteJob && <CustomResumeModal job={rewriteJob} onClose={() => setRewriteJob(null)} />}
+      {coverJob && <CoverLetterModal job={coverJob} onClose={() => setCoverJob(null)} />}
     </div>
   );
 }

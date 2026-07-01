@@ -3,13 +3,7 @@
  * they open a non-dashboard page for the first time. Adding a page here + a
  * <PageIntro page="..."/> on that page is all that's needed.
  */
-export type PageIntroId =
-  | "applications"
-  | "resume"
-  | "interview"
-  | "profile"
-  | "custom-resume"
-  | "cover-letter";
+export type PageIntroId = "applications" | "resume" | "interview" | "profile";
 
 export interface PageIntroContent {
   /** Short eyebrow shown above the title. */
@@ -42,18 +36,6 @@ export const PAGE_INTROS: Record<PageIntroId, PageIntroContent> = {
     title: "Complete your profile for better matches",
     description:
       "The details here power your match scores and autofill. Fill them in once and Tailrd uses them to rank jobs and complete applications for you.",
-  },
-  "custom-resume": {
-    eyebrow: "Custom resume",
-    title: "A resume built for this exact job",
-    description:
-      "Tailrd rewrites your resume around this role's keywords and requirements, so it reads like a perfect fit and sails through the ATS.",
-  },
-  "cover-letter": {
-    eyebrow: "Cover letter",
-    title: "A tailored cover letter in one click",
-    description:
-      "Generate a personalized cover letter that speaks to this company and role, drawing on your resume — edit it, then send with confidence.",
   },
 };
 
