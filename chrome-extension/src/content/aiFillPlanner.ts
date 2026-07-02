@@ -173,3 +173,35 @@ export function planFillRoute(selected: DetectedField[], threshold: number): Fil
   }
   return { localTargets, backendFields };
 }
+
+/** A choice control whose fill missed, plus the REAL options harvested from
+ *  the live widget — input to the one-shot re-ask round. */
+export interface ReaskCandidate {
+  fieldId: string;
+  options: string[];
+}
+
+/**
+ * Build the backend fields for the re-ask round: same question, but now
+ * carrying the widget's actual options so the backend snaps the answer to one
+ * of them ("Canada" → "Canadian"). Sensitive fields never reach the backend.
+ */
+export function planReaskFields(
+  fields: DetectedField[],
+  candidates: ReaskCandidate[]
+): AiFillField[] {
+  const byId = new Map(fields.map((f) => [f.id, f]));
+  const out: AiFillField[] = [];
+  for (const c of candidates) {
+    const f = byId.get(c.fieldId);
+    if (!f || f.sensitive || c.options.length === 0) continue;
+    out.push({
+      id: c.fieldId,
+      label: f.label,
+      type: "select",
+      options: c.options.slice(0, 60),
+      required: f.required,
+    });
+  }
+  return out;
+}

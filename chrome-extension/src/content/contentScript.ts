@@ -43,12 +43,12 @@ import type {
 } from "../shared/types";
 import { deepQueryAll } from "./domUtils";
 import { base64ToFile, downloadBase64File, injectResumeFile } from "./fileUpload";
-import { FRAME_TOKEN, observePage, scanPage, type RuntimeControl } from "./formScanner";
+import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT } from "./fieldMatcher";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext } from "./jobContext";
-import { aiFillCandidates, planAiFill, planFillRoute, tallyOutcomes, toAiFillField, type PlannedAnswer } from "./aiFillPlanner";
+import { aiFillCandidates, planAiFill, planFillRoute, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { splitByCache, cacheAnswers } from "./answerCache";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
 import { fillAriaCombobox } from "./comboboxEngine";
@@ -210,8 +210,9 @@ function initialize(): void {
    */
   async function fillComboboxTargets(
     targets: { fieldId: string; value: string }[]
-  ): Promise<{ fieldId: string; ok: boolean }[]> {
+  ): Promise<{ outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] }> {
     const outcomes: { fieldId: string; ok: boolean }[] = [];
+    const reask: ReaskCandidate[] = [];
     for (const t of targets) {
       const el = registry.get(t.fieldId)?.el;
       if (!el) {
@@ -220,22 +221,31 @@ function initialize(): void {
       }
       const res = await fillAriaCombobox(el, t.value);
       outcomes.push({ fieldId: t.fieldId, ok: res.filled });
+      if (!res.filled && res.options) reask.push({ fieldId: t.fieldId, options: res.options });
     }
-    return outcomes;
+    return { outcomes, reask };
   }
 
   /** Fill react-select / Workday fields via the MAIN-world driver. */
   async function fillDriverTargets(
     targets: { fieldId: string; value: string }[]
-  ): Promise<{ fieldId: string; ok: boolean }[]> {
+  ): Promise<{ outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] }> {
     const outcomes: { fieldId: string; ok: boolean }[] = [];
+    const reask: ReaskCandidate[] = [];
     for (const t of targets) {
       const control = registry.get(t.fieldId);
       if (!control?.driver) { outcomes.push({ fieldId: t.fieldId, ok: false }); continue; }
       const res = await driveField(t.fieldId, t.value, control.driver);
-      outcomes.push({ fieldId: t.fieldId, ok: res.ok });
+      if (res.ok || !control.el) {
+        outcomes.push({ fieldId: t.fieldId, ok: res.ok });
+        continue;
+      }
+      // Driver miss — best-effort ARIA fallback: may fill, or harvest options.
+      const fb = await fillAriaCombobox(control.el, t.value);
+      outcomes.push({ fieldId: t.fieldId, ok: fb.filled });
+      if (!fb.filled && fb.options) reask.push({ fieldId: t.fieldId, options: fb.options });
     }
-    return outcomes;
+    return { outcomes, reask };
   }
 
   /** Whether a tracked field is a custom ARIA dropdown (filled by comboboxEngine). */
@@ -265,26 +275,35 @@ function initialize(): void {
   async function fillItems(
     items: { fieldId: string; value: string }[],
     merge: boolean
-  ): Promise<{ reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] }> {
-    if (items.length === 0 && merge) return { reports: [], outcomes: [] };
+  ): Promise<{ reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] }> {
+    if (items.length === 0 && merge) return { reports: [], outcomes: [], reask: [] };
     const { opOutcomes, remaining } = await runAdapterOperations(lastAdapter, items, (id) => registry.get(id));
     const driverTargets = remaining.filter((it) => isDriverField(it.fieldId));
     const comboTargets = remaining.filter((it) => !isDriverField(it.fieldId) && isComboboxField(it.fieldId));
     const reconTargets = remaining.filter((it) => !isDriverField(it.fieldId) && !isComboboxField(it.fieldId));
-    // The primary pass (merge=false) always calls run() — even with no reconciler
-    // targets — so each autofill click resets the reconciler's tracked state, matching
-    // the pre-Phase-3 behavior. Later passes (merge=true) only merge in new targets.
     const reports = merge
       ? reconTargets.length
         ? await getEngine().addTargets(reconTargets, registry)
         : []
       : await getEngine().run(reconTargets, registry);
-    const outcomes = [
-      ...(comboTargets.length ? await fillComboboxTargets(comboTargets) : []),
-      ...(driverTargets.length ? await fillDriverTargets(driverTargets) : []),
-      ...opOutcomes,
-    ];
-    return { reports, outcomes };
+    const combo = comboTargets.length
+      ? await fillComboboxTargets(comboTargets)
+      : { outcomes: [], reask: [] };
+    const driver = driverTargets.length
+      ? await fillDriverTargets(driverTargets)
+      : { outcomes: [], reask: [] };
+    // A <select> that failed on "No option matches" re-reads its options fresh
+    // (dependent dropdowns — Country → State — repopulate after earlier fills).
+    const reask: ReaskCandidate[] = [...combo.reask, ...driver.reask];
+    for (const r of reports) {
+      if (r.ok || !r.reason?.startsWith("No option matches")) continue;
+      const control = registry.get(r.fieldId);
+      if (control?.controlType === "select" && control.el?.isConnected) {
+        const options = selectOptions(control.el as HTMLSelectElement);
+        if (options.length > 0) reask.push({ fieldId: r.fieldId, options });
+      }
+    }
+    return { reports, outcomes: [...combo.outcomes, ...driver.outcomes, ...opOutcomes], reask };
   }
 
   const overlayCallbacks: OverlayCallbacks = {
@@ -304,8 +323,10 @@ function initialize(): void {
       // the backend is unavailable.
       const backendFields = dedupeById([...route.backendFields, ...aiFillCandidates(lastFields)]);
       const drafts: AiDraft[] = [];
-      let aiFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] } = { reports: [], outcomes: [] };
-      let fallbackFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] } = { reports: [], outcomes: [] };
+      let aiFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
+        { reports: [], outcomes: [], reask: [] };
+      let fallbackFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
+        { reports: [], outcomes: [], reask: [] };
       if (backendFields.length > 0) {
         const { hits, misses } = splitByCache(backendFields);
         let answers: PlannedAnswer[] = hits;
@@ -340,13 +361,47 @@ function initialize(): void {
         fallbackFill = await fillItems(fallbackTargets, true);
       }
 
+      // One re-ask round: choice controls whose fill missed now carry the
+      // widget's REAL options — a single batched AI_FILL snaps the answers
+      // ("Canada" → "Canadian"), then a merge pass drives them in.
+      let reaskFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
+        { reports: [], outcomes: [], reask: [] };
+      const reaskCandidates = [...localFill.reask, ...aiFill.reask, ...fallbackFill.reask];
+      if (reaskCandidates.length > 0) {
+        for (const c of reaskCandidates) {
+          const f = lastFields.find((x) => x.id === c.fieldId);
+          if (f) f.options = c.options; // panel now shows the real choices
+        }
+        const reaskFields = planReaskFields(lastFields, reaskCandidates);
+        if (reaskFields.length > 0) {
+          try {
+            const resp = await sendToBackground<AiFillResponse>({
+              type: "AI_FILL",
+              fields: reaskFields,
+              jobContext: extractJobContext(),
+            });
+            if (resp?.ok) {
+              const affected = lastFields.filter((f) => reaskFields.some((r) => r.id === f.id));
+              cacheAnswers(affected, resp.answers); // overwrite the unconstrained answers
+              const plan = planAiFill(affected, resp.answers);
+              drafts.push(...plan.drafts);
+              reaskFill = await fillItems(plan.simpleTargets, true);
+            }
+          } catch {
+            // Backend unreachable — the manual-select outcomes stand.
+          }
+        }
+      }
+
       const { ok, fail, total } = tallyOutcomes(
         localFill.reports,
         aiFill.reports,
         fallbackFill.reports,
+        reaskFill.reports,
         localFill.outcomes,
         aiFill.outcomes,
-        fallbackFill.outcomes
+        fallbackFill.outcomes,
+        reaskFill.outcomes
       );
       return { ok, fail, total, drafts };
     },

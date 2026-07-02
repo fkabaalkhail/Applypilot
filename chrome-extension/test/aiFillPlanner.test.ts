@@ -164,3 +164,33 @@ describe("planFillRoute", () => {
     expect(r.backendFields).toEqual([]);
   });
 });
+
+import { planReaskFields, type ReaskCandidate } from "../src/content/aiFillPlanner";
+
+describe("planReaskFields", () => {
+  const base = {
+    confidence: 0.9, controlType: "combobox" as const, required: true,
+    proposedValue: null, fillable: true, sensitive: false,
+  };
+
+  it("builds select-typed AI fields carrying the harvested options", () => {
+    const fields = [{ ...base, id: "f1", category: "unknown" as const, label: "Citizenship" }];
+    const out = planReaskFields(fields, [{ fieldId: "f1", options: ["Canadian", "American"] }]);
+    expect(out).toEqual([
+      { id: "f1", label: "Citizenship", type: "select", options: ["Canadian", "American"], required: true },
+    ]);
+  });
+
+  it("skips sensitive fields and empty option lists", () => {
+    const fields = [
+      { ...base, id: "s1", category: "eeoGender" as const, label: "Gender", sensitive: true },
+      { ...base, id: "f2", category: "unknown" as const, label: "State" },
+    ];
+    const out = planReaskFields(fields, [
+      { fieldId: "s1", options: ["Male", "Female"] },
+      { fieldId: "f2", options: [] },
+      { fieldId: "missing", options: ["X"] },
+    ]);
+    expect(out).toEqual([]);
+  });
+});
