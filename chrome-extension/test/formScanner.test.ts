@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { scanPage } from "../src/content/formScanner";
+import { stubLayout } from "./helpers/layout";
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -81,5 +82,25 @@ describe("driver tagging", () => {
     const field = fields.find((f) => f.controlType === "combobox");
     const control = field ? registry.get(field.id) : undefined;
     expect(control?.driver).toBeUndefined();
+  });
+});
+
+describe("scanPage — malformed profile robustness", () => {
+  // Plain <input>s are invisible under jsdom (getClientRects() is empty), so
+  // without this the scanner would filter them out and never call the
+  // resolver — defeating the point of this regression test. See helpers/layout.ts.
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+
+  it("does not throw when the profile is missing education/experience/skills arrays", () => {
+    document.body.innerHTML = `
+      <label for="s">School</label><input id="s" name="education[0][school]" />
+      <label for="c">Company</label><input id="c" name="company" />
+      <label for="n">Full name</label><input id="n" name="name" />`;
+    const malformed = { firstName: "A", email: "a@b.com" } as unknown as import("../src/shared/types").UserApplicationProfile;
+    expect(() => scanPage(malformed, false)).not.toThrow();
   });
 });

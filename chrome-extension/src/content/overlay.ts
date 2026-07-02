@@ -1614,11 +1614,11 @@ function renderInfoForm(): void {
       `;
       break;
     case "education":
-      if (p.education.length === 0) {
+      if ((p.education ?? []).length === 0) {
         form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No education entries yet.</div>';
       } else {
         let html = "";
-        for (const e of p.education) {
+        for (const e of p.education ?? []) {
           html += `
             <div class="ap-form-row"><label>School</label><input value="${esc(e.school)}" readonly /></div>
             <div class="ap-form-grid">
@@ -1632,11 +1632,11 @@ function renderInfoForm(): void {
       }
       break;
     case "experience":
-      if (p.experience.length === 0) {
+      if ((p.experience ?? []).length === 0) {
         form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No work experience entries yet.</div>';
       } else {
         let html = "";
-        for (const e of p.experience) {
+        for (const e of p.experience ?? []) {
           html += `
             <div class="ap-form-grid">
               <div class="ap-form-row"><label>Company</label><input value="${esc(e.company)}" readonly /></div>
@@ -1653,10 +1653,10 @@ function renderInfoForm(): void {
       }
       break;
     case "skill":
-      if (p.skills.length === 0) {
+      if ((p.skills ?? []).length === 0) {
         form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No skills on file yet.</div>';
       } else {
-        form.innerHTML = `<div class="ap-form-row"><label>Skills</label><input value="${esc(p.skills.join(", "))}" readonly /></div>`;
+        form.innerHTML = `<div class="ap-form-row"><label>Skills</label><input value="${esc((p.skills ?? []).join(", "))}" readonly /></div>`;
       }
       break;
     case "preference":
