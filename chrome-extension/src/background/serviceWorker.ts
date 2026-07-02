@@ -17,6 +17,7 @@ import { saveAnswer } from "../api/answers";
 import { renderResume, tailorResume } from "../api/tailorResume";
 import { generateCoverLetter, renderCoverLetter } from "../api/coverLetter";
 import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
+import { getFlowState, setFlowState, watchTabRemoval } from "./flowState";
 import type {
   AiFillResponse,
   BackgroundRequest,
@@ -55,6 +56,9 @@ const SYNC_ALARM = "tailrd-sync";
 function ensureSyncAlarm(): void {
   chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 5 });
 }
+
+// Drop a tab's flow state when the tab closes (session-scoped cleanup).
+watchTabRemoval();
 
 chrome.runtime.onInstalled.addListener(() => {
   // getConfig() merges defaults, so no seeding is required.
@@ -182,6 +186,22 @@ chrome.runtime.onMessage.addListener(
         .catch((err: unknown) => {
           sendResponse({ ok: false, error: err instanceof Error ? err.message : "Frame unreachable" });
         });
+      return true; // async response
+    }
+    if (message.type === "FLOW_STATE_GET") {
+      if (tabId === undefined) {
+        sendResponse({ ok: false });
+        return false;
+      }
+      void getFlowState(tabId).then((state) => sendResponse({ ok: true, state }));
+      return true; // async response
+    }
+    if (message.type === "FLOW_STATE_SET") {
+      if (tabId === undefined) {
+        sendResponse({ ok: false });
+        return false;
+      }
+      void setFlowState(tabId, message.state).then(() => sendResponse({ ok: true }));
       return true; // async response
     }
     if (message.type === "INSTALL_MAIN_WORLD_DRIVER") {

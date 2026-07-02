@@ -10,7 +10,12 @@ import type { FormOpName, FormOpResult } from "../shared/types";
 import type { OverlayCallbacks } from "./overlay";
 
 /** Void callbacks: the proxy fires them and does not wait for a value. */
-const VOID_OPS: ReadonlySet<FormOpName> = new Set<FormOpName>(["onRescan", "onProfileResolved"]);
+const VOID_OPS: ReadonlySet<FormOpName> = new Set<FormOpName>([
+  "onRescan",
+  "onProfileResolved",
+  "onFlowStop",
+  "onFlowResume",
+]);
 
 /** All OverlayCallbacks method names, in one place for the proxy factory. */
 const ALL_OPS: FormOpName[] = [
@@ -28,6 +33,8 @@ const ALL_OPS: FormOpName[] = [
   "onDownloadCoverLetter",
   "onCopyCoverLetter",
   "onProfileResolved",
+  "onFlowStop",
+  "onFlowResume",
 ];
 
 /** The top frame defers to a child host only when it has no form of its own. */
@@ -67,7 +74,7 @@ export async function dispatchFormOp(
   args: unknown[]
 ): Promise<FormOpResult> {
   try {
-    const fn = ops[op] as (...a: unknown[]) => unknown;
+    const fn = (ops as unknown as Record<FormOpName, (...a: unknown[]) => unknown>)[op];
     const value = await fn(...args);
     return { ok: true, value };
   } catch (err) {

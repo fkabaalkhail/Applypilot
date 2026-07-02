@@ -265,6 +265,54 @@ export interface AiDraft {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-page autofill flow
+// ---------------------------------------------------------------------------
+
+/** Why a flow is waiting on the user (all reasons auto-resume when cleared). */
+export type FlowPauseReason =
+  | "captcha"
+  | "drafts"
+  | "resume-upload"
+  | "validation"
+  | "account"
+  | "verification";
+
+export type FlowPhase = "filling" | "advancing" | "paused" | "done" | "stopped";
+
+/** Persisted per-tab so a flow survives real navigations (background-owned). */
+export interface FlowState {
+  active: boolean;
+  step: number;
+  startedAt: number;
+  /** fieldSignature() of the step we just advanced FROM (loop detection). */
+  lastSignature: string;
+}
+
+/** One progress beat for the panel's flow status line. */
+export interface FlowProgress {
+  phase: FlowPhase;
+  step: number;
+  filledOk: number;
+  filledFail: number;
+  pauseReason?: FlowPauseReason;
+  detail?: string;
+  /** Later-step AI drafts for the panel's review section. */
+  drafts?: AiDraft[];
+}
+
+/** Flow-owning frame → top-frame panel (via RELAY_TO_TOP). */
+export interface RemoteFlowProgress {
+  type: "REMOTE_FLOW_PROGRESS";
+  progress: FlowProgress;
+}
+
+/** Background reply for FLOW_STATE_GET. */
+export interface FlowStateResponse {
+  ok: boolean;
+  state?: FlowState | null;
+}
+
+// ---------------------------------------------------------------------------
 // Résumé retailoring (backend POST /api/tailor-resume, /api/render-resume)
 // ---------------------------------------------------------------------------
 
@@ -354,7 +402,8 @@ export type ContentRequest =
   | { type: "FILL_FIELDS"; instructions: FillInstruction[] }
   | FormOpRequest
   | RemoteFormAvailable
-  | RemoteFieldsUpdated;
+  | RemoteFieldsUpdated
+  | RemoteFlowProgress;
 
 export interface PingResponse {
   ok: true;
@@ -412,7 +461,9 @@ export type FormOpName =
   | "onInsertCoverLetter"
   | "onDownloadCoverLetter"
   | "onCopyCoverLetter"
-  | "onProfileResolved";
+  | "onProfileResolved"
+  | "onFlowStop"
+  | "onFlowResume";
 
 /** One overlay operation, marshaled for execution in the form-owning frame. */
 export interface FormOpRequest {
@@ -460,7 +511,7 @@ export interface RelayFormOp {
 /** Host → background → top frame (frameId 0): deliver a push payload. */
 export interface RelayToTop {
   type: "RELAY_TO_TOP";
-  payload: RemoteFormAvailable | RemoteFieldsUpdated;
+  payload: RemoteFormAvailable | RemoteFieldsUpdated | RemoteFlowProgress;
 }
 
 /** Isolated-world client → background: inject the MAIN-world driver bundle
@@ -500,6 +551,8 @@ export type BackgroundRequest =
       baseText?: string | null;
     }
   | { type: "RENDER_COVER_LETTER"; text: string; filename?: string }
+  | { type: "FLOW_STATE_GET" }
+  | { type: "FLOW_STATE_SET"; state: FlowState | null }
   | FormHostAnnounce
   | RelayFormOp
   | RelayToTop
