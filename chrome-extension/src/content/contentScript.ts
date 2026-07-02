@@ -48,7 +48,9 @@ import { LONG_TEXT } from "./fieldMatcher";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext } from "./jobContext";
-import { aiFillCandidates, planAiFill, tallyOutcomes, toAiFillField } from "./aiFillPlanner";
+import { aiFillCandidates, planAiFill, planFillRoute, tallyOutcomes, toAiFillField, type PlannedAnswer } from "./aiFillPlanner";
+import { splitByCache, cacheAnswers } from "./answerCache";
+import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
 import { fillAriaCombobox } from "./comboboxEngine";
 import { driveField } from "./mainWorldClient";
 import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
@@ -241,6 +243,44 @@ function initialize(): void {
   /** Whether a tracked field is filled via the MAIN-world driver (react-select/Workday). */
   const isDriverField = (fieldId: string): boolean => Boolean(registry.get(fieldId)?.driver);
 
+  /** Dedupe DetectedFields by id (first wins). */
+  function dedupeById(fields: DetectedField[]): DetectedField[] {
+    const seen = new Set<string>();
+    const out: DetectedField[] = [];
+    for (const f of fields) {
+      if (!seen.has(f.id)) { seen.add(f.id); out.push(f); }
+    }
+    return out;
+  }
+
+  /**
+   * Fill a list of {fieldId,value} through the same path as onAutofill: the site
+   * adapter gets first refusal, then react-select/Workday drivers, custom ARIA
+   * dropdowns, and the reconciler for the rest. `merge` adds to the running
+   * reconciler state (a later pass); otherwise it starts a fresh run.
+   */
+  async function fillItems(
+    items: { fieldId: string; value: string }[],
+    merge: boolean
+  ): Promise<{ reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] }> {
+    if (items.length === 0) return { reports: [], outcomes: [] };
+    const { opOutcomes, remaining } = await runAdapterOperations(lastAdapter, items, (id) => registry.get(id));
+    const driverTargets = remaining.filter((it) => isDriverField(it.fieldId));
+    const comboTargets = remaining.filter((it) => !isDriverField(it.fieldId) && isComboboxField(it.fieldId));
+    const reconTargets = remaining.filter((it) => !isDriverField(it.fieldId) && !isComboboxField(it.fieldId));
+    const reports = reconTargets.length
+      ? merge
+        ? await getEngine().addTargets(reconTargets, registry)
+        : await getEngine().run(reconTargets, registry)
+      : [];
+    const outcomes = [
+      ...(comboTargets.length ? await fillComboboxTargets(comboTargets) : []),
+      ...(driverTargets.length ? await fillDriverTargets(driverTargets) : []),
+      ...opOutcomes,
+    ];
+    return { reports, outcomes };
+  }
+
   const overlayCallbacks: OverlayCallbacks = {
     onAutofill: async (ids: string[]) => {
       const wanted = new Set(ids);
@@ -248,67 +288,60 @@ function initialize(): void {
         (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
       );
 
-      // Adapter pass — the site adapter gets first refusal on each field's fill.
-      const selectedItems = selected.map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
-      const { opOutcomes, remaining } = await runAdapterOperations(lastAdapter, selectedItems, (id) => registry.get(id));
+      // Phase A — deterministic profile fields fill instantly (local fast-path).
+      const route = planFillRoute(selected, AUTOFILL_CONFIDENCE_THRESHOLD);
+      const localFill = await fillItems(route.localTargets, false);
 
-      // Phase 1a — deterministic local fill via the reconciler (text/select/checkbox/radio).
-      const driverTargets = remaining.filter((it) => isDriverField(it.fieldId));
-      const targets = remaining.filter(
-        (it) => !isDriverField(it.fieldId) && registry.get(it.fieldId)?.controlType !== "combobox"
-      );
-      const localReports = await getEngine().run(targets, registry);
-
-      // Phase 1b — custom ARIA dropdowns + react-select/Workday driver, plus adapter ops.
-      const comboOutcomes = [
-        ...(await fillComboboxTargets(
-          remaining.filter((it) => !isDriverField(it.fieldId) && registry.get(it.fieldId)?.controlType === "combobox")
-        )),
-        ...(await fillDriverTargets(driverTargets)),
-        ...opOutcomes,
-      ];
-
-      // Phase 2 — AI fill for fields the profile couldn't answer (best-effort).
-      const candidates = aiFillCandidates(lastFields);
+      // Phase B — judgment fields answered by the backend (primary), deduped by the
+      // session cache; also the eligible EMPTY fields (today's AI candidates). The
+      // local proposedValue is the fallback so a judgment field never regresses when
+      // the backend is unavailable.
+      const backendFields = dedupeById([...route.backendFields, ...aiFillCandidates(lastFields)]);
       const drafts: AiDraft[] = [];
-      let aiReports: FieldReport[] = [];
-      let aiComboOutcomes: { fieldId: string; ok: boolean }[] = [];
-      if (candidates.length > 0) {
+      let aiFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] } = { reports: [], outcomes: [] };
+      let fallbackFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] } = { reports: [], outcomes: [] };
+      if (backendFields.length > 0) {
+        const { hits, misses } = splitByCache(backendFields);
+        let answers: PlannedAnswer[] = hits;
         try {
-          const resp = await sendToBackground<AiFillResponse>({
-            type: "AI_FILL",
-            fields: candidates.map(toAiFillField),
-            jobContext: extractJobContext(),
-          });
-          if (resp?.ok) {
-            const plan = planAiFill(candidates, resp.answers);
-            drafts.push(...plan.drafts);
-            // Silent answers: custom dropdowns go through the listbox engine
-            // (writeControl can't script them); everything else via the reconciler.
-            const { opOutcomes: aiOpOutcomes, remaining: aiRemaining } =
-              await runAdapterOperations(lastAdapter, plan.simpleTargets, (id) => registry.get(id));
-            const aiDriver = aiRemaining.filter((t) => isDriverField(t.fieldId));
-            const aiCombo = aiRemaining.filter(
-              (t) => !isDriverField(t.fieldId) && isComboboxField(t.fieldId)
-            );
-            const aiSimple = aiRemaining.filter(
-              (t) => !isDriverField(t.fieldId) && !isComboboxField(t.fieldId)
-            );
-            if (aiSimple.length > 0) {
-              aiReports = await getEngine().addTargets(aiSimple, registry);
+          if (misses.length > 0) {
+            const resp = await sendToBackground<AiFillResponse>({
+              type: "AI_FILL",
+              fields: misses.map(toAiFillField),
+              jobContext: extractJobContext(),
+            });
+            if (resp?.ok) {
+              cacheAnswers(misses, resp.answers);
+              answers = [...hits, ...resp.answers];
             }
-            aiComboOutcomes = [
-              ...aiOpOutcomes,
-              ...(aiCombo.length > 0 ? await fillComboboxTargets(aiCombo) : []),
-              ...(aiDriver.length > 0 ? await fillDriverTargets(aiDriver) : []),
-            ];
           }
         } catch {
-          // AI fill is additive — the local pass already happened. Swallow.
+          // Backend unavailable — the local fallback below still fills judgment fields.
         }
+        const plan = planAiFill(backendFields, answers);
+        drafts.push(...plan.drafts);
+        aiFill = await fillItems(plan.simpleTargets, true);
+
+        // Local fallback: judgment fields that had a local value but weren't answered
+        // (or drafted) by the backend still fill from proposedValue — no regression.
+        const answered = new Set<string>([
+          ...plan.simpleTargets.map((t) => t.fieldId),
+          ...plan.drafts.map((d) => d.fieldId),
+        ]);
+        const fallbackTargets = route.backendFields
+          .filter((f) => !answered.has(f.id) && f.proposedValue !== null)
+          .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
+        fallbackFill = await fillItems(fallbackTargets, true);
       }
 
-      const { ok, fail, total } = tallyOutcomes(localReports, aiReports, comboOutcomes, aiComboOutcomes);
+      const { ok, fail, total } = tallyOutcomes(
+        localFill.reports,
+        aiFill.reports,
+        fallbackFill.reports,
+        localFill.outcomes,
+        aiFill.outcomes,
+        fallbackFill.outcomes
+      );
       return { ok, fail, total, drafts };
     },
     onInsertAnswer: async (fieldId: string, value: string) => {
