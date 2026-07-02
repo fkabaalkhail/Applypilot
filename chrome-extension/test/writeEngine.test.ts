@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { writeControl, verifyControl } from "../src/content/writeEngine";
+import { writeControl, verifyControl, matchOption } from "../src/content/writeEngine";
 import type { RuntimeControl } from "../src/content/formScanner";
 
 function mount(html: string): HTMLElement {
@@ -242,5 +242,28 @@ describe("writeControl — never scrolls the page", () => {
     doc.execCommand = () => false;
     writeControl({ id: "ce-1", controlType: "contenteditable", el }, "hello");
     expect(opts).toEqual({ preventScroll: true });
+  });
+});
+
+describe("matchOption — shared-prefix tier", () => {
+  const id = (s: string): string => s;
+
+  it('matches "Canada" to "Canadian" (morphological near-miss)', () => {
+    expect(matchOption(["American", "Canadian", "Other"], id, id, "Canada")).toBe("Canadian");
+  });
+
+  it('matches "Canadien" (FR) to "Canadian"', () => {
+    expect(matchOption(["American", "Canadian"], id, id, "Canadien")).toBe("Canadian");
+  });
+
+  it("ranks by overlap so United States beats United Kingdom for a US answer", () => {
+    expect(
+      matchOption(["United Kingdom", "United States"], id, id, "United States of America")
+    ).toBe("United States");
+  });
+
+  it("does not match on short shared prefixes", () => {
+    // "cat" vs "category": shared prefix 3 < 5 — no match.
+    expect(matchOption(["category"], id, id, "cat")).toBeNull();
   });
 });

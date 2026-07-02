@@ -222,8 +222,20 @@ export function matchOption<T>(
   for (const item of items) {
     const text = normalize(getText(item));
     if (!text) continue;
-    if (text.startsWith(t) || t.startsWith(text)) return item;
-    if (text.includes(t) || t.includes(text)) return item;
+    const tWords = t.split(" ");
+    const textWords = text.split(" ");
+
+    // For single-word targets, require word-boundary match (not substring of another word).
+    // "No" matches "No, I do not require sponsorship" because "no" is a complete word.
+    // "cat" does NOT match "category" because "cat" is just a prefix, not a word.
+    if (tWords.length === 1) {
+      if (textWords[0] === t) return item; // target is first word of option
+      if (textWords.includes(t)) return item; // target is a word in option
+    } else {
+      // Multi-word targets: allow substring matching
+      if (text.startsWith(t) || t.startsWith(text)) return item;
+      if (text.includes(t) || t.includes(text)) return item;
+    }
   }
 
   // Bucketed numeric options ("2-3 years", "$90,000-$110,000", "6+ years") all
@@ -241,18 +253,31 @@ export function matchOption<T>(
     }
   }
 
-  const targetTokens = new Set(t.split(" ").filter((w) => w.length > 2));
+  const targetTokens = t.split(" ").filter((w) => w.length > 2);
+  const targetSet = new Set(targetTokens);
   let best: { item: T; score: number } | null = null;
   for (const item of items) {
     const tokens = normalize(getText(item))
       .split(" ")
       .filter((w) => w.length > 2);
     if (tokens.length === 0) continue;
-    const overlap = tokens.filter((w) => targetTokens.has(w)).length;
+    // A token overlaps on equality OR a >=5-char shared prefix ("canada" ↔
+    // "canadian") — AI answers often use a morphological variant of the option.
+    const overlap = tokens.filter(
+      (w) => targetSet.has(w) || targetTokens.some((tw) => sharedPrefixLen(w, tw) >= 5)
+    ).length;
     const score = overlap / tokens.length;
     if (overlap > 0 && (!best || score > best.score)) best = { item, score };
   }
   return best ? best.item : null;
+}
+
+/** Length of the common leading substring of two tokens. */
+function sharedPrefixLen(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  return i;
 }
 
 /** The first number (comma thousands-separators tolerated) mentioned in text, or null. */
