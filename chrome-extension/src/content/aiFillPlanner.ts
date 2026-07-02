@@ -6,7 +6,7 @@
  * Pure functions only — no DOM, no network — so the orchestration in
  * contentScript stays thin and this logic is fully unit-tested.
  */
-import type { AiDraft, AiFillField, DetectedField } from "../shared/types";
+import type { AiDraft, AiFillField, DetectedField, FieldCategory } from "../shared/types";
 
 /** Labels that signal a free-text answer we should draft rather than guess inline. */
 const LONGFORM_LABEL =
@@ -137,4 +137,39 @@ export function tallyOutcomes(
   for (const group of groups) for (const o of group) status.set(o.fieldId, o.ok);
   const ok = [...status.values()].filter(Boolean).length;
   return { ok, fail: status.size - ok, total: status.size };
+}
+
+/** Profile-lookup categories answered locally when confident — instant, offline, free. */
+export const LOCAL_FAST_PATH: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
+  "firstName", "lastName", "fullName", "email", "phone",
+  "linkedin", "github", "portfolio", "location", "currentCompany", "currentTitle",
+]);
+
+export interface FillRoute {
+  /** Deterministic fields to fill immediately from proposedValue. */
+  localTargets: { fieldId: string; value: string }[];
+  /** Judgment fields to route to the backend (proposedValue is the fallback). */
+  backendFields: DetectedField[];
+}
+
+/**
+ * Split the user-selected (already `fillable` + `proposedValue!=null`) fields into
+ * the deterministic local fast-path vs the backend-primary judgment fields. EEO/
+ * sensitive fields are never AI-eligible, so they stay local (never transmitted).
+ */
+export function planFillRoute(selected: DetectedField[], threshold: number): FillRoute {
+  const localTargets: { fieldId: string; value: string }[] = [];
+  const backendFields: DetectedField[] = [];
+  for (const f of selected) {
+    const deterministic =
+      LOCAL_FAST_PATH.has(f.category) && f.confidence >= threshold && f.proposedValue !== null;
+    if (deterministic) {
+      localTargets.push({ fieldId: f.id, value: f.proposedValue as string });
+    } else if (isAiCandidate(f)) {
+      backendFields.push(f);
+    } else if (f.proposedValue !== null) {
+      localTargets.push({ fieldId: f.id, value: f.proposedValue });
+    }
+  }
+  return { localTargets, backendFields };
 }

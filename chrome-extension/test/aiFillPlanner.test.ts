@@ -6,6 +6,7 @@ import {
   toAiFillField,
   planAiFill,
   tallyOutcomes,
+  planFillRoute,
 } from "../src/content/aiFillPlanner";
 import type { DetectedField } from "../src/shared/types";
 
@@ -125,5 +126,36 @@ describe("tallyOutcomes", () => {
     const local = [{ fieldId: "a", ok: true }, { fieldId: "b", ok: false }];
     const ai = [{ fieldId: "b", ok: true }, { fieldId: "c", ok: true }];
     expect(tallyOutcomes(local, ai)).toEqual({ ok: 3, fail: 0, total: 3 });
+  });
+});
+
+function pfField(over: Partial<DetectedField>): DetectedField {
+  return {
+    id: "f", category: "unknown", confidence: 1, label: "", controlType: "text",
+    required: false, proposedValue: "v", fillable: true, sensitive: false,
+    ...over,
+  } as DetectedField;
+}
+
+describe("planFillRoute", () => {
+  it("routes a deterministic high-confidence profile field to localTargets", () => {
+    const r = planFillRoute([pfField({ id: "a", category: "email", confidence: 0.9, proposedValue: "me@x.com" })], 0.7);
+    expect(r.localTargets).toEqual([{ fieldId: "a", value: "me@x.com" }]);
+    expect(r.backendFields).toEqual([]);
+  });
+  it("routes a deterministic category with LOW confidence to the backend", () => {
+    const r = planFillRoute([pfField({ id: "a", category: "email", confidence: 0.5, controlType: "select", options: ["x"], proposedValue: "x" })], 0.7);
+    expect(r.backendFields.map((f) => f.id)).toEqual(["a"]);
+    expect(r.localTargets).toEqual([]);
+  });
+  it("routes a judgment field (workAuthorization) to the backend even with a local value", () => {
+    const r = planFillRoute([pfField({ id: "a", category: "workAuthorization", confidence: 0.9, controlType: "radioGroup", proposedValue: "Yes" })], 0.7);
+    expect(r.backendFields.map((f) => f.id)).toEqual(["a"]);
+    expect(r.localTargets).toEqual([]);
+  });
+  it("keeps a sensitive (EEO) field local and never routes it to the backend", () => {
+    const r = planFillRoute([pfField({ id: "a", category: "eeoGender", confidence: 0.9, controlType: "select", options: ["Female"], proposedValue: "Female", sensitive: true })], 0.7);
+    expect(r.localTargets).toEqual([{ fieldId: "a", value: "Female" }]);
+    expect(r.backendFields).toEqual([]);
   });
 });
