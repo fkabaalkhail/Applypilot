@@ -1398,7 +1398,7 @@ function renderChecklist(): void {
   const host = refs.checklist;
   const fillEEO = overlayState.config?.fillEEO ?? false;
   const fields = overlayState.fields.filter(
-    (f) => (f.fillable || f.category !== "unknown") && !(f.sensitive && !fillEEO)
+    (f) => (f.fillable || f.category !== "unknown") && f.category !== "accountPassword" && !(f.sensitive && !fillEEO)
   );
   if (fields.length === 0) {
     host.style.display = "none";

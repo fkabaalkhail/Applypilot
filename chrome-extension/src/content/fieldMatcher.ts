@@ -505,6 +505,9 @@ export function resolveProfileValue(
     case "eeoOther":
       return null;
 
+    // Account signup password — never resolved from the profile; it is written
+    // only by the account sub-flow, never generically.
+    case "accountPassword":
     case "unknown":
       return null;
   }

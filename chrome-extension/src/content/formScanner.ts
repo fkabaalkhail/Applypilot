@@ -70,14 +70,15 @@ const CANDIDATE_SELECTOR = [
   '[role="radiogroup"]',
 ].join(", ");
 
-/** Input types that are never application fields. */
+/** Input types that are never application fields. `password` is intentionally
+ *  NOT here — it is surfaced as an `accountPassword` field, filled only by the
+ *  account sub-flow (see controlTypeOf + scanPage below), never generically. */
 const SKIPPED_INPUT_TYPES = new Set([
   "hidden",
   "submit",
   "button",
   "reset",
   "image",
-  "password", // never touch passwords
   "search",
   "range",
   "color",
@@ -106,6 +107,7 @@ function controlTypeOf(el: HTMLElement): ControlType | null {
   // generic element fallbacks so it is driven as a choice control, not skipped.
   if (el.getAttribute("role") === "radiogroup") return "ariaRadioGroup";
   if (el instanceof HTMLInputElement) {
+    if (el.type === "password") return "password"; // account sub-flow only
     if (SKIPPED_INPUT_TYPES.has(el.type)) return null;
     if (el.type === "checkbox") return "checkbox";
     if (el.type === "radio") return "radioGroup"; // grouped later
@@ -276,6 +278,28 @@ export function scanPage(
 
     const id = ensureFieldId(el);
     const signals = collectSignals(el);
+
+    // Passwords: registry-tracked for the account sub-flow, but never listed
+    // as a generic field, never fillable generically, never sent to the AI —
+    // and the value is never echoed into the serializable field.
+    if (controlType === "password") {
+      registry.set(id, { id, controlType, el });
+      fields.push({
+        id,
+        category: "accountPassword",
+        confidence: 1,
+        label: bestDisplayLabel(signals),
+        controlType,
+        required: isRequiredField(el, signals),
+        proposedValue: null,
+        fillable: false,
+        sensitive: false,
+        note: "Handled by the account sign-up flow.",
+        currentValue: (el as HTMLInputElement).value ? "filled" : undefined,
+      });
+      continue;
+    }
+
     const groupIndex = detectGroupIndex(signals);
     const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el, signals, controlType });
 

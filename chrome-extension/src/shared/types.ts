@@ -161,6 +161,9 @@ export type FieldCategory =
   | "eeoVeteran"
   | "eeoDisability"
   | "eeoOther"
+  // Account signup password — first-class but locked down: scanned so the
+  // account sub-flow can fill it, but never generically fillable or AI-eligible.
+  | "accountPassword"
   | "unknown";
 
 export type ControlType =
@@ -174,7 +177,10 @@ export type ControlType =
   | "contenteditable"
   | "combobox"
   | "ariaRadioGroup"
-  | "customDropdown";
+  | "customDropdown"
+  // Account signup password — never generically fillable or AI-eligible;
+  // written/verified only by the account sub-flow.
+  | "password";
 
 /** The control shape the resolver + adapters read when resolving/overriding an answer. */
 export interface ResolveControl {

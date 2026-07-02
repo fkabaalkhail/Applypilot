@@ -72,5 +72,6 @@ export const CATEGORY_LABELS: Record<string, string> = {
   eeoVeteran: "EEO — Veteran status",
   eeoDisability: "EEO — Disability",
   eeoOther: "EEO — Demographic",
+  accountPassword: "Account password",
   unknown: "Unrecognized",
 };

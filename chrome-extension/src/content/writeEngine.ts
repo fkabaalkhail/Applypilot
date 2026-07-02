@@ -35,6 +35,8 @@ function isStale(el: HTMLElement | undefined): boolean {
 
 export function writeControl(control: RuntimeControl, value: string): WriteResult {
   switch (control.controlType) {
+    case "password":
+      return writeTextLike(control.el as HTMLInputElement, value);
     case "text":
     case "textarea":
       return writeTextLike(control.el as HTMLInputElement | HTMLTextAreaElement, value);
@@ -130,6 +132,11 @@ function writeContentEditable(el: HTMLElement, value: string): WriteResult {
 
 export function verifyControl(control: RuntimeControl, value: string): boolean {
   switch (control.controlType) {
+    case "password": {
+      const el = control.el as HTMLInputElement | undefined;
+      if (isStale(el)) return false;
+      return el!.value === value; // exact — never fuzzy-match a password
+    }
     case "text":
     case "textarea": {
       const el = control.el as HTMLInputElement | HTMLTextAreaElement | undefined;
