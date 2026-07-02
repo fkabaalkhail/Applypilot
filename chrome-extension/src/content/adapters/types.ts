@@ -17,7 +17,7 @@ export interface FieldContext {
 export interface AnswerContext {
   category: FieldCategory;
   profile: UserApplicationProfile; // only supplied when a profile is loaded
-  control: { controlType: ControlType; options?: string[] };
+  control: { controlType: ControlType; options?: string[]; groupIndex?: number | null };
   fillEEO: boolean;
   el: HTMLElement;
 }

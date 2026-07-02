@@ -430,7 +430,7 @@ export function resolveProfileValue(
 ): string | null {
   const orNull = (v: string | undefined): string | null => (v && v.trim() ? v : null);
   const gi = control.groupIndex ?? null;
-  const edu = profile.education[gi ?? 0];
+  const edu = profile.education?.[gi ?? 0];
 
   switch (category) {
     case "firstName":
@@ -452,9 +452,9 @@ export function resolveProfileValue(
     case "portfolio":
       return orNull(profile.portfolio);
     case "currentCompany":
-      return orNull(gi !== null ? profile.experience[gi]?.company : profile.currentCompany);
+      return orNull(gi !== null ? profile.experience?.[gi]?.company : profile.currentCompany);
     case "currentTitle":
-      return orNull(gi !== null ? profile.experience[gi]?.title : profile.currentTitle);
+      return orNull(gi !== null ? profile.experience?.[gi]?.title : profile.currentTitle);
     case "salary":
       return orNull(profile.salaryExpectation);
     case "school":

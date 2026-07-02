@@ -29,7 +29,7 @@ export function resolveAnswerWithAdapter(
   adapter: SiteAdapter | null,
   category: FieldCategory,
   profile: UserApplicationProfile | null,
-  control: { controlType: ControlType; options?: string[] },
+  control: { controlType: ControlType; options?: string[]; groupIndex?: number | null },
   fillEEO: boolean,
   el: HTMLElement
 ): string | null {

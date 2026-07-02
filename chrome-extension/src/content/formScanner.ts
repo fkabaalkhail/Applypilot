@@ -26,6 +26,7 @@ import { isConsentField } from "./consent";
 import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
 import { getAdapter } from "./adapters/registry";
+import { detectGroupIndex } from "./groupIndex";
 import type { SiteAdapter } from "./adapters/types";
 import { detectFillDriver } from "./driverDetect";
 import type { FillDriver } from "./mainWorldBridge";
@@ -267,6 +268,7 @@ export function scanPage(
 
     const id = ensureFieldId(el);
     const signals = collectSignals(el);
+    const groupIndex = detectGroupIndex(signals);
     const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el, signals, controlType });
 
     const options =
@@ -285,7 +287,7 @@ export function scanPage(
     const control: RuntimeControl = { id, controlType, el, driver };
     registry.set(id, control);
 
-    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType, options }, fillEEO, el);
+    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType, options, groupIndex }, fillEEO, el);
 
     fields.push({
       id,
@@ -310,12 +312,13 @@ export function scanPage(
     const first = radios[0];
     const id = ensureFieldId(first);
     const signals = groupSignals(radios, first.closest('fieldset, [role="radiogroup"]'));
+    const groupIndex = detectGroupIndex(signals);
     const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "radioGroup" });
     const options = radios.map(radioOptionLabel).filter(Boolean).slice(0, 30);
 
     registry.set(id, { id, controlType: "radioGroup", radios });
 
-    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType: "radioGroup", options }, fillEEO, first);
+    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType: "radioGroup", options, groupIndex }, fillEEO, first);
 
     const checked = radios.find((r) => r.checked);
     fields.push({
@@ -340,12 +343,13 @@ export function scanPage(
     const first = checkboxes[0];
     const id = ensureFieldId(first);
     const signals = groupSignals(checkboxes, container);
+    const groupIndex = detectGroupIndex(signals);
     const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "checkboxGroup" });
     const options = checkboxes.map(radioOptionLabel).filter(Boolean).slice(0, 30);
 
     registry.set(id, { id, controlType: "checkboxGroup", checkboxes });
 
-    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType: "checkboxGroup", options }, fillEEO, first);
+    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType: "checkboxGroup", options, groupIndex }, fillEEO, first);
 
     const checkedLabels = checkboxes.filter((c) => c.checked).map(radioOptionLabel).filter(Boolean);
     fields.push({

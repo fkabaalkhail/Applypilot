@@ -46,3 +46,22 @@ describe("scanPage adapter integration", () => {
     expect(withNull.adapter).toBeNull();
   });
 });
+
+describe("scanPage — repeating education rows (index-aware)", () => {
+  it("fills each education row from the matching profile entry", () => {
+    // If stubLayout() isn't already applied in a shared beforeEach, call it here first.
+    document.body.innerHTML = `
+      <label for="s0">School</label><input id="s0" name="education[0][school]" />
+      <label for="s1">School</label><input id="s1" name="education[1][school]" />`;
+    const profile = {
+      education: [
+        { school: "MIT", degree: "BS", graduationYear: "2018" },
+        { school: "Stanford", degree: "MS", graduationYear: "2020" },
+      ],
+    } as unknown as import("../src/shared/types").UserApplicationProfile;
+    const { fields } = scanPage(profile, false, null);
+    const byName = (n: string) => fields.find((f) => document.querySelector(`[name="${n}"]`)?.getAttribute("data-ap-field") === f.id);
+    expect(byName("education[0][school]")?.proposedValue).toBe("MIT");
+    expect(byName("education[1][school]")?.proposedValue).toBe("Stanford");
+  });
+});
