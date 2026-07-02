@@ -268,8 +268,16 @@ def _match_option(answer: str, options: list[str]) -> str | None:
     for opt in options:
         if opt.lower().strip() == a:
             return opt
+    a_words = [w for w in re.split(r"[^a-z0-9]+", a) if w]
     for opt in options:
-        if opt.lower().strip() in a or a in opt.lower():
+        o = opt.lower().strip()
+        if len(a_words) <= 1:
+            # Single-word answers must match a whole word of the option —
+            # "cat" must never fuzzy-match "category" (mirrors the extension's
+            # matchOption in writeEngine.ts).
+            if a_words and a_words[0] in re.split(r"[^a-z0-9]+", o):
+                return opt
+        elif o in a or a in o:
             return opt
     # Bucketed numeric options ("2-3 years", "$90,000-$110,000") share no
     # literal substring with a conversational answer ("about 3 years") even
@@ -281,4 +289,30 @@ def _match_option(answer: str, options: list[str]) -> str | None:
             rng = _parse_range(opt)
             if rng and rng[0] <= target_num <= rng[1]:
                 return opt
+    # Morphological near-miss: a >=5-char shared token prefix ("canada" ↔
+    # "canadian"). Mirrors the extension's matchOption tier (writeEngine.ts).
+    answer_tokens = [w for w in re.split(r"[^a-z0-9]+", a) if len(w) > 2]
+    best: tuple[str, float] | None = None
+    for opt in options:
+        tokens = [w for w in re.split(r"[^a-z0-9]+", opt.lower()) if len(w) > 2]
+        if not tokens:
+            continue
+        overlap = sum(
+            1 for w in tokens
+            if any(_shared_prefix_len(w, t) >= 5 or w == t for t in answer_tokens)
+        )
+        if overlap:
+            score = overlap / len(tokens)
+            if best is None or score > best[1]:
+                best = (opt, score)
+    if best:
+        return best[0]
     return None
+
+
+def _shared_prefix_len(a: str, b: str) -> int:
+    n = min(len(a), len(b))
+    i = 0
+    while i < n and a[i] == b[i]:
+        i += 1
+    return i
