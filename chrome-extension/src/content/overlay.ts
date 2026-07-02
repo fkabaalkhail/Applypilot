@@ -49,7 +49,8 @@ export interface OverlayCallbacks {
   ) => Promise<{ ok: number; fail: number; total: number }>;
   /** Stop the running multi-page flow (panel Stop button). */
   onFlowStop: () => void;
-  onInsertAnswer: (fieldId: string, value: string) => Promise<{ ok: boolean; reason?: string }>;
+  /** Advance the running multi-page flow to the next page (panel Next page button). */
+  onFlowAdvance: () => void;
   onRescan: () => void;
   /** List the user's resumes for the picker / auto-upload. */
   onListResumes: () => Promise<ResumeSummary[]>;
@@ -128,6 +129,8 @@ export function formatFlowProgress(p: FlowProgress): string {
       return `${step} · next page…`;
     case "paused":
       return `${step} · paused — ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`;
+    case "ready":
+      return `${step} filled — review this page, then Next page`;
     case "done": {
       const steps = p.step + 1;
       const attention = p.filledFail > 0 ? `, ${p.filledFail} need attention` : "";
@@ -138,12 +141,16 @@ export function formatFlowProgress(p: FlowProgress): string {
   }
 }
 
-/** Render a flow beat: status line + Stop button. */
+/** Render a flow beat: status line + Stop button, plus the bottom Next page gate. */
 export function updateFlowProgress(p: FlowProgress): void {
   if (!refs) return;
-  const running = p.phase === "filling" || p.phase === "advancing" || p.phase === "paused";
+  const running =
+    p.phase === "filling" || p.phase === "advancing" || p.phase === "paused" || p.phase === "ready";
   refs.flow.style.display = running ? "flex" : "none";
   refs.flowText.textContent = formatFlowProgress(p);
+  // The Next page gate is pinned at the panel bottom and shows ONLY while the
+  // flow is parked at "ready"; every other beat hides it.
+  refs.flowNext.style.display = p.phase === "ready" ? "flex" : "none";
   if (p.phase === "done") showBanner(formatFlowProgress(p), "ok");
   if (p.phase === "stopped") showBanner(formatFlowProgress(p), "warn");
 }
@@ -667,6 +674,18 @@ const STYLES = `
 .ap-flow { display: flex; align-items: center; gap: 8px; margin: 6px 16px; font-size: 12px; }
 .ap-flow-text { flex: 1; }
 .ap-flow-stop { flex: 0 0 auto; }
+/* Next-page gate — pinned at the panel bottom, shown only in the "ready" phase. */
+.ap-flow-next-wrap {
+  display: flex; padding: 10px 16px; flex-shrink: 0;
+  border-top: 1px solid var(--stripe-hairline-soft);
+  background: var(--stripe-canvas-soft);
+}
+.ap-flow-next {
+  width: 100%; padding: 11px; border: none; border-radius: 9999px;
+  background: var(--stripe-primary); color: #fff;
+  font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+}
+.ap-flow-next:hover { background: var(--stripe-primary-press); }
 .ap-signins { margin: 6px 16px; font-size: 12px; }
 .ap-signins summary { cursor: pointer; color: var(--stripe-ink-secondary); font-weight: 600; padding: 4px 0; }
 .ap-signins-empty { color: var(--stripe-ink-mute); padding: 4px 0; }
@@ -776,6 +795,7 @@ interface Refs {
   flow: HTMLDivElement;
   flowText: HTMLSpanElement;
   flowStop: HTMLButtonElement;
+  flowNext: HTMLDivElement;
   signins: HTMLDetailsElement;
   signinsBody: HTMLDivElement;
   checklist: HTMLDivElement;
@@ -986,6 +1006,12 @@ function buildHTML(): string {
       <footer class="ap-footer">
         <button class="ap-footer-link" id="ap-btn-dashboard">Open Dashboard</button>
       </footer>
+
+      <!-- Next-page gate — pinned at the panel bottom, shown only while a
+           multi-page flow is parked at "ready" (see updateFlowProgress). -->
+      <div class="ap-flow-next-wrap" style="display:none">
+        <button class="ap-flow-next" id="ap-flow-next" type="button">Next page →</button>
+      </div>
     </div>
 
     <!-- Autofill Information MODAL (page-level, outside the side panel) -->
@@ -1050,6 +1076,7 @@ function collectRefs(root: HTMLDivElement): Refs {
     flow: q("#ap-flow"),
     flowText: q("#ap-flow-text"),
     flowStop: q("#ap-flow-stop"),
+    flowNext: q(".ap-flow-next-wrap"),
     signins: q("#ap-signins"),
     signinsBody: q("#ap-signins-body"),
     checklist: q("#ap-checklist"),
@@ -1097,8 +1124,18 @@ function wireEvents(root: HTMLDivElement): void {
   // Flow Stop button -> stop the running multi-page flow, hide the status line
   root.querySelector("#ap-flow-stop")!.addEventListener("click", () => {
     callbacks?.onFlowStop();
-    if (refs) refs.flow.style.display = "none";
+    if (refs) {
+      refs.flow.style.display = "none";
+      refs.flowNext.style.display = "none";
+    }
     showBanner("Autofill flow stopped.", "warn");
+  });
+
+  // Flow Next page button -> advance to the next page; hide the button now so
+  // it can't be double-clicked (the next "ready" beat re-shows it if needed).
+  root.querySelector("#ap-flow-next")!.addEventListener("click", () => {
+    if (refs) refs.flowNext.style.display = "none";
+    callbacks?.onFlowAdvance();
   });
 
   // Saved sign-ins -> render device-local credentials when the section opens.

@@ -65,7 +65,7 @@ import {
   updateFlowProgress,
   type OverlayCallbacks,
 } from "./overlay";
-import { runAdapterOperations, tryAdapterOperation, type AdapterFillResult, type SiteAdapter } from "./adapters";
+import { runAdapterOperations, type SiteAdapter } from "./adapters";
 import { FlowController, FLOW_TTL_MS, type FlowDeps, type FlowSnapshot, type StepTally } from "./flowController";
 import { clickAdvance, findAdvanceButton } from "./advance";
 import { hasUnsolvedCaptcha, isVerificationWall, resumeFieldNeedingFile, validationMessages } from "./flowChecks";
@@ -561,43 +561,10 @@ function initialize(): void {
       // live yet (a resume mid-await), so the pending resume cannot proceed.
       void sendToBackground<SimpleResponse>({ type: "FLOW_STATE_SET", state: null }).catch(() => {});
     },
-    onInsertAnswer: async (fieldId: string, value: string) => {
-      const control = registry.get(fieldId);
-      if (!control) return { ok: false, reason: "Field is no longer on the page — rescan." };
-      if (control.el) {
-        const op = tryAdapterOperation(lastAdapter, { control, value, el: control.el });
-        if (op) {
-          const r = await op.catch((): AdapterFillResult => ({ filled: false }));
-          return r.filled
-            ? { ok: true }
-            : { ok: false, reason: r.reason ?? "Couldn't fill that field automatically — please do it manually." };
-        }
-      }
-      // react-select / Workday fields are scripted in the MAIN world (writeControl
-      // can't reach them) — hand off to the driver before the combobox branch.
-      if (control.driver) {
-        const res = await driveField(fieldId, value, control.driver);
-        if (res.ok) return { ok: true };
-        const reason =
-          res.reason === "driver-timeout"
-            ? "Timed out waiting for the page — please select it manually."
-            : "Couldn't select that option automatically — choose it manually.";
-        return { ok: false, reason };
-      }
-      // Custom dropdowns can't be scripted by writeControl — open the listbox
-      // and click the option matching the (accepted) answer instead.
-      if (control.controlType === "combobox") {
-        if (!control.el) return { ok: false, reason: "Dropdown is no longer on the page — rescan." };
-        const res = await fillAriaCombobox(control.el, value);
-        return res.filled
-          ? { ok: true }
-          : { ok: false, reason: res.reason ?? "Couldn't select that option — choose it manually." };
-      }
-      const res = writeControl(control, value);
-      if (!res.written) return { ok: false, reason: res.reason };
-      return verifyControl(control, value)
-        ? { ok: true }
-        : { ok: false, reason: "Value did not stick — please check the field." };
+    onFlowAdvance: () => {
+      // User pressed "Next page" — release the flow's ready gate so it advances
+      // and auto-fills the next page (Task B). No-op when no flow is parked.
+      flowController?.notifyAdvanceRequested();
     },
     onRescan: () => {
       runScan();

@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  isLongform,
   isAiCandidate,
   aiFillCandidates,
   toAiFillField,
@@ -24,19 +23,6 @@ function field(over: Partial<DetectedField>): DetectedField {
     ...over,
   };
 }
-
-describe("isLongform", () => {
-  it("is true for textareas and contenteditable", () => {
-    expect(isLongform(field({ controlType: "textarea" }))).toBe(true);
-    expect(isLongform(field({ controlType: "contenteditable" }))).toBe(true);
-  });
-  it("is true for question-like labels on text inputs", () => {
-    expect(isLongform(field({ label: "Why do you want to work here?" }))).toBe(true);
-  });
-  it("is false for a short plain text field", () => {
-    expect(isLongform(field({ label: "Middle name" }))).toBe(false);
-  });
-});
 
 describe("isAiCandidate", () => {
   it("excludes sensitive (EEO) fields", () => {

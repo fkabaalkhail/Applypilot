@@ -9,6 +9,9 @@ describe("formatFlowProgress", () => {
       formatFlowProgress({ phase: "paused", step: 1, filledOk: 3, filledFail: 0, pauseReason: "captcha" })
     ).toBe("Step 2 · paused — solve the captcha to continue");
     expect(
+      formatFlowProgress({ phase: "ready", step: 1, filledOk: 3, filledFail: 0 })
+    ).toBe("Step 2 filled — review this page, then Next page");
+    expect(
       formatFlowProgress({ phase: "done", step: 3, filledOk: 9, filledFail: 1 })
     ).toBe("Done — 4 steps filled (9 ok, 1 need attention). Review and submit.");
     expect(

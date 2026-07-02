@@ -272,7 +272,7 @@ export type FlowPauseReason =
   | "account"
   | "verification";
 
-export type FlowPhase = "filling" | "advancing" | "paused" | "done" | "stopped";
+export type FlowPhase = "filling" | "advancing" | "paused" | "ready" | "done" | "stopped";
 
 /** Persisted per-tab so a flow survives real navigations (background-owned). */
 export interface FlowState {
@@ -442,7 +442,6 @@ export interface FieldsUpdatedEvent {
 /** Every OverlayCallbacks method name — the generic form-op surface. */
 export type FormOpName =
   | "onAutofill"
-  | "onInsertAnswer"
   | "onRescan"
   | "onListResumes"
   | "onUploadResume"
@@ -454,7 +453,8 @@ export type FormOpName =
   | "onDownloadCoverLetter"
   | "onCopyCoverLetter"
   | "onProfileResolved"
-  | "onFlowStop";
+  | "onFlowStop"
+  | "onFlowAdvance";
 
 /** One overlay operation, marshaled for execution in the form-owning frame. */
 export interface FormOpRequest {

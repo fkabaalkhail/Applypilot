@@ -30,16 +30,16 @@ describe("makeProxyCallbacks", () => {
   it("rejects a non-value op when the host reports failure", async () => {
     const send = vi.fn(async () => ({ ok: false, error: "frame gone" }));
     const cb = makeProxyCallbacks(send);
-    await expect(cb.onInsertAnswer("f-1", "x")).rejects.toThrow(/frame gone/);
+    await expect(cb.onInsertCoverLetter("x")).rejects.toThrow(/frame gone/);
   });
 });
 
 describe("dispatchFormOp", () => {
   it("invokes the named callback with the args and wraps the result", async () => {
-    const onInsertAnswer = vi.fn(async () => ({ ok: true }));
-    const ops = { onInsertAnswer } as unknown as OverlayCallbacks;
-    const res = await dispatchFormOp(ops, "onInsertAnswer", ["f-1", "hi"]);
-    expect(onInsertAnswer).toHaveBeenCalledWith("f-1", "hi");
+    const onInsertCoverLetter = vi.fn(async () => ({ ok: true }));
+    const ops = { onInsertCoverLetter } as unknown as OverlayCallbacks;
+    const res = await dispatchFormOp(ops, "onInsertCoverLetter", ["hi"]);
+    expect(onInsertCoverLetter).toHaveBeenCalledWith("hi");
     expect(res).toEqual({ ok: true, value: { ok: true } });
   });
 

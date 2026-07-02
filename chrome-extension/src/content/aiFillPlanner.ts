@@ -8,18 +8,9 @@
  */
 import type { AiFillField, DetectedField, FieldCategory } from "../shared/types";
 
-/** Labels that signal a free-text answer we should draft rather than guess inline. */
-const LONGFORM_LABEL =
-  /\b(why|describe|tell us|tell me|explain|cover letter|in your own words|what makes you|motivat\w*)\b/i;
-
 /** Labels that read like a question worth answering even on a plain text input. */
 const QUESTION_LABEL =
   /\?|\b(why|describe|tell us|explain|how many|years of|experience with|are you|do you|have you|salary|expected|notice period|available|authorized|sponsor|willing)\b/i;
-
-export function isLongform(field: DetectedField): boolean {
-  if (field.controlType === "textarea" || field.controlType === "contenteditable") return true;
-  return LONGFORM_LABEL.test(field.label);
-}
 
 /** Whether a field is eligible for AI fill at all (independent of its current value). */
 export function isAiCandidate(field: DetectedField): boolean {

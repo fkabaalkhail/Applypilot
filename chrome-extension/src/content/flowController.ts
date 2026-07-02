@@ -77,6 +77,8 @@ export class FlowController {
   private step = 0;
   private startedAt = 0;
   private lastTally = { ok: 0, fail: 0 };
+  /** Resolver for the "ready" gate while the flow awaits the user's Next page. */
+  private advanceResolver: ((advance: boolean) => void) | null = null;
 
   constructor(private deps: FlowDeps) {}
 
@@ -84,7 +86,21 @@ export class FlowController {
   stop(): void {
     if (this.stopRequested) return;
     this.stopRequested = true;
+    // Release a pending ready-gate so run() can unwind as stopped.
+    const resolve = this.advanceResolver;
+    this.advanceResolver = null;
+    resolve?.(false);
     void this.deps.setState(null);
+  }
+
+  /**
+   * User pressed "Next page" — release the ready gate so the flow advances to
+   * the next page. No-op when the flow is not currently parked at a gate.
+   */
+  notifyAdvanceRequested(): void {
+    const resolve = this.advanceResolver;
+    this.advanceResolver = null;
+    resolve?.(true);
   }
 
   /**
@@ -121,6 +137,14 @@ export class FlowController {
       const adv = this.deps.findAdvance(snap.scopeEl, account.extraAdvance);
       if (!adv) return this.finish("done");
       if (adv.kind === "terminal") return this.finish("done", "Ready to review and submit");
+
+      // Page filled — hand control back to the user. The flow parks here until
+      // the panel's "Next page" button calls notifyAdvanceRequested() (or Stop).
+      // A blocking condition (e.g. a captcha) may have re-appeared while the
+      // user reviewed, so re-check it once before clicking advance.
+      this.emit("ready");
+      if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
+      if (!(await this.waitWhileBlocked())) return this.finishStopped();
 
       const before = fieldSignature(snap.fields);
       state = { active: true, step: this.step + 1, startedAt: this.startedAt, lastSignature: before };
@@ -168,6 +192,14 @@ export class FlowController {
 
   private finishStopped(): Promise<void> {
     return this.finish("stopped", "Autofill flow stopped");
+  }
+
+  /** Park at the ready gate until notifyAdvanceRequested() (true) or stop() (false). */
+  private waitForAdvanceRequest(): Promise<boolean> {
+    if (this.stopRequested) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      this.advanceResolver = resolve;
+    });
   }
 
   /** Poll pauseReason until clear. False → stopped/expired. */
