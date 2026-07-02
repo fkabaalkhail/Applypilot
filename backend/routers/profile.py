@@ -46,12 +46,30 @@ class ExperienceEntry(BaseModel):
     description: str = ""
 
 
+class EeoOut(BaseModel):
+    """EEO / demographic self-identification. camelCase mirrors the extension's
+    ``EeoAnswers`` (chrome-extension/src/shared/types.ts). Only used by the
+    extension when its "Fill EEO fields" setting is on."""
+    gender: str = ""
+    race: str = ""
+    hispanicLatino: str = ""
+    veteranStatus: str = ""
+    disabilityStatus: str = ""
+
+
 class ApplicationProfileOut(BaseModel):
     firstName: str = ""
     lastName: str = ""
     email: str = ""
     phone: str = ""
     location: str = ""
+    # Structured mailing address. addressCity mirrors the ``city`` column that
+    # also backs ``location``; the rest come from their own columns (Task C1).
+    addressStreet: str = ""
+    addressCity: str = ""
+    addressState: str = ""
+    postalCode: str = ""
+    country: str = ""
     linkedin: str = ""
     github: str = ""
     portfolio: str = ""
@@ -63,11 +81,21 @@ class ApplicationProfileOut(BaseModel):
     experience: list[ExperienceEntry] = []
     skills: list[str] = []
     coverLetter: str = ""
+    eeo: EeoOut = EeoOut()
     # Sync + resume metadata for the extension.
     version: int = 1
     resumeId: int | None = None
     resumeFileName: str = ""
     hasResumeFile: bool = False
+
+
+class EeoIn(BaseModel):
+    """Editable EEO / demographic answers (all optional; omitted → untouched)."""
+    gender: str | None = None
+    race: str | None = None
+    hispanicLatino: str | None = None
+    veteranStatus: str | None = None
+    disabilityStatus: str | None = None
 
 
 class ApplicationProfileIn(BaseModel):
@@ -82,12 +110,20 @@ class ApplicationProfileIn(BaseModel):
     email: str | None = None
     phone: str | None = None
     location: str | None = None
+    # Structured mailing address (addressCity persists to the ``city`` column,
+    # same as ``location``; send one consistently).
+    addressStreet: str | None = None
+    addressCity: str | None = None
+    addressState: str | None = None
+    postalCode: str | None = None
+    country: str | None = None
     linkedin: str | None = None
     portfolio: str | None = None
     currentTitle: str | None = None
     workAuthorization: str | None = None
     requiresSponsorship: str | None = None
     salaryExpectation: str | None = None
+    eeo: EeoIn | None = None
 
 
 class ProfileVersionOut(BaseModel):
@@ -275,6 +311,13 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
             settings.location if settings else "",
             resume.location if resume else "",
         ),
+        addressStreet=_first_non_empty(settings.street_address if settings else ""),
+        # addressCity mirrors the ``city`` column (the structured counterpart to
+        # ``location``); the client falls back to location when this is blank.
+        addressCity=_first_non_empty(settings.city if settings else ""),
+        addressState=_first_non_empty(settings.address_state if settings else ""),
+        postalCode=_first_non_empty(settings.postal_code if settings else ""),
+        country=_first_non_empty(settings.country if settings else ""),
         linkedin=_first_non_empty(
             settings.linkedin_url if settings else "",
             resume.linkedin_url if resume else "",
@@ -292,6 +335,13 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
         experience=experience,
         skills=skills,
         coverLetter=(cover.text if cover else "") or "",
+        eeo=EeoOut(
+            gender=_first_non_empty(settings.eeo_gender if settings else ""),
+            race=_first_non_empty(settings.eeo_race if settings else ""),
+            hispanicLatino=_first_non_empty(settings.eeo_hispanic if settings else ""),
+            veteranStatus=_first_non_empty(settings.eeo_veteran if settings else ""),
+            disabilityStatus=_first_non_empty(settings.eeo_disability if settings else ""),
+        ),
         version=version,
         resumeId=resume.id if resume else None,
         resumeFileName=(resume.file_name if resume else "") or "",
@@ -340,11 +390,33 @@ def update_application_profile(
         "linkedin": "linkedin_url",
         "portfolio": "website",
         "currentTitle": "job_title",
+        # Structured address. addressCity shares the ``city`` column with
+        # ``location``; if both are sent, the later key here wins (they mean the
+        # same thing, so this is intentional).
+        "addressStreet": "street_address",
+        "addressCity": "city",
+        "addressState": "address_state",
+        "postalCode": "postal_code",
+        "country": "country",
     }
     for in_field, col in field_map.items():
         val = getattr(body, in_field)
         if val is not None:
             setattr(settings, col, val)
+
+    # EEO self-identification (nested object mirroring the output shape).
+    if body.eeo is not None:
+        eeo_map = {
+            "gender": "eeo_gender",
+            "race": "eeo_race",
+            "hispanicLatino": "eeo_hispanic",
+            "veteranStatus": "eeo_veteran",
+            "disabilityStatus": "eeo_disability",
+        }
+        for in_field, col in eeo_map.items():
+            val = getattr(body.eeo, in_field)
+            if val is not None:
+                setattr(settings, col, val)
 
     # Screening answers + salary live in the free-form prefilled_answers map.
     # Reassign (don't mutate in place) so SQLAlchemy detects the JSON change.

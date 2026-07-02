@@ -282,6 +282,22 @@ class UserSettings(Base):
     linkedin_url = Column(String, default="")
     website = Column(String, default="")
 
+    # Structured mailing address (autofill v2.1). ``city`` above is reused for
+    # addressCity; these cover the rest of a mailing address. All optional.
+    street_address = Column(String, default="")
+    address_state = Column(String, default="")
+    postal_code = Column(String, default="")
+    country = Column(String, default="")
+
+    # EEO / demographic self-identification (autofill v2.1). Only filled by the
+    # extension when the user explicitly enables "Fill EEO fields". Empty string
+    # means "not provided" (the user's own "Prefer not to say" is stored as-is).
+    eeo_gender = Column(String, default="")
+    eeo_race = Column(String, default="")
+    eeo_hispanic = Column(String, default="")
+    eeo_veteran = Column(String, default="")
+    eeo_disability = Column(String, default="")
+
     # Resume file path
     resume_file_path = Column(String, default="")
 

@@ -168,3 +168,82 @@ def test_falls_back_to_account_name(client, db_session, user):
     assert body["lastName"] == "Elmasry"
     assert body["email"] == "settings@example.com"
     assert body["experience"] == []
+
+
+# ── Address + EEO self-identification (autofill v2.1, Task C1) ────────────────
+
+_ADDRESS_EEO_PAYLOAD = {
+    "addressStreet": "123 Main St",
+    "addressCity": "Ottawa",
+    "addressState": "ON",
+    "postalCode": "K1A 0B1",
+    "country": "Canada",
+    "eeo": {
+        "gender": "Male",
+        "race": "Prefer not to say",
+        "hispanicLatino": "No",
+        "veteranStatus": "Not a protected veteran",
+        "disabilityStatus": "No, I do not have a disability",
+    },
+}
+
+
+def test_patch_address_and_eeo_then_get_returns_them(client, db_session, user):
+    """PUT the new address + EEO fields → GET reflects them (round-trip)."""
+    res = client.put("/api/user/application-profile", json=_ADDRESS_EEO_PAYLOAD)
+    assert res.status_code == 200
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["addressStreet"] == "123 Main St"
+    assert body["addressCity"] == "Ottawa"
+    assert body["addressState"] == "ON"
+    assert body["postalCode"] == "K1A 0B1"
+    assert body["country"] == "Canada"
+    # addressCity shares the ``city`` column, so ``location`` reflects it too.
+    assert body["location"] == "Ottawa"
+    # EEO is a nested object with the exact camelCase keys the extension reads.
+    assert body["eeo"]["gender"] == "Male"
+    assert body["eeo"]["race"] == "Prefer not to say"
+    assert body["eeo"]["hispanicLatino"] == "No"
+    assert body["eeo"]["veteranStatus"] == "Not a protected veteran"
+    assert body["eeo"]["disabilityStatus"] == "No, I do not have a disability"
+
+
+def test_address_and_eeo_default_empty(client, db_session, user):
+    """With only a resume, the new fields default to empty (never null/missing).
+
+    addressCity comes from the ``city`` settings column only — the resume's
+    free-form location does NOT populate the structured city field.
+    """
+    db_session.add(_make_resume())
+    db_session.commit()
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["addressStreet"] == ""
+    assert body["addressCity"] == ""
+    assert body["addressState"] == ""
+    assert body["postalCode"] == ""
+    assert body["country"] == ""
+    assert body["eeo"] == {
+        "gender": "",
+        "race": "",
+        "hispanicLatino": "",
+        "veteranStatus": "",
+        "disabilityStatus": "",
+    }
+
+
+def test_sync_snapshot_carries_address_and_eeo(client, db_session, user):
+    """The extension sync snapshot reuses the same merge, so it exposes the new
+    fields end-to-end under ``profile`` with matching camelCase keys."""
+    assert client.put("/api/user/application-profile", json=_ADDRESS_EEO_PAYLOAD).status_code == 200
+
+    snap = client.get("/api/extension/sync")
+    assert snap.status_code == 200
+    profile = snap.json()["profile"]
+    assert profile["addressStreet"] == "123 Main St"
+    assert profile["addressState"] == "ON"
+    assert profile["postalCode"] == "K1A 0B1"
+    assert profile["country"] == "Canada"
+    assert profile["eeo"]["veteranStatus"] == "Not a protected veteran"
+    assert profile["eeo"]["disabilityStatus"] == "No, I do not have a disability"
