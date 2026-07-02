@@ -124,7 +124,13 @@ const CATEGORY_SPECS: CategorySpec[] = [
   },
   {
     category: "email",
-    patterns: [{ re: /\be ?mail\b/ }],
+    patterns: [
+      { re: /\be ?mail\b/ },
+      { re: /\bcourriel\b/ }, // FR
+      // FR "adresse électronique"; normalize() strips the accent → "adresse
+      // lectronique", so the leading e/é is optional.
+      { re: /adresse (e|é)?lectronique/ },
+    ],
   },
   {
     category: "phone",
@@ -150,8 +156,9 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\badresse\b/ }, // FR
     ],
     // "address" alone is ambiguous with "email address" — an email field must
-    // never classify as a street address.
-    negative: /\be ?mail\b|\bip address\b/,
+    // never classify as a street address. FR: "adresse courriel" / "adresse
+    // électronique" (normalize() strips the accent → "lectronique").
+    negative: /\be ?mail\b|\bip address\b|\bcourriel\b|\blectronique\b/,
   },
   {
     category: "addressCity",

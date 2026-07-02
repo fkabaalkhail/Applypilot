@@ -28,12 +28,13 @@ describe("workdayAdapter.match", () => {
 });
 
 describe("workdayAdapter.classify (by data-automation-id)", () => {
-  it("maps first/last name, email, phone, and country", () => {
+  it("maps first/last name, email, phone, country, and city", () => {
     expect(workdayAdapter.classify!(ctxWithAutomationId("legalNameSection_firstName"), generic)?.category).toBe("firstName");
     expect(workdayAdapter.classify!(ctxWithAutomationId("legalNameSection_lastName"), generic)?.category).toBe("lastName");
     expect(workdayAdapter.classify!(ctxWithAutomationId("email"), generic)?.category).toBe("email");
     expect(workdayAdapter.classify!(ctxWithAutomationId("phone-number"), generic)?.category).toBe("phone");
-    expect(workdayAdapter.classify!(ctxWithAutomationId("addressSection_countryRegion"), generic)?.category).toBe("location");
+    expect(workdayAdapter.classify!(ctxWithAutomationId("addressSection_countryRegion"), generic)?.category).toBe("country");
+    expect(workdayAdapter.classify!(ctxWithAutomationId("addressSection_city"), generic)?.category).toBe("addressCity");
   });
   it("declines for an unknown automation id", () => {
     expect(workdayAdapter.classify!(ctxWithAutomationId("someRandomWidget"), generic)).toBeUndefined();
@@ -41,15 +42,20 @@ describe("workdayAdapter.classify (by data-automation-id)", () => {
 });
 
 describe("workdayAdapter.resolveAnswer", () => {
-  it("extracts the country from a comma location for a Workday country field", () => {
+  it("resolves the country from profile.country for a Workday country field", () => {
+    const ctx = ctxWithAutomationId("addressSection_countryRegion");
+    const profile = { country: "Canada", location: "Ottawa, ON, Canada" } as unknown as UserApplicationProfile;
+    expect(workdayAdapter.resolveAnswer!({ category: "country", profile, control: { controlType: "combobox" }, fillEEO: false, el: ctx.el })).toBe("Canada");
+  });
+  it("falls back to the country parsed from location when profile.country is empty", () => {
     const ctx = ctxWithAutomationId("addressSection_countryRegion");
     const profile = { location: "Ottawa, ON, Canada" } as unknown as UserApplicationProfile;
-    expect(workdayAdapter.resolveAnswer!({ category: "location", profile, control: { controlType: "combobox" }, fillEEO: false, el: ctx.el })).toBe("Canada");
+    expect(workdayAdapter.resolveAnswer!({ category: "country", profile, control: { controlType: "combobox" }, fillEEO: false, el: ctx.el })).toBe("Canada");
   });
-  it("declines for a non-country location field", () => {
+  it("declines a Workday city field, deferring to the generic addressCity resolver", () => {
     const ctx = ctxWithAutomationId("addressSection_city");
-    const profile = { location: "Ottawa, ON, Canada" } as unknown as UserApplicationProfile;
-    expect(workdayAdapter.resolveAnswer!({ category: "location", profile, control: { controlType: "text" }, fillEEO: false, el: ctx.el })).toBeUndefined();
+    const profile = { addressCity: "Ottawa", location: "Ottawa, ON, Canada" } as unknown as UserApplicationProfile;
+    expect(workdayAdapter.resolveAnswer!({ category: "addressCity", profile, control: { controlType: "text" }, fillEEO: false, el: ctx.el })).toBeUndefined();
   });
 });
 

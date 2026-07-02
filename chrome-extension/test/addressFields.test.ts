@@ -66,6 +66,13 @@ describe("classifyField — address does NOT swallow email (regression)", () => 
     expect(byLabel("Email address")).toBe("email");
     expect(byLabel("E-mail Address")).toBe("email");
   });
+  // FR: "Adresse courriel" / "Adresse électronique" both contain "adresse", which
+  // the addressStreet rule matches — they must classify as email, not a street.
+  it("classifies French email labels as email, never addressStreet", () => {
+    expect(byLabel("Adresse courriel")).toBe("email");
+    expect(byLabel("Adresse électronique")).toBe("email");
+    expect(byLabel("Courriel")).toBe("email");
+  });
 });
 
 describe("classifyField — HTML autocomplete tokens map to address categories", () => {

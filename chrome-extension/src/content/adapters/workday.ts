@@ -16,8 +16,8 @@ const AUTOMATION_RULES: Array<[RegExp, FieldCategory]> = [
   [/lastname|familyname/i, "lastName"],
   [/email/i, "email"],
   [/phone.*number|^phone/i, "phone"],
-  [/country|region/i, "location"],
-  [/(address)?.*city/i, "location"],
+  [/country|region/i, "country"],
+  [/(address)?.*city/i, "addressCity"],
 ];
 
 function automationId(el: HTMLElement): string {
@@ -53,11 +53,14 @@ export const workdayAdapter: SiteAdapter = {
   },
 
   resolveAnswer(ctx) {
-    // Workday country/region prompts expect just the country name.
-    if (ctx.category === "location" && /country|region/.test(automationId(ctx.el))) {
-      const country = (ctx.profile.location || "").split(",").map((s) => s.trim()).filter(Boolean).pop();
-      return country || undefined;
+    // Workday country/region prompts expect just the country name. Prefer the
+    // structured profile.country; fall back to the last comma segment of the
+    // free-text location so older profiles (location only) still fill.
+    if (ctx.category === "country" && /country|region/.test(automationId(ctx.el))) {
+      const derived = (ctx.profile.location || "").split(",").map((s) => s.trim()).filter(Boolean).pop();
+      return ctx.profile.country || derived || undefined;
     }
+    // A city field defers to the generic resolver (profile.addressCity || location).
     return undefined;
   },
 
