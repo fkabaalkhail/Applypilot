@@ -221,29 +221,35 @@ async function fillWorkday(el: HTMLElement, value: string): Promise<string | nul
   return norm(opener.textContent ?? options[idx].textContent ?? "") || null;
 }
 
-/**
- * Install the fill listener once per frame. Idempotent via a window guard;
- * also replaces any listener from a prior install that's still attached
- * without the guard (e.g. a test harness that clears the guard between
- * cases without tearing down `window`, unlike a real frame reload) so at
- * most one listener is ever live — otherwise a stale listener races the
- * current one on every dispatch, double-handling the same fill request.
- */
+/** Install the fill listener once per frame. Idempotent via a window guard.
+ *  The handler ref is stored so the test seam (__test.uninstall) can tear it
+ *  down between tests; in production installDriver runs exactly once per frame. */
 export function installDriver(win: Window & typeof globalThis): void {
-  const w = win as unknown as Record<string, unknown> & { __tailrdMWListener?: EventListener };
+  const w = win as unknown as Record<string, unknown>;
   if (w.__tailrdMWInstalled) return;
   w.__tailrdMWInstalled = true;
-  if (w.__tailrdMWListener) win.removeEventListener(MW_FILL_EVENT, w.__tailrdMWListener);
-  const listener: EventListener = (e: Event) => {
+  const handler = (e: Event): void => {
     const detail = (e as CustomEvent<MwFillDetail>).detail;
     if (!detail || typeof detail.id !== "number") return;
     void fillField(win.document, detail).then((result) => {
       win.dispatchEvent(new CustomEvent(MW_RESULT_EVENT, { detail: result }));
     });
   };
-  w.__tailrdMWListener = listener;
-  win.addEventListener(MW_FILL_EVENT, listener);
+  w.__tailrdMWHandler = handler;
+  win.addEventListener(MW_FILL_EVENT, handler);
 }
 
 // Exported for tests only.
-export const __test = { fillField, sleep };
+export const __test = {
+  fillField,
+  sleep,
+  /** Test-only teardown: remove the installed listener and clear the guard so a
+   *  fresh installDriver in the next test doesn't accumulate listeners. */
+  uninstall(win: Window & typeof globalThis): void {
+    const w = win as unknown as Record<string, unknown>;
+    const handler = w.__tailrdMWHandler as EventListener | undefined;
+    if (handler) win.removeEventListener(MW_FILL_EVENT, handler);
+    delete w.__tailrdMWHandler;
+    delete w.__tailrdMWInstalled;
+  },
+};

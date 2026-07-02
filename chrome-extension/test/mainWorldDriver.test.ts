@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { installDriver, pickOption } from "../src/content/mainWorldDriver";
+import { installDriver, pickOption, __test } from "../src/content/mainWorldDriver";
 import { MW_FILL_EVENT, MW_RESULT_EVENT, type MwResultDetail } from "../src/content/mainWorldBridge";
 import { FIELD_ID_ATTR } from "../src/shared/constants";
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  delete (window as unknown as Record<string, unknown>).__tailrdMWInstalled;
+  __test.uninstall(window);
 });
 
 function drive(fieldId: string, value: string, kind: "react-select" | "workday"): Promise<MwResultDetail> {
