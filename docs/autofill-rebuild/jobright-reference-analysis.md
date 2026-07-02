@@ -265,6 +265,11 @@ Our extension (`chrome-extension/src`, ~8.8k LOC, 31 files) already mirrors the 
 
    > **Phase 4 status (2026-07-02):** Implemented on branch `feature/autofill-repeating-groups` — index-aware resolution for repeating education/employment sections: `detectGroupIndex` parses a field's row index (`education[1][school]` → 1) and `resolveProfileValue` resolves it against `profile.education[N]` / `profile.experience[N]`, threaded through the scanner→adapter→resolver path. Fills all *present* rows; auto-adding rows (DOM mutation) deferred with rationale. See the spec and plan dated 2026-07-02.
 5. **Phase 5 — (optional) iframe agent‑apply:** header‑strip session rules + embedded‑iframe fill protocol.
+
+   > **Phase 5 status (2026-07-02):** DEFERRED (iframe agent-apply) — security-posture + product decision needing real-browser validation. Rationale + design sketch: `docs/autofill-rebuild/phase5-iframe-agent-apply-deferred.md`.
+
 6. **Phase 6 — Hardening:** observers for async/multi‑step forms, submit‑success detection, telemetry, credit/paywall parity.
+
+   > **Phase 6 status (2026-07-02):** Implemented on branch `feature/autofill-robustness-hardening` — robustness & consistency hardening: shared `ResolveControl` type (de-triplicated), overlay profile-preview guarded against missing arrays, `detectGroupIndex` docstring corrected + mixed-pattern test, `scanPage` malformed-profile never-throws regression test. Behavior-preserving. See the spec and plan dated 2026-07-02.
 
 Each phase is independently shippable and testable against the existing ATS fixtures (`chrome-extension/test`).
