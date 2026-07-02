@@ -59,6 +59,7 @@ import {
   toggleOverlay,
   type OverlayCallbacks,
 } from "./overlay";
+import { runAdapterOperations, tryAdapterOperation, type AdapterFillResult, type SiteAdapter } from "./adapters";
 
 // Guard against double injection (manifest match + programmatic inject).
 declare global {
@@ -130,6 +131,7 @@ function reportToOutcome(r: FieldReport): { fieldId: string; ok: boolean; reason
 
 function initialize(): void {
   let registry: Map<string, RuntimeControl> = new Map();
+  let lastAdapter: SiteAdapter | null = null;
   let lastFields: DetectedField[] = [];
   // Remembered so MutationObserver rescans can recompute proposed values.
   let lastProfile: UserApplicationProfile | null = null;
@@ -178,6 +180,7 @@ function initialize(): void {
   function runScan(): ScanResponse {
     const result = scanPage(lastProfile, lastFillEEO);
     registry = result.registry;
+    lastAdapter = result.adapter;
     lastFields = result.fields;
     logScanDiagnostics(isTopFrame, result.fields, lastProfile !== null);
     return {
@@ -245,25 +248,24 @@ function initialize(): void {
         (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
       );
 
-      // Phase 1a — deterministic local fill via the reconciler for everything
-      // the synchronous write engine can drive (text/select/checkbox/radio).
-      const driverTargets = selected
-        .filter((f) => isDriverField(f.id))
-        .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
-      const targets = selected
-        .filter((f) => !isDriverField(f.id) && f.controlType !== "combobox")
-        .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
+      // Phase 2 — the site adapter gets first refusal on each field's fill.
+      const selectedItems = selected.map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
+      const { opOutcomes, remaining } = await runAdapterOperations(lastAdapter, selectedItems, (id) => registry.get(id));
+
+      // Phase 1a — deterministic local fill via the reconciler (text/select/checkbox/radio).
+      const driverTargets = remaining.filter((it) => isDriverField(it.fieldId));
+      const targets = remaining.filter(
+        (it) => !isDriverField(it.fieldId) && registry.get(it.fieldId)?.controlType !== "combobox"
+      );
       const localReports = await getEngine().run(targets, registry);
 
-      // Phase 1b — custom ARIA dropdowns (listbox engine) and react-select/Workday
-      // fields (MAIN-world driver), each driven one-shot outside the reconciler.
+      // Phase 1b — custom ARIA dropdowns + react-select/Workday driver, plus adapter ops.
       const comboOutcomes = [
         ...(await fillComboboxTargets(
-          selected
-            .filter((f) => !isDriverField(f.id) && f.controlType === "combobox")
-            .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }))
+          remaining.filter((it) => !isDriverField(it.fieldId) && registry.get(it.fieldId)?.controlType === "combobox")
         )),
         ...(await fillDriverTargets(driverTargets)),
+        ...opOutcomes,
       ];
 
       // Phase 2 — AI fill for fields the profile couldn't answer (best-effort).
@@ -283,22 +285,23 @@ function initialize(): void {
             drafts.push(...plan.drafts);
             // Silent answers: custom dropdowns go through the listbox engine
             // (writeControl can't script them); everything else via the reconciler.
-            const aiDriver = plan.simpleTargets.filter((t) => isDriverField(t.fieldId));
-            const aiCombo = plan.simpleTargets.filter(
+            const { opOutcomes: aiOpOutcomes, remaining: aiRemaining } =
+              await runAdapterOperations(lastAdapter, plan.simpleTargets, (id) => registry.get(id));
+            const aiDriver = aiRemaining.filter((t) => isDriverField(t.fieldId));
+            const aiCombo = aiRemaining.filter(
               (t) => !isDriverField(t.fieldId) && isComboboxField(t.fieldId)
             );
-            const aiSimple = plan.simpleTargets.filter(
+            const aiSimple = aiRemaining.filter(
               (t) => !isDriverField(t.fieldId) && !isComboboxField(t.fieldId)
             );
             if (aiSimple.length > 0) {
               aiReports = await getEngine().addTargets(aiSimple, registry);
             }
-            if (aiCombo.length > 0) {
-              aiComboOutcomes = await fillComboboxTargets(aiCombo);
-            }
-            if (aiDriver.length > 0) {
-              aiComboOutcomes = [...aiComboOutcomes, ...(await fillDriverTargets(aiDriver))];
-            }
+            aiComboOutcomes = [
+              ...aiOpOutcomes,
+              ...(aiCombo.length > 0 ? await fillComboboxTargets(aiCombo) : []),
+              ...(aiDriver.length > 0 ? await fillDriverTargets(aiDriver) : []),
+            ];
           }
         } catch {
           // AI fill is additive — the local pass already happened. Swallow.
@@ -311,6 +314,15 @@ function initialize(): void {
     onInsertAnswer: async (fieldId: string, value: string) => {
       const control = registry.get(fieldId);
       if (!control) return { ok: false, reason: "Field is no longer on the page — rescan." };
+      if (control.el) {
+        const op = tryAdapterOperation(lastAdapter, { control, value, el: control.el });
+        if (op) {
+          const r = await op.catch((): AdapterFillResult => ({ filled: false }));
+          return r.filled
+            ? { ok: true }
+            : { ok: false, reason: r.reason ?? "Couldn't fill that field automatically — please do it manually." };
+        }
+      }
       // react-select / Workday fields are scripted in the MAIN world (writeControl
       // can't reach them) — hand off to the driver before the combobox branch.
       if (control.driver) {
