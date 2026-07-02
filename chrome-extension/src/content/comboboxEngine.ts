@@ -18,6 +18,9 @@ import { matchOption } from "./writeEngine";
 export interface ComboboxResult {
   filled: boolean;
   reason?: string;
+  /** On a no-match failure: the open listbox's REAL option labels, harvested
+   *  for the one-shot AI re-ask pass (contentScript). */
+  options?: string[];
 }
 
 export interface FillComboboxOptions {
@@ -85,8 +88,13 @@ export async function fillAriaCombobox(
 
   const option = findOption(listbox, value);
   if (!option) {
+    const options = optionLabels(listbox);
     close(trigger);
-    return { filled: false, reason: `No option matches "${truncate(value)}" — select it manually` };
+    return {
+      filled: false,
+      reason: `No option matches "${truncate(value)}" — select it manually`,
+      options,
+    };
   }
 
   clickOption(option);
@@ -109,10 +117,9 @@ export async function fillAriaCombobox(
 // Interaction primitives
 // ---------------------------------------------------------------------------
 
-/** A realistic activation sequence: pointer + mouse + click. Pointer events are
- *  a best-effort nicety (jsdom's PointerEvent is stricter than the DOM spec);
- *  the mouse events are what actually drive jsdom and real widgets. */
-function activate(el: HTMLElement): void {
+/** A realistic activation sequence: pointer + mouse + click. Exported for the
+ *  flow controller's advance-button click (advance.ts). */
+export function activateElement(el: HTMLElement): void {
   const base: MouseEventInit = { bubbles: true, cancelable: true };
   firePointer(el, "pointerdown");
   el.dispatchEvent(new MouseEvent("mousedown", base));
@@ -134,7 +141,7 @@ function firePointer(el: HTMLElement, type: string): void {
 function open(trigger: HTMLElement): void {
   trigger.focus({ preventScroll: true });
   if (trigger.getAttribute("aria-expanded") === "true") return;
-  activate(trigger);
+  activateElement(trigger);
 }
 
 function close(trigger: HTMLElement): void {
@@ -153,7 +160,7 @@ function close(trigger: HTMLElement): void {
 
 function clickOption(option: HTMLElement): void {
   option.scrollIntoView?.({ block: "nearest" });
-  activate(option);
+  activateElement(option);
 }
 
 function isTypeahead(trigger: HTMLElement): boolean {
@@ -221,6 +228,11 @@ function optionText(option: HTMLElement): string {
 export function readComboboxOptions(trigger: HTMLElement): string[] | undefined {
   const listbox = findMountedListbox(trigger);
   if (!listbox) return undefined;
+  return optionLabels(listbox);
+}
+
+/** Non-disabled option labels of a listbox, trimmed for transport (cap 60). */
+function optionLabels(listbox: HTMLElement): string[] | undefined {
   const labels = deepQueryAll(listbox, '[role="option"]')
     .filter((o) => o.getAttribute("aria-disabled") !== "true")
     .map((o) => optionText(o))

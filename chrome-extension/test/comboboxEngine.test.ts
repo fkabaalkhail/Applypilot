@@ -287,3 +287,48 @@ describe("readComboboxValue", () => {
     expect(readComboboxValue(el)).toBeUndefined();
   });
 });
+
+/** A citizenship combobox whose listbox is mounted up front and opens on click;
+ *  each option commits its label into the input and collapses on click. Used to
+ *  exercise the no-match option harvest. (Reuses the module-level `fast` opts.) */
+function citizenshipCombobox(): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "select";
+  const input = document.createElement("input");
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-expanded", "false");
+  input.setAttribute("aria-controls", "lb-cit");
+  const lb = document.createElement("div");
+  lb.id = "lb-cit";
+  lb.setAttribute("role", "listbox");
+  for (const label of ["Canadian", "American", "Other"]) {
+    const o = document.createElement("div");
+    o.setAttribute("role", "option");
+    o.textContent = label;
+    o.addEventListener("click", () => {
+      input.value = label;
+      input.setAttribute("aria-expanded", "false");
+    });
+    lb.append(o);
+  }
+  input.addEventListener("click", () => input.setAttribute("aria-expanded", "true"));
+  wrap.append(input, lb);
+  document.body.append(wrap);
+  return input;
+}
+
+describe("fillAriaCombobox — option harvest on miss", () => {
+  it("returns the real options when no option matches the value", async () => {
+    const trigger = citizenshipCombobox();
+    const res = await fillAriaCombobox(trigger, "Netherlands", fast);
+    expect(res.filled).toBe(false);
+    expect(res.options).toEqual(["Canadian", "American", "Other"]);
+  });
+
+  it("still fills when the (snapped) answer matches, and returns no options", async () => {
+    const trigger = citizenshipCombobox();
+    const res = await fillAriaCombobox(trigger, "Canadian", fast);
+    expect(res.filled).toBe(true);
+    expect(res.options).toBeUndefined();
+  });
+});
