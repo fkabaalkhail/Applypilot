@@ -25,7 +25,7 @@ describe("Workday My Information — detection", () => {
       "lastName",
       "email",
       "phone",
-      "location",
+      "addressCity",
       "linkedin",
       "workAuthorization",
       "sponsorship",

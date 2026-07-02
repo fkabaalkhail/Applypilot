@@ -121,6 +121,7 @@ export function tallyOutcomes(
 export const LOCAL_FAST_PATH: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "firstName", "lastName", "fullName", "email", "phone",
   "linkedin", "github", "portfolio", "location", "currentCompany", "currentTitle",
+  "addressStreet", "addressCity", "addressState", "postalCode", "country",
 ]);
 
 export interface FillRoute {

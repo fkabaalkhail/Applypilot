@@ -30,7 +30,7 @@ describe("Ashby", () => {
   it("detects + fills text, react-select country; skips resume + EEO", async () => {
     mountAshbyForm(document);
     const c = cats();
-    expect(c.has("firstName") && c.has("email") && c.has("location") && c.has("resumeUpload")).toBe(true);
+    expect(c.has("firstName") && c.has("email") && c.has("country") && c.has("resumeUpload")).toBe(true);
     await runAutofill(MOCK_PROFILE, false);
     expect(val("ashby-firstname")).toBe("John");
     expect(val("ashby-email")).toBe("john@example.com");

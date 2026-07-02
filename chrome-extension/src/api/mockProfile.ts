@@ -13,6 +13,12 @@ export const MOCK_PROFILE: UserApplicationProfile = {
   email: "john@example.com",
   phone: "+1 555 555 5555",
   location: "Ottawa, ON, Canada",
+  addressStreet: "123 Example Street",
+  // Left blank on purpose: a "City" field resolves via the `location` fallback.
+  addressCity: "",
+  addressState: "ON",
+  postalCode: "K1A 0A6",
+  country: "Canada",
   linkedin: "https://linkedin.com/in/johndoe",
   github: "https://github.com/johndoe",
   portfolio: "https://johndoe.com",

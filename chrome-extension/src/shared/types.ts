@@ -43,6 +43,12 @@ export interface UserApplicationProfile {
   email: string;
   phone: string;
   location: string;
+  /** Structured mailing address (all default "" server-side; see Task C1). */
+  addressStreet: string;
+  addressCity: string;
+  addressState: string;
+  postalCode: string;
+  country: string;
   linkedin: string;
   github: string;
   portfolio: string;
@@ -139,6 +145,11 @@ export type FieldCategory =
   | "email"
   | "phone"
   | "location"
+  | "addressStreet"
+  | "addressCity"
+  | "addressState"
+  | "postalCode"
+  | "country"
   | "linkedin"
   | "github"
   | "portfolio"

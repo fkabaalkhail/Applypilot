@@ -33,8 +33,8 @@ describe("classifyField — test-id drives classification when labels are absent
     expect(classifyId("legalNameSection_firstName").category).toBe("firstName");
   });
 
-  it("classifies a Workday country dropdown id as location", () => {
-    expect(classifyId("countryDropdown").category).toBe("location");
+  it("classifies a Workday country dropdown id as country", () => {
+    expect(classifyId("countryDropdown").category).toBe("country");
   });
 
   it("does not invent a category from a meaningless id", () => {

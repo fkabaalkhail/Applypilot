@@ -134,6 +134,62 @@ const CATEGORY_SPECS: CategorySpec[] = [
     ],
     negative: /\bphone type\b|\bext(ension)?\b|\bcountry code\b|\bdevice type\b/,
   },
+
+  // --- Structured address — more specific than the generic `location`, so these
+  //     are ordered BEFORE it: an explicit street/city/state/postal/country field
+  //     wins the tie, while a bare "Address"/"Location" field still falls to
+  //     `location`. FR keywords included; normalize() strips accents to spaces,
+  //     so "région" → "r gion" (caught via \bgion\b), but "province"/"ville"/
+  //     "pays"/"adresse"/"code postal" survive intact.
+  {
+    category: "addressStreet",
+    patterns: [
+      { re: /\bstreet\b/ },
+      { re: /\baddress ?line ?\d?\b/ },
+      { re: /\bcivic\b/ },
+      { re: /\badresse\b/ }, // FR
+    ],
+    // "address" alone is ambiguous with "email address" — an email field must
+    // never classify as a street address.
+    negative: /\be ?mail\b|\bip address\b/,
+  },
+  {
+    category: "addressCity",
+    patterns: [
+      { re: /\bcity\b/ },
+      { re: /\btown\b/ },
+      { re: /\bville\b/ }, // FR
+    ],
+  },
+  {
+    category: "addressState",
+    patterns: [
+      { re: /\bstate\b/, weight: 0.9 },
+      { re: /\bprovince\b/ },
+      { re: /\bregion\b|\bgion\b/, weight: 0.85 }, // \bgion\b catches FR "région"
+    ],
+    negative: /\bstatement\b/,
+  },
+  {
+    category: "postalCode",
+    patterns: [
+      { re: /\bpostal code\b/ },
+      { re: /\bpost code\b/ },
+      { re: /\bzip( ?code)?\b/ },
+      { re: /\bcode postal\b/ }, // FR
+      { re: /\bpostal\b/, weight: 0.9 },
+    ],
+  },
+  {
+    category: "country",
+    patterns: [
+      { re: /\bcountry\b/, weight: 0.9 },
+      { re: /\bpays\b/ }, // FR
+    ],
+    // A phone "country code" selector is not the mailing country.
+    negative: /\bcountry code\b/,
+  },
+
   {
     category: "location",
     patterns: [
@@ -296,13 +352,13 @@ const AUTOCOMPLETE_MAP: Record<string, FieldCategory> = {
   email: "email",
   tel: "phone",
   "tel-national": "phone",
-  "address-level1": "location",
-  "address-level2": "location",
-  "street-address": "location",
-  "address-line1": "location",
-  "postal-code": "location",
-  country: "location",
-  "country-name": "location",
+  "address-level1": "addressState",
+  "address-level2": "addressCity",
+  "street-address": "addressStreet",
+  "address-line1": "addressStreet",
+  "postal-code": "postalCode",
+  country: "country",
+  "country-name": "country",
   organization: "currentCompany",
   "organization-title": "currentTitle",
 };
@@ -445,6 +501,18 @@ export function resolveProfileValue(
       return orNull(profile.phone);
     case "location":
       return orNull(profile.location);
+    case "addressStreet":
+      return orNull(profile.addressStreet);
+    case "addressCity":
+      // Fall back to the free-text location string when the structured city is
+      // absent (older profiles / mock mode fill "City" from `location`).
+      return orNull(profile.addressCity || profile.location);
+    case "addressState":
+      return orNull(profile.addressState);
+    case "postalCode":
+      return orNull(profile.postalCode);
+    case "country":
+      return orNull(profile.country);
     case "linkedin":
       return orNull(profile.linkedin);
     case "github":

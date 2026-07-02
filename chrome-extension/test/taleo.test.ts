@@ -19,7 +19,7 @@ describe("Taleo table-layout markup — detection", () => {
     mountTaleoForm(document);
     const { fields } = scanPage(MOCK_PROFILE, false);
     const cats = new Set(fields.map((f) => f.category));
-    for (const c of ["firstName", "lastName", "email", "phone", "location"]) {
+    for (const c of ["firstName", "lastName", "email", "phone", "addressCity"]) {
       expect(cats.has(c), `expected a ${c} field`).toBe(true);
     }
   });
