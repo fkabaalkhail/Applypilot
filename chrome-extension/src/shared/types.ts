@@ -176,6 +176,13 @@ export type ControlType =
   | "ariaRadioGroup"
   | "customDropdown";
 
+/** The control shape the resolver + adapters read when resolving/overriding an answer. */
+export interface ResolveControl {
+  controlType: ControlType;
+  options?: string[];
+  groupIndex?: number | null;
+}
+
 /**
  * Serializable summary of a detected form field, sent from the content
  * script to the popup for review before any filling happens.

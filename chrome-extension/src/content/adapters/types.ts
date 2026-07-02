@@ -6,7 +6,7 @@
 import type { Classification } from "../fieldMatcher";
 import type { FieldSignals } from "../domUtils";
 import type { RuntimeControl } from "../formScanner";
-import type { ControlType, FieldCategory, UserApplicationProfile } from "../../shared/types";
+import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile } from "../../shared/types";
 
 export interface FieldContext {
   el: HTMLElement;
@@ -17,7 +17,7 @@ export interface FieldContext {
 export interface AnswerContext {
   category: FieldCategory;
   profile: UserApplicationProfile; // only supplied when a profile is loaded
-  control: { controlType: ControlType; options?: string[]; groupIndex?: number | null };
+  control: ResolveControl;
   fillEEO: boolean;
   el: HTMLElement;
 }

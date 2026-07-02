@@ -27,4 +27,7 @@ describe("detectGroupIndex", () => {
   it("ignores spurious huge indices (>= 50)", () => {
     expect(detectGroupIndex(sig({ nameAttr: "token[999]" }))).toBeNull();
   });
+  it("prefers a bracketed index over an earlier delimited index (bracket-priority)", () => {
+    expect(detectGroupIndex(sig({ nameAttr: "emp_2_education[5]" }))).toBe(5);
+  });
 });

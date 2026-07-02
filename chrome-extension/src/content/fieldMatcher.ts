@@ -15,7 +15,7 @@
  *    than guessed — low-confidence guesses are surfaced for review, not filled.
  */
 import { MIN_CATEGORY_CONFIDENCE } from "../shared/constants";
-import type { ControlType, FieldCategory, UserApplicationProfile } from "../shared/types";
+import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile } from "../shared/types";
 import type { FieldSignals } from "./domUtils";
 
 // ---------------------------------------------------------------------------
@@ -388,7 +388,7 @@ function hasYesNoOptions(options: string[] | undefined): boolean {
 
 /** A control answered with a Yes/No choice: explicit Yes/No options, or a
  *  custom dropdown whose options we can't read at scan time. */
-function isYesNoChoice(control: { controlType: ControlType; options?: string[] }): boolean {
+function isYesNoChoice(control: ResolveControl): boolean {
   return hasYesNoOptions(control.options) || control.controlType === "combobox";
 }
 
@@ -425,7 +425,7 @@ export const LONG_TEXT: ControlType[] = ["textarea", "contenteditable"];
 export function resolveProfileValue(
   category: FieldCategory,
   profile: UserApplicationProfile,
-  control: { controlType: ControlType; options?: string[]; groupIndex?: number | null },
+  control: ResolveControl,
   fillEEO: boolean
 ): string | null {
   const orNull = (v: string | undefined): string | null => (v && v.trim() ? v : null);

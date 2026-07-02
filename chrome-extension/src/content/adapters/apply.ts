@@ -5,7 +5,7 @@
  * never break, the pipeline.
  */
 import { classifyField, resolveProfileValue, type Classification } from "../fieldMatcher";
-import type { ControlType, FieldCategory, UserApplicationProfile } from "../../shared/types";
+import type { FieldCategory, ResolveControl, UserApplicationProfile } from "../../shared/types";
 import type { RuntimeControl } from "../formScanner";
 import type { AdapterFillResult, FieldContext, FillContext, SiteAdapter } from "./types";
 
@@ -29,7 +29,7 @@ export function resolveAnswerWithAdapter(
   adapter: SiteAdapter | null,
   category: FieldCategory,
   profile: UserApplicationProfile | null,
-  control: { controlType: ControlType; options?: string[]; groupIndex?: number | null },
+  control: ResolveControl,
   fillEEO: boolean,
   el: HTMLElement
 ): string | null {
