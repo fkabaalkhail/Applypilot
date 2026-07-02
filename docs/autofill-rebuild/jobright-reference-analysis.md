@@ -258,6 +258,9 @@ Our extension (`chrome-extension/src`, ~8.8k LOC, 31 files) already mirrors the 
    > **Phase 2 status (2026-07-01):** Implemented on branch `feature/autofill-site-adapters` — per-site adapter framework (registry + `SiteAdapter` classify/resolveAnswer/fillOperation override hooks + generic fallback) in `chrome-extension/src/content/adapters/`, with Greenhouse and Workday reference adapters. See the spec and plan dated 2026-07-01.
 
 3. **Phase 3 — AI‑primary answering:** promote `aiFillPlanner`/`api/aiFill` to the primary resolver with local fallback + IndexedDB rule/answer cache.
+
+   > **Phase 3 status (2026-07-02):** Implemented on branch `feature/autofill-ai-answering` — hybrid AI-primary answering: `planFillRoute` routes deterministic profile fields to the instant local fast-path and judgment fields to the backend `/api/fill` (primary), deduped by an in-memory session `answerCache` (normalized-question key). `onAutofill` is Phase A (instant local) + Phase B (async backend), with the local `proposedValue` as fallback. Client-only. See the spec and plan dated 2026-07-02.
+
 4. **Phase 4 — Repeating groups & typeaheads:** education/employment operations, date parsing, autocomplete candidates.
 5. **Phase 5 — (optional) iframe agent‑apply:** header‑strip session rules + embedded‑iframe fill protocol.
 6. **Phase 6 — Hardening:** observers for async/multi‑step forms, submit‑success detection, telemetry, credit/paywall parity.
