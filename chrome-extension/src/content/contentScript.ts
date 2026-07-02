@@ -70,6 +70,7 @@ import { runAdapterOperations, tryAdapterOperation, type AdapterFillResult, type
 import { FlowController, FLOW_TTL_MS, type FlowDeps, type FlowSnapshot, type StepTally } from "./flowController";
 import { clickAdvance, findAdvanceButton } from "./advance";
 import { hasUnsolvedCaptcha, isVerificationWall, resumeFieldNeedingFile, validationMessages } from "./flowChecks";
+import { detectWall, runAccountWall } from "./accountFlow";
 
 // Guard against double injection (manifest match + programmatic inject).
 declare global {
@@ -150,6 +151,8 @@ function initialize(): void {
   let flowGeneration = 0;
   /** The panel's picked upload résumé for this flow (auto-attach preference). */
   let flowResumeId: number | null = null;
+  // A login wall we have no credentials for — pauses the flow until it clears.
+  let accountBlocked = false;
   // Remembered so MutationObserver rescans can recompute proposed values.
   let lastProfile: UserApplicationProfile | null = null;
   let lastFillEEO = false;
@@ -471,8 +474,29 @@ function initialize(): void {
       },
       findAdvance: (scope, extraAdvance) => findAdvanceButton(scope, lastAdapter, { extraAdvance }),
       clickAdvance,
-      accountStep: async () => ({}), // Phase 4 replaces this stub
+      accountStep: async (snap) => {
+        const scope = snap.scopeEl ?? document.body;
+        const wall = detectWall(scope);
+        if (!wall) {
+          accountBlocked = false;
+          return {};
+        }
+        const out = await runAccountWall(
+          wall,
+          location.origin,
+          lastProfile?.email ?? "",
+          (el, value) =>
+            writeControl(
+              { id: el.getAttribute("data-ap-field") ?? "", controlType: el.type === "password" ? "password" : "text", el },
+              value
+            )
+        );
+        accountBlocked = out.pause === "account";
+        return { extraAdvance: out.extraAdvance };
+      },
       pauseReason: async (snap) => {
+        if (accountBlocked && detectWall(snap.scopeEl ?? document.body)) return "account";
+        accountBlocked = accountBlocked && detectWall(snap.scopeEl ?? document.body) !== null;
         if (hasUnsolvedCaptcha(document)) return "captcha";
         const scope = snap.scopeEl ?? document.body;
         if (isVerificationWall(scope)) return "verification";

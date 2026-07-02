@@ -15,6 +15,7 @@ import { reattachIfDetached } from "./domUtils";
 import { base64ToFile } from "./fileUpload";
 import { buildTailorCardHtml } from "./tailorCard";
 import { buildCoverLetterCardHtml } from "./coverLetterCard";
+import { deleteCredential, listCredentials } from "./credentialStore";
 import { defaultSelectedIds } from "../shared/selection";
 import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
@@ -674,6 +675,16 @@ const STYLES = `
 .ap-flow { display: flex; align-items: center; gap: 8px; margin: 6px 16px; font-size: 12px; }
 .ap-flow-text { flex: 1; }
 .ap-flow-stop { flex: 0 0 auto; }
+.ap-signins { margin: 6px 16px; font-size: 12px; }
+.ap-signins summary { cursor: pointer; color: var(--stripe-ink-secondary); font-weight: 600; padding: 4px 0; }
+.ap-signins-empty { color: var(--stripe-ink-mute); padding: 4px 0; }
+.ap-signin-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; }
+.ap-signin-meta { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.ap-signin-site { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-signin-email { opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-signin-pass { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-signins button { border: 1px solid var(--stripe-hairline); background: #fff; border-radius: 6px; padding: 3px 7px; font-size: 11px; cursor: pointer; color: var(--stripe-ink-secondary); }
+.ap-signins button:hover { background: var(--stripe-canvas-soft); }
 .ap-review-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; color: var(--stripe-ink-secondary); margin-bottom: 8px; }
 .ap-review-all { font-size: 12px; color: var(--stripe-primary); background: none; border: none; cursor: pointer; padding: 2px 4px; }
 .ap-review-card { border: 1px solid var(--stripe-hairline); border-radius: 10px; padding: 10px; margin-bottom: 8px; background: var(--stripe-canvas-soft); }
@@ -787,6 +798,8 @@ interface Refs {
   flow: HTMLDivElement;
   flowText: HTMLSpanElement;
   flowStop: HTMLButtonElement;
+  signins: HTMLDetailsElement;
+  signinsBody: HTMLDivElement;
   checklist: HTMLDivElement;
   review: HTMLDivElement;
   resumeName: HTMLDivElement;
@@ -893,6 +906,12 @@ function buildHTML(): string {
           <span class="ap-flow-text" id="ap-flow-text"></span>
           <button class="ap-flow-stop" id="ap-flow-stop" type="button">Stop</button>
         </div>
+
+        <!-- Saved sign-ins (device-local signup-wall credentials) -->
+        <details class="ap-signins" id="ap-signins">
+          <summary>Saved sign-ins</summary>
+          <div class="ap-signins-body" id="ap-signins-body"></div>
+        </details>
 
         <!-- Per-field detection checklist (name / email / university … → ✓ or –) -->
         <div class="ap-checklist" id="ap-checklist" style="display:none"></div>
@@ -1057,6 +1076,8 @@ function collectRefs(root: HTMLDivElement): Refs {
     flow: q("#ap-flow"),
     flowText: q("#ap-flow-text"),
     flowStop: q("#ap-flow-stop"),
+    signins: q("#ap-signins"),
+    signinsBody: q("#ap-signins-body"),
     checklist: q("#ap-checklist"),
     review: q("#ap-review"),
     resumeName: q("#ap-resume-name"),
@@ -1105,6 +1126,12 @@ function wireEvents(root: HTMLDivElement): void {
     callbacks?.onFlowStop();
     if (refs) refs.flow.style.display = "none";
     showBanner("Autofill flow stopped.", "warn");
+  });
+
+  // Saved sign-ins -> render device-local credentials when the section opens.
+  const signins = root.querySelector<HTMLDetailsElement>("#ap-signins")!;
+  signins.addEventListener("toggle", () => {
+    if (signins.open) void renderSavedSignins();
   });
 
   // "Your Autofill Information" section -> open info view
@@ -1424,6 +1451,62 @@ function renderChecklist(): void {
     `<div class="ap-chk-head"><span>Fields detected</span>` +
     `<span class="ap-chk-count">${filledCount}/${fields.length} filled</span></div>` +
     rows;
+}
+
+// ---------------------------------------------------------------------------
+// Saved sign-ins (device-local signup-wall credentials)
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the signup-wall credentials the account flow saved on this device.
+ * Passwords stay masked until the user reveals one — and a revealed password is
+ * only ever written into `textContent` (never innerHTML, never logged). Reveal /
+ * copy / delete are wired per row; a delete re-renders the shortened list.
+ */
+async function renderSavedSignins(): Promise<void> {
+  if (!refs) return;
+  const host = refs.signinsBody;
+  const creds = await listCredentials();
+  if (creds.length === 0) {
+    host.innerHTML = `<div class="ap-signins-empty">No saved sign-ins yet. Signup walls passed by autofill appear here.</div>`;
+    return;
+  }
+  host.innerHTML = creds
+    .map(
+      (c, i) => `
+    <div class="ap-signin-row" data-origin="${esc(c.origin)}">
+      <div class="ap-signin-meta">
+        <span class="ap-signin-site">${esc(c.origin.replace(/^https?:\/\//, ""))}</span>
+        <span class="ap-signin-email">${esc(c.email)}</span>
+      </div>
+      <code class="ap-signin-pass" id="ap-pass-${i}" data-hidden="1">••••••••</code>
+      <button class="ap-signin-reveal" data-i="${i}" type="button">Show</button>
+      <button class="ap-signin-copy" data-i="${i}" type="button">Copy</button>
+      <button class="ap-signin-del" data-i="${i}" type="button">Delete</button>
+    </div>`
+    )
+    .join("");
+  host.querySelectorAll<HTMLButtonElement>(".ap-signin-reveal").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.i);
+      const code = host.querySelector<HTMLElement>(`#ap-pass-${i}`);
+      if (!code) return;
+      const hidden = code.dataset.hidden === "1";
+      code.textContent = hidden ? creds[i].password : "••••••••";
+      code.dataset.hidden = hidden ? "0" : "1";
+      btn.textContent = hidden ? "Hide" : "Show";
+    });
+  });
+  host.querySelectorAll<HTMLButtonElement>(".ap-signin-copy").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      void navigator.clipboard.writeText(creds[Number(btn.dataset.i)].password).catch(() => {});
+    });
+  });
+  host.querySelectorAll<HTMLButtonElement>(".ap-signin-del").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      void deleteCredential(creds[Number(btn.dataset.i)].origin).then(renderSavedSignins);
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
