@@ -24,7 +24,9 @@ import {
 import { isCaptchaField } from "./captcha";
 import { isConsentField } from "./consent";
 import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./comboboxEngine";
-import { classifyField, resolveProfileValue } from "./fieldMatcher";
+import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
+import { getAdapter } from "./adapters/registry";
+import type { SiteAdapter } from "./adapters/types";
 import { detectFillDriver } from "./driverDetect";
 import type { FillDriver } from "./mainWorldBridge";
 
@@ -45,6 +47,7 @@ export interface RuntimeControl {
 export interface ScanResult {
   fields: DetectedField[];
   registry: Map<string, RuntimeControl>;
+  adapter: SiteAdapter | null;
 }
 
 const CANDIDATE_SELECTOR = [
@@ -207,7 +210,8 @@ function checkboxGroupContainer(el: HTMLInputElement): Element | null {
 
 export function scanPage(
   profile: UserApplicationProfile | null,
-  fillEEO: boolean
+  fillEEO: boolean,
+  adapter: SiteAdapter | null = getAdapter(location.hostname, location.href)
 ): ScanResult {
   const fields: DetectedField[] = [];
   const registry = new Map<string, RuntimeControl>();
@@ -263,7 +267,7 @@ export function scanPage(
 
     const id = ensureFieldId(el);
     const signals = collectSignals(el);
-    const { category, confidence, sensitive } = classifyField(signals);
+    const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el, signals, controlType });
 
     const options =
       el instanceof HTMLSelectElement
@@ -281,9 +285,7 @@ export function scanPage(
     const control: RuntimeControl = { id, controlType, el, driver };
     registry.set(id, control);
 
-    const proposedValue = profile
-      ? resolveProfileValue(category, profile, { controlType, options }, fillEEO)
-      : null;
+    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType, options }, fillEEO, el);
 
     fields.push({
       id,
@@ -308,14 +310,12 @@ export function scanPage(
     const first = radios[0];
     const id = ensureFieldId(first);
     const signals = groupSignals(radios, first.closest('fieldset, [role="radiogroup"]'));
-    const { category, confidence, sensitive } = classifyField(signals);
+    const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "radioGroup" });
     const options = radios.map(radioOptionLabel).filter(Boolean).slice(0, 30);
 
     registry.set(id, { id, controlType: "radioGroup", radios });
 
-    const proposedValue = profile
-      ? resolveProfileValue(category, profile, { controlType: "radioGroup", options }, fillEEO)
-      : null;
+    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType: "radioGroup", options }, fillEEO, first);
 
     const checked = radios.find((r) => r.checked);
     fields.push({
@@ -340,14 +340,12 @@ export function scanPage(
     const first = checkboxes[0];
     const id = ensureFieldId(first);
     const signals = groupSignals(checkboxes, container);
-    const { category, confidence, sensitive } = classifyField(signals);
+    const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "checkboxGroup" });
     const options = checkboxes.map(radioOptionLabel).filter(Boolean).slice(0, 30);
 
     registry.set(id, { id, controlType: "checkboxGroup", checkboxes });
 
-    const proposedValue = profile
-      ? resolveProfileValue(category, profile, { controlType: "checkboxGroup", options }, fillEEO)
-      : null;
+    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType: "checkboxGroup", options }, fillEEO, first);
 
     const checkedLabels = checkboxes.filter((c) => c.checked).map(radioOptionLabel).filter(Boolean);
     fields.push({
@@ -366,7 +364,7 @@ export function scanPage(
     });
   }
 
-  return { fields, registry };
+  return { fields, registry, adapter };
 }
 
 function currentValueOf(el: HTMLElement, controlType: ControlType): string | undefined {
