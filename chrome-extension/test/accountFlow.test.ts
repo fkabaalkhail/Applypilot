@@ -65,6 +65,16 @@ describe("detectWall", () => {
     document.body.innerHTML = `<div id="s"><input type="email" /></div>`;
     expect(detectWall(scope())).toBeNull();
   });
+
+  it("skips a hidden honeypot email field and picks the visible one", () => {
+    document.body.innerHTML = `
+      <div id="s"><h2>Create Account</h2>
+        <input type="email" name="email_confirm_hp" style="display:none" />
+        <input type="email" name="email" id="real-email" />
+        <input type="password" /><input type="password" />
+      </div>`;
+    expect(detectWall(scope())?.emailEl?.id).toBe("real-email");
+  });
 });
 
 describe("runAccountWall", () => {

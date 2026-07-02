@@ -563,6 +563,9 @@ function initialize(): void {
       flowGeneration++; // a Stop during an in-flight initial fill must win the race
       flowController?.stop();
       flowController = null;
+      // Stop always clears the persisted state — even when no controller is
+      // live yet (a resume mid-await), so the pending resume cannot proceed.
+      void sendToBackground<SimpleResponse>({ type: "FLOW_STATE_SET", state: null }).catch(() => {});
     },
     onFlowResume: () => {
       flowController?.notifyDraftsCleared();

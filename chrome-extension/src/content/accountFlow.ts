@@ -40,7 +40,9 @@ export function detectWall(scope: HTMLElement): WallInfo | null {
     (deepQueryAll(
       scope,
       'input[type="email"], input[autocomplete="username"], input[name*="email" i], input[id*="email" i]'
-    ) as HTMLInputElement[]).filter((el) => !el.disabled && el.type !== "password")[0] ?? null;
+    ) as HTMLInputElement[]).filter(
+      (el) => !el.disabled && el.type !== "password" && (isVisible(el) || isHiddenButLabeled(el))
+    )[0] ?? null;
   return { kind, passwordEls, emailEl };
 }
 
