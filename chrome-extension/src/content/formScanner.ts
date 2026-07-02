@@ -23,6 +23,8 @@ import {
 } from "./domUtils";
 import { isCaptchaField } from "./captcha";
 import { isConsentField } from "./consent";
+import { isInPageChrome } from "./pageChrome";
+import { filterToScope, resolveFormScope, type ScopeEntry } from "./formScope";
 import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
 import { getAdapter } from "./adapters/registry";
@@ -49,6 +51,8 @@ export interface ScanResult {
   fields: DetectedField[];
   registry: Map<string, RuntimeControl>;
   adapter: SiteAdapter | null;
+  /** The resolved application-form container, or null when scoping fell back. */
+  scopeEl: HTMLElement | null;
 }
 
 const CANDIDATE_SELECTOR = [
@@ -115,8 +119,9 @@ function controlTypeOf(el: HTMLElement): ControlType | null {
   return null;
 }
 
-/** Options for a <select>, trimmed for transport. */
-function selectOptions(el: HTMLSelectElement): string[] {
+/** Options for a <select>, trimmed for transport. Exported for the Phase-2
+ *  re-ask pass, which re-reads options after dependent-dropdown repopulation. */
+export function selectOptions(el: HTMLSelectElement): string[] {
   return Array.from(el.options)
     .map((o) => cleanText(o.textContent))
     .filter((t) => t.length > 0)
@@ -230,6 +235,9 @@ export function scanPage(
     // controls but never application fields; counting them leaves the panel
     // stuck on a consent dialog when the real form is lazy-mounted.
     if (isConsentField(el)) continue;
+    // Page chrome (header/nav/footer/aside and landmark roles) is never part
+    // of the application form — an EN/FR switcher is a real <select> we skip.
+    if (isInPageChrome(el)) continue;
     if ((el as HTMLInputElement).disabled) continue;
     if (el instanceof HTMLInputElement && el.readOnly) continue;
 
@@ -368,7 +376,19 @@ export function scanPage(
     });
   }
 
-  return { fields, registry, adapter };
+  // Scope to the application-form container; anything outside is noise even
+  // when its category is known. No qualifying container → unscoped fallback.
+  const entries: ScopeEntry[] = fields.flatMap((f) => {
+    const c = registry.get(f.id);
+    const el = c?.el ?? c?.radios?.[0] ?? c?.checkboxes?.[0];
+    return el ? [{ field: f, el }] : [];
+  });
+  const scopeEl = resolveFormScope(entries);
+  if (!scopeEl) return { fields, registry, adapter, scopeEl: null };
+  const keep = new Set(filterToScope(entries, scopeEl).map((e) => e.field.id));
+  const scoped = fields.filter((f) => keep.has(f.id));
+  for (const f of fields) if (!keep.has(f.id)) registry.delete(f.id);
+  return { fields: scoped, registry, adapter, scopeEl };
 }
 
 function currentValueOf(el: HTMLElement, controlType: ControlType): string | undefined {

@@ -135,6 +135,7 @@ function initialize(): void {
   let registry: Map<string, RuntimeControl> = new Map();
   let lastAdapter: SiteAdapter | null = null;
   let lastFields: DetectedField[] = [];
+  let lastScope: HTMLElement | null = null;
   // Remembered so MutationObserver rescans can recompute proposed values.
   let lastProfile: UserApplicationProfile | null = null;
   let lastFillEEO = false;
@@ -184,6 +185,8 @@ function initialize(): void {
     registry = result.registry;
     lastAdapter = result.adapter;
     lastFields = result.fields;
+    lastScope = result.scopeEl;
+    void lastScope; // consumed by the Phase 3 multi-step nav logic; suppresses noUnusedLocals until then
     logScanDiagnostics(isTopFrame, result.fields, lastProfile !== null);
     return {
       ok: true,
