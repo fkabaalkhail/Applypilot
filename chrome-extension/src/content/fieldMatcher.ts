@@ -398,7 +398,7 @@ function toYesNo(statement: string): string {
 }
 
 function formatExperience(profile: UserApplicationProfile): string | null {
-  if (profile.experience.length === 0) return null;
+  if (!profile.experience?.length) return null;
   return profile.experience
     .map((e) => {
       const dates = [e.startDate, e.endDate].filter(Boolean).join(" to ");
@@ -409,7 +409,7 @@ function formatExperience(profile: UserApplicationProfile): string | null {
 }
 
 function formatEducation(profile: UserApplicationProfile): string | null {
-  const ed = profile.education[0];
+  const ed = profile.education?.[0];
   if (!ed) return null;
   const parts = [ed.degree, ed.school].filter(Boolean).join(", ");
   return parts ? `${parts}${ed.graduationYear ? ` (${ed.graduationYear})` : ""}` : null;

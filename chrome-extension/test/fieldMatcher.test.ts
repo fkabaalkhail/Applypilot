@@ -82,3 +82,13 @@ describe("resolveProfileValue — index-aware repeating sections", () => {
     expect(resolveProfileValue("currentCompany", p, { ...sel, groupIndex: 9 }, false)).toBeNull();
   });
 });
+
+describe("resolveProfileValue — missing education/experience arrays", () => {
+  it("does not throw for education/experience categories when the profile lacks those arrays", () => {
+    const bare = { firstName: "A", currentCompany: "", currentTitle: "" } as unknown as UserApplicationProfile;
+    const sel = { controlType: "text" as const };
+    expect(() => resolveProfileValue("education", bare, sel, false)).not.toThrow();
+    expect(() => resolveProfileValue("experience", bare, { controlType: "textarea" as const }, false)).not.toThrow();
+    expect(resolveProfileValue("education", bare, sel, false)).toBeNull();
+  });
+});
