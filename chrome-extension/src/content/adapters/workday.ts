@@ -15,7 +15,7 @@ const AUTOMATION_RULES: Array<[RegExp, FieldCategory]> = [
   [/firstname|givenname/i, "firstName"],
   [/lastname|familyname/i, "lastName"],
   [/email/i, "email"],
-  [/phone.*number|phonenumber|^phone/i, "phone"],
+  [/phone.*number|^phone/i, "phone"],
   [/country|region/i, "location"],
   [/(address)?.*city/i, "location"],
 ];

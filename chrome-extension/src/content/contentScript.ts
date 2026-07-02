@@ -248,7 +248,7 @@ function initialize(): void {
         (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
       );
 
-      // Phase 2 — the site adapter gets first refusal on each field's fill.
+      // Adapter pass — the site adapter gets first refusal on each field's fill.
       const selectedItems = selected.map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
       const { opOutcomes, remaining } = await runAdapterOperations(lastAdapter, selectedItems, (id) => registry.get(id));
 

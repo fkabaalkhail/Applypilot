@@ -21,4 +21,10 @@ describe("resolveAdapter", () => {
     const good = stub("good", (h) => h === "ok.com");
     expect(resolveAdapter([bad, good], "ok.com", "https://ok.com/")?.id).toBe("good");
   });
+
+  it("returns the earlier adapter when two both match (first-wins)", () => {
+    const a = stub("a", (h) => h.endsWith(".com"));
+    const b = stub("b", (h) => h.endsWith(".com"));
+    expect(resolveAdapter([a, b], "x.com", "https://x.com/")?.id).toBe("a");
+  });
 });
