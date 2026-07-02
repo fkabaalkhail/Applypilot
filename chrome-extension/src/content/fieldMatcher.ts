@@ -425,10 +425,12 @@ export const LONG_TEXT: ControlType[] = ["textarea", "contenteditable"];
 export function resolveProfileValue(
   category: FieldCategory,
   profile: UserApplicationProfile,
-  control: { controlType: ControlType; options?: string[] },
+  control: { controlType: ControlType; options?: string[]; groupIndex?: number | null },
   fillEEO: boolean
 ): string | null {
   const orNull = (v: string | undefined): string | null => (v && v.trim() ? v : null);
+  const gi = control.groupIndex ?? null;
+  const edu = profile.education[gi ?? 0];
 
   switch (category) {
     case "firstName":
@@ -450,17 +452,17 @@ export function resolveProfileValue(
     case "portfolio":
       return orNull(profile.portfolio);
     case "currentCompany":
-      return orNull(profile.currentCompany);
+      return orNull(gi !== null ? profile.experience[gi]?.company : profile.currentCompany);
     case "currentTitle":
-      return orNull(profile.currentTitle);
+      return orNull(gi !== null ? profile.experience[gi]?.title : profile.currentTitle);
     case "salary":
       return orNull(profile.salaryExpectation);
     case "school":
-      return orNull(profile.education[0]?.school);
+      return orNull(edu?.school);
     case "degree":
-      return orNull(profile.education[0]?.degree);
+      return orNull(edu?.degree);
     case "graduationYear":
-      return orNull(profile.education[0]?.graduationYear);
+      return orNull(edu?.graduationYear);
     case "education":
       return formatEducation(profile);
 
