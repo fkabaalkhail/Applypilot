@@ -3,6 +3,7 @@ import {
   classifyWithAdapter,
   resolveAnswerWithAdapter,
   runAdapterOperations,
+  tryAdapterOperation,
 } from "../src/content/adapters/apply";
 import type { SiteAdapter, FieldContext } from "../src/content/adapters/types";
 import type { RuntimeControl } from "../src/content/formScanner";
@@ -42,9 +43,17 @@ describe("resolveAnswerWithAdapter", () => {
   it("returns null when no profile is loaded", () => {
     expect(resolveAnswerWithAdapter(null, "firstName", null, control, false, document.body)).toBeNull();
   });
-  it("uses the adapter override (including a null override) over generic", () => {
+  it("uses a non-undefined adapter override (string) over generic", () => {
     const adapter = { id: "x", match: () => true, resolveAnswer: () => "OVERRIDE" } as SiteAdapter;
     expect(resolveAnswerWithAdapter(adapter, "firstName", profile, control, false, document.body)).toBe("OVERRIDE");
+  });
+  it("returns a null override verbatim (null = no-data answer, not generic)", () => {
+    const adapter = { id: "x", match: () => true, resolveAnswer: () => null } as SiteAdapter;
+    expect(resolveAnswerWithAdapter(adapter, "firstName", profile, control, false, document.body)).toBeNull();
+  });
+  it("falls back to generic when the resolveAnswer hook throws", () => {
+    const adapter = { id: "x", match: () => true, resolveAnswer: () => { throw new Error("boom"); } } as SiteAdapter;
+    expect(resolveAnswerWithAdapter(adapter, "firstName", profile, control, false, document.body)).toBe("Ada");
   });
   it("falls back to generic resolveProfileValue when the adapter declines", () => {
     const adapter = { id: "x", match: () => true, resolveAnswer: () => undefined } as SiteAdapter;
@@ -71,5 +80,25 @@ describe("runAdapterOperations", () => {
     const { opOutcomes, remaining } = await runAdapterOperations(null, items, (id) => reg.get(id));
     expect(opOutcomes).toEqual([]);
     expect(remaining).toEqual(items);
+  });
+  it("a rejected op resolves to {ok:false} and never throws", async () => {
+    const adapter = { id: "x", match: () => true, fillOperation: () => Promise.reject(new Error("boom")) } as SiteAdapter;
+    const reg = new Map([["a", ctrl("a")]]);
+    const { opOutcomes, remaining } = await runAdapterOperations(adapter, [{ fieldId: "a", value: "x" }], (id) => reg.get(id));
+    expect(opOutcomes).toEqual([{ fieldId: "a", ok: false }]);
+    expect(remaining).toEqual([]);
+  });
+});
+
+describe("tryAdapterOperation", () => {
+  const el = document.createElement("input");
+  const ctx = { control: { id: "a", controlType: "text" as const, el }, value: "v", el };
+  it("returns undefined when there is no fillOperation hook", () => {
+    const adapter = { id: "x", match: () => true } as SiteAdapter;
+    expect(tryAdapterOperation(adapter, ctx)).toBeUndefined();
+  });
+  it("returns undefined when the hook throws synchronously", () => {
+    const adapter = { id: "x", match: () => true, fillOperation: () => { throw new Error("boom"); } } as SiteAdapter;
+    expect(tryAdapterOperation(adapter, ctx)).toBeUndefined();
   });
 });

@@ -1,4 +1,3 @@
-// chrome-extension/src/content/adapters/apply.ts
 /**
  * Applies adapter hooks over the generic pipeline. Each helper falls back to
  * generic behavior when the adapter is null, the hook is absent, the hook
