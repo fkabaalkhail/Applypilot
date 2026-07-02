@@ -250,6 +250,9 @@ Our extension (`chrome-extension/src`, ~8.8k LOC, 31 files) already mirrors the 
 ## 15. Proposed phased rebuild (maps to §13 priorities)
 
 1. **Phase 1 — Write‑reliability core:** native‑setter parity in `writeEngine`, MAIN‑world injection harness (`chrome.scripting` + web‑accessible shim + `CustomEvent` bridge), react‑select + Workday Fiber drivers.
+
+   > **Phase 1 status (2026-07-01):** Implemented on branch `feature/autofill-rebuild` — targeted MAIN-world drivers for react-select (real-Chromium verified via Fiber `selectOption`) and Workday (Fiber `onChange` + prompt-DOM fallback, unit-tested), injected per-frame by the service worker over a `CustomEvent` bridge. See the spec and plan dated 2026-07-01.
+
 2. **Phase 2 — Site‑adapter framework:** registry + `rules/answer/operations` interface + generic fallback; implement top‑10 ATS.
 3. **Phase 3 — AI‑primary answering:** promote `aiFillPlanner`/`api/aiFill` to the primary resolver with local fallback + IndexedDB rule/answer cache.
 4. **Phase 4 — Repeating groups & typeaheads:** education/employment operations, date parsing, autocomplete candidates.
