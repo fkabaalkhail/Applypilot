@@ -145,6 +145,9 @@ function initialize(): void {
   let lastFields: DetectedField[] = [];
   let lastScope: HTMLElement | null = null;
   let flowController: FlowController | null = null;
+  /** Bumped on every Stop so an in-flight initial fill can detect it lost the
+   *  race and must not start a controller. See onAutofill / onFlowStop. */
+  let flowGeneration = 0;
   /** The panel's picked upload résumé for this flow (auto-attach preference). */
   let flowResumeId: number | null = null;
   // Remembered so MutationObserver rescans can recompute proposed values.
@@ -504,6 +507,7 @@ function initialize(): void {
         void sendToBackground<SimpleResponse>({ type: "FLOW_STATE_SET", state: null }).catch(() => {});
         return;
       }
+      if (flowController) return; // an autofill click set it while we awaited FLOW_STATE_GET
       flowController = new FlowController(makeFlowDeps());
       void flowController.run(st, null);
     } catch {
@@ -516,16 +520,23 @@ function initialize(): void {
       flowResumeId = uploadResumeId ?? null;
       // One click = one flow. Replace any prior flow, fill this step now (the
       // panel awaits this first tally), then let the controller advance.
+      // Invariant: a Stop during this initial fill wins (skip the controller);
+      // a fresh click supersedes a background resume that started mid-fill.
+      const gen = flowGeneration;
       flowController?.stop();
       const tally = await fillOnce(ids);
-      flowController = new FlowController(makeFlowDeps());
-      void flowController.run(
-        { active: true, step: 0, startedAt: Date.now(), lastSignature: "" },
-        tally
-      );
+      if (gen === flowGeneration) {
+        flowController?.stop(); // a maybeResumeFlow may have set one mid-fill; this click wins
+        flowController = new FlowController(makeFlowDeps());
+        void flowController.run(
+          { active: true, step: 0, startedAt: Date.now(), lastSignature: "" },
+          tally
+        );
+      }
       return tally;
     },
     onFlowStop: () => {
+      flowGeneration++; // a Stop during an in-flight initial fill must win the race
       flowController?.stop();
       flowController = null;
     },

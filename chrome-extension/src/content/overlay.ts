@@ -23,6 +23,7 @@ import type {
   CoverLetterGenOpts,
   DetectedField,
   FillOutcome,
+  FlowPauseReason,
   FlowProgress,
   LoginResponse,
   ProfileResponse,
@@ -113,10 +114,44 @@ export function updateOverlay(state: OverlayViewState): void {
   if (panelExpanded) refreshMainView();
 }
 
-/** Flow progress beats from the controller. Task 13 renders these; until then
- *  the beats only reach the console so wiring is observable. */
+const PAUSE_TEXT: Record<FlowPauseReason, string> = {
+  captcha: "solve the captcha to continue",
+  drafts: "review the answers below to continue",
+  "resume-upload": "attach your résumé to continue",
+  validation: "fix the highlighted errors to continue",
+  account: "sign in to continue",
+  verification: "enter the emailed code to continue",
+};
+
+/** One-line, user-facing description of a flow beat. Pure — unit-tested. */
+export function formatFlowProgress(p: FlowProgress): string {
+  const step = `Step ${p.step + 1}`;
+  switch (p.phase) {
+    case "filling":
+      return `${step} · filling…`;
+    case "advancing":
+      return `${step} · next page…`;
+    case "paused":
+      return `${step} · paused — ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`;
+    case "done": {
+      const steps = p.step + 1;
+      const attention = p.filledFail > 0 ? `, ${p.filledFail} need attention` : "";
+      return `Done — ${steps} step${steps === 1 ? "" : "s"} filled (${p.filledOk} ok${attention}). Review and submit.`;
+    }
+    case "stopped":
+      return p.detail ?? "Autofill flow stopped.";
+  }
+}
+
+/** Render a flow beat: status line + Stop button + late-step drafts. */
 export function updateFlowProgress(p: FlowProgress): void {
-  console.log(`[Tailrd flow] ${p.phase} step=${p.step}`, p.pauseReason ?? "", p.detail ?? "");
+  if (!refs) return;
+  const running = p.phase === "filling" || p.phase === "advancing" || p.phase === "paused";
+  refs.flow.style.display = running ? "flex" : "none";
+  refs.flowText.textContent = formatFlowProgress(p);
+  if (p.drafts && p.drafts.length > 0) renderReviewSection(p.drafts);
+  if (p.phase === "done") showBanner(formatFlowProgress(p), "ok");
+  if (p.phase === "stopped") showBanner(formatFlowProgress(p), "warn");
 }
 
 export function removeOverlay(): void {
@@ -636,6 +671,9 @@ const STYLES = `
 }
 @keyframes ap-spin { to { transform: rotate(360deg); } }
 .ap-review { margin: 0 16px 12px; }
+.ap-flow { display: flex; align-items: center; gap: 8px; margin: 6px 16px; font-size: 12px; }
+.ap-flow-text { flex: 1; }
+.ap-flow-stop { flex: 0 0 auto; }
 .ap-review-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; color: var(--stripe-ink-secondary); margin-bottom: 8px; }
 .ap-review-all { font-size: 12px; color: var(--stripe-primary); background: none; border: none; cursor: pointer; padding: 2px 4px; }
 .ap-review-card { border: 1px solid var(--stripe-hairline); border-radius: 10px; padding: 10px; margin-bottom: 8px; background: var(--stripe-canvas-soft); }
@@ -746,6 +784,9 @@ interface Refs {
   btnAutofill: HTMLButtonElement;
   fieldCount: HTMLDivElement;
   banner: HTMLDivElement;
+  flow: HTMLDivElement;
+  flowText: HTMLSpanElement;
+  flowStop: HTMLButtonElement;
   checklist: HTMLDivElement;
   review: HTMLDivElement;
   resumeName: HTMLDivElement;
@@ -846,6 +887,12 @@ function buildHTML(): string {
 
         <!-- Banner -->
         <div class="ap-banner" id="ap-banner" style="display:none"></div>
+
+        <!-- Multi-page flow status line + Stop -->
+        <div class="ap-flow" id="ap-flow" style="display:none">
+          <span class="ap-flow-text" id="ap-flow-text"></span>
+          <button class="ap-flow-stop" id="ap-flow-stop" type="button">Stop</button>
+        </div>
 
         <!-- Per-field detection checklist (name / email / university … → ✓ or –) -->
         <div class="ap-checklist" id="ap-checklist" style="display:none"></div>
@@ -1007,6 +1054,9 @@ function collectRefs(root: HTMLDivElement): Refs {
     btnAutofill: q("#ap-btn-autofill"),
     fieldCount: q("#ap-field-count"),
     banner: q("#ap-banner"),
+    flow: q("#ap-flow"),
+    flowText: q("#ap-flow-text"),
+    flowStop: q("#ap-flow-stop"),
     checklist: q("#ap-checklist"),
     review: q("#ap-review"),
     resumeName: q("#ap-resume-name"),
@@ -1049,6 +1099,13 @@ function wireEvents(root: HTMLDivElement): void {
 
   // Autofill button
   root.querySelector("#ap-btn-autofill")!.addEventListener("click", () => void doAutofill());
+
+  // Flow Stop button -> stop the running multi-page flow, hide the status line
+  root.querySelector("#ap-flow-stop")!.addEventListener("click", () => {
+    callbacks?.onFlowStop();
+    if (refs) refs.flow.style.display = "none";
+    showBanner("Autofill flow stopped.", "warn");
+  });
 
   // "Your Autofill Information" section -> open info view
   root.querySelector("#ap-section-info")!.addEventListener("click", () => {
@@ -1476,6 +1533,17 @@ function applyDefaultSelection(): void {
 // Autofill
 // ---------------------------------------------------------------------------
 
+/** The résumé currently picked in the upload section, if the user picked one. */
+function currentUploadResumeId(): number | null {
+  // Mirror the résumé-picker read the upload handler uses (see doUploadResume):
+  // only an explicitly chosen, visible selection counts — otherwise null, so the
+  // flow keeps its own auto-attach default instead of us forcing a résumé here.
+  const sel = refs?.resumeSelect;
+  if (!sel || sel.style.display === "none" || !sel.value) return null;
+  const v = Number(sel.value);
+  return Number.isFinite(v) ? v : null;
+}
+
 async function doAutofill(): Promise<void> {
   if (!callbacks || overlayState.busy) return;
   const ids = [...overlayState.selected];
@@ -1486,7 +1554,7 @@ async function doAutofill(): Promise<void> {
   showBanner("", "ok", true);
 
   try {
-    const { ok, fail, total, drafts } = await callbacks.onAutofill(ids);
+    const { ok, fail, total, drafts } = await callbacks.onAutofill(ids, currentUploadResumeId());
     const txt =
       `Filled ${ok} of ${total} field${total === 1 ? "" : "s"}` +
       (fail > 0 ? ` (${fail} need attention)` : "") +
@@ -1503,6 +1571,13 @@ async function doAutofill(): Promise<void> {
     overlayState.busy = false;
     refreshMainView();
   }
+}
+
+/** Tell a drafts-paused flow to resume once every review card is handled. */
+function maybeFlowResume(): void {
+  if (!refs || !callbacks) return;
+  const open = refs.review.querySelectorAll(".ap-review-card:not([data-done])").length;
+  if (open === 0) callbacks.onFlowResume();
 }
 
 function renderReviewSection(drafts: AiDraft[]): void {
@@ -1541,7 +1616,10 @@ function renderReviewSection(drafts: AiDraft[]): void {
     btn.addEventListener("click", () => void insertDraft(Number(btn.dataset.i), drafts));
   });
   host.querySelectorAll<HTMLButtonElement>(".ap-review-skip").forEach((btn) => {
-    btn.addEventListener("click", () => btn.closest(".ap-review-card")?.remove());
+    btn.addEventListener("click", () => {
+      btn.closest(".ap-review-card")?.remove();
+      maybeFlowResume();
+    });
   });
   host.querySelector("#ap-review-all")?.addEventListener("click", () => void insertAllDrafts(drafts));
 }
@@ -1573,6 +1651,8 @@ async function insertDraft(i: number, drafts: AiDraft[]): Promise<void> {
     statusEl.className = "ap-review-status" + (saved ? " ok" : " error");
   }
   if (insertBtn) insertBtn.textContent = "Re-accept";
+  ta.closest(".ap-review-card")?.setAttribute("data-done", "1");
+  maybeFlowResume();
 }
 
 async function insertAllDrafts(drafts: AiDraft[]): Promise<void> {
