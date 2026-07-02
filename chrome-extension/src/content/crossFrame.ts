@@ -74,7 +74,7 @@ export async function dispatchFormOp(
   args: unknown[]
 ): Promise<FormOpResult> {
   try {
-    const fn = (ops as unknown as Record<FormOpName, (...a: unknown[]) => unknown>)[op];
+    const fn = ops[op] as (...a: unknown[]) => unknown;
     const value = await fn(...args);
     return { ok: true, value };
   } catch (err) {

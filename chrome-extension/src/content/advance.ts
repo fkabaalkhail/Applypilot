@@ -32,9 +32,10 @@ export function findAdvanceButton(
   opts: FindAdvanceOpts = {}
 ): AdvanceButton | null {
   const fromAdapter = adapter?.advanceButton?.(scope);
-  if (fromAdapter) {
+  if (fromAdapter && isClickable(fromAdapter)) {
     // Workday reuses one automation-id for Next AND the final Submit — the
-    // terminal check must still gate adapter-supplied buttons.
+    // terminal check must still gate adapter-supplied buttons. A hidden/disabled
+    // adapter button falls through to the generic text search below.
     return { el: fromAdapter, kind: TERMINAL_RE.test(buttonText(fromAdapter)) ? "terminal" : "advance" };
   }
   let advance: HTMLElement | null = null;

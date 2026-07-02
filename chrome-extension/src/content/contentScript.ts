@@ -26,6 +26,9 @@ import type {
   DetectedField,
   FieldsUpdatedEvent,
   FillResponse,
+  FlowProgress,
+  FlowState,
+  FlowStateResponse,
   FormOpName,
   FormOpResult,
   GenerateCoverLetterResponse,
@@ -34,6 +37,7 @@ import type {
   RenderResumeResponse,
   ResumeDoc,
   ResumeFileResponse,
+  ResumeSummary,
   ResumesResponse,
   ScanResponse,
   SimpleResponse,
@@ -59,9 +63,13 @@ import {
   showOverlay,
   updateOverlay,
   toggleOverlay,
+  updateFlowProgress,
   type OverlayCallbacks,
 } from "./overlay";
 import { runAdapterOperations, tryAdapterOperation, type AdapterFillResult, type SiteAdapter } from "./adapters";
+import { FlowController, FLOW_TTL_MS, type FlowDeps, type FlowSnapshot, type StepTally } from "./flowController";
+import { clickAdvance, findAdvanceButton } from "./advance";
+import { hasUnsolvedCaptcha, isVerificationWall, resumeFieldNeedingFile, validationMessages } from "./flowChecks";
 
 // Guard against double injection (manifest match + programmatic inject).
 declare global {
@@ -136,6 +144,9 @@ function initialize(): void {
   let lastAdapter: SiteAdapter | null = null;
   let lastFields: DetectedField[] = [];
   let lastScope: HTMLElement | null = null;
+  let flowController: FlowController | null = null;
+  /** The panel's picked upload résumé for this flow (auto-attach preference). */
+  let flowResumeId: number | null = null;
   // Remembered so MutationObserver rescans can recompute proposed values.
   let lastProfile: UserApplicationProfile | null = null;
   let lastFillEEO = false;
@@ -186,7 +197,6 @@ function initialize(): void {
     lastAdapter = result.adapter;
     lastFields = result.fields;
     lastScope = result.scopeEl;
-    void lastScope; // consumed by the Phase 3 multi-step nav logic; suppresses noUnusedLocals until then
     logScanDiagnostics(isTopFrame, result.fields, lastProfile !== null);
     return {
       ok: true,
@@ -306,9 +316,13 @@ function initialize(): void {
     return { reports, outcomes: [...combo.outcomes, ...driver.outcomes, ...opOutcomes], reask };
   }
 
-  const overlayCallbacks: OverlayCallbacks = {
-    onAutofill: async (ids: string[]) => {
-      const wanted = new Set(ids);
+  /**
+   * One full fill pass over the current step. `ids === null` fills the default
+   * selection (used by the flow for steps 2+ where there is no panel click).
+   * Preserves the Task-7 single re-ask round. Returns the step tally + drafts.
+   */
+  async function fillOnce(ids: string[] | null): Promise<StepTally> {
+      const wanted = ids ? new Set(ids) : defaultSelectedIds(lastFields);
       const selected = lastFields.filter(
         (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
       );
@@ -404,6 +418,119 @@ function initialize(): void {
         reaskFill.outcomes
       );
       return { ok, fail, total, drafts };
+  }
+
+  /** Route a flow progress beat to wherever the panel lives (mirrors reportFields). */
+  function emitFlowProgress(p: FlowProgress): void {
+    if (actingAsRemoteHost) {
+      void chrome.runtime
+        .sendMessage({ type: "RELAY_TO_TOP", payload: { type: "REMOTE_FLOW_PROGRESS", progress: p } })
+        .catch(() => {});
+    } else {
+      updateFlowProgress(p);
+    }
+  }
+
+  /** Attach the flow's picked résumé (or the best default) to the pending file field. */
+  async function attachPickedResume(): Promise<boolean> {
+    const field = resumeFieldNeedingFile(lastFields, (id) => registry.get(id));
+    if (!field) return true;
+    const control = registry.get(field.id);
+    if (!control?.el) return false;
+    try {
+      let resumeId = flowResumeId;
+      if (resumeId == null) {
+        // Spec: fall back to the primary résumé, else the most recent with a file.
+        const rs = await sendToBackground<ResumesResponse>({ type: "GET_RESUMES" });
+        const withFile: ResumeSummary[] = rs?.ok ? rs.resumes.filter((r) => r.hasFile) : [];
+        const pick =
+          withFile.find((r) => r.isPrimary) ??
+          [...withFile].sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
+        resumeId = pick?.id ?? null;
+      }
+      if (resumeId == null) return false;
+      const file = await sendToBackground<ResumeFileResponse>({ type: "DOWNLOAD_RESUME", resumeId });
+      if (!file?.ok || !file.dataBase64) return false;
+      const res = await injectResumeFile(control.el, base64ToFile(file.dataBase64, file.name, file.contentType));
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function makeFlowDeps(): FlowDeps {
+    return {
+      fillStep: (ids) => fillOnce(ids),
+      snapshot: (): FlowSnapshot => ({ fields: lastFields, scopeEl: lastScope }),
+      rescan: () => {
+        runScan();
+        engine?.updateRegistry(registry);
+      },
+      findAdvance: (scope, extraAdvance) => findAdvanceButton(scope, lastAdapter, { extraAdvance }),
+      clickAdvance,
+      accountStep: async () => ({}), // Phase 4 replaces this stub
+      pauseReason: async (snap) => {
+        if (hasUnsolvedCaptcha(document)) return "captcha";
+        const scope = snap.scopeEl ?? document.body;
+        if (isVerificationWall(scope)) return "verification";
+        if (validationMessages(scope).length > 0) return "validation";
+        if (resumeFieldNeedingFile(snap.fields, (id) => registry.get(id))) return "resume-upload";
+        return null;
+      },
+      needsResume: (snap) => resumeFieldNeedingFile(snap.fields, (id) => registry.get(id)) !== null,
+      attachResume: attachPickedResume,
+      setState: async (state: FlowState | null) => {
+        try {
+          await sendToBackground<SimpleResponse>({ type: "FLOW_STATE_SET", state });
+        } catch {
+          // Background asleep — the flow still runs, it just won't survive navigation.
+        }
+      },
+      onProgress: emitFlowProgress,
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      now: () => Date.now(),
+    };
+  }
+
+  /** Resume a persisted flow after a real navigation (form-owning frame only). */
+  async function maybeResumeFlow(): Promise<void> {
+    if (flowController) return;
+    if (recognizedCount(lastFields) === 0) return; // not the form-owning frame (yet)
+    try {
+      const resp = await sendToBackground<FlowStateResponse>({ type: "FLOW_STATE_GET" });
+      const st = resp?.state;
+      if (!st?.active) return;
+      if (Date.now() - st.startedAt > FLOW_TTL_MS) {
+        void sendToBackground<SimpleResponse>({ type: "FLOW_STATE_SET", state: null }).catch(() => {});
+        return;
+      }
+      flowController = new FlowController(makeFlowDeps());
+      void flowController.run(st, null);
+    } catch {
+      // Background asleep — the flow simply doesn't resume.
+    }
+  }
+
+  const overlayCallbacks: OverlayCallbacks = {
+    onAutofill: async (ids: string[], uploadResumeId?: number | null) => {
+      flowResumeId = uploadResumeId ?? null;
+      // One click = one flow. Replace any prior flow, fill this step now (the
+      // panel awaits this first tally), then let the controller advance.
+      flowController?.stop();
+      const tally = await fillOnce(ids);
+      flowController = new FlowController(makeFlowDeps());
+      void flowController.run(
+        { active: true, step: 0, startedAt: Date.now(), lastSignature: "" },
+        tally
+      );
+      return tally;
+    },
+    onFlowStop: () => {
+      flowController?.stop();
+      flowController = null;
+    },
+    onFlowResume: () => {
+      flowController?.notifyDraftsCleared();
     },
     onInsertAnswer: async (fieldId: string, value: string) => {
       const control = registry.get(fieldId);
@@ -474,6 +601,7 @@ function initialize(): void {
       lastProfile = profile;
       runScan();
       reportFields();
+      void maybeResumeFlow();
     },
     onUploadResume: async (resumeId: number) => {
       const field = lastFields.find(
@@ -823,6 +951,13 @@ function initialize(): void {
             remoteFields = message.fields;
             updateOverlay({ fields: remoteFields, tabUrl: location.href });
           }
+          sendResponse({ ok: true });
+          return false;
+        }
+
+        case "REMOTE_FLOW_PROGRESS": {
+          // The child host's flow beat — render it on the adopted panel.
+          if (isTopFrame && adoptedRemote) updateFlowProgress(message.progress);
           sendResponse({ ok: true });
           return false;
         }

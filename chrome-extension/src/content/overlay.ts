@@ -23,6 +23,7 @@ import type {
   CoverLetterGenOpts,
   DetectedField,
   FillOutcome,
+  FlowProgress,
   LoginResponse,
   ProfileResponse,
   ProfileSource,
@@ -42,8 +43,13 @@ import type {
 
 export interface OverlayCallbacks {
   onAutofill: (
-    fieldIds: string[]
+    ids: string[],
+    uploadResumeId?: number | null
   ) => Promise<{ ok: number; fail: number; total: number; drafts: AiDraft[] }>;
+  /** Stop the running multi-page flow (panel Stop button). */
+  onFlowStop: () => void;
+  /** The review queue emptied — a drafts-paused flow may resume. */
+  onFlowResume: () => void;
   onInsertAnswer: (fieldId: string, value: string) => Promise<{ ok: boolean; reason?: string }>;
   /** Persist an accepted/edited answer to the Question Memory (best-effort). */
   onSaveAnswer: (question: string, answer: string) => Promise<{ ok: boolean }>;
@@ -105,6 +111,12 @@ export function updateOverlay(state: OverlayViewState): void {
   // proposed values only appear after the profile reaches the scanner.
   applyDefaultSelection();
   if (panelExpanded) refreshMainView();
+}
+
+/** Flow progress beats from the controller. Task 13 renders these; until then
+ *  the beats only reach the console so wiring is observable. */
+export function updateFlowProgress(p: FlowProgress): void {
+  console.log(`[Tailrd flow] ${p.phase} step=${p.step}`, p.pauseReason ?? "", p.detail ?? "");
 }
 
 export function removeOverlay(): void {
