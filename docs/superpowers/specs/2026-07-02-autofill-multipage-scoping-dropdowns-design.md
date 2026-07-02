@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-02
 **Status:** Approved (pending user review of this document)
-**Areas:** `chrome-extension/src/content/*`, no backend changes
+**Areas:** `chrome-extension/src/content/*`; backend limited to one matcher tier in
+`_match_option` (`backend/routers/fill.py`)
 
 ## Problem
 
@@ -213,7 +214,8 @@ Vitest (invoke via node per the repo's npm stdio quirk), jsdom fixtures:
   password fields filled, storage shape, never-AI-eligible invariant.
 - `comboboxEngine`: harvest-on-miss returns options; re-ask batch assembly;
   cache overwrite under same question key.
-- No backend changes → no pytest impact.
+- Backend: one pytest file for the `_match_option` prefix tier (pure function, no
+  DB fixtures).
 
 Manual verification: one Workday multi-step flow including its signup wall; one
 embedded Greenhouse form; one FR-Canadian posting for localized buttons.
