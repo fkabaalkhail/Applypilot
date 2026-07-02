@@ -260,16 +260,6 @@ export interface AiFillResponse {
   errors: string[];
 }
 
-/** An answer awaiting user review (Accept/Edit/Skip) before it fills + saves. */
-export interface AiDraft {
-  fieldId: string;
-  label: string;
-  value: string;
-  /** "memory" (from a past application) | "ai" (suggestion) — drives the badge. */
-  source?: string;
-  category?: string;
-}
-
 // ---------------------------------------------------------------------------
 // Multi-page autofill flow
 // ---------------------------------------------------------------------------
@@ -277,7 +267,6 @@ export interface AiDraft {
 /** Why a flow is waiting on the user (all reasons auto-resume when cleared). */
 export type FlowPauseReason =
   | "captcha"
-  | "drafts"
   | "resume-upload"
   | "validation"
   | "account"
@@ -302,8 +291,6 @@ export interface FlowProgress {
   filledFail: number;
   pauseReason?: FlowPauseReason;
   detail?: string;
-  /** Later-step AI drafts for the panel's review section. */
-  drafts?: AiDraft[];
 }
 
 /** Flow-owning frame → top-frame panel (via RELAY_TO_TOP). */
@@ -456,7 +443,6 @@ export interface FieldsUpdatedEvent {
 export type FormOpName =
   | "onAutofill"
   | "onInsertAnswer"
-  | "onSaveAnswer"
   | "onRescan"
   | "onListResumes"
   | "onUploadResume"
@@ -468,8 +454,7 @@ export type FormOpName =
   | "onDownloadCoverLetter"
   | "onCopyCoverLetter"
   | "onProfileResolved"
-  | "onFlowStop"
-  | "onFlowResume";
+  | "onFlowStop";
 
 /** One overlay operation, marshaled for execution in the form-owning frame. */
 export interface FormOpRequest {

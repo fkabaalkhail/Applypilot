@@ -19,7 +19,6 @@ import { deleteCredential, listCredentials } from "./credentialStore";
 import { defaultSelectedIds } from "../shared/selection";
 import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
-  AiDraft,
   BackgroundRequest,
   CoverLetterGenOpts,
   DetectedField,
@@ -47,14 +46,10 @@ export interface OverlayCallbacks {
   onAutofill: (
     ids: string[],
     uploadResumeId?: number | null
-  ) => Promise<{ ok: number; fail: number; total: number; drafts: AiDraft[] }>;
+  ) => Promise<{ ok: number; fail: number; total: number }>;
   /** Stop the running multi-page flow (panel Stop button). */
   onFlowStop: () => void;
-  /** The review queue emptied — a drafts-paused flow may resume. */
-  onFlowResume: () => void;
   onInsertAnswer: (fieldId: string, value: string) => Promise<{ ok: boolean; reason?: string }>;
-  /** Persist an accepted/edited answer to the Question Memory (best-effort). */
-  onSaveAnswer: (question: string, answer: string) => Promise<{ ok: boolean }>;
   onRescan: () => void;
   /** List the user's resumes for the picker / auto-upload. */
   onListResumes: () => Promise<ResumeSummary[]>;
@@ -117,7 +112,6 @@ export function updateOverlay(state: OverlayViewState): void {
 
 const PAUSE_TEXT: Record<FlowPauseReason, string> = {
   captcha: "solve the captcha to continue",
-  drafts: "review the answers below to continue",
   "resume-upload": "attach your résumé to continue",
   validation: "fix the highlighted errors to continue",
   account: "sign in to continue",
@@ -144,13 +138,12 @@ export function formatFlowProgress(p: FlowProgress): string {
   }
 }
 
-/** Render a flow beat: status line + Stop button + late-step drafts. */
+/** Render a flow beat: status line + Stop button. */
 export function updateFlowProgress(p: FlowProgress): void {
   if (!refs) return;
   const running = p.phase === "filling" || p.phase === "advancing" || p.phase === "paused";
   refs.flow.style.display = running ? "flex" : "none";
   refs.flowText.textContent = formatFlowProgress(p);
-  if (p.drafts && p.drafts.length > 0) renderReviewSection(p.drafts);
   if (p.phase === "done") showBanner(formatFlowProgress(p), "ok");
   if (p.phase === "stopped") showBanner(formatFlowProgress(p), "warn");
 }
@@ -671,7 +664,6 @@ const STYLES = `
   vertical-align: -2px; margin-right: 6px;
 }
 @keyframes ap-spin { to { transform: rotate(360deg); } }
-.ap-review { margin: 0 16px 12px; }
 .ap-flow { display: flex; align-items: center; gap: 8px; margin: 6px 16px; font-size: 12px; }
 .ap-flow-text { flex: 1; }
 .ap-flow-stop { flex: 0 0 auto; }
@@ -685,20 +677,6 @@ const STYLES = `
 .ap-signin-pass { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ap-signins button { border: 1px solid var(--stripe-hairline); background: #fff; border-radius: 6px; padding: 3px 7px; font-size: 11px; cursor: pointer; color: var(--stripe-ink-secondary); }
 .ap-signins button:hover { background: var(--stripe-canvas-soft); }
-.ap-review-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; color: var(--stripe-ink-secondary); margin-bottom: 8px; }
-.ap-review-all { font-size: 12px; color: var(--stripe-primary); background: none; border: none; cursor: pointer; padding: 2px 4px; }
-.ap-review-card { border: 1px solid var(--stripe-hairline); border-radius: 10px; padding: 10px; margin-bottom: 8px; background: var(--stripe-canvas-soft); }
-.ap-review-label { font-size: 12.5px; color: var(--stripe-ink-secondary); margin-bottom: 6px; font-weight: 500; }
-.ap-review-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; font-weight: 600; }
-.ap-review-badge.mem { background: var(--stripe-accent-light); color: var(--stripe-primary-deep); }
-.ap-review-badge.ai { background: #fff4e6; color: #b9690b; }
-.ap-review-text { width: 100%; box-sizing: border-box; font-size: 12.5px; padding: 8px; border: 1px solid var(--stripe-hairline); border-radius: 8px; resize: vertical; font-family: inherit; }
-.ap-review-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-.ap-review-insert, .ap-review-skip { font-size: 12px; padding: 5px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--stripe-hairline); background: #fff; }
-.ap-review-insert { background: var(--stripe-primary); color: #fff; border-color: var(--stripe-primary); }
-.ap-review-status { font-size: 12px; color: var(--stripe-ink-mute); }
-.ap-review-status.ok { color: #1a7f37; }
-.ap-review-status.error { color: #c0392b; }
 .ap-btn-soft { padding: 9px 12px; border: 1px solid var(--stripe-accent-soft); border-radius: 8px;
   background: var(--stripe-accent-light); color: var(--stripe-primary); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .ap-btn-soft:hover:not(:disabled) { background: var(--stripe-accent-light); }
@@ -801,7 +779,6 @@ interface Refs {
   signins: HTMLDetailsElement;
   signinsBody: HTMLDivElement;
   checklist: HTMLDivElement;
-  review: HTMLDivElement;
   resumeName: HTMLDivElement;
   resumeSelect: HTMLSelectElement;
   btnUploadResume: HTMLButtonElement;
@@ -915,9 +892,6 @@ function buildHTML(): string {
 
         <!-- Per-field detection checklist (name / email / university … → ✓ or –) -->
         <div class="ap-checklist" id="ap-checklist" style="display:none"></div>
-
-        <!-- AI long-form answers to review -->
-        <div class="ap-review" id="ap-review" style="display:none"></div>
 
         <!-- Your Autofill Information -->
         <div class="ap-section">
@@ -1079,7 +1053,6 @@ function collectRefs(root: HTMLDivElement): Refs {
     signins: q("#ap-signins"),
     signinsBody: q("#ap-signins-body"),
     checklist: q("#ap-checklist"),
-    review: q("#ap-review"),
     resumeName: q("#ap-resume-name"),
     resumeSelect: q("#ap-resume-select"),
     btnUploadResume: q("#ap-btn-upload-resume"),
@@ -1637,14 +1610,12 @@ async function doAutofill(): Promise<void> {
   showBanner("", "ok", true);
 
   try {
-    const { ok, fail, total, drafts } = await callbacks.onAutofill(ids, currentUploadResumeId());
+    const { ok, fail, total } = await callbacks.onAutofill(ids, currentUploadResumeId());
     const txt =
       `Filled ${ok} of ${total} field${total === 1 ? "" : "s"}` +
       (fail > 0 ? ` (${fail} need attention)` : "") +
-      (drafts.length > 0 ? ` · ${drafts.length} to review below` : "") +
       ". Review before submitting.";
     showBanner(txt, fail > 0 ? "warn" : "ok");
-    renderReviewSection(drafts);
     // Re-scan so each field's currentValue reflects what just got written —
     // this drives the ✓ / – checklist to its post-fill state.
     callbacks.onRescan();
@@ -1653,96 +1624,6 @@ async function doAutofill(): Promise<void> {
   } finally {
     overlayState.busy = false;
     refreshMainView();
-  }
-}
-
-/** Tell a drafts-paused flow to resume once every review card is handled. */
-function maybeFlowResume(): void {
-  if (!refs || !callbacks) return;
-  const open = refs.review.querySelectorAll(".ap-review-card:not([data-done])").length;
-  if (open === 0) callbacks.onFlowResume();
-}
-
-function renderReviewSection(drafts: AiDraft[]): void {
-  if (!refs) return;
-  const host = refs.review;
-  if (drafts.length === 0) {
-    host.style.display = "none";
-    host.innerHTML = "";
-    return;
-  }
-  host.style.display = "block";
-  host.innerHTML =
-    `<div class="ap-review-head"><span>Answers to review</span>` +
-    `<button class="ap-review-all" id="ap-review-all" type="button">Accept all</button></div>` +
-    drafts
-      .map((d, i) => {
-        const badge =
-          d.source === "memory"
-            ? `<span class="ap-review-badge mem">↩ From a previous application</span>`
-            : `<span class="ap-review-badge ai">✨ AI suggestion</span>`;
-        return `
-      <div class="ap-review-card" data-field="${esc(d.fieldId)}">
-        ${badge}
-        <div class="ap-review-label">${esc(d.label)}</div>
-        <textarea class="ap-review-text" id="ap-review-text-${i}" rows="4">${esc(d.value)}</textarea>
-        <div class="ap-review-actions">
-          <button class="ap-review-insert" data-i="${i}" type="button">Accept</button>
-          <button class="ap-review-skip" data-i="${i}" type="button">Skip</button>
-          <span class="ap-review-status" id="ap-review-status-${i}"></span>
-        </div>
-      </div>`;
-      })
-      .join("");
-
-  host.querySelectorAll<HTMLButtonElement>(".ap-review-insert").forEach((btn) => {
-    btn.addEventListener("click", () => void insertDraft(Number(btn.dataset.i), drafts));
-  });
-  host.querySelectorAll<HTMLButtonElement>(".ap-review-skip").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      btn.closest(".ap-review-card")?.remove();
-      maybeFlowResume();
-    });
-  });
-  host.querySelector("#ap-review-all")?.addEventListener("click", () => void insertAllDrafts(drafts));
-}
-
-async function insertDraft(i: number, drafts: AiDraft[]): Promise<void> {
-  if (!refs || !callbacks) return;
-  const ta = refs.review.querySelector<HTMLTextAreaElement>(`#ap-review-text-${i}`);
-  const statusEl = refs.review.querySelector<HTMLSpanElement>(`#ap-review-status-${i}`);
-  const insertBtn = refs.review.querySelector<HTMLButtonElement>(`.ap-review-insert[data-i="${i}"]`);
-  if (!ta) return;
-  const res = await callbacks.onInsertAnswer(drafts[i].fieldId, ta.value);
-  if (!res.ok) {
-    if (statusEl) {
-      statusEl.textContent = res.reason ?? "Could not insert";
-      statusEl.className = "ap-review-status error";
-    }
-    return;
-  }
-  // Filled — now remember it for next time (best-effort; the field stays filled
-  // even if the save fails).
-  let saved = false;
-  try {
-    saved = (await callbacks.onSaveAnswer(drafts[i].label, ta.value)).ok;
-  } catch {
-    saved = false;
-  }
-  if (statusEl) {
-    statusEl.textContent = saved ? "Accepted ✓" : "Filled (not saved)";
-    statusEl.className = "ap-review-status" + (saved ? " ok" : " error");
-  }
-  if (insertBtn) insertBtn.textContent = "Re-accept";
-  ta.closest(".ap-review-card")?.setAttribute("data-done", "1");
-  maybeFlowResume();
-}
-
-async function insertAllDrafts(drafts: AiDraft[]): Promise<void> {
-  for (let i = 0; i < drafts.length; i++) {
-    if (refs?.review.querySelector(`#ap-review-text-${i}`)) {
-      await insertDraft(i, drafts);
-    }
   }
 }
 

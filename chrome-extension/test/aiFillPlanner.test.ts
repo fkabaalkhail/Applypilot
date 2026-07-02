@@ -92,12 +92,12 @@ describe("toAiFillField", () => {
 });
 
 describe("planAiFill", () => {
-  it("routes by needsReview, not length (divergent cases pin the behavior)", () => {
+  it("fills every non-empty answer silently, ignoring needsReview (no review gate)", () => {
     const candidates = [
+      // needsReview AI suggestion — used to be drafted; now fills inline.
       field({ id: "essay", controlType: "textarea", label: "Why us?" }),
-      // Long-form but a trusted generic memory match → must fill silently.
       field({ id: "summary", controlType: "textarea", label: "Professional summary" }),
-      // Short field but an AI suggestion → must go to review.
+      // Short field, needsReview AI suggestion — also fills inline now.
       field({ id: "exp", controlType: "text", label: "Years of experience?" }),
       field({ id: "auth", controlType: "radioGroup", label: "Authorized?", options: ["Yes", "No"] }),
       field({ id: "blank", controlType: "text", label: "Years?" }),
@@ -110,14 +110,15 @@ describe("planAiFill", () => {
       { id: "blank", answer: "   ", needsReview: true, source: "ai", category: "general" }, // empty → ignored
     ];
     const plan = planAiFill(candidates, answers);
-    expect(plan.drafts).toEqual([
-      { fieldId: "essay", label: "Why us?", value: "Because I love it.", source: "ai", category: "company_specific" },
-      { fieldId: "exp", label: "Years of experience?", value: "5 years", source: "ai", category: "general" },
-    ]);
+    // Every non-empty answer lands in simpleTargets, in candidate order.
     expect(plan.simpleTargets).toEqual([
+      { fieldId: "essay", value: "Because I love it." },
       { fieldId: "summary", value: "Seasoned engineer." },
+      { fieldId: "exp", value: "5 years" },
       { fieldId: "auth", value: "Yes" },
     ]);
+    // The review gate is gone — the plan carries no drafts.
+    expect(plan).not.toHaveProperty("drafts");
   });
 });
 

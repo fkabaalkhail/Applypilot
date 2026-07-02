@@ -14,14 +14,12 @@ const VOID_OPS: ReadonlySet<FormOpName> = new Set<FormOpName>([
   "onRescan",
   "onProfileResolved",
   "onFlowStop",
-  "onFlowResume",
 ]);
 
 /** All OverlayCallbacks method names, in one place for the proxy factory. */
 const ALL_OPS: FormOpName[] = [
   "onAutofill",
   "onInsertAnswer",
-  "onSaveAnswer",
   "onRescan",
   "onListResumes",
   "onUploadResume",
@@ -34,7 +32,6 @@ const ALL_OPS: FormOpName[] = [
   "onCopyCoverLetter",
   "onProfileResolved",
   "onFlowStop",
-  "onFlowResume",
 ];
 
 /** The top frame defers to a child host only when it has no form of its own. */

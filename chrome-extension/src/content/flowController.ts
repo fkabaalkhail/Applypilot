@@ -10,12 +10,10 @@
  *  - NEVER clicks a terminal (submit-like) button — finishes "done" instead.
  *  - Persists FlowState BEFORE clicking advance, so a real navigation (content
  *    script death) resumes on the next page via the session flag.
- *  - Every pause auto-resumes when its condition clears (polled), except
- *    drafts, which resume when the overlay reports the review queue empty.
+ *  - Every pause auto-resumes when its condition clears (polled).
  *  - Runaway guards: MAX_STEPS, FLOW_TTL_MS, and a same-signature loop check.
  */
 import type {
-  AiDraft,
   DetectedField,
   FlowPauseReason,
   FlowPhase,
@@ -34,7 +32,6 @@ export interface StepTally {
   ok: number;
   fail: number;
   total: number;
-  drafts: AiDraft[];
 }
 
 export interface FlowSnapshot {
@@ -77,7 +74,6 @@ export function fieldSignature(fields: DetectedField[]): string {
 
 export class FlowController {
   private stopRequested = false;
-  private draftsCleared: (() => void) | null = null;
   private step = 0;
   private startedAt = 0;
   private lastTally = { ok: 0, fail: 0 };
@@ -89,12 +85,6 @@ export class FlowController {
     if (this.stopRequested) return;
     this.stopRequested = true;
     void this.deps.setState(null);
-    this.draftsCleared?.();
-  }
-
-  /** The overlay's review queue emptied — a drafts pause may resume. */
-  notifyDraftsCleared(): void {
-    this.draftsCleared?.();
   }
 
   /**
@@ -119,11 +109,7 @@ export class FlowController {
       pending = null;
       // Cumulative across steps — the final "done" beat reports the whole flow.
       this.lastTally = { ok: this.lastTally.ok + tally.ok, fail: this.lastTally.fail + tally.fail };
-      this.emit("filling", { drafts: tally.drafts });
-
-      if (tally.drafts.length > 0 && !(await this.waitForDrafts())) {
-        return this.finishStopped();
-      }
+      this.emit("filling");
 
       if (this.deps.needsResume(this.deps.snapshot()) && !(await this.deps.attachResume())) {
         // attachResume failed (no résumé on file) — wait for a manual attach.
@@ -182,17 +168,6 @@ export class FlowController {
 
   private finishStopped(): Promise<void> {
     return this.finish("stopped", "Autofill flow stopped");
-  }
-
-  /** Resolve when the overlay clears the review queue (or stop()). */
-  private waitForDrafts(): Promise<boolean> {
-    this.emit("paused", { pauseReason: "drafts" });
-    return new Promise((resolve) => {
-      this.draftsCleared = (): void => {
-        this.draftsCleared = null;
-        resolve(!this.stopRequested);
-      };
-    });
   }
 
   /** Poll pauseReason until clear. False → stopped/expired. */

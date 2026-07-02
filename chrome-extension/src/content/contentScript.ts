@@ -18,7 +18,6 @@
  *    that owns the fields responds.
  */
 import type {
-  AiDraft,
   AiFillResponse,
   BackgroundRequest,
   ContentRequest,
@@ -325,7 +324,8 @@ function initialize(): void {
   /**
    * One full fill pass over the current step. `ids === null` fills the default
    * selection (used by the flow for steps 2+ where there is no panel click).
-   * Preserves the Task-7 single re-ask round. Returns the step tally + drafts.
+   * Preserves the Task-7 single re-ask round. Every backend answer fills
+   * silently (no review gate). Returns the step tally.
    */
   async function fillOnce(ids: string[] | null): Promise<StepTally> {
       const wanted = ids ? new Set(ids) : defaultSelectedIds(lastFields);
@@ -342,7 +342,6 @@ function initialize(): void {
       // local proposedValue is the fallback so a judgment field never regresses when
       // the backend is unavailable.
       const backendFields = dedupeById([...route.backendFields, ...aiFillCandidates(lastFields)]);
-      const drafts: AiDraft[] = [];
       let aiFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
       let fallbackFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
@@ -366,15 +365,11 @@ function initialize(): void {
           // Backend unavailable — the local fallback below still fills judgment fields.
         }
         const plan = planAiFill(backendFields, answers);
-        drafts.push(...plan.drafts);
         aiFill = await fillItems(plan.simpleTargets, true);
 
         // Local fallback: judgment fields that had a local value but weren't answered
-        // (or drafted) by the backend still fill from proposedValue — no regression.
-        const answered = new Set<string>([
-          ...plan.simpleTargets.map((t) => t.fieldId),
-          ...plan.drafts.map((d) => d.fieldId),
-        ]);
+        // by the backend still fill from proposedValue — no regression.
+        const answered = new Set<string>(plan.simpleTargets.map((t) => t.fieldId));
         const fallbackTargets = route.backendFields
           .filter((f) => !answered.has(f.id) && f.proposedValue !== null)
           .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
@@ -404,7 +399,6 @@ function initialize(): void {
               const affected = lastFields.filter((f) => reaskFields.some((r) => r.id === f.id));
               cacheAnswers(affected, resp.answers); // overwrite the unconstrained answers
               const plan = planAiFill(affected, resp.answers);
-              drafts.push(...plan.drafts);
               reaskFill = await fillItems(plan.simpleTargets, true);
             }
           } catch {
@@ -423,7 +417,7 @@ function initialize(): void {
         fallbackFill.outcomes,
         reaskFill.outcomes
       );
-      return { ok, fail, total, drafts };
+      return { ok, fail, total };
   }
 
   /** Route a flow progress beat to wherever the panel lives (mirrors reportFields). */
@@ -567,9 +561,6 @@ function initialize(): void {
       // live yet (a resume mid-await), so the pending resume cannot proceed.
       void sendToBackground<SimpleResponse>({ type: "FLOW_STATE_SET", state: null }).catch(() => {});
     },
-    onFlowResume: () => {
-      flowController?.notifyDraftsCleared();
-    },
     onInsertAnswer: async (fieldId: string, value: string) => {
       const control = registry.get(fieldId);
       if (!control) return { ok: false, reason: "Field is no longer on the page — rescan." };
@@ -607,20 +598,6 @@ function initialize(): void {
       return verifyControl(control, value)
         ? { ok: true }
         : { ok: false, reason: "Value did not stick — please check the field." };
-    },
-    onSaveAnswer: async (question: string, answer: string) => {
-      // Best-effort: the field is already filled; remembering it is a bonus.
-      try {
-        const resp = await sendToBackground<SimpleResponse>({
-          type: "SAVE_ANSWER",
-          question,
-          answer,
-          jobContext: extractJobContext(),
-        });
-        return { ok: !!resp?.ok };
-      } catch {
-        return { ok: false };
-      }
     },
     onRescan: () => {
       runScan();

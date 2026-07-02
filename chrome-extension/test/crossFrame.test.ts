@@ -12,11 +12,11 @@ describe("shouldAdoptRemoteHost", () => {
 
 describe("makeProxyCallbacks", () => {
   it("marshals onAutofill through the transport and unwraps the value", async () => {
-    const send = vi.fn(async () => ({ ok: true, value: { ok: 2, fail: 0, total: 2, drafts: [] } }));
+    const send = vi.fn(async () => ({ ok: true, value: { ok: 2, fail: 0, total: 2 } }));
     const cb = makeProxyCallbacks(send);
     const res = await cb.onAutofill(["a", "b"]);
     expect(send).toHaveBeenCalledWith("onAutofill", [["a", "b"]]);
-    expect(res).toEqual({ ok: 2, fail: 0, total: 2, drafts: [] });
+    expect(res).toEqual({ ok: 2, fail: 0, total: 2 });
   });
 
   it("fires void methods (onProfileResolved) through the transport without throwing", async () => {

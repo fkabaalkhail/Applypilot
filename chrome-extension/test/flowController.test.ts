@@ -17,7 +17,7 @@ function field(id: string, label: string): DetectedField {
   };
 }
 
-const tally = (ok = 3): StepTally => ({ ok, fail: 0, total: ok, drafts: [] });
+const tally = (ok = 3): StepTally => ({ ok, fail: 0, total: ok });
 const freshState = (): FlowState => ({ active: true, step: 0, startedAt: 0, lastSignature: "" });
 
 /** Scriptable deps: `pages` is a queue of field sets; advancing shifts it. */
@@ -102,34 +102,14 @@ describe("FlowController", () => {
     expect(last.detail).toMatch(/advance/i);
   });
 
-  it("pauses on drafts and resumes via notifyDraftsCleared", async () => {
-    const pages = [[field("1", "A")], [field("2", "B")]];
-    const { deps, progress } = makeDeps(pages, [advanceBtn(), terminalBtn()]);
-    deps.fillStep = async (): Promise<StepTally> => ({
-      ok: 1, fail: 0, total: 1,
-      drafts: [{ fieldId: "1", label: "A", value: "draft" }],
-    });
-    const controller = new FlowController(deps);
-    const run = controller.run(freshState(), null);
-    // Wait until the controller reports the drafts pause.
-    while (!progress.some((p) => p.pauseReason === "drafts")) await Promise.resolve();
-    controller.notifyDraftsCleared();
-    // Second step pauses on drafts again — clear it again to finish.
-    while (progress.filter((p) => p.pauseReason === "drafts").length < 2) await Promise.resolve();
-    controller.notifyDraftsCleared();
-    await run;
-    expect(progress[progress.length - 1].phase).toBe("done");
-  });
-
-  it("stop() during a drafts pause ends the flow as stopped", async () => {
+  it("stop() during a blocking pause ends the flow as stopped", async () => {
+    // The review gate is gone; the remaining pauses poll a blocking condition.
+    // A never-clearing captcha parks the flow — stop() must end it as stopped.
     const { deps, progress } = makeDeps([[field("1", "A")]], [advanceBtn()]);
-    deps.fillStep = async (): Promise<StepTally> => ({
-      ok: 0, fail: 0, total: 0,
-      drafts: [{ fieldId: "1", label: "A", value: "draft" }],
-    });
+    deps.pauseReason = async (): Promise<"captcha"> => "captcha"; // never clears
     const controller = new FlowController(deps);
     const run = controller.run(freshState(), null);
-    while (!progress.some((p) => p.pauseReason === "drafts")) await Promise.resolve();
+    while (!progress.some((p) => p.pauseReason === "captcha")) await Promise.resolve();
     controller.stop();
     await run;
     expect(progress[progress.length - 1].phase).toBe("stopped");

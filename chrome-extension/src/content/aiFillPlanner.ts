@@ -1,12 +1,12 @@
 /**
  * Decides what the AI fill pass does with each field: which fields are eligible,
- * which are long-form (drafted for review) vs simple (filled inline), how to map
- * them to the backend's field shape, and how to tally outcomes across passes.
+ * how to map them to the backend's field shape, which backend answers fill
+ * inline, and how to tally outcomes across passes.
  *
  * Pure functions only — no DOM, no network — so the orchestration in
  * contentScript stays thin and this logic is fully unit-tested.
  */
-import type { AiDraft, AiFillField, DetectedField, FieldCategory } from "../shared/types";
+import type { AiFillField, DetectedField, FieldCategory } from "../shared/types";
 
 /** Labels that signal a free-text answer we should draft rather than guess inline. */
 const LONGFORM_LABEL =
@@ -83,26 +83,24 @@ export function toAiFillField(field: DetectedField): AiFillField {
 
 export interface AiFillPlan {
   simpleTargets: { fieldId: string; value: string }[];
-  drafts: AiDraft[];
 }
 
 /** The subset of a backend FieldAnswer the planner needs (see AiFillAnswer). */
 export interface PlannedAnswer {
   id: string;
   answer: string;
-  /** Backend's verdict: AI suggestions + company-specific matches need review. */
+  /** Backend's review verdict — retained for parity with the backend answer
+   *  shape (and the answer cache); no longer consumed (every answer fills). */
   needsReview?: boolean;
-  /** "memory" | "ai" | "rule" | "profile" — drives the review-card badge. */
+  /** "memory" | "ai" | "rule" | "profile" — backend provenance (unused now). */
   source?: string;
   category?: string;
 }
 
 /**
- * Split backend answers into inline (silent) fills and review drafts.
- *
- * The backend decides what needs review: rule/profile answers and generic memory
- * matches fill silently; AI suggestions and company-specific memory matches are
- * drafted for Accept/Edit/Skip — regardless of field length.
+ * Turn backend answers into inline (silent) fills: every non-empty answer for a
+ * candidate field becomes a simple target. There is no review gate — the
+ * backend's `needsReview` verdict is ignored (an AI answer fills like any other).
  */
 export function planAiFill(
   candidates: DetectedField[],
@@ -110,23 +108,12 @@ export function planAiFill(
 ): AiFillPlan {
   const byId = new Map(answers.map((a) => [a.id, a]));
   const simpleTargets: { fieldId: string; value: string }[] = [];
-  const drafts: AiDraft[] = [];
   for (const f of candidates) {
     const a = byId.get(f.id);
     if (!a || !a.answer || !a.answer.trim()) continue;
-    if (a.needsReview) {
-      drafts.push({
-        fieldId: f.id,
-        label: f.label,
-        value: a.answer,
-        source: a.source,
-        category: a.category,
-      });
-    } else {
-      simpleTargets.push({ fieldId: f.id, value: a.answer });
-    }
+    simpleTargets.push({ fieldId: f.id, value: a.answer });
   }
-  return { simpleTargets, drafts };
+  return { simpleTargets };
 }
 
 /** Count distinct filled fields across passes; later groups win for the same id. */
