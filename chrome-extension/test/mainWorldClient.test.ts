@@ -41,4 +41,13 @@ describe("driveField", () => {
     expect(res.ok).toBe(false);
     expect(res.reason).toMatch(/timeout/i);
   });
+
+  it("fails fast (no timeout wait) when the driver can't be installed", async () => {
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false });
+    const start = Date.now();
+    const res = await driveField("f3", "Canada", "react-select", { timeoutMs: 5000 });
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe("driver-uninstalled");
+    expect(Date.now() - start).toBeLessThan(1000); // did not wait out the 5s timeout
+  });
 });

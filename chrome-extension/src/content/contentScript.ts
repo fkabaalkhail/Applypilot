@@ -315,9 +315,12 @@ function initialize(): void {
       // can't reach them) — hand off to the driver before the combobox branch.
       if (control.driver) {
         const res = await driveField(fieldId, value, control.driver);
-        return res.ok
-          ? { ok: true }
-          : { ok: false, reason: res.reason ?? "Couldn't select that option — choose it manually." };
+        if (res.ok) return { ok: true };
+        const reason =
+          res.reason === "driver-timeout"
+            ? "Timed out waiting for the page — please select it manually."
+            : "Couldn't select that option automatically — choose it manually.";
+        return { ok: false, reason };
       }
       // Custom dropdowns can't be scripted by writeControl — open the listbox
       // and click the option matching the (accepted) answer instead.

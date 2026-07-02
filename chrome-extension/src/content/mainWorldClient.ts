@@ -36,7 +36,12 @@ export async function driveField(
   kind: FillDriver,
   opts: { timeoutMs?: number } = {}
 ): Promise<DriverResult> {
-  await ensureInstalled();
+  // If the MAIN-world driver couldn't be injected into this frame, fail fast to
+  // needs-manual instead of dispatching into the void and waiting out the full
+  // timeout for every driver field (which would feel like a hang).
+  if (!(await ensureInstalled())) {
+    return { ok: false, reason: "driver-uninstalled" };
+  }
   const id = nextId++;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -49,6 +54,9 @@ export async function driveField(
       clearTimeout(timer);
       resolve(r);
     };
+    // Trust boundary: a hostile page could dispatch a forged tailrd:mw:result with
+    // a guessed id. Acceptable — it can only affect the accuracy of a fill into the
+    // page's OWN form; no token or cross-origin data is exposed to page context.
     const onResult = (e: Event): void => {
       const d = (e as CustomEvent<MwResultDetail>).detail;
       if (!d || d.id !== id) return;
