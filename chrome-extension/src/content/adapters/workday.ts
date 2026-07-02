@@ -78,6 +78,16 @@ export const workdayAdapter: SiteAdapter = {
       return { filled: true };
     })();
   },
+
+  advanceButton(scope) {
+    // Workday's step footer often sits OUTSIDE the fields' container — fall
+    // back to the whole document when the scope doesn't hold it.
+    const sel = '[data-automation-id="bottom-navigation-next-button"]';
+    return (
+      (scope.querySelector(sel) as HTMLElement | null) ??
+      (scope.ownerDocument.querySelector(sel) as HTMLElement | null)
+    );
+  },
 };
 
 ADAPTERS.push(workdayAdapter);

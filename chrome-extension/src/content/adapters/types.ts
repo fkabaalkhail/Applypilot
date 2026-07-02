@@ -43,4 +43,8 @@ export interface SiteAdapter {
   resolveAnswer?(ctx: AnswerContext): string | null | undefined;
   /** undefined (sync) declines → generic fill; a Promise claims + fills the field. */
   fillOperation?(ctx: FillContext): Promise<AdapterFillResult> | undefined;
+  /** The step's advance (Next/Continue) button, when the site needs an exact
+   *  selector. The generic text-based discovery runs when undefined. The
+   *  returned button is still terminal-checked — a Submit is never clicked. */
+  advanceButton?(scope: HTMLElement): HTMLElement | null;
 }
