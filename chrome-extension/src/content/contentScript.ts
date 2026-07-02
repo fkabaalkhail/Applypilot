@@ -263,7 +263,7 @@ function initialize(): void {
     items: { fieldId: string; value: string }[],
     merge: boolean
   ): Promise<{ reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] }> {
-    if (items.length === 0) return { reports: [], outcomes: [] };
+    if (items.length === 0 && merge) return { reports: [], outcomes: [] };
     const { opOutcomes, remaining } = await runAdapterOperations(lastAdapter, items, (id) => registry.get(id));
     const driverTargets = remaining.filter((it) => isDriverField(it.fieldId));
     const comboTargets = remaining.filter((it) => !isDriverField(it.fieldId) && isComboboxField(it.fieldId));

@@ -158,4 +158,9 @@ describe("planFillRoute", () => {
     expect(r.localTargets).toEqual([{ fieldId: "a", value: "Female" }]);
     expect(r.backendFields).toEqual([]);
   });
+  it("routes a deterministic field at exactly the confidence threshold to localTargets (>= is inclusive)", () => {
+    const r = planFillRoute([pfField({ id: "a", category: "email", confidence: 0.7, proposedValue: "me@x.com" })], 0.7);
+    expect(r.localTargets).toEqual([{ fieldId: "a", value: "me@x.com" }]);
+    expect(r.backendFields).toEqual([]);
+  });
 });

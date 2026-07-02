@@ -1,9 +1,11 @@
 /**
  * Per-frame, in-memory session cache for backend answers, keyed by NORMALIZED
  * QUESTION TEXT (a page is one job, so field ids churn across re-scans but the
- * question is stable). Dedupes /api/fill calls across the frequent MutationObserver
- * re-scans/re-fills. Cleared on navigation (module lifetime); the backend keeps
- * cross-session memory, so no persistence is needed here.
+ * question is stable). Dedupes /api/fill calls across repeat manual Autofill
+ * clicks within a session (onAutofill is user-triggered; the reconciler's
+ * observer re-fills tracked fields without re-calling the backend). Cleared on
+ * navigation (module lifetime); the backend keeps cross-session memory, so no
+ * persistence is needed here.
  */
 import type { DetectedField } from "../shared/types";
 import type { PlannedAnswer } from "./aiFillPlanner";
