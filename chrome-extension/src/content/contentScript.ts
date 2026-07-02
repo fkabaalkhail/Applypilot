@@ -268,11 +268,14 @@ function initialize(): void {
     const driverTargets = remaining.filter((it) => isDriverField(it.fieldId));
     const comboTargets = remaining.filter((it) => !isDriverField(it.fieldId) && isComboboxField(it.fieldId));
     const reconTargets = remaining.filter((it) => !isDriverField(it.fieldId) && !isComboboxField(it.fieldId));
-    const reports = reconTargets.length
-      ? merge
+    // The primary pass (merge=false) always calls run() — even with no reconciler
+    // targets — so each autofill click resets the reconciler's tracked state, matching
+    // the pre-Phase-3 behavior. Later passes (merge=true) only merge in new targets.
+    const reports = merge
+      ? reconTargets.length
         ? await getEngine().addTargets(reconTargets, registry)
-        : await getEngine().run(reconTargets, registry)
-      : [];
+        : []
+      : await getEngine().run(reconTargets, registry);
     const outcomes = [
       ...(comboTargets.length ? await fillComboboxTargets(comboTargets) : []),
       ...(driverTargets.length ? await fillDriverTargets(driverTargets) : []),
