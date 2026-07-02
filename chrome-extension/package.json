@@ -12,7 +12,8 @@
     "test:smoke": "node test/scan-smoke.mjs",
     "test": "vitest run",
     "test:browser": "node test/browser/gen-resume.mjs && node test/browser/build.mjs && node test/browser/run.mjs",
-    "test:extension": "node build.mjs && node test/browser/load-extension.mjs"
+    "test:extension": "node build.mjs && node test/browser/load-extension.mjs",
+    "test:driver": "node build.mjs && node test/browser/react-select-driver.mjs"
   },
   "devDependencies": {
     "@phosphor-icons/core": "^2.1.1",
