@@ -15,10 +15,11 @@ const CAPTCHA_SELECTOR =
 export function hasUnsolvedCaptcha(doc: Document): boolean {
   const widgets = deepQueryAll(doc, CAPTCHA_SELECTOR).filter((el) => isVisible(el));
   if (widgets.length === 0) return false;
-  const token = doc.querySelector(
+  const tokens = deepQueryAll(
+    doc,
     'textarea[name="g-recaptcha-response"], [name="h-captcha-response"]'
-  ) as HTMLTextAreaElement | null;
-  return !(token && token.value);
+  ) as (HTMLTextAreaElement | HTMLInputElement)[];
+  return !tokens.some((t) => Boolean(t.value));
 }
 
 /** Populated alert texts inside the scope (the page is telling the user off). */

@@ -37,6 +37,16 @@ describe("hasUnsolvedCaptcha", () => {
     document.body.innerHTML = `<form><input /></form>`;
     expect(hasUnsolvedCaptcha(document)).toBe(false);
   });
+
+  it("finds a solved token inside a shadow root / embedded subtree", () => {
+    document.body.innerHTML = `<div class="g-recaptcha" data-sitekey="x"></div><div id="host"></div>`;
+    const root = document.getElementById("host")!.attachShadow({ mode: "open" });
+    const ta = document.createElement("textarea");
+    ta.name = "g-recaptcha-response";
+    ta.value = "tok";
+    root.appendChild(ta);
+    expect(hasUnsolvedCaptcha(document)).toBe(false);
+  });
 });
 
 describe("validationMessages / invalidFieldCount", () => {
