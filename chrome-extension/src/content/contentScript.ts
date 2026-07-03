@@ -58,7 +58,9 @@ import { getLocalAnswers, saveLocalAnswer } from "./localAnswers";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext } from "./jobContext";
-import { aiFillCandidates, planAiFill, planFillRoute, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
+import { aiFillCandidates, needsOptionHarvest, planAiFill, planFillRoute, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
+import { closestDemographicOption } from "./demographicMatch";
+import { toApplicantProfile } from "./applicantProfile";
 import { splitByCache, cacheAnswers } from "./answerCache";
 import { promptForMissingFields, type MissingFieldPrompt } from "./missingInfoModal";
 import { buildProfilePatch, isProfileCategory } from "../shared/profileCategories";
@@ -555,6 +557,16 @@ function initialize(): void {
         { reports: [], outcomes: [], reask: [] };
       if (backendFields.length > 0 && !signal?.aborted) {
         const { hits, misses } = splitByCache(backendFields);
+        // Harvest real options for lazy dropdowns BEFORE asking the AI, so its
+        // first answer is constrained to what the widget actually offers
+        // (react-select / Workday mount their option list only when opened).
+        for (const f of misses) {
+          if (signal?.aborted) break;
+          const control = registry.get(f.id);
+          if (!needsOptionHarvest(f, Boolean(control?.driver)) || !control?.el) continue;
+          const harvested = await harvestComboboxOptions(control.el).catch(() => undefined);
+          if (harvested && harvested.length > 0) f.options = harvested;
+        }
         let answers: PlannedAnswer[] = hits;
         try {
           if (misses.length > 0) {
@@ -562,6 +574,7 @@ function initialize(): void {
               type: "AI_FILL",
               fields: misses.map(toAiFillField),
               jobContext: extractJobContext(),
+              profile: lastProfile ? toApplicantProfile(lastProfile) : undefined,
             });
             if (resp?.ok) {
               cacheAnswers(misses, resp.answers);
@@ -588,19 +601,37 @@ function initialize(): void {
       // ("Canada" → "Canadian"), then a merge pass drives them in.
       let reaskFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
+      let demoFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
+        { reports: [], outcomes: [], reask: [] };
       const reaskCandidates = [...localFill.reask, ...aiFill.reask, ...fallbackFill.reask];
-      if (reaskCandidates.length > 0 && !signal?.aborted) {
-        for (const c of reaskCandidates) {
+      // Sensitive (EEO) fields NEVER reach the backend — pick their closest
+      // option ON-DEVICE from the harvested list. Everything else re-asks the AI.
+      const sensitiveReask = reaskCandidates.filter((c) => lastFields.find((f) => f.id === c.fieldId)?.sensitive);
+      const openReask = reaskCandidates.filter((c) => !lastFields.find((f) => f.id === c.fieldId)?.sensitive);
+      if (sensitiveReask.length > 0 && !signal?.aborted) {
+        const demoTargets: { fieldId: string; value: string }[] = [];
+        for (const c of sensitiveReask) {
+          const f = lastFields.find((x) => x.id === c.fieldId);
+          if (!f) continue;
+          f.options = c.options; // panel shows the real choices
+          const choice = closestDemographicOption(f.category, f.proposedValue ?? "", c.options);
+          if (choice) demoTargets.push({ fieldId: c.fieldId, value: choice });
+        }
+        if (demoTargets.length > 0) demoFill = await fillItems(demoTargets, true, signal);
+      }
+      if (openReask.length > 0 && !signal?.aborted) {
+        for (const c of openReask) {
           const f = lastFields.find((x) => x.id === c.fieldId);
           if (f) f.options = c.options; // panel now shows the real choices
         }
-        const reaskFields = planReaskFields(lastFields, reaskCandidates);
+        const reaskFields = planReaskFields(lastFields, openReask);
         if (reaskFields.length > 0) {
           try {
             const resp = await sendToBackground<AiFillResponse>({
               type: "AI_FILL",
               fields: reaskFields,
               jobContext: extractJobContext(),
+              profile: lastProfile ? toApplicantProfile(lastProfile) : undefined,
             });
             if (resp?.ok) {
               const affected = lastFields.filter((f) => reaskFields.some((r) => r.id === f.id));
@@ -623,11 +654,13 @@ function initialize(): void {
         aiFill.reports,
         fallbackFill.reports,
         reaskFill.reports,
+        demoFill.reports,
         missingFill.reports,
         localFill.outcomes,
         aiFill.outcomes,
         fallbackFill.outcomes,
         reaskFill.outcomes,
+        demoFill.outcomes,
         missingFill.outcomes
       );
 
@@ -636,11 +669,11 @@ function initialize(): void {
       if (!signal?.aborted && total > 0) {
         const allReports = [
           ...localFill.reports, ...aiFill.reports, ...fallbackFill.reports,
-          ...reaskFill.reports, ...missingFill.reports,
+          ...reaskFill.reports, ...demoFill.reports, ...missingFill.reports,
         ];
         const allOutcomes = [
           ...localFill.outcomes, ...aiFill.outcomes, ...fallbackFill.outcomes,
-          ...reaskFill.outcomes, ...missingFill.outcomes,
+          ...reaskFill.outcomes, ...demoFill.outcomes, ...missingFill.outcomes,
         ];
         const telemetry = buildAutofillTelemetry(
           lastFields,
@@ -788,6 +821,10 @@ function initialize(): void {
         return null;
       },
       needsResume: (snap) => resumeFieldNeedingFile(snap.fields, (id) => registry.get(id)) !== null,
+      hasUnfilledRequired: (snap) =>
+        snap.fields.some(
+          (f) => f.required && f.fillable && f.controlType !== "file" && controlIsEmpty(f.id)
+        ),
       attachResume: attachPickedResume,
       setState: async (state: FlowState | null) => {
         try {
