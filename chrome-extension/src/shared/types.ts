@@ -556,10 +556,36 @@ export type BackgroundRequest =
   | { type: "RENDER_COVER_LETTER"; text: string; filename?: string }
   | { type: "FLOW_STATE_GET" }
   | { type: "FLOW_STATE_SET"; state: FlowState | null }
+  | { type: "RECORD_APPLICATION"; application: ApplicationLog }
   | FormHostAnnounce
   | RelayFormOp
   | RelayToTop
   | InstallMainWorldDriverRequest;
+
+/**
+ * A job application the user submitted on an ATS page, recorded to their Tailrd
+ * account (Applications page). Sent when the user clicks the real submit button
+ * after an autofill flow — the extension never submits, it only observes.
+ */
+export interface ApplicationLog {
+  company: string;
+  role: string;
+  url: string;
+  /** Matched site adapter id (greenhouse, workday…) when known. */
+  atsType?: string;
+  /** "original" | "uploaded" — which résumé the user attached this flow. */
+  resumeVersion?: string;
+  /** Internal Tailrd job id when the apply was launched from the dashboard. */
+  jobId?: number | null;
+}
+
+export interface RecordApplicationResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  /** True when a new record was created; false when an existing one was refreshed. */
+  created?: boolean;
+}
 
 export interface StatusResponse {
   ok: boolean;

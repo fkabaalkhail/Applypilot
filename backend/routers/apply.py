@@ -11,6 +11,7 @@ POST /apply/{session_id}/question    → PendingQuestionOut
 import time
 import uuid
 import logging
+import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -22,7 +23,10 @@ from backend.db.models import (
     ResumeProfileDB, TailoredResume, UserSettings,
 )
 from backend.auth.dependencies import get_verified_user_id
-from backend.schemas.apply import ApplySession, FillProfile, ProgressUpdate
+from backend.schemas.apply import (
+    ApplySession, FillProfile, ProgressUpdate,
+    LogApplicationRequest, LoggedApplication,
+)
 from backend.schemas.jobs import PendingQuestionOut
 
 logger = logging.getLogger(__name__)
@@ -290,3 +294,89 @@ def submit_question(
     db.refresh(question)
 
     return question
+
+
+@router.post("/log", response_model=LoggedApplication)
+def log_application(
+    request: LogApplicationRequest,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Record an application the extension observed the user submit.
+
+    This is the external-page counterpart to the session `/complete` flow: the
+    autofill extension deliberately never clicks Submit, but when the user does,
+    it POSTs here so the job shows up on the user's Applications page — the same
+    behaviour as Jobright's submit tracking. No internal job_id is required;
+    ApplicationRecord.job_id and .url are nullable and the applications list
+    outer-joins ScrapedJob, so an external record renders correctly.
+
+    Deduped by (user_id, url): re-submitting the same URL refreshes applied_at
+    instead of creating a duplicate row.
+    """
+    company = (request.company or "").strip()
+    role = (request.role or "").strip()
+    url = (request.url or "").strip() or None
+
+    if not company and not role and not url:
+        raise HTTPException(
+            status_code=422,
+            detail="Need at least a company, role, or URL to log an application.",
+        )
+
+    now = datetime.datetime.utcnow()
+
+    existing = None
+    if url:
+        existing = (
+            db.query(ApplicationRecord)
+            .filter(ApplicationRecord.user_id == user_id, ApplicationRecord.url == url)
+            .order_by(ApplicationRecord.applied_at.desc())
+            .first()
+        )
+
+    if existing:
+        existing.applied_at = now
+        if company:
+            existing.company = company
+        if role:
+            existing.role = role
+        if request.resume_version:
+            existing.resume_version = request.resume_version
+        record = existing
+        created = False
+    else:
+        record = ApplicationRecord(
+            user_id=user_id,
+            job_id=request.job_id,
+            platform=request.platform or "extension",
+            company=company or (url or "Unknown"),
+            role=role or "",
+            url=url,
+            resume_version=request.resume_version or "original",
+            ats_type=request.ats_type or "",
+            applied_at=now,
+        )
+        db.add(record)
+        created = True
+
+    # If this application maps to a job Tailrd already tracks, reflect the status.
+    if request.job_id:
+        job = db.query(ScrapedJob).filter(ScrapedJob.id == request.job_id).first()
+        if job:
+            job.status = JobStatus.APPLIED
+
+    db.commit()
+    db.refresh(record)
+
+    status = record.status.value if hasattr(record.status, "value") else str(record.status)
+    return LoggedApplication(
+        id=record.id,
+        company=record.company,
+        role=record.role,
+        url=record.url,
+        status=status,
+        applied_at=record.applied_at,
+        job_id=record.job_id,
+        created=created,
+    )

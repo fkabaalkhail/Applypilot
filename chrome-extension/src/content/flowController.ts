@@ -47,6 +47,9 @@ export interface FlowDeps {
   rescan(): void;
   findAdvance(scope: HTMLElement, extraAdvance?: RegExp): AdvanceButton | null;
   clickAdvance(el: HTMLElement): void;
+  /** The flow reached the terminal (submit) button — hand it over so the caller
+   *  can bind submit tracking. NEVER clicked by the controller. */
+  onTerminal?(el: HTMLElement): void;
   /** Account-wall handling (Phase 4); {} when no wall. */
   accountStep(snap: FlowSnapshot): Promise<{ extraAdvance?: RegExp }>;
   /** First blocking condition, or null when clear (captcha/validation/…). */
@@ -136,7 +139,12 @@ export class FlowController {
       if (!snap.scopeEl) return this.finish("done");
       const adv = this.deps.findAdvance(snap.scopeEl, account.extraAdvance);
       if (!adv) return this.finish("done");
-      if (adv.kind === "terminal") return this.finish("done", "Ready to review and submit");
+      if (adv.kind === "terminal") {
+        // Reached the real submit button — hand it to the caller for submit
+        // tracking, then finish. The controller itself never clicks it.
+        this.deps.onTerminal?.(adv.el);
+        return this.finish("done", "Ready to review and submit");
+      }
 
       // Page filled — hand control back to the user. The flow parks here until
       // the panel's "Next page" button calls notifyAdvanceRequested() (or Stop).

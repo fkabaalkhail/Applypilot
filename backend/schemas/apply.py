@@ -2,6 +2,8 @@
 Pydantic schemas for the apply flow (session, profile data, progress).
 """
 
+import datetime
+
 from pydantic import BaseModel
 
 
@@ -39,3 +41,33 @@ class ProgressUpdate(BaseModel):
     percentage: int
     current_field: str
     status: str  # filling, waiting_user, complete, error
+
+
+class LogApplicationRequest(BaseModel):
+    """An application the extension observed the user submit on an ATS page.
+
+    Everything is optional so the extension can log whatever job context it
+    scraped from the page. Used by POST /apply/log — the external-page analogue
+    of POST /apply/{session_id}/complete (which needs an internal job_id).
+    """
+    company: str = ""
+    role: str = ""
+    url: str = ""
+    platform: str = "extension"
+    ats_type: str = ""
+    resume_version: str = "original"
+    job_id: int | None = None
+
+
+class LoggedApplication(BaseModel):
+    """The application record created (or refreshed) by POST /apply/log."""
+    id: int
+    company: str
+    role: str
+    url: str | None = None
+    status: str
+    applied_at: datetime.datetime
+    job_id: int | None = None
+    # True when a new record was inserted; False when an existing one (same
+    # user + url) had its applied_at refreshed instead of duplicating.
+    created: bool

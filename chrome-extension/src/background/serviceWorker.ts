@@ -16,6 +16,7 @@ import { aiFillFields } from "../api/aiFill";
 import { saveAnswer } from "../api/answers";
 import { renderResume, tailorResume } from "../api/tailorResume";
 import { generateCoverLetter, renderCoverLetter } from "../api/coverLetter";
+import { recordApplication } from "../api/applications";
 import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import { getFlowState, setFlowState, watchTabRemoval } from "./flowState";
 import type {
@@ -26,6 +27,7 @@ import type {
   LoginResponse,
   ProfileResponse,
   RenderCoverLetterResponse,
+  RecordApplicationResponse,
   RenderResumeResponse,
   ResumeFileResponse,
   ResumesResponse,
@@ -242,6 +244,7 @@ export async function handle(
   | RenderResumeResponse
   | GenerateCoverLetterResponse
   | RenderCoverLetterResponse
+  | RecordApplicationResponse
 > {
   switch (message.type) {
     case "GET_STATUS": {
@@ -463,6 +466,21 @@ export async function handle(
           return { ok: false, needsLogin: true, name: "", contentType: "", error: err.message };
         }
         return { ok: false, name: "", contentType: "", error: err instanceof Error ? err.message : "Render failed" };
+      }
+    }
+
+    case "RECORD_APPLICATION": {
+      try {
+        const { created } = await recordApplication(message.application);
+        return { ok: true, created };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, error: err.message };
+        }
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Could not record application",
+        };
       }
     }
 

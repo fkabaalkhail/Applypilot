@@ -19,6 +19,7 @@
  */
 import type {
   AiFillResponse,
+  ApplicationLog,
   BackgroundRequest,
   ContentRequest,
   ControlType,
@@ -35,6 +36,7 @@ import type {
   GenerateCoverLetterResponse,
   PingResponse,
   ProfileResponse,
+  RecordApplicationResponse,
   RenderCoverLetterResponse,
   RenderResumeResponse,
   ResumeDoc,
@@ -75,6 +77,7 @@ import { FlowController, FLOW_TTL_MS, type FlowDeps, type FlowSnapshot, type Ste
 import { clickAdvance, findAdvanceButton } from "./advance";
 import { hasUnsolvedCaptcha, isVerificationWall, resumeFieldNeedingFile, validationMessages } from "./flowChecks";
 import { detectWall, runAccountWall } from "./accountFlow";
+import { bindSubmitTracking, type SubmitTrackerHandle } from "./submitTracker";
 
 // Guard against double injection (manifest match + programmatic inject).
 declare global {
@@ -157,6 +160,11 @@ function initialize(): void {
   let flowResumeId: number | null = null;
   // A login wall we have no credentials for — pauses the flow until it clears.
   let accountBlocked = false;
+  // Submit tracking: bound to the terminal (submit) button once the flow reaches
+  // it, so the application is recorded when the USER submits. Never auto-clicked.
+  let submitTracker: SubmitTrackerHandle | null = null;
+  let trackedButton: HTMLElement | null = null;
+  let lastRecordedUrl: string | null = null;
   // Remembered so MutationObserver rescans can recompute proposed values.
   let lastProfile: UserApplicationProfile | null = null;
   let lastFillEEO = false;
@@ -551,6 +559,56 @@ function initialize(): void {
     }
   }
 
+  /**
+   * Record the application on the user's Tailrd account (Applications page) when
+   * they submit. Best-effort: a signed-out user or offline backend is ignored.
+   * Deduped per URL locally so a double-click doesn't send twice; the backend
+   * dedupes across sessions too.
+   */
+  async function recordCurrentApplication(): Promise<void> {
+    const url = location.href;
+    if (lastRecordedUrl === url) return;
+    const ctx = extractJobContext();
+    const application: ApplicationLog = {
+      company: ctx.company,
+      role: ctx.jobTitle,
+      url,
+      atsType: lastAdapter?.id ?? "",
+      resumeVersion: flowResumeId != null ? "uploaded" : "original",
+    };
+    if (!application.company && !application.role && !application.url) return;
+    lastRecordedUrl = url;
+    try {
+      const resp = await sendToBackground<RecordApplicationResponse>({
+        type: "RECORD_APPLICATION",
+        application,
+      });
+      if (resp?.ok) {
+        emitFlowProgress({
+          phase: "done",
+          step: 0,
+          filledOk: 0,
+          filledFail: 0,
+          detail: "Application tracked in your Tailrd dashboard",
+        });
+      } else if (resp?.needsLogin) {
+        lastRecordedUrl = null; // let a later attempt retry once connected
+      }
+    } catch {
+      lastRecordedUrl = null; // transient failure — allow a retry
+    }
+  }
+
+  /** Bind submit tracking to the flow's terminal button (idempotent per button). */
+  function bindSubmitOnce(button: HTMLElement): void {
+    if (trackedButton === button && submitTracker) return;
+    submitTracker?.dispose();
+    trackedButton = button;
+    submitTracker = bindSubmitTracking(button, () => void recordCurrentApplication(), {
+      hasBlockingValidation: () => validationMessages(lastScope ?? document.body).length > 0,
+    });
+  }
+
   function makeFlowDeps(): FlowDeps {
     return {
       fillStep: (ids) => fillOnce(ids),
@@ -561,6 +619,7 @@ function initialize(): void {
       },
       findAdvance: (scope, extraAdvance) => findAdvanceButton(scope, lastAdapter, { extraAdvance }),
       clickAdvance,
+      onTerminal: (button) => bindSubmitOnce(button),
       accountStep: async (snap) => {
         const scope = snap.scopeEl ?? document.body;
         const wall = detectWall(scope);
