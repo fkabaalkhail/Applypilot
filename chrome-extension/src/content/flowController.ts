@@ -56,6 +56,8 @@ export interface FlowDeps {
   pauseReason(snap: FlowSnapshot): Promise<FlowPauseReason | null>;
   /** True when a required résumé field needs a file. */
   needsResume(snap: FlowSnapshot): boolean;
+  /** True when a required field on this page is still empty (pause on issues). */
+  hasUnfilledRequired(snap: FlowSnapshot): boolean;
   /** Try to attach the user's résumé; false → pause until the user does. */
   attachResume(): Promise<boolean>;
   setState(state: FlowState | null): Promise<void>;
@@ -146,12 +148,15 @@ export class FlowController {
         return this.finish("done", "Ready to review and submit");
       }
 
-      // Page filled — hand control back to the user. The flow parks here until
-      // the panel's "Next page" button calls notifyAdvanceRequested() (or Stop).
-      // A blocking condition (e.g. a captcha) may have re-appeared while the
-      // user reviewed, so re-check it once before clicking advance.
-      this.emit("ready");
-      if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
+      // Auto-advance when the page is clean; pause for the user only on an issue.
+      // Unfilled required fields would fail the site's own validation, so we stop
+      // and let the user fill them (or force-advance via the Next page button).
+      // A blocker (e.g. a captcha) may also have re-appeared while filling, so
+      // re-check that below before clicking advance.
+      if (this.deps.hasUnfilledRequired(snap)) {
+        this.emit("paused", { pauseReason: "unfilled-required" });
+        if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
+      }
       if (!(await this.waitWhileBlocked())) return this.finishStopped();
 
       const before = fieldSignature(snap.fields);

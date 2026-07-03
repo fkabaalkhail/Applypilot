@@ -44,6 +44,7 @@ function makeDeps(pages: DetectedField[][], advances: (AdvanceButton | null)[]):
     pauseReason: async () => null,
     attachResume: async () => true,
     needsResume: () => false,
+    hasUnfilledRequired: () => false,
     setState: async (s) => { log.push(`state:${s ? s.step : "null"}`); },
     onProgress: (p) => progress.push(p),
     sleep: async () => { clock += 100; },
@@ -72,9 +73,13 @@ async function drive(
   let answered = 0;
   for (let guard = 0; guard < 100000 && !settled; guard++) {
     await Promise.resolve();
-    const ready = progress.filter((p) => p.phase === "ready").length;
-    if (ready > answered) {
-      answered = ready;
+    // Clean pages now auto-advance; a manual gate only appears at a legacy
+    // "ready" beat or an unfilled-required pause. Answer either.
+    const gates = progress.filter(
+      (p) => p.phase === "ready" || (p.phase === "paused" && p.pauseReason === "unfilled-required")
+    ).length;
+    if (gates > answered) {
+      answered = gates;
       controller.notifyAdvanceRequested();
     }
   }
@@ -101,6 +106,17 @@ describe("FlowController", () => {
     expect(log.filter((l) => l.startsWith("fill:"))).toEqual(["fill:0:auto", "fill:1:auto"]);
     expect(log).toContain("click:0");
     expect(log[log.length - 1]).toBe("state:null"); // state cleared at the end
+    expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
+  it("auto-advances a clean page without a manual Next-page click", async () => {
+    const pages = [[field("1", "A")], [field("2", "B")]];
+    const { deps, log, progress } = makeDeps(pages, [advanceBtn(), terminalBtn()]);
+    // hasUnfilledRequired defaults to false → the clean page advances on its own.
+    await new FlowController(deps).run(freshState(), null);
+    expect(log).toContain("click:0"); // advanced with no notifyAdvanceRequested
+    expect(progress.some((p) => p.phase === "ready")).toBe(false);
+    expect(progress.some((p) => p.pauseReason === "unfilled-required")).toBe(false);
     expect(progress[progress.length - 1].phase).toBe("done");
   });
 
@@ -175,13 +191,14 @@ describe("FlowController", () => {
     expect(progress[progress.length - 1].phase).toBe("done");
   });
 
-  it("parks at the ready gate and only clicks advance after notifyAdvanceRequested", async () => {
+  it("pauses on unfilled-required and only clicks advance after notifyAdvanceRequested", async () => {
     const pages = [[field("1", "A")], [field("2", "B")]];
     const { deps, log, progress } = makeDeps(pages, [advanceBtn(), terminalBtn()]);
+    deps.hasUnfilledRequired = (): boolean => true; // page 1 has an empty required field
     const controller = new FlowController(deps);
     const run = controller.run(freshState(), null);
-    // Page 1 fills, then the flow waits at "ready" — no advance click yet.
-    while (!progress.some((p) => p.phase === "ready")) await Promise.resolve();
+    // Page 1 fills, then the flow pauses — no advance click yet.
+    while (!progress.some((p) => p.pauseReason === "unfilled-required")) await Promise.resolve();
     expect(log).not.toContain("click:0");
     controller.notifyAdvanceRequested();
     await run;
@@ -189,12 +206,13 @@ describe("FlowController", () => {
     expect(progress[progress.length - 1].phase).toBe("done");
   });
 
-  it("stop() while waiting at the ready gate ends the flow as stopped without clicking", async () => {
+  it("stop() while paused at unfilled-required ends the flow as stopped without clicking", async () => {
     const pages = [[field("1", "A")], [field("2", "B")]];
     const { deps, log, progress } = makeDeps(pages, [advanceBtn(), terminalBtn()]);
+    deps.hasUnfilledRequired = (): boolean => true;
     const controller = new FlowController(deps);
     const run = controller.run(freshState(), null);
-    while (!progress.some((p) => p.phase === "ready")) await Promise.resolve();
+    while (!progress.some((p) => p.pauseReason === "unfilled-required")) await Promise.resolve();
     controller.stop();
     await run;
     expect(progress[progress.length - 1].phase).toBe("stopped");
