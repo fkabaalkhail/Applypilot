@@ -59,18 +59,36 @@ function ensureSyncAlarm(): void {
   chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 5 });
 }
 
+/**
+ * Send users to the Tailrd site when they uninstall (Jobright `setUninstallURL`
+ * parity — a hook for feedback / win-back). Best-effort; a bad config URL is
+ * simply skipped.
+ */
+function setUninstallFeedbackUrl(): void {
+  void getConfig()
+    .then(({ dashboardUrl }) => {
+      const origin = new URL(dashboardUrl).origin;
+      chrome.runtime.setUninstallURL(`${origin}/?utm_source=extension&utm_medium=uninstall`);
+    })
+    .catch(() => {
+      /* uninstall URL is non-critical */
+    });
+}
+
 // Drop a tab's flow state when the tab closes (session-scoped cleanup).
 watchTabRemoval();
 
 chrome.runtime.onInstalled.addListener(() => {
   // getConfig() merges defaults, so no seeding is required.
   ensureSyncAlarm();
+  setUninstallFeedbackUrl();
   void syncIfStale().catch(() => {});
 });
 
 // Re-arm the alarm and sync once whenever the worker spins up (startup).
 chrome.runtime.onStartup.addListener(() => {
   ensureSyncAlarm();
+  setUninstallFeedbackUrl();
   void syncIfStale().catch(() => {});
 });
 
