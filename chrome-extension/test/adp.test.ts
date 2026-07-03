@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { mountAdpForm } from "./fixtures/adp";
 import { stubLayout } from "./helpers/layout";
-import { runAutofill } from "./helpers/autofill";
+import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
 
@@ -35,9 +35,9 @@ describe("ADP div-layout markup — detection", () => {
 });
 
 describe("ADP div-layout markup — autofill", () => {
-  it("fills text fields and the country select; skips resume + EEO", async () => {
+  it("fills text fields and the country select; skips resume + EEO (no EEO data)", async () => {
     mountAdpForm(document);
-    await runAutofill(MOCK_PROFILE, false);
+    await runAutofill(PROFILE_NO_EEO, false);
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value;
     expect(val("adp-firstname")).toBe("John");
     expect(val("adp-lastname")).toBe("Doe");

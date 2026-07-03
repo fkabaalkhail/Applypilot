@@ -6,7 +6,7 @@ import {
   mountBreezyForm,
 } from "./fixtures/easy";
 import { stubLayout } from "./helpers/layout";
-import { runAutofill } from "./helpers/autofill";
+import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
 
@@ -31,7 +31,7 @@ describe("Greenhouse", () => {
     expect(resume?.controlType).toBe("file");
     expect(resume?.fillable).toBe(false);
 
-    await runAutofill(MOCK_PROFILE, false);
+    await runAutofill(PROFILE_NO_EEO, false);
     expect(val("gh-firstname")).toBe("John");
     expect(val("gh-lastname")).toBe("Doe");
     expect(val("gh-email")).toBe("john@example.com");

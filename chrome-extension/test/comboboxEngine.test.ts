@@ -486,3 +486,34 @@ describe("fillAriaCombobox — over-filter recovery", () => {
     expect(single.textContent).toBe("No, I am not a veteran");
   });
 });
+
+describe("harvestComboboxOptions", () => {
+  it("briefly opens a lazy widget, returns its options, selects nothing, and closes it", async () => {
+    const { harvestComboboxOptions } = await import("../src/content/comboboxEngine");
+    const trigger = reactSelect(["Yes", "No", "I don't wish to answer"]);
+    const options = await harvestComboboxOptions(trigger, fast);
+    expect(options).toEqual(["Yes", "No", "I don't wish to answer"]);
+    // Nothing selected, menu closed again (Escape path in the fixture).
+    const single = document.querySelector(".select__single-value");
+    expect(single?.textContent ?? "").toBe("");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("reads a mounted listbox without opening anything", async () => {
+    const { harvestComboboxOptions } = await import("../src/content/comboboxEngine");
+    const trigger = staticCombobox(["A", "B"]);
+    const options = await harvestComboboxOptions(trigger, fast);
+    expect(options).toEqual(["A", "B"]);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("returns undefined when no listbox ever appears", async () => {
+    const { harvestComboboxOptions } = await import("../src/content/comboboxEngine");
+    const input = document.createElement("input");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("aria-controls", "never");
+    document.body.append(input);
+    expect(await harvestComboboxOptions(input, fast)).toBeUndefined();
+  });
+});

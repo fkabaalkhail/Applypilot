@@ -3,7 +3,7 @@ import { mountWorkdayMyInfo } from "./fixtures/workday";
 import { stubLayout } from "./helpers/layout";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
-import { runAutofill } from "./helpers/autofill";
+import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 import type { UserApplicationProfile } from "../src/shared/types";
 
 let restore: () => void;
@@ -75,9 +75,9 @@ describe("Workday My Information — autofill", () => {
     expect((document.getElementById("wd-resume") as HTMLInputElement).value).toBe("");
   });
 
-  it("leaves EEO selects untouched when the toggle is off", async () => {
+  it("leaves EEO selects untouched when the profile has no EEO data", async () => {
     mountWorkdayMyInfo(document);
-    await runAutofill(MOCK_PROFILE, false);
+    await runAutofill(PROFILE_NO_EEO, false);
     expect((document.getElementById("wd-gender") as HTMLSelectElement).value).toBe("");
     expect((document.getElementById("wd-ethnicity") as HTMLSelectElement).value).toBe("");
     expect((document.getElementById("wd-veteran") as HTMLSelectElement).value).toBe("");

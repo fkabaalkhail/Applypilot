@@ -91,9 +91,9 @@ describe("standalone checkbox — unchanged", () => {
 });
 
 describe("EEO checkbox group — gated", () => {
-  it("is sensitive and skipped unless the EEO toggle is on", () => {
+  it("is sensitive; fills only when the profile carries the answer", () => {
     selectAllThatApply("Race/Ethnicity (select all that apply)", ["Asian", "White", "Decline to self-identify"]);
-    const off = scanPage(MOCK_PROFILE, false).fields[0];
+    const off = scanPage({ ...MOCK_PROFILE, eeo: undefined }, false).fields[0];
     expect(off.category).toBe("eeoRace");
     expect(off.sensitive).toBe(true);
     expect(off.proposedValue).toBeNull();

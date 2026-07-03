@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { mountSuccessFactorsForm } from "./fixtures/successfactors";
 import { stubLayout } from "./helpers/layout";
-import { runAutofill } from "./helpers/autofill";
+import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
 
@@ -42,9 +42,9 @@ describe("SuccessFactors UI5 shadow DOM — detection", () => {
 });
 
 describe("SuccessFactors UI5 shadow DOM — autofill", () => {
-  it("fills the inner shadow controls; skips resume + EEO", async () => {
+  it("fills the inner shadow controls; skips resume + EEO (no EEO data)", async () => {
     mountSuccessFactorsForm(document);
-    await runAutofill(MOCK_PROFILE, false);
+    await runAutofill(PROFILE_NO_EEO, false);
     expect(inner("sf-firstname-host").value).toBe("John");
     expect(inner("sf-lastname-host").value).toBe("Doe");
     expect(inner("sf-email-host").value).toBe("john@example.com");

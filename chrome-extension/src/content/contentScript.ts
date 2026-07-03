@@ -53,7 +53,8 @@ import type {
 import { deepQueryAll, isPlaceholderFiller } from "./domUtils";
 import { base64ToFile, downloadBase64File, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
-import { LONG_TEXT } from "./fieldMatcher";
+import { LONG_TEXT, normalize } from "./fieldMatcher";
+import { getLocalAnswers, saveLocalAnswer } from "./localAnswers";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext } from "./jobContext";
@@ -62,7 +63,7 @@ import { splitByCache, cacheAnswers } from "./answerCache";
 import { promptForMissingFields, type MissingFieldPrompt } from "./missingInfoModal";
 import { buildProfilePatch, isProfileCategory } from "../shared/profileCategories";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
-import { fillAriaCombobox, readComboboxValue } from "./comboboxEngine";
+import { fillAriaCombobox, harvestComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { driveField, setDialogSuppression } from "./mainWorldClient";
 import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
 import { verifyControl, writeControl } from "./writeEngine";
@@ -402,15 +403,44 @@ function initialize(): void {
    *   - everything else → the answer bank / Question Memory (SAVE_ANSWER).
    * EEO/sensitive fields are never prompted (they fill from the profile only).
    */
-  async function promptMissingInfo(): Promise<{
+  async function promptMissingInfo(signal?: AbortSignal): Promise<{
     reports: FieldReport[];
     outcomes: { fieldId: string; ok: boolean }[];
   }> {
     const empty = { reports: [], outcomes: [] };
+
+    // Pass 0 — device-local sensitive answers (transgender/orientation/… — the
+    // sensitive questions with no profile slot, answered in this modal on an
+    // earlier application). They never reach any backend, so refill them here,
+    // silently, before deciding what still needs asking.
+    let localFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] } = empty;
+    try {
+      const stored = await getLocalAnswers();
+      if (stored.size > 0) {
+        const storedTargets = lastFields
+          .filter((f) => f.fillable && f.proposedValue === null && controlIsEmpty(f.id))
+          .map((f) => ({ fieldId: f.id, value: stored.get(normalize(f.label)) ?? "" }))
+          .filter((t) => t.value);
+        if (storedTargets.length > 0) {
+          const r = await fillItems(storedTargets, true, signal);
+          localFill = { reports: r.reports, outcomes: r.outcomes };
+          // Let the widgets re-render their committed value before we judge
+          // emptiness below — react-select paints the single-value a beat after
+          // the driver commits, and racing it would re-ask answered questions.
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+    } catch {
+      // Storage unavailable — just ask again.
+    }
+
+    // Sensitive fields ARE promptable: the user answering their own demographic
+    // question locally is the whole point (it's the AI that must never touch
+    // them). Their answers persist to the profile's eeo slots or the local
+    // store below — never to the server answer bank.
     const candidates = lastFields.filter(
       (f) =>
         f.fillable &&
-        !f.sensitive &&
         // A question we can't NAME can't be asked or remembered: an empty label
         // (or bare dropdown filler like "Select…") renders a meaningless modal
         // row and would key the saved answer on junk. Skip those fields.
@@ -418,13 +448,31 @@ function initialize(): void {
         !isPlaceholderFiller(f.label) &&
         (f.required || isProfileCategory(f.category)) &&
         controlIsEmpty(f.id) &&
-        (PROMPTABLE_TYPES.has(f.controlType) ||
-          // A required dropdown the AI couldn't answer: prompt it WITH its options.
-          (CHOICE_TYPES.has(f.controlType) && (f.options?.length ?? 0) > 0))
+        (PROMPTABLE_TYPES.has(f.controlType) || CHOICE_TYPES.has(f.controlType))
     );
-    if (candidates.length === 0) return empty;
+    if (candidates.length === 0) return localFill;
 
-    const prompts: MissingFieldPrompt[] = candidates.map((f) => ({
+    // A dropdown is only worth prompting WITH its real options. Lazy widgets
+    // (react-select) mount their list on open — briefly open+close the ones we
+    // still know nothing about to harvest the actual choices.
+    for (const f of candidates) {
+      if (signal?.aborted) break;
+      if (!CHOICE_TYPES.has(f.controlType) || (f.options?.length ?? 0) > 0) continue;
+      const el = registry.get(f.id)?.el;
+      if (!el) continue;
+      const harvested = await harvestComboboxOptions(el).catch(() => undefined);
+      if (harvested && harvested.length > 0) f.options = harvested;
+    }
+
+    const promptable = candidates.filter(
+      (f) =>
+        PROMPTABLE_TYPES.has(f.controlType) ||
+        // A dropdown the AI couldn't answer: prompt it WITH its options.
+        (CHOICE_TYPES.has(f.controlType) && (f.options?.length ?? 0) > 0)
+    );
+    if (promptable.length === 0 || signal?.aborted) return localFill;
+
+    const prompts: MissingFieldPrompt[] = promptable.map((f) => ({
       id: f.id,
       label: f.label,
       multiline: f.controlType === "textarea" || f.controlType === "contenteditable",
@@ -432,15 +480,17 @@ function initialize(): void {
     }));
 
     const answers = await promptForMissingFields(prompts).catch(() => null);
-    if (!answers || Object.keys(answers).length === 0) return empty;
+    if (!answers || Object.keys(answers).length === 0) return localFill;
 
     const targets = Object.entries(answers).map(([fieldId, value]) => ({ fieldId, value }));
     const filled = await fillItems(targets, true);
 
-    // Persist each answer so it auto-fills next time. Answers that correspond to
-    // a real profile field are saved back to the application profile (so they
-    // show up in Autofill Information + the web app Profile and sync everywhere);
-    // free-form screening answers go to the answer bank / Question Memory.
+    // Persist each answer so it auto-fills next time:
+    //  - profile categories (incl. the five standard EEO questions) → the
+    //    application profile, visible in Autofill Information + the web app;
+    //  - other SENSITIVE questions (orientation, transgender…) → the device-
+    //    local store only — they are never sent to a server;
+    //  - everything else → the answer bank / Question Memory (SAVE_ANSWER).
     const jobContext = extractJobContext();
     const profileEntries: { category: FieldCategory; value: string }[] = [];
     for (const [fieldId, value] of Object.entries(answers)) {
@@ -448,6 +498,8 @@ function initialize(): void {
       if (!f) continue;
       if (isProfileCategory(f.category)) {
         profileEntries.push({ category: f.category, value });
+      } else if (f.sensitive) {
+        void saveLocalAnswer(f.label, value).catch(() => {});
       } else {
         void sendToBackground<SimpleResponse>({
           type: "SAVE_ANSWER",
@@ -475,7 +527,10 @@ function initialize(): void {
         // won't persist until the user reconnects.
       }
     }
-    return { reports: filled.reports, outcomes: filled.outcomes };
+    return {
+      reports: [...localFill.reports, ...filled.reports],
+      outcomes: [...localFill.outcomes, ...filled.outcomes],
+    };
   }
 
   async function fillOnce(ids: string[] | null, signal?: AbortSignal): Promise<StepTally> {
@@ -561,7 +616,7 @@ function initialize(): void {
 
       // Ask the user for any required question we still couldn't answer, fill
       // their replies, and remember them for next time. Skipped once cancelled.
-      const missingFill = signal?.aborted ? { reports: [], outcomes: [] } : await promptMissingInfo();
+      const missingFill = signal?.aborted ? { reports: [], outcomes: [] } : await promptMissingInfo(signal);
 
       const { ok, fail, total } = tallyOutcomes(
         localFill.reports,

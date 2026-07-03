@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { mountTaleoForm } from "./fixtures/taleo";
 import { stubLayout } from "./helpers/layout";
-import { runAutofill } from "./helpers/autofill";
+import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
 
@@ -35,9 +35,9 @@ describe("Taleo table-layout markup — detection", () => {
 });
 
 describe("Taleo table-layout markup — autofill", () => {
-  it("fills text fields and the country select; skips resume + EEO", async () => {
+  it("fills text fields and the country select; skips resume + EEO (no EEO data)", async () => {
     mountTaleoForm(document);
-    await runAutofill(MOCK_PROFILE, false);
+    await runAutofill(PROFILE_NO_EEO, false);
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value;
     expect(val("taleo-firstname")).toBe("John");
     expect(val("taleo-lastname")).toBe("Doe");

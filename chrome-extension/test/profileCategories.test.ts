@@ -16,9 +16,10 @@ describe("profileFieldForCategory", () => {
     expect(profileFieldForCategory("workAuthorization")).toBe("workAuthorization");
   });
 
-  it("returns null for categories the profile endpoint does not store", () => {
-    // EEO comes from the profile already (never prompted); education/experience
-    // prose + free-form questions belong in the answer bank, not the profile.
+  it("returns null for categories without a TOP-LEVEL profile field", () => {
+    // EEO persists into the nested `eeo` object (see buildProfilePatch), not a
+    // top-level key; education/experience prose + free-form questions belong in
+    // the answer bank, not the profile.
     expect(profileFieldForCategory("eeoGender")).toBeNull();
     expect(profileFieldForCategory("education")).toBeNull();
     expect(profileFieldForCategory("coverLetter")).toBeNull();
@@ -29,8 +30,18 @@ describe("profileFieldForCategory", () => {
 describe("isProfileCategory", () => {
   it("is true for mapped categories, false otherwise", () => {
     expect(isProfileCategory("email")).toBe(true);
-    expect(isProfileCategory("eeoRace")).toBe(false);
     expect(isProfileCategory("unknown")).toBe(false);
+  });
+
+  it("is true for the five standard EEO categories (nested eeo persistence)", () => {
+    expect(isProfileCategory("eeoGender")).toBe(true);
+    expect(isProfileCategory("eeoRace")).toBe(true);
+    expect(isProfileCategory("eeoHispanic")).toBe(true);
+    expect(isProfileCategory("eeoVeteran")).toBe(true);
+    expect(isProfileCategory("eeoDisability")).toBe(true);
+    // eeoOther (orientation, transgender, pronouns…) has no profile slot — it
+    // stays device-local via the sensitive answer store.
+    expect(isProfileCategory("eeoOther")).toBe(false);
   });
 });
 
@@ -43,6 +54,18 @@ describe("buildProfilePatch", () => {
       { category: "email", value: "   " }, // blank → skipped
     ]);
     expect(patch).toEqual({ phone: "555-1212", country: "Canada" });
+  });
+
+  it("nests EEO answers under `eeo` in the API shape", () => {
+    const patch = buildProfilePatch([
+      { category: "eeoGender", value: "Male" },
+      { category: "eeoDisability", value: "No, I do not have a disability" },
+      { category: "country", value: "Canada" },
+    ]);
+    expect(patch).toEqual({
+      country: "Canada",
+      eeo: { gender: "Male", disabilityStatus: "No, I do not have a disability" },
+    });
   });
 
   it("returns an empty patch when nothing qualifies", () => {

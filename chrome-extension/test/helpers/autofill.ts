@@ -1,9 +1,15 @@
 import { scanPage } from "../../src/content/formScanner";
 import { AutofillReconciler } from "../../src/content/reconciler";
 import { fillAriaCombobox } from "../../src/content/comboboxEngine";
+import { MOCK_PROFILE } from "../../src/api/mockProfile";
 import type { UserApplicationProfile } from "../../src/shared/types";
 
 const fastCombo = { sleep: async () => {}, openWaitMs: 200, commitWaitMs: 200, pollMs: 10 };
+
+/** MOCK_PROFILE with the EEO answers withheld. EEO fills on data-presence (the
+ *  legacy fillEEO flag no longer gates), so specs asserting that demographic
+ *  fields stay untouched must hold back the data itself. */
+export const PROFILE_NO_EEO: UserApplicationProfile = { ...MOCK_PROFILE, eeo: undefined };
 
 /**
  * Run the real two-phase fill the content script performs in onAutofill: the

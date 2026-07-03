@@ -8,7 +8,7 @@ import {
   mountBullhornForm,
 } from "./fixtures/medium";
 import { stubLayout } from "./helpers/layout";
-import { runAutofill } from "./helpers/autofill";
+import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
 
@@ -31,7 +31,7 @@ describe("Ashby", () => {
     mountAshbyForm(document);
     const c = cats();
     expect(c.has("firstName") && c.has("email") && c.has("country") && c.has("resumeUpload")).toBe(true);
-    await runAutofill(MOCK_PROFILE, false);
+    await runAutofill(PROFILE_NO_EEO, false);
     expect(val("ashby-firstname")).toBe("John");
     expect(val("ashby-email")).toBe("john@example.com");
     expect(singleValue("ashby-country")).toBe("Canada");
@@ -71,7 +71,7 @@ describe("Jobvite", () => {
     mountJobviteForm(document);
     const c = cats();
     expect(c.has("firstName") && c.has("sponsorship")).toBe(true);
-    await runAutofill(MOCK_PROFILE, false);
+    await runAutofill(PROFILE_NO_EEO, false);
     expect(val("jobvite-firstname")).toBe("John");
     expect(document.querySelector('[role="radio"][aria-checked="true"]')?.getAttribute("data-value")).toBe("No");
     expect(val("jobvite-gender")).toBe("");

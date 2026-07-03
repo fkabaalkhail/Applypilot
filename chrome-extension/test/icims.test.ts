@@ -3,7 +3,7 @@ import { mountIcimsForm } from "./fixtures/icims";
 import { stubLayout } from "./helpers/layout";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
-import { runAutofill } from "./helpers/autofill";
+import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 
 let restore: () => void;
 beforeAll(() => {
@@ -35,9 +35,9 @@ describe("iCIMS field markup — detection", () => {
 });
 
 describe("iCIMS field markup — autofill", () => {
-  it("fills text fields and the country select; skips resume + EEO", async () => {
+  it("fills text fields and the country select; skips resume + EEO (no EEO data)", async () => {
     mountIcimsForm(document);
-    await runAutofill(MOCK_PROFILE, false);
+    await runAutofill(PROFILE_NO_EEO, false);
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value;
     expect(val("icims-firstname")).toBe("John");
     expect(val("icims-lastname")).toBe("Doe");

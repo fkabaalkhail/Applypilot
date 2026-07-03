@@ -265,6 +265,33 @@ export function readComboboxOptions(trigger: HTMLElement): string[] | undefined 
   return optionLabels(listbox);
 }
 
+/**
+ * Actively harvest a lazy combobox's options by briefly opening its menu and
+ * closing it again — for widgets (react-select…) that mount the listbox only
+ * while open, where readComboboxOptions has nothing to read. Used to give the
+ * missing-info modal the REAL choices for a dropdown nothing could answer.
+ * Best-effort: returns undefined when no listbox appears; always closes what
+ * it opened, and never types or selects anything.
+ */
+export async function harvestComboboxOptions(
+  trigger: HTMLElement,
+  opts: FillComboboxOptions = {}
+): Promise<string[] | undefined> {
+  const mounted = readComboboxOptions(trigger);
+  if (mounted && mounted.length > 0) return mounted;
+  if (!trigger.isConnected) return undefined;
+
+  const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const openWaitMs = opts.openWaitMs ?? DEFAULTS.openWaitMs;
+  const pollMs = opts.pollMs ?? DEFAULTS.pollMs;
+
+  open(trigger);
+  const listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
+  const labels = listbox ? optionLabels(listbox) : undefined;
+  close(trigger);
+  return labels;
+}
+
 /** Non-disabled option labels of a listbox, trimmed for transport (cap 60). */
 function optionLabels(listbox: HTMLElement): string[] | undefined {
   const labels = deepQueryAll(listbox, '[role="option"]')
