@@ -39,6 +39,31 @@ class FormField(BaseModel):
     required: bool = False
 
 
+class ApplicantProfile(BaseModel):
+    """Non-sensitive slice of the extension's autofill profile. No EEO."""
+    firstName: str = ""
+    lastName: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
+    addressStreet: str = ""
+    addressCity: str = ""
+    addressState: str = ""
+    postalCode: str = ""
+    country: str = ""
+    linkedin: str = ""
+    github: str = ""
+    portfolio: str = ""
+    currentCompany: str = ""
+    currentTitle: str = ""
+    workAuthorization: str = ""
+    requiresSponsorship: str = ""
+    salaryExpectation: str = ""
+    skills: list[str] = []
+    experience: list[str] = []   # pre-flattened "Title at Company (dates)" lines
+    education: list[str] = []     # pre-flattened "Degree, School (year)" lines
+
+
 class FillRequest(BaseModel):
     """Request body for /api/fill."""
     fields: list[FormField]
@@ -46,6 +71,7 @@ class FillRequest(BaseModel):
     jobDescription: str = ""
     jobTitle: str = ""
     company: str = ""
+    profile: Optional[ApplicantProfile] = None
 
 
 class FieldAnswer(BaseModel):
@@ -66,8 +92,12 @@ class FillResponse(BaseModel):
     errors: list[str] = []
 
 
-def _rule_based_answer(label: str, options: list[str], settings) -> str | None:
-    """Fast rule-based answers for common screening questions."""
+def _rule_based_answer(label: str, options: list[str], settings, profile=None) -> str | None:
+    """Fast rule-based answers for common screening questions.
+
+    Prefers the request-supplied ApplicantProfile (the extension's Autofill
+    Information) over the stored UserSettings for personal fields.
+    """
     q = label.lower().strip()
 
     yes_no = None
@@ -88,22 +118,61 @@ def _rule_based_answer(label: str, options: list[str], settings) -> str | None:
     if "background check" in q or "drug test" in q:
         return "Yes" if yes_no else "yes"
 
-    # Profile-based answers
-    if settings:
-        if any(kw in q for kw in ["first name", "given name"]):
-            return settings.first_name or None
-        if any(kw in q for kw in ["last name", "surname", "family name"]):
-            return settings.last_name or None
-        if "email" in q:
-            return settings.email or None
-        if "phone" in q:
-            return settings.phone or None
-        if "city" in q or "location" in q:
-            return settings.city or None
-        if "linkedin" in q:
-            return settings.linkedin_url or None
+    # Profile-based answers — request profile first, stored settings as fallback.
+    first = (profile.firstName if profile else "") or (settings.first_name if settings else "")
+    last = (profile.lastName if profile else "") or (settings.last_name if settings else "")
+    email = (profile.email if profile else "") or (settings.email if settings else "")
+    phone = (profile.phone if profile else "") or (settings.phone if settings else "")
+    city = ((profile.addressCity or profile.location) if profile else "") or (settings.city if settings else "")
+    linkedin = (profile.linkedin if profile else "") or (settings.linkedin_url if settings else "")
+    if any(kw in q for kw in ["first name", "given name"]):
+        return first or None
+    if any(kw in q for kw in ["last name", "surname", "family name"]):
+        return last or None
+    if "email" in q:
+        return email or None
+    if "phone" in q:
+        return phone or None
+    if "city" in q or "location" in q:
+        return city or None
+    if "linkedin" in q:
+        return linkedin or None
 
     return None
+
+
+def _profile_context(p: ApplicantProfile) -> str:
+    """Human-readable applicant context from the structured profile."""
+    lines: list[str] = []
+    name = f"{p.firstName} {p.lastName}".strip()
+    if name:
+        lines.append(f"Name: {name}")
+    if p.email:
+        lines.append(f"Email: {p.email}")
+    if p.phone:
+        lines.append(f"Phone: {p.phone}")
+    loc = ", ".join(x for x in [p.addressCity or p.location, p.addressState, p.postalCode, p.country] if x)
+    if loc:
+        lines.append(f"Location: {loc}")
+    if p.currentTitle or p.currentCompany:
+        role = f"{p.currentTitle} at {p.currentCompany}".strip()
+        lines.append(f"Current role: {role}")
+    if p.workAuthorization:
+        lines.append(f"Work authorization: {p.workAuthorization}")
+    if p.requiresSponsorship:
+        lines.append(f"Requires visa sponsorship: {p.requiresSponsorship}")
+    if p.salaryExpectation:
+        lines.append(f"Salary expectation: {p.salaryExpectation}")
+    for link in (p.linkedin, p.github, p.portfolio):
+        if link:
+            lines.append(link)
+    if p.skills:
+        lines.append("Skills: " + ", ".join(p.skills[:30]))
+    if p.experience:
+        lines.append("Experience:\n" + "\n".join(f"- {e}" for e in p.experience[:8]))
+    if p.education:
+        lines.append("Education:\n" + "\n".join(f"- {e}" for e in p.education[:5]))
+    return "\n".join(lines)
 
 
 @router.post("/fill", response_model=FillResponse)
@@ -137,7 +206,7 @@ async def fill_form(
 
     # Pass 1: rule-based / profile answers — filled silently.
     for field in request.fields:
-        rule_answer = _rule_based_answer(field.label, field.options, settings)
+        rule_answer = _rule_based_answer(field.label, field.options, settings, request.profile)
         if rule_answer:
             answers.append(FieldAnswer(
                 id=field.id, label=field.label, answer=rule_answer, source="rule"
@@ -193,7 +262,9 @@ async def fill_form(
         try:
             llm = get_llm_service()
             context_parts = []
-            if settings:
+            if request.profile is not None:
+                context_parts.append("APPLICANT:\n" + _profile_context(request.profile))
+            elif settings:
                 context_parts.append(
                     f"APPLICANT: {settings.first_name or ''} {settings.last_name or ''}, "
                     f"Email: {settings.email or ''}, Phone: {settings.phone or ''}, "
