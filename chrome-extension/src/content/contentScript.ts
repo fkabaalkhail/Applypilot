@@ -165,6 +165,10 @@ function initialize(): void {
   let submitTracker: SubmitTrackerHandle | null = null;
   let trackedButton: HTMLElement | null = null;
   let lastRecordedUrl: string | null = null;
+  // Aborts an in-flight fill the instant the user hits Stop (or a new flow
+  // supersedes this one), so a running fillOnce stops writing promptly instead
+  // of running to completion — Jobright's CANCEL_AUTO_FILL parity.
+  let flowAbort: AbortController | null = null;
   // Remembered so MutationObserver rescans can recompute proposed values.
   let lastProfile: UserApplicationProfile | null = null;
   let lastFillEEO = false;
@@ -237,11 +241,13 @@ function initialize(): void {
    * every mutation is the churn we avoid. Returns popup-style outcomes.
    */
   async function fillComboboxTargets(
-    targets: { fieldId: string; value: string }[]
+    targets: { fieldId: string; value: string }[],
+    signal?: AbortSignal
   ): Promise<{ outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] }> {
     const outcomes: { fieldId: string; ok: boolean }[] = [];
     const reask: ReaskCandidate[] = [];
     for (const t of targets) {
+      if (signal?.aborted) break; // Stop pressed — don't open more menus
       const el = registry.get(t.fieldId)?.el;
       if (!el) {
         outcomes.push({ fieldId: t.fieldId, ok: false });
@@ -256,11 +262,13 @@ function initialize(): void {
 
   /** Fill react-select / Workday fields via the MAIN-world driver. */
   async function fillDriverTargets(
-    targets: { fieldId: string; value: string }[]
+    targets: { fieldId: string; value: string }[],
+    signal?: AbortSignal
   ): Promise<{ outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] }> {
     const outcomes: { fieldId: string; ok: boolean }[] = [];
     const reask: ReaskCandidate[] = [];
     for (const t of targets) {
+      if (signal?.aborted) break; // Stop pressed — don't drive more fields
       const control = registry.get(t.fieldId);
       if (!control?.driver) { outcomes.push({ fieldId: t.fieldId, ok: false }); continue; }
       const res = await driveField(t.fieldId, t.value, control.driver);
@@ -302,7 +310,8 @@ function initialize(): void {
    */
   async function fillItems(
     items: { fieldId: string; value: string }[],
-    merge: boolean
+    merge: boolean,
+    signal?: AbortSignal
   ): Promise<{ reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] }> {
     if (items.length === 0 && merge) return { reports: [], outcomes: [], reask: [] };
     const { opOutcomes, remaining } = await runAdapterOperations(lastAdapter, items, (id) => registry.get(id));
@@ -311,14 +320,14 @@ function initialize(): void {
     const reconTargets = remaining.filter((it) => !isDriverField(it.fieldId) && !isComboboxField(it.fieldId));
     const reports = merge
       ? reconTargets.length
-        ? await getEngine().addTargets(reconTargets, registry)
+        ? await getEngine().addTargets(reconTargets, registry, signal)
         : []
-      : await getEngine().run(reconTargets, registry);
+      : await getEngine().run(reconTargets, registry, signal);
     const combo = comboTargets.length
-      ? await fillComboboxTargets(comboTargets)
+      ? await fillComboboxTargets(comboTargets, signal)
       : { outcomes: [], reask: [] };
     const driver = driverTargets.length
-      ? await fillDriverTargets(driverTargets)
+      ? await fillDriverTargets(driverTargets, signal)
       : { outcomes: [], reask: [] };
     // A <select> that failed on "No option matches" re-reads its options fresh
     // (dependent dropdowns — Country → State — repopulate after earlier fills).
@@ -422,7 +431,8 @@ function initialize(): void {
     return { reports: filled.reports, outcomes: filled.outcomes };
   }
 
-  async function fillOnce(ids: string[] | null): Promise<StepTally> {
+  async function fillOnce(ids: string[] | null, signal?: AbortSignal): Promise<StepTally> {
+      if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       const wanted = ids ? new Set(ids) : defaultSelectedIds(lastFields);
       const selected = lastFields.filter(
         (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
@@ -430,7 +440,7 @@ function initialize(): void {
 
       // Phase A — deterministic profile fields fill instantly (local fast-path).
       const route = planFillRoute(selected, AUTOFILL_CONFIDENCE_THRESHOLD);
-      const localFill = await fillItems(route.localTargets, false);
+      const localFill = await fillItems(route.localTargets, false, signal);
 
       // Phase B — judgment fields answered by the backend (primary), deduped by the
       // session cache; also the eligible EMPTY fields (today's AI candidates). The
@@ -441,7 +451,7 @@ function initialize(): void {
         { reports: [], outcomes: [], reask: [] };
       let fallbackFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
-      if (backendFields.length > 0) {
+      if (backendFields.length > 0 && !signal?.aborted) {
         const { hits, misses } = splitByCache(backendFields);
         let answers: PlannedAnswer[] = hits;
         try {
@@ -460,7 +470,7 @@ function initialize(): void {
           // Backend unavailable — the local fallback below still fills judgment fields.
         }
         const plan = planAiFill(backendFields, answers);
-        aiFill = await fillItems(plan.simpleTargets, true);
+        aiFill = await fillItems(plan.simpleTargets, true, signal);
 
         // Local fallback: judgment fields that had a local value but weren't answered
         // by the backend still fill from proposedValue — no regression.
@@ -468,7 +478,7 @@ function initialize(): void {
         const fallbackTargets = route.backendFields
           .filter((f) => !answered.has(f.id) && f.proposedValue !== null)
           .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
-        fallbackFill = await fillItems(fallbackTargets, true);
+        fallbackFill = await fillItems(fallbackTargets, true, signal);
       }
 
       // One re-ask round: choice controls whose fill missed now carry the
@@ -477,7 +487,7 @@ function initialize(): void {
       let reaskFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
       const reaskCandidates = [...localFill.reask, ...aiFill.reask, ...fallbackFill.reask];
-      if (reaskCandidates.length > 0) {
+      if (reaskCandidates.length > 0 && !signal?.aborted) {
         for (const c of reaskCandidates) {
           const f = lastFields.find((x) => x.id === c.fieldId);
           if (f) f.options = c.options; // panel now shows the real choices
@@ -494,7 +504,7 @@ function initialize(): void {
               const affected = lastFields.filter((f) => reaskFields.some((r) => r.id === f.id));
               cacheAnswers(affected, resp.answers); // overwrite the unconstrained answers
               const plan = planAiFill(affected, resp.answers);
-              reaskFill = await fillItems(plan.simpleTargets, true);
+              reaskFill = await fillItems(plan.simpleTargets, true, signal);
             }
           } catch {
             // Backend unreachable — the manual-select outcomes stand.
@@ -503,8 +513,8 @@ function initialize(): void {
       }
 
       // Ask the user for any required question we still couldn't answer, fill
-      // their replies, and remember them for next time.
-      const missingFill = await promptMissingInfo();
+      // their replies, and remember them for next time. Skipped once cancelled.
+      const missingFill = signal?.aborted ? { reports: [], outcomes: [] } : await promptMissingInfo();
 
       const { ok, fail, total } = tallyOutcomes(
         localFill.reports,
@@ -611,7 +621,7 @@ function initialize(): void {
 
   function makeFlowDeps(): FlowDeps {
     return {
-      fillStep: (ids) => fillOnce(ids),
+      fillStep: (ids) => fillOnce(ids, flowAbort?.signal),
       snapshot: (): FlowSnapshot => ({ fields: lastFields, scopeEl: lastScope }),
       rescan: () => {
         runScan();
@@ -678,6 +688,7 @@ function initialize(): void {
         return;
       }
       if (flowController) return; // an autofill click set it while we awaited FLOW_STATE_GET
+      flowAbort = new AbortController(); // a resumed flow is cancellable too
       flowController = new FlowController(makeFlowDeps());
       void flowController.run(st, null);
     } catch {
@@ -694,8 +705,11 @@ function initialize(): void {
       // a fresh click supersedes a background resume that started mid-fill.
       const gen = flowGeneration;
       flowController?.stop();
-      const tally = await fillOnce(ids);
-      if (gen === flowGeneration) {
+      flowAbort?.abort(); // supersede any fill still running from a prior click
+      flowAbort = new AbortController();
+      const signal = flowAbort.signal;
+      const tally = await fillOnce(ids, signal);
+      if (gen === flowGeneration && !signal.aborted) {
         flowController?.stop(); // a maybeResumeFlow may have set one mid-fill; this click wins
         flowController = new FlowController(makeFlowDeps());
         void flowController.run(
@@ -707,6 +721,7 @@ function initialize(): void {
     },
     onFlowStop: () => {
       flowGeneration++; // a Stop during an in-flight initial fill must win the race
+      flowAbort?.abort(); // interrupt a fill currently writing fields (cancel mid-fill)
       flowController?.stop();
       flowController = null;
       // Stop always clears the persisted state — even when no controller is

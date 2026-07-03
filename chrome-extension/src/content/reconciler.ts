@@ -127,7 +127,8 @@ export class AutofillReconciler {
    */
   async run(
     targets: ReconcileTarget[],
-    registry: Map<string, RuntimeControl>
+    registry: Map<string, RuntimeControl>,
+    signal?: AbortSignal
   ): Promise<FieldReport[]> {
     this.registry = registry;
     this.states = new Map(
@@ -139,7 +140,11 @@ export class AutofillReconciler {
 
     try {
       for (let cycle = 0; cycle < this.maxCycles; cycle++) {
-        for (const s of this.active()) this.fillOnce(s);
+        if (signal?.aborted) break;
+        for (const s of this.active()) {
+          if (signal?.aborted) break;
+          this.fillOnce(s);
+        }
         await this.sleep(this.window());
         this.confirmStability();
         if (this.allSettled()) break;
@@ -148,8 +153,9 @@ export class AutofillReconciler {
     } finally {
       this.retireUnfillable();
       // Start background drift correction only after the initial pass, so the
-      // observer never races the deterministic cycle logic above.
-      if (this.observe) this.startObserver();
+      // observer never races the deterministic cycle logic above. A cancelled
+      // fill starts no observer — it must not resurrect fills the user stopped.
+      if (this.observe && !signal?.aborted) this.startObserver();
     }
   }
 
@@ -161,7 +167,8 @@ export class AutofillReconciler {
    */
   async addTargets(
     targets: ReconcileTarget[],
-    registry: Map<string, RuntimeControl>
+    registry: Map<string, RuntimeControl>,
+    signal?: AbortSignal
   ): Promise<FieldReport[]> {
     this.registry = registry;
     const newIds = new Set(targets.map((t) => t.fieldId));
@@ -177,7 +184,11 @@ export class AutofillReconciler {
     }
     try {
       for (let cycle = 0; cycle < this.maxCycles; cycle++) {
-        for (const s of this.active()) this.fillOnce(s);
+        if (signal?.aborted) break;
+        for (const s of this.active()) {
+          if (signal?.aborted) break;
+          this.fillOnce(s);
+        }
         await this.sleep(this.window());
         this.confirmStability();
         if (this.allSettled()) break;
@@ -185,7 +196,7 @@ export class AutofillReconciler {
       return this.reports().filter((r) => newIds.has(r.fieldId));
     } finally {
       this.retireUnfillable();
-      if (this.observe) this.startObserver();
+      if (this.observe && !signal?.aborted) this.startObserver();
     }
   }
 

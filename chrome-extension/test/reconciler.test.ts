@@ -281,3 +281,54 @@ describe("addTargets — merges without resetting existing tracking", () => {
     expect(a.value).toBe("alpha");
   });
 });
+
+describe("AutofillReconciler — cancellation (Stop mid-fill)", () => {
+  it("writes nothing when the signal is already aborted", async () => {
+    const a = input("f-1");
+    const controller = new AbortController();
+    controller.abort();
+    const engine = new AutofillReconciler({ sleep: instant, observe: false });
+
+    const reports = await engine.run(
+      [{ fieldId: "f-1", value: "Wissam" }],
+      reg([a.control]),
+      controller.signal
+    );
+    engine.dispose();
+
+    expect(a.el.value).toBe(""); // never written — cancelled before any write
+    expect(reports[0].ok).toBe(false);
+  });
+
+  it("stops cycling once aborted, even when a field never settles", async () => {
+    const a = input("f-1");
+    const controller = new AbortController();
+    let sleeps = 0;
+    // Wipe every settle window so the field can never stabilize; without the
+    // abort this would run the full cycle budget (maxCycles sleeps).
+    const sleep = async (): Promise<void> => {
+      sleeps++;
+      a.el.value = "";
+      controller.abort(); // Stop pressed after the first cycle
+    };
+    const engine = new AutofillReconciler({ sleep, observe: false, maxCycles: 5 });
+
+    await engine.run([{ fieldId: "f-1", value: "Wissam" }], reg([a.control]), controller.signal);
+    engine.dispose();
+
+    expect(sleeps).toBe(1); // aborted after cycle 0 → cycles 1..4 skipped
+  });
+
+  it("starts no background reconciliation for a cancelled fill", async () => {
+    const a = input("f-1");
+    const controller = new AbortController();
+    controller.abort();
+    const engine = new AutofillReconciler({ sleep: instant, observe: true });
+
+    await engine.run([{ fieldId: "f-1", value: "Wissam" }], reg([a.control]), controller.signal);
+    // A cancelled fill must NOT arm the drift-correction observer, or it would
+    // resurrect fills the user just stopped.
+    expect((engine as unknown as { observer: MutationObserver | null }).observer).toBeNull();
+    engine.dispose();
+  });
+});
