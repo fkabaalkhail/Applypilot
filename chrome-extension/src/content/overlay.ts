@@ -22,6 +22,7 @@ import type {
   BackgroundRequest,
   CoverLetterGenOpts,
   DetectedField,
+  EeoAnswers,
   FillOutcome,
   FlowPauseReason,
   FlowProgress,
@@ -588,11 +589,28 @@ const STYLES = `
 .ap-form-row input::placeholder { color: var(--stripe-ink-mute); }
 .ap-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .ap-form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.ap-form-row input[readonly] {
+  background: var(--stripe-canvas-soft);
+  color: var(--stripe-ink-secondary);
+  cursor: default;
+}
+.ap-form-hint {
+  font-size: 12px; line-height: 1.45; color: var(--stripe-ink-mute);
+  background: var(--stripe-canvas-soft);
+  border: 1px solid var(--stripe-hairline-soft);
+  border-radius: 6px; padding: 8px 10px; margin-bottom: 14px;
+}
 .ap-modal-footer {
   padding: 14px 24px;
   border-top: 1px solid var(--stripe-hairline-soft);
-  display: flex; justify-content: center;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
   flex-shrink: 0;
+}
+.ap-modal-error {
+  width: 100%; box-sizing: border-box;
+  font-size: 12.5px; color: #b42318;
+  background: #fef3f2; border: 1px solid #fecdca;
+  border-radius: 6px; padding: 8px 10px; text-align: center;
 }
 .ap-btn-update {
   padding: 12px 48px;
@@ -604,6 +622,7 @@ const STYLES = `
   transition: box-shadow 0.15s;
 }
 .ap-btn-update:hover { box-shadow: 0 6px 16px rgba(var(--stripe-primary-rgb),0.35); }
+.ap-btn-update:disabled { opacity: 0.6; cursor: default; box-shadow: none; }
 
 /* ---- Login view ---- */
 .ap-login-view {
@@ -749,6 +768,8 @@ interface PanelState {
   scanned: boolean;
   view: View;
   infoCategory: string;
+  /** Working copy of the editable profile fields while the info modal is open. */
+  profileDraft: EditableProfileDraft | null;
   tailorResult: TailorResult | null;
   tailorKeywords: Set<string>;
   tailorBusy: boolean;
@@ -777,6 +798,7 @@ const overlayState: PanelState = {
   scanned: false,
   view: "main",
   infoCategory: "personal",
+  profileDraft: null,
   tailorResult: null,
   tailorKeywords: new Set(),
   tailorBusy: false,
@@ -1028,14 +1050,17 @@ function buildHTML(): string {
         <div class="ap-modal-body">
           <div class="ap-modal-sidebar" id="ap-info-sidebar">
             <button class="ap-modal-sidebar-item active" data-cat="personal">Personal</button>
+            <button class="ap-modal-sidebar-item" data-cat="address">Address</button>
             <button class="ap-modal-sidebar-item" data-cat="education">Education</button>
             <button class="ap-modal-sidebar-item" data-cat="experience">Work Experience</button>
             <button class="ap-modal-sidebar-item" data-cat="skill">Skill</button>
             <button class="ap-modal-sidebar-item" data-cat="preference">Preference</button>
+            <button class="ap-modal-sidebar-item" data-cat="eeo">Equal Employment</button>
           </div>
           <div class="ap-modal-form" id="ap-info-form"></div>
         </div>
         <div class="ap-modal-footer">
+          <div class="ap-modal-error" id="ap-info-error" style="display:none"></div>
           <button class="ap-btn-update" id="ap-btn-update">Update</button>
         </div>
       </div>
@@ -1201,11 +1226,13 @@ function wireEvents(root: HTMLDivElement): void {
     });
   });
 
-  // Update button (save profile edits back to state)
-  root.querySelector("#ap-btn-update")!.addEventListener("click", () => {
-    // For now just close the info view; actual save will be wired later
-    hideInfoView();
-  });
+  // Mirror every edit in the info form into the working draft. Delegated on the
+  // form container so it survives category re-renders (innerHTML swaps).
+  refs!.infoForm.addEventListener("input", onInfoInput);
+  refs!.infoForm.addEventListener("change", onInfoInput);
+
+  // Update button — persist the draft to the shared profile, then re-sync.
+  root.querySelector("#ap-btn-update")!.addEventListener("click", () => void saveInfoEdits());
 
   // Connect (web handshake) + sample-data fallback
   root.querySelector("#ap-btn-connect")!.addEventListener("click", () => void doConnect());
@@ -1334,6 +1361,9 @@ function showInfoView(): void {
   if (!refs) return;
   refs.modalBackdrop.classList.add("visible");
   overlayState.infoCategory = "personal";
+  // Snapshot the current profile into an editable draft the form binds to.
+  overlayState.profileDraft = overlayState.profile ? draftFromProfile(overlayState.profile) : null;
+  setInfoError("");
   refs.infoSidebar.querySelectorAll<HTMLButtonElement>(".ap-modal-sidebar-item").forEach((b) =>
     b.classList.toggle("active", b.dataset.cat === "personal")
   );
@@ -1681,14 +1711,115 @@ function showBanner(text: string, kind: "ok" | "warn" | "error", hide = false): 
 // Autofill Information form
 // ---------------------------------------------------------------------------
 
+// Editable profile draft — the working copy the info modal binds to so edits
+// survive switching categories. Only the fields the application-profile endpoint
+// accepts are editable; résumé-derived sections (education/experience/skills,
+// GitHub) stay read-only and are managed from the web-app profile.
+interface EditableProfileDraft {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  location: string;
+  linkedin: string;
+  portfolio: string;
+  addressStreet: string;
+  addressCity: string;
+  addressState: string;
+  postalCode: string;
+  country: string;
+  workAuthorization: string;
+  requiresSponsorship: string;
+  salaryExpectation: string;
+  eeo: {
+    gender: string;
+    race: string;
+    hispanicLatino: string;
+    veteranStatus: string;
+    disabilityStatus: string;
+  };
+}
+
+const EEO_CHOICES: Record<keyof EditableProfileDraft["eeo"], string[]> = {
+  gender: ["Male", "Female", "Non-binary", "Prefer not to say"],
+  race: [
+    "American Indian or Alaska Native", "Asian", "Black or African American",
+    "Hispanic or Latino", "Native Hawaiian or Other Pacific Islander", "White",
+    "Two or More Races", "Prefer not to say",
+  ],
+  hispanicLatino: ["Yes", "No", "Prefer not to say"],
+  veteranStatus: [
+    "I am not a protected veteran",
+    "I identify as one or more of the classifications of a protected veteran",
+    "Prefer not to say",
+  ],
+  disabilityStatus: [
+    "Yes, I have a disability", "No, I do not have a disability", "Prefer not to say",
+  ],
+};
+
+function draftFromProfile(p: UserApplicationProfile): EditableProfileDraft {
+  return {
+    firstName: p.firstName ?? "",
+    lastName: p.lastName ?? "",
+    email: p.email ?? "",
+    phone: p.phone ?? "",
+    location: p.location ?? "",
+    linkedin: p.linkedin ?? "",
+    portfolio: p.portfolio ?? "",
+    addressStreet: p.addressStreet ?? "",
+    addressCity: p.addressCity ?? "",
+    addressState: p.addressState ?? "",
+    postalCode: p.postalCode ?? "",
+    country: p.country ?? "",
+    workAuthorization: p.workAuthorization ?? "",
+    requiresSponsorship: p.requiresSponsorship ?? "",
+    salaryExpectation: p.salaryExpectation ?? "",
+    eeo: {
+      gender: p.eeo?.gender ?? "",
+      race: p.eeo?.race ?? "",
+      hispanicLatino: p.eeo?.hispanicLatino ?? "",
+      veteranStatus: p.eeo?.veteranStatus ?? "",
+      disabilityStatus: p.eeo?.disabilityStatus ?? "",
+    },
+  };
+}
+
+/** One editable text field bound to a draft key via data-field. */
+function apField(
+  field: keyof EditableProfileDraft,
+  label: string,
+  value: string,
+  opts: { required?: boolean; type?: string } = {}
+): string {
+  const req = opts.required ? '<span class="ap-required">*</span>' : "";
+  return `<div class="ap-form-row"><label>${req}${label}</label><input data-field="${field}" type="${opts.type ?? "text"}" value="${esc(value)}" /></div>`;
+}
+
+/** One read-only field (résumé-derived; managed on the web app). */
+function apReadonly(label: string, value: string): string {
+  return `<div class="ap-form-row"><label>${label}</label><input value="${esc(value)}" readonly /></div>`;
+}
+
+/** One EEO select bound to draft.eeo via data-eeo. */
+function apEeoSelect(field: keyof EditableProfileDraft["eeo"], label: string, value: string): string {
+  const opts = ['<option value="">Select…</option>']
+    .concat(EEO_CHOICES[field].map((o) => `<option value="${esc(o)}"${o === value ? " selected" : ""}>${esc(o)}</option>`))
+    .join("");
+  return `<div class="ap-form-row"><label>${label}</label><select data-eeo="${field}">${opts}</select></div>`;
+}
+
+const RESUME_HINT = '<div class="ap-form-hint">Synced from your résumé — edit it on your Tailrd profile.</div>';
+
 function renderInfoForm(): void {
   if (!refs) return;
   const p = overlayState.profile;
+  const d = overlayState.profileDraft;
   const cat = overlayState.infoCategory;
   const form = refs.infoForm;
   form.innerHTML = "";
 
-  if (!p) {
+  if (!p || !d) {
     form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Sign in and upload a resume to see your information.</div>';
     return;
   }
@@ -1696,32 +1827,44 @@ function renderInfoForm(): void {
   switch (cat) {
     case "personal":
       form.innerHTML = `
-        <div class="ap-form-grid-3">
-          <div class="ap-form-row"><label><span class="ap-required">*</span>First Name</label><input value="${esc(p.firstName)}" readonly /></div>
-          <div class="ap-form-row"><label>Middle Name</label><input placeholder="Enter your middle name" readonly /></div>
-          <div class="ap-form-row"><label><span class="ap-required">*</span>Last Name</label><input value="${esc(p.lastName)}" readonly /></div>
-        </div>
-        <div class="ap-form-row"><label><span class="ap-required">*</span>Email Address</label><input value="${esc(p.email)}" readonly /></div>
-        <div class="ap-form-row"><label><span class="ap-required">*</span>Phone</label><input value="${esc(p.phone)}" readonly /></div>
-        <div class="ap-form-row"><label>Location</label><input value="${esc(p.location)}" readonly /></div>
         <div class="ap-form-grid">
-          <div class="ap-form-row"><label>LinkedIn</label><input value="${esc(p.linkedin)}" readonly /></div>
-          <div class="ap-form-row"><label>GitHub</label><input value="${esc(p.github)}" readonly /></div>
+          ${apField("firstName", "First Name", d.firstName, { required: true })}
+          ${apField("lastName", "Last Name", d.lastName, { required: true })}
         </div>
-        <div class="ap-form-row"><label>Portfolio</label><input value="${esc(p.portfolio)}" readonly /></div>
+        ${apField("email", "Email Address", d.email, { required: true, type: "email" })}
+        ${apField("phone", "Phone", d.phone, { required: true, type: "tel" })}
+        ${apField("location", "Location", d.location)}
+        <div class="ap-form-grid">
+          ${apField("linkedin", "LinkedIn", d.linkedin, { type: "url" })}
+          ${apReadonly("GitHub", p.github)}
+        </div>
+        ${apField("portfolio", "Portfolio", d.portfolio, { type: "url" })}
+      `;
+      break;
+    case "address":
+      form.innerHTML = `
+        ${apField("addressStreet", "Street Address", d.addressStreet)}
+        <div class="ap-form-grid">
+          ${apField("addressCity", "City", d.addressCity)}
+          ${apField("addressState", "Province / State", d.addressState)}
+        </div>
+        <div class="ap-form-grid">
+          ${apField("postalCode", "Postal Code", d.postalCode)}
+          ${apField("country", "Country", d.country)}
+        </div>
       `;
       break;
     case "education":
       if ((p.education ?? []).length === 0) {
         form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No education entries yet.</div>';
       } else {
-        let html = "";
+        let html = RESUME_HINT;
         for (const e of p.education ?? []) {
           html += `
-            <div class="ap-form-row"><label>School</label><input value="${esc(e.school)}" readonly /></div>
+            ${apReadonly("School", e.school)}
             <div class="ap-form-grid">
-              <div class="ap-form-row"><label>Degree</label><input value="${esc(e.degree)}" readonly /></div>
-              <div class="ap-form-row"><label>Graduation Year</label><input value="${esc(e.graduationYear)}" readonly /></div>
+              ${apReadonly("Degree", e.degree)}
+              ${apReadonly("Graduation Year", e.graduationYear)}
             </div>
             <hr style="border:none;border-top:1px solid var(--stripe-hairline-soft);margin:14px 0" />
           `;
@@ -1733,16 +1876,16 @@ function renderInfoForm(): void {
       if ((p.experience ?? []).length === 0) {
         form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No work experience entries yet.</div>';
       } else {
-        let html = "";
+        let html = RESUME_HINT;
         for (const e of p.experience ?? []) {
           html += `
             <div class="ap-form-grid">
-              <div class="ap-form-row"><label>Company</label><input value="${esc(e.company)}" readonly /></div>
-              <div class="ap-form-row"><label>Title</label><input value="${esc(e.title)}" readonly /></div>
+              ${apReadonly("Company", e.company)}
+              ${apReadonly("Title", e.title)}
             </div>
             <div class="ap-form-grid">
-              <div class="ap-form-row"><label>Start Date</label><input value="${esc(e.startDate)}" readonly /></div>
-              <div class="ap-form-row"><label>End Date</label><input value="${esc(e.endDate || "Present")}" readonly /></div>
+              ${apReadonly("Start Date", e.startDate)}
+              ${apReadonly("End Date", e.endDate || "Present")}
             </div>
             <hr style="border:none;border-top:1px solid var(--stripe-hairline-soft);margin:14px 0" />
           `;
@@ -1754,16 +1897,101 @@ function renderInfoForm(): void {
       if ((p.skills ?? []).length === 0) {
         form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No skills on file yet.</div>';
       } else {
-        form.innerHTML = `<div class="ap-form-row"><label>Skills</label><input value="${esc((p.skills ?? []).join(", "))}" readonly /></div>`;
+        form.innerHTML = RESUME_HINT + apReadonly("Skills", (p.skills ?? []).join(", "));
       }
       break;
     case "preference":
       form.innerHTML = `
-        <div class="ap-form-row"><label>Work Authorization</label><input value="${esc(p.workAuthorization)}" readonly /></div>
-        <div class="ap-form-row"><label>Requires Sponsorship</label><input value="${esc(p.requiresSponsorship)}" readonly /></div>
-        ${p.salaryExpectation ? `<div class="ap-form-row"><label>Salary Expectation</label><input value="${esc(p.salaryExpectation)}" readonly /></div>` : ""}
+        ${apField("workAuthorization", "Work Authorization", d.workAuthorization)}
+        ${apField("requiresSponsorship", "Requires Sponsorship", d.requiresSponsorship)}
+        ${apField("salaryExpectation", "Salary Expectation", d.salaryExpectation)}
       `;
       break;
+    case "eeo":
+      form.innerHTML = `
+        <div class="ap-form-hint">Optional self-identification. Only filled when EEO autofill is enabled. Kept private.</div>
+        ${apEeoSelect("gender", "Gender", d.eeo.gender)}
+        ${apEeoSelect("race", "Race / Ethnicity", d.eeo.race)}
+        ${apEeoSelect("hispanicLatino", "Hispanic or Latino", d.eeo.hispanicLatino)}
+        ${apEeoSelect("veteranStatus", "Veteran Status", d.eeo.veteranStatus)}
+        ${apEeoSelect("disabilityStatus", "Disability Status", d.eeo.disabilityStatus)}
+      `;
+      break;
+  }
+}
+
+/** Delegated input handler: mirror form edits into the draft (survives re-render). */
+function onInfoInput(e: Event): void {
+  const d = overlayState.profileDraft;
+  if (!d) return;
+  const t = e.target as HTMLInputElement | HTMLSelectElement;
+  const field = t.dataset.field;
+  const eeoField = t.dataset.eeo;
+  if (field && field !== "eeo" && field in d) {
+    (d as unknown as Record<string, string>)[field] = t.value;
+  } else if (eeoField && eeoField in d.eeo) {
+    (d.eeo as unknown as Record<string, string>)[eeoField] = t.value;
+  }
+}
+
+function setInfoError(msg: string): void {
+  const el = refs?.root.querySelector<HTMLDivElement>("#ap-info-error");
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? "block" : "none";
+}
+
+/** Persist the info-modal edits to the profile the extension + web app share. */
+async function saveInfoEdits(): Promise<void> {
+  if (!refs) return;
+  const d = overlayState.profileDraft;
+  const btn = refs.root.querySelector<HTMLButtonElement>("#ap-btn-update");
+  if (!d) { hideInfoView(); return; }
+  setInfoError("");
+
+  // Send only what changed so we don't bump the sync version (and force a
+  // re-download) when the user opens the modal and clicks Update without edits.
+  const orig = overlayState.profile ?? ({} as UserApplicationProfile);
+  const update: Partial<UserApplicationProfile> = {};
+  const scalarKeys: (keyof EditableProfileDraft)[] = [
+    "firstName", "lastName", "email", "phone", "location", "linkedin", "portfolio",
+    "addressStreet", "addressCity", "addressState", "postalCode", "country",
+    "workAuthorization", "requiresSponsorship", "salaryExpectation",
+  ];
+  for (const k of scalarKeys) {
+    const next = (d as unknown as Record<string, string>)[k];
+    const prev = (orig as unknown as Record<string, string>)[k] ?? "";
+    if (next !== prev) (update as Record<string, string>)[k] = next;
+  }
+  const eeoOrig = orig.eeo ?? {};
+  const eeoDiff: EeoAnswers = {};
+  (Object.keys(d.eeo) as (keyof EditableProfileDraft["eeo"])[]).forEach((k) => {
+    if (d.eeo[k] !== ((eeoOrig as Record<string, string>)[k] ?? "")) eeoDiff[k] = d.eeo[k];
+  });
+  if (Object.keys(eeoDiff).length > 0) update.eeo = eeoDiff;
+
+  if (Object.keys(update).length === 0) { hideInfoView(); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  try {
+    const resp = await bg<ProfileResponse>({ type: "UPDATE_PROFILE", update });
+    if (resp?.ok && resp.profile) {
+      overlayState.profile = resp.profile;
+      overlayState.source = resp.source ?? overlayState.source;
+      // Re-feed the scanner so the just-edited values immediately propose fills.
+      callbacks?.onProfileResolved(overlayState.profile);
+      refreshMainView();
+      hideInfoView();
+    } else if (resp?.needsLogin) {
+      hideInfoView();
+      showLoginView(true);
+    } else {
+      setInfoError(resp?.error ?? "Couldn't save your changes. Please try again.");
+    }
+  } catch (err) {
+    setInfoError(err instanceof Error ? err.message : "Couldn't save your changes. Please try again.");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Update"; }
   }
 }
 

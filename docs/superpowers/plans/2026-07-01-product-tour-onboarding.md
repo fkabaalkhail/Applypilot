@@ -269,7 +269,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: "welcome",
     route: "/app",
-    title: "Welcome to Tailrd 👋",
+    title: "Welcome to Tailrd",
     description:
       "Let's take a quick tour of how Tailrd helps you find, tailor, and track job applications.",
   },

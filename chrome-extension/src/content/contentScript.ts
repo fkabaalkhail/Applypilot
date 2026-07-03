@@ -21,6 +21,7 @@ import type {
   AiFillResponse,
   BackgroundRequest,
   ContentRequest,
+  ControlType,
   CoverLetterGenOpts,
   DetectedField,
   FieldsUpdatedEvent,
@@ -53,6 +54,7 @@ import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext } from "./jobContext";
 import { aiFillCandidates, planAiFill, planFillRoute, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { splitByCache, cacheAnswers } from "./answerCache";
+import { promptForMissingFields, type MissingFieldPrompt } from "./missingInfoModal";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
 import { fillAriaCombobox } from "./comboboxEngine";
 import { driveField } from "./mainWorldClient";
@@ -327,6 +329,69 @@ function initialize(): void {
    * Preserves the Task-7 single re-ask round. Every backend answer fills
    * silently (no review gate). Returns the step tally.
    */
+  // Free-text control types worth asking the user about when required + empty.
+  const PROMPTABLE_TYPES = new Set<ControlType>(["text", "textarea", "contenteditable"]);
+
+  /** True when the control for `id` currently holds no user-visible value. */
+  function controlIsEmpty(id: string): boolean {
+    const el = registry.get(id)?.el;
+    if (!el) return true;
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      return !el.value.trim();
+    }
+    return !(el.textContent ?? "").trim();
+  }
+
+  /**
+   * After a fill pass, prompt for any REQUIRED free-text question that is still
+   * empty — the ones neither the profile, the answer bank, nor the AI could fill.
+   * Fills whatever the user provides and saves each answer to Question Memory so
+   * the next application fills it automatically. EEO/sensitive fields are never
+   * prompted (they fill from the profile only).
+   */
+  async function promptMissingInfo(): Promise<{
+    reports: FieldReport[];
+    outcomes: { fieldId: string; ok: boolean }[];
+  }> {
+    const empty = { reports: [], outcomes: [] };
+    const candidates = lastFields.filter(
+      (f) =>
+        f.fillable &&
+        !f.sensitive &&
+        f.required &&
+        PROMPTABLE_TYPES.has(f.controlType) &&
+        controlIsEmpty(f.id)
+    );
+    if (candidates.length === 0) return empty;
+
+    const prompts: MissingFieldPrompt[] = candidates.map((f) => ({
+      id: f.id,
+      label: f.label,
+      multiline: f.controlType === "textarea" || f.controlType === "contenteditable",
+    }));
+
+    const answers = await promptForMissingFields(prompts).catch(() => null);
+    if (!answers || Object.keys(answers).length === 0) return empty;
+
+    const targets = Object.entries(answers).map(([fieldId, value]) => ({ fieldId, value }));
+    const filled = await fillItems(targets, true);
+
+    // Remember each answer so it auto-fills next time (POST /api/answers is the
+    // only write path into the bank; the backend canonicalizes + dedupes).
+    const jobContext = extractJobContext();
+    for (const [fieldId, value] of Object.entries(answers)) {
+      const f = lastFields.find((x) => x.id === fieldId);
+      if (!f) continue;
+      void sendToBackground<SimpleResponse>({
+        type: "SAVE_ANSWER",
+        question: f.label,
+        answer: value,
+        jobContext,
+      }).catch(() => {});
+    }
+    return { reports: filled.reports, outcomes: filled.outcomes };
+  }
+
   async function fillOnce(ids: string[] | null): Promise<StepTally> {
       const wanted = ids ? new Set(ids) : defaultSelectedIds(lastFields);
       const selected = lastFields.filter(
@@ -407,15 +472,21 @@ function initialize(): void {
         }
       }
 
+      // Ask the user for any required question we still couldn't answer, fill
+      // their replies, and remember them for next time.
+      const missingFill = await promptMissingInfo();
+
       const { ok, fail, total } = tallyOutcomes(
         localFill.reports,
         aiFill.reports,
         fallbackFill.reports,
         reaskFill.reports,
+        missingFill.reports,
         localFill.outcomes,
         aiFill.outcomes,
         fallbackFill.outcomes,
-        reaskFill.outcomes
+        reaskFill.outcomes,
+        missingFill.outcomes
       );
       return { ok, fail, total };
   }

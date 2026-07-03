@@ -531,6 +531,7 @@ export type BackgroundRequest =
   | { type: "CONNECT" }
   | { type: "LOGOUT" }
   | { type: "GET_PROFILE"; forceRefresh?: boolean }
+  | { type: "UPDATE_PROFILE"; update: Partial<UserApplicationProfile> }
   | { type: "GET_RESUMES" }
   | { type: "GET_SYNC"; forceRefresh?: boolean }
   | { type: "DOWNLOAD_RESUME"; resumeId: number }

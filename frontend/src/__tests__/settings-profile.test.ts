@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeProfileDiff } from "../pages/Settings";
+import { computeProfileDiff } from "../lib/profileExtras";
 
 const EMPTY = {
   addressStreet: "",

@@ -24,56 +24,9 @@ interface SettingsData {
   follow_companies: boolean;
 }
 
-// EEO / demographic self-identification. Mirrors the extension's EeoAnswers and
-// the backend EeoOut/EeoIn (camelCase). Only used by the extension when its
-// "Fill EEO fields" setting is on.
-interface EeoData {
-  gender: string;
-  race: string;
-  hispanicLatino: string;
-  veteranStatus: string;
-  disabilityStatus: string;
-}
-
-// Structured mailing address + EEO. These persist via the application-profile
-// endpoint (camelCase, nested eeo) rather than /settings, which has no columns
-// for them. addressCity shares the same DB column as the contact "city".
-interface ProfileExtras {
-  addressStreet: string;
-  addressCity: string;
-  addressState: string;
-  postalCode: string;
-  country: string;
-  eeo: EeoData;
-}
-
-// PATCH body for PUT /api/user/application-profile — only changed keys are sent;
-// omitted keys are left untouched by the backend.
-interface ProfileUpdatePayload {
-  addressStreet?: string;
-  addressCity?: string;
-  addressState?: string;
-  postalCode?: string;
-  country?: string;
-  eeo?: Partial<EeoData>;
-}
-
-const EMPTY_EEO: EeoData = {
-  gender: "",
-  race: "",
-  hispanicLatino: "",
-  veteranStatus: "",
-  disabilityStatus: "",
-};
-
-const EMPTY_PROFILE_EXTRAS: ProfileExtras = {
-  addressStreet: "",
-  addressCity: "",
-  addressState: "",
-  postalCode: "",
-  country: "",
-  eeo: EMPTY_EEO,
-};
+// Address + EEO self-identification now live on the Profile page (they persist
+// through the application-profile endpoint the extension syncs from). See
+// frontend/src/pages/Profile.tsx and frontend/src/lib/profileExtras.ts.
 
 interface PrefilledEntry {
   id: string;
@@ -134,47 +87,6 @@ function computeDiff(
     JSON.stringify(currentPrefilled)
   ) {
     diff.prefilled_answers = currentPrefilled;
-  }
-
-  return Object.keys(diff).length > 0 ? diff : null;
-}
-
-// Build the PATCH body for the application-profile endpoint: only address / EEO
-// keys that changed. Returns null when nothing changed. Exported for unit tests.
-export function computeProfileDiff(
-  original: ProfileExtras,
-  current: ProfileExtras
-): ProfileUpdatePayload | null {
-  const diff: ProfileUpdatePayload = {};
-
-  const addressKeys: (keyof Omit<ProfileExtras, "eeo">)[] = [
-    "addressStreet",
-    "addressCity",
-    "addressState",
-    "postalCode",
-    "country",
-  ];
-  for (const key of addressKeys) {
-    if (current[key] !== original[key]) {
-      diff[key] = current[key];
-    }
-  }
-
-  const eeoDiff: Partial<EeoData> = {};
-  const eeoKeys: (keyof EeoData)[] = [
-    "gender",
-    "race",
-    "hispanicLatino",
-    "veteranStatus",
-    "disabilityStatus",
-  ];
-  for (const key of eeoKeys) {
-    if (current.eeo[key] !== original.eeo[key]) {
-      eeoDiff[key] = current.eeo[key];
-    }
-  }
-  if (Object.keys(eeoDiff).length > 0) {
-    diff.eeo = eeoDiff;
   }
 
   return Object.keys(diff).length > 0 ? diff : null;
@@ -314,8 +226,6 @@ export default function Settings() {
   const [formData, setFormData] = useState<SettingsData | null>(null);
   const [originalData, setOriginalData] = useState<SettingsData | null>(null);
   const [prefilledEntries, setPrefilledEntries] = useState<PrefilledEntry[]>([]);
-  const [profileExtras, setProfileExtras] = useState<ProfileExtras>(EMPTY_PROFILE_EXTRAS);
-  const [originalProfileExtras, setOriginalProfileExtras] = useState<ProfileExtras>(EMPTY_PROFILE_EXTRAS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -408,38 +318,8 @@ export default function Settings() {
     }
   }
 
-  // Address + EEO live on the application-profile endpoint (merged from resume +
-  // settings), not /settings. A 404 just means the user has no profile row yet —
-  // treat everything as empty and editable.
-  async function fetchProfileExtras() {
-    try {
-      const res = await api.get("/api/user/application-profile");
-      const d = res.data;
-      const extras: ProfileExtras = {
-        addressStreet: d.addressStreet ?? "",
-        addressCity: d.addressCity ?? "",
-        addressState: d.addressState ?? "",
-        postalCode: d.postalCode ?? "",
-        country: d.country ?? "",
-        eeo: {
-          gender: d.eeo?.gender ?? "",
-          race: d.eeo?.race ?? "",
-          hispanicLatino: d.eeo?.hispanicLatino ?? "",
-          veteranStatus: d.eeo?.veteranStatus ?? "",
-          disabilityStatus: d.eeo?.disabilityStatus ?? "",
-        },
-      };
-      setProfileExtras(extras);
-      setOriginalProfileExtras(extras);
-    } catch {
-      setProfileExtras(EMPTY_PROFILE_EXTRAS);
-      setOriginalProfileExtras(EMPTY_PROFILE_EXTRAS);
-    }
-  }
-
   useEffect(() => {
     fetchSettings();
-    void fetchProfileExtras();
     void loadSessions();
   }, []);
 
@@ -448,10 +328,7 @@ export default function Settings() {
   async function saveSettings() {
     if (!formData || !originalData) return;
     const diff = computeDiff(originalData, formData, prefilledEntries);
-    // Address + EEO persist through the application-profile endpoint, so they
-    // save alongside the /settings fields under the one "Save Changes" button.
-    const profileDiff = computeProfileDiff(originalProfileExtras, profileExtras);
-    if (!diff && !profileDiff) {
+    if (!diff) {
       showToast("success", "No changes to save.");
       return;
     }
@@ -481,10 +358,6 @@ export default function Settings() {
         setFormData(updated);
         setOriginalData(updated);
         setPrefilledEntries(dictToEntries(updated.prefilled_answers));
-      }
-      if (profileDiff) {
-        await api.put("/api/user/application-profile", profileDiff);
-        setOriginalProfileExtras(profileExtras);
       }
       showToast("success", "Settings saved successfully.");
     } catch (err: any) {
@@ -545,25 +418,13 @@ export default function Settings() {
       ...formData,
       prefilled_answers: entriesToDict(prefilledEntries),
     };
-    const settingsDirty =
-      JSON.stringify(originalData) !== JSON.stringify(currentWithPrefilled);
-    const profileDirty =
-      JSON.stringify(originalProfileExtras) !== JSON.stringify(profileExtras);
-    return settingsDirty || profileDirty;
-  }, [originalData, formData, prefilledEntries, originalProfileExtras, profileExtras]);
+    return JSON.stringify(originalData) !== JSON.stringify(currentWithPrefilled);
+  }, [originalData, formData, prefilledEntries]);
 
   // ─── Field Update Helper ────────────────────────────────────────────────
 
   function updateField(field: keyof SettingsData, value: string | boolean) {
     setFormData((prev) => (prev ? { ...prev, [field]: value } : prev));
-  }
-
-  function updateProfileField(field: keyof Omit<ProfileExtras, "eeo">, value: string) {
-    setProfileExtras((prev) => ({ ...prev, [field]: value }));
-  }
-
-  function updateEeoField(field: keyof EeoData, value: string) {
-    setProfileExtras((prev) => ({ ...prev, eeo: { ...prev.eeo, [field]: value } }));
   }
 
   // ─── Render ─────────────────────────────────────────────────────────────
@@ -645,147 +506,6 @@ export default function Settings() {
               value={formData.website}
               onChange={(e) => updateField("website", e.target.value)}
             />
-          </div>
-        </div>
-      </div>
-
-      {/* Address */}
-      <div className="settings-section">
-        <div className="settings-section-header">
-          <i className="fa-solid fa-location-dot"></i>
-          <h2>Address</h2>
-        </div>
-        <div className="settings-form-grid">
-          <div className="settings-field full-width">
-            <label htmlFor="addressStreet">Street Address</label>
-            <input
-              id="addressStreet"
-              type="text"
-              value={profileExtras.addressStreet}
-              onChange={(e) => updateProfileField("addressStreet", e.target.value)}
-            />
-          </div>
-          <div className="settings-field">
-            <label htmlFor="addressCity">City</label>
-            <input
-              id="addressCity"
-              type="text"
-              value={profileExtras.addressCity}
-              onChange={(e) => updateProfileField("addressCity", e.target.value)}
-            />
-          </div>
-          <div className="settings-field">
-            <label htmlFor="addressState">Province / State</label>
-            <input
-              id="addressState"
-              type="text"
-              value={profileExtras.addressState}
-              onChange={(e) => updateProfileField("addressState", e.target.value)}
-            />
-          </div>
-          <div className="settings-field">
-            <label htmlFor="postalCode">Postal Code</label>
-            <input
-              id="postalCode"
-              type="text"
-              value={profileExtras.postalCode}
-              onChange={(e) => updateProfileField("postalCode", e.target.value)}
-            />
-          </div>
-          <div className="settings-field">
-            <label htmlFor="country">Country</label>
-            <input
-              id="country"
-              type="text"
-              value={profileExtras.country}
-              onChange={(e) => updateProfileField("country", e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Self-identification (optional) */}
-      <div className="settings-section">
-        <div className="settings-section-header">
-          <i className="fa-solid fa-id-card"></i>
-          <h2>Self-identification (optional)</h2>
-        </div>
-        <p className="settings-section-sub">
-          Optional. Only used by the extension when "Fill EEO fields" is enabled.
-        </p>
-        <div className="settings-form-grid">
-          <div className="settings-field">
-            <label htmlFor="eeo-gender">Gender</label>
-            <select
-              id="eeo-gender"
-              value={profileExtras.eeo.gender}
-              onChange={(e) => updateEeoField("gender", e.target.value)}
-            >
-              <option value="">Select…</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Non-binary">Non-binary</option>
-              <option value="Prefer not to say">Prefer not to say</option>
-            </select>
-          </div>
-          <div className="settings-field">
-            <label htmlFor="eeo-race">Race / Ethnicity</label>
-            <select
-              id="eeo-race"
-              value={profileExtras.eeo.race}
-              onChange={(e) => updateEeoField("race", e.target.value)}
-            >
-              <option value="">Select…</option>
-              <option value="American Indian or Alaska Native">American Indian or Alaska Native</option>
-              <option value="Asian">Asian</option>
-              <option value="Black or African American">Black or African American</option>
-              <option value="Hispanic or Latino">Hispanic or Latino</option>
-              <option value="Native Hawaiian or Other Pacific Islander">Native Hawaiian or Other Pacific Islander</option>
-              <option value="White">White</option>
-              <option value="Two or More Races">Two or More Races</option>
-              <option value="Prefer not to say">Prefer not to say</option>
-            </select>
-          </div>
-          <div className="settings-field">
-            <label htmlFor="eeo-hispanic">Hispanic or Latino</label>
-            <select
-              id="eeo-hispanic"
-              value={profileExtras.eeo.hispanicLatino}
-              onChange={(e) => updateEeoField("hispanicLatino", e.target.value)}
-            >
-              <option value="">Select…</option>
-              <option value="Yes">Yes</option>
-              <option value="No">No</option>
-              <option value="Prefer not to say">Prefer not to say</option>
-            </select>
-          </div>
-          <div className="settings-field">
-            <label htmlFor="eeo-veteran">Veteran Status</label>
-            <select
-              id="eeo-veteran"
-              value={profileExtras.eeo.veteranStatus}
-              onChange={(e) => updateEeoField("veteranStatus", e.target.value)}
-            >
-              <option value="">Select…</option>
-              <option value="I am not a protected veteran">I am not a protected veteran</option>
-              <option value="I identify as one or more of the classifications of a protected veteran">
-                I identify as one or more of the classifications of a protected veteran
-              </option>
-              <option value="Prefer not to say">Prefer not to say</option>
-            </select>
-          </div>
-          <div className="settings-field">
-            <label htmlFor="eeo-disability">Disability Status</label>
-            <select
-              id="eeo-disability"
-              value={profileExtras.eeo.disabilityStatus}
-              onChange={(e) => updateEeoField("disabilityStatus", e.target.value)}
-            >
-              <option value="">Select…</option>
-              <option value="Yes, I have a disability">Yes, I have a disability</option>
-              <option value="No, I do not have a disability">No, I do not have a disability</option>
-              <option value="Prefer not to say">Prefer not to say</option>
-            </select>
           </div>
         </div>
       </div>

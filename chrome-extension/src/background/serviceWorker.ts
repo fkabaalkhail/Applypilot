@@ -11,7 +11,7 @@
  */
 import { connectAccount } from "../api/handshake";
 import { AuthRequiredError, checkAuthStatus, ensureFreshAccessToken, logout } from "../api/client";
-import { downloadResumeFile, getSnapshotForUi, syncIfStale } from "../api/sync";
+import { downloadResumeFile, getSnapshotForUi, syncIfStale, updateApplicationProfile } from "../api/sync";
 import { aiFillFields } from "../api/aiFill";
 import { saveAnswer } from "../api/answers";
 import { renderResume, tailorResume } from "../api/tailorResume";
@@ -318,6 +318,21 @@ export async function handle(
         return {
           ok: false,
           error: err instanceof Error ? err.message : "Could not load profile",
+        };
+      }
+    }
+
+    case "UPDATE_PROFILE": {
+      try {
+        const profile = await updateApplicationProfile(message.update);
+        return { ok: true, profile, source: "api" };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, error: err.message };
+        }
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Could not save your profile",
         };
       }
     }

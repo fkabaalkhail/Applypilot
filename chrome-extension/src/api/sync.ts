@@ -112,6 +112,26 @@ export async function fetchSnapshotFromApi(): Promise<ExtensionSyncSnapshot> {
 }
 
 /**
+ * Write user-edited autofill fields back to the profile the extension syncs
+ * from (PUT /api/user/application-profile), then re-download the snapshot so the
+ * cached profile immediately reflects the change (and the web app sees it too —
+ * the endpoint bumps the shared sync version). Returns the fresh profile.
+ *
+ * `update` is a partial UserApplicationProfile-shaped patch (camelCase); only
+ * the keys present are changed server-side.
+ */
+export async function updateApplicationProfile(
+  update: Partial<UserApplicationProfile>
+): Promise<UserApplicationProfile> {
+  await authedRequest("/api/user/application-profile", {
+    method: "PUT",
+    body: JSON.stringify(update),
+  });
+  const snapshot = await fetchSnapshotFromApi();
+  return snapshot.profile;
+}
+
+/**
  * If the server's version differs from the cached snapshot's, re-download.
  * Returns true when a refresh happened. Best-effort — offline/missing-endpoint
  * errors are swallowed so the extension keeps working from cache. Re-auth
