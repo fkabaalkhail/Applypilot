@@ -6,6 +6,7 @@ import {
   planAiFill,
   tallyOutcomes,
   planFillRoute,
+  needsOptionHarvest,
 } from "../src/content/aiFillPlanner";
 import type { DetectedField } from "../src/shared/types";
 
@@ -23,6 +24,22 @@ function field(over: Partial<DetectedField>): DetectedField {
     ...over,
   };
 }
+
+describe("needsOptionHarvest", () => {
+  it("harvests a combobox with no known options", () => {
+    expect(needsOptionHarvest(field({ controlType: "combobox", options: [] }), false)).toBe(true);
+  });
+  it("harvests a driver-backed field with no options", () => {
+    expect(needsOptionHarvest(field({ controlType: "customDropdown", options: [] }), true)).toBe(true);
+  });
+  it("skips when options are already known", () => {
+    expect(needsOptionHarvest(field({ controlType: "combobox", options: ["A", "B"] }), false)).toBe(false);
+  });
+  it("skips a native select with options / a plain text field", () => {
+    expect(needsOptionHarvest(field({ controlType: "select", options: ["A"] }), false)).toBe(false);
+    expect(needsOptionHarvest(field({ controlType: "text", options: [] }), false)).toBe(false);
+  });
+});
 
 describe("isAiCandidate", () => {
   it("excludes sensitive (EEO) fields", () => {

@@ -33,6 +33,18 @@ export function isAiCandidate(field: DetectedField): boolean {
   return QUESTION_LABEL.test(field.label);
 }
 
+/**
+ * True when a choice field's REAL options aren't known yet and must be harvested
+ * from the live widget before the AI answers it. Custom/lazy dropdowns
+ * (react-select, Workday button-listboxes) mount their list only when opened, so
+ * they scan with empty options; native <select>/radio already expose theirs.
+ */
+export function needsOptionHarvest(field: DetectedField, hasDriver: boolean): boolean {
+  if ((field.options?.length ?? 0) > 0) return false;
+  if (field.controlType === "combobox" || field.controlType === "customDropdown") return true;
+  return hasDriver;
+}
+
 /** Eligible fields that are still empty (no profile value, nothing the user typed). */
 export function aiFillCandidates(fields: DetectedField[]): DetectedField[] {
   return fields.filter(
