@@ -24,7 +24,7 @@ from backend.migrations.add_job_match_notifications import run_migration as run_
 from backend.migrations.add_onboarding_field import run_migration as run_onboarding_migration
 from backend.migrations.add_setup_field import run_migration as run_setup_migration
 from backend.migrations.add_autofill_profile_fields import run_migration as run_autofill_profile_migration
-from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile, answers
+from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile, answers, autofill
 from backend.routers import auth, auth_extension, extension, tailor, cover_letter
 from backend.routers.feedback import router as feedback_router
 
@@ -144,6 +144,7 @@ app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(settings.router, prefix="/settings", tags=["settings"])
 app.include_router(ai.router, prefix="/ai", tags=["ai"])
 app.include_router(apply.router, prefix="/apply", tags=["apply"])
+app.include_router(autofill.router, prefix="/autofill", tags=["autofill"])
 app.include_router(connections.router, prefix="/connections", tags=["connections"])
 app.include_router(github_sources.router, prefix="/github-sources", tags=["github-sources"])
 app.include_router(feedback_router)

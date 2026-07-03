@@ -557,6 +557,7 @@ export type BackgroundRequest =
   | { type: "FLOW_STATE_GET" }
   | { type: "FLOW_STATE_SET"; state: FlowState | null }
   | { type: "RECORD_APPLICATION"; application: ApplicationLog }
+  | { type: "RECORD_TELEMETRY"; telemetry: AutofillTelemetry }
   | FormHostAnnounce
   | RelayFormOp
   | RelayToTop
@@ -585,6 +586,22 @@ export interface RecordApplicationResponse {
   needsLogin?: boolean;
   /** True when a new record was created; false when an existing one was refreshed. */
   created?: boolean;
+}
+
+/**
+ * One autofill pass summary, reported to the backend so we can see which sites
+ * and fields the filler struggles with (the signal for authoring server-side
+ * override rules). Field labels + outcomes only — never the user's values.
+ */
+export interface AutofillTelemetry {
+  host: string;
+  atsType: string;
+  url: string;
+  totalFields: number;
+  filled: number;
+  failed: number;
+  skipped: number;
+  failedFields: { label: string; category: string; reason: string }[];
 }
 
 /**

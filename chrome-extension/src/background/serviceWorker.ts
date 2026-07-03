@@ -17,6 +17,7 @@ import { saveAnswer } from "../api/answers";
 import { renderResume, tailorResume } from "../api/tailorResume";
 import { generateCoverLetter, renderCoverLetter } from "../api/coverLetter";
 import { recordApplication } from "../api/applications";
+import { reportAutofillTelemetry } from "../api/telemetry";
 import { matchApplyIntent, recordApplyIntent } from "./applyIntent";
 import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import { getFlowState, setFlowState, watchTabRemoval } from "./flowState";
@@ -550,6 +551,17 @@ export async function handle(
           ok: false,
           error: err instanceof Error ? err.message : "Could not record application",
         };
+      }
+    }
+
+    case "RECORD_TELEMETRY": {
+      try {
+        await reportAutofillTelemetry(message.telemetry);
+        return { ok: true };
+      } catch (err) {
+        // Best-effort — signed-out users just don't report.
+        if (err instanceof AuthRequiredError) return { ok: false, needsLogin: true };
+        return { ok: false, error: err instanceof Error ? err.message : "Telemetry failed" };
       }
     }
 

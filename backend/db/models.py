@@ -604,3 +604,51 @@ class RateCounter(Base):
     bucket_key = Column(String(255), primary_key=True)
     count = Column(Integer, default=0, nullable=False)
     expires_at = Column(DateTime, nullable=False, index=True)
+
+
+# ─── Autofill telemetry ──────────────────────────────────────────────────────
+
+class AutofillReport(Base):
+    """One row per autofill pass the extension performs, so we can see which
+    sites and fields the filler struggles with — the signal that tells us where a
+    server-side override rule is worth authoring. Stores field LABELS + outcomes
+    only, never the user's answer values.
+    """
+    __tablename__ = "autofill_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    host = Column(String, nullable=False, index=True)
+    ats_type = Column(String, default="")
+    url = Column(String, nullable=True)
+    total_fields = Column(Integer, default=0)
+    filled = Column(Integer, default=0)
+    failed = Column(Integer, default=0)
+    skipped = Column(Integer, default=0)
+    # [{ "label": str, "category": str, "reason": str }] — no user values.
+    failed_fields = Column(JSON, default=list)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
+
+# ─── Autofill server-side overrides (hot-fix layer) ──────────────────────────
+
+class AutofillOverride(Base):
+    """A server-authored correction the extension applies at classify time, so a
+    broken/new site can be hot-fixed without shipping a new extension. Matched by
+    host (or "*") + a normalized field-label regex; forces a field category (and
+    optional value synonyms) onto the generic adapter+AI pipeline.
+    """
+    __tablename__ = "autofill_overrides"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Host to match, e.g. "boards.greenhouse.io"; "*" matches any host.
+    host = Column(String, nullable=False, default="*", index=True)
+    # Regex tested (case-insensitive) against the normalized field label.
+    label_pattern = Column(String, nullable=False)
+    # Field category to force (e.g. "workAuthorization"); "" leaves it unchanged.
+    category = Column(String, default="")
+    # Optional { "typed value": "canonical option" } hints for choice controls.
+    value_synonyms = Column(JSON, default=dict)
+    enabled = Column(Boolean, default=True, nullable=False)
+    note = Column(String, default="")
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

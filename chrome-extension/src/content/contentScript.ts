@@ -78,6 +78,7 @@ import { clickAdvance, findAdvanceButton } from "./advance";
 import { hasUnsolvedCaptcha, isVerificationWall, resumeFieldNeedingFile, validationMessages } from "./flowChecks";
 import { detectWall, runAccountWall } from "./accountFlow";
 import { bindSubmitTracking, type SubmitTrackerHandle } from "./submitTracker";
+import { buildAutofillTelemetry } from "./telemetry";
 
 // Guard against double injection (manifest match + programmatic inject).
 declare global {
@@ -528,6 +529,29 @@ function initialize(): void {
         reaskFill.outcomes,
         missingFill.outcomes
       );
+
+      // Fire-and-forget telemetry (field labels + outcomes only, never values) so
+      // we can see which sites/fields the filler struggles with. Skipped on cancel.
+      if (!signal?.aborted && total > 0) {
+        const allReports = [
+          ...localFill.reports, ...aiFill.reports, ...fallbackFill.reports,
+          ...reaskFill.reports, ...missingFill.reports,
+        ];
+        const allOutcomes = [
+          ...localFill.outcomes, ...aiFill.outcomes, ...fallbackFill.outcomes,
+          ...reaskFill.outcomes, ...missingFill.outcomes,
+        ];
+        const telemetry = buildAutofillTelemetry(
+          lastFields,
+          { host: location.host, url: location.href, atsType: lastAdapter?.id ?? "" },
+          allReports,
+          allOutcomes
+        );
+        if (telemetry.totalFields > 0) {
+          void sendToBackground<SimpleResponse>({ type: "RECORD_TELEMETRY", telemetry }).catch(() => {});
+        }
+      }
+
       return { ok, fail, total };
   }
 
