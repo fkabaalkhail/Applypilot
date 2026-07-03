@@ -118,6 +118,7 @@ const PAUSE_TEXT: Record<FlowPauseReason, string> = {
   validation: "fix the highlighted errors to continue",
   account: "sign in to continue",
   verification: "enter the emailed code to continue",
+  "unfilled-required": "fill the required fields, or Next page to continue",
 };
 
 /** One-line, user-facing description of a flow beat. Pure — unit-tested. */
@@ -149,9 +150,11 @@ export function updateFlowProgress(p: FlowProgress): void {
     p.phase === "filling" || p.phase === "advancing" || p.phase === "paused" || p.phase === "ready";
   refs.flow.style.display = running ? "flex" : "none";
   refs.flowText.textContent = formatFlowProgress(p);
-  // The Next page gate is pinned at the panel bottom and shows ONLY while the
-  // flow is parked at "ready"; every other beat hides it.
-  refs.flowNext.style.display = p.phase === "ready" ? "flex" : "none";
+  // The Next page gate is pinned at the panel bottom. Clean pages now advance
+  // automatically, so the button is a manual override — shown while parked at
+  // "ready" (legacy) or paused on unfilled required fields.
+  refs.flowNext.style.display =
+    p.phase === "ready" || (p.phase === "paused" && p.pauseReason === "unfilled-required") ? "flex" : "none";
   if (p.phase === "done") showBanner(formatFlowProgress(p), "ok");
   if (p.phase === "stopped") showBanner(formatFlowProgress(p), "warn");
 }

@@ -312,7 +312,8 @@ export type FlowPauseReason =
   | "resume-upload"
   | "validation"
   | "account"
-  | "verification";
+  | "verification"
+  | "unfilled-required";
 
 export type FlowPhase = "filling" | "advancing" | "paused" | "ready" | "done" | "stopped";
 

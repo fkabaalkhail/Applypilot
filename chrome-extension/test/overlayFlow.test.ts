@@ -24,4 +24,9 @@ describe("formatFlowProgress", () => {
       "Done — 1 step filled (5 ok). Review and submit."
     );
   });
+
+  it("describes the unfilled-required pause", () => {
+    const line = formatFlowProgress({ phase: "paused", step: 1, filledOk: 3, filledFail: 0, pauseReason: "unfilled-required" });
+    expect(line.toLowerCase()).toContain("required");
+  });
 });
