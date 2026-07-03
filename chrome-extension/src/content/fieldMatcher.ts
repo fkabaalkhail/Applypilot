@@ -489,7 +489,9 @@ export function resolveProfileValue(
   category: FieldCategory,
   profile: UserApplicationProfile,
   control: ResolveControl,
-  fillEEO: boolean
+  // Retained for signature stability across the scanner/adapter call chain. EEO
+  // now fills on data-presence (see the EEO cases below), so this no longer gates.
+  _fillEEO: boolean
 ): string | null {
   const orNull = (v: string | undefined): string | null => (v && v.trim() ? v : null);
   const gi = control.groupIndex ?? null;
@@ -565,18 +567,21 @@ export function resolveProfileValue(
     case "resumeUpload":
       return null; // browsers do not allow scripted file selection
 
-    // EEO: only resolved when the user explicitly enabled it AND the profile
-    // actually contains the answer.
+    // EEO / demographics: the user entered these in their own profile expressly
+    // to autofill applications, so the presence of an answer IS the consent to
+    // fill it — resolved whenever set (empty → null; never fabricated). These
+    // stay `sensitive`, so the AI never guesses them and they're clearly flagged
+    // for review, and the user can still deselect any before filling.
     case "eeoGender":
-      return fillEEO ? orNull(profile.eeo?.gender) : null;
+      return orNull(profile.eeo?.gender);
     case "eeoRace":
-      return fillEEO ? orNull(profile.eeo?.race) : null;
+      return orNull(profile.eeo?.race);
     case "eeoHispanic":
-      return fillEEO ? orNull(profile.eeo?.hispanicLatino) : null;
+      return orNull(profile.eeo?.hispanicLatino);
     case "eeoVeteran":
-      return fillEEO ? orNull(profile.eeo?.veteranStatus) : null;
+      return orNull(profile.eeo?.veteranStatus);
     case "eeoDisability":
-      return fillEEO ? orNull(profile.eeo?.disabilityStatus) : null;
+      return orNull(profile.eeo?.disabilityStatus);
     case "eeoOther":
       return null;
 

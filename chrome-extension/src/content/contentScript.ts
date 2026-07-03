@@ -24,6 +24,7 @@ import type {
   ControlType,
   CoverLetterGenOpts,
   DetectedField,
+  FieldCategory,
   FieldsUpdatedEvent,
   FillResponse,
   FlowProgress,
@@ -33,6 +34,7 @@ import type {
   FormOpResult,
   GenerateCoverLetterResponse,
   PingResponse,
+  ProfileResponse,
   RenderCoverLetterResponse,
   RenderResumeResponse,
   ResumeDoc,
@@ -55,6 +57,7 @@ import { extractJobContext } from "./jobContext";
 import { aiFillCandidates, planAiFill, planFillRoute, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { splitByCache, cacheAnswers } from "./answerCache";
 import { promptForMissingFields, type MissingFieldPrompt } from "./missingInfoModal";
+import { buildProfilePatch, isProfileCategory } from "../shared/profileCategories";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
 import { fillAriaCombobox } from "./comboboxEngine";
 import { driveField } from "./mainWorldClient";
@@ -343,11 +346,17 @@ function initialize(): void {
   }
 
   /**
-   * After a fill pass, prompt for any REQUIRED free-text question that is still
-   * empty — the ones neither the profile, the answer bank, nor the AI could fill.
-   * Fills whatever the user provides and saves each answer to Question Memory so
-   * the next application fills it automatically. EEO/sensitive fields are never
-   * prompted (they fill from the profile only).
+   * After a fill pass, prompt for the still-empty free-text questions that
+   * neither the profile, the answer bank, nor the AI could fill — either because
+   * they're REQUIRED, or because they map to a personal-info profile field we
+   * don't have yet (name, phone, address, links, work-authorization, salary…).
+   * Fills whatever the user provides, then persists it so the NEXT application
+   * fills it automatically:
+   *   - answers that map to a profile field → the application profile
+   *     (UPDATE_PROFILE), so they also appear in Autofill Information + the web
+   *     app Profile page;
+   *   - everything else → the answer bank / Question Memory (SAVE_ANSWER).
+   * EEO/sensitive fields are never prompted (they fill from the profile only).
    */
   async function promptMissingInfo(): Promise<{
     reports: FieldReport[];
@@ -358,7 +367,7 @@ function initialize(): void {
       (f) =>
         f.fillable &&
         !f.sensitive &&
-        f.required &&
+        (f.required || isProfileCategory(f.category)) &&
         PROMPTABLE_TYPES.has(f.controlType) &&
         controlIsEmpty(f.id)
     );
@@ -376,18 +385,31 @@ function initialize(): void {
     const targets = Object.entries(answers).map(([fieldId, value]) => ({ fieldId, value }));
     const filled = await fillItems(targets, true);
 
-    // Remember each answer so it auto-fills next time (POST /api/answers is the
-    // only write path into the bank; the backend canonicalizes + dedupes).
+    // Persist each answer so it auto-fills next time. Answers that correspond to
+    // a real profile field are saved back to the application profile (so they
+    // show up in Autofill Information + the web app Profile and sync everywhere);
+    // free-form screening answers go to the answer bank / Question Memory.
     const jobContext = extractJobContext();
+    const profileEntries: { category: FieldCategory; value: string }[] = [];
     for (const [fieldId, value] of Object.entries(answers)) {
       const f = lastFields.find((x) => x.id === fieldId);
       if (!f) continue;
-      void sendToBackground<SimpleResponse>({
-        type: "SAVE_ANSWER",
-        question: f.label,
-        answer: value,
-        jobContext,
-      }).catch(() => {});
+      if (isProfileCategory(f.category)) {
+        profileEntries.push({ category: f.category, value });
+      } else {
+        void sendToBackground<SimpleResponse>({
+          type: "SAVE_ANSWER",
+          question: f.label,
+          answer: value,
+          jobContext,
+        }).catch(() => {});
+      }
+    }
+    const patch = buildProfilePatch(profileEntries);
+    if (Object.keys(patch).length > 0) {
+      void sendToBackground<ProfileResponse>({ type: "UPDATE_PROFILE", update: patch }).catch(
+        () => {}
+      );
     }
     return { reports: filled.reports, outcomes: filled.outcomes };
   }

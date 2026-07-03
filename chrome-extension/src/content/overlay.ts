@@ -1175,7 +1175,7 @@ function wireEvents(root: HTMLDivElement): void {
 
   // "Your Autofill Information" section -> open info view
   root.querySelector("#ap-section-info")!.addEventListener("click", () => {
-    showInfoView();
+    void showInfoView();
   });
 
   // Resume section toggle
@@ -1361,17 +1361,37 @@ function hideLoginView(): void {
   refs.loginView.classList.remove("visible");
 }
 
-function showInfoView(): void {
+async function showInfoView(): Promise<void> {
   if (!refs) return;
   refs.modalBackdrop.classList.add("visible");
   overlayState.infoCategory = "personal";
-  // Snapshot the current profile into an editable draft the form binds to.
-  overlayState.profileDraft = overlayState.profile ? draftFromProfile(overlayState.profile) : null;
   setInfoError("");
   refs.infoSidebar.querySelectorAll<HTMLButtonElement>(".ap-modal-sidebar-item").forEach((b) =>
     b.classList.toggle("active", b.dataset.cat === "personal")
   );
+  // Render immediately from what we already have so the modal opens instantly.
+  overlayState.profileDraft = overlayState.profile ? draftFromProfile(overlayState.profile) : null;
   renderInfoForm();
+
+  // Then pull the latest profile from the server (a cheap sync-version check;
+  // re-downloads only if the web app changed something) so this panel always
+  // reflects the current web-app profile — the two stay in sync, and demographic
+  // / address / other answers edited on the web app show up here without a
+  // reload. Skip the rebuild if the user already started editing (draft changed)
+  // or closed the modal in the meantime, so we never clobber their input.
+  const snapshot = JSON.stringify(overlayState.profileDraft);
+  const resp = await bg<ProfileResponse>({ type: "GET_PROFILE" }).catch(() => null);
+  if (
+    resp?.ok &&
+    resp.profile &&
+    refs.modalBackdrop.classList.contains("visible") &&
+    JSON.stringify(overlayState.profileDraft) === snapshot
+  ) {
+    overlayState.profile = resp.profile;
+    overlayState.source = resp.source ?? overlayState.source;
+    overlayState.profileDraft = draftFromProfile(resp.profile);
+    renderInfoForm();
+  }
 }
 
 function hideInfoView(): void {
@@ -1472,9 +1492,13 @@ function fieldDisplayName(f: DetectedField): string {
 function renderChecklist(): void {
   if (!refs) return;
   const host = refs.checklist;
-  const fillEEO = overlayState.config?.fillEEO ?? false;
   const fields = overlayState.fields.filter(
-    (f) => (f.fillable || f.category !== "unknown") && f.category !== "accountPassword" && !(f.sensitive && !fillEEO)
+    (f) =>
+      (f.fillable || f.category !== "unknown") &&
+      f.category !== "accountPassword" &&
+      // Show sensitive (EEO) rows only when we actually have the user's answer to
+      // fill; a sensitive field with no stored value stays hidden (never guessed).
+      !(f.sensitive && f.proposedValue === null)
   );
   if (fields.length === 0) {
     host.style.display = "none";
