@@ -106,6 +106,25 @@
   box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
 }
 
+.settings-field select {
+  padding: 0.6rem 0.85rem;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg-page);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.settings-field select:focus {
+  border-color: var(--accent);
+  background: var(--bg-white);
+  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
+}
+
 /* Toggle Switch */
 .toggle-row {
   display: flex;
