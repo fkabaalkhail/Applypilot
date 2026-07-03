@@ -241,6 +241,37 @@ export interface AiFillField {
   required: boolean;
 }
 
+/**
+ * Non-sensitive slice of the user's Autofill Information, sent to the backend AI
+ * as grounding context so answers come from what the user maintains. EEO /
+ * demographic data is deliberately excluded — it never leaves the device.
+ * Mirrors backend ApplicantProfile (backend/routers/fill.py). Built by
+ * toApplicantProfile (content/applicantProfile.ts).
+ */
+export interface ApplicantProfile {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  location: string;
+  addressStreet: string;
+  addressCity: string;
+  addressState: string;
+  postalCode: string;
+  country: string;
+  linkedin: string;
+  github: string;
+  portfolio: string;
+  currentCompany: string;
+  currentTitle: string;
+  workAuthorization: string;
+  requiresSponsorship: string;
+  salaryExpectation: string;
+  skills: string[];
+  experience: string[];
+  education: string[];
+}
+
 /** Scraped page context that improves AI answers. Empty strings are fine. */
 export interface JobContext {
   jobDescription: string;
@@ -536,7 +567,7 @@ export type BackgroundRequest =
   | { type: "GET_SYNC"; forceRefresh?: boolean }
   | { type: "DOWNLOAD_RESUME"; resumeId: number }
   | { type: "OPEN_DASHBOARD" }
-  | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext }
+  | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext; profile?: ApplicantProfile }
   | { type: "SAVE_ANSWER"; question: string; answer: string; jobContext: JobContext }
   | {
       type: "TAILOR_RESUME";

@@ -464,7 +464,7 @@ export async function handle(
 
     case "AI_FILL": {
       try {
-        const { answers, errors } = await aiFillFields(message.fields, message.jobContext);
+        const { answers, errors } = await aiFillFields(message.fields, message.jobContext, message.profile);
         return { ok: true, answers, errors };
       } catch (err) {
         if (err instanceof AuthRequiredError) {

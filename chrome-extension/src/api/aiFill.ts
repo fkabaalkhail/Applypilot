@@ -4,7 +4,7 @@
  * resume from the DB — so we send an empty resumeText. Runs in the service
  * worker, where authedRequest handles auth + silent token refresh.
  */
-import type { AiFillAnswer, AiFillField, JobContext } from "../shared/types";
+import type { AiFillAnswer, AiFillField, ApplicantProfile, JobContext } from "../shared/types";
 import { authedRequest } from "./client";
 
 interface FillApiResponse {
@@ -14,13 +14,15 @@ interface FillApiResponse {
 
 export function buildFillRequestBody(
   fields: AiFillField[],
-  jobContext: JobContext
+  jobContext: JobContext,
+  profile?: ApplicantProfile
 ): {
   fields: AiFillField[];
   resumeText: string;
   jobDescription: string;
   jobTitle: string;
   company: string;
+  profile?: ApplicantProfile;
 } {
   return {
     fields,
@@ -28,15 +30,17 @@ export function buildFillRequestBody(
     jobDescription: jobContext.jobDescription,
     jobTitle: jobContext.jobTitle,
     company: jobContext.company,
+    ...(profile ? { profile } : {}),
   };
 }
 
 export async function aiFillFields(
   fields: AiFillField[],
-  jobContext: JobContext
+  jobContext: JobContext,
+  profile?: ApplicantProfile
 ): Promise<FillApiResponse> {
   return authedRequest<FillApiResponse>("/api/fill", {
     method: "POST",
-    body: JSON.stringify(buildFillRequestBody(fields, jobContext)),
+    body: JSON.stringify(buildFillRequestBody(fields, jobContext, profile)),
   });
 }

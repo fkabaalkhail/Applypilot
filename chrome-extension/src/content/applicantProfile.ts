@@ -3,31 +3,9 @@
  * Mirrors backend ApplicantProfile (backend/routers/fill.py). EEO/demographic
  * data is deliberately dropped here — it must never reach any server.
  */
-import type { UserApplicationProfile } from "../shared/types";
+import type { ApplicantProfile, UserApplicationProfile } from "../shared/types";
 
-export interface ApplicantProfile {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  location: string;
-  addressStreet: string;
-  addressCity: string;
-  addressState: string;
-  postalCode: string;
-  country: string;
-  linkedin: string;
-  github: string;
-  portfolio: string;
-  currentCompany: string;
-  currentTitle: string;
-  workAuthorization: string;
-  requiresSponsorship: string;
-  salaryExpectation: string;
-  skills: string[];
-  experience: string[];
-  education: string[];
-}
+export type { ApplicantProfile };
 
 export function toApplicantProfile(p: UserApplicationProfile): ApplicantProfile {
   return {

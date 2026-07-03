@@ -21,4 +21,13 @@ describe("buildFillRequestBody", () => {
       company: "Acme",
     });
   });
+
+  it("includes the applicant profile when provided", () => {
+    const body = buildFillRequestBody(fields, ctx, { firstName: "Ada" } as never);
+    expect(body.profile).toEqual({ firstName: "Ada" });
+  });
+
+  it("omits profile when not provided", () => {
+    expect(buildFillRequestBody(fields, ctx).profile).toBeUndefined();
+  });
 });
