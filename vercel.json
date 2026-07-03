@@ -64,6 +64,10 @@
       "destination": "/api/index.py"
     },
     {
+      "source": "/autofill/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
       "source": "/github-sources(.*)",
       "destination": "/api/index.py"
     },
