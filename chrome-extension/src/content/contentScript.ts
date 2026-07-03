@@ -33,6 +33,7 @@ import type {
   FlowStateResponse,
   FormOpName,
   FormOpResult,
+  OverridesResponse,
   GenerateCoverLetterResponse,
   PingResponse,
   ProfileResponse,
@@ -79,6 +80,7 @@ import { hasUnsolvedCaptcha, isVerificationWall, resumeFieldNeedingFile, validat
 import { detectWall, runAccountWall } from "./accountFlow";
 import { bindSubmitTracking, type SubmitTrackerHandle } from "./submitTracker";
 import { buildAutofillTelemetry } from "./telemetry";
+import { setOverrideRules } from "./overrides";
 
 // Guard against double injection (manifest match + programmatic inject).
 declare global {
@@ -958,9 +960,29 @@ function initialize(): void {
     });
   }
 
+  /**
+   * Load the server-side hot-fix classification rules for this host, then
+   * re-scan so they take effect. Best-effort — no rules / background asleep just
+   * leaves the generic pipeline running.
+   */
+  async function loadOverrides(): Promise<void> {
+    try {
+      const resp = await sendToBackground<OverridesResponse>({ type: "GET_OVERRIDES" });
+      if (!resp?.ok || resp.rules.length === 0) return;
+      setOverrideRules(resp.rules, location.host);
+      runScan(); // re-classify with the overrides applied
+      engine?.updateRegistry(registry);
+      reportFields();
+      if (!isTopFrame) announceIfFormHost();
+    } catch {
+      // No rules or background asleep — generic classification stands.
+    }
+  }
+
   function autoInit(): void {
     runScan();
     ensureObserver();
+    void loadOverrides();
     if (isTopFrame) {
       maybeShowOrUpdateOverlay();
     } else {

@@ -18,6 +18,7 @@ import { renderResume, tailorResume } from "../api/tailorResume";
 import { generateCoverLetter, renderCoverLetter } from "../api/coverLetter";
 import { recordApplication } from "../api/applications";
 import { reportAutofillTelemetry } from "../api/telemetry";
+import { fetchAndCacheOverrides, getCachedOverrideRules } from "../api/overrides";
 import { matchApplyIntent, recordApplyIntent } from "./applyIntent";
 import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import { getFlowState, setFlowState, watchTabRemoval } from "./flowState";
@@ -27,6 +28,7 @@ import type {
   FieldsUpdatedEvent,
   GenerateCoverLetterResponse,
   LoginResponse,
+  OverridesResponse,
   ProfileResponse,
   RenderCoverLetterResponse,
   RecordApplicationResponse,
@@ -85,6 +87,7 @@ chrome.runtime.onInstalled.addListener(() => {
   ensureSyncAlarm();
   setUninstallFeedbackUrl();
   void syncIfStale().catch(() => {});
+  void fetchAndCacheOverrides().catch(() => {});
 });
 
 // Re-arm the alarm and sync once whenever the worker spins up (startup).
@@ -92,6 +95,7 @@ chrome.runtime.onStartup.addListener(() => {
   ensureSyncAlarm();
   setUninstallFeedbackUrl();
   void syncIfStale().catch(() => {});
+  void fetchAndCacheOverrides().catch(() => {});
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -99,6 +103,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     void ensureFreshAccessToken()
       .catch(() => {})
       .finally(() => void syncIfStale().catch(() => {}));
+    // Refresh the hot-fix override rules on the same cadence.
+    void fetchAndCacheOverrides().catch(() => {});
   }
 });
 
@@ -311,6 +317,7 @@ export async function handle(
   | GenerateCoverLetterResponse
   | RenderCoverLetterResponse
   | RecordApplicationResponse
+  | OverridesResponse
 > {
   switch (message.type) {
     case "GET_STATUS": {
@@ -552,6 +559,13 @@ export async function handle(
           error: err instanceof Error ? err.message : "Could not record application",
         };
       }
+    }
+
+    case "GET_OVERRIDES": {
+      // Cached hot-fix rules for the content script's classifier. Never throws —
+      // an empty list just means the generic pipeline runs unmodified.
+      const rules = await getCachedOverrideRules().catch(() => []);
+      return { ok: true, rules };
     }
 
     case "RECORD_TELEMETRY": {

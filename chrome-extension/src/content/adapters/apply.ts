@@ -5,6 +5,7 @@
  * never break, the pipeline.
  */
 import { classifyField, resolveProfileValue, type Classification } from "../fieldMatcher";
+import { applyOverride } from "../overrides";
 import type { FieldCategory, ResolveControl, UserApplicationProfile } from "../../shared/types";
 import type { RuntimeControl } from "../formScanner";
 import type { AdapterFillResult, FieldContext, FillContext, SiteAdapter } from "./types";
@@ -20,9 +21,12 @@ function safe<T>(fn: () => T, label: string): T | undefined {
 
 export function classifyWithAdapter(adapter: SiteAdapter | null, ctx: FieldContext): Classification {
   const generic = classifyField(ctx.signals);
-  if (!adapter?.classify) return generic;
-  const override = safe(() => adapter.classify!(ctx, generic), "classify");
-  return override ?? generic;
+  const adapted = adapter?.classify
+    ? (safe(() => adapter.classify!(ctx, generic), "classify") ?? generic)
+    : generic;
+  // Server-side override wins last — it's the hot-fix for when generic/adapter
+  // are wrong. No-op when no rules are loaded.
+  return applyOverride(ctx, adapted);
 }
 
 export function resolveAnswerWithAdapter(

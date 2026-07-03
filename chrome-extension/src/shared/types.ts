@@ -558,6 +558,7 @@ export type BackgroundRequest =
   | { type: "FLOW_STATE_SET"; state: FlowState | null }
   | { type: "RECORD_APPLICATION"; application: ApplicationLog }
   | { type: "RECORD_TELEMETRY"; telemetry: AutofillTelemetry }
+  | { type: "GET_OVERRIDES" }
   | FormHostAnnounce
   | RelayFormOp
   | RelayToTop
@@ -586,6 +587,24 @@ export interface RecordApplicationResponse {
   needsLogin?: boolean;
   /** True when a new record was created; false when an existing one was refreshed. */
   created?: boolean;
+}
+
+/**
+ * A server-authored classification override the extension applies as a hot-fix
+ * (GET /autofill/overrides). Matched by host + a normalized-label regex; forces
+ * a field category onto the generic adapter+AI pipeline. `valueSynonyms` is
+ * reserved for future option-matching hints.
+ */
+export interface AutofillOverrideRule {
+  host: string;
+  labelPattern: string;
+  category: string;
+  valueSynonyms: Record<string, string>;
+}
+
+export interface OverridesResponse {
+  ok: boolean;
+  rules: AutofillOverrideRule[];
 }
 
 /**
