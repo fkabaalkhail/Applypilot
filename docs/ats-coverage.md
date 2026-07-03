@@ -2,7 +2,17 @@
 
 Track which ATS systems have been tested and confirmed working with the Tailrd extension.
 
-**Progress:** 15 / 15 covered
+**Progress:** 15 / 15 tracked · 29 site adapters registered
+
+Every tracked ATS now has a dedicated `SiteAdapter` (host recognition + attribute
+classification over the generic pipeline), plus 14 more platforms Jobright ships,
+for parity. Greenhouse and Workday keep hand-tuned modules
+(`adapters/greenhouse.ts`, `adapters/workday.ts`); the rest are declared in the
+data-driven table `adapters/common.ts`. Adapters are advisory: an unmatched host
+or a declined hook falls back to byte-identical generic behavior.
+
+- `[x]` = generic pipeline tested + confirmed working.
+- **adapter** column = a registered `SiteAdapter` refines detection/classification.
 
 ---
 
@@ -64,3 +74,31 @@ Track which ATS systems have been tested and confirmed working with the Tailrd e
 ---
 
 *Check off each system by replacing `[ ]` with `[x]` once tested and confirmed working.*
+
+---
+
+## Extended coverage (Jobright-parity adapters)
+
+Registered via `adapters/common.ts` — recognized ATS beyond the 15 tracked above.
+Detection + social-URL / name-attribute classification are wired; deeper per-site
+fill operations can be layered onto any of them through the same adapter seams.
+
+- [x] **Oracle Cloud Recruiting** — `*.oraclecloud.com`
+- [x] **Dayforce (Ceridian)** — `*.dayforcehcm.com`, `*.dayforce.com`
+- [x] **UKG / UltiPro** — `*.ultipro.com`, `*.ukg.com`
+- [x] **JazzHR** — `*.applytojob.com`, `*.jazz.co` (namespaced `job_application[...]` fields)
+- [x] **Paylocity** — `*.paylocity.com`
+- [x] **Avature** — `*.avature.net`
+- [x] **Phenom People** — `*.phenompeople.com`
+- [x] **Teamtailor** — `*.teamtailor.com` (namespaced `candidate[...]` fields)
+- [x] **Recruitee** — `*.recruitee.com`
+- [x] **Personio** — `*.personio.{de,com,es,nl,fr}`
+- [x] **Eightfold** — `*.eightfold.ai`
+- [x] **ClearCompany** — `*.clearcompany.com`
+- [x] **Paycom** — `*.paycomonline.net`
+- [x] **BrassRing / Kenexa** — `*.brassring.com`, `*.kenexa.com`
+
+**Adapter surface (per `adapters/types.ts`):** `match` (host), `classify` (correct a
+field's category), `resolveAnswer` (site-specific value), `fillOperation` (own a
+tricky widget), `advanceButton` (exact multi-step Next selector). Adding a new ATS
+is a one-line entry in `COMMON_ATS`; deepening one is a hook on its object.

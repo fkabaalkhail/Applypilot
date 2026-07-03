@@ -1,0 +1,100 @@
+// chrome-extension/src/content/adapters/common.ts
+/**
+ * Breadth coverage for the ATS platforms whose forms the generic pipeline
+ * already fills well, but which we want to formally *recognize* so the adapter
+ * seams (classify / advance / future fill ops) are available on them.
+ *
+ * Each entry is a thin `SiteAdapter`: an anchored host match plus attribute-based
+ * classification (social-URL detection everywhere, name-attribute detection for
+ * the ATS that namespace their fields). Greenhouse and Workday keep their own
+ * hand-tuned modules (deeper quirks); everything else is declared in one table
+ * here so a new ATS is a one-line addition, not a new file.
+ *
+ * Host regexes are anchored with `(^|\.)…$` so `notgreenhouse.io.evil.com` and
+ * similar look-alikes can never match.
+ */
+import { ADAPTERS } from "./registry";
+import {
+  advanceBySelectors,
+  classifyByAttr,
+  NAME_ATTR_RULES,
+  SOCIAL_URL_RULES,
+  type AttrRule,
+} from "./shared";
+import type { SiteAdapter } from "./types";
+
+interface AtsSpec {
+  id: string;
+  /** Anchored host test — the sole detection signal. */
+  host: RegExp;
+  /** Optional extra url gate (rarely needed; host is usually enough). */
+  url?: RegExp;
+  /** ATS-specific classify rules, tried before the shared social-URL rules. */
+  rules?: readonly AttrRule[];
+  /** Exact advance/next selectors for multi-step forms (terminal-checked by the caller). */
+  advance?: readonly string[];
+  /** Classification confidence for this adapter's rules (default 0.95). */
+  confidence?: number;
+}
+
+/** Build a thin adapter from a spec: host match + attribute classification. */
+export function buildAtsAdapter(spec: AtsSpec): SiteAdapter {
+  const rules: readonly AttrRule[] = [...(spec.rules ?? []), ...SOCIAL_URL_RULES];
+  const adapter: SiteAdapter = {
+    id: spec.id,
+    match: (host, url) => spec.host.test(host) && (!spec.url || spec.url.test(url)),
+    classify: (ctx) => classifyByAttr(ctx.el, rules, spec.confidence ?? 0.95),
+  };
+  if (spec.advance) {
+    const selectors = spec.advance;
+    adapter.advanceButton = (scope) => advanceBySelectors(scope, selectors);
+  }
+  return adapter;
+}
+
+// Current-company shorthand used by ATS with a dedicated org/company machine name.
+const ORG_RULE: AttrRule = [/\borg(anization)?\b|current[_\s-]?(company|employer)/, "currentCompany"];
+
+/**
+ * The registry. Ordered by the coverage tier in docs/ats-coverage.md, then the
+ * broader set Jobright ships. First-match-wins, but hosts are disjoint so order
+ * only affects readability.
+ */
+export const COMMON_ATS: readonly AtsSpec[] = [
+  // ---- Easy tier -----------------------------------------------------------
+  { id: "lever", host: /(^|\.)lever\.co$/i, rules: [ORG_RULE] },
+  { id: "bamboohr", host: /(^|\.)bamboohr\.com$/i },
+  { id: "breezy", host: /(^|\.)breezy\.hr$/i },
+
+  // ---- Medium tier ---------------------------------------------------------
+  { id: "ashby", host: /(^|\.)ashbyhq\.com$/i },
+  { id: "workable", host: /(^|\.)workable\.com$/i },
+  { id: "smartrecruiters", host: /(^|\.)smartrecruiters\.com$/i },
+  { id: "jobvite", host: /(^|\.)jobvite\.com$/i },
+  { id: "rippling", host: /(^|\.)(rippling|rippling-ats)\.com$/i },
+  { id: "bullhorn", host: /(^|\.)(bullhornstaffing|bullhorn|talentrackr)\.com$/i },
+
+  // ---- Hard tier (Workday has its own module) ------------------------------
+  { id: "icims", host: /(^|\.)icims\.com$/i },
+  { id: "taleo", host: /(^|\.)taleo\.net$/i },
+  { id: "adp", host: /(^|\.)adp\.com$/i },
+  { id: "successfactors", host: /(^|\.)(successfactors\.(com|eu)|sapsf\.(com|eu))$/i },
+
+  // ---- Broader Jobright-parity set -----------------------------------------
+  { id: "oraclecloud", host: /(^|\.)oraclecloud\.com$/i },
+  { id: "dayforce", host: /(^|\.)(dayforcehcm|dayforce)\.com$/i },
+  { id: "ukg", host: /(^|\.)(ultipro\.com|ukg\.(com|net))$/i },
+  { id: "jazzhr", host: /(^|\.)(applytojob\.com|jazz\.co)$/i, rules: NAME_ATTR_RULES },
+  { id: "paylocity", host: /(^|\.)paylocity\.com$/i },
+  { id: "avature", host: /(^|\.)avature\.net$/i },
+  { id: "phenom", host: /(^|\.)phenompeople\.com$/i },
+  { id: "teamtailor", host: /(^|\.)teamtailor\.com$/i, rules: NAME_ATTR_RULES },
+  { id: "recruitee", host: /(^|\.)recruitee\.com$/i, rules: NAME_ATTR_RULES },
+  { id: "personio", host: /(^|\.)personio\.(de|com|es|nl|fr)$/i },
+  { id: "eightfold", host: /(^|\.)eightfold\.ai$/i },
+  { id: "clearcompany", host: /(^|\.)clearcompany\.com$/i },
+  { id: "paycom", host: /(^|\.)paycomonline\.net$/i },
+  { id: "brassring", host: /(^|\.)(brassring|kenexa)\.com$/i },
+];
+
+for (const spec of COMMON_ATS) ADAPTERS.push(buildAtsAdapter(spec));

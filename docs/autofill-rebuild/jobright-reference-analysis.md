@@ -222,7 +222,7 @@ Our extension (`chrome-extension/src`, ~8.8k LOC, 31 files) already mirrors the 
 | Cross‑frame | `iframeEventHandle`, `IFRAME_EVENTS` | `crossFrame.ts` | ⚠️ same‑origin only; no header‑strip iframe agent‑apply |
 | Captcha | fills around, never suspends | `captcha.ts` | ✅ matches our documented decision |
 | Job scraping | `jobPageScraper` | `jobContext.ts` | ✅ present |
-| Per‑site adapters | `sites/*` (60) | constants‑level ATS awareness only | ❌ no per‑site adapters — the largest breadth gap |
+| Per‑site adapters | `sites/*` (60) | `adapters/*` — 29 registered (Greenhouse + Workday hand‑tuned; 27 in the `common.ts` table) | ✅ framework + breadth; deepen per‑site fill ops incrementally |
 | Header stripping | `declarativeNetRequest` XFO/CSP/CD removal | — | ❌ absent (only needed for iframe agent‑apply) |
 | MAIN‑world injection | `chrome.scripting {world:MAIN}` shims | — | ❌ absent |
 | State stores | `~store/*` (16) | `shared/storage.ts` + module state | ⚠️ simpler; fine for our scope |
@@ -256,6 +256,8 @@ Our extension (`chrome-extension/src`, ~8.8k LOC, 31 files) already mirrors the 
 2. **Phase 2 — Site‑adapter framework:** registry + `rules/answer/operations` interface + generic fallback; implement top‑10 ATS.
 
    > **Phase 2 status (2026-07-01):** Implemented on branch `feature/autofill-site-adapters` — per-site adapter framework (registry + `SiteAdapter` classify/resolveAnswer/fillOperation override hooks + generic fallback) in `chrome-extension/src/content/adapters/`, with Greenhouse and Workday reference adapters. See the spec and plan dated 2026-07-01.
+   >
+   > **Phase 2 breadth (2026-07-02):** Branch `feature/ats-site-adapters` — expanded from 2 to **29 registered adapters**. All 15 tracked ATS plus 14 more Jobright ships (Oracle Cloud, Dayforce, UKG/UltiPro, JazzHR, Paylocity, Avature, Phenom, Teamtailor, Recruitee, Personio, Eightfold, ClearCompany, Paycom, BrassRing). Shared helpers (`adapters/shared.ts`: attribute classification, social-URL/name rules, native-setter write, date parse, advance-by-selector) back a data-driven table (`adapters/common.ts`). Each is an anchored host match + attribute classification (social URLs everywhere, namespaced first/last names for JazzHR/Teamtailor/Recruitee, Lever `org`→company); the five hooks stay open for deeper per-site fill ops. Verified: `tsc` clean, 397 unit tests green, `node build.mjs` bundles all 27 ids into `dist/contentScript.js`.
 
 3. **Phase 3 — AI‑primary answering:** promote `aiFillPlanner`/`api/aiFill` to the primary resolver with local fallback + IndexedDB rule/answer cache.
 
