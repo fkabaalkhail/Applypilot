@@ -6,9 +6,11 @@
 import {
   MW_FILL_EVENT,
   MW_RESULT_EVENT,
+  MW_SUPPRESS_EVENT,
   type FillDriver,
   type MwFillDetail,
   type MwResultDetail,
+  type MwSuppressDetail,
 } from "./mainWorldBridge";
 
 export interface DriverResult { ok: boolean; committed?: string; reason?: string; }
@@ -28,6 +30,17 @@ function ensureInstalled(): Promise<boolean> {
       .catch(() => false);
   }
   return installed;
+}
+
+/**
+ * Toggle MAIN-world blocking-dialog suppression for the duration of an active
+ * fill/flow. Turning it on injects the driver first (best-effort — if injection
+ * fails we simply don't suppress); turning it off just dispatches the toggle.
+ */
+export async function setDialogSuppression(on: boolean): Promise<void> {
+  if (on && !(await ensureInstalled())) return;
+  const detail: MwSuppressDetail = { on };
+  window.dispatchEvent(new CustomEvent(MW_SUPPRESS_EVENT, { detail }));
 }
 
 export async function driveField(

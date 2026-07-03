@@ -9,6 +9,12 @@ export type FillDriver = "react-select" | "workday";
 export const MW_FILL_EVENT = "tailrd:mw:fill";
 /** MAIN → isolated: here is the outcome. */
 export const MW_RESULT_EVENT = "tailrd:mw:result";
+/** Isolated → MAIN: toggle blocking-dialog suppression during an active fill/flow. */
+export const MW_SUPPRESS_EVENT = "tailrd:mw:suppress";
+
+export interface MwSuppressDetail {
+  on: boolean;
+}
 
 export interface MwFillDetail {
   id: number;

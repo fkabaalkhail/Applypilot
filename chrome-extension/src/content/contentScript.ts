@@ -63,7 +63,7 @@ import { promptForMissingFields, type MissingFieldPrompt } from "./missingInfoMo
 import { buildProfilePatch, isProfileCategory } from "../shared/profileCategories";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
 import { fillAriaCombobox } from "./comboboxEngine";
-import { driveField } from "./mainWorldClient";
+import { driveField, setDialogSuppression } from "./mainWorldClient";
 import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
 import { verifyControl, writeControl } from "./writeEngine";
 import {
@@ -559,6 +559,8 @@ function initialize(): void {
 
   /** Route a flow progress beat to wherever the panel lives (mirrors reportFields). */
   function emitFlowProgress(p: FlowProgress): void {
+    // The fill/flow is over — restore the page's dialogs.
+    if (p.phase === "done" || p.phase === "stopped") void setDialogSuppression(false);
     if (actingAsRemoteHost) {
       void chrome.runtime
         .sendMessage({ type: "RELAY_TO_TOP", payload: { type: "REMOTE_FLOW_PROGRESS", progress: p } })
@@ -715,6 +717,7 @@ function initialize(): void {
       }
       if (flowController) return; // an autofill click set it while we awaited FLOW_STATE_GET
       flowAbort = new AbortController(); // a resumed flow is cancellable too
+      void setDialogSuppression(true); // a resumed flow may auto-advance (beforeunload)
       flowController = new FlowController(makeFlowDeps());
       void flowController.run(st, null);
     } catch {
@@ -725,6 +728,8 @@ function initialize(): void {
   const overlayCallbacks: OverlayCallbacks = {
     onAutofill: async (ids: string[], uploadResumeId?: number | null) => {
       flowResumeId = uploadResumeId ?? null;
+      // Suppress blocking page dialogs (alert / beforeunload) for the fill+flow.
+      void setDialogSuppression(true);
       // One click = one flow. Replace any prior flow, fill this step now (the
       // panel awaits this first tally), then let the controller advance.
       // Invariant: a Stop during this initial fill wins (skip the controller);
@@ -748,6 +753,7 @@ function initialize(): void {
     onFlowStop: () => {
       flowGeneration++; // a Stop during an in-flight initial fill must win the race
       flowAbort?.abort(); // interrupt a fill currently writing fields (cancel mid-fill)
+      void setDialogSuppression(false); // restore the page's dialogs
       flowController?.stop();
       flowController = null;
       // Stop always clears the persisted state — even when no controller is
