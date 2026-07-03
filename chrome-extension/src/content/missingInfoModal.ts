@@ -18,6 +18,10 @@ export interface MissingFieldPrompt {
   /** The question as shown on the form (also the key we remember it under). */
   label: string;
   multiline?: boolean;
+  /** Choice options — when present, the modal renders a <select> of these exact
+   *  options (a dropdown / radio group the AI couldn't answer) instead of a free
+   *  text box, so the user picks a value the control actually accepts. */
+  options?: string[];
 }
 
 const HOST_ID = "tailrd-missing-info-host";
@@ -55,16 +59,24 @@ export function promptForMissingFields(
     };
     document.addEventListener("keydown", onKey, true);
 
+    const renderControl = (p: MissingFieldPrompt, i: number): string => {
+      if (p.options && p.options.length > 0) {
+        const opts = ['<option value="">Select an option…</option>']
+          .concat(p.options.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`))
+          .join("");
+        return `<select data-i="${i}">${opts}</select>`;
+      }
+      return p.multiline
+        ? `<textarea data-i="${i}" rows="3" placeholder="Type your answer"></textarea>`
+        : `<input data-i="${i}" type="text" placeholder="Type your answer" />`;
+    };
+
     const rows = prompts
       .map(
         (p, i) => `
         <label class="mi-row">
           <span class="mi-q">${escapeHtml(p.label)}</span>
-          ${
-            p.multiline
-              ? `<textarea data-i="${i}" rows="3" placeholder="Type your answer"></textarea>`
-              : `<input data-i="${i}" type="text" placeholder="Type your answer" />`
-          }
+          ${renderControl(p, i)}
         </label>`
       )
       .join("");
@@ -91,12 +103,13 @@ export function promptForMissingFields(
         .mi-body { padding: 8px 24px 4px; display: flex; flex-direction: column; gap: 14px; }
         .mi-row { display: flex; flex-direction: column; gap: 6px; }
         .mi-q { font-size: 13px; font-weight: 600; color: #334155; }
-        .mi-body input, .mi-body textarea {
+        .mi-body input, .mi-body textarea, .mi-body select {
           width: 100%; padding: 10px 12px; font-size: 13.5px; color: #0f172a;
           border: 1px solid #d5dbe5; border-radius: 8px; background: #fff;
           resize: vertical; font-family: inherit;
         }
-        .mi-body input:focus, .mi-body textarea:focus {
+        .mi-body select { appearance: auto; cursor: pointer; }
+        .mi-body input:focus, .mi-body textarea:focus, .mi-body select:focus {
           outline: none; border-color: #635bff; box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.15);
         }
         .mi-foot {
@@ -128,7 +141,7 @@ export function promptForMissingFields(
 
     const collect = (): Record<string, string> => {
       const out: Record<string, string> = {};
-      shadow.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-i]").forEach((el) => {
+      shadow.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[data-i]").forEach((el) => {
         const i = Number(el.dataset.i);
         const val = el.value.trim();
         if (val && prompts[i]) out[prompts[i].id] = val;

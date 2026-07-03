@@ -354,6 +354,16 @@ function initialize(): void {
    */
   // Free-text control types worth asking the user about when required + empty.
   const PROMPTABLE_TYPES = new Set<ControlType>(["text", "textarea", "contenteditable"]);
+  // Single-select choice controls we can prompt with their REAL options when the
+  // AI couldn't answer them (dropdowns / radio groups). checkboxGroup is excluded
+  // — it's multi-select and doesn't fit the single-answer modal.
+  const CHOICE_TYPES = new Set<ControlType>([
+    "select",
+    "radioGroup",
+    "combobox",
+    "ariaRadioGroup",
+    "customDropdown",
+  ]);
 
   /** True when the control for `id` currently holds no user-visible value. */
   function controlIsEmpty(id: string): boolean {
@@ -388,8 +398,10 @@ function initialize(): void {
         f.fillable &&
         !f.sensitive &&
         (f.required || isProfileCategory(f.category)) &&
-        PROMPTABLE_TYPES.has(f.controlType) &&
-        controlIsEmpty(f.id)
+        controlIsEmpty(f.id) &&
+        (PROMPTABLE_TYPES.has(f.controlType) ||
+          // A required dropdown the AI couldn't answer: prompt it WITH its options.
+          (CHOICE_TYPES.has(f.controlType) && (f.options?.length ?? 0) > 0))
     );
     if (candidates.length === 0) return empty;
 
@@ -397,6 +409,7 @@ function initialize(): void {
       id: f.id,
       label: f.label,
       multiline: f.controlType === "textarea" || f.controlType === "contenteditable",
+      options: CHOICE_TYPES.has(f.controlType) ? f.options : undefined,
     }));
 
     const answers = await promptForMissingFields(prompts).catch(() => null);
@@ -427,9 +440,21 @@ function initialize(): void {
     }
     const patch = buildProfilePatch(profileEntries);
     if (Object.keys(patch).length > 0) {
-      void sendToBackground<ProfileResponse>({ type: "UPDATE_PROFILE", update: patch }).catch(
-        () => {}
-      );
+      try {
+        // Await the save and adopt the returned profile, then re-scan so the
+        // just-answered fields carry a proposedValue and are NOT re-prompted on
+        // the next autofill in this session. (Without this, lastProfile stayed
+        // stale and the modal asked for the same thing — e.g. country — again.)
+        const resp = await sendToBackground<ProfileResponse>({ type: "UPDATE_PROFILE", update: patch });
+        if (resp?.ok && resp.profile) {
+          lastProfile = resp.profile;
+          runScan();
+          engine?.updateRegistry(registry);
+        }
+      } catch {
+        // Backend unavailable — the answers still filled this form; they just
+        // won't persist until the user reconnects.
+      }
     }
     return { reports: filled.reports, outcomes: filled.outcomes };
   }
