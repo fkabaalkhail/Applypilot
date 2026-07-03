@@ -92,11 +92,12 @@ class FillResponse(BaseModel):
     errors: list[str] = []
 
 
-def _rule_based_answer(label: str, options: list[str], settings, profile=None) -> str | None:
+def _rule_based_answer(label: str, options: list[str], settings, profile=None, company: str = "") -> str | None:
     """Fast rule-based answers for common screening questions.
 
     Prefers the request-supplied ApplicantProfile (the extension's Autofill
-    Information) over the stored UserSettings for personal fields.
+    Information) over the stored UserSettings for personal fields, and answers
+    "have you worked here?" from the applicant's actual experience.
     """
     q = label.lower().strip()
 
@@ -117,6 +118,17 @@ def _rule_based_answer(label: str, options: list[str], settings, profile=None) -
         return "Yes" if yes_no else "yes"
     if "background check" in q or "drug test" in q:
         return "Yes" if yes_no else "yes"
+
+    # "Have you worked here / are you a current or former employee?" — answer from
+    # the applicant's real experience: Yes only when this company is in it.
+    if any(kw in q for kw in [
+        "worked here", "work for us before", "current or former employee",
+        "currently employed by", "former employee", "previously worked",
+        "current employee", "employed by us", "worked for us", "worked at this",
+    ]):
+        exp = (profile.experience or []) if profile else []
+        worked = bool(company and any(company.lower() in e.lower() for e in exp))
+        return ("Yes" if yes_no else "yes") if worked else ("No" if yes_no else "no")
 
     # Profile-based answers — request profile first, stored settings as fallback.
     first = (profile.firstName if profile else "") or (settings.first_name if settings else "")
@@ -206,7 +218,7 @@ async def fill_form(
 
     # Pass 1: rule-based / profile answers — filled silently.
     for field in request.fields:
-        rule_answer = _rule_based_answer(field.label, field.options, settings, request.profile)
+        rule_answer = _rule_based_answer(field.label, field.options, settings, request.profile, request.company)
         if rule_answer:
             answers.append(FieldAnswer(
                 id=field.id, label=field.label, answer=rule_answer, source="rule"
