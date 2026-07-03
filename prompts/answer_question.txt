@@ -13,8 +13,9 @@ STRICT RULES — FOLLOW EVERY ONE:
    - Just the raw answer text, nothing else.
 
 2. MULTIPLE CHOICE / DROPDOWN:
-   - If options are listed, respond with EXACTLY one of the given options, word for word.
-   - Do not paraphrase or modify the option text.
+   - If options are listed, you MUST respond with EXACTLY one of them, word for word — do not paraphrase or modify the option text.
+   - If none of the options is a perfect fit for the applicant, choose the CLOSEST option. Never return a value that is not in the list.
+   - If truly nothing applies and a "Prefer not to say" / "Decline to answer" option exists, use that option.
 
 3. YES/NO QUESTIONS:
    - Respond with exactly "Yes" or "No" — nothing else.
