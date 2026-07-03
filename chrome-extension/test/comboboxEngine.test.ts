@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import {
   fillAriaCombobox,
+  harvestComboboxOptions,
   isAriaCombobox,
   readComboboxOptions,
   readComboboxValue,
@@ -299,6 +300,48 @@ describe("fillAriaCombobox tolerates a slow commit", () => {
     const res = await fillAriaCombobox(input, "Canada", { sleep, openWaitMs: 100, commitWaitMs: 100, pollMs: 10 });
     expect(res.filled).toBe(true);
     expect(sleeps).toBeGreaterThanOrEqual(4); // it actually waited for the paint
+  });
+});
+
+describe("harvestComboboxOptions avoids cross-dropdown contamination", () => {
+  it("reads THIS widget's own menu, not a stale body-portaled one", async () => {
+    // A stale, visible listbox from another widget, portaled to <body>.
+    const stale = document.createElement("div");
+    stale.setAttribute("role", "listbox");
+    for (const t of ["Yes", "No"]) {
+      const o = document.createElement("div");
+      o.setAttribute("role", "option");
+      o.textContent = t;
+      stale.append(o);
+    }
+    document.body.append(stale);
+
+    // Our widget: NO aria-controls; its menu mounts inside its own .select wrapper.
+    const wrap = document.createElement("div");
+    wrap.className = "select";
+    const trigger = document.createElement("div");
+    trigger.setAttribute("role", "combobox");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.setAttribute("aria-haspopup", "listbox");
+    trigger.tabIndex = 0;
+    wrap.append(trigger);
+    document.body.append(wrap);
+    trigger.addEventListener("mousedown", () => {
+      trigger.setAttribute("aria-expanded", "true");
+      if (wrap.querySelector('[role="listbox"]')) return;
+      const lb = document.createElement("div");
+      lb.setAttribute("role", "listbox");
+      for (const t of ["Engineering", "Sales"]) {
+        const o = document.createElement("div");
+        o.setAttribute("role", "option");
+        o.textContent = t;
+        lb.append(o);
+      }
+      wrap.append(lb);
+    });
+
+    const opts = await harvestComboboxOptions(trigger, { sleep: instant, openWaitMs: 100, pollMs: 10 });
+    expect(opts).toEqual(["Engineering", "Sales"]);
   });
 });
 

@@ -207,15 +207,21 @@ function getListbox(trigger: HTMLElement): HTMLElement | null {
     const lb = (el.getAttribute("role") === "listbox" ? el : el.querySelector('[role="listbox"]')) as HTMLElement | null;
     if (lb && isVisible(lb) && hasOptions(lb)) return lb;
   }
-  // Fallback: a visible listbox with options anywhere (portals, shadow roots) —
-  // but never one that lives inside ANOTHER widget's territory (a phone dial-code
-  // picker, a different form row's dropdown): if some enclosing wrapper hosts its
-  // own combobox trigger and that wrapper doesn't contain OUR trigger, it isn't
-  // our menu. Body-portaled menus have no such enclosing widget and stay valid.
-  for (const lb of deepQueryAll(doc, '[role="listbox"]')) {
-    if (isVisible(lb) && hasOptions(lb) && !belongsToOtherWidget(lb, trigger)) return lb;
+  // Fallback for widgets that declare no association. Prefer the menu inside the
+  // trigger's OWN widget container (its own popup). Only then trust a document-
+  // wide portaled menu — and ONLY when it is UNAMBIGUOUS (exactly one open):
+  // grabbing "the first visible listbox" lets a stale or neighbouring dropdown's
+  // menu contaminate this field's options (the mixed-up-options bug). A wrong
+  // option list is worse than none, so when it's ambiguous we return null.
+  const container = trigger.closest('[class*="select" i], [class*="combobox" i]');
+  if (container) {
+    const own = deepQueryAll(container, '[role="listbox"]').find((lb) => isVisible(lb) && hasOptions(lb));
+    if (own) return own;
   }
-  return null;
+  const visible = deepQueryAll(doc, '[role="listbox"]').filter(
+    (lb) => isVisible(lb) && hasOptions(lb) && !belongsToOtherWidget(lb, trigger)
+  );
+  return visible.length === 1 ? visible[0] : null;
 }
 
 /** True when `lb` sits inside a widget wrapper that hosts a combobox trigger
