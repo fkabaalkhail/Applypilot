@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { collectSignals, bestDisplayLabel } from "../src/content/domUtils";
 import { classifyField } from "../src/content/fieldMatcher";
+import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../src/shared/constants";
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -31,25 +32,31 @@ describe("react-select combobox — label must be the question, not the placehol
     return document.querySelector('input[role="combobox"]') as HTMLElement;
   }
 
-  it("country dropdown: label is 'Country', classified as country", () => {
+  it("country dropdown: label is 'Country', classified as country and confident enough to autofill", () => {
     const el = mount("Country");
     const signals = collectSignals(el);
     expect(bestDisplayLabel(signals)).toBe("Country");
-    expect(classifyField(signals).category).toBe("country");
+    const c = classifyField(signals);
+    expect(c.category).toBe("country");
+    // Must clear the autofill bar — otherwise it's detected but never filled.
+    expect(c.confidence).toBeGreaterThanOrEqual(AUTOFILL_CONFIDENCE_THRESHOLD);
   });
 
-  it("gender dropdown: label is the question, classified as eeoGender (sensitive)", () => {
+  it("gender dropdown: classified as eeoGender (sensitive) and autofill-confident", () => {
     const el = mount("What is your gender?");
     const signals = collectSignals(el);
     expect(bestDisplayLabel(signals)).toContain("gender");
     const c = classifyField(signals);
     expect(c.category).toBe("eeoGender");
     expect(c.sensitive).toBe(true);
+    expect(c.confidence).toBeGreaterThanOrEqual(AUTOFILL_CONFIDENCE_THRESHOLD);
   });
 
-  it("disability dropdown: classified as eeoDisability", () => {
+  it("disability dropdown: classified as eeoDisability and autofill-confident", () => {
     const el = mount("Disability status");
     const signals = collectSignals(el);
-    expect(classifyField(signals).category).toBe("eeoDisability");
+    const c = classifyField(signals);
+    expect(c.category).toBe("eeoDisability");
+    expect(c.confidence).toBeGreaterThanOrEqual(AUTOFILL_CONFIDENCE_THRESHOLD);
   });
 });

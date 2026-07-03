@@ -256,16 +256,29 @@ export function collectSignals(el: HTMLElement): FieldSignals {
   // Custom dropdowns bury the operable control deep inside a widget wrapper; the
   // real label lives beside that wrapper, so resolve labels/nearby from it.
   const host = dropdownWidgetHost(el);
-  const hostLabel = host === el ? "" : associatedLabelText(host);
-  const hostLabelledBy = host === el ? "" : ariaLabelledByText(host);
+  const isDropdown = host !== el;
+  const hostLabel = isDropdown ? associatedLabelText(host) : "";
+  const hostLabelledBy = isDropdown ? ariaLabelledByText(host) : "";
   // A hidden upload input's identity lives on its zone, so fold the zone's
   // describing text into `nearby` for classification (e.g. "…your resume…").
   const nearby = isFile
     ? [nearbyText(el), uploadZoneText(el)].filter(Boolean).join(" ").slice(0, 220)
     : nearbyText(host);
+  const assocLabel = associatedLabelText(el);
+  const ariaLabel = cleanText(el.getAttribute("aria-label"));
+  // For a custom dropdown that carries NO programmatic label of any kind, the
+  // text sitting right before the widget IS its question (that's how the form
+  // reads visually) — promote it to the reliable `label` signal. Without this it
+  // would only land in weak `nearby` (0.6) and fall below the autofill bar (0.7),
+  // so the field is classified yet never filled (country/gender/disability on
+  // Greenhouse). Gated on the absence of every real label signal so a widget that
+  // *does* declare an aria-label / association is never overridden by a stray
+  // neighbouring label.
+  const hasRealLabel = Boolean(assocLabel || hostLabel || labelledBy || hostLabelledBy || ariaLabel);
+  const promotedLabel = isDropdown && !hasRealLabel ? nearby : "";
   return {
-    label: associatedLabelText(el) || hostLabel || labelledBy || hostLabelledBy,
-    ariaLabel: cleanText(el.getAttribute("aria-label")) || labelledBy || hostLabelledBy,
+    label: assocLabel || hostLabel || labelledBy || hostLabelledBy || promotedLabel,
+    ariaLabel: ariaLabel || labelledBy || hostLabelledBy,
     placeholder: cleanText(el.getAttribute("placeholder")),
     nearby,
     nameAttr: el.getAttribute("name") ?? "",
