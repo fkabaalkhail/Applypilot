@@ -99,9 +99,26 @@ export function associatedLabelText(el: HTMLElement): string {
 }
 
 /**
+ * Placeholder / "no selection yet" filler that a dropdown shows before the user
+ * picks — e.g. react-select's `<div class="select__placeholder">Select…</div>`.
+ * This is NEVER the field's question, but it commonly sits as a sibling of the
+ * inner combobox input, so nearbyText would otherwise grab it as the label (and
+ * the classifier would then see "select" instead of "Country"/"Gender"). We
+ * match the WHOLE trimmed string so a real label like "Select your country"
+ * still counts as a label.
+ */
+const PLACEHOLDER_FILLER =
+  /^[-\s]*(please\s+)?(select|choose|pick)( (an?|one|your) )?( ?(option|value|answer|choice|one|country|item))?\s*(\.{3}|…)?[-\s]*$/i;
+
+export function isPlaceholderFiller(text: string): boolean {
+  return PLACEHOLDER_FILLER.test(text.trim());
+}
+
+/**
  * Fallback when there is no <label>: walk previous siblings (including bare
  * text nodes), then climb a few ancestors and repeat. This catches the very
- * common ATS markup `<div><span>Label</span><input/></div>`.
+ * common ATS markup `<div><span>Label</span><input/></div>`. Dropdown
+ * placeholder filler ("Select…") is skipped so it never masquerades as a label.
  */
 export function nearbyText(el: HTMLElement): string {
   const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "INPUT", "SELECT", "TEXTAREA", "BUTTON", "OPTION"]);
@@ -116,14 +133,47 @@ export function nearbyText(el: HTMLElement): string {
       } else if (sib.nodeType === Node.ELEMENT_NODE && !SKIP_TAGS.has((sib as Element).tagName)) {
         text = cleanText(sib.textContent);
       }
-      // Long blobs are paragraphs/descriptions, not labels.
-      if (text && text.length <= 160) return text;
+      // Long blobs are paragraphs/descriptions, not labels; placeholder filler
+      // ("Select…") is not a label either — skip both and keep scanning.
+      if (text && text.length <= 160 && !isPlaceholderFiller(text)) return text;
       sib = sib.previousSibling;
       hops++;
     }
     node = node.parentElement;
   }
   return "";
+}
+
+/**
+ * Custom dropdowns (react-select, Headless UI, Workday button-listboxes…) nest
+ * the operable control — a tiny `role="combobox"` input or an
+ * `aria-haspopup="listbox"` button — several layers inside a widget wrapper, and
+ * the field's real `<label>` sits as a sibling of that WRAPPER, not the inner
+ * control. Label discovery run from the inner control never climbs far enough
+ * (and trips over the "Select…" placeholder on the way). So for combobox-like
+ * controls we resolve labels from the outermost widget wrapper instead.
+ */
+function dropdownWidgetHost(el: HTMLElement): HTMLElement {
+  const role = (el.getAttribute("role") || "").toLowerCase();
+  const haspopup = (el.getAttribute("aria-haspopup") || "").toLowerCase();
+  if (role !== "combobox" && haspopup !== "listbox") return el;
+
+  const WIDGET_CLASS = /select|combobox|dropdown|autocomplete/i;
+  let host = el;
+  let node = el.parentElement;
+  for (let hops = 0; node && hops < 6; hops++) {
+    const cls = node.getAttribute("class") || "";
+    const nodeRole = (node.getAttribute("role") || "").toLowerCase();
+    const isWidget =
+      WIDGET_CLASS.test(cls) ||
+      nodeRole === "combobox" ||
+      nodeRole === "listbox" ||
+      (node.getAttribute("aria-haspopup") || "").toLowerCase() === "listbox";
+    if (!isWidget) break; // reached the field container — its sibling is the label
+    host = node;
+    node = node.parentElement;
+  }
+  return host;
 }
 
 /** All the text signals the field matcher scores against. */
@@ -203,14 +253,19 @@ export function uploadZoneText(el: HTMLElement): string {
 export function collectSignals(el: HTMLElement): FieldSignals {
   const labelledBy = ariaLabelledByText(el);
   const isFile = el instanceof HTMLInputElement && el.type === "file";
+  // Custom dropdowns bury the operable control deep inside a widget wrapper; the
+  // real label lives beside that wrapper, so resolve labels/nearby from it.
+  const host = dropdownWidgetHost(el);
+  const hostLabel = host === el ? "" : associatedLabelText(host);
+  const hostLabelledBy = host === el ? "" : ariaLabelledByText(host);
   // A hidden upload input's identity lives on its zone, so fold the zone's
   // describing text into `nearby` for classification (e.g. "…your resume…").
   const nearby = isFile
     ? [nearbyText(el), uploadZoneText(el)].filter(Boolean).join(" ").slice(0, 220)
-    : nearbyText(el);
+    : nearbyText(host);
   return {
-    label: associatedLabelText(el) || labelledBy,
-    ariaLabel: cleanText(el.getAttribute("aria-label")) || labelledBy,
+    label: associatedLabelText(el) || hostLabel || labelledBy || hostLabelledBy,
+    ariaLabel: cleanText(el.getAttribute("aria-label")) || labelledBy || hostLabelledBy,
     placeholder: cleanText(el.getAttribute("placeholder")),
     nearby,
     nameAttr: el.getAttribute("name") ?? "",
