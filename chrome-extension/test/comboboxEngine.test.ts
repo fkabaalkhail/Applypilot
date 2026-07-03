@@ -256,6 +256,52 @@ describe("fillAriaCombobox — guards", () => {
   });
 });
 
+describe("fillAriaCombobox tolerates a slow commit", () => {
+  it("accepts a value that paints only after several poll cycles", async () => {
+    const control = document.createElement("div");
+    control.className = "select__control";
+    const single = document.createElement("div");
+    single.className = "select__single-value";
+    const input = document.createElement("input");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-haspopup", "listbox");
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("aria-controls", "lb-slow");
+    control.append(single, input);
+    document.body.append(control);
+
+    let paintPending = false;
+    input.addEventListener("mousedown", () => {
+      input.setAttribute("aria-expanded", "true");
+      if (document.getElementById("lb-slow")) return;
+      const lb = document.createElement("div");
+      lb.id = "lb-slow";
+      lb.setAttribute("role", "listbox");
+      for (const label of ["Canada", "United States"]) {
+        const o = document.createElement("div");
+        o.setAttribute("role", "option");
+        o.textContent = label;
+        o.addEventListener("mousedown", () => {
+          input.setAttribute("aria-expanded", "false");
+          lb.remove();
+          paintPending = true; // committed, but the value hasn't painted yet
+        });
+        lb.append(o);
+      }
+      control.append(lb);
+    });
+
+    let sleeps = 0;
+    const sleep = async (): Promise<void> => {
+      sleeps++;
+      if (paintPending && sleeps >= 4) single.textContent = "Canada"; // late paint
+    };
+    const res = await fillAriaCombobox(input, "Canada", { sleep, openWaitMs: 100, commitWaitMs: 100, pollMs: 10 });
+    expect(res.filled).toBe(true);
+    expect(sleeps).toBeGreaterThanOrEqual(4); // it actually waited for the paint
+  });
+});
+
 describe("readComboboxOptions", () => {
   it("reads options from a mounted listbox without opening", () => {
     const el = staticCombobox(["United States", "Canada", "Mexico"]);

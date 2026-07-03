@@ -34,7 +34,7 @@ export interface FillComboboxOptions {
   pollMs?: number;
 }
 
-const DEFAULTS = { openWaitMs: 1000, commitWaitMs: 1000, pollMs: 50 };
+const DEFAULTS = { openWaitMs: 1000, commitWaitMs: 2500, pollMs: 50 };
 
 /**
  * True when an element is an ARIA combobox/listbox we can drive by clicking an
