@@ -870,8 +870,12 @@ function ensureMounted(): void {
   shadow.appendChild(root);
   (document.documentElement || document.body).appendChild(host);
 
-  wireEvents(root);
+  // collectRefs MUST run before wireEvents: wireEvents attaches delegated
+  // listeners to refs.infoForm, so refs has to be populated first. (Reversed,
+  // wireEvents dereferenced a null refs and threw, aborting overlay mount — the
+  // panel then never opened on any form page.)
   refs = collectRefs(root);
+  wireEvents(root);
   installMountWatchdog();
 }
 
