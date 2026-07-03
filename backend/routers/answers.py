@@ -119,6 +119,35 @@ def list_answers(
     )
 
 
+class UpdateAnswerIn(BaseModel):
+    answer: str
+
+
+@router.put("/answers/{answer_id}", response_model=SavedAnswerOut)
+def update_answer(
+    answer_id: int,
+    body: UpdateAnswerIn,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Edit a remembered answer's text in place (from the extension's Autofill
+    Information → Remembered answers list). Keyed by id so it never forks a new
+    company-scoped row the way a re-POST would."""
+    row = (
+        db.query(SavedAnswer)
+        .filter(SavedAnswer.id == answer_id, SavedAnswer.user_id == user_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Answer not found.")
+    row.answer = body.answer
+    row.source = "user_edited"
+    row.updated_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 @router.delete("/answers/{answer_id}", status_code=204)
 def delete_answer(
     answer_id: int,

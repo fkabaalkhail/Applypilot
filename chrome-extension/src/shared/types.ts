@@ -272,6 +272,15 @@ export interface ApplicantProfile {
   education: string[];
 }
 
+/** One remembered answer (Question Memory), shown in Autofill Information. */
+export interface SavedAnswerItem {
+  id: number;
+  question: string;
+  answer: string;
+  category: string;
+  timesReused: number;
+}
+
 /** Scraped page context that improves AI answers. Empty strings are fine. */
 export interface JobContext {
   jobDescription: string;
@@ -570,6 +579,9 @@ export type BackgroundRequest =
   | { type: "OPEN_DASHBOARD" }
   | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext; profile?: ApplicantProfile }
   | { type: "SAVE_ANSWER"; question: string; answer: string; jobContext: JobContext }
+  | { type: "GET_ANSWERS" }
+  | { type: "UPDATE_ANSWER"; id: number; answer: string }
+  | { type: "DELETE_ANSWER"; id: number }
   | {
       type: "TAILOR_RESUME";
       resumeId: number | null;
@@ -727,4 +739,12 @@ export interface ResumeFileResponse {
 export interface SimpleResponse {
   ok: boolean;
   error?: string;
+}
+
+/** Background reply for GET_ANSWERS (Remembered answers list). */
+export interface AnswersResponse {
+  ok: boolean;
+  error?: string;
+  needsLogin?: boolean;
+  answers: SavedAnswerItem[];
 }

@@ -69,6 +69,21 @@ def _embed_returning(vec):
     )
 
 
+def test_put_edits_answer_in_place(client):
+    with _embed_returning([0.1, 0.2, 0.3]):
+        created = client.post("/api/answers", json={"question": "Why us?", "answer": "Original"})
+    assert created.status_code == 200
+    aid = created.json()["id"]
+
+    resp = client.put(f"/api/answers/{aid}", json={"answer": "Edited"})
+    assert resp.status_code == 200
+    assert resp.json()["answer"] == "Edited"
+    assert resp.json()["source"] == "user_edited"
+
+    # Unknown id → 404.
+    assert client.put("/api/answers/999999", json={"answer": "x"}).status_code == 404
+
+
 def test_post_creates_row_with_category_and_embedding(client, db_session, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     with _embed_returning([0.1, 0.2]):

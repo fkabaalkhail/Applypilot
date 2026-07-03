@@ -28,6 +28,8 @@ import type {
   FlowProgress,
   LoginResponse,
   ProfileResponse,
+  AnswersResponse,
+  SavedAnswerItem,
   ProfileSource,
   RenderResumeResponse,
   ResumeDoc,
@@ -626,6 +628,11 @@ const STYLES = `
 }
 .ap-btn-update:hover { box-shadow: 0 6px 16px rgba(var(--stripe-primary-rgb),0.35); }
 .ap-btn-update:disabled { opacity: 0.6; cursor: default; box-shadow: none; }
+.ap-answer-row { padding: 12px 0; border-bottom: 1px solid var(--stripe-hairline-soft); }
+.ap-answer-q { font-size: 12.5px; font-weight: 600; color: var(--stripe-ink); margin-bottom: 6px; }
+.ap-answer-a { width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid var(--stripe-hairline-soft); border-radius: 8px; resize: vertical; font-family: inherit; color: var(--stripe-ink); background: #fff; box-sizing: border-box; }
+.ap-answer-del { margin-top: 6px; background: none; border: none; color: #b4232a; font-size: 12px; font-weight: 600; cursor: pointer; padding: 2px 0; }
+.ap-answer-del:hover { text-decoration: underline; }
 
 /* ---- Login view ---- */
 .ap-login-view {
@@ -771,6 +778,9 @@ interface PanelState {
   scanned: boolean;
   view: View;
   infoCategory: string;
+  /** Remembered answers (Question Memory) shown in the Autofill Information modal. */
+  rememberedAnswers: SavedAnswerItem[];
+  rememberedLoaded: boolean;
   /** Working copy of the editable profile fields while the info modal is open. */
   profileDraft: EditableProfileDraft | null;
   tailorResult: TailorResult | null;
@@ -801,6 +811,8 @@ const overlayState: PanelState = {
   scanned: false,
   view: "main",
   infoCategory: "personal",
+  rememberedAnswers: [],
+  rememberedLoaded: false,
   profileDraft: null,
   tailorResult: null,
   tailorKeywords: new Set(),
@@ -1063,6 +1075,7 @@ function buildHTML(): string {
             <button class="ap-modal-sidebar-item" data-cat="skill">Skill</button>
             <button class="ap-modal-sidebar-item" data-cat="preference">Preference</button>
             <button class="ap-modal-sidebar-item" data-cat="eeo">Equal Employment</button>
+            <button class="ap-modal-sidebar-item" data-cat="answers">Remembered answers</button>
           </div>
           <div class="ap-modal-form" id="ap-info-form"></div>
         </div>
@@ -1237,6 +1250,7 @@ function wireEvents(root: HTMLDivElement): void {
   // form container so it survives category re-renders (innerHTML swaps).
   refs!.infoForm.addEventListener("input", onInfoInput);
   refs!.infoForm.addEventListener("change", onInfoInput);
+  refs!.infoForm.addEventListener("click", onInfoFormClick);
 
   // Update button — persist the draft to the shared profile, then re-sync.
   root.querySelector("#ap-btn-update")!.addEventListener("click", () => void saveInfoEdits());
@@ -1368,6 +1382,8 @@ async function showInfoView(): Promise<void> {
   if (!refs) return;
   refs.modalBackdrop.classList.add("visible");
   overlayState.infoCategory = "personal";
+  overlayState.rememberedAnswers = [];
+  overlayState.rememberedLoaded = false;
   setInfoError("");
   refs.infoSidebar.querySelectorAll<HTMLButtonElement>(".ap-modal-sidebar-item").forEach((b) =>
     b.classList.toggle("active", b.dataset.cat === "personal")
@@ -1948,14 +1964,83 @@ function renderInfoForm(): void {
         ${apEeoSelect("disabilityStatus", "Disability Status", d.eeo.disabilityStatus)}
       `;
       break;
+    case "answers":
+      renderAnswersForm(form);
+      break;
   }
+}
+
+/**
+ * Render the "Remembered answers" list — every free-form question the user has
+ * answered in an application pop-up, editable and removable here. Built with DOM
+ * APIs (not innerHTML) so saved answer text can never inject markup.
+ */
+function renderAnswersForm(form: HTMLElement): void {
+  form.innerHTML = "";
+  if (!overlayState.rememberedLoaded) {
+    form.innerHTML =
+      '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Loading…</div>';
+    void loadRememberedAnswers();
+    return;
+  }
+  const answers = overlayState.rememberedAnswers;
+  if (answers.length === 0) {
+    form.innerHTML =
+      '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No remembered answers yet. Answers you give in application pop-ups appear here.</div>';
+    return;
+  }
+  const hint = document.createElement("div");
+  hint.className = "ap-form-hint";
+  hint.textContent = "Answers Tailrd remembered from application questions. Edit or remove any — changes save automatically.";
+  form.appendChild(hint);
+  for (const a of answers) {
+    const row = document.createElement("div");
+    row.className = "ap-answer-row";
+    const q = document.createElement("div");
+    q.className = "ap-answer-q";
+    q.textContent = a.question;
+    const ta = document.createElement("textarea");
+    ta.className = "ap-answer-a";
+    ta.rows = 2;
+    ta.value = a.answer;
+    ta.dataset.answerId = String(a.id);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "ap-answer-del";
+    del.dataset.delId = String(a.id);
+    del.textContent = "Remove";
+    row.append(q, ta, del);
+    form.appendChild(row);
+  }
+}
+
+/** Fetch remembered answers, then re-render if the user is still on that tab. */
+async function loadRememberedAnswers(): Promise<void> {
+  try {
+    const resp = await bg<AnswersResponse>({ type: "GET_ANSWERS" });
+    overlayState.rememberedAnswers = resp?.ok ? resp.answers : [];
+  } catch {
+    overlayState.rememberedAnswers = [];
+  }
+  overlayState.rememberedLoaded = true;
+  if (overlayState.infoCategory === "answers") renderInfoForm();
 }
 
 /** Delegated input handler: mirror form edits into the draft (survives re-render). */
 function onInfoInput(e: Event): void {
+  const t = e.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+  // Remembered-answer edit: persist on change/blur, not on every keystroke.
+  const answerId = t.dataset.answerId;
+  if (answerId) {
+    if (e.type === "change") {
+      const item = overlayState.rememberedAnswers.find((a) => String(a.id) === answerId);
+      if (item) item.answer = t.value;
+      void bg<SimpleResponse>({ type: "UPDATE_ANSWER", id: Number(answerId), answer: t.value });
+    }
+    return;
+  }
   const d = overlayState.profileDraft;
   if (!d) return;
-  const t = e.target as HTMLInputElement | HTMLSelectElement;
   const field = t.dataset.field;
   const eeoField = t.dataset.eeo;
   if (field && field !== "eeo" && field in d) {
@@ -1963,6 +2048,16 @@ function onInfoInput(e: Event): void {
   } else if (eeoField && eeoField in d.eeo) {
     (d.eeo as unknown as Record<string, string>)[eeoField] = t.value;
   }
+}
+
+/** Delegated click handler on the info form: "Remove" a remembered answer. */
+function onInfoFormClick(e: Event): void {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>("[data-del-id]");
+  if (!btn) return;
+  const id = Number(btn.dataset.delId);
+  overlayState.rememberedAnswers = overlayState.rememberedAnswers.filter((a) => a.id !== id);
+  void bg<SimpleResponse>({ type: "DELETE_ANSWER", id });
+  if (overlayState.infoCategory === "answers") renderInfoForm();
 }
 
 function setInfoError(msg: string): void {

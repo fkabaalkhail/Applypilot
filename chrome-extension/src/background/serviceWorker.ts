@@ -13,7 +13,7 @@ import { connectAccount } from "../api/handshake";
 import { AuthRequiredError, checkAuthStatus, ensureFreshAccessToken, logout } from "../api/client";
 import { downloadResumeFile, getSnapshotForUi, syncIfStale, updateApplicationProfile } from "../api/sync";
 import { aiFillFields } from "../api/aiFill";
-import { saveAnswer } from "../api/answers";
+import { deleteAnswer, listAnswers, saveAnswer, updateAnswer } from "../api/answers";
 import { renderResume, tailorResume } from "../api/tailorResume";
 import { generateCoverLetter, renderCoverLetter } from "../api/coverLetter";
 import { recordApplication } from "../api/applications";
@@ -24,6 +24,7 @@ import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveCon
 import { getFlowState, setFlowState, watchTabRemoval } from "./flowState";
 import type {
   AiFillResponse,
+  AnswersResponse,
   BackgroundRequest,
   FieldsUpdatedEvent,
   GenerateCoverLetterResponse,
@@ -318,6 +319,7 @@ export async function handle(
   | RenderCoverLetterResponse
   | RecordApplicationResponse
   | OverridesResponse
+  | AnswersResponse
 > {
   switch (message.type) {
     case "GET_STATUS": {
@@ -487,6 +489,42 @@ export async function handle(
           return { ok: false, needsLogin: true, error: err.message };
         }
         return { ok: false, error: err instanceof Error ? err.message : "Save failed" };
+      }
+    }
+
+    case "GET_ANSWERS": {
+      try {
+        const answers = await listAnswers();
+        return { ok: true, answers };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, answers: [] };
+        }
+        return { ok: false, error: err instanceof Error ? err.message : "Load failed", answers: [] };
+      }
+    }
+
+    case "UPDATE_ANSWER": {
+      try {
+        await updateAnswer(message.id, message.answer);
+        return { ok: true };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, error: err.message };
+        }
+        return { ok: false, error: err instanceof Error ? err.message : "Update failed" };
+      }
+    }
+
+    case "DELETE_ANSWER": {
+      try {
+        await deleteAnswer(message.id);
+        return { ok: true };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, needsLogin: true, error: err.message };
+        }
+        return { ok: false, error: err instanceof Error ? err.message : "Delete failed" };
       }
     }
 
