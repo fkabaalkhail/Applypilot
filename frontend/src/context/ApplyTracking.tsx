@@ -1,10 +1,13 @@
 import { createContext, useContext, useEffect, useReducer, type ReactNode } from "react";
 import api from "../auth/api";
+import { notifyApplyIntent } from "../lib/extensionBridge";
 
 export interface PendingJob {
   id: number;
   title: string;
   company: string;
+  /** ATS apply URL — handed to the extension so a submit is tracked to this job. */
+  url?: string;
 }
 
 export interface ApplyQueueState {
@@ -63,6 +66,9 @@ export function ApplyTrackingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   function registerApplyClick(job: PendingJob) {
+    // Best-effort: tell the extension which job this apply is for, so a submit on
+    // the ATS page is auto-recorded against it. No-ops without the extension.
+    notifyApplyIntent(job, job.url);
     dispatch({ type: "REGISTER", job });
   }
 

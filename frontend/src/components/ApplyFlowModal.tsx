@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { notifyApplyIntent } from "../lib/extensionBridge";
 
 const API_BASE = "";
 
@@ -51,7 +52,9 @@ export default function ApplyFlowModal({ job, hasTailoredResume, hasCoverLetter,
 
       const session = await res.json();
 
-      // Open job URL in new tab
+      // Tell the extension which job this is, then open the ATS page. A submit
+      // there is auto-tracked against this job (no-ops without the extension).
+      notifyApplyIntent(job, job.url);
       window.open(job.url, "_blank");
 
       // Listen for progress updates from extension

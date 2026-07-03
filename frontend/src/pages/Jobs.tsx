@@ -486,7 +486,7 @@ export default function Jobs() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn-apply"
-                      onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company })}
+                      onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: job.url })}
                     >
                       APPLY WITH AUTOFILL
                     </a>

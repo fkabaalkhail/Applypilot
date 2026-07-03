@@ -18,7 +18,7 @@ function makeListener() {
 beforeEach(() => {
   (globalThis as any).chrome = {
     storage: { local: makeStorageArea(), session: makeStorageArea() },
-    runtime: { onInstalled: makeListener(), onStartup: makeListener(), onMessage: makeListener() },
+    runtime: { onInstalled: makeListener(), onStartup: makeListener(), onMessage: makeListener(), onMessageExternal: makeListener() },
     alarms: { create: vi.fn(), onAlarm: makeListener() },
     action: { onClicked: makeListener() },
     tabs: { sendMessage: vi.fn(), executeScript: vi.fn() },

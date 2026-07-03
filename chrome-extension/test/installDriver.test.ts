@@ -6,7 +6,7 @@ const { executeScript } = vi.hoisted(() => {
   const executeScript = vi.fn();
   const noop = { addListener: () => {} };
   (globalThis as unknown as { chrome: unknown }).chrome = {
-    runtime: { onInstalled: noop, onStartup: noop, onMessage: noop },
+    runtime: { onInstalled: noop, onStartup: noop, onMessage: noop, onMessageExternal: noop },
     alarms: { create: () => {}, onAlarm: noop },
     action: { onClicked: noop },
     scripting: { executeScript },

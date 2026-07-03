@@ -17,6 +17,7 @@ import { saveAnswer } from "../api/answers";
 import { renderResume, tailorResume } from "../api/tailorResume";
 import { generateCoverLetter, renderCoverLetter } from "../api/coverLetter";
 import { recordApplication } from "../api/applications";
+import { matchApplyIntent, recordApplyIntent } from "./applyIntent";
 import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import { getFlowState, setFlowState, watchTabRemoval } from "./flowState";
 import type {
@@ -158,6 +159,52 @@ chrome.action.onClicked.addListener(async (tab) => {
     setTimeout(() => void toggleTop().catch(() => {}), 300);
   }
 });
+
+// ── Web app (externally_connectable) → extension ───────────────────────────────
+// The Tailrd dashboard tells us which job the user is applying to, so a later
+// submit on the ATS page is tracked against that job. Chrome restricts senders
+// to externally_connectable.matches; we still validate the message shape.
+interface ExternalMessage {
+  type?: string;
+  jobId?: unknown;
+  url?: unknown;
+  company?: unknown;
+  title?: unknown;
+}
+
+chrome.runtime.onMessageExternal.addListener(
+  (message: ExternalMessage, _sender, sendResponse): boolean => {
+    if (!message || typeof message.type !== "string") return false;
+    switch (message.type) {
+      case "TAILRD_PING": {
+        // Lets the web app detect the extension is installed + its auth state.
+        void checkAuthStatus()
+          .then((s) => sendResponse({ ok: true, connected: s.connected }))
+          .catch(() => sendResponse({ ok: true, connected: false }));
+        return true;
+      }
+      case "TAILRD_APPLY_INTENT": {
+        const jobId = Number(message.jobId);
+        const url = typeof message.url === "string" ? message.url : "";
+        if (!Number.isFinite(jobId) || jobId <= 0 || !url) {
+          sendResponse({ ok: false });
+          return false;
+        }
+        void recordApplyIntent({
+          jobId,
+          url,
+          company: typeof message.company === "string" ? message.company : undefined,
+          title: typeof message.title === "string" ? message.title : undefined,
+        })
+          .then(() => sendResponse({ ok: true }))
+          .catch(() => sendResponse({ ok: false }));
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+);
 
 chrome.runtime.onMessage.addListener(
   (message: BackgroundRequest | FieldsUpdatedEvent, _sender, sendResponse) => {
@@ -489,7 +536,11 @@ export async function handle(
 
     case "RECORD_APPLICATION": {
       try {
-        const { created } = await recordApplication(message.application);
+        // Link to the real Tailrd job when this apply was launched from the
+        // dashboard (matched by host to a recent apply intent); else record it
+        // as an external application (job_id stays null).
+        const jobId = message.application.jobId ?? (await matchApplyIntent(message.application.url));
+        const { created } = await recordApplication({ ...message.application, jobId: jobId ?? null });
         return { ok: true, created };
       } catch (err) {
         if (err instanceof AuthRequiredError) {

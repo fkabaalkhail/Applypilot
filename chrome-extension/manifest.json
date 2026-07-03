@@ -42,5 +42,8 @@
   ],
   "web_accessible_resources": [
     { "resources": ["mainWorld.js"], "matches": ["<all_urls>"] }
-  ]
+  ],
+  "externally_connectable": {
+    "matches": ["https://www.tailrd.ca/*", "https://tailrd.ca/*", "http://localhost/*"]
+  }
 }

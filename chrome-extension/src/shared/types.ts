@@ -587,6 +587,21 @@ export interface RecordApplicationResponse {
   created?: boolean;
 }
 
+/**
+ * A pending "apply intent" pushed from the Tailrd web app (externally_connectable
+ * → onMessageExternal): the user clicked Apply on this job in the dashboard.
+ * When they later submit on the ATS page, the submit tracker matches the page to
+ * a recent intent by host and links the recorded application to the real job.
+ */
+export interface ApplyIntent {
+  jobId: number;
+  url: string;
+  company?: string;
+  title?: string;
+  /** Epoch ms when the intent was recorded (for TTL). */
+  ts: number;
+}
+
 export interface StatusResponse {
   ok: boolean;
   /** mock = sample data, connected = signed in, sessionExpired = was connected but refresh failed, signedOut = needs to connect */

@@ -445,7 +445,7 @@ export default function JobDetailView({ job, onClose }: Props) {
             target="_blank"
             rel="noopener noreferrer"
             className="btn-apply-detail"
-            onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company })}
+            onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
           >
             <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
           </a>
@@ -454,7 +454,7 @@ export default function JobDetailView({ job, onClose }: Props) {
             target="_blank"
             rel="noopener noreferrer"
             className="btn-outline-detail"
-            onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company })}
+            onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
           >
             <ArrowSquareOut size={16} weight="bold" /> View Original Post
           </a>

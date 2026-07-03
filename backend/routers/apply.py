@@ -326,8 +326,20 @@ def log_application(
 
     now = datetime.datetime.utcnow()
 
+    # Dedupe by job_id first (matches records mark-applied creates), then by url
+    # (external applies with no internal job). Either way we refresh in place.
     existing = None
-    if url:
+    if request.job_id:
+        existing = (
+            db.query(ApplicationRecord)
+            .filter(
+                ApplicationRecord.user_id == user_id,
+                ApplicationRecord.job_id == request.job_id,
+            )
+            .order_by(ApplicationRecord.applied_at.desc())
+            .first()
+        )
+    if existing is None and url:
         existing = (
             db.query(ApplicationRecord)
             .filter(ApplicationRecord.user_id == user_id, ApplicationRecord.url == url)

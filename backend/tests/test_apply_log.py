@@ -133,3 +133,35 @@ def test_log_with_job_id_marks_job_applied(client, db_session):
 
     db_session.refresh(job)
     assert job.status == JobStatus.APPLIED
+
+
+def test_log_dedupes_by_job_id_even_with_a_different_url(client, db_session):
+    """A job_id that already has a record is refreshed, not duplicated — even when
+    the ATS page URL differs from the record's stored URL (mark-applied case)."""
+    job = ScrapedJob(
+        title="X", company="Y", url="https://y.com/j",
+        description="d", platform="linkedin", status=JobStatus.NEW,
+    )
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+
+    # A record already exists for this job (as POST /jobs/{id}/mark-applied makes).
+    db_session.add(
+        ApplicationRecord(user_id=TEST_USER_ID, job_id=job.id, company="Y", role="X", url="https://y.com/j")
+    )
+    db_session.commit()
+
+    resp = client.post(
+        "/apply/log",
+        json={
+            "company": "Y", "role": "X",
+            "url": "https://boards.greenhouse.io/y/jobs/999",  # different ATS page URL
+            "job_id": job.id,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["created"] is False  # deduped by job_id despite the different URL
+
+    rows = db_session.query(ApplicationRecord).filter_by(user_id=TEST_USER_ID, job_id=job.id).all()
+    assert len(rows) == 1
