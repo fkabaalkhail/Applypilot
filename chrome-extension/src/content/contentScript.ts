@@ -50,7 +50,7 @@ import type {
   TailorResumeResponse,
   UserApplicationProfile,
 } from "../shared/types";
-import { deepQueryAll } from "./domUtils";
+import { deepQueryAll, isPlaceholderFiller } from "./domUtils";
 import { base64ToFile, downloadBase64File, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT } from "./fieldMatcher";
@@ -62,7 +62,7 @@ import { splitByCache, cacheAnswers } from "./answerCache";
 import { promptForMissingFields, type MissingFieldPrompt } from "./missingInfoModal";
 import { buildProfilePatch, isProfileCategory } from "../shared/profileCategories";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
-import { fillAriaCombobox } from "./comboboxEngine";
+import { fillAriaCombobox, readComboboxValue } from "./comboboxEngine";
 import { driveField, setDialogSuppression } from "./mainWorldClient";
 import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
 import { verifyControl, writeControl } from "./writeEngine";
@@ -367,8 +367,22 @@ function initialize(): void {
 
   /** True when the control for `id` currently holds no user-visible value. */
   function controlIsEmpty(id: string): boolean {
-    const el = registry.get(id)?.el;
+    const control = registry.get(id);
+    const el = control?.el;
     if (!el) return true;
+    // A committed combobox keeps its INPUT empty — the selection lives in the
+    // widget's value display (react-select single-value div, trigger text) — so
+    // judge by the widget's displayed value, not the input.
+    if (control.controlType === "combobox" || control.controlType === "customDropdown") {
+      return !readComboboxValue(el);
+    }
+    if (control.controlType === "select") {
+      const opt = (el as HTMLSelectElement).selectedOptions[0];
+      return !opt || !opt.value;
+    }
+    if (control.controlType === "radioGroup") {
+      return !control.radios?.some((r) => r.checked);
+    }
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
       return !el.value.trim();
     }
@@ -397,6 +411,11 @@ function initialize(): void {
       (f) =>
         f.fillable &&
         !f.sensitive &&
+        // A question we can't NAME can't be asked or remembered: an empty label
+        // (or bare dropdown filler like "Select…") renders a meaningless modal
+        // row and would key the saved answer on junk. Skip those fields.
+        f.label.trim().length > 0 &&
+        !isPlaceholderFiller(f.label) &&
         (f.required || isProfileCategory(f.category)) &&
         controlIsEmpty(f.id) &&
         (PROMPTABLE_TYPES.has(f.controlType) ||

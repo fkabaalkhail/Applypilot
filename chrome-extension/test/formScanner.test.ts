@@ -2,12 +2,20 @@ import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { scanPage } from "../src/content/formScanner";
 import { stubLayout } from "./helpers/layout";
 
+// jsdom reports zero rects for everything; comboboxes get NO relaxed-visibility
+// pass (an invisible combobox is not operable — see formScanner), so give every
+// element a real box the way a browser would. See helpers/layout.ts.
+let restoreLayout: () => void;
+beforeAll(() => {
+  restoreLayout = stubLayout();
+});
+afterAll(() => restoreLayout());
+
 beforeEach(() => {
   document.body.innerHTML = "";
 });
 
-/** A combobox with a mounted listbox and an aria-label (so the scanner's
- *  relaxed-visibility path accepts it under jsdom, which reports zero rects). */
+/** A combobox with a mounted listbox and an aria-label. */
 function labeledCombobox(
   options: string[],
   opts: { label: string; value?: string }
@@ -85,16 +93,56 @@ describe("driver tagging", () => {
   });
 });
 
-describe("scanPage — malformed profile robustness", () => {
-  // Plain <input>s are invisible under jsdom (getClientRects() is empty), so
-  // without this the scanner would filter them out and never call the
-  // resolver — defeating the point of this regression test. See helpers/layout.ts.
-  let restore: () => void;
-  beforeAll(() => {
-    restore = stubLayout();
+describe("scanPage — widget-internal controls are not fields (Greenhouse job-boards regression)", () => {
+  it("skips react-select's aria-hidden required companion input", () => {
+    document.body.innerHTML = `
+      <div class="select__container">
+        <label id="q-label" for="q">Country</label>
+        <div class="select-shell">
+          <div class="select__control">
+            <div class="select__input-container">
+              <input id="q" type="text" role="combobox" aria-expanded="false" aria-controls="lbq"
+                     aria-labelledby="q-label" />
+            </div>
+          </div>
+          <input required tabindex="-1" aria-hidden="true" class="requiredInput" value="" />
+        </div>
+      </div>`;
+    const { fields } = scanPage(null, false);
+    // Exactly one field for the question: the combobox. The companion must not
+    // become a text twin that the reconciler types into / the modal prompts for.
+    expect(fields).toHaveLength(1);
+    expect(fields[0].controlType).toBe("combobox");
   });
-  afterAll(() => restore());
 
+  it("skips a zero-area input even without aria-hidden", () => {
+    document.body.innerHTML = `<label for="ghost">Ghost</label><input id="ghost" type="text" />`;
+    const ghost = document.getElementById("ghost") as HTMLElement;
+    // Rendered box exists but is 0px tall — a validation shim, not a field.
+    ghost.getClientRects = () => [{ width: 100, height: 0 }] as unknown as DOMRectList;
+    const { fields } = scanPage(null, false);
+    expect(fields).toHaveLength(0);
+  });
+
+  it("skips a combobox hidden inside a closed widget subtree (intl-tel-input dial-code search)", () => {
+    document.body.innerHTML = `
+      <label for="phone">Phone</label><input id="phone" type="tel" />
+      <div class="iti__dropdown-content" role="dialog">
+        <input id="iti-search" type="search" role="combobox" aria-expanded="true"
+               aria-label="Search" aria-controls="iti-lb" aria-autocomplete="list" />
+        <ul id="iti-lb" role="listbox"><li role="option">Afghanistan +93</li></ul>
+      </div>`;
+    // The closed dial-code dialog isn't rendered: no client rects anywhere inside.
+    const dialog = document.querySelector(".iti__dropdown-content") as HTMLElement;
+    for (const el of [dialog, ...Array.from(dialog.querySelectorAll<HTMLElement>("*"))]) {
+      el.getClientRects = () => [] as unknown as DOMRectList;
+    }
+    const { fields } = scanPage(null, false);
+    expect(fields.map((f) => f.controlType)).toEqual(["text"]); // just the phone
+  });
+});
+
+describe("scanPage — malformed profile robustness", () => {
   it("does not throw when the profile is missing education/experience/skills arrays", () => {
     document.body.innerHTML = `
       <label for="s">School</label><input id="s" name="education[0][school]" />

@@ -65,3 +65,77 @@ describe("deepQueryAll — traversal", () => {
     expect(() => deepQueryAll(document, "input")).not.toThrow();
   });
 });
+
+describe("bestDisplayLabel — placeholder filler is never the question", () => {
+  it("falls past 'Select...' to a usable attribute name", async () => {
+    const { bestDisplayLabel } = await import("../src/content/domUtils");
+    expect(
+      bestDisplayLabel({
+        label: "",
+        ariaLabel: "",
+        placeholder: "Select...",
+        nearby: "",
+        nameAttr: "candidate_country",
+        idAttr: "",
+        autocomplete: "",
+        typeHint: "",
+        testId: "",
+      })
+    ).toBe("candidate_country");
+  });
+
+  it("keeps a real label that merely STARTS with 'Select'", async () => {
+    const { bestDisplayLabel } = await import("../src/content/domUtils");
+    expect(
+      bestDisplayLabel({
+        label: "Select your country of residence",
+        ariaLabel: "",
+        placeholder: "",
+        nearby: "",
+        nameAttr: "",
+        idAttr: "",
+        autocomplete: "",
+        typeHint: "",
+        testId: "",
+      })
+    ).toBe("Select your country of residence");
+  });
+
+  it("returns 'Unlabeled field' when every signal is filler or empty", async () => {
+    const { bestDisplayLabel } = await import("../src/content/domUtils");
+    expect(
+      bestDisplayLabel({
+        label: "Select...",
+        ariaLabel: "",
+        placeholder: "Choose an option",
+        nearby: "",
+        nameAttr: "",
+        idAttr: "",
+        autocomplete: "",
+        typeHint: "",
+        testId: "",
+      })
+    ).toBe("Unlabeled field");
+  });
+});
+
+describe("collectSignals — aria-labelledby pointing INSIDE the control", () => {
+  it("ignores the widget's own value span (react-aria trigger pattern)", async () => {
+    const { collectSignals } = await import("../src/content/domUtils");
+    // <button aria-labelledby="val"> where #val is the button's own value text —
+    // its "Select an option" must not become the label.
+    document.body.innerHTML = `
+      <div class="field">
+        <span>Gender</span>
+        <div class="dropdown">
+          <button aria-haspopup="listbox" aria-labelledby="val">
+            <span id="val">Select an option</span>
+          </button>
+        </div>
+      </div>`;
+    const btn = document.querySelector("button") as HTMLElement;
+    const signals = collectSignals(btn);
+    expect(signals.label).not.toMatch(/select an option/i);
+    expect(signals.label).toBe("Gender"); // promoted from the text beside the widget
+  });
+});

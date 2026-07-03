@@ -61,4 +61,42 @@ describe("detectFillDriver", () => {
     const input = document.querySelector("input") as HTMLElement;
     expect(detectFillDriver(input, "example.com")).toBeNull();
   });
+
+  // Greenhouse job-boards passes a custom inputId ("country", "605"…), so the
+  // input id carries no react-select marker — but the generated placeholder /
+  // live-region ids still do. Regression: these fields must route to the driver
+  // (they previously fell to the ARIA engine and failed).
+  it("tags react-select v5 with a custom inputId via its generated internal ids", () => {
+    document.body.innerHTML = `
+      <div class="select-shell remix-css-b62m3t-container">
+        <span id="react-select-country-live-region"></span>
+        <div><div class="select__control">
+          <div class="select__value-container">
+            <div class="select__placeholder" id="react-select-country-placeholder"></div>
+            <div class="select__input-container">
+              <input class="select__input" id="country" type="text" role="combobox"
+                     aria-describedby="react-select-country-placeholder country-error" />
+            </div>
+          </div>
+        </div></div>
+      </div>`;
+    const input = document.getElementById("country") as HTMLElement;
+    expect(detectFillDriver(input, "job-boards.greenhouse.io")).toBe("react-select");
+  });
+
+  it("tags custom-inputId react-select even without aria-describedby (marker in wrapper)", () => {
+    document.body.innerHTML = `
+      <div class="select-shell">
+        <div class="select__control">
+          <div class="select__value-container">
+            <div class="select__placeholder" id="react-select-609-placeholder">Select...</div>
+            <div class="select__input-container">
+              <input class="select__input" id="609" type="text" role="combobox" />
+            </div>
+          </div>
+        </div>
+      </div>`;
+    const input = document.getElementById("609") as HTMLElement;
+    expect(detectFillDriver(input, "job-boards.greenhouse.io")).toBe("react-select");
+  });
 });

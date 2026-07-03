@@ -60,7 +60,11 @@ function sameOriginDocument(iframe: HTMLIFrameElement): Document | null {
 export function isVisible(el: HTMLElement): boolean {
   const style = getComputedStyle(el);
   if (style.display === "none" || style.visibility === "hidden") return false;
-  return el.getClientRects().length > 0;
+  // Zero-area boxes are invisible companions, not fields: react-select renders a
+  // hidden `<input required>` twin (height:0, opacity:0) purely so native form
+  // validation fires — typing into it churns the widget and double-counts the
+  // question. A genuine field always has a rendered box.
+  return Array.from(el.getClientRects()).some((r) => r.width > 0 && r.height > 0);
 }
 
 /**
@@ -74,7 +78,10 @@ export function isHiddenButLabeled(el: HTMLElement): boolean {
   return Boolean(el.getAttribute("aria-label") || el.getAttribute("aria-labelledby"));
 }
 
-/** Resolve aria-labelledby into text. */
+/** Resolve aria-labelledby into text. Nodes INSIDE the control itself are
+ *  skipped: widgets (react-aria, Radix) point aria-labelledby at their own
+ *  value/placeholder span, whose text is "Select…" — the current selection,
+ *  never the question. */
 function ariaLabelledByText(el: HTMLElement): string {
   const ids = el.getAttribute("aria-labelledby");
   if (!ids) return "";
@@ -82,7 +89,11 @@ function ariaLabelledByText(el: HTMLElement): string {
   return cleanText(
     ids
       .split(/\s+/)
-      .map((id) => doc.getElementById(id)?.textContent ?? "")
+      .map((id) => {
+        const ref = doc.getElementById(id);
+        if (!ref || el.contains(ref)) return "";
+        return ref.textContent ?? "";
+      })
       .join(" ")
   );
 }
@@ -289,17 +300,23 @@ export function collectSignals(el: HTMLElement): FieldSignals {
   };
 }
 
-/** Pick the most human-readable label for display in the popup. */
+/** Pick the most human-readable label for display in the popup. Placeholder
+ *  filler ("Select…", "Choose an option") is never a usable question text — a
+ *  dropdown whose only signal is its own placeholder must fall through to the
+ *  name/id attributes rather than present "Select" as the question. */
 export function bestDisplayLabel(signals: FieldSignals): string {
-  return (
-    signals.label ||
-    signals.ariaLabel ||
-    signals.placeholder ||
-    signals.nearby ||
-    signals.nameAttr ||
-    signals.idAttr ||
-    "Unlabeled field"
-  );
+  const candidates = [
+    signals.label,
+    signals.ariaLabel,
+    signals.placeholder,
+    signals.nearby,
+    signals.nameAttr,
+    signals.idAttr,
+  ];
+  for (const c of candidates) {
+    if (c && !isPlaceholderFiller(c)) return c;
+  }
+  return "Unlabeled field";
 }
 
 export function isRequiredField(el: HTMLElement, signals: FieldSignals): boolean {

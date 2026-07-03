@@ -1,14 +1,24 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import {
   fillAriaCombobox,
   isAriaCombobox,
   readComboboxOptions,
   readComboboxValue,
 } from "../src/content/comboboxEngine";
+import { stubLayout } from "./helpers/layout";
 
 const instant = async (): Promise<void> => {};
 /** Deterministic, fast options for the engine's bounded polling. */
 const fast = { sleep: instant, openWaitMs: 200, commitWaitMs: 200, pollMs: 10 };
+
+// The engine now requires a rendered box (getClientRects) before it trusts a
+// listbox — a hidden-subtree listbox (e.g. a closed dial-code picker) must never
+// be driven. jsdom has no layout, so give elements real boxes like a browser.
+let restoreLayout: () => void;
+beforeAll(() => {
+  restoreLayout = stubLayout();
+});
+afterAll(() => restoreLayout());
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -330,5 +340,149 @@ describe("fillAriaCombobox — option harvest on miss", () => {
     const res = await fillAriaCombobox(trigger, "Canadian", fast);
     expect(res.filled).toBe(true);
     expect(res.options).toBeUndefined();
+  });
+});
+
+describe("fillAriaCombobox — never drives another widget's listbox (dial-code regression)", () => {
+  /** A decoy dial-code picker à la intl-tel-input: its own trigger + a mounted
+   *  listbox full of countries, all inside one widget container. */
+  function itiDecoy(opts: { hidden?: boolean } = {}): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "iti__country-container";
+    const btn = document.createElement("button");
+    btn.setAttribute("aria-haspopup", "dialog");
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const lb = document.createElement("ul");
+    lb.setAttribute("role", "listbox");
+    for (const label of ["United States +1", "Canada +1", "Mexico +52"]) {
+      const o = document.createElement("li");
+      o.setAttribute("role", "option");
+      o.textContent = label;
+      lb.append(o);
+    }
+    dialog.append(lb);
+    wrap.append(btn, dialog);
+    document.body.append(wrap);
+    if (opts.hidden) {
+      for (const el of [dialog, ...Array.from(dialog.querySelectorAll<HTMLElement>("*"))]) {
+        el.getClientRects = () => [] as unknown as DOMRectList;
+      }
+    }
+    return wrap;
+  }
+
+  it("ignores a VISIBLE foreign listbox when our menu never opens", async () => {
+    itiDecoy();
+    // A broken combobox that never mounts its own menu.
+    const input = document.createElement("input");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("aria-controls", "never-mounts");
+    document.body.append(input);
+    const res = await fillAriaCombobox(input, "Canada", fast);
+    expect(res.filled).toBe(false);
+    // Crucially: the decoy's options must NOT be harvested as this field's options.
+    expect(res.options).toBeUndefined();
+  });
+
+  it("ignores a HIDDEN foreign listbox (closed dial-code dialog)", async () => {
+    itiDecoy({ hidden: true });
+    const input = document.createElement("input");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("aria-controls", "never-mounts-2");
+    document.body.append(input);
+    const res = await fillAriaCombobox(input, "Canada", fast);
+    expect(res.filled).toBe(false);
+    expect(res.options).toBeUndefined();
+  });
+});
+
+describe("fillAriaCombobox — commit honesty", () => {
+  it("reports failure when the click commits nothing, even though the menu closed", async () => {
+    // A widget whose option click closes the menu but never writes a value —
+    // previously reported as filled because "collapsed" counted as committed.
+    const control = document.createElement("div");
+    control.className = "select__control";
+    const input = document.createElement("input");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    const lbId = "lb-deadclick";
+    input.setAttribute("aria-controls", lbId);
+    control.append(input);
+    document.body.append(control);
+    input.addEventListener("mousedown", () => {
+      input.setAttribute("aria-expanded", "true");
+      if (document.getElementById(lbId)) return;
+      const lb = document.createElement("div");
+      lb.id = lbId;
+      lb.setAttribute("role", "listbox");
+      const o = document.createElement("div");
+      o.setAttribute("role", "option");
+      o.textContent = "Canada";
+      o.addEventListener("mousedown", () => {
+        input.setAttribute("aria-expanded", "false");
+        lb.remove(); // closes without committing anything
+      });
+      lb.append(o);
+      document.body.append(lb);
+    });
+    const res = await fillAriaCombobox(input, "Canada", fast);
+    expect(res.filled).toBe(false);
+    expect(res.reason).toMatch(/didn't stick/i);
+  });
+});
+
+describe("fillAriaCombobox — over-filter recovery", () => {
+  it("clears the typed filter and matches on the full list when filtering yields nothing", async () => {
+    // Substring-filtering widget: "I am not a protected veteran" filters the
+    // list to zero options; the engine must clear the text and match the full
+    // list by tokens ("No, I am not a veteran").
+    const OPTIONS = ["Yes, I am a veteran", "No, I am not a veteran", "I don't wish to answer"];
+    const control = document.createElement("div");
+    control.className = "select__control";
+    const single = document.createElement("div");
+    single.className = "select__single-value";
+    const input = document.createElement("input");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("aria-autocomplete", "list");
+    const lbId = "lb-filter";
+    input.setAttribute("aria-controls", lbId);
+    control.append(single, input);
+    document.body.append(control);
+
+    const render = (): void => {
+      document.getElementById(lbId)?.remove();
+      if (input.getAttribute("aria-expanded") !== "true") return;
+      const filter = input.value.toLowerCase();
+      const lb = document.createElement("div");
+      lb.id = lbId;
+      lb.setAttribute("role", "listbox");
+      for (const label of OPTIONS.filter((l) => l.toLowerCase().includes(filter))) {
+        const o = document.createElement("div");
+        o.setAttribute("role", "option");
+        o.textContent = label;
+        o.addEventListener("mousedown", () => {
+          single.textContent = label;
+          input.value = "";
+          input.setAttribute("aria-expanded", "false");
+          lb.remove();
+        });
+        lb.append(o);
+      }
+      if (lb.children.length === 0) lb.remove(); // "No options" state
+      else document.body.append(lb);
+    };
+    input.addEventListener("mousedown", () => {
+      input.setAttribute("aria-expanded", "true");
+      render();
+    });
+    input.addEventListener("input", render);
+
+    const res = await fillAriaCombobox(input, "I am not a protected veteran", fast);
+    expect(res.filled).toBe(true);
+    expect(single.textContent).toBe("No, I am not a veteran");
   });
 });

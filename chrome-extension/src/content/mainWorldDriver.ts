@@ -116,42 +116,91 @@ function rsFlatten(options: unknown[]): unknown[] {
   return out;
 }
 
+/** The widget's editable input (works for default and custom inputIds). */
+function rsInput(scope: HTMLElement): HTMLInputElement | null {
+  return scope.querySelector<HTMLInputElement>('input[id^="react-select"], input[role="combobox"]');
+}
+
+/** Outermost wrapper of the react-select widget around `el` (≤6 hops). */
+function rsWidgetHost(el: HTMLElement): HTMLElement {
+  let host = el;
+  let node = el.parentElement;
+  for (let hops = 0; node && hops < 6; hops++, node = node.parentElement) {
+    if (!/select|combobox|container|control|dropdown/i.test(node.getAttribute("class") ?? "")) break;
+    host = node;
+  }
+  return host;
+}
+
 async function fillReactSelect(el: HTMLElement, value: string): Promise<string | null> {
-  const container = el.closest('[class*="-container"], [class*="__container"]') ?? el;
-  const inst = climbFiber(getFiber(container), (f) => {
+  const container = rsWidgetHost(el);
+  const inst = climbFiber(getFiber(el.closest('[class*="-container"], [class*="__container"]') ?? container), (f) => {
     const sn = f.stateNode as RsInstance | null;
     return Boolean(sn && (typeof sn.selectOption === "function" || sn.props?.onChange) && Array.isArray(sn.props?.options));
   })?.stateNode as RsInstance | undefined;
 
   if (inst && inst.props.options) {
-    const flat = rsFlatten(inst.props.options);
-    const idx = pickOption(flat.map((o) => rsLabel(inst, o)), value);
-    if (idx < 0) return null;
-    const opt = flat[idx];
-    if (typeof inst.selectOption === "function") inst.selectOption(opt);
-    else inst.props.onChange?.(opt, { action: "select-option" });
-    return rsLabel(inst, opt);
+    const pick = (): { opt: unknown; label: string } | null => {
+      const flat = rsFlatten(inst.props.options ?? []);
+      const idx = pickOption(flat.map((o) => rsLabel(inst, o)), value);
+      return idx >= 0 ? { opt: flat[idx], label: rsLabel(inst, flat[idx]) } : null;
+    };
+    let hit = pick();
+    // No match yet — async selects (Places city lookup…) only load options after
+    // the user types. Type the value through the real input and poll the
+    // instance's props.options (they refresh on every load) before giving up.
+    if (!hit) {
+      const input = rsInput(container);
+      if (input) {
+        input.focus();
+        setNativeInputValue(input, value);
+        for (let waited = 0; !hit && waited < 3500; waited += 150) {
+          await sleep(150);
+          hit = pick();
+        }
+        if (!hit) fireKey(input, "Escape"); // close the menu we opened by typing
+      }
+    }
+    if (!hit) return null;
+    if (typeof inst.selectOption === "function") inst.selectOption(hit.opt);
+    else inst.props.onChange?.(hit.opt, { action: "select-option" });
+    return hit.label;
   }
-  return fillReactSelectByDom(container as HTMLElement, value);
+  return fillReactSelectByDom(container, value);
 }
 
 /** Fallback when no instance is found: open, filter, click the option in page context. */
 async function fillReactSelectByDom(container: HTMLElement, value: string): Promise<string | null> {
-  const input = container.querySelector<HTMLInputElement>('input[id^="react-select"], input[role="combobox"]');
+  const input = rsInput(container);
   const opener = (input as HTMLElement) ?? container;
   fireMouse(opener, "mousedown");
   opener.focus?.();
   if (input) setNativeInputValue(input, value);
-  await sleep(60);
-  const menu = document.querySelector('[class*="-menu"], [class*="__menu"], [role="listbox"]');
-  const options = menu ? Array.from(menu.querySelectorAll<HTMLElement>('[class*="-option"], [class*="__option"], [role="option"]')) : [];
+
+  // Menu + options mount lazily (and async selects fetch them) — poll instead of
+  // a single fixed hop. Menus portal to <body>, so fall back to a document-wide
+  // query, but never accept a menu that belongs to a different widget.
+  let options: HTMLElement[] = [];
+  for (let waited = 0; options.length === 0 && waited < 2400; waited += 120) {
+    await sleep(120);
+    const menus = [
+      ...Array.from(container.querySelectorAll<HTMLElement>('[class*="-menu"], [class*="__menu"], [role="listbox"]')),
+      ...Array.from(document.querySelectorAll<HTMLElement>('[class*="-menu"], [class*="__menu"], [role="listbox"]')).filter(
+        (m) => !m.closest('[class*="-container"], [class*="__container"]') || m.closest('[class*="-container"], [class*="__container"]')!.contains(opener)
+      ),
+    ];
+    for (const menu of menus) {
+      options = Array.from(menu.querySelectorAll<HTMLElement>('[class*="-option"], [class*="__option"], [role="option"]'));
+      if (options.length > 0) break;
+    }
+  }
   const idx = pickOption(options.map((o) => norm(o.textContent ?? "")), value);
   if (idx < 0) { fireKey(opener, "Escape"); return null; }
   fireMouse(options[idx], "mousedown");
   fireMouse(options[idx], "mouseup");
   options[idx].click();
-  await sleep(30);
-  const single = container.querySelector('[class*="-singleValue"], [class*="__single-value"], [class*="-single-value"]');
+  await sleep(60);
+  const single = container.querySelector('[class*="-singleValue"], [class*="__single-value"], [class*="-single-value"], [class*="single-value"]');
   return norm(single?.textContent ?? options[idx].textContent ?? "") || null;
 }
 

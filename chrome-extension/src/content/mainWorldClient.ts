@@ -15,7 +15,9 @@ import {
 
 export interface DriverResult { ok: boolean; committed?: string; reason?: string; }
 
-const DEFAULT_TIMEOUT_MS = 2500;
+// Must exceed the MAIN-world driver's worst case: async selects (Places city
+// lookup) poll options for up to ~3.5s after typing before reporting no-match.
+const DEFAULT_TIMEOUT_MS = 6000;
 let installed: Promise<boolean> | null = null;
 let nextId = 1;
 

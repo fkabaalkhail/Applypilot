@@ -44,4 +44,13 @@ export const MOCK_PROFILE: UserApplicationProfile = {
   ],
   skills: ["JavaScript", "TypeScript", "React", "Node.js", "Python", "PostgreSQL"],
   coverLetter: "Please generate or insert the saved cover letter here.",
+  // Sample EEO answers so mock mode exercises the demographic-dropdown fill
+  // path end-to-end (EEO fills on data-presence; absent values are never guessed).
+  eeo: {
+    gender: "Male",
+    race: "White",
+    hispanicLatino: "No",
+    veteranStatus: "I am not a veteran",
+    disabilityStatus: "No, I do not have a disability",
+  },
 };

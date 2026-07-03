@@ -243,15 +243,21 @@ export function scanPage(
     if ((el as HTMLInputElement).disabled) continue;
     if (el instanceof HTMLInputElement && el.readOnly) continue;
 
-    // Visibility: checkbox/radio/file/combobox are often visually hidden behind
-    // styled replacements (e.g. react-select's tiny input) but still operable —
-    // allow them when labeled.
+    // Visibility: checkbox/radio/file are often visually hidden behind styled
+    // replacements but still operable — allow them when labeled. Comboboxes get
+    // NO relaxation: an invisible combobox is not user-operable (react-select's
+    // real input is small but rendered; what hides fully is other widgets'
+    // internals, e.g. intl-tel-input's dial-code search inside a closed dialog).
     const relaxed =
       controlType === "checkbox" ||
       controlType === "radioGroup" ||
-      controlType === "file" ||
-      controlType === "combobox";
+      controlType === "file";
     if (!isVisible(el) && !(relaxed && (isHiddenButLabeled(el) || isUploadAffordance(el)))) continue;
+    // A control inside aria-hidden markup is by definition not part of the form
+    // the user sees (react-select's `<input required>` validation twin, screen-
+    // reader-excluded duplicates). Styled-replacement natives (checkbox/radio/
+    // file) legitimately carry aria-hidden, so only strict types are skipped.
+    if (!relaxed && el.closest('[aria-hidden="true"]')) continue;
 
     if (el instanceof HTMLInputElement && el.type === "radio") {
       const groupKey = `${el.form?.id ?? "noform"}::${el.name || ensureFieldId(el)}`;

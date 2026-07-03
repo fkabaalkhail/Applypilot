@@ -75,18 +75,27 @@ export async function fillAriaCombobox(
   open(trigger);
 
   // Wait for the listbox to mount. Typeahead inputs may need the value typed in
-  // to surface (and filter) the options.
+  // to surface (and filter, or async-load) the options.
   let listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
-  if (isTypeahead(trigger) && (!listbox || !findOption(listbox, value))) {
+  let option = listbox ? findOption(listbox, value) : null;
+  if (isTypeahead(trigger) && !option) {
     typeInto(trigger as HTMLInputElement, value);
     listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
+    option = listbox ? findOption(listbox, value) : null;
+    // A long answer can over-filter a substring-matching widget down to zero
+    // options ("I am not a protected veteran" never substring-matches "No, I am
+    // not a veteran"). Clear the filter text and re-match against the full list.
+    if (!option) {
+      typeInto(trigger as HTMLInputElement, "");
+      listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
+      option = listbox ? findOption(listbox, value) : null;
+    }
   }
   if (!listbox) {
     close(trigger);
     return { filled: false, reason: `Couldn't open the "${truncate(value)}" dropdown — select it manually` };
   }
 
-  const option = findOption(listbox, value);
   if (!option) {
     const options = optionLabels(listbox);
     close(trigger);
@@ -97,12 +106,20 @@ export async function fillAriaCombobox(
     };
   }
 
+  const chosenText = optionText(option);
   clickOption(option);
 
-  // Confirm: either the committed value now shows, or the popup closed after we
-  // clicked a matching option (the standard "selected and dismissed" outcome).
+  // Confirm: the committed value must actually SHOW on the widget. A merely
+  // collapsed popup is not proof — a click that lands nowhere also leaves the
+  // trigger collapsed, and reporting that as filled hides a real failure from
+  // the user (the empty-required-dropdown bug). The widget displays the OPTION's
+  // text, which for a fuzzy match ("I am not a protected veteran" → "No, I am
+  // not a veteran") differs from the target — accept either.
   const committed = await waitFor(
-    () => (comboboxShowsValue(trigger, value) || isCollapsed(trigger) ? true : null),
+    () =>
+      comboboxShowsValue(trigger, value) || (chosenText && comboboxShowsValue(trigger, chosenText))
+        ? true
+        : null,
     sleep,
     commitWaitMs,
     pollMs
@@ -179,7 +196,8 @@ function typeInto(input: HTMLInputElement, value: string): void {
 // ---------------------------------------------------------------------------
 
 /** Locate the open listbox: prefer the one the combobox points at (it may be
- *  portaled far away in the DOM), else any visible listbox in the document. */
+ *  portaled far away in the DOM), else a visible listbox that isn't part of a
+ *  DIFFERENT widget. */
 function getListbox(trigger: HTMLElement): HTMLElement | null {
   const doc = trigger.ownerDocument;
   const ids = `${trigger.getAttribute("aria-controls") ?? ""} ${trigger.getAttribute("aria-owns") ?? ""}`.trim();
@@ -189,11 +207,27 @@ function getListbox(trigger: HTMLElement): HTMLElement | null {
     const lb = (el.getAttribute("role") === "listbox" ? el : el.querySelector('[role="listbox"]')) as HTMLElement | null;
     if (lb && isVisible(lb) && hasOptions(lb)) return lb;
   }
-  // Fallback: a visible listbox with options anywhere (portals, shadow roots).
+  // Fallback: a visible listbox with options anywhere (portals, shadow roots) —
+  // but never one that lives inside ANOTHER widget's territory (a phone dial-code
+  // picker, a different form row's dropdown): if some enclosing wrapper hosts its
+  // own combobox trigger and that wrapper doesn't contain OUR trigger, it isn't
+  // our menu. Body-portaled menus have no such enclosing widget and stay valid.
   for (const lb of deepQueryAll(doc, '[role="listbox"]')) {
-    if (isVisible(lb) && hasOptions(lb)) return lb;
+    if (isVisible(lb) && hasOptions(lb) && !belongsToOtherWidget(lb, trigger)) return lb;
   }
   return null;
+}
+
+/** True when `lb` sits inside a widget wrapper that hosts a combobox trigger
+ *  other than `trigger` — i.e. it's some other control's menu. */
+function belongsToOtherWidget(lb: HTMLElement, trigger: HTMLElement): boolean {
+  let node: HTMLElement | null = lb.parentElement;
+  for (let hops = 0; node && node !== node.ownerDocument.body && hops < 8; hops++, node = node.parentElement) {
+    if (node.contains(trigger)) return false; // shared container — it's ours
+    const owner = node.querySelector('[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="dialog"]');
+    if (owner && owner !== trigger) return true;
+  }
+  return false;
 }
 
 function hasOptions(listbox: HTMLElement): boolean {
@@ -287,31 +321,31 @@ function activeDescendantText(trigger: HTMLElement): string {
   return opt ? optionText(opt) : "";
 }
 
-/** Texts of react-select-style single/multi-value display elements near the trigger. */
+const VALUE_DISPLAY_SELECTOR =
+  '[class*="single-value" i], [class*="singlevalue" i], [class*="multi-value" i], [class*="multivalue" i]';
+
+/** Texts of react-select-style single/multi-value display elements near the trigger.
+ *  The committed-value div is a COUSIN of the input (react-select: value-container
+ *  > single-value + input-container > input), so `closest('[class*=select]')` —
+ *  which stops at the innermost `select__input-container` — can never see it.
+ *  Climb a few ancestors and query at each level until something shows. */
 function valueContainerTexts(trigger: HTMLElement): string[] {
-  // NB: do not include [role="combobox"] here — the trigger itself is often the
-  // role=combobox element, and closest() would return it (an <input> has no
-  // value-display descendant). Climb to the select/combobox wrapper instead;
-  // querySelectorAll is recursive, so a value nested under a classless
-  // div[role=combobox] is still found via the trigger's parent.
-  const container =
-    trigger.closest('[class*="select" i], [class*="combobox" i]') ??
-    trigger.parentElement ??
-    trigger;
-  return Array.from(
-    container.querySelectorAll(
-      '[class*="single-value" i], [class*="singlevalue" i], [class*="multi-value" i], [class*="multivalue" i]'
-    )
-  ).map((e) => cleanText(e.textContent));
+  let node: HTMLElement | null = trigger.parentElement;
+  for (let hops = 0; node && node !== node.ownerDocument.body && hops < 6; hops++, node = node.parentElement) {
+    // Climbed past our widget into a container holding other dropdowns — any
+    // value found from here would be a NEIGHBOR field's selection, not ours.
+    if (node.querySelectorAll('[role="combobox"], [aria-haspopup="listbox"]').length > 1) break;
+    const texts = Array.from(node.querySelectorAll(VALUE_DISPLAY_SELECTOR))
+      .map((e) => cleanText(e.textContent))
+      .filter(Boolean);
+    if (texts.length > 0) return texts;
+  }
+  return [];
 }
 
 // ---------------------------------------------------------------------------
 // Verification
 // ---------------------------------------------------------------------------
-
-function isCollapsed(trigger: HTMLElement): boolean {
-  return trigger.getAttribute("aria-expanded") === "false";
-}
 
 /** Whether the combobox's committed/displayed value reflects the target. */
 function comboboxShowsValue(trigger: HTMLElement, value: string): boolean {
@@ -339,7 +373,11 @@ function isVisible(el: HTMLElement): boolean {
   if (el.hasAttribute("hidden")) return false;
   const style = el.ownerDocument.defaultView?.getComputedStyle(el);
   if (style && (style.display === "none" || style.visibility === "hidden")) return false;
-  return true;
+  // Computed style is per-element and does NOT reflect a display:none ANCESTOR —
+  // intl-tel-input keeps its 244-option dial-code listbox mounted inside a hidden
+  // dialog, and grabbing it cross-contaminates every dropdown on the page. A
+  // rendered listbox always has client rects; a hidden-subtree one has none.
+  return el.getClientRects().length > 0;
 }
 
 async function waitFor<T>(
