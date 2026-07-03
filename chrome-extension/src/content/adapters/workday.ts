@@ -24,6 +24,19 @@ function automationId(el: HTMLElement): string {
   return (el.closest("[data-automation-id]")?.getAttribute("data-automation-id") || "").toLowerCase();
 }
 
+/** All data-automation-ids from the element up through its section wrappers,
+ *  joined — Workday nests a file <input> under a `resume`/`cover` SECTION id
+ *  while the input's own id is generic ("file-upload-input-ref"). */
+function automationIdChain(el: HTMLElement): string {
+  const ids: string[] = [];
+  let node: HTMLElement | null = el;
+  for (let i = 0; node && i < 6; i++, node = node.parentElement) {
+    const id = node.getAttribute("data-automation-id");
+    if (id) ids.push(id.toLowerCase());
+  }
+  return ids.join(" ");
+}
+
 function parseDate(v: string): { month: string; day: string; year: string } | null {
   const iso = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (iso) return { year: iso[1], month: String(Number(iso[2])), day: String(Number(iso[3])) };
@@ -44,6 +57,16 @@ export const workdayAdapter: SiteAdapter = {
   match: (host) => WD_HOST.test(host),
 
   classify(ctx) {
+    // Resume / cover-letter uploads: Workday tags the SECTION, not the input, so
+    // scan the ancestor automation-id chain. Best-effort across Workday layouts
+    // (resumeSection / quickApplyResume / fileUpload… under a resume section).
+    const chain = automationIdChain(ctx.el);
+    if (/resume|curriculum.?vitae/i.test(chain)) {
+      return { category: "resumeUpload", confidence: 0.9, sensitive: false };
+    }
+    if (/cover.?letter/i.test(chain)) {
+      return { category: "coverLetter", confidence: 0.9, sensitive: false };
+    }
     const aid = automationId(ctx.el);
     if (!aid) return undefined;
     for (const [re, category] of AUTOMATION_RULES) {

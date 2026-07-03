@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { mountWorkdayMyInfo } from "./fixtures/workday";
 import { stubLayout } from "./helpers/layout";
 import { scanPage } from "../src/content/formScanner";
+import { workdayAdapter } from "../src/content/adapters/workday";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
 import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 import type { UserApplicationProfile } from "../src/shared/types";
@@ -100,6 +101,32 @@ describe("Workday — EEO only when explicitly enabled", () => {
     await runAutofill(withEeo, true);
     expect((document.getElementById("wd-gender") as HTMLSelectElement).value).toBe("Female");
     expect((document.getElementById("wd-veteran") as HTMLSelectElement).value).toBe("I am not a veteran");
+  });
+});
+
+describe("Workday — resume/cover upload via section automation-id", () => {
+  it("classifies a generic-labelled file input under a resume section as resumeUpload", () => {
+    document.body.innerHTML = `
+      <div data-automation-id="resumeSection">
+        <div data-automation-id="fileUploadDropZone">
+          <label for="wd-file">Attachments</label>
+          <input id="wd-file" type="file" data-automation-id="file-upload-input-ref" />
+        </div>
+      </div>`;
+    const { fields } = scanPage(MOCK_PROFILE, false, workdayAdapter);
+    const resume = fields.find((f) => f.category === "resumeUpload");
+    expect(resume, "expected a resumeUpload field").toBeDefined();
+    expect(resume!.controlType).toBe("file");
+  });
+
+  it("classifies a file input under a cover-letter section as coverLetter", () => {
+    document.body.innerHTML = `
+      <div data-automation-id="coverLetterSection">
+        <label for="wd-cl">Attachments</label>
+        <input id="wd-cl" type="file" data-automation-id="file-upload-input-ref" />
+      </div>`;
+    const { fields } = scanPage(MOCK_PROFILE, false, workdayAdapter);
+    expect(fields.find((f) => f.category === "coverLetter"), "expected a coverLetter field").toBeDefined();
   });
 });
 
