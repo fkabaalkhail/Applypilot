@@ -93,4 +93,32 @@ describe("bindSubmitTracking", () => {
     vi.advanceTimersByTime(300);
     expect(onSubmitted).toHaveBeenCalledTimes(1);
   });
+
+  it("records immediately on navigation (pagehide), before the delay elapses", () => {
+    const btn = mountButton();
+    const onSubmitted = vi.fn();
+    bindSubmitTracking(btn, onSubmitted, { delayMs: 5000 });
+
+    btn.click();
+    expect(onSubmitted).not.toHaveBeenCalled();
+    window.dispatchEvent(new Event("pagehide")); // full-page POST navigation
+    expect(onSubmitted).toHaveBeenCalledTimes(1); // recorded without waiting
+  });
+
+  it("skips a submit when the form is HTML5-invalid", () => {
+    const form = document.createElement("form");
+    const required = document.createElement("input");
+    required.required = true; // empty + required → form.checkValidity() is false
+    const btn = document.createElement("button");
+    btn.type = "submit";
+    form.append(required, btn);
+    document.body.appendChild(form);
+
+    const onSubmitted = vi.fn();
+    bindSubmitTracking(btn, onSubmitted, { delayMs: 500 });
+
+    btn.click();
+    vi.advanceTimersByTime(500);
+    expect(onSubmitted).not.toHaveBeenCalled();
+  });
 });
