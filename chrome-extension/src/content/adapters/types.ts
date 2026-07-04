@@ -35,6 +35,8 @@ export interface AdapterFillResult {
 
 export interface SiteAdapter {
   id: string;
+  /** Human label for the panel ("Workday", "iCIMS"); falls back to id. */
+  label?: string;
   /** Detection — pure, host/url only, no DOM. */
   match(host: string, url: string): boolean;
   /** Correct a field's category; undefined keeps the generic Classification. */

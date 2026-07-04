@@ -37,11 +37,35 @@ interface AtsSpec {
   confidence?: number;
 }
 
+/**
+ * Panel labels for the thin adapters, keyed by adapter id. Hand-tuned modules
+ * (greenhouse/workday/lever) set their own; anything unmapped shows its id.
+ */
+const LABEL_BY_ID: Record<string, string> = {
+  // existing thin adapters
+  bamboohr: "BambooHR", breezy: "Breezy", ashby: "Ashby", workable: "Workable",
+  smartrecruiters: "SmartRecruiters", jobvite: "Jobvite", rippling: "Rippling",
+  bullhorn: "Bullhorn", icims: "iCIMS", taleo: "Taleo", adp: "ADP",
+  successfactors: "SuccessFactors", oraclecloud: "Oracle Cloud", dayforce: "Dayforce",
+  ukg: "UKG Pro", jazzhr: "JazzHR", paylocity: "Paylocity", avature: "Avature",
+  phenom: "Phenom", teamtailor: "Teamtailor", recruitee: "Recruitee",
+  personio: "Personio", eightfold: "Eightfold", clearcompany: "ClearCompany",
+  paycom: "Paycom", brassring: "BrassRing",
+  // broader Jobright-parity vendors
+  kula: "Kula", dover: "Dover", zohorecruit: "Zoho Recruit", gem: "Gem",
+  hiringthing: "HiringThing", catsone: "CATS", ripplehire: "RippleHire",
+  careerspage: "CareersPage", careerplug: "CareerPlug", isolved: "isolved",
+  jobdiva: "JobDiva", gohire: "GoHire", trakstar: "Trakstar", freshteam: "Freshteam",
+  pinpointhq: "Pinpoint", trinethire: "TriNet Hire", jobscore: "JobScore",
+  comeet: "Comeet", polymer: "Polymer", recruiterflow: "Recruiterflow",
+};
+
 /** Build a thin adapter from a spec: host match + attribute classification. */
 export function buildAtsAdapter(spec: AtsSpec): SiteAdapter {
   const rules: readonly AttrRule[] = [...(spec.rules ?? []), ...SOCIAL_URL_RULES];
   const adapter: SiteAdapter = {
     id: spec.id,
+    label: LABEL_BY_ID[spec.id] ?? spec.id,
     match: (host, url) => spec.host.test(host) && (!spec.url || spec.url.test(url)),
     classify: (ctx) => classifyByAttr(ctx.el, rules, spec.confidence ?? 0.95),
   };
@@ -93,6 +117,30 @@ export const COMMON_ATS: readonly AtsSpec[] = [
   { id: "clearcompany", host: /(^|\.)clearcompany\.com$/i },
   { id: "paycom", host: /(^|\.)paycomonline\.net$/i },
   { id: "brassring", host: /(^|\.)(brassring|kenexa)\.com$/i },
+
+  // ---- Full Jobright-parity vendor set (host suffixes ported from the site
+  //      registry; company-specific *portals* are recognized precisely by
+  //      detectSite instead, since a bare host match would be too broad). -----
+  { id: "kula", host: /(^|\.)(careers\.kula\.ai)$/i },
+  { id: "dover", host: /(^|\.)(dover\.com)$/i },
+  { id: "zohorecruit", host: /(^|\.)(zohorecruit\.com|zohorecruit\.ca|zohorecruit\.eu)$/i },
+  { id: "gem", host: /(^|\.)(jobs\.gem\.com)$/i },
+  { id: "hiringthing", host: /(^|\.)(hiringthing\.com|oasisrecruit\.com|elevate-ats\.com|prismhr-hire\.com|gnahiring\.com)$/i },
+  { id: "catsone", host: /(^|\.)(catsone\.com)$/i },
+  { id: "ripplehire", host: /(^|\.)(ripplehire\.com)$/i },
+  { id: "careerspage", host: /(^|\.)(careers-page\.com)$/i },
+  { id: "careerplug", host: /(^|\.)(careerplug\.com|sfagentjobs\.com|sfagentcareers\.com|apscareerportal\.com)$/i },
+  { id: "isolved", host: /(^|\.)(isolvedhire\.com)$/i },
+  { id: "jobdiva", host: /(^|\.)(jobdiva\.com)$/i },
+  { id: "gohire", host: /(^|\.)(app\.gohire\.io|jobs\.gohire\.io)$/i },
+  { id: "trakstar", host: /(^|\.)(hire\.trakstar\.com)$/i },
+  { id: "freshteam", host: /(^|\.)(freshteam\.com)$/i },
+  { id: "pinpointhq", host: /(^|\.)(pinpointhq\.com)$/i },
+  { id: "trinethire", host: /(^|\.)(app\.trinethire\.com)$/i },
+  { id: "jobscore", host: /(^|\.)(jobscore\.com|careers\.jobscore\.com)$/i },
+  { id: "comeet", host: /(^|\.)(comeet\.co|comeet\.com)$/i },
+  { id: "polymer", host: /(^|\.)(jobs\.polymer\.co)$/i },
+  { id: "recruiterflow", host: /(^|\.)(recruiterflow\.com)$/i },
 ];
 
 for (const spec of COMMON_ATS) ADAPTERS.push(buildAtsAdapter(spec));
