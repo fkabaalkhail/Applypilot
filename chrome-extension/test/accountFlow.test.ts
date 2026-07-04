@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
-import { detectWall, runAccountWall, WALL_ADVANCE_RE } from "../src/content/accountFlow";
-import { getCredential, saveCredential } from "../src/content/credentialStore";
+import {
+  detectWall,
+  findSignupToggle,
+  LOGIN_ADVANCE_RE,
+  runAccountWall,
+  SIGNUP_ADVANCE_RE,
+} from "../src/content/accountFlow";
+import { getCredential, saveCredential, saveDefaultCredential } from "../src/content/credentialStore";
 import type { WriteResult } from "../src/content/writeEngine";
 import { stubLayout } from "./helpers/layout";
 
@@ -91,7 +97,7 @@ describe("runAccountWall", () => {
     expect(p1).toHaveLength(20);
     expect(p1).toBe(p2);
     expect((document.getElementById("em") as HTMLInputElement).value).toBe("me@x.com");
-    expect(out.extraAdvance).toBe(WALL_ADVANCE_RE);
+    expect(out.extraAdvance).toBe(SIGNUP_ADVANCE_RE);
     expect(out.pause).toBeUndefined();
     const saved = await getCredential("https://acme.jobs");
     expect(saved?.email).toBe("me@x.com");
@@ -133,7 +139,82 @@ describe("runAccountWall", () => {
     await saveCredential("https://acme.jobs", "me@x.com", "Stored#Pass9x");
     const withCreds = await runAccountWall(wall, "https://acme.jobs", "me@x.com", write);
     expect(withCreds.pause).toBeUndefined();
+    expect(withCreds.extraAdvance).toBe(LOGIN_ADVANCE_RE);
     expect((document.getElementById("p1") as HTMLInputElement).value).toBe("Stored#Pass9x");
     expect((document.getElementById("em") as HTMLInputElement).value).toBe("me@x.com");
+  });
+
+  it("signup: the user's account-creation credentials beat generation", async () => {
+    await saveDefaultCredential({ email: "reg@x.com", password: "Chosen#Pass1" });
+    document.body.innerHTML = `
+      <div id="s"><h2>Create Account</h2>
+        <input type="email" name="email" id="em" />
+        <input type="password" id="p1" /><input type="password" id="p2" />
+      </div>`;
+    await runAccountWall(detectWall(scope())!, "https://acme.jobs", "profile@x.com", write);
+    expect((document.getElementById("em") as HTMLInputElement).value).toBe("reg@x.com");
+    expect((document.getElementById("p1") as HTMLInputElement).value).toBe("Chosen#Pass1");
+    expect((document.getElementById("p2") as HTMLInputElement).value).toBe("Chosen#Pass1");
+    // The pair actually used is saved per-origin (Saved sign-ins).
+    const saved = await getCredential("https://acme.jobs");
+    expect(saved).toMatchObject({ email: "reg@x.com", password: "Chosen#Pass1" });
+  });
+
+  it("signup revisit: the per-origin pair still beats the defaults", async () => {
+    await saveDefaultCredential({ email: "reg@x.com", password: "Chosen#Pass1" });
+    await saveCredential("https://acme.jobs", "orig@x.com", "Original#Pass9");
+    document.body.innerHTML = `
+      <div id="s"><h2>Create Account</h2>
+        <input type="email" name="email" /><input type="password" id="p1" />
+      </div>`;
+    await runAccountWall(detectWall(scope())!, "https://acme.jobs", "profile@x.com", write);
+    expect((document.getElementById("p1") as HTMLInputElement).value).toBe("Original#Pass9");
+  });
+
+  it("login without a per-origin pair falls back to the defaults and saves the pair", async () => {
+    await saveDefaultCredential({ email: "reg@x.com", password: "Chosen#Pass1" });
+    document.body.innerHTML = `
+      <div id="s"><h2>Sign In</h2><input type="email" id="em" /><input type="password" id="p1" /></div>`;
+    const out = await runAccountWall(detectWall(scope())!, "https://acme.jobs", "me@x.com", write);
+    expect(out.pause).toBeUndefined();
+    expect((document.getElementById("em") as HTMLInputElement).value).toBe("reg@x.com");
+    expect((document.getElementById("p1") as HTMLInputElement).value).toBe("Chosen#Pass1");
+    expect(await getCredential("https://acme.jobs")).toMatchObject({
+      email: "reg@x.com",
+      password: "Chosen#Pass1",
+    });
+  });
+
+  it("login with only a default email (no password) still pauses", async () => {
+    await saveDefaultCredential({ email: "reg@x.com", password: "" });
+    document.body.innerHTML = `
+      <div id="s"><h2>Sign In</h2><input type="email" /><input type="password" /></div>`;
+    const out = await runAccountWall(detectWall(scope())!, "https://acme.jobs", "me@x.com", write);
+    expect(out.pause).toBe("account");
+  });
+});
+
+describe("findSignupToggle", () => {
+  it("finds Workday's createAccountLink by automation-id", () => {
+    document.body.innerHTML = `
+      <div id="s">
+        <button data-automation-id="createAccountLink">Don't have an account yet?</button>
+      </div>`;
+    expect(findSignupToggle(scope())?.getAttribute("data-automation-id")).toBe("createAccountLink");
+  });
+
+  it("finds a create-account link by anchored text, ignoring body copy", () => {
+    document.body.innerHTML = `
+      <div id="s">
+        <p>You must create an account to continue reading our terms.</p>
+        <a href="#" id="toggle">Create Account</a>
+      </div>`;
+    expect(findSignupToggle(scope())?.id).toBe("toggle");
+  });
+
+  it("returns null when the page offers no registration path", () => {
+    document.body.innerHTML = `
+      <div id="s"><a href="#">Forgot password?</a><button>Sign In</button></div>`;
+    expect(findSignupToggle(scope())).toBeNull();
   });
 });

@@ -79,8 +79,10 @@ import {
 import { runAdapterOperations, type SiteAdapter } from "./adapters";
 import { FlowController, FLOW_TTL_MS, type FlowDeps, type FlowSnapshot, type StepTally } from "./flowController";
 import { clickAdvance, findAdvanceButton } from "./advance";
+import { findApplyEntry } from "./applyEntry";
 import { hasUnsolvedCaptcha, isVerificationWall, resumeFieldNeedingFile, validationMessages } from "./flowChecks";
-import { detectWall, runAccountWall } from "./accountFlow";
+import { detectWall, findSignupToggle, runAccountWall } from "./accountFlow";
+import { getCredential } from "./credentialStore";
 import { bindSubmitTracking, type SubmitTrackerHandle } from "./submitTracker";
 import { buildAutofillTelemetry } from "./telemetry";
 import { setOverrideRules } from "./overrides";
@@ -782,7 +784,12 @@ function initialize(): void {
   function makeFlowDeps(): FlowDeps {
     return {
       fillStep: (ids) => fillOnce(ids, flowAbort?.signal),
-      snapshot: (): FlowSnapshot => ({ fields: lastFields, scopeEl: lastScope }),
+      snapshot: (): FlowSnapshot => ({
+        fields: lastFields,
+        scopeEl: lastScope,
+        url: location.href,
+        entry: findApplyEntry(document, lastAdapter),
+      }),
       rescan: () => {
         runScan();
         engine?.updateRegistry(registry);
@@ -792,10 +799,26 @@ function initialize(): void {
       onTerminal: (button) => bindSubmitOnce(button),
       accountStep: async (snap) => {
         const scope = snap.scopeEl ?? document.body;
-        const wall = detectWall(scope);
+        let wall = detectWall(scope);
         if (!wall) {
           accountBlocked = false;
           return {};
+        }
+        // A sign-in wall with no credential saved for this origin: we never
+        // created an account here, so when the page offers a create-account
+        // toggle (Workday's createAccountLink), flip to registration — the
+        // default intent, matching the reference flow. A user who already has
+        // an account still signs in manually during the resulting pause.
+        if (wall.kind === "login" && !(await getCredential(location.origin))) {
+          const toggle = findSignupToggle(scope);
+          if (toggle) {
+            console.log("[Tailrd flow] login wall with no saved credential — switching to create-account");
+            clickAdvance(toggle);
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            runScan();
+            engine?.updateRegistry(registry);
+            wall = detectWall(lastScope ?? document.body) ?? wall;
+          }
         }
         const out = await runAccountWall(
           wall,
@@ -807,8 +830,16 @@ function initialize(): void {
               value
             )
         );
+        // The wall owns its email field: drop the generic proposal so the
+        // fill pass that follows can't overwrite the registration email with
+        // the profile email — the saved pair must match what the site got.
+        if (wall.emailEl?.value) {
+          for (const f of lastFields) {
+            if (registry.get(f.id)?.el === wall.emailEl) f.proposedValue = null;
+          }
+        }
         accountBlocked = out.pause === "account";
-        return { extraAdvance: out.extraAdvance };
+        return { extraAdvance: out.extraAdvance, wall: wall.kind };
       },
       pauseReason: async (snap) => {
         if (accountBlocked && detectWall(snap.scopeEl ?? document.body)) return "account";
@@ -839,10 +870,16 @@ function initialize(): void {
     };
   }
 
-  /** Resume a persisted flow after a real navigation (form-owning frame only). */
+  /** Resume a persisted flow after a real navigation (form-owning frame only,
+   *  or the top frame of an entry page — job posting / apply-method chooser). */
   async function maybeResumeFlow(): Promise<void> {
     if (flowController) return;
-    if (recognizedCount(lastFields) === 0) return; // not the form-owning frame (yet)
+    if (
+      recognizedCount(lastFields) === 0 &&
+      !(isTopFrame && findApplyEntry(document, lastAdapter))
+    ) {
+      return; // not the form-owning frame (yet), and nothing to click into
+    }
     try {
       const resp = await sendToBackground<FlowStateResponse>({ type: "FLOW_STATE_GET" });
       const st = resp?.state;
@@ -1063,14 +1100,21 @@ function initialize(): void {
 
   function maybeShowOrUpdateOverlay(): void {
     if (!isTopFrame || adoptedRemote) return;
-    const state = { fields: lastFields, tabUrl: location.href };
-    if (!overlayShown && recognizedCount(lastFields) >= MIN_FIELDS_FOR_OVERLAY) {
+    const entry = findApplyEntry(document, lastAdapter);
+    const state = { fields: lastFields, tabUrl: location.href, applyEntry: entry?.label ?? null };
+    // Mount on recognized fields, or on a known ATS's apply-entry page (Workday
+    // job posting) — the flow can click into the application from there. Text-
+    // matched entries on arbitrary pages (job boards full of "Apply" buttons)
+    // never auto-mount; the toolbar icon still opens the panel on demand.
+    const shouldMount =
+      recognizedCount(lastFields) >= MIN_FIELDS_FOR_OVERLAY || Boolean(entry?.fromAdapter);
+    if (!overlayShown && shouldMount) {
       overlayShown = true;
-      console.log(`[Tailrd overlay] mounting panel (recognized=${recognizedCount(lastFields)} of ${lastFields.length} fields)`);
+      console.log(`[Tailrd overlay] mounting panel (recognized=${recognizedCount(lastFields)} of ${lastFields.length} fields, entry=${entry?.label ?? "none"})`);
       showOverlay(state, overlayCallbacks);
     } else if (overlayShown) {
       updateOverlay(state);
-    } else if (!overlayShown) {
+    } else {
       console.log(`[Tailrd overlay] NOT mounting — only ${recognizedCount(lastFields)} recognized fields in TOP frame`);
     }
   }
@@ -1127,6 +1171,14 @@ function initialize(): void {
     void loadOverrides();
     if (isTopFrame) {
       maybeShowOrUpdateOverlay();
+      // A mid-flow REAL navigation can land on a field-less entry page (the
+      // apply-method chooser). No fields → no panel → no profile resolve, so
+      // the usual profile-driven resume never fires; resume here instead.
+      // Entry clicks need no profile, and form pages keep the profile-first
+      // resume path (fills would run empty without it).
+      if (recognizedCount(lastFields) === 0 && findApplyEntry(document, lastAdapter)) {
+        void maybeResumeFlow();
+      }
     } else {
       announceIfFormHost();
     }
@@ -1192,7 +1244,11 @@ function initialize(): void {
             // that happen while the panel is open.
             runScan();
             ensureObserver();
-            const state = { fields: lastFields, tabUrl: location.href };
+            const state = {
+              fields: lastFields,
+              tabUrl: location.href,
+              applyEntry: findApplyEntry(document, lastAdapter)?.label ?? null,
+            };
             toggleOverlay(state, overlayCallbacks);
             // Nothing fillable yet? Watch briefly for a lazy-mounted form.
             if (recognizedCount(lastFields) === 0) watchForLateMount();

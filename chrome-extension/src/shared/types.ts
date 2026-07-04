@@ -343,6 +343,9 @@ export interface FlowProgress {
   filledFail: number;
   pauseReason?: FlowPauseReason;
   detail?: string;
+  /** Text of the button the flow will click next ("Next", "Create Account"…) —
+   *  labels the panel's manual advance gate to match the real page. */
+  nextLabel?: string;
 }
 
 /** Flow-owning frame → top-frame panel (via RELAY_TO_TOP). */

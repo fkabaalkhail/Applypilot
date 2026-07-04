@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   deleteCredential,
   getCredential,
+  getDefaultCredential,
   listCredentials,
   saveCredential,
+  saveDefaultCredential,
 } from "../src/content/credentialStore";
 
 function mockLocalStorage(): void {
@@ -47,5 +49,15 @@ describe("credentialStore", () => {
     await saveCredential("https://a.com", "a@x.com", "one");
     await deleteCredential("https://a.com");
     expect(await getCredential("https://a.com")).toBeNull();
+  });
+
+  it("defaults are empty until saved, then round-trip", async () => {
+    expect(await getDefaultCredential()).toEqual({ email: "", password: "" });
+    await saveDefaultCredential({ email: "reg@x.com", password: "MyChosen#Pass1" });
+    expect(await getDefaultCredential()).toEqual({ email: "reg@x.com", password: "MyChosen#Pass1" });
+    // Defaults live beside per-origin pairs without clobbering them.
+    await saveCredential("https://a.com", "a@x.com", "one");
+    expect(await getDefaultCredential()).toEqual({ email: "reg@x.com", password: "MyChosen#Pass1" });
+    expect((await getCredential("https://a.com"))?.password).toBe("one");
   });
 });

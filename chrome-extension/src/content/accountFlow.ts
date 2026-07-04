@@ -1,13 +1,14 @@
 /**
  * Account-wall sub-flow: Workday-style signup/login pages that gate the real
- * application. Signup walls get a generated password (saved device-locally —
- * see credentialStore's security posture); login walls replay saved
- * credentials or pause for the user. Verification/2FA walls always pause
- * (flowChecks.isVerificationWall) — that part is human-only.
+ * application. Signup walls fill the user's saved account-creation credentials
+ * (Autofill Information → Account creation), falling back to a generated
+ * password (saved device-locally — see credentialStore's security posture);
+ * login walls replay saved credentials or pause for the user. Verification/2FA
+ * walls always pause (flowChecks.isVerificationWall) — that part is human-only.
  */
 import { cleanText, deepQueryAll, isHiddenButLabeled, isVisible } from "./domUtils";
 import { generatePassword } from "./passwordGen";
-import { getCredential, saveCredential } from "./credentialStore";
+import { getCredential, getDefaultCredential, saveCredential } from "./credentialStore";
 import type { WriteResult } from "./writeEngine";
 
 export type WallKind = "signup" | "login";
@@ -26,6 +27,33 @@ const LOGIN_RE = /sign ?in|log ?in|already registered|se connecter|connexion/i;
 /** Wall verbs the advance search accepts ONLY while a wall is detected. */
 export const WALL_ADVANCE_RE =
   /\b(create( an| my)? account|sign ?up|register|sign ?in|log ?in|créer (un|mon) compte|s'?inscrire|se connecter)\b/i;
+
+/** Kind-specific advance verbs: on a signup wall the flow must click "Create
+ *  Account", never the "Sign In" link beside it — and vice versa. */
+export const SIGNUP_ADVANCE_RE =
+  /\b(create( an| my)? account|sign ?up|register|créer (un|mon) compte|s'?inscrire)\b/i;
+export const LOGIN_ADVANCE_RE = /\b(sign ?in|log ?in|se connecter|connexion)\b/i;
+
+/** Links/buttons that flip a sign-in page into its create-account form
+ *  (Workday: data-automation-id="createAccountLink"). */
+const SIGNUP_TOGGLE_RE = /^(create( an| my)? account|sign ?up|register|new user\??|créer (un|mon) compte|s'?inscrire)$/i;
+
+/**
+ * The control that switches a login wall to its registration form, if the page
+ * offers one. Workday's sign-in page carries a "Create Account" toggle — when
+ * we have no saved credential for this origin, creating an account is the only
+ * move that can succeed, so the flow clicks this first.
+ */
+export function findSignupToggle(scope: HTMLElement): HTMLElement | null {
+  const byId = deepQueryAll(scope, '[data-automation-id="createAccountLink"]').find((el) => isVisible(el));
+  if (byId) return byId;
+  for (const el of deepQueryAll(scope, 'a[href], button, [role="button"], [role="link"]')) {
+    if ((el as HTMLButtonElement).disabled || !isVisible(el)) continue;
+    const text = cleanText(el.getAttribute("aria-label")) || cleanText(el.textContent);
+    if (text && text.length <= 40 && SIGNUP_TOGGLE_RE.test(text)) return el;
+  }
+  return null;
+}
 
 /** Consent/agreement checkbox labels a signup gate requires ticked. */
 const AGREE_RE = /agree|consent|i have read|read and|\bterms\b|privacy|policy|acknowledge|gdpr/i;
@@ -108,11 +136,15 @@ export async function runAccountWall(
   write: (el: HTMLInputElement, value: string) => WriteResult
 ): Promise<AccountWallOutcome> {
   let filled = 0;
+  const defaults = await getDefaultCredential();
   if (wall.kind === "signup") {
-    // Revisits reuse the saved password so email+password always stay a pair.
+    // Password precedence: the pair this site's account was CREATED with wins
+    // (revisits must replay it), then the user's preferred account-creation
+    // password, then a generated one. Email: what the page already holds, then
+    // the user's registration email, then the profile email.
     const existing = await getCredential(origin);
-    const password = existing?.password ?? generatePassword();
-    const email = wall.emailEl?.value || profileEmail || existing?.email || "";
+    const password = existing?.password || defaults.password || generatePassword();
+    const email = wall.emailEl?.value || defaults.email || profileEmail || existing?.email || "";
     if (wall.emailEl && !wall.emailEl.value && email && write(wall.emailEl, email).written) filled++;
     for (const el of wall.passwordEls) {
       if (!el.value && write(el, password).written) filled++;
@@ -128,13 +160,20 @@ export async function runAccountWall(
       `[Tailrd flow] account wall: signup, ${wall.passwordEls.length} password field(s), ` +
         `${wall.agreeEls.length} agreement box(es), filled ${filled}`
     );
-    return { extraAdvance: WALL_ADVANCE_RE, filled };
+    return { extraAdvance: SIGNUP_ADVANCE_RE, filled };
   }
-  const cred = await getCredential(origin);
+  // Login: the per-origin pair (created by a signup wall here) wins; otherwise
+  // the user's default credentials from Autofill Information → Account creation.
+  const cred =
+    (await getCredential(origin)) ??
+    (defaults.email && defaults.password ? { origin, email: defaults.email, password: defaults.password, createdAt: 0 } : null);
   if (!cred) return { pause: "account", filled };
   if (wall.emailEl && !wall.emailEl.value && write(wall.emailEl, cred.email).written) filled++;
   for (const el of wall.passwordEls) {
     if (!el.value && write(el, cred.password).written) filled++;
   }
-  return { extraAdvance: WALL_ADVANCE_RE, filled };
+  // A login filled from the defaults becomes this origin's saved pair, so
+  // "Saved sign-ins" reflects what was actually used here.
+  if (cred.createdAt === 0 && filled > 0) await saveCredential(origin, cred.email, cred.password);
+  return { extraAdvance: LOGIN_ADVANCE_RE, filled };
 }

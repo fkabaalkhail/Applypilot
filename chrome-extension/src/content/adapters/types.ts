@@ -47,4 +47,8 @@ export interface SiteAdapter {
    *  selector. The generic text-based discovery runs when undefined. The
    *  returned button is still terminal-checked — a Submit is never clicked. */
   advanceButton?(scope: HTMLElement): HTMLElement | null;
+  /** The job posting's apply-entry button (leads INTO the application), when
+   *  the site has a reliable selector (Workday: adventureButton). Only
+   *  consulted while the page has no recognized form fields. */
+  entryButton?(doc: Document): HTMLElement | null;
 }

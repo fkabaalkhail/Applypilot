@@ -8,12 +8,25 @@
  */
 
 const KEY = "apCredentials";
+const DEFAULTS_KEY = "apCredentialDefaults";
 
 export interface SavedCredential {
   origin: string;
   email: string;
   password: string;
   createdAt: number;
+}
+
+/**
+ * The user's preferred account-creation credentials (Autofill Information →
+ * Account creation). Signup walls use this pair instead of a generated
+ * password; login walls fall back to it when no per-origin pair exists.
+ * Either field may be "" (unset) — the account flow treats blank password as
+ * "generate one per site".
+ */
+export interface DefaultCredential {
+  email: string;
+  password: string;
 }
 
 type StoredCredential = Omit<SavedCredential, "origin">;
@@ -47,4 +60,14 @@ export async function deleteCredential(origin: string): Promise<void> {
   const all = await readAll();
   delete all[origin];
   await chrome.storage.local.set({ [KEY]: all });
+}
+
+export async function getDefaultCredential(): Promise<DefaultCredential> {
+  const got = await chrome.storage.local.get(DEFAULTS_KEY);
+  const d = got?.[DEFAULTS_KEY] as Partial<DefaultCredential> | undefined;
+  return { email: d?.email ?? "", password: d?.password ?? "" };
+}
+
+export async function saveDefaultCredential(cred: DefaultCredential): Promise<void> {
+  await chrome.storage.local.set({ [DEFAULTS_KEY]: { email: cred.email, password: cred.password } });
 }

@@ -37,6 +37,10 @@ export interface StepTally {
 export interface FlowSnapshot {
   fields: DetectedField[];
   scopeEl: HTMLElement | null;
+  /** Page URL at snapshot time — the change signal on field-less entry pages. */
+  url: string;
+  /** Apply-entry button (job posting / apply-method chooser), when one exists. */
+  entry: { el: HTMLElement; label: string } | null;
 }
 
 export interface FlowDeps {
@@ -50,8 +54,9 @@ export interface FlowDeps {
   /** The flow reached the terminal (submit) button — hand it over so the caller
    *  can bind submit tracking. NEVER clicked by the controller. */
   onTerminal?(el: HTMLElement): void;
-  /** Account-wall handling (Phase 4); {} when no wall. */
-  accountStep(snap: FlowSnapshot): Promise<{ extraAdvance?: RegExp }>;
+  /** Account-wall handling (Phase 4); {} when no wall. `wall` reports the kind
+   *  so progress beats can say "creating account…" / "signing in…". */
+  accountStep(snap: FlowSnapshot): Promise<{ extraAdvance?: RegExp; wall?: "signup" | "login" }>;
   /** First blocking condition, or null when clear (captcha/validation/…). */
   pauseReason(snap: FlowSnapshot): Promise<FlowPauseReason | null>;
   /** True when a required résumé field needs a file. */
@@ -75,6 +80,17 @@ export function fieldSignature(fields: DetectedField[]): string {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return `${fields.length}:${(h >>> 0).toString(16)}`;
+}
+
+/**
+ * The "did the page change?" signal for one step. Field-less pages (job
+ * posting, apply-method chooser) all hash to the same fieldSignature, so there
+ * the URL + entry-button label stand in — an SPA that swaps "Apply" for
+ * "Apply Manually" without navigating still reads as a new page.
+ */
+export function stepSignature(snap: FlowSnapshot): string {
+  if (snap.fields.length > 0) return fieldSignature(snap.fields);
+  return `page:${snap.url}|${snap.entry?.label ?? ""}`;
 }
 
 export class FlowController {
@@ -116,7 +132,7 @@ export class FlowController {
   async run(initial: FlowState, firstTally: StepTally | null): Promise<void> {
     this.step = initial.step;
     this.startedAt = initial.startedAt || this.deps.now();
-    let state: FlowState = { ...initial, startedAt: this.startedAt };
+    const state: FlowState = { ...initial, startedAt: this.startedAt };
     await this.deps.setState(state);
     let pending = firstTally;
 
@@ -125,12 +141,14 @@ export class FlowController {
       if (this.expired()) return this.finish("stopped", "Flow timed out");
 
       const account = await this.deps.accountStep(this.deps.snapshot());
+      const wallDetail =
+        account.wall === "signup" ? "creating account…" : account.wall === "login" ? "signing in…" : undefined;
 
       const tally = pending ?? (await this.deps.fillStep(null));
       pending = null;
       // Cumulative across steps — the final "done" beat reports the whole flow.
       this.lastTally = { ok: this.lastTally.ok + tally.ok, fail: this.lastTally.fail + tally.fail };
-      this.emit("filling");
+      this.emit("filling", { detail: wallDetail });
 
       if (this.deps.needsResume(this.deps.snapshot()) && !(await this.deps.attachResume())) {
         // attachResume failed (no résumé on file) — wait for a manual attach.
@@ -138,14 +156,28 @@ export class FlowController {
       if (!(await this.waitWhileBlocked())) return this.finishStopped();
 
       const snap = this.deps.snapshot();
-      if (!snap.scopeEl) {
-        console.log("[Tailrd flow] no form scope — finishing");
+      const recognized = snap.fields.filter((f) => f.category !== "unknown").length;
+      const adv = snap.scopeEl ? this.deps.findAdvance(snap.scopeEl, account.extraAdvance) : null;
+      const advText = adv ? (adv.el.getAttribute("aria-label") || adv.el.textContent || "").trim().slice(0, 40) : "";
+      console.log(`[Tailrd flow] step ${this.step}: ${snap.fields.length} fields, advance=${adv ? `${adv.kind} "${advText}"` : "NONE"}`);
+      if (!adv) {
+        // No advance inside a form scope. On a page with no recognized fields,
+        // an apply-entry button (job posting "Apply", chooser "Apply Manually")
+        // is the way forward — click it and treat the transition as a step.
+        if (recognized === 0 && snap.entry) {
+          console.log(`[Tailrd flow] clicking apply entry "${snap.entry.label}"…`);
+          if (!(await this.advanceStep(snap, snap.entry.el, `opening "${snap.entry.label}"…`))) {
+            if (this.stopRequested) return this.finishStopped();
+            return this.finish("stopped", "Couldn't open the application from this page");
+          }
+          continue;
+        }
+        if (!snap.scopeEl && recognized === 0) {
+          return this.finish("stopped", "No application form found on this page");
+        }
+        console.log("[Tailrd flow] no advance button — finishing done");
         return this.finish("done");
       }
-      const adv = this.deps.findAdvance(snap.scopeEl, account.extraAdvance);
-      const advText = adv ? (adv.el.getAttribute("aria-label") || adv.el.textContent || "").trim().slice(0, 40) : "";
-      console.log(`[Tailrd flow] step ${this.step}: ${snap.fields.length} fields, advance=${adv ? `${adv.kind} "${advText}"` : "NONE (finishing done)"}`);
-      if (!adv) return this.finish("done");
       if (adv.kind === "terminal") {
         // Reached the real submit button — hand it to the caller for submit
         // tracking, then finish. The controller itself never clicks it.
@@ -160,22 +192,14 @@ export class FlowController {
       // re-check that below before clicking advance.
       if (this.deps.hasUnfilledRequired(snap)) {
         console.log("[Tailrd flow] paused — required field(s) still empty; press Next page to advance anyway");
-        this.emit("paused", { pauseReason: "unfilled-required" });
+        this.emit("paused", { pauseReason: "unfilled-required", nextLabel: advText || undefined });
         if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
       }
       if (!(await this.waitWhileBlocked())) return this.finishStopped();
 
-      const before = fieldSignature(snap.fields);
-      state = { active: true, step: this.step + 1, startedAt: this.startedAt, lastSignature: before };
-      this.step = state.step;
-      await this.deps.setState(state); // BEFORE the click — survives navigation
-      this.emit("advancing");
       console.log(`[Tailrd flow] clicking advance "${advText}"…`);
-      this.deps.clickAdvance(adv.el);
-
-      const changed = await this.waitForChange(before);
-      console.log(`[Tailrd flow] page changed after advance = ${changed}`);
-      if (!changed) {
+      if (!(await this.advanceStep(snap, adv.el, wallDetail))) {
+        if (this.stopRequested) return this.finishStopped();
         // Click rejected (validation) or this page genuinely can't advance.
         // NB: this pre-check consumes one pauseReason() poll, so emit the
         // pause beat here — waitWhileBlocked may find the reason already clear.
@@ -194,6 +218,23 @@ export class FlowController {
   }
 
   // -------------------------------------------------------------------------
+
+  /**
+   * One page transition: persist the NEXT step's state (before the click, so a
+   * real navigation resumes there), emit the advancing beat, click, and wait
+   * for the page to change. False → the page never changed (or we stopped).
+   */
+  private async advanceStep(snap: FlowSnapshot, el: HTMLElement, detail?: string): Promise<boolean> {
+    const before = stepSignature(snap);
+    const state: FlowState = { active: true, step: this.step + 1, startedAt: this.startedAt, lastSignature: before };
+    this.step = state.step;
+    await this.deps.setState(state); // BEFORE the click — survives navigation
+    this.emit("advancing", { detail });
+    this.deps.clickAdvance(el);
+    const changed = await this.waitForChange(before);
+    console.log(`[Tailrd flow] page changed after advance = ${changed}`);
+    return changed;
+  }
 
   private expired(): boolean {
     return this.deps.now() - this.startedAt > FLOW_TTL_MS;
@@ -245,13 +286,14 @@ export class FlowController {
     }
   }
 
-  /** After an advance click: rescan until the field set changes. */
+  /** After an advance click: rescan until the page (fields, or URL/entry on
+   *  field-less pages) changes. */
   private async waitForChange(before: string): Promise<boolean> {
     for (let waited = 0; waited < ADVANCE_WAIT_MS; waited += ADVANCE_POLL_MS) {
       if (this.stopRequested) return false;
       await this.deps.sleep(ADVANCE_POLL_MS);
       this.deps.rescan();
-      if (fieldSignature(this.deps.snapshot().fields) !== before) return true;
+      if (stepSignature(this.deps.snapshot()) !== before) return true;
     }
     return false;
   }

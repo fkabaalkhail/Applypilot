@@ -107,12 +107,27 @@ export const workdayAdapter: SiteAdapter = {
 
   advanceButton(scope) {
     // Workday's step footer often sits OUTSIDE the fields' container — fall
-    // back to the whole document when the scope doesn't hold it.
-    const sel = '[data-automation-id="bottom-navigation-next-button"]';
+    // back to the whole document when the scope doesn't hold it. Two footer
+    // generations: bottom-navigation (current) and pageFooter (older tenants).
+    const sel =
+      '[data-automation-id="bottom-navigation-next-button"], button[data-automation-id="pageFooterNextButton"]';
     return (
       (scope.querySelector(sel) as HTMLElement | null) ??
       (scope.ownerDocument.querySelector(sel) as HTMLElement | null)
     );
+  },
+
+  entryButton(doc) {
+    // The job posting's Apply button ("adventureButton") or the resume-a-draft
+    // "Continue Application" ("continueButton"). The chooser that follows
+    // (Autofill with Resume / Apply Manually / Use My Last Application) has no
+    // stable automation-ids — the generic text tiers pick "Apply Manually".
+    for (const el of doc.querySelectorAll<HTMLElement>(
+      '[data-automation-id="adventureButton"], [data-automation-id="continueButton"]'
+    )) {
+      if (el.offsetParent !== null || el.getClientRects().length > 0) return el;
+    }
+    return null;
   },
 };
 

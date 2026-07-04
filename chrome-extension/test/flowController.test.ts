@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   FlowController,
   fieldSignature,
+  stepSignature,
   MAX_STEPS,
   type FlowDeps,
   type FlowSnapshot,
@@ -20,8 +21,14 @@ function field(id: string, label: string): DetectedField {
 const tally = (ok = 3): StepTally => ({ ok, fail: 0, total: ok });
 const freshState = (): FlowState => ({ active: true, step: 0, startedAt: 0, lastSignature: "" });
 
-/** Scriptable deps: `pages` is a queue of field sets; advancing shifts it. */
-function makeDeps(pages: DetectedField[][], advances: (AdvanceButton | null)[]): {
+/** Scriptable deps: `pages` is a queue of field sets; advancing shifts it.
+ *  `entries` scripts each page's apply-entry button label (field-less pages).
+ *  Field-less pages have no form scope, mirroring the real scanner. */
+function makeDeps(
+  pages: DetectedField[][],
+  advances: (AdvanceButton | null)[],
+  entries: (string | null)[] = []
+): {
   deps: FlowDeps;
   log: string[];
   progress: FlowProgress[];
@@ -30,10 +37,16 @@ function makeDeps(pages: DetectedField[][], advances: (AdvanceButton | null)[]):
   const progress: FlowProgress[] = [];
   let clock = 0;
   let pageIx = 0;
-  const snapshot = (): FlowSnapshot => ({
-    fields: pages[Math.min(pageIx, pages.length - 1)],
-    scopeEl: document.body,
-  });
+  const snapshot = (): FlowSnapshot => {
+    const fields = pages[Math.min(pageIx, pages.length - 1)];
+    const label = entries.length ? entries[Math.min(pageIx, entries.length - 1)] : null;
+    return {
+      fields,
+      scopeEl: fields.length > 0 ? document.body : null,
+      url: `https://ats.example/page-${pageIx}`,
+      entry: label ? { el: document.createElement("button"), label } : null,
+    };
+  };
   const deps: FlowDeps = {
     fillStep: async (ids) => { log.push(`fill:${pageIx}:${ids ? "sel" : "auto"}`); return tally(); },
     snapshot,
@@ -92,6 +105,33 @@ describe("fieldSignature", () => {
     const b = [field("2", "Last"), field("1", "First")];
     expect(fieldSignature(a)).toBe(fieldSignature(b));
     expect(fieldSignature(a)).not.toBe(fieldSignature([field("1", "First")]));
+  });
+});
+
+describe("stepSignature", () => {
+  const snap = (fields: DetectedField[], url: string, entryLabel: string | null): FlowSnapshot => ({
+    fields,
+    scopeEl: null,
+    url,
+    entry: entryLabel ? { el: document.createElement("button"), label: entryLabel } : null,
+  });
+
+  it("hashes fields when present, ignoring the URL", () => {
+    const fields = [field("1", "First")];
+    expect(stepSignature(snap(fields, "https://a/1", null))).toBe(stepSignature(snap(fields, "https://a/2", null)));
+  });
+
+  it("falls back to URL + entry label on field-less pages", () => {
+    // SPA chooser: same URL, but "Apply" became "Apply Manually" — a new page.
+    expect(stepSignature(snap([], "https://a/job", "Apply"))).not.toBe(
+      stepSignature(snap([], "https://a/job", "Apply Manually"))
+    );
+    expect(stepSignature(snap([], "https://a/job", "Apply"))).not.toBe(
+      stepSignature(snap([], "https://a/job/apply", "Apply"))
+    );
+    expect(stepSignature(snap([], "https://a/job", "Apply"))).toBe(
+      stepSignature(snap([], "https://a/job", "Apply"))
+    );
   });
 });
 
@@ -162,7 +202,12 @@ describe("FlowController", () => {
     // Endless pages: every page advances and yields a fresh field set.
     let n = 0;
     const { deps, progress } = makeDeps([[field("0", "L0")]], [advanceBtn()]);
-    deps.snapshot = (): FlowSnapshot => ({ fields: [field(String(n), `L${n}`)], scopeEl: document.body });
+    deps.snapshot = (): FlowSnapshot => ({
+      fields: [field(String(n), `L${n}`)],
+      scopeEl: document.body,
+      url: "https://ats.example/loop",
+      entry: null,
+    });
     deps.clickAdvance = (): void => { n++; };
     await drive(new FlowController(deps), progress);
     expect(progress[progress.length - 1].phase).toBe("stopped");
@@ -225,5 +270,54 @@ describe("FlowController", () => {
     expect(progress[progress.length - 1].phase).toBe("done");
     expect(progress.some((p) => p.phase === "ready")).toBe(false);
     expect(log.some((l) => l.startsWith("click:"))).toBe(false);
+  });
+
+  it("clicks apply-entry buttons through field-less pages into the form", async () => {
+    // Job posting ("Apply") → chooser ("Apply Manually") → the real form.
+    const pages: DetectedField[][] = [[], [], [field("1", "First name")]];
+    const { deps, log, progress } = makeDeps(pages, [null, null, terminalBtn()], ["Apply", "Apply Manually", null]);
+    await new FlowController(deps).run(freshState(), null);
+    expect(log).toContain("click:0"); // Apply
+    expect(log).toContain("click:1"); // Apply Manually
+    expect(progress[progress.length - 1].phase).toBe("done");
+    const opening = progress.filter((p) => p.phase === "advancing" && /opening/.test(p.detail ?? ""));
+    expect(opening.map((p) => p.detail)).toEqual(['opening "Apply"…', 'opening "Apply Manually"…']);
+  });
+
+  it("stops with a clear message when a field-less page has no entry", async () => {
+    const { deps, progress } = makeDeps([[]], [null]);
+    await new FlowController(deps).run(freshState(), null);
+    const last = progress[progress.length - 1];
+    expect(last.phase).toBe("stopped");
+    expect(last.detail).toMatch(/no application form/i);
+  });
+
+  it("stops when an entry click never changes the page", async () => {
+    const { deps, progress } = makeDeps([[]], [null], ["Apply"]);
+    deps.clickAdvance = (): void => {}; // click does nothing
+    await new FlowController(deps).run(freshState(), null);
+    const last = progress[progress.length - 1];
+    expect(last.phase).toBe("stopped");
+    expect(last.detail).toMatch(/couldn't open/i);
+  });
+
+  it("narrates account walls and labels the manual gate after the real button", async () => {
+    const pages = [[field("1", "A")], [field("2", "B")]];
+    const create = document.createElement("button");
+    create.textContent = "Create Account";
+    const { deps, log, progress } = makeDeps(pages, [{ el: create, kind: "advance" }, terminalBtn()]);
+    deps.accountStep = async () => ({ wall: "signup" as const });
+    deps.hasUnfilledRequired = (snap): boolean => snap.fields[0]?.id === "1"; // page 1 only
+    const controller = new FlowController(deps);
+    const run = controller.run(freshState(), null);
+    while (!progress.some((p) => p.pauseReason === "unfilled-required")) await Promise.resolve();
+    const gate = progress.find((p) => p.pauseReason === "unfilled-required");
+    expect(gate?.nextLabel).toBe("Create Account");
+    controller.notifyAdvanceRequested();
+    await run;
+    expect(progress.some((p) => p.phase === "filling" && p.detail === "creating account…")).toBe(true);
+    expect(progress.some((p) => p.phase === "advancing" && p.detail === "creating account…")).toBe(true);
+    expect(log).toContain("click:0");
+    expect(progress[progress.length - 1].phase).toBe("done");
   });
 });

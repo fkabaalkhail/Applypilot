@@ -15,7 +15,13 @@ import { reattachIfDetached } from "./domUtils";
 import { base64ToFile } from "./fileUpload";
 import { buildTailorCardHtml } from "./tailorCard";
 import { buildCoverLetterCardHtml } from "./coverLetterCard";
-import { deleteCredential, listCredentials } from "./credentialStore";
+import {
+  deleteCredential,
+  getDefaultCredential,
+  listCredentials,
+  saveDefaultCredential,
+  type DefaultCredential,
+} from "./credentialStore";
 import { defaultSelectedIds } from "../shared/selection";
 import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
@@ -90,12 +96,16 @@ export interface OverlayCallbacks {
 export interface OverlayViewState {
   fields: DetectedField[];
   tabUrl: string;
+  /** Label of the page's apply-entry button ("Apply", "Apply Manually"…) when
+   *  one exists — lets Autofill start a flow from a field-less job posting. */
+  applyEntry?: string | null;
 }
 
 export function showOverlay(state: OverlayViewState, cb: OverlayCallbacks): void {
   callbacks = cb;
   overlayState.fields = state.fields;
   overlayState.tabUrl = state.tabUrl;
+  overlayState.applyEntry = state.applyEntry ?? null;
   ensureMounted();
   if (!panelExpanded) setExpanded(true);
   if (!initialized) void initPanel();
@@ -106,6 +116,7 @@ export function updateOverlay(state: OverlayViewState): void {
   if (host) reattachIfDetached(host, document.documentElement || document.body);
   overlayState.fields = state.fields;
   overlayState.tabUrl = state.tabUrl;
+  overlayState.applyEntry = state.applyEntry ?? null;
   // Re-derive the default selection so the Autofill button reflects the latest
   // scan. Selection is purely computed from the fields (there is no per-field
   // toggle UI), so recomputing it on every update is safe — and necessary, since
@@ -118,7 +129,7 @@ const PAUSE_TEXT: Record<FlowPauseReason, string> = {
   captcha: "solve the captcha to continue",
   "resume-upload": "attach your résumé to continue",
   validation: "fix the highlighted errors to continue",
-  account: "sign in to continue",
+  account: "add account credentials in Autofill Information → Account creation, or sign in manually",
   verification: "enter the emailed code to continue",
   "unfilled-required": "fill the required fields, or Next page to continue",
 };
@@ -128,9 +139,11 @@ export function formatFlowProgress(p: FlowProgress): string {
   const step = `Step ${p.step + 1}`;
   switch (p.phase) {
     case "filling":
-      return `${step} · filling…`;
+      // Account walls narrate what they're doing ("creating account…").
+      return `${step} · ${p.detail ?? "filling…"}`;
     case "advancing":
-      return `${step} · next page…`;
+      // Entry/wall clicks narrate their target ('opening "Apply"…').
+      return `${step} · ${p.detail ?? "next page…"}`;
     case "paused":
       return `${step} · paused — ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`;
     case "ready":
@@ -145,6 +158,13 @@ export function formatFlowProgress(p: FlowProgress): string {
   }
 }
 
+/** The manual advance gate's label — mirrors the button the flow will click
+ *  ("Create Account →", "Sign In →"), defaulting to Next page. Pure. */
+export function formatNextLabel(p: FlowProgress): string {
+  const label = (p.nextLabel ?? "").trim();
+  return `${label || "Next page"} →`;
+}
+
 /** Render a flow beat: status line + Stop button, plus the bottom Next page gate. */
 export function updateFlowProgress(p: FlowProgress): void {
   if (!refs) return;
@@ -154,7 +174,9 @@ export function updateFlowProgress(p: FlowProgress): void {
   refs.flowText.textContent = formatFlowProgress(p);
   // The Next page gate is pinned at the panel bottom. Clean pages now advance
   // automatically, so the button is a manual override — shown while parked at
-  // "ready" (legacy) or paused on unfilled required fields.
+  // "ready" (legacy) or paused on unfilled required fields. Its label mirrors
+  // the real button the flow will click (Next / Create Account / Sign In).
+  refs.flowNextBtn.textContent = formatNextLabel(p);
   refs.flowNext.style.display =
     p.phase === "ready" || (p.phase === "paused" && p.pauseReason === "unfilled-required") ? "flex" : "none";
   if (p.phase === "done") showBanner(formatFlowProgress(p), "ok");
@@ -175,6 +197,7 @@ export function toggleOverlay(state: OverlayViewState, cb: OverlayCallbacks): vo
   callbacks = cb;
   overlayState.fields = state.fields;
   overlayState.tabUrl = state.tabUrl;
+  overlayState.applyEntry = state.applyEntry ?? null;
   ensureMounted();
   if (panelExpanded) {
     setExpanded(false);
@@ -633,6 +656,15 @@ const STYLES = `
 .ap-answer-a { width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid var(--stripe-hairline-soft); border-radius: 8px; resize: vertical; font-family: inherit; color: var(--stripe-ink); background: #fff; box-sizing: border-box; }
 .ap-answer-del { margin-top: 6px; background: none; border: none; color: #b4232a; font-size: 12px; font-weight: 600; cursor: pointer; padding: 2px 0; }
 .ap-answer-del:hover { text-decoration: underline; }
+/* Account-creation credentials (password + reveal toggle) */
+.ap-signup-pass-row { display: flex; gap: 8px; align-items: center; }
+.ap-signup-pass-row input { flex: 1; }
+.ap-mini-btn {
+  flex: 0 0 auto; border: 1px solid var(--stripe-hairline); background: #fff;
+  border-radius: 6px; padding: 9px 12px; font-size: 12px; cursor: pointer;
+  color: var(--stripe-ink-secondary);
+}
+.ap-mini-btn:hover { background: var(--stripe-canvas-soft); }
 
 /* ---- Login view ---- */
 .ap-login-view {
@@ -772,6 +804,8 @@ interface PanelState {
   resumes: ResumeSummary[];
   fields: DetectedField[];
   tabUrl: string;
+  /** Apply-entry button label when the page has one (job posting / chooser). */
+  applyEntry: string | null;
   selected: Set<string>;
   outcomes: Map<string, FillOutcome>;
   busy: boolean;
@@ -783,6 +817,9 @@ interface PanelState {
   rememberedLoaded: boolean;
   /** Working copy of the editable profile fields while the info modal is open. */
   profileDraft: EditableProfileDraft | null;
+  /** Account-creation credentials draft (device-local; Account creation tab). */
+  signupDraft: DefaultCredential | null;
+  signupLoaded: boolean;
   tailorResult: TailorResult | null;
   tailorKeywords: Set<string>;
   tailorBusy: boolean;
@@ -805,6 +842,7 @@ const overlayState: PanelState = {
   resumes: [],
   fields: [],
   tabUrl: "",
+  applyEntry: null,
   selected: new Set(),
   outcomes: new Map(),
   busy: false,
@@ -814,6 +852,8 @@ const overlayState: PanelState = {
   rememberedAnswers: [],
   rememberedLoaded: false,
   profileDraft: null,
+  signupDraft: null,
+  signupLoaded: false,
   tailorResult: null,
   tailorKeywords: new Set(),
   tailorBusy: false,
@@ -833,6 +873,7 @@ interface Refs {
   flowText: HTMLSpanElement;
   flowStop: HTMLButtonElement;
   flowNext: HTMLDivElement;
+  flowNextBtn: HTMLButtonElement;
   signins: HTMLDetailsElement;
   signinsBody: HTMLDivElement;
   checklist: HTMLDivElement;
@@ -1075,6 +1116,7 @@ function buildHTML(): string {
             <button class="ap-modal-sidebar-item" data-cat="skill">Skill</button>
             <button class="ap-modal-sidebar-item" data-cat="preference">Preference</button>
             <button class="ap-modal-sidebar-item" data-cat="eeo">Equal Employment</button>
+            <button class="ap-modal-sidebar-item" data-cat="signup">Account creation</button>
             <button class="ap-modal-sidebar-item" data-cat="answers">Remembered answers</button>
           </div>
           <div class="ap-modal-form" id="ap-info-form"></div>
@@ -1122,6 +1164,7 @@ function collectRefs(root: HTMLDivElement): Refs {
     flowText: q("#ap-flow-text"),
     flowStop: q("#ap-flow-stop"),
     flowNext: q(".ap-flow-next-wrap"),
+    flowNextBtn: q("#ap-flow-next"),
     signins: q("#ap-signins"),
     signinsBody: q("#ap-signins-body"),
     checklist: q("#ap-checklist"),
@@ -1384,6 +1427,9 @@ async function showInfoView(): Promise<void> {
   overlayState.infoCategory = "personal";
   overlayState.rememberedAnswers = [];
   overlayState.rememberedLoaded = false;
+  overlayState.signupDraft = null;
+  overlayState.signupLoaded = false;
+  signupOriginal = null;
   setInfoError("");
   refs.infoSidebar.querySelectorAll<HTMLButtonElement>(".ap-modal-sidebar-item").forEach((b) =>
     b.classList.toggle("active", b.dataset.cat === "personal")
@@ -1435,10 +1481,15 @@ function refreshMainView(): void {
     "hostInDoc=", Boolean(document.getElementById(HOST_ID))
   );
 
-  refs.btnAutofill.disabled = overlayState.busy || count === 0;
+  // A job posting / apply-method chooser has no (recognized) fields but does
+  // have an apply-entry button \u2014 Autofill starts the flow by clicking it.
+  const entryStart = canStartFromEntry();
+  refs.btnAutofill.disabled = overlayState.busy || (count === 0 && !entryStart);
   refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Autofill";
 
-  if (fields.length > 0) {
+  if (entryStart) {
+    refs.fieldCount.textContent = `Autofill will click \u201c${overlayState.applyEntry}\u201d and continue with the application`;
+  } else if (fields.length > 0) {
     refs.fieldCount.textContent = `${count} of ${fields.length} fields ready to fill`;
   } else {
     refs.fieldCount.textContent = overlayState.scanned
@@ -1704,6 +1755,13 @@ function applyDefaultSelection(): void {
   overlayState.selected = defaultSelectedIds(overlayState.fields);
 }
 
+/** True when Autofill should start by clicking the page's apply-entry button —
+ *  mirrors the flow controller's gate (no recognized fields + an entry). */
+function canStartFromEntry(): boolean {
+  const recognized = overlayState.fields.filter((f) => f.category !== "unknown").length;
+  return recognized === 0 && Boolean(overlayState.applyEntry);
+}
+
 // ---------------------------------------------------------------------------
 // Autofill
 // ---------------------------------------------------------------------------
@@ -1722,7 +1780,8 @@ function currentUploadResumeId(): number | null {
 async function doAutofill(): Promise<void> {
   if (!callbacks || overlayState.busy) return;
   const ids = [...overlayState.selected];
-  if (ids.length === 0) return;
+  const entryStart = canStartFromEntry();
+  if (ids.length === 0 && !entryStart) return;
 
   overlayState.busy = true;
   refreshMainView();
@@ -1731,9 +1790,11 @@ async function doAutofill(): Promise<void> {
   try {
     const { ok, fail, total } = await callbacks.onAutofill(ids, currentUploadResumeId());
     const txt =
-      `Filled ${ok} of ${total} field${total === 1 ? "" : "s"}` +
-      (fail > 0 ? ` (${fail} need attention)` : "") +
-      ". Review before submitting.";
+      total === 0 && entryStart
+        ? `Opening “${overlayState.applyEntry}” — autofill continues on the next page.`
+        : `Filled ${ok} of ${total} field${total === 1 ? "" : "s"}` +
+          (fail > 0 ? ` (${fail} need attention)` : "") +
+          ". Review before submitting.";
     showBanner(txt, fail > 0 ? "warn" : "ok");
     // Re-scan so each field's currentValue reflects what just got written —
     // this drives the ✓ / – checklist to its post-fill state.
@@ -1964,11 +2025,63 @@ function renderInfoForm(): void {
         ${apEeoSelect("disabilityStatus", "Disability Status", d.eeo.disabilityStatus)}
       `;
       break;
+    case "signup":
+      renderSignupForm(form, p);
+      break;
     case "answers":
       renderAnswersForm(form);
       break;
   }
 }
+
+/**
+ * Render the "Account creation" section: the email + password autofill uses on
+ * signup/sign-in walls (Workday-style ATSs that gate the application behind an
+ * account). Device-local only — saved to chrome.storage.local, never sent to
+ * the Tailrd backend or the AI. The password input stays type="password"; a
+ * Show/Hide toggle flips it (never rendered into markup).
+ */
+function renderSignupForm(form: HTMLElement, p: UserApplicationProfile): void {
+  if (!overlayState.signupLoaded) {
+    form.innerHTML =
+      '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Loading…</div>';
+    void loadSignupDefaults();
+    return;
+  }
+  const s = overlayState.signupDraft ?? { email: "", password: "" };
+  form.innerHTML = `
+    <div class="ap-form-hint">Some sites (Workday and similar) require an account before you can apply. Autofill creates or signs in to those accounts with the details below, then continues filling. Stored only on this device — never sent to Tailrd or the AI.</div>
+    <div class="ap-form-row">
+      <label>Account email</label>
+      <input data-signup="email" type="email" value="${esc(s.email)}" placeholder="${esc(p.email || "you@example.com")}" />
+    </div>
+    <div class="ap-form-row">
+      <label>Account password</label>
+      <div class="ap-signup-pass-row">
+        <input data-signup="password" type="password" value="${esc(s.password)}" placeholder="Leave blank to auto-generate per site" autocomplete="new-password" />
+        <button type="button" class="ap-mini-btn" data-signup-reveal="1">Show</button>
+      </div>
+    </div>
+    <div class="ap-form-hint">Blank email falls back to your profile email. The exact pair used on each site appears under “Saved sign-ins” in the panel, so you can always look a password up later.</div>
+  `;
+}
+
+/** Load the device-local account-creation credentials into the modal draft. */
+async function loadSignupDefaults(): Promise<void> {
+  try {
+    const d = await getDefaultCredential();
+    overlayState.signupDraft = { ...d };
+    signupOriginal = { ...d };
+  } catch {
+    overlayState.signupDraft = { email: "", password: "" };
+    signupOriginal = { email: "", password: "" };
+  }
+  overlayState.signupLoaded = true;
+  if (overlayState.infoCategory === "signup") renderInfoForm();
+}
+
+/** Snapshot of the stored defaults, for change detection on Update. */
+let signupOriginal: DefaultCredential | null = null;
 
 /**
  * Render the "Remembered answers" list — every free-form question the user has
@@ -2039,6 +2152,12 @@ function onInfoInput(e: Event): void {
     }
     return;
   }
+  // Account-creation credentials (device-local; not part of the profile draft).
+  const signupField = t.dataset.signup;
+  if (signupField === "email" || signupField === "password") {
+    if (overlayState.signupDraft) overlayState.signupDraft[signupField] = t.value;
+    return;
+  }
   const d = overlayState.profileDraft;
   if (!d) return;
   const field = t.dataset.field;
@@ -2050,9 +2169,21 @@ function onInfoInput(e: Event): void {
   }
 }
 
-/** Delegated click handler on the info form: "Remove" a remembered answer. */
+/** Delegated click handler on the info form: "Remove" a remembered answer,
+ *  or the account-password Show/Hide toggle. */
 function onInfoFormClick(e: Event): void {
-  const btn = (e.target as HTMLElement).closest<HTMLElement>("[data-del-id]");
+  const target = e.target as HTMLElement;
+  const reveal = target.closest<HTMLButtonElement>("[data-signup-reveal]");
+  if (reveal) {
+    const input = refs?.infoForm.querySelector<HTMLInputElement>('input[data-signup="password"]');
+    if (input) {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      reveal.textContent = show ? "Hide" : "Show";
+    }
+    return;
+  }
+  const btn = target.closest<HTMLElement>("[data-del-id]");
   if (!btn) return;
   const id = Number(btn.dataset.delId);
   overlayState.rememberedAnswers = overlayState.rememberedAnswers.filter((a) => a.id !== id);
@@ -2074,6 +2205,19 @@ async function saveInfoEdits(): Promise<void> {
   const btn = refs.root.querySelector<HTMLButtonElement>("#ap-btn-update");
   if (!d) { hideInfoView(); return; }
   setInfoError("");
+
+  // Account-creation credentials save device-locally, independent of the
+  // profile round-trip below — they must never reach the backend.
+  const s = overlayState.signupDraft;
+  if (s && signupOriginal && (s.email !== signupOriginal.email || s.password !== signupOriginal.password)) {
+    const next = { email: s.email.trim(), password: s.password };
+    try {
+      await saveDefaultCredential(next);
+      signupOriginal = { ...next };
+    } catch {
+      // Storage unavailable — leave the draft in place so a retry can save it.
+    }
+  }
 
   // Send only what changed so we don't bump the sync version (and force a
   // re-download) when the user opens the modal and clicks Update without edits.
