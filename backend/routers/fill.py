@@ -29,6 +29,8 @@ from backend.services.answer_memory import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+NO_ANSWER = "__NO_ANSWER__"
+
 
 class FormField(BaseModel):
     """A single form field to fill."""
@@ -37,6 +39,8 @@ class FormField(BaseModel):
     type: str = "text"  # text, select, radio, checkbox, textarea
     options: list[str] = []
     required: bool = False
+    helpText: str = ""   # surrounding help/section text harvested by the extension
+    inputType: str = ""  # native input type hint ("date", "number", "email"…)
 
 
 class ApplicantProfile(BaseModel):
@@ -313,10 +317,20 @@ async def fill_form(
             for field, canonical in ai_fields:
                 try:
                     q = field.label
+                    if field.inputType:
+                        q += f"\nField type: {field.inputType}"
+                    if field.helpText:
+                        q += f"\nHelp text: {field.helpText}"
                     if field.options:
                         q += f"\nOptions: {', '.join(field.options)}"
                     raw = await llm.answer_question(question=q, context=context)
-                    answer = raw.strip().strip('"')
+                    answer = raw.strip().strip('"').strip()
+
+                    # Grounding sentinel: the model has no supported answer —
+                    # leave the field blank (emit nothing). The client skips
+                    # fields with no answer, so a skipped field stays empty.
+                    if not answer or answer.upper() == NO_ANSWER:
+                        continue
 
                     # Match to options if applicable. Keep the AI's raw answer
                     # when nothing matches — the client fuzzy-matches (writeSelect
