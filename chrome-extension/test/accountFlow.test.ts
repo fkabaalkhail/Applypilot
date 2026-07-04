@@ -194,7 +194,10 @@ describe("runAccountWall", () => {
     expect(saved).toMatchObject({ email: "reg@x.com", password: "Chosen#Pass1" });
   });
 
-  it("signup revisit: the per-origin pair still beats the defaults", async () => {
+  it("signup: the user's explicit default password beats a stale per-origin pair", async () => {
+    // The user set an account-creation password in the modal; it must be honored
+    // even when an older per-origin credential exists (e.g. a generated one saved
+    // during an earlier attempt). An explicit choice always wins for signup.
     await saveDefaultCredential({ email: "reg@x.com", password: "Chosen#Pass1" });
     await saveCredential("https://acme.jobs", "orig@x.com", "Original#Pass9");
     document.body.innerHTML = `
@@ -202,7 +205,7 @@ describe("runAccountWall", () => {
         <input type="email" name="email" /><input type="password" id="p1" />
       </div>`;
     await runAccountWall(detectWall(scope())!, "https://acme.jobs", "profile@x.com", write);
-    expect((document.getElementById("p1") as HTMLInputElement).value).toBe("Original#Pass9");
+    expect((document.getElementById("p1") as HTMLInputElement).value).toBe("Chosen#Pass1");
   });
 
   it("login without a per-origin pair falls back to the defaults and saves the pair", async () => {

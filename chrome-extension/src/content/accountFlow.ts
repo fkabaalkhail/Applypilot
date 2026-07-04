@@ -182,12 +182,15 @@ export async function runAccountWall(
   let filled = 0;
   const defaults = await getDefaultCredential();
   if (wall.kind === "signup") {
-    // Password precedence: the pair this site's account was CREATED with wins
-    // (revisits must replay it), then the user's preferred account-creation
-    // password, then a generated one. Email: what the page already holds, then
-    // the user's registration email, then the profile email.
+    // Password precedence: the user's chosen account-creation password (Autofill
+    // Information → Account creation) wins — an explicit choice is always honored,
+    // even when a stale per-origin pair exists from an earlier attempt. Only when
+    // no default is set do we replay the pair this origin's account was created
+    // with (so a repeat signup wall stays idempotent), then a generated one.
+    // Email: what the page already holds, then the user's registration email,
+    // then the profile email.
     const existing = await getCredential(origin);
-    const password = existing?.password || defaults.password || generatePassword();
+    const password = defaults.password || existing?.password || generatePassword();
     const email = wall.emailEl?.value || defaults.email || profileEmail || existing?.email || "";
     if (wall.emailEl && !wall.emailEl.value && email && write(wall.emailEl, email).written) filled++;
     for (const el of wall.passwordEls) {
