@@ -13,6 +13,7 @@
 
 import { reattachIfDetached } from "./domUtils";
 import { base64ToFile } from "./fileUpload";
+import { resolveCompanyLogo } from "./companyLogo";
 import { buildTailorCardHtml } from "./tailorCard";
 import { buildCoverLetterCardHtml } from "./coverLetterCard";
 import {
@@ -99,6 +100,9 @@ export interface OverlayViewState {
   /** Label of the page's apply-entry button ("Apply", "Apply Manually"…) when
    *  one exists — lets Autofill start a flow from a field-less job posting. */
   applyEntry?: string | null;
+  /** Company + job title scraped from the page, for the job-card header. */
+  company?: string;
+  jobTitle?: string;
 }
 
 export function showOverlay(state: OverlayViewState, cb: OverlayCallbacks): void {
@@ -106,6 +110,8 @@ export function showOverlay(state: OverlayViewState, cb: OverlayCallbacks): void
   overlayState.fields = state.fields;
   overlayState.tabUrl = state.tabUrl;
   overlayState.applyEntry = state.applyEntry ?? null;
+  overlayState.company = state.company ?? "";
+  overlayState.jobTitle = state.jobTitle ?? "";
   ensureMounted();
   if (!panelExpanded) setExpanded(true);
   if (!initialized) void initPanel();
@@ -117,6 +123,8 @@ export function updateOverlay(state: OverlayViewState): void {
   overlayState.fields = state.fields;
   overlayState.tabUrl = state.tabUrl;
   overlayState.applyEntry = state.applyEntry ?? null;
+  overlayState.company = state.company ?? "";
+  overlayState.jobTitle = state.jobTitle ?? "";
   // Re-derive the default selection so the Autofill button reflects the latest
   // scan. Selection is purely computed from the fields (there is no per-field
   // toggle UI), so recomputing it on every update is safe — and necessary, since
@@ -198,6 +206,8 @@ export function toggleOverlay(state: OverlayViewState, cb: OverlayCallbacks): vo
   overlayState.fields = state.fields;
   overlayState.tabUrl = state.tabUrl;
   overlayState.applyEntry = state.applyEntry ?? null;
+  overlayState.company = state.company ?? "";
+  overlayState.jobTitle = state.jobTitle ?? "";
   ensureMounted();
   if (panelExpanded) {
     setExpanded(false);
@@ -220,7 +230,6 @@ function ph(pathData: string): string {
 
 const P_X = '<path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/>';
 const P_CARET_RIGHT = '<path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/>';
-const P_CARET_DOWN = '<path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/>';
 const P_GEAR = '<path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z"/>';
 const P_FILE = '<path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Zm-32-80a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,136Zm0,32a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,168Z"/>';
 const P_UPLOAD = '<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z"/>';
@@ -235,7 +244,6 @@ const P_INFO = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,2
 
 const I_CLOSE = ph(P_X);
 const I_CHEVRON_RIGHT = ph(P_CARET_RIGHT);
-const I_CHEVRON_DOWN = ph(P_CARET_DOWN);
 const I_GEAR = ph(P_GEAR);
 const I_FILE = ph(P_FILE);
 const I_UPLOAD = ph(P_UPLOAD);
@@ -268,7 +276,7 @@ const I_BRAND =
 // Styles
 // ---------------------------------------------------------------------------
 
-const STYLES = `
+export const STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 :host { all: initial; }
 *, *::before, *::after { box-sizing: border-box; }
@@ -384,8 +392,9 @@ const STYLES = `
   border-radius: 9999px;
   background: var(--stripe-primary);
   color: #fff;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(var(--stripe-primary-rgb),0.28);
   transition: background 0.15s, transform 0.1s, box-shadow 0.1s;
@@ -402,6 +411,71 @@ const STYLES = `
   font-size: 12px;
   color: var(--stripe-ink-mute);
 }
+
+/* ---- Job card (company logo + name + title) ---- */
+.ap-jobcard {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--stripe-hairline-soft);
+}
+.ap-jobcard-logo {
+  width: 42px; height: 42px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; background: #fff;
+  border: 1px solid var(--stripe-hairline-soft);
+  font-weight: 700; font-size: 17px; color: #fff; line-height: 1;
+}
+.ap-jobcard-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.ap-jobcard-logo.is-mono { border: none; }
+.ap-jobcard-text { min-width: 0; flex: 1; }
+.ap-jobcard-company {
+  font-weight: 700; font-size: 14.5px; color: var(--stripe-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ap-jobcard-title {
+  font-size: 12.5px; color: var(--stripe-ink-mute); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---- Compact resume / cover blocks (no accordion) ---- */
+.ap-rc {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--stripe-hairline-soft);
+}
+.ap-rc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.ap-rc-resume { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ap-rc-resume .ap-file-name {
+  flex: 1; min-width: 0; margin: 0;
+  font-size: 12.5px; color: var(--stripe-ink-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ap-btn-attach {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 13px; border-radius: 9999px;
+  border: 1px solid var(--stripe-hairline); background: #fff;
+  color: var(--stripe-ink); font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: background 0.12s;
+}
+.ap-btn-attach:hover:not(:disabled) { background: var(--stripe-canvas-soft); }
+.ap-btn-attach:disabled { opacity: 0.5; cursor: default; }
+.ap-btn-attach > svg { width: 14px; height: 14px; flex-shrink: 0; }
+.ap-btn-generate {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--stripe-accent-soft); background: var(--stripe-accent-light);
+  color: var(--stripe-primary); font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: filter 0.12s;
+}
+.ap-btn-generate:hover:not(:disabled) { filter: brightness(0.97); }
+.ap-btn-generate:disabled { opacity: 0.5; cursor: default; }
+.ap-btn-generate > svg { width: 15px; height: 15px; flex-shrink: 0; }
+.ap-rc .ap-cover-tone {
+  width: 100%; margin-bottom: 8px; padding: 9px 10px;
+  border: 1px solid var(--stripe-hairline); border-radius: 8px;
+  font-size: 13px; background: #fff; color: var(--stripe-ink);
+}
+.ap-rc .ap-resume-select { margin-bottom: 8px; }
+.ap-rc .ap-upload-status { margin-top: 8px; }
 
 /* ---- Banner ---- */
 .ap-banner {
@@ -806,6 +880,9 @@ interface PanelState {
   tabUrl: string;
   /** Apply-entry button label when the page has one (job posting / chooser). */
   applyEntry: string | null;
+  /** Company + job title for the job-card header (scraped from the page). */
+  company: string;
+  jobTitle: string;
   selected: Set<string>;
   outcomes: Map<string, FillOutcome>;
   busy: boolean;
@@ -843,6 +920,8 @@ const overlayState: PanelState = {
   fields: [],
   tabUrl: "",
   applyEntry: null,
+  company: "",
+  jobTitle: "",
   selected: new Set(),
   outcomes: new Map(),
   busy: false,
@@ -866,6 +945,10 @@ interface Refs {
   edgeTab: HTMLButtonElement;
   panel: HTMLDivElement;
   content: HTMLDivElement;
+  jobcard: HTMLDivElement;
+  jobcardLogo: HTMLDivElement;
+  jobcardCompany: HTMLDivElement;
+  jobcardTitle: HTMLDivElement;
   btnAutofill: HTMLButtonElement;
   fieldCount: HTMLDivElement;
   banner: HTMLDivElement;
@@ -951,7 +1034,7 @@ function installMountWatchdog(): void {
   mountObserver.observe(document.documentElement, { childList: true });
 }
 
-function buildHTML(): string {
+export function buildHTML(): string {
   return `
     <button class="ap-edge-tab" type="button" title="Open Tailrd" aria-label="Open Tailrd">
       ${I_CHEVRON_RIGHT}
@@ -971,9 +1054,18 @@ function buildHTML(): string {
 
       <!-- Main content -->
       <div class="ap-content" id="ap-content">
-        <!-- Autofill button -->
+        <!-- Job card: company logo + name + title -->
+        <div class="ap-jobcard" id="ap-jobcard" style="display:none">
+          <div class="ap-jobcard-logo is-mono" id="ap-jobcard-logo"></div>
+          <div class="ap-jobcard-text">
+            <div class="ap-jobcard-company" id="ap-jobcard-company"></div>
+            <div class="ap-jobcard-title" id="ap-jobcard-title" style="display:none"></div>
+          </div>
+        </div>
+
+        <!-- Account Creation & Autofill button -->
         <div class="ap-autofill-section">
-          <button class="ap-btn-autofill" id="ap-btn-autofill" disabled>Autofill</button>
+          <button class="ap-btn-autofill" id="ap-btn-autofill" disabled>Account Creation &amp; Autofill</button>
           <div class="ap-field-count" id="ap-field-count"></div>
         </div>
 
@@ -1006,70 +1098,47 @@ function buildHTML(): string {
           </div>
         </div>
 
-        <!-- Upload Resume -->
-        <div class="ap-section">
-          <div class="ap-section-header" id="ap-section-resume">
-            <div class="ap-section-left">
-              <span class="ap-section-icon">${I_UPLOAD}</span>
-              <span class="ap-section-title">Upload Resume</span>
-            </div>
-            <span class="ap-section-arrow">${I_CHEVRON_DOWN}</span>
+        <!-- Upload Resume (compact: attach current résumé + generate custom) -->
+        <div class="ap-rc">
+          <div class="ap-rc-head">
+            <span class="ap-section-icon">${I_UPLOAD}</span>
+            <span class="ap-section-title">Upload Resume</span>
           </div>
-          <div class="ap-section-sub" id="ap-resume-sub" style="display:none">
-            <div class="ap-file-name" id="ap-resume-name">No resume uploaded</div>
-            <select class="ap-resume-select" id="ap-resume-select" style="display:none"></select>
-            <button class="ap-btn-upload" id="ap-btn-upload-resume" type="button" disabled>
+          <div class="ap-rc-resume">
+            <span class="ap-file-name" id="ap-resume-name">No resume uploaded</span>
+            <button class="ap-btn-attach" id="ap-btn-upload-resume" type="button" disabled>
               ${I_UPLOAD}
-              Upload résumé to this form
+              Attach
             </button>
-            <div class="ap-upload-status" id="ap-upload-status"></div>
           </div>
+          <select class="ap-resume-select" id="ap-resume-select" style="display:none"></select>
+          <button class="ap-btn-generate" id="ap-btn-tailor" type="button" disabled>
+            ${I_STAR}
+            Generate Custom Resume
+          </button>
+          <div class="ap-upload-status" id="ap-upload-status"></div>
+          <div id="ap-tailor-result"></div>
         </div>
 
-        <!-- Generate Custom Resume -->
-        <div class="ap-section">
-          <div class="ap-section-header" id="ap-section-tailor">
-            <div class="ap-section-left">
-              <span class="ap-section-icon">${I_STAR}</span>
-              <span class="ap-section-title">Generate Custom Resume</span>
-            </div>
-            <span class="ap-section-arrow">${I_CHEVRON_DOWN}</span>
+        <!-- Upload Cover Letter (compact) -->
+        <div class="ap-rc">
+          <div class="ap-rc-head">
+            <span class="ap-section-icon">${I_ENVELOPE}</span>
+            <span class="ap-section-title">Upload Cover Letter</span>
           </div>
-          <div class="ap-section-sub" id="ap-tailor-sub" style="display:none">
-            <button class="ap-btn-tailor" id="ap-btn-tailor" type="button" disabled>
-              ${I_STAR}
-              Tailor my résumé for this job
-            </button>
-            <div id="ap-tailor-result"></div>
-          </div>
-        </div>
-
-        <!-- Upload Cover Letter -->
-        <div class="ap-section">
-          <div class="ap-section-header" id="ap-section-cover">
-            <div class="ap-section-left">
-              <span class="ap-section-icon">${I_ENVELOPE}</span>
-              <span class="ap-section-title">Upload Cover Letter</span>
-            </div>
-            <span class="ap-section-arrow">${I_CHEVRON_DOWN}</span>
-          </div>
-          <div class="ap-section-sub" id="ap-cover-sub" style="display:none">
-            <div class="ap-cover-controls">
-              <select id="ap-cover-tone" class="ap-cover-tone" aria-label="Cover letter tone">
-                <option value="">Default tone</option>
-                <option value="professional">Professional</option>
-                <option value="formal">Formal</option>
-                <option value="enthusiastic">Enthusiastic</option>
-                <option value="concise">Concise</option>
-                <option value="technical">Technical</option>
-              </select>
-              <button class="ap-btn-tailor" id="ap-btn-cover" type="button" disabled>
-                ${I_STAR}
-                Generate Cover Letter
-              </button>
-            </div>
-            <div id="ap-cover-result"></div>
-          </div>
+          <select id="ap-cover-tone" class="ap-cover-tone" aria-label="Cover letter tone">
+            <option value="">Default tone</option>
+            <option value="professional">Professional</option>
+            <option value="formal">Formal</option>
+            <option value="enthusiastic">Enthusiastic</option>
+            <option value="concise">Concise</option>
+            <option value="technical">Technical</option>
+          </select>
+          <button class="ap-btn-generate" id="ap-btn-cover" type="button" disabled>
+            ${I_STAR}
+            Generate Cover Letter
+          </button>
+          <div id="ap-cover-result"></div>
         </div>
 
         <!-- Onboarding / connect view (shown when signed out) -->
@@ -1157,6 +1226,10 @@ function collectRefs(root: HTMLDivElement): Refs {
     edgeTab: q(".ap-edge-tab"),
     panel: q(".ap-panel"),
     content: q("#ap-content"),
+    jobcard: q("#ap-jobcard"),
+    jobcardLogo: q("#ap-jobcard-logo"),
+    jobcardCompany: q("#ap-jobcard-company"),
+    jobcardTitle: q("#ap-jobcard-title"),
     btnAutofill: q("#ap-btn-autofill"),
     fieldCount: q("#ap-field-count"),
     banner: q("#ap-banner"),
@@ -1237,34 +1310,14 @@ function wireEvents(root: HTMLDivElement): void {
     void showInfoView();
   });
 
-  // Resume section toggle
-  root.querySelector("#ap-section-resume")!.addEventListener("click", () => {
-    const sub = root.querySelector<HTMLElement>("#ap-resume-sub")!;
-    const opening = sub.style.display === "none";
-    sub.style.display = opening ? "block" : "none";
-    if (opening) renderResumeSection();
-  });
-
   // Upload résumé to the current form
   root.querySelector("#ap-btn-upload-resume")!.addEventListener("click", () => void doUploadResume());
-
-  // Generate Custom Resume section toggle
-  root.querySelector("#ap-section-tailor")!.addEventListener("click", () => {
-    const sub = root.querySelector<HTMLElement>("#ap-tailor-sub")!;
-    sub.style.display = sub.style.display === "none" ? "block" : "none";
-  });
 
   // Tailor button
   root.querySelector("#ap-btn-tailor")!.addEventListener("click", () => void doTailor());
 
   // Generate Cover Letter button
   root.querySelector("#ap-btn-cover")!.addEventListener("click", () => void doGenerateCoverLetter());
-
-  // Cover letter section toggle
-  root.querySelector("#ap-section-cover")!.addEventListener("click", () => {
-    const sub = root.querySelector<HTMLElement>("#ap-cover-sub")!;
-    sub.style.display = sub.style.display === "none" ? "block" : "none";
-  });
 
   // Info view close
   root.querySelector("#ap-info-close")!.addEventListener("click", () => {
@@ -1468,8 +1521,50 @@ function hideInfoView(): void {
 // Main view rendering
 // ---------------------------------------------------------------------------
 
+/** Paint the job-card header (company logo + name + title) from the scraped
+ *  job context. Hidden when the page yields neither company nor title. The logo
+ *  is on-device (favicon / og:image) with a colored-monogram fallback when the
+ *  image is missing or blocked by the page CSP. */
+function renderJobCard(): void {
+  if (!refs) return;
+  const company = overlayState.company.trim();
+  const title = overlayState.jobTitle.trim();
+  if (!company && !title) {
+    refs.jobcard.style.display = "none";
+    return;
+  }
+  refs.jobcard.style.display = "flex";
+  refs.jobcardCompany.textContent = company || "This job";
+  refs.jobcardTitle.textContent = title;
+  refs.jobcardTitle.style.display = title ? "block" : "none";
+
+  const box = refs.jobcardLogo;
+  if (box.dataset.company === company) return; // logo already resolved for this company
+  box.dataset.company = company;
+  const logo = resolveCompanyLogo(document, company);
+  const showMono = (): void => {
+    box.classList.add("is-mono");
+    box.style.background = logo.color;
+    box.textContent = logo.monogram;
+  };
+  if (logo.src) {
+    box.classList.remove("is-mono");
+    box.style.background = "#fff";
+    box.textContent = "";
+    const img = document.createElement("img");
+    img.alt = "";
+    img.decoding = "async";
+    img.onerror = showMono;
+    img.src = logo.src;
+    box.appendChild(img);
+  } else {
+    showMono();
+  }
+}
+
 function refreshMainView(): void {
   if (!refs) return;
+  renderJobCard();
   const { fields, selected } = overlayState;
   const count = selected.size;
   console.log(
@@ -1484,8 +1579,12 @@ function refreshMainView(): void {
   // A job posting / apply-method chooser has no (recognized) fields but does
   // have an apply-entry button \u2014 Autofill starts the flow by clicking it.
   const entryStart = canStartFromEntry();
-  refs.btnAutofill.disabled = overlayState.busy || (count === 0 && !entryStart);
-  refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Autofill";
+  // The primary action always runs the full flow (click Apply, create account,
+  // fill, advance), so it stays live whenever a profile is loaded -- even on a
+  // bare job posting with no form fields. entryStart only tunes the hint below.
+  const canRun = Boolean(overlayState.profile) && !overlayState.busy;
+  refs.btnAutofill.disabled = !canRun;
+  refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Account Creation & Autofill";
 
   if (entryStart) {
     refs.fieldCount.textContent = `Autofill will click \u201c${overlayState.applyEntry}\u201d and continue with the application`;

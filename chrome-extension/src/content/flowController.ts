@@ -41,6 +41,9 @@ export interface FlowSnapshot {
   url: string;
   /** Apply-entry button (job posting / apply-method chooser), when one exists. */
   entry: { el: HTMLElement; label: string } | null;
+  /** True while a signup/login account wall is on the page — lets the flow
+   *  hand a stuck wall back to the user instead of stopping the whole flow. */
+  accountWall: boolean;
 }
 
 export interface FlowDeps {
@@ -200,6 +203,18 @@ export class FlowController {
       console.log(`[Tailrd flow] clicking advance "${advText}"…`);
       if (!(await this.advanceStep(snap, adv.el, wallDetail))) {
         if (this.stopRequested) return this.finishStopped();
+        // An account wall that didn't advance means auto-signup/sign-in
+        // couldn't complete on its own — a password the site rejected, an
+        // unmet requirement, an email-verification/2FA step, a captcha inside
+        // the account form. Hand it to the user and resume when they clear it,
+        // instead of killing the whole flow.
+        if (account.wall) {
+          console.log("[Tailrd flow] account wall didn't advance — pausing for the user to finish");
+          this.emit("paused", { pauseReason: "account" });
+          if (!(await this.waitForWallCleared())) return this.finishStopped();
+          this.step -= 1; // re-attempt the step now that the wall is gone
+          continue;
+        }
         // Click rejected (validation) or this page genuinely can't advance.
         // NB: this pre-check consumes one pauseReason() poll, so emit the
         // pause beat here — waitWhileBlocked may find the reason already clear.
@@ -265,6 +280,24 @@ export class FlowController {
     return new Promise((resolve) => {
       this.advanceResolver = resolve;
     });
+  }
+
+  /** Park while an account wall the flow couldn't auto-pass is still on screen.
+   *  Resolves true when the user clears it (wall gone, or the page moved on);
+   *  false on stop/expiry. Rescans each poll so a real navigation (or an SPA
+   *  step change) is noticed. */
+  private async waitForWallCleared(): Promise<boolean> {
+    for (;;) {
+      if (this.stopRequested) return false;
+      if (this.expired()) {
+        await this.finish("stopped", "Flow timed out");
+        return false;
+      }
+      await this.deps.sleep(PAUSE_POLL_MS);
+      this.deps.rescan();
+      const snap = this.deps.snapshot();
+      if (!snap.accountWall) return true;
+    }
   }
 
   /** Poll pauseReason until clear. False → stopped/expired. */

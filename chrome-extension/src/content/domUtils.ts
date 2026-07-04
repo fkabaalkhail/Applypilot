@@ -21,10 +21,20 @@ export function reattachIfDetached(node: HTMLElement, parent: ParentNode): boole
 }
 
 /**
+ * The extension's own in-page UI hosts (side panel + missing-info modal). Their
+ * shadow roots hold real form controls (a cover-letter tone <select>, résumé
+ * pickers, EEO inputs) that are NOT page fields — deepQueryAll must never
+ * descend into them, or the scanner counts our own UI as the page's form and a
+ * bare job posting reads as a filled form (so the flow never clicks Apply).
+ */
+export const EXTENSION_UI_HOST_IDS = new Set(["applypilot-overlay-host", "tailrd-missing-info-host"]);
+
+/**
  * querySelectorAll that also descends into open shadow roots AND same-origin
  * iframes. Several ATS embed their form in an iframe (Greenhouse/Lever boards)
  * or render widgets inside shadow DOM. Cross-origin iframes throw on access and
  * are skipped silently — those frames run their own copy of the content script.
+ * The extension's own UI hosts are skipped entirely (see EXTENSION_UI_HOST_IDS).
  */
 export function deepQueryAll(root: ParentNode, selector: string): HTMLElement[] {
   const out: HTMLElement[] = [];
@@ -32,6 +42,9 @@ export function deepQueryAll(root: ParentNode, selector: string): HTMLElement[] 
   const visit = (node: ParentNode): void => {
     node.querySelectorAll(selector).forEach((el) => out.push(el as HTMLElement));
     node.querySelectorAll("*").forEach((el) => {
+      // Never traverse into our own panel / modal — its controls aren't page
+      // fields and must never be scanned, matched, or clicked by the flow.
+      if (el instanceof HTMLElement && EXTENSION_UI_HOST_IDS.has(el.id)) return;
       const shadow = (el as HTMLElement).shadowRoot;
       if (shadow) visit(shadow);
       if (el instanceof HTMLIFrameElement) {

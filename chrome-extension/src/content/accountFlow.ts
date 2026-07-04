@@ -58,6 +58,34 @@ export function findSignupToggle(scope: HTMLElement): HTMLElement | null {
 /** Consent/agreement checkbox labels a signup gate requires ticked. */
 const AGREE_RE = /agree|consent|i have read|read and|\bterms\b|privacy|policy|acknowledge|gdpr/i;
 
+/** data-automation-id patterns that mark a consent gate (Workday et al.).
+ *  Workday's create-account consent is `createAccountCheckbox` — a native
+ *  checkbox it renders visually hidden behind a styled control, with no
+ *  `required` attribute and no agreement-worded label, so the generic filter
+ *  misses it entirely. */
+const CONSENT_AUTOMATION_RE = /createaccountcheckbox|agree|consent|privacy|terms|acknowledg|gdpr/i;
+/** Automation-ids that mark a Workday create-account (signup) form. */
+const SIGNUP_AUTOMATION_RE = /createaccount|verifypassword|verifynewpassword|confirmpassword/i;
+
+/** All data-automation-ids from `el` up through its wrappers, lower-cased and
+ *  joined — Workday's real markers often sit on an ancestor, not the input. */
+function automationChain(el: HTMLElement): string {
+  const ids: string[] = [];
+  let node: HTMLElement | null = el;
+  for (let i = 0; node && i < 5; i++, node = node.parentElement) {
+    const id = node.getAttribute("data-automation-id");
+    if (id) ids.push(id);
+  }
+  return ids.join(" ").toLowerCase();
+}
+
+/** True when any control in `scope` carries a Workday create-account marker. */
+function hasSignupMarker(scope: HTMLElement): boolean {
+  return (deepQueryAll(scope, "[data-automation-id]") as HTMLElement[]).some((el) =>
+    SIGNUP_AUTOMATION_RE.test(el.getAttribute("data-automation-id") ?? "")
+  );
+}
+
 /** Accessible label text for a control (aria-label, aria-labelledby, <label>). */
 function controlLabelText(el: HTMLElement): string {
   const aria = el.getAttribute("aria-label");
@@ -75,29 +103,40 @@ function controlLabelText(el: HTMLElement): string {
 }
 
 /** Unchecked consent/agreement checkboxes (native + role=checkbox) in `scope`:
- *  required ones, or ones whose label reads like a terms/privacy agreement.
+ *  required ones, ones labelled like a terms/privacy agreement, or ones a
+ *  Workday-style automation-id marks as consent (createAccountCheckbox…).
  *  Marketing opt-ins (not required, no agreement wording) are left alone. */
 function agreementCheckboxes(scope: HTMLElement): HTMLElement[] {
   return (deepQueryAll(scope, 'input[type="checkbox"], [role="checkbox"]') as HTMLElement[]).filter((el) => {
     if ((el as HTMLInputElement).disabled) return false;
     const checked = el instanceof HTMLInputElement ? el.checked : el.getAttribute("aria-checked") === "true";
     if (checked) return false;
-    if (!(isVisible(el) || isHiddenButLabeled(el))) return false;
+    const consentId = CONSENT_AUTOMATION_RE.test(automationChain(el));
+    // Workday hides the native checkbox behind a styled control (no rendered
+    // box, no label), so visibility can't gate an automation-id-marked consent.
+    if (!consentId && !(isVisible(el) || isHiddenButLabeled(el))) return false;
     const required = (el as HTMLInputElement).required || el.getAttribute("aria-required") === "true";
-    return required || AGREE_RE.test(cleanText(controlLabelText(el)));
+    return required || consentId || AGREE_RE.test(cleanText(controlLabelText(el)));
   });
 }
 
-/** Tick a consent checkbox — native (click + change) or ARIA (click + aria-checked). */
+/** Tick a consent checkbox so its framework registers the change. `el.click()`
+ *  runs the native toggle (checked → true) AND fires the click/input/change a
+ *  framework listens to — the one primitive that behaves the same in a real
+ *  browser and jsdom. Guarded against an already-checked box so a re-tick on a
+ *  retry can't switch it back off (callers also filter checked boxes out). */
 function checkBox(el: HTMLElement): void {
-  el.click();
   if (el instanceof HTMLInputElement) {
+    if (el.checked) return;
+    el.click();
     if (!el.checked) {
+      // A handler that preventDefault'd the toggle — set it and notify anyway.
       el.checked = true;
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
     }
   } else if (el.getAttribute("aria-checked") !== "true") {
+    el.click();
     el.setAttribute("aria-checked", "true");
   }
 }
@@ -108,8 +147,13 @@ export function detectWall(scope: HTMLElement): WallInfo | null {
   );
   if (passwordEls.length === 0) return null;
   const text = cleanText(scope.textContent).slice(0, 4000);
+  // A Workday create-account marker (verify-password / createAccountCheckbox)
+  // is decisive — its sign-in and create-account pages read the same in body
+  // text, and a slow-loading verify-password field can leave only one password
+  // box visible, which would otherwise be misread as a login.
   const kind: WallKind =
-    passwordEls.length >= 2 ? "signup"
+    hasSignupMarker(scope) ? "signup"
+    : passwordEls.length >= 2 ? "signup"
     : SIGNUP_RE.test(text) ? "signup"
     : LOGIN_RE.test(text) ? "login"
     : "signup";

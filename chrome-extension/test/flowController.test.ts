@@ -45,6 +45,7 @@ function makeDeps(
       scopeEl: fields.length > 0 ? document.body : null,
       url: `https://ats.example/page-${pageIx}`,
       entry: label ? { el: document.createElement("button"), label } : null,
+      accountWall: false,
     };
   };
   const deps: FlowDeps = {
@@ -114,6 +115,7 @@ describe("stepSignature", () => {
     scopeEl: null,
     url,
     entry: entryLabel ? { el: document.createElement("button"), label: entryLabel } : null,
+    accountWall: false,
   });
 
   it("hashes fields when present, ignoring the URL", () => {
@@ -207,6 +209,7 @@ describe("FlowController", () => {
       scopeEl: document.body,
       url: "https://ats.example/loop",
       entry: null,
+      accountWall: false,
     });
     deps.clickAdvance = (): void => { n++; };
     await drive(new FlowController(deps), progress);
@@ -299,6 +302,47 @@ describe("FlowController", () => {
     const last = progress[progress.length - 1];
     expect(last.phase).toBe("stopped");
     expect(last.detail).toMatch(/couldn't open/i);
+  });
+
+  it("pauses (not stops) when an account wall can't auto-advance, and resumes when the user clears it", async () => {
+    // Signup wall whose "Create Account" click doesn't take (Workday rejected
+    // the generated password / an unmet requirement). The flow must hand off to
+    // the user, then resume once the wall is gone — never finish "stopped".
+    const wallFields = [field("1", "Password")];
+    const formFields = [field("2", "First name")];
+    let cleared = false; // the user finishes the signup after a couple polls
+    let polls = 0;
+    const log: string[] = [];
+    const progress: FlowProgress[] = [];
+    let clock = 0;
+    const snapshot = (): FlowSnapshot => ({
+      fields: cleared ? formFields : wallFields,
+      scopeEl: document.body,
+      url: "https://ats.example/account",
+      entry: null,
+      accountWall: !cleared,
+    });
+    const deps: FlowDeps = {
+      fillStep: async () => { log.push("fill"); return tally(); },
+      snapshot,
+      rescan: () => { if (progress.some((p) => p.pauseReason === "account") && ++polls >= 2) cleared = true; },
+      findAdvance: () =>
+        cleared ? terminalBtn() : ({ el: document.createElement("button"), kind: "advance" }),
+      clickAdvance: () => { log.push("click"); }, // the wall click never changes the page
+      accountStep: async () => ({ wall: "signup" as const }),
+      pauseReason: async () => null,
+      attachResume: async () => true,
+      needsResume: () => false,
+      hasUnfilledRequired: () => false,
+      setState: async () => {},
+      onProgress: (p) => progress.push(p),
+      sleep: async () => { clock += 100; },
+      now: () => clock,
+    };
+    await new FlowController(deps).run(freshState(), null);
+    expect(progress.some((p) => p.pauseReason === "account")).toBe(true);
+    expect(log).toContain("click"); // it did attempt Create Account
+    expect(progress[progress.length - 1].phase).toBe("done"); // resumed, not stopped
   });
 
   it("narrates account walls and labels the manual gate after the real button", async () => {

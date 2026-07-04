@@ -104,6 +104,40 @@ describe("runAccountWall", () => {
     expect(saved?.password).toBe(p1);
   });
 
+  it("signup: detects and ticks Workday's createAccountCheckbox (hidden, unlabelled, not required)", async () => {
+    // Workday's consent is a native checkbox with only a data-automation-id —
+    // no `required`, no agreement-worded label, often visually hidden. The old
+    // filter missed it entirely ("0 agreement boxes"), leaving Create Account
+    // inert. It must now be found by its automation-id and ticked.
+    document.body.innerHTML = `
+      <div id="s"><h2>Create Account</h2>
+        <input type="email" name="email" id="em" />
+        <input type="password" data-automation-id="password" id="p1" />
+        <input type="password" data-automation-id="verifyPassword" id="p2" />
+        <div data-automation-id="createAccountCheckbox">
+          <input type="checkbox" id="agree" data-automation-id="createAccountCheckbox" />
+        </div>
+      </div>`;
+    const wall = detectWall(scope())!;
+    expect(wall.kind).toBe("signup");
+    expect(wall.agreeEls).toHaveLength(1);
+    await runAccountWall(wall, "https://acme.jobs", "me@x.com", write);
+    expect((document.getElementById("agree") as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("signup: recognized from a Workday verify-password marker even with one visible password", async () => {
+    // A slow-loading verify-password field can leave one password box visible;
+    // the automation-id marker still identifies this as create-account, so we
+    // never misread it as a sign-in (which would just pause).
+    document.body.innerHTML = `
+      <div id="s"><h2>Account</h2>
+        <input type="email" name="email" />
+        <input type="password" data-automation-id="password" id="p1" />
+        <div data-automation-id="verifyPassword"></div>
+      </div>`;
+    expect(detectWall(scope())?.kind).toBe("signup");
+  });
+
   it("signup: ticks a required consent checkbox but leaves marketing opt-ins alone", async () => {
     document.body.innerHTML = `
       <div id="s"><h2>Create Account</h2>

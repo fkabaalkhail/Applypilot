@@ -57,7 +57,7 @@ import { LONG_TEXT, normalize } from "./fieldMatcher";
 import { getLocalAnswers, saveLocalAnswer } from "./localAnswers";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
-import { extractJobContext } from "./jobContext";
+import { extractJobContext, extractJobIdentity } from "./jobContext";
 import { aiFillCandidates, needsOptionHarvest, planAiFill, planFillRoute, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { closestDemographicOption } from "./demographicMatch";
 import { toApplicantProfile } from "./applicantProfile";
@@ -153,6 +153,41 @@ function logScanDiagnostics(
 function reportToOutcome(r: FieldReport): { fieldId: string; ok: boolean; reason?: string } {
   if (r.ok) return { fieldId: r.fieldId, ok: true };
   return { fieldId: r.fieldId, ok: false, reason: r.reason ?? "Could not fill — please check manually" };
+}
+
+/**
+ * Resolve once the page DOM has been structurally quiet for `quietMs`, or after
+ * `capMs` regardless. React ATS (Workday) mount a loading skeleton and re-render
+ * the form section repeatedly as they hydrate — scanning/filling during that
+ * churn captures throwaway controls that detach mid-write ("Field no longer
+ * found" — the #1 live Workday failure) or get their values wiped by the next
+ * render. Waiting for quiescence lets us scan and fill the real, settled form.
+ * Bounded, so a page that never fully settles (animations, polling widgets)
+ * still proceeds. Aborts immediately when the fill is cancelled.
+ */
+function waitForDomSettle(signal?: AbortSignal, quietMs = 400, capMs = 3000): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    let quiet: ReturnType<typeof setTimeout>;
+    let cap: ReturnType<typeof setTimeout>;
+    let obs: MutationObserver;
+    const done = (): void => {
+      obs.disconnect();
+      clearTimeout(quiet);
+      clearTimeout(cap);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const bump = (): void => {
+      clearTimeout(quiet);
+      quiet = setTimeout(done, quietMs);
+    };
+    obs = new MutationObserver(bump);
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+    quiet = setTimeout(done, quietMs);
+    cap = setTimeout(done, capMs);
+    signal?.addEventListener("abort", done, { once: true });
+  });
 }
 
 function initialize(): void {
@@ -539,6 +574,16 @@ function initialize(): void {
 
   async function fillOnce(ids: string[] | null, signal?: AbortSignal): Promise<StepTally> {
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
+      // Let a React ATS finish hydrating before we scan+fill: filling a form
+      // that is still swapping in its real fields captures throwaway controls
+      // that detach mid-write. Wait for the DOM to go quiet, then rescan so we
+      // operate on the settled form. A stable page clears the quiet window
+      // immediately; the flow path (ids === null) re-derives its selection from
+      // this fresh scan, so newly-mounted real fields are the ones filled.
+      await waitForDomSettle(signal);
+      if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
+      runScan();
+      engine?.updateRegistry(registry);
       const wanted = ids ? new Set(ids) : defaultSelectedIds(lastFields);
       const selected = lastFields.filter(
         (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
@@ -789,6 +834,7 @@ function initialize(): void {
         scopeEl: lastScope,
         url: location.href,
         entry: findApplyEntry(document, lastAdapter),
+        accountWall: detectWall(lastScope ?? document.body) !== null,
       }),
       rescan: () => {
         runScan();
@@ -838,6 +884,10 @@ function initialize(): void {
             if (registry.get(f.id)?.el === wall.emailEl) f.proposedValue = null;
           }
         }
+        // Give the form a beat to react to the password + ticked consent before
+        // the controller looks for (and clicks) Create Account — Workday enables
+        // that button only once its own validation has re-run.
+        if (out.filled > 0) await new Promise((resolve) => setTimeout(resolve, 500));
         accountBlocked = out.pause === "account";
         return { extraAdvance: out.extraAdvance, wall: wall.kind };
       },
@@ -1101,13 +1151,23 @@ function initialize(): void {
   function maybeShowOrUpdateOverlay(): void {
     if (!isTopFrame || adoptedRemote) return;
     const entry = findApplyEntry(document, lastAdapter);
-    const state = { fields: lastFields, tabUrl: location.href, applyEntry: entry?.label ?? null };
-    // Mount on recognized fields, or on a known ATS's apply-entry page (Workday
-    // job posting) — the flow can click into the application from there. Text-
-    // matched entries on arbitrary pages (job boards full of "Apply" buttons)
-    // never auto-mount; the toolbar icon still opens the panel on demand.
+    const ident = extractJobIdentity();
+    const state = {
+      fields: lastFields,
+      tabUrl: location.href,
+      applyEntry: entry?.label ?? null,
+      company: ident.company,
+      jobTitle: ident.jobTitle,
+    };
+    // Mount on recognized fields, on a known ATS's apply-entry page (Workday job
+    // posting), or on any known-ATS host (lastAdapter matched by host) — so the
+    // always-on "Account Creation & Autofill" button is available to start the
+    // flow even before the posting exposes an apply-entry we recognise. Arbitrary
+    // pages still never auto-mount; the toolbar icon opens the panel on demand.
     const shouldMount =
-      recognizedCount(lastFields) >= MIN_FIELDS_FOR_OVERLAY || Boolean(entry?.fromAdapter);
+      recognizedCount(lastFields) >= MIN_FIELDS_FOR_OVERLAY ||
+      Boolean(entry?.fromAdapter) ||
+      Boolean(lastAdapter);
     if (!overlayShown && shouldMount) {
       overlayShown = true;
       console.log(`[Tailrd overlay] mounting panel (recognized=${recognizedCount(lastFields)} of ${lastFields.length} fields, entry=${entry?.label ?? "none"})`);

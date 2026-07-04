@@ -71,3 +71,16 @@ export function extractJobContext(doc: Document = document): JobContext {
     return { jobDescription: "", jobTitle: "", company: "" };
   }
 }
+
+/**
+ * Cheap company + title only — skips the expensive description scan. The panel's
+ * job-card header re-derives this on every overlay refresh, so it must stay
+ * lightweight (a few querySelector reads, no whole-page text walk).
+ */
+export function extractJobIdentity(doc: Document = document): { company: string; jobTitle: string } {
+  try {
+    return { company: extractCompany(doc), jobTitle: extractTitle(doc) };
+  } catch {
+    return { company: "", jobTitle: "" };
+  }
+}
