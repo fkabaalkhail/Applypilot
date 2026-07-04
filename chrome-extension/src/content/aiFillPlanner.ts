@@ -81,6 +81,8 @@ export function toAiFillField(field: DetectedField): AiFillField {
     type: mapType(field.controlType),
     options: field.options ?? [],
     required: field.required,
+    helpText: field.helpText ?? "",
+    inputType: field.inputType ?? "",
   };
 }
 
@@ -192,6 +194,8 @@ export function planReaskFields(
       type: "select",
       options: c.options.slice(0, 60),
       required: f.required,
+      helpText: f.helpText ?? "",
+      inputType: f.inputType ?? "",
     });
   }
   return out;

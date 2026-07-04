@@ -92,6 +92,11 @@ describe("toAiFillField", () => {
     expect(toAiFillField(field({ controlType: "combobox", options: ["A", "B"] })).type).toBe("select");
     expect(toAiFillField(field({ controlType: "combobox", options: ["A", "B"] })).options).toEqual(["A", "B"]);
   });
+  it("forwards helpText and inputType onto the AiFillField", () => {
+    const out = toAiFillField(field({ label: "Start date", helpText: "When can you begin?", inputType: "date" }));
+    expect(out.helpText).toBe("When can you begin?");
+    expect(out.inputType).toBe("date");
+  });
 });
 
 describe("planAiFill", () => {
@@ -181,7 +186,7 @@ describe("planReaskFields", () => {
     const fields = [{ ...base, id: "f1", category: "unknown" as const, label: "Citizenship" }];
     const out = planReaskFields(fields, [{ fieldId: "f1", options: ["Canadian", "American"] }]);
     expect(out).toEqual([
-      { id: "f1", label: "Citizenship", type: "select", options: ["Canadian", "American"], required: true },
+      { id: "f1", label: "Citizenship", type: "select", options: ["Canadian", "American"], required: true, helpText: "", inputType: "" },
     ]);
   });
 
@@ -196,5 +201,12 @@ describe("planReaskFields", () => {
       { fieldId: "missing", options: ["X"] },
     ]);
     expect(out).toEqual([]);
+  });
+
+  it("forwards the field's helpText and inputType onto re-ask fields", () => {
+    const fields = [{ ...base, id: "f3", category: "unknown" as const, label: "Start date", helpText: "When?", inputType: "date" }];
+    const out = planReaskFields(fields, [{ fieldId: "f3", options: ["Q1", "Q2"] }]);
+    expect(out[0].helpText).toBe("When?");
+    expect(out[0].inputType).toBe("date");
   });
 });

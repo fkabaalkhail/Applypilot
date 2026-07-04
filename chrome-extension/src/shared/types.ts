@@ -243,6 +243,10 @@ export interface AiFillField {
   type: "text" | "textarea" | "select" | "radio" | "checkbox";
   options: string[];
   required: boolean;
+  /** Surrounding help/section text — page context for the AI (mirrors FormField.helpText). */
+  helpText: string;
+  /** Native input type hint — AI format cue (mirrors FormField.inputType). */
+  inputType: string;
 }
 
 /**
