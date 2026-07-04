@@ -369,6 +369,8 @@ export function scanPage(
       sensitive,
       note: noteFor(controlType, category),
       options,
+      helpText: signals.nearby,
+      inputType: signals.typeHint,
       currentValue: currentValueOf(el, controlType),
     });
   }
@@ -403,6 +405,8 @@ export function scanPage(
       sensitive,
       note: noteFor("radioGroup", category),
       options,
+      helpText: signals.nearby,
+      inputType: signals.typeHint,
       currentValue: checked ? radioOptionLabel(checked) : undefined,
     });
   }
@@ -438,6 +442,8 @@ export function scanPage(
       sensitive,
       note: noteFor("checkboxGroup", category),
       options,
+      helpText: signals.nearby,
+      inputType: signals.typeHint,
       currentValue: checkedLabels.length ? checkedLabels.join(", ") : undefined,
     });
   }

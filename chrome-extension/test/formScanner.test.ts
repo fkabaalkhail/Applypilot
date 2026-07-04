@@ -93,6 +93,23 @@ describe("driver tagging", () => {
   });
 });
 
+describe("scanPage — field page context", () => {
+  it("carries the native input type and nearby help text on the detected field", () => {
+    document.body.innerHTML = `
+      <form>
+        <label for="d">Start date
+          <span class="help">When can you begin?</span>
+        </label>
+        <input id="d" name="start_date" type="date" />
+      </form>`;
+    const { fields } = scanPage(null, false);
+    const field = fields.find((f) => f.label.includes("Start date"));
+    expect(field).toBeDefined();
+    expect(field!.inputType).toBe("date");
+    expect(field!.helpText).toContain("When can you begin?");
+  });
+});
+
 describe("scanPage — widget-internal controls are not fields (Greenhouse job-boards regression)", () => {
   it("skips react-select's aria-hidden required companion input", () => {
     document.body.innerHTML = `

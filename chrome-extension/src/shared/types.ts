@@ -226,6 +226,10 @@ export interface DetectedField {
   options?: string[];
   /** Current value already present in the control, if any. */
   currentValue?: string;
+  /** Surrounding help/section text (FieldSignals.nearby) — page context for the AI. */
+  helpText?: string;
+  /** Native input type hint (FieldSignals.typeHint: "date", "number"…) — AI format cue. */
+  inputType?: string;
 }
 
 // ---------------------------------------------------------------------------
