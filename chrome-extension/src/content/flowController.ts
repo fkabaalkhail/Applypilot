@@ -138,8 +138,13 @@ export class FlowController {
       if (!(await this.waitWhileBlocked())) return this.finishStopped();
 
       const snap = this.deps.snapshot();
-      if (!snap.scopeEl) return this.finish("done");
+      if (!snap.scopeEl) {
+        console.log("[Tailrd flow] no form scope — finishing");
+        return this.finish("done");
+      }
       const adv = this.deps.findAdvance(snap.scopeEl, account.extraAdvance);
+      const advText = adv ? (adv.el.getAttribute("aria-label") || adv.el.textContent || "").trim().slice(0, 40) : "";
+      console.log(`[Tailrd flow] step ${this.step}: ${snap.fields.length} fields, advance=${adv ? `${adv.kind} "${advText}"` : "NONE (finishing done)"}`);
       if (!adv) return this.finish("done");
       if (adv.kind === "terminal") {
         // Reached the real submit button — hand it to the caller for submit
@@ -154,6 +159,7 @@ export class FlowController {
       // A blocker (e.g. a captcha) may also have re-appeared while filling, so
       // re-check that below before clicking advance.
       if (this.deps.hasUnfilledRequired(snap)) {
+        console.log("[Tailrd flow] paused — required field(s) still empty; press Next page to advance anyway");
         this.emit("paused", { pauseReason: "unfilled-required" });
         if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
       }
@@ -164,9 +170,12 @@ export class FlowController {
       this.step = state.step;
       await this.deps.setState(state); // BEFORE the click — survives navigation
       this.emit("advancing");
+      console.log(`[Tailrd flow] clicking advance "${advText}"…`);
       this.deps.clickAdvance(adv.el);
 
-      if (!(await this.waitForChange(before))) {
+      const changed = await this.waitForChange(before);
+      console.log(`[Tailrd flow] page changed after advance = ${changed}`);
+      if (!changed) {
         // Click rejected (validation) or this page genuinely can't advance.
         // NB: this pre-check consumes one pauseReason() poll, so emit the
         // pause beat here — waitWhileBlocked may find the reason already clear.
