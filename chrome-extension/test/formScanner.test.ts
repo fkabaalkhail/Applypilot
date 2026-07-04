@@ -124,6 +124,30 @@ describe("scanPage — widget-internal controls are not fields (Greenhouse job-b
     expect(fields).toHaveLength(0);
   });
 
+  it("skips a bot-trap honeypot input (Workday beecatcher: clipped, sub-pixel box)", () => {
+    // Real Workday markup: a labelled text input hidden with the sr-only clip
+    // trick and a ~1px×fractional box. Filling it flags the submission as a bot,
+    // so Workday silently refuses to create the account — it must never be filled.
+    document.body.innerHTML = `
+      <label for="hp">Website</label>
+      <input id="hp" name="website" data-automation-id="beecatcher" type="text"
+             style="position:absolute;left:0;top:0;clip:rect(1px,1px,1px,1px);clip-path:polygon(0 0,0 0,0 0,0 0)" />`;
+    const hp = document.getElementById("hp") as HTMLElement;
+    hp.getClientRects = () => [{ width: 1, height: 0.4 }] as unknown as DOMRectList;
+    const { fields } = scanPage(null, false);
+    expect(fields).toHaveLength(0);
+  });
+
+  it("skips a clip-hidden honeypot even with a full-size layout box", () => {
+    // Some honeypots hide purely with the clip trick (normal-sized box). The
+    // clip/clip-path signal must exclude them independently of box dimensions.
+    document.body.innerHTML = `
+      <label for="trap">Homepage</label>
+      <input id="trap" name="url" type="text" style="clip:rect(1px,1px,1px,1px)" />`;
+    const { fields } = scanPage(null, false); // default stub box is 100x20
+    expect(fields).toHaveLength(0);
+  });
+
   it("skips a combobox hidden inside a closed widget subtree (intl-tel-input dial-code search)", () => {
     document.body.innerHTML = `
       <label for="phone">Phone</label><input id="phone" type="tel" />

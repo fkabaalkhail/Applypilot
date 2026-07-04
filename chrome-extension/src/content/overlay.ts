@@ -180,10 +180,10 @@ export function updateFlowProgress(p: FlowProgress): void {
     p.phase === "filling" || p.phase === "advancing" || p.phase === "paused" || p.phase === "ready";
   refs.flow.style.display = running ? "flex" : "none";
   refs.flowText.textContent = formatFlowProgress(p);
-  // The Next page gate is pinned at the panel bottom. Clean pages now advance
-  // automatically, so the button is a manual override — shown while parked at
-  // "ready" (legacy) or paused on unfilled required fields. Its label mirrors
-  // the real button the flow will click (Next / Create Account / Sign In).
+  // The advance gate is pinned at the panel bottom. The flow parks on every
+  // filled page — at a "ready" beat, or a "paused" beat when a required field is
+  // still empty — and turns the page only when the user presses this button. Its
+  // label mirrors the real button the flow will click (Next / Create Account / Sign In).
   refs.flowNextBtn.textContent = formatNextLabel(p);
   refs.flowNext.style.display =
     p.phase === "ready" || (p.phase === "paused" && p.pauseReason === "unfilled-required") ? "flex" : "none";
@@ -954,7 +954,6 @@ interface Refs {
   banner: HTMLDivElement;
   flow: HTMLDivElement;
   flowText: HTMLSpanElement;
-  flowStop: HTMLButtonElement;
   flowNext: HTMLDivElement;
   flowNextBtn: HTMLButtonElement;
   signins: HTMLDetailsElement;
@@ -1072,10 +1071,9 @@ export function buildHTML(): string {
         <!-- Banner -->
         <div class="ap-banner" id="ap-banner" style="display:none"></div>
 
-        <!-- Multi-page flow status line + Stop -->
+        <!-- Multi-page flow status line -->
         <div class="ap-flow" id="ap-flow" style="display:none">
           <span class="ap-flow-text" id="ap-flow-text"></span>
-          <button class="ap-flow-stop" id="ap-flow-stop" type="button">Stop</button>
         </div>
 
         <!-- Saved sign-ins (device-local signup-wall credentials) -->
@@ -1235,7 +1233,6 @@ function collectRefs(root: HTMLDivElement): Refs {
     banner: q("#ap-banner"),
     flow: q("#ap-flow"),
     flowText: q("#ap-flow-text"),
-    flowStop: q("#ap-flow-stop"),
     flowNext: q(".ap-flow-next-wrap"),
     flowNextBtn: q("#ap-flow-next"),
     signins: q("#ap-signins"),
@@ -1281,16 +1278,6 @@ function wireEvents(root: HTMLDivElement): void {
 
   // Autofill button
   root.querySelector("#ap-btn-autofill")!.addEventListener("click", () => void doAutofill());
-
-  // Flow Stop button -> stop the running multi-page flow, hide the status line
-  root.querySelector("#ap-flow-stop")!.addEventListener("click", () => {
-    callbacks?.onFlowStop();
-    if (refs) {
-      refs.flow.style.display = "none";
-      refs.flowNext.style.display = "none";
-    }
-    showBanner("Autofill flow stopped.", "warn");
-  });
 
   // Flow Next page button -> advance to the next page; hide the button now so
   // it can't be double-clicked (the next "ready" beat re-shows it if needed).
@@ -1887,14 +1874,11 @@ async function doAutofill(): Promise<void> {
   showBanner("", "ok", true);
 
   try {
-    const { ok, fail, total } = await callbacks.onAutofill(ids, currentUploadResumeId());
-    const txt =
-      total === 0 && entryStart
-        ? `Opening “${overlayState.applyEntry}” — autofill continues on the next page.`
-        : `Filled ${ok} of ${total} field${total === 1 ? "" : "s"}` +
-          (fail > 0 ? ` (${fail} need attention)` : "") +
-          ". Review before submitting.";
-    showBanner(txt, fail > 0 ? "warn" : "ok");
+    await callbacks.onAutofill(ids, currentUploadResumeId());
+    // No per-click "Filled X of Y — review before submitting" banner: one click
+    // now runs the whole multi-page flow, so the flow status line and its final
+    // "done" beat own the feedback. (A mid-flow "review before submitting" read
+    // as if the application were already finished, which was confusing.)
     // Re-scan so each field's currentValue reflects what just got written —
     // this drives the ✓ / – checklist to its post-fill state.
     callbacks.onRescan();

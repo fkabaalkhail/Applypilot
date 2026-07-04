@@ -73,11 +73,43 @@ function sameOriginDocument(iframe: HTMLIFrameElement): Document | null {
 export function isVisible(el: HTMLElement): boolean {
   const style = getComputedStyle(el);
   if (style.display === "none" || style.visibility === "hidden") return false;
-  // Zero-area boxes are invisible companions, not fields: react-select renders a
-  // hidden `<input required>` twin (height:0, opacity:0) purely so native form
-  // validation fires — typing into it churns the widget and double-counts the
-  // question. A genuine field always has a rendered box.
-  return Array.from(el.getClientRects()).some((r) => r.width > 0 && r.height > 0);
+  // The sr-only "clip" trick keeps an element in layout while collapsing it to
+  // nothing. Bot-trap honeypot inputs (e.g. Workday's `beecatcher`, name=website)
+  // hide this way; filling one flags the submission as a bot and the ATS silently
+  // refuses to advance. A user never sees it, so we must not either.
+  if (isClipHidden(style)) return false;
+  // Zero- or sub-pixel-area boxes are invisible companions, not fields: react-select
+  // renders a hidden `<input required>` twin (height:0, opacity:0) purely so native
+  // form validation fires, and honeypots use a ~1px clipped box — typing into either
+  // churns the widget / trips bot detection. A genuine field has a real rendered box.
+  return Array.from(el.getClientRects()).some((r) => r.width > 1 && r.height > 1);
+}
+
+/**
+ * The "visually hidden" clip trick — used for sr-only content and, critically,
+ * for bot-trap honeypot inputs: a `clip: rect(1px,1px,1px,1px)` (or `rect(0,…)`)
+ * or a zero-area `clip-path` collapses the box to nothing while leaving it in the
+ * layout (so `getClientRects` still reports a ~1px box).
+ */
+function isClipHidden(style: CSSStyleDeclaration): boolean {
+  const clipPath =
+    style.clipPath || (style as unknown as { webkitClipPath?: string }).webkitClipPath || "";
+  if (clipPath && clipPath !== "none") {
+    const cp = clipPath.trim();
+    // polygon(0px 0px, 0px 0px, …) — every vertex at the origin ⇒ zero area.
+    if (/^polygon\((?:\s*0(?:px|%)?\s+0(?:px|%)?\s*,?)+\)$/.test(cp)) return true;
+    // inset(50%…)/inset(100%…) collapse the box from the edges inward.
+    if (/^inset\(\s*(?:100|[5-9]\d)(?:\.\d+)?%/.test(cp)) return true;
+  }
+  const clip = style.clip;
+  if (clip && clip !== "auto") {
+    const nums = clip.match(/-?\d*\.?\d+/g)?.map(Number) ?? [];
+    if (nums.length === 4) {
+      const [top, right, bottom, left] = nums; // rect(top, right, bottom, left)
+      if (right - left <= 1 && bottom - top <= 1) return true;
+    }
+  }
+  return false;
 }
 
 /**

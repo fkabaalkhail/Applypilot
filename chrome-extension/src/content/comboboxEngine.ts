@@ -137,19 +137,43 @@ export async function fillAriaCombobox(
 /** A realistic activation sequence: pointer + mouse + click. Exported for the
  *  flow controller's advance-button click (advance.ts). */
 export function activateElement(el: HTMLElement): void {
-  const base: MouseEventInit = { bubbles: true, cancelable: true };
-  firePointer(el, "pointerdown");
-  el.dispatchEvent(new MouseEvent("mousedown", base));
-  firePointer(el, "pointerup");
-  el.dispatchEvent(new MouseEvent("mouseup", base));
-  el.dispatchEvent(new MouseEvent("click", base));
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  // composed: true is essential — many ATS (Workday included) render the app in
+  // an open shadow root, and frameworks delegate their click handling at the
+  // document. A non-composed event bubbles only within the shadow tree, so the
+  // button's real handler never runs and the page never advances. Real user
+  // events are composed; coordinates + button/buttons make the sequence faithful
+  // for handlers that inspect them. (No `view`: jsdom rejects it and browsers
+  // don't need it here.)
+  const mouse = (type: string, buttons: number): MouseEvent =>
+    new MouseEvent(type, {
+      bubbles: true, cancelable: true, composed: true,
+      button: 0, buttons, clientX: cx, clientY: cy,
+    });
+  try {
+    el.focus({ preventScroll: true }); // some handlers gate on focus first
+  } catch {
+    // not focusable — the pointer/mouse sequence below still activates it
+  }
+  firePointer(el, "pointerdown", cx, cy);
+  el.dispatchEvent(mouse("mousedown", 1));
+  firePointer(el, "pointerup", cx, cy);
+  el.dispatchEvent(mouse("mouseup", 0));
+  el.dispatchEvent(mouse("click", 0));
 }
 
-function firePointer(el: HTMLElement, type: string): void {
+function firePointer(el: HTMLElement, type: string, cx = 0, cy = 0): void {
   const PE = (el.ownerDocument.defaultView as unknown as { PointerEvent?: typeof PointerEvent })?.PointerEvent;
   if (!PE) return;
   try {
-    el.dispatchEvent(new PE(type, { bubbles: true, cancelable: true }));
+    el.dispatchEvent(
+      new PE(type, {
+        bubbles: true, cancelable: true, composed: true,
+        clientX: cx, clientY: cy, isPrimary: true, pointerType: "mouse",
+      })
+    );
   } catch {
     // jsdom rejects some PointerEvent inits — ignore; mouse events cover it.
   }

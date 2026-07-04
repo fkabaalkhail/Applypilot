@@ -87,8 +87,8 @@ async function drive(
   let answered = 0;
   for (let guard = 0; guard < 100000 && !settled; guard++) {
     await Promise.resolve();
-    // Clean pages now auto-advance; a manual gate only appears at a legacy
-    // "ready" beat or an unfilled-required pause. Answer either.
+    // Every filled page parks at a gate the user must clear: a "ready" beat on a
+    // clean page, or an unfilled-required pause. Answer each as the panel button would.
     const gates = progress.filter(
       (p) => p.phase === "ready" || (p.phase === "paused" && p.pauseReason === "unfilled-required")
     ).length;
@@ -151,15 +151,32 @@ describe("FlowController", () => {
     expect(progress[progress.length - 1].phase).toBe("done");
   });
 
-  it("auto-advances a clean page without a manual Next-page click", async () => {
+  it("parks at 'ready' on a clean page and only advances after notifyAdvanceRequested", async () => {
     const pages = [[field("1", "A")], [field("2", "B")]];
     const { deps, log, progress } = makeDeps(pages, [advanceBtn(), terminalBtn()]);
-    // hasUnfilledRequired defaults to false → the clean page advances on its own.
-    await new FlowController(deps).run(freshState(), null);
-    expect(log).toContain("click:0"); // advanced with no notifyAdvanceRequested
-    expect(progress.some((p) => p.phase === "ready")).toBe(false);
-    expect(progress.some((p) => p.pauseReason === "unfilled-required")).toBe(false);
+    // Clean page (no unfilled required) — the flow must NOT auto-advance; the
+    // user decides each page turn via the panel's contextual bottom button.
+    const controller = new FlowController(deps);
+    const run = controller.run(freshState(), null);
+    while (!progress.some((p) => p.phase === "ready")) await Promise.resolve();
+    expect(log).not.toContain("click:0"); // parked, waiting for the user
+    controller.notifyAdvanceRequested();
+    await run;
+    expect(log).toContain("click:0"); // advanced only after the user's click
     expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
+  it("labels the ready gate with the advance button's text", async () => {
+    const next = document.createElement("button");
+    next.textContent = "Create Account";
+    const pages = [[field("1", "A")], [field("2", "B")]];
+    const { deps, progress } = makeDeps(pages, [{ el: next, kind: "advance" }, terminalBtn()]);
+    const controller = new FlowController(deps);
+    const run = controller.run(freshState(), null);
+    while (!progress.some((p) => p.phase === "ready")) await Promise.resolve();
+    expect(progress.find((p) => p.phase === "ready")?.nextLabel).toBe("Create Account");
+    controller.notifyAdvanceRequested();
+    await run;
   });
 
   it("uses the provided first tally instead of re-filling step 0", async () => {
@@ -339,7 +356,7 @@ describe("FlowController", () => {
       sleep: async () => { clock += 100; },
       now: () => clock,
     };
-    await new FlowController(deps).run(freshState(), null);
+    await drive(new FlowController(deps), progress); // clear the "ready" gate as the user would
     expect(progress.some((p) => p.pauseReason === "account")).toBe(true);
     expect(log).toContain("click"); // it did attempt Create Account
     expect(progress[progress.length - 1].phase).toBe("done"); // resumed, not stopped

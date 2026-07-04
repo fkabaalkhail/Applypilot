@@ -16,6 +16,7 @@
     "test:flow": "node build.mjs && node test/browser/flow-probe.mjs",
     "test:workday-account": "node build.mjs && node test/browser/workday-account-probe.mjs",
     "test:workday-churn": "node build.mjs && node test/browser/workday-churn-probe.mjs",
+    "test:click-shadow": "node test/browser/click-shadow-probe.mjs",
     "test:driver": "node build.mjs && node test/browser/react-select-driver.mjs",
     "preview": "node test/browser/panel-preview.mjs"
   },

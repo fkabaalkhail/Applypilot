@@ -70,6 +70,9 @@ export interface FlowDeps {
   attachResume(): Promise<boolean>;
   setState(state: FlowState | null): Promise<void>;
   onProgress(p: FlowProgress): void;
+  /** Best-effort log of why the page didn't advance (visible validation errors,
+   *  empty required fields) — surfaces the real blocker on live ATS. No-op in tests. */
+  diagnoseStuck?(): void;
   sleep(ms: number): Promise<void>;
   now(): number;
 }
@@ -188,21 +191,29 @@ export class FlowController {
         return this.finish("done", "Ready to review and submit");
       }
 
-      // Auto-advance when the page is clean; pause for the user only on an issue.
-      // Unfilled required fields would fail the site's own validation, so we stop
-      // and let the user fill them (or force-advance via the Next page button).
-      // A blocker (e.g. a captcha) may also have re-appeared while filling, so
-      // re-check that below before clicking advance.
+      // The page is filled — hand control back to the user. The flow never turns
+      // a page on its own: the panel shows a contextual bottom button (Create
+      // Account / Sign In / Continue / Next page, mirroring advText) and the flow
+      // advances only when the user presses it. One Autofill click fills every
+      // page; the user decides each page turn. A page with an unfilled required
+      // field surfaces the same gate as a "paused" beat so the panel can explain
+      // why (the site's own validation would reject an advance otherwise).
       if (this.deps.hasUnfilledRequired(snap)) {
-        console.log("[Tailrd flow] paused — required field(s) still empty; press Next page to advance anyway");
+        console.log("[Tailrd flow] parked — required field(s) still empty; press the advance button to continue anyway");
         this.emit("paused", { pauseReason: "unfilled-required", nextLabel: advText || undefined });
-        if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
+      } else {
+        console.log(`[Tailrd flow] parked at ready — press "${advText || "Next page"}" to advance`);
+        this.emit("ready", { nextLabel: advText || undefined });
       }
+      if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
+      // A blocker (e.g. a captcha) may have re-appeared while the flow waited, so
+      // re-check before clicking advance.
       if (!(await this.waitWhileBlocked())) return this.finishStopped();
 
       console.log(`[Tailrd flow] clicking advance "${advText}"…`);
       if (!(await this.advanceStep(snap, adv.el, wallDetail))) {
         if (this.stopRequested) return this.finishStopped();
+        this.deps.diagnoseStuck?.(); // surface the real blocker (validation / empty required)
         // An account wall that didn't advance means auto-signup/sign-in
         // couldn't complete on its own — a password the site rejected, an
         // unmet requirement, an email-verification/2FA step, a captcha inside

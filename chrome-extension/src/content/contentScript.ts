@@ -50,7 +50,7 @@ import type {
   TailorResumeResponse,
   UserApplicationProfile,
 } from "../shared/types";
-import { deepQueryAll, isPlaceholderFiller } from "./domUtils";
+import { deepQueryAll, isPlaceholderFiller, isVisible, cleanText } from "./domUtils";
 import { base64ToFile, downloadBase64File, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
@@ -188,6 +188,52 @@ function waitForDomSettle(signal?: AbortSignal, quietMs = 400, capMs = 3000): Pr
     cap = setTimeout(done, capMs);
     signal?.addEventListener("abort", done, { once: true });
   });
+}
+
+/**
+ * Log why an advance click left the page put — the real blocker on live ATS
+ * (Workday et al.): a visible validation error, or a required field the fill
+ * couldn't complete, is what makes a page refuse to advance (for the extension
+ * AND a manual click). Best-effort; never throws. deepQueryAll already skips the
+ * extension's own UI.
+ */
+function logStuckDiagnostics(): void {
+  try {
+    const errors = deepQueryAll(
+      document.body,
+      '[role="alert"], [aria-live="assertive"], [aria-invalid="true"], [class*="error" i], [data-automation-id*="error" i]'
+    )
+      .filter((el) => isVisible(el))
+      .map((el) => cleanText(el.textContent))
+      .filter((t) => t.length > 0 && t.length < 200);
+
+    const emptyRequired = deepQueryAll(
+      document.body,
+      'input[required], select[required], textarea[required], [aria-required="true"]'
+    )
+      .filter((el) => isVisible(el))
+      .filter((el) => {
+        const input = el as HTMLInputElement;
+        if (input.type === "checkbox" || input.type === "radio") return !input.checked;
+        return !(input.value && input.value.trim());
+      })
+      .map(
+        (el) =>
+          cleanText(el.getAttribute("aria-label")) ||
+          cleanText(el.closest("label")?.textContent) ||
+          (el as HTMLInputElement).name ||
+          el.getAttribute("data-automation-id") ||
+          "(unlabeled)"
+      );
+
+    console.log(
+      "[Tailrd stuck] page did not advance —",
+      "visible errors:", JSON.stringify([...new Set(errors)].slice(0, 6)),
+      "| empty required fields:", JSON.stringify([...new Set(emptyRequired)].slice(0, 10))
+    );
+  } catch (err) {
+    console.log("[Tailrd stuck] diagnostic failed:", err instanceof Error ? err.message : err);
+  }
 }
 
 function initialize(): void {
@@ -915,6 +961,7 @@ function initialize(): void {
         }
       },
       onProgress: emitFlowProgress,
+      diagnoseStuck: logStuckDiagnostics,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       now: () => Date.now(),
     };
