@@ -81,6 +81,7 @@ import { getCredential } from "./credentialStore";
 import { bindSubmitTracking, type SubmitTrackerHandle } from "./submitTracker";
 import { buildAutofillTelemetry } from "./telemetry";
 import { setOverrideRules } from "./overrides";
+import { onExtensionContextInvalidated, postToRuntime, sendToRuntime } from "./runtimeMessaging";
 
 // Guard against double injection (manifest match + programmatic inject).
 declare global {
@@ -98,7 +99,9 @@ if (!window.__apContentScriptLoaded) {
 }
 
 function sendToBackground<T>(message: BackgroundRequest): Promise<T> {
-  return chrome.runtime.sendMessage(message) as Promise<T>;
+  // Routed through the context-safe sender: after an extension reload this
+  // content script is orphaned and a raw sendMessage throws synchronously.
+  return sendToRuntime<T>(message) as Promise<T>;
 }
 
 // --- TEMP diagnostics (remove before shipping) ------------------------------
@@ -277,9 +280,7 @@ function initialize(): void {
    *  this frame is a child form-host — the top frame's panel). */
   function reportFields(): void {
     if (actingAsRemoteHost) {
-      void chrome.runtime
-        .sendMessage({ type: "RELAY_TO_TOP", payload: { type: "REMOTE_FIELDS_UPDATED", fields: lastFields } })
-        .catch(() => {});
+      postToRuntime({ type: "RELAY_TO_TOP", payload: { type: "REMOTE_FIELDS_UPDATED", fields: lastFields } });
       return;
     }
     maybeShowOrUpdateOverlay();
@@ -292,6 +293,29 @@ function initialize(): void {
     if (!engine) engine = new AutofillReconciler({ root: document });
     return engine;
   };
+
+  // After the extension is reloaded/updated this content script is orphaned:
+  // every runtime message throws "Extension context invalidated". The messaging
+  // helpers detect that and run this once so we stop the observers that would
+  // otherwise re-fire — and re-throw — on every subsequent page mutation.
+  onExtensionContextInvalidated(() => {
+    try {
+      observer?.disconnect();
+    } catch {
+      // observer already gone
+    }
+    observer = null;
+    try {
+      engine?.dispose();
+    } catch {
+      // reconciler already disposed
+    }
+    try {
+      submitTracker?.dispose();
+    } catch {
+      // tracker already disposed
+    }
+  });
 
   const isTopFrame = ((): boolean => {
     try {
@@ -1126,9 +1150,9 @@ function initialize(): void {
           url: location.href,
           fieldCount: lastFields.length,
         };
-        void chrome.runtime.sendMessage(event).catch(() => {
-          // Popup closed — nobody listening. That's fine.
-        });
+        // Context-safe: after a reload this send would otherwise throw
+        // "Extension context invalidated" synchronously on every mutation.
+        postToRuntime(event);
       }
       reportFields();
       if (!isTopFrame) announceIfFormHost();
@@ -1324,7 +1348,7 @@ function initialize(): void {
           ) {
             const frameId = message.frameId;
             const send = (op: FormOpName, args: unknown[]): Promise<FormOpResult> =>
-              chrome.runtime.sendMessage({ type: "RELAY_FORM_OP", frameId, op, args }) as Promise<FormOpResult>;
+              sendToRuntime<FormOpResult>({ type: "RELAY_FORM_OP", frameId, op, args }) as Promise<FormOpResult>;
             remoteFields = message.fields;
             remoteCallbacks = makeProxyCallbacks(send);
             overlayShown = true;
