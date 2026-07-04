@@ -60,6 +60,7 @@ async function fillLeverLocation(input: HTMLInputElement, value: string): Promis
 
 export const leverAdapter: SiteAdapter = {
   id: "lever",
+  label: "Lever",
   match: (host) => LEVER_HOST.test(host),
 
   classify(ctx: FieldContext): Classification | undefined {

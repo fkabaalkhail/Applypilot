@@ -54,6 +54,7 @@ function setInput(el: HTMLInputElement, value: string): void {
 
 export const workdayAdapter: SiteAdapter = {
   id: "workday",
+  label: "Workday",
   match: (host) => WD_HOST.test(host),
 
   classify(ctx) {

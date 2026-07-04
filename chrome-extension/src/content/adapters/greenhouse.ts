@@ -16,6 +16,7 @@ const NAME_RULES: Array<[RegExp, FieldCategory]> = [
 
 export const greenhouseAdapter: SiteAdapter = {
   id: "greenhouse",
+  label: "Greenhouse",
   match: (host) => /(^|\.)greenhouse\.io$/i.test(host),
 
   classify(ctx) {
