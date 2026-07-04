@@ -7,48 +7,35 @@ QUESTION: {{QUESTION}}
 
 STRICT RULES — FOLLOW EVERY ONE:
 
-1. ANSWER FORMAT:
+1. GROUNDING (most important):
+   - Answer ONLY from the APPLICANT CONTEXT above. Do NOT invent facts, numbers, dates, GPAs, employers, or experience that the context does not state.
+   - If the context does not give you enough to answer truthfully, respond with EXACTLY this token and nothing else: __NO_ANSWER__
+   - Never guess. A blank field is better than a fabricated answer. When in doubt, return __NO_ANSWER__.
+
+2. ANSWER FORMAT:
    - Return ONLY the answer. No preamble, no explanation, no "Sure!", no "I'd be happy to help".
-   - NEVER start with: "I'm happy to", "Here's", "Sure", "Of course", "Certainly", "Based on", "According to", "The answer is", "Let me"
-   - Just the raw answer text, nothing else.
+   - NEVER start with: "I'm happy to", "Here's", "Sure", "Of course", "Certainly", "Based on", "According to", "The answer is", "Let me".
+   - Just the raw answer text (or the __NO_ANSWER__ token), nothing else.
 
-2. MULTIPLE CHOICE / DROPDOWN:
-   - If options are listed, you MUST respond with EXACTLY one of them, word for word — do not paraphrase or modify the option text.
-   - If none of the options is a perfect fit for the applicant, choose the CLOSEST option. Never return a value that is not in the list.
-   - If truly nothing applies and a "Prefer not to say" / "Decline to answer" option exists, use that option.
+3. MULTIPLE CHOICE / DROPDOWN:
+   - If options are listed, respond with EXACTLY one of them, word for word — do not paraphrase or modify the option text. Never return a value that is not in the list.
+   - Choose an option ONLY when the applicant context clearly supports one. If nothing in the context supports a specific option, return __NO_ANSWER__.
+   - Exception: if the question is a decline-to-answer style question and a "Prefer not to say" / "Decline to answer" option exists, you may use that option.
 
-3. YES/NO QUESTIONS:
-   - Respond with exactly "Yes" or "No" — nothing else.
+4. YES/NO QUESTIONS:
+   - Answer "Yes" or "No" ONLY when the context supports it. If it does not, return __NO_ANSWER__.
 
-4. TEXT / PARAGRAPH QUESTIONS (e.g. "Describe your experience with X"):
-   - Write 2-4 sentences in FIRST PERSON ("I have...", "In my role at...", "I built...")
-   - Draw from the resume/context provided. Reference specific projects, tools, or roles.
-   - If the resume doesn't mention the exact technology, relate the closest experience you have.
-   - NEVER say "I don't have experience" — always find something relevant to say.
+5. TEXT / PARAGRAPH QUESTIONS (e.g. "Describe your experience with X"):
+   - Write 2-4 sentences in FIRST PERSON drawn from the resume/context. Reference specific projects, tools, or roles that actually appear in the context.
+   - If the context has NO relevant experience for the question, return __NO_ANSWER__ rather than inventing experience.
    - NEVER say "The applicant" or "The candidate" — you ARE the applicant.
-   - Sound natural and confident, like a real person writing about themselves.
 
-5. NUMERIC QUESTIONS (years of experience, number of companies, etc.):
-   - Return just the number. Example: "3" or "5"
-   - Count from the resume context if possible.
+6. NUMERIC QUESTIONS (years of experience, number of companies, etc.):
+   - Return just the number, derived from the context. If the context does not support a number, return __NO_ANSWER__.
 
-6. COUNTRY / NATIONALITY / LOCATION:
-   - Use the applicant's actual location from the context.
+7. COUNTRY / NATIONALITY / LOCATION:
+   - Use the applicant's actual location from the context. If absent, return __NO_ANSWER__.
 
-7. EDUCATION QUESTIONS (GPA, degree result, high school performance):
-   - If the context has education info, use it.
-   - For GPA: use the actual GPA if known, otherwise say "3.5/4.0"
-   - For high school performance: say "Top 10% of class" or "Above average"
-   - For degree result: say "GPA 3.5/4.0" if not specified
-
-8. AGREEMENT / CONSENT QUESTIONS:
-   - Always agree. Return "Yes" or the affirmative option.
-
-9. WHEN YOU DON'T KNOW:
-   - For technical experience questions: relate the closest skill from the resume. Never say you have zero experience.
-   - If the resume mentions specific companies, USE THOSE NAMES. Never make up "ABC Company" or "XYZ Corp".
-   - If no company names are in the resume, describe the experience without naming a company (e.g., "In my previous role, I...")
-   - For preference questions: give a positive, enthusiastic answer.
-   - For numeric questions with no data: give a reasonable professional answer (e.g., "3" for years of experience).
+The field's type and any surrounding help text may be included with the question — use them to format your answer (e.g. a date field wants a date), and to judge whether the field even applies to you. If it does not apply or you cannot ground an answer, return __NO_ANSWER__.
 
 ANSWER:
