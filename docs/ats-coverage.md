@@ -2,14 +2,21 @@
 
 Track which ATS systems have been tested and confirmed working with the Tailrd extension.
 
-**Progress:** 15 / 15 tracked · 29 site adapters registered
+**Progress:** Full Jobright 1.15.0 detection parity — **69 / 69 sites recognized**
+(48 reusable-ATS *vendor* fill adapters + 21 company *portals* recognized via the
+path-gated site registry). See `2026-07-04` parity work below.
 
-Every tracked ATS now has a dedicated `SiteAdapter` (host recognition + attribute
-classification over the generic pipeline), plus 14 more platforms Jobright ships,
-for parity. Greenhouse and Workday keep hand-tuned modules
-(`adapters/greenhouse.ts`, `adapters/workday.ts`); the rest are declared in the
-data-driven table `adapters/common.ts`. Adapters are advisory: an unmatched host
-or a declined hook falls back to byte-identical generic behavior.
+Detection is driven by `src/content/siteRegistry.ts` — a verbatim, order-preserved
+port of Jobright's `SITE_REGISTRY` (domains / match-patterns / pathRegex / iframe /
+pageSource), reviewed for exact fidelity. Greenhouse, Workday and Lever keep
+hand-tuned modules; the reusable vendors are declared in the data-driven table
+`adapters/common.ts`; single-employer portals (google, tesla, adobe…) are matched
+only by the path-gated `detectSite` (a bare host match would be too broad).
+Adapters are advisory: an unmatched host or a declined hook falls back to
+byte-identical generic behavior.
+
+> Reference data: `docs/superpowers/reference/jobright-site-registry.json` (the 69
+> extracted entries) and `…/jobright-SITE_REGISTRY.verbatim.js`.
 
 - `[x]` = generic pipeline tested + confirmed working.
 - **adapter** column = a registered `SiteAdapter` refines detection/classification.
@@ -102,3 +109,70 @@ fill operations can be layered onto any of them through the same adapter seams.
 field's category), `resolveAnswer` (site-specific value), `fillOperation` (own a
 tricky widget), `advanceButton` (exact multi-step Next selector). Adding a new ATS
 is a one-line entry in `COMMON_ATS`; deepening one is a hook on its object.
+
+---
+
+## Full Jobright parity — newly added vendors (2026-07-04)
+
+Beyond the tracked set above, the site registry now recognizes every remaining
+Jobright vendor and portal. New reusable-ATS **vendor** adapters (thin host match +
+generic pipeline + panel label): Kula, Dover, Zoho Recruit, Gem, HiringThing, CATS
+(catsone), RippleHire, CareersPage, CareerPlug, isolved, JobDiva, GoHire, Trakstar,
+Freshteam, Pinpoint, TriNet Hire, JobScore, Comeet, Polymer, Recruiterflow.
+
+**Company portals** (single employer; recognized via path-gated `detectSite`, not a
+fill adapter): Adobe, Amazon, Amazon University, Apple, ByteDance, Cisco, Google,
+Gusto, HubSpot, Intuit, Jacobs, Meta, Okta, Tesla, TikTok, Uber, Walmart,
+Y Combinator, Waymo, Toast, X (Alphabet).
+
+## Fill-quality status (grounded in production `autofill_reports`)
+
+Telemetry-measured fill rates and the concrete failure modes (2026-07-04):
+
+| ATS | fill % | Top failure(s) | Status |
+|---|---|---|---|
+| Lever | 96.7% | — | good |
+| Greenhouse | 93.2% | scattered | good |
+| Workday | 78.9% | "Field no longer found" re-render race; Country-Phone-Code / Phone-Device-Type / How-Did-You-Hear dropdowns | **partial — see below** |
+| SuccessFactors | 72.0% | EEO paginated dropdowns (gender/race/veteran, `rcmpaginatedselect`); custom question dropdowns (Conflict of Interest, Citizenship); marketing checkboxes | **partial — see below** |
+
+**Fixed 2026-07-04 — single-checkbox intent** (`checkboxIntent.ts`): the
+cross-cutting "Ambiguous checkbox value" failures on SF **and** Workday (e.g.
+"I have a preferred name" → the name, "Hear more about career opportunities" → an
+email, "I agree to the above" → non-bool). A single checkbox is now resolved as
+boolean intent — check clear application consent, never opt into marketing, skip
+misclassified/ambiguous boxes (→ not counted as failures). Fixes the checkbox rows
+of both SF and Workday failures.
+
+### Remaining fill work (needs live ATS DOM to fix safely — not guessed)
+
+These are known-hard, widget-specific, and behind an authenticated application
+step, so they require live capture to fix without regressing high-traffic ATS:
+
+1. **Workday dropdowns** — Country Phone Code / Phone Device Type / How Did You
+   Hear About Us are Workday `data-automation-id` button+listbox widgets not yet
+   driven. Note: "Country Phone Code" is *misclassified* as `country` (regex order
+   in `workday.ts` AUTOMATION_RULES matches `country` before a phone-code rule).
+2. **Workday "Field no longer found"** — a re-render staleness race on some tenants
+   (bmo.wd3); needs settle/retry hardening verified against live DOM.
+3. **SuccessFactors EEO paginated dropdowns** (`rcmpaginatedselect`) + custom
+   question dropdowns + résumé `<div role="button">` upload target. Needs an SF
+   adapter built from captured DOM.
+4. **BambooHR / Ashby** deep specials — Jobright ships `BAMBOOHR_SPECIAL` and
+   `ASHBY_SEARCH` (custom typeahead). No telemetry failures yet; generic pipeline
+   covers the baseline. Hand-tune from live DOM when data warrants.
+
+## Non-ATS parity audit vs Jobright 1.15.0 (2026-07-04)
+
+Diffed Jobright's background service worker + manifest against ours. **No genuine
+gaps.** Equivalents already present:
+
+| Jobright feature | Tailrd | Notes |
+|---|---|---|
+| `setUninstallURL` | ✅ `serviceWorker.ts` | uninstall feedback w/ UTM |
+| `runtime.onMessageExternal` | ✅ | apply-intent from web app (`applyIntent.ts`) |
+| submit → application logging | ✅ | `submitTracker.ts` + `POST /apply/log` |
+| `action.onClicked` panel open | ✅ | injects content script on demand |
+| `onInstalled`, sync alarm | ✅ | |
+| DNR header-strip (X-Frame-Options/CSP) for lever/ashby | ⛔ **intentional** | only needed to *embed* ATS forms in Jobright's own tab; Tailrd injects a side-panel overlay **into** the real ATS page — more robust, no header manipulation |
+| `cookies.getAll` auth sync | ⛔ **intentional** | Tailrd uses PKCE + `identity`, not cookie scraping |
