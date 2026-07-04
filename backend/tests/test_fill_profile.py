@@ -47,8 +47,17 @@ def test_yesno_keyword_rules_defer_when_options_are_not_yes_no():
     assert _rule_based_answer("Which visa sponsorship do you hold?", ["H-1B", "TN", "None"], settings=None) is None
 
 
-def test_yesno_keyword_rules_still_answer_yes_no_and_free_text():
-    """The guard only suppresses the shortcut for specific-option fields — a real
-    yes/no control, or a free-text control (no options), still gets the answer."""
-    assert _rule_based_answer("Are you willing to relocate?", ["Yes", "No"], settings=None) == "Yes"
-    assert _rule_based_answer("Are you willing to relocate?", [], settings=None) == "yes"
+def test_kept_universal_rules_still_answer():
+    """Truly universal screening questions still auto-answer."""
+    assert _rule_based_answer("Are you legally authorized to work?", ["Yes", "No"], settings=None) == "Yes"
+    assert _rule_based_answer("Do you require sponsorship?", ["Yes", "No"], settings=None) == "No"
+    assert _rule_based_answer("Are you at least 18 years old?", ["Yes", "No"], settings=None) == "Yes"
+
+
+def test_assumption_rules_are_dropped():
+    """Assumption-based questions no longer auto-fill a hardcoded Yes — they
+    defer to the AI pass, which leaves them blank unless the profile supports it."""
+    assert _rule_based_answer("Are you willing to relocate?", ["Yes", "No"], settings=None) is None
+    assert _rule_based_answer("Do you have a valid driver's license?", ["Yes", "No"], settings=None) is None
+    assert _rule_based_answer("Do you consent to a background check?", ["Yes", "No"], settings=None) is None
+    assert _rule_based_answer("Are you willing to take a drug test?", ["Yes", "No"], settings=None) is None

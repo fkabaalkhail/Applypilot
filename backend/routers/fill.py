@@ -137,12 +137,6 @@ def _raw_rule_based_answer(label: str, options: list[str], settings, profile=Non
         return "Yes" if yes_no else "yes"
     if any(kw in q for kw in ["18 years", "18 or older"]):
         return "Yes" if yes_no else "yes"
-    if "relocat" in q:
-        return "Yes" if yes_no else "yes"
-    if "driver" in q and "licen" in q:
-        return "Yes" if yes_no else "yes"
-    if "background check" in q or "drug test" in q:
-        return "Yes" if yes_no else "yes"
 
     # "Have you worked here / are you a current or former employee?" — answer from
     # the applicant's real experience: Yes only when this company is in it.
