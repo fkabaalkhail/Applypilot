@@ -98,6 +98,21 @@ describe("runAccountWall", () => {
     expect(saved?.password).toBe(p1);
   });
 
+  it("signup: ticks a required consent checkbox but leaves marketing opt-ins alone", async () => {
+    document.body.innerHTML = `
+      <div id="s"><h2>Create Account</h2>
+        <input type="email" name="email" id="em" />
+        <input type="password" id="p1" /><input type="password" id="p2" />
+        <label><input type="checkbox" id="agree" required /> I agree to the Privacy Statement</label>
+        <label><input type="checkbox" id="marketing" /> Send me job tips</label>
+      </div>`;
+    const wall = detectWall(scope())!;
+    expect(wall.agreeEls).toHaveLength(1);
+    await runAccountWall(wall, "https://acme.jobs", "me@x.com", write);
+    expect((document.getElementById("agree") as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById("marketing") as HTMLInputElement).checked).toBe(false);
+  });
+
   it("signup revisit: reuses the already-saved password (idempotent)", async () => {
     await saveCredential("https://acme.jobs", "me@x.com", "Existing#Pass9x");
     document.body.innerHTML = `

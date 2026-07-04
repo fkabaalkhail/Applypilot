@@ -179,7 +179,9 @@ export class FlowController {
         // Click rejected (validation) or this page genuinely can't advance.
         // NB: this pre-check consumes one pauseReason() poll, so emit the
         // pause beat here — waitWhileBlocked may find the reason already clear.
-        if ((await this.deps.pauseReason(this.deps.snapshot())) === "validation") {
+        const reason = await this.deps.pauseReason(this.deps.snapshot());
+        console.log(`[Tailrd flow] couldn't advance; pauseReason=${reason ?? "none"}`);
+        if (reason === "validation") {
           this.emit("paused", { pauseReason: "validation" });
           if (!(await this.waitWhileBlocked())) return this.finishStopped();
           this.step -= 1; // retry the same page without burning a step
