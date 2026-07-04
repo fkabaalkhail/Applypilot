@@ -262,6 +262,10 @@ function initialize(): void {
   let lastProfile: UserApplicationProfile | null = null;
   let lastFillEEO = false;
   let observer: MutationObserver | null = null;
+  // Guards maybeResumeFlow against re-entrancy: the observer can fire several
+  // rescans before FLOW_STATE_GET resolves, which would otherwise start two
+  // controllers from the same persisted state.
+  let resumeInFlight = false;
   let overlayShown = false;
   // The top frame has adopted a form that lives in a child frame; its own local
   // scans must then never overwrite the panel with the (formless) top-frame DOM.
@@ -970,13 +974,14 @@ function initialize(): void {
   /** Resume a persisted flow after a real navigation (form-owning frame only,
    *  or the top frame of an entry page — job posting / apply-method chooser). */
   async function maybeResumeFlow(): Promise<void> {
-    if (flowController) return;
+    if (flowController || resumeInFlight) return;
     if (
       recognizedCount(lastFields) === 0 &&
       !(isTopFrame && findApplyEntry(document, lastAdapter))
     ) {
       return; // not the form-owning frame (yet), and nothing to click into
     }
+    resumeInFlight = true;
     try {
       const resp = await sendToBackground<FlowStateResponse>({ type: "FLOW_STATE_GET" });
       const st = resp?.state;
@@ -992,6 +997,8 @@ function initialize(): void {
       void flowController.run(st, null);
     } catch {
       // Background asleep — the flow simply doesn't resume.
+    } finally {
+      resumeInFlight = false;
     }
   }
 
@@ -1233,6 +1240,7 @@ function initialize(): void {
     if (observer) return;
     observer = observePage(() => {
       const before = lastFields.length;
+      const recognizedBefore = recognizedCount(lastFields);
       runScan();
       // Keep the reconciler pointed at the freshly-scanned controls so its
       // background drift correction tracks surviving fields after re-renders.
@@ -1250,6 +1258,15 @@ function initialize(): void {
       }
       reportFields();
       if (!isTopFrame) announceIfFormHost();
+      // A mid-flow navigation can land on an SPA page (Workday) that lazy-renders
+      // its fields AFTER the initial profile-resolve resume already ran and bailed
+      // on the still-empty page. Retry the resume the instant recognized fields
+      // appear, so the next page auto-fills without a manual Autofill click. Gated
+      // on the profile being loaded (a fill needs proposed values) and on a real
+      // 0→N transition; maybeResumeFlow's own guards handle the no-active-flow case.
+      if (lastProfile !== null && recognizedBefore === 0 && recognizedCount(lastFields) > 0) {
+        void maybeResumeFlow();
+      }
     });
   }
 
