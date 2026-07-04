@@ -27,6 +27,9 @@ export const FLOW_TTL_MS = 10 * 60 * 1000;
 const PAUSE_POLL_MS = 2000;
 const ADVANCE_POLL_MS = 500;
 const ADVANCE_WAIT_MS = 8000;
+/** How many times to auto-attach a résumé upload field that lazy-renders after
+ *  the fill before falling back to waiting for a manual attach. */
+const RESUME_ATTACH_TRIES = 6;
 
 export interface StepTally {
   ok: number;
@@ -314,6 +317,7 @@ export class FlowController {
   /** Poll pauseReason until clear. False → stopped/expired. */
   private async waitWhileBlocked(): Promise<boolean> {
     let current: FlowPauseReason | null = null;
+    let resumeTries = 0;
     for (;;) {
       if (this.stopRequested) return false;
       if (this.expired()) {
@@ -322,6 +326,15 @@ export class FlowController {
       }
       const reason = await this.deps.pauseReason(this.deps.snapshot());
       if (!reason) return true;
+      // A résumé upload field often lazy-renders after the page fills (Workday and
+      // other SPAs), so the one attach attempt at fill time misses it. Auto-attach
+      // it here as it appears — the user should never have to click attach. Bounded
+      // so a page whose résumé simply has no stored file doesn't hammer the backend;
+      // once the tries are spent we fall back to the manual-attach pause below.
+      if (reason === "resume-upload" && resumeTries < RESUME_ATTACH_TRIES) {
+        resumeTries++;
+        if (await this.deps.attachResume()) continue; // injected — re-poll; likely clears now
+      }
       if (reason !== current) {
         current = reason;
         this.emit("paused", { pauseReason: reason });

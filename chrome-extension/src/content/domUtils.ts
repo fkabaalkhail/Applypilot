@@ -21,13 +21,13 @@ export function reattachIfDetached(node: HTMLElement, parent: ParentNode): boole
 }
 
 /**
- * The extension's own in-page UI hosts (side panel + missing-info modal). Their
- * shadow roots hold real form controls (a cover-letter tone <select>, résumé
- * pickers, EEO inputs) that are NOT page fields — deepQueryAll must never
- * descend into them, or the scanner counts our own UI as the page's form and a
- * bare job posting reads as a filled form (so the flow never clicks Apply).
+ * The extension's own in-page UI host (the side panel). Its shadow root holds
+ * real form controls (a cover-letter tone <select>, résumé pickers, EEO inputs)
+ * that are NOT page fields — deepQueryAll must never descend into it, or the
+ * scanner counts our own UI as the page's form and a bare job posting reads as a
+ * filled form (so the flow never clicks Apply).
  */
-export const EXTENSION_UI_HOST_IDS = new Set(["applypilot-overlay-host", "tailrd-missing-info-host"]);
+export const EXTENSION_UI_HOST_IDS = new Set(["applypilot-overlay-host"]);
 
 /**
  * querySelectorAll that also descends into open shadow roots AND same-origin

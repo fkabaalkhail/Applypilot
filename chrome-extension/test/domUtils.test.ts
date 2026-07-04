@@ -44,13 +44,13 @@ describe("deepQueryAll — traversal", () => {
     expect(ids).toContain("shadow-field");
   });
 
-  it("never descends into the extension's own UI hosts (panel + missing-info)", () => {
+  it("never descends into the extension's own UI host (the panel)", () => {
     // A genuine page field must still be found.
     document.body.innerHTML = `<input id="page-field" />`;
     // The panel lives in a shadow root on our host and has its own form controls
     // (e.g. the cover-letter tone <select>) — those must NEVER be scanned as page
     // fields, or a bare job posting reads as a form and the flow won't click Apply.
-    for (const id of ["applypilot-overlay-host", "tailrd-missing-info-host"]) {
+    for (const id of ["applypilot-overlay-host"]) {
       const host = document.createElement("div");
       host.id = id;
       document.body.appendChild(host);

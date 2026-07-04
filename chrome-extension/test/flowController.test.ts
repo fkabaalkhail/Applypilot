@@ -284,6 +284,18 @@ describe("FlowController", () => {
     expect(log).not.toContain("click:0");
   });
 
+  it("auto-attaches a lazy-rendered résumé field without a manual attach", async () => {
+    const pages = [[field("1", "A")], [field("2", "B")]];
+    const { deps, progress } = makeDeps(pages, [advanceBtn(), terminalBtn()]);
+    let attached = false;
+    deps.attachResume = async (): Promise<boolean> => { attached = true; return true; };
+    // The résumé field lazy-renders: the page reports resume-upload until attached.
+    deps.pauseReason = async (): Promise<"resume-upload" | null> => (attached ? null : "resume-upload");
+    await drive(new FlowController(deps), progress);
+    expect(attached).toBe(true); // attached on its own — no manual attach needed
+    expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
   it("finishes done at a terminal button with no ready beat and no click", async () => {
     const { deps, log, progress } = makeDeps([[field("1", "A")]], [terminalBtn()]);
     await new FlowController(deps).run(freshState(), null);

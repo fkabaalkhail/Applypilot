@@ -22,10 +22,8 @@ import type {
   ApplicationLog,
   BackgroundRequest,
   ContentRequest,
-  ControlType,
   CoverLetterGenOpts,
   DetectedField,
-  FieldCategory,
   FieldsUpdatedEvent,
   FillResponse,
   FlowProgress,
@@ -36,7 +34,6 @@ import type {
   OverridesResponse,
   GenerateCoverLetterResponse,
   PingResponse,
-  ProfileResponse,
   RecordApplicationResponse,
   RenderCoverLetterResponse,
   RenderResumeResponse,
@@ -50,11 +47,11 @@ import type {
   TailorResumeResponse,
   UserApplicationProfile,
 } from "../shared/types";
-import { deepQueryAll, isPlaceholderFiller, isVisible, cleanText } from "./domUtils";
+import { deepQueryAll, isVisible, cleanText } from "./domUtils";
 import { base64ToFile, downloadBase64File, injectResumeFile } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
-import { getLocalAnswers, saveLocalAnswer } from "./localAnswers";
+import { getLocalAnswers } from "./localAnswers";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
@@ -62,8 +59,6 @@ import { aiFillCandidates, needsOptionHarvest, planAiFill, planFillRoute, planRe
 import { closestDemographicOption } from "./demographicMatch";
 import { toApplicantProfile } from "./applicantProfile";
 import { splitByCache, cacheAnswers } from "./answerCache";
-import { promptForMissingFields, type MissingFieldPrompt } from "./missingInfoModal";
-import { buildProfilePatch, isProfileCategory } from "../shared/profileCategories";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
 import { fillAriaCombobox, harvestComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { driveField, setDialogSuppression } from "./mainWorldClient";
@@ -442,19 +437,6 @@ function initialize(): void {
    * Preserves the Task-7 single re-ask round. Every backend answer fills
    * silently (no review gate). Returns the step tally.
    */
-  // Free-text control types worth asking the user about when required + empty.
-  const PROMPTABLE_TYPES = new Set<ControlType>(["text", "textarea", "contenteditable"]);
-  // Single-select choice controls we can prompt with their REAL options when the
-  // AI couldn't answer them (dropdowns / radio groups). checkboxGroup is excluded
-  // — it's multi-select and doesn't fit the single-answer modal.
-  const CHOICE_TYPES = new Set<ControlType>([
-    "select",
-    "radioGroup",
-    "combobox",
-    "ariaRadioGroup",
-    "customDropdown",
-  ]);
-
   /** True when the control for `id` currently holds no user-visible value. */
   function controlIsEmpty(id: string): boolean {
     const control = registry.get(id);
@@ -480,28 +462,20 @@ function initialize(): void {
   }
 
   /**
-   * After a fill pass, prompt for the still-empty free-text questions that
-   * neither the profile, the answer bank, nor the AI could fill — either because
-   * they're REQUIRED, or because they map to a personal-info profile field we
-   * don't have yet (name, phone, address, links, work-authorization, salary…).
-   * Fills whatever the user provides, then persists it so the NEXT application
-   * fills it automatically:
-   *   - answers that map to a profile field → the application profile
-   *     (UPDATE_PROFILE), so they also appear in Autofill Information + the web
-   *     app Profile page;
-   *   - everything else → the answer bank / Question Memory (SAVE_ANSWER).
-   * EEO/sensitive fields are never prompted (they fill from the profile only).
+   * Silently refill device-local sensitive answers (gender/orientation/veteran/…
+   * — the sensitive questions with no profile slot, saved on an earlier
+   * application). They never reach any backend, so we refill them here with NO UI.
+   * The old interactive "missing information" modal was removed: unknown fields
+   * are left for the user to fill, and the flow's advance gate surfaces any empty
+   * required ones. Returns the fills so the caller can fold them into its tally.
    */
-  async function promptMissingInfo(signal?: AbortSignal): Promise<{
+  async function refillLocalAnswers(signal?: AbortSignal): Promise<{
     reports: FieldReport[];
     outcomes: { fieldId: string; ok: boolean }[];
   }> {
     const empty = { reports: [], outcomes: [] };
 
-    // Pass 0 — device-local sensitive answers (transgender/orientation/… — the
-    // sensitive questions with no profile slot, answered in this modal on an
-    // earlier application). They never reach any backend, so refill them here,
-    // silently, before deciding what still needs asking.
+    // Device-local sensitive answers, refilled silently before we hand off.
     let localFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] } = empty;
     try {
       const stored = await getLocalAnswers();
@@ -513,113 +487,13 @@ function initialize(): void {
         if (storedTargets.length > 0) {
           const r = await fillItems(storedTargets, true, signal);
           localFill = { reports: r.reports, outcomes: r.outcomes };
-          // Let the widgets re-render their committed value before we judge
-          // emptiness below — react-select paints the single-value a beat after
-          // the driver commits, and racing it would re-ask answered questions.
-          await new Promise((resolve) => setTimeout(resolve, 400));
         }
       }
     } catch {
-      // Storage unavailable — just ask again.
+      // Storage unavailable — nothing to refill.
     }
 
-    // Sensitive fields ARE promptable: the user answering their own demographic
-    // question locally is the whole point (it's the AI that must never touch
-    // them). Their answers persist to the profile's eeo slots or the local
-    // store below — never to the server answer bank.
-    const candidates = lastFields.filter(
-      (f) =>
-        f.fillable &&
-        // A question we can't NAME can't be asked or remembered: an empty label
-        // (or bare dropdown filler like "Select…") renders a meaningless modal
-        // row and would key the saved answer on junk. Skip those fields.
-        f.label.trim().length > 0 &&
-        !isPlaceholderFiller(f.label) &&
-        (f.required || isProfileCategory(f.category)) &&
-        controlIsEmpty(f.id) &&
-        (PROMPTABLE_TYPES.has(f.controlType) || CHOICE_TYPES.has(f.controlType))
-    );
-    if (candidates.length === 0) return localFill;
-
-    // A dropdown is only worth prompting WITH its real options. Lazy widgets
-    // (react-select) mount their list on open — briefly open+close the ones we
-    // still know nothing about to harvest the actual choices.
-    for (const f of candidates) {
-      if (signal?.aborted) break;
-      if (!CHOICE_TYPES.has(f.controlType) || (f.options?.length ?? 0) > 0) continue;
-      const el = registry.get(f.id)?.el;
-      if (!el) continue;
-      const harvested = await harvestComboboxOptions(el).catch(() => undefined);
-      if (harvested && harvested.length > 0) f.options = harvested;
-    }
-
-    const promptable = candidates.filter(
-      (f) =>
-        PROMPTABLE_TYPES.has(f.controlType) ||
-        // A dropdown the AI couldn't answer: prompt it WITH its options.
-        (CHOICE_TYPES.has(f.controlType) && (f.options?.length ?? 0) > 0)
-    );
-    if (promptable.length === 0 || signal?.aborted) return localFill;
-
-    const prompts: MissingFieldPrompt[] = promptable.map((f) => ({
-      id: f.id,
-      label: f.label,
-      multiline: f.controlType === "textarea" || f.controlType === "contenteditable",
-      options: CHOICE_TYPES.has(f.controlType) ? f.options : undefined,
-    }));
-
-    const answers = await promptForMissingFields(prompts).catch(() => null);
-    if (!answers || Object.keys(answers).length === 0) return localFill;
-
-    const targets = Object.entries(answers).map(([fieldId, value]) => ({ fieldId, value }));
-    const filled = await fillItems(targets, true);
-
-    // Persist each answer so it auto-fills next time:
-    //  - profile categories (incl. the five standard EEO questions) → the
-    //    application profile, visible in Autofill Information + the web app;
-    //  - other SENSITIVE questions (orientation, transgender…) → the device-
-    //    local store only — they are never sent to a server;
-    //  - everything else → the answer bank / Question Memory (SAVE_ANSWER).
-    const jobContext = extractJobContext();
-    const profileEntries: { category: FieldCategory; value: string }[] = [];
-    for (const [fieldId, value] of Object.entries(answers)) {
-      const f = lastFields.find((x) => x.id === fieldId);
-      if (!f) continue;
-      if (isProfileCategory(f.category)) {
-        profileEntries.push({ category: f.category, value });
-      } else if (f.sensitive) {
-        void saveLocalAnswer(f.label, value).catch(() => {});
-      } else {
-        void sendToBackground<SimpleResponse>({
-          type: "SAVE_ANSWER",
-          question: f.label,
-          answer: value,
-          jobContext,
-        }).catch(() => {});
-      }
-    }
-    const patch = buildProfilePatch(profileEntries);
-    if (Object.keys(patch).length > 0) {
-      try {
-        // Await the save and adopt the returned profile, then re-scan so the
-        // just-answered fields carry a proposedValue and are NOT re-prompted on
-        // the next autofill in this session. (Without this, lastProfile stayed
-        // stale and the modal asked for the same thing — e.g. country — again.)
-        const resp = await sendToBackground<ProfileResponse>({ type: "UPDATE_PROFILE", update: patch });
-        if (resp?.ok && resp.profile) {
-          lastProfile = resp.profile;
-          runScan();
-          engine?.updateRegistry(registry);
-        }
-      } catch {
-        // Backend unavailable — the answers still filled this form; they just
-        // won't persist until the user reconnects.
-      }
-    }
-    return {
-      reports: [...localFill.reports, ...filled.reports],
-      outcomes: [...localFill.outcomes, ...filled.outcomes],
-    };
+    return localFill;
   }
 
   async function fillOnce(ids: string[] | null, signal?: AbortSignal): Promise<StepTally> {
@@ -742,9 +616,9 @@ function initialize(): void {
         }
       }
 
-      // Ask the user for any required question we still couldn't answer, fill
-      // their replies, and remember them for next time. Skipped once cancelled.
-      const missingFill = signal?.aborted ? { reports: [], outcomes: [] } : await promptMissingInfo(signal);
+      // Silently refill any device-local sensitive answers we saved before.
+      // Skipped once cancelled.
+      const missingFill = signal?.aborted ? { reports: [], outcomes: [] } : await refillLocalAnswers(signal);
 
       const { ok, fail, total } = tallyOutcomes(
         localFill.reports,
