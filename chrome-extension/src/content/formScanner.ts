@@ -27,6 +27,7 @@ import { isInPageChrome } from "./pageChrome";
 import { filterToScope, resolveFormScope, type ScopeEntry } from "./formScope";
 import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
+import { resolveCheckboxIntent } from "./checkboxIntent";
 import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
 import { detectGroupIndex } from "./groupIndex";
@@ -349,17 +350,24 @@ export function scanPage(
     const control: RuntimeControl = { id, controlType, el, driver };
     registry.set(id, control);
 
-    const proposedValue = guardConstrainedOption(
+    const label = bestDisplayLabel(signals);
+    let proposedValue = guardConstrainedOption(
       resolveAnswerWithAdapter(adapter, category, profile, { controlType, options, groupIndex }, fillEEO, el),
       controlType,
       options
     );
+    // A single checkbox is a boolean control: never write a text value into it.
+    // Check clear application consent, skip marketing / ambiguous boxes (→ null,
+    // so they're simply not selected rather than counted as failures).
+    if (controlType === "checkbox") {
+      proposedValue = resolveCheckboxIntent(`${label} ${signals.nearby ?? ""}`, proposedValue);
+    }
 
     fields.push({
       id,
       category,
       confidence,
-      label: bestDisplayLabel(signals),
+      label,
       controlType,
       required: isRequiredField(el, signals),
       proposedValue,
