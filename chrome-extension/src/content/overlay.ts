@@ -103,6 +103,8 @@ export interface OverlayViewState {
   /** Company + job title scraped from the page, for the job-card header. */
   company?: string;
   jobTitle?: string;
+  /** Detected ATS label ("Workday", "iCIMS"…), or null on a generic form. */
+  siteLabel?: string | null;
 }
 
 export function showOverlay(state: OverlayViewState, cb: OverlayCallbacks): void {
@@ -112,6 +114,7 @@ export function showOverlay(state: OverlayViewState, cb: OverlayCallbacks): void
   overlayState.applyEntry = state.applyEntry ?? null;
   overlayState.company = state.company ?? "";
   overlayState.jobTitle = state.jobTitle ?? "";
+  overlayState.siteLabel = state.siteLabel ?? null;
   ensureMounted();
   if (!panelExpanded) setExpanded(true);
   if (!initialized) void initPanel();
@@ -125,6 +128,7 @@ export function updateOverlay(state: OverlayViewState): void {
   overlayState.applyEntry = state.applyEntry ?? null;
   overlayState.company = state.company ?? "";
   overlayState.jobTitle = state.jobTitle ?? "";
+  overlayState.siteLabel = state.siteLabel ?? null;
   // Re-derive the default selection so the Autofill button reflects the latest
   // scan. Selection is purely computed from the fields (there is no per-field
   // toggle UI), so recomputing it on every update is safe — and necessary, since
@@ -883,6 +887,8 @@ interface PanelState {
   /** Company + job title for the job-card header (scraped from the page). */
   company: string;
   jobTitle: string;
+  /** Detected ATS label ("Workday"…), or null on a generic / unrecognized form. */
+  siteLabel: string | null;
   selected: Set<string>;
   outcomes: Map<string, FillOutcome>;
   busy: boolean;
@@ -922,6 +928,7 @@ const overlayState: PanelState = {
   applyEntry: null,
   company: "",
   jobTitle: "",
+  siteLabel: null,
   selected: new Set(),
   outcomes: new Map(),
   busy: false,
@@ -1573,13 +1580,15 @@ function refreshMainView(): void {
   refs.btnAutofill.disabled = !canRun;
   refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Account Creation & Autofill";
 
+  // Prefix the status line with the recognized ATS ("Workday \u00b7 \u2026") when known.
+  const sitePrefix = overlayState.siteLabel ? `${overlayState.siteLabel} \u00b7 ` : "";
   if (entryStart) {
     refs.fieldCount.textContent = `Autofill will click \u201c${overlayState.applyEntry}\u201d and continue with the application`;
   } else if (fields.length > 0) {
-    refs.fieldCount.textContent = `${count} of ${fields.length} fields ready to fill`;
+    refs.fieldCount.textContent = `${sitePrefix}${count} of ${fields.length} fields ready to fill`;
   } else {
     refs.fieldCount.textContent = overlayState.scanned
-      ? "No form fields detected on this page"
+      ? `${sitePrefix}No form fields detected on this page`
       : "Scanning page\u2026";
   }
 

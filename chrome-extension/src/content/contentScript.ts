@@ -72,6 +72,7 @@ import {
   type OverlayCallbacks,
 } from "./overlay";
 import { runAdapterOperations, type SiteAdapter } from "./adapters";
+import { detectSite } from "./siteRegistry";
 import { FlowController, FLOW_TTL_MS, type FlowDeps, type FlowSnapshot, type StepTally } from "./flowController";
 import { clickAdvance, findAdvanceButton } from "./advance";
 import { findApplyEntry } from "./applyEntry";
@@ -1104,12 +1105,20 @@ function initialize(): void {
     if (!isTopFrame || adoptedRemote) return;
     const entry = findApplyEntry(document, lastAdapter);
     const ident = extractJobIdentity();
+    // Which ATS are we on? The matched adapter's label is the most reliable
+    // signal (broad host match); fall back to the path-gated registry for the
+    // company portals that have no fill adapter. Either may be null.
+    const siteLabel =
+      lastAdapter?.label ??
+      detectSite(location.hostname, location.href, { inIframe: self !== top })?.label ??
+      null;
     const state = {
       fields: lastFields,
       tabUrl: location.href,
       applyEntry: entry?.label ?? null,
       company: ident.company,
       jobTitle: ident.jobTitle,
+      siteLabel,
     };
     // Mount on recognized fields, on a known ATS's apply-entry page (Workday job
     // posting), or on any known-ATS host (lastAdapter matched by host) — so the
