@@ -3,6 +3,7 @@
 // Greenhouse + Workday keep hand-tuned modules; `common` registers the rest.
 import "./greenhouse";
 import "./workday";
+import "./lever";
 import "./common";
 export { getAdapter, resolveAdapter, ADAPTERS } from "./registry";
 export type { SiteAdapter, FieldContext, AnswerContext, FillContext, AdapterFillResult } from "./types";

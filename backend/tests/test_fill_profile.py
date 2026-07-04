@@ -27,3 +27,28 @@ def test_worked_here_uses_experience():
     assert _rule_based_answer("Have you worked here before?", ["Yes", "No"], None, p, "Acme") == "Yes"
     # Applied elsewhere → they have not.
     assert _rule_based_answer("Are you a current or former employee?", ["Yes", "No"], None, p, "Globex") == "No"
+
+
+def test_yesno_keyword_rules_defer_when_options_are_not_yes_no():
+    """A keyword like "relocate" must not force a "yes" onto a field whose
+    options are a specific list (Lever's "What office(s)…? (Select all that
+    apply)"). "yes" is never a valid option there, so the rule must defer to
+    option-aware matching instead of returning an unmatchable answer."""
+    offices = ["San Diego", "Washington, DC", "Remote"]
+    assert (
+        _rule_based_answer(
+            "What office(s) would you be willing to relocate to? (Select all that apply)",
+            offices,
+            settings=None,
+        )
+        is None
+    )
+    # Same guard for the other keyword yes/no rules when options aren't yes/no.
+    assert _rule_based_answer("Which visa sponsorship do you hold?", ["H-1B", "TN", "None"], settings=None) is None
+
+
+def test_yesno_keyword_rules_still_answer_yes_no_and_free_text():
+    """The guard only suppresses the shortcut for specific-option fields — a real
+    yes/no control, or a free-text control (no options), still gets the answer."""
+    assert _rule_based_answer("Are you willing to relocate?", ["Yes", "No"], settings=None) == "Yes"
+    assert _rule_based_answer("Are you willing to relocate?", [], settings=None) == "yes"

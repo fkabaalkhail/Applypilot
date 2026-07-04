@@ -98,7 +98,28 @@ def _rule_based_answer(label: str, options: list[str], settings, profile=None, c
     Prefers the request-supplied ApplicantProfile (the extension's Autofill
     Information) over the stored UserSettings for personal fields, and answers
     "have you worked here?" from the applicant's actual experience.
+
+    A keyword shortcut (e.g. "relocate" → "yes", "location" → city) is only
+    valid when the answer can actually land in the field. For a field with a
+    specific options list that is not a Yes/No control, the shortcut answer is
+    almost never one of the options — Lever's "What office(s) would you be
+    willing to relocate to? (Select all that apply)" would otherwise get an
+    unmatchable "yes". So when options are specific, we return the shortcut only
+    if it snaps to an option, and otherwise defer to the option-aware AI pass.
     """
+    answer = _raw_rule_based_answer(label, options, settings, profile, company)
+    if answer is None:
+        return None
+    opt_lower = [o.lower().strip() for o in options]
+    is_yes_no = "yes" in opt_lower and "no" in opt_lower
+    if options and not is_yes_no:
+        # Specific-option field: the shortcut is trustworthy only if it matches
+        # an option; otherwise defer so the AI picks from the real options.
+        return _match_option(answer, options)
+    return answer
+
+
+def _raw_rule_based_answer(label: str, options: list[str], settings, profile=None, company: str = "") -> str | None:
     q = label.lower().strip()
 
     yes_no = None

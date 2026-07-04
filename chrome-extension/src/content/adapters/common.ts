@@ -52,9 +52,6 @@ export function buildAtsAdapter(spec: AtsSpec): SiteAdapter {
   return adapter;
 }
 
-// Current-company shorthand used by ATS with a dedicated org/company machine name.
-const ORG_RULE: AttrRule = [/\borg(anization)?\b|current[_\s-]?(company|employer)/, "currentCompany"];
-
 /**
  * The registry. Ordered by the coverage tier in docs/ats-coverage.md, then the
  * broader set Jobright ships. First-match-wins, but hosts are disjoint so order
@@ -62,7 +59,8 @@ const ORG_RULE: AttrRule = [/\borg(anization)?\b|current[_\s-]?(company|employer
  */
 export const COMMON_ATS: readonly AtsSpec[] = [
   // ---- Easy tier -----------------------------------------------------------
-  { id: "lever", host: /(^|\.)lever\.co$/i, rules: [ORG_RULE] },
+  // Lever has its own hand-tuned module (lever.ts): the org rule below plus the
+  // location-typeahead fill op live there now.
   { id: "bamboohr", host: /(^|\.)bamboohr\.com$/i },
   { id: "breezy", host: /(^|\.)breezy\.hr$/i },
 

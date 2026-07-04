@@ -27,6 +27,7 @@ import { isInPageChrome } from "./pageChrome";
 import { filterToScope, resolveFormScope, type ScopeEntry } from "./formScope";
 import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
+import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
 import { detectGroupIndex } from "./groupIndex";
 import type { SiteAdapter } from "./adapters/types";
@@ -83,6 +84,29 @@ const SKIPPED_INPUT_TYPES = new Set([
   "range",
   "color",
 ]);
+
+/** Controls whose options are fully known at scan time — a deterministic
+ *  profile value that matches none of them can only fail to fill, so it is
+ *  dropped and the field routes to the option-aware AI pass. Comboboxes /
+ *  custom dropdowns are excluded: they harvest their real options lazily. */
+const CONSTRAINED_OPTION_TYPES: ReadonlySet<ControlType> = new Set<ControlType>([
+  "select",
+  "radioGroup",
+  "checkboxGroup",
+  "ariaRadioGroup",
+]);
+
+/** Null out a proposed value that cannot land in a constrained-option control
+ *  (e.g. the applicant's home city into a select of company offices). */
+function guardConstrainedOption(
+  value: string | null,
+  controlType: ControlType,
+  options: string[] | undefined
+): string | null {
+  if (value === null || !CONSTRAINED_OPTION_TYPES.has(controlType)) return value;
+  if (!options || options.length === 0) return value;
+  return matchOption(options, (o) => o, (o) => o, value) ? value : null;
+}
 
 let idCounter = 0;
 
@@ -325,7 +349,11 @@ export function scanPage(
     const control: RuntimeControl = { id, controlType, el, driver };
     registry.set(id, control);
 
-    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType, options, groupIndex }, fillEEO, el);
+    const proposedValue = guardConstrainedOption(
+      resolveAnswerWithAdapter(adapter, category, profile, { controlType, options, groupIndex }, fillEEO, el),
+      controlType,
+      options
+    );
 
     fields.push({
       id,
@@ -356,7 +384,11 @@ export function scanPage(
 
     registry.set(id, { id, controlType: "radioGroup", radios });
 
-    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType: "radioGroup", options, groupIndex }, fillEEO, first);
+    const proposedValue = guardConstrainedOption(
+      resolveAnswerWithAdapter(adapter, category, profile, { controlType: "radioGroup", options, groupIndex }, fillEEO, first),
+      "radioGroup",
+      options
+    );
 
     const checked = radios.find((r) => r.checked);
     fields.push({
@@ -387,7 +419,11 @@ export function scanPage(
 
     registry.set(id, { id, controlType: "checkboxGroup", checkboxes });
 
-    const proposedValue = resolveAnswerWithAdapter(adapter, category, profile, { controlType: "checkboxGroup", options, groupIndex }, fillEEO, first);
+    const proposedValue = guardConstrainedOption(
+      resolveAnswerWithAdapter(adapter, category, profile, { controlType: "checkboxGroup", options, groupIndex }, fillEEO, first),
+      "checkboxGroup",
+      options
+    );
 
     const checkedLabels = checkboxes.filter((c) => c.checked).map(radioOptionLabel).filter(Boolean);
     fields.push({
