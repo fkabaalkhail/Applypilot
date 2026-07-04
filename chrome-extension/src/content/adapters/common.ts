@@ -105,7 +105,7 @@ export const COMMON_ATS: readonly AtsSpec[] = [
   // ---- Broader Jobright-parity set -----------------------------------------
   { id: "oraclecloud", host: /(^|\.)oraclecloud\.com$/i },
   { id: "dayforce", host: /(^|\.)(dayforcehcm|dayforce)\.com$/i },
-  { id: "ukg", host: /(^|\.)(ultipro\.com|ukg\.(com|net))$/i },
+  { id: "ukg", host: /(^|\.)(ultipro\.(com|ca)|ukg\.(com|net))$/i },
   { id: "jazzhr", host: /(^|\.)(applytojob\.com|jazz\.co)$/i, rules: NAME_ATTR_RULES },
   { id: "paylocity", host: /(^|\.)paylocity\.com$/i },
   { id: "avature", host: /(^|\.)avature\.net$/i },
@@ -115,7 +115,7 @@ export const COMMON_ATS: readonly AtsSpec[] = [
   { id: "personio", host: /(^|\.)personio\.(de|com|es|nl|fr)$/i },
   { id: "eightfold", host: /(^|\.)eightfold\.ai$/i },
   { id: "clearcompany", host: /(^|\.)clearcompany\.com$/i },
-  { id: "paycom", host: /(^|\.)paycomonline\.net$/i },
+  { id: "paycom", host: /(^|\.)paycomonline\.(com|net)$/i },
   { id: "brassring", host: /(^|\.)(brassring|kenexa)\.com$/i },
 
   // ---- Full Jobright-parity vendor set (host suffixes ported from the site

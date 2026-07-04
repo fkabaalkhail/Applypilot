@@ -42,6 +42,12 @@ describe("vendor adapters (full Jobright parity set)", () => {
     expect(getAdapter("jobscore.com.attacker.net", "")).toBeNull();
     expect(getAdapter("fakecatsone.com", "")).toBeNull();
   });
+
+  // Broadened to match the registry's full host set (was .net / .com-only).
+  it("covers the registry's extra Paycom/UKG sub-hosts", () => {
+    expect(getAdapter("www.paycomonline.com", "https://www.paycomonline.com/x")?.id).toBe("paycom");
+    expect(getAdapter("recruiting.ultipro.ca", "https://recruiting.ultipro.ca/x")?.id).toBe("ukg");
+  });
 });
 
 // ---------------------------------------------------------------------------

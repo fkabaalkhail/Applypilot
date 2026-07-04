@@ -1583,7 +1583,7 @@ function refreshMainView(): void {
   // Prefix the status line with the recognized ATS ("Workday \u00b7 \u2026") when known.
   const sitePrefix = overlayState.siteLabel ? `${overlayState.siteLabel} \u00b7 ` : "";
   if (entryStart) {
-    refs.fieldCount.textContent = `Autofill will click \u201c${overlayState.applyEntry}\u201d and continue with the application`;
+    refs.fieldCount.textContent = `${sitePrefix}Autofill will click \u201c${overlayState.applyEntry}\u201d and continue with the application`;
   } else if (fields.length > 0) {
     refs.fieldCount.textContent = `${sitePrefix}${count} of ${fields.length} fields ready to fill`;
   } else {

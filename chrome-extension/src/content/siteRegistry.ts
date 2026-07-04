@@ -14,7 +14,7 @@
  *  matches the apex; path `*` matches any run of characters (incl. `/`). */
 export function matchPatternToRegex(pattern: string): RegExp {
   const m = /^(\*|https?|file):\/\/(\*|\*\.[^/*]+|[^/*]+)?(\/.*)?$/.exec(pattern);
-  if (!m) return /$^/; // structurally invalid → never matches
+  if (!m) return /(?!)/; // structurally invalid → never matches (not even "")
   const [, scheme, host = "*", path = "/*"] = m;
   // Escape every regex metachar INCLUDING `*`, so the `\*` → `.*` pass below is
   // the only thing that can reintroduce a wildcard.
