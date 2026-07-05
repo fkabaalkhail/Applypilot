@@ -114,12 +114,54 @@ let idCounter = 0;
 /** Stable per-frame token so field ids are unique across iframes. */
 export const FRAME_TOKEN = Math.random().toString(36).slice(2, 8);
 
-function ensureFieldId(el: HTMLElement): string {
-  let id = el.getAttribute(FIELD_ID_ATTR);
-  if (!id) {
-    id = `${FRAME_TOKEN}-${idCounter++}`;
-    el.setAttribute(FIELD_ID_ATTR, id);
+/** Ids assigned in the current scanPage() run — lets ensureFieldId fall back to
+ *  a counter when a deterministic id would collide with another live field. */
+const assignedThisScan = new Set<string>();
+
+/** Identifiers that carry a volatile per-render instance counter / uuid
+ *  (react-select "react-select-3-input", SAP juic "36:_input", uuids) — a
+ *  "stable" id built from these would NOT survive a re-render, so we skip them. */
+const VOLATILE_ID = /react-select-\d|(^|[^0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-|^\d+:/i;
+
+/** A re-render-stable identity for `el` (Workday keeps element id / name /
+ *  automation-id across step re-renders), or null when it only has volatile ones. */
+function stableIdentity(el: HTMLElement): string | null {
+  const candidates: Array<[string, string]> = [
+    ["id", el.id],
+    ["name", el.getAttribute("name") ?? ""],
+    ["auto", el.getAttribute("data-automation-id") ?? ""],
+  ];
+  for (const [kind, value] of candidates) {
+    if (value && !VOLATILE_ID.test(value)) return `${kind}=${value}`;
   }
+  return null;
+}
+
+function hashKey(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * A per-field id that is STABLE across re-renders. Workday swaps the whole field
+ * subtree on every step, so a counter id would change and orphan the reconciler's
+ * state as "Field no longer found". Deriving the id from a stable identifier
+ * (element id / name / automation-id) makes a replaced element resolve to the
+ * same field. Falls back to a counter for fields with no stable identifier (and
+ * on the rare collision between two live fields sharing an identifier).
+ */
+function ensureFieldId(el: HTMLElement): string {
+  const existing = el.getAttribute(FIELD_ID_ATTR);
+  if (existing) {
+    assignedThisScan.add(existing);
+    return existing;
+  }
+  const stable = stableIdentity(el);
+  let id = stable ? `${FRAME_TOKEN}-s${hashKey(stable)}` : null;
+  if (!id || assignedThisScan.has(id)) id = `${FRAME_TOKEN}-${idCounter++}`;
+  assignedThisScan.add(id);
+  el.setAttribute(FIELD_ID_ATTR, id);
   return id;
 }
 
@@ -326,6 +368,7 @@ export function scanPage(
 ): ScanResult {
   const fields: DetectedField[] = [];
   const registry = new Map<string, RuntimeControl>();
+  assignedThisScan.clear();
 
   const candidates = deepQueryAll(document, CANDIDATE_SELECTOR);
   const radioGroups = new Map<string, HTMLInputElement[]>();
