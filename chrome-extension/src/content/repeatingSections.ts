@@ -153,11 +153,12 @@ export function planExpansion(
 ): ExpansionStep[] {
   const steps: ExpansionStep[] = [];
   for (const kind of SECTION_KINDS) {
-    const present = rowsPresent(fields, kind);
-    if (present === 0) continue; // section not on this page
     const needed = Math.min(rowsNeeded(profile, kind), MAX_ROWS);
-    const clicks = needed - present;
+    if (needed === 0) continue;
+    const clicks = needed - rowsPresent(fields, kind);
     if (clicks <= 0) continue;
+    // findAddButton needs a section-specific button when there are no rows to
+    // scope a generic "Add" — so an empty section only expands on unambiguous text.
     const addButton = findAddButton(fields, kind, getEl, doc);
     if (addButton) steps.push({ kind, addButton, clicks });
   }

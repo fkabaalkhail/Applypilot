@@ -113,6 +113,13 @@ describe("planExpansion", () => {
     document.body.innerHTML = "";
     expect(planExpansion(profile(3, 3), [], () => undefined)).toHaveLength(0);
   });
+
+  it("expands an EMPTY section (no rows yet) via a section-specific add button", () => {
+    document.body.innerHTML = `<button type="button">Add Work Experience</button>`;
+    const steps = planExpansion(profile(2, 0), [], () => undefined);
+    expect(steps).toHaveLength(1);
+    expect(steps[0].clicks).toBe(2); // 0 present, 2 needed
+  });
 });
 
 describe("expansion loop (end-to-end, real scan + interactive add button)", () => {

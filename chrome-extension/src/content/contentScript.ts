@@ -554,11 +554,16 @@ function initialize(): void {
   async function expandRepeatingSections(signal?: AbortSignal): Promise<void> {
     if (!lastProfile) return;
     for (const kind of SECTION_KINDS) {
-      for (let guard = 0; guard < MAX_ROWS; guard++) {
+      const needed = Math.min(rowsNeeded(lastProfile, kind), MAX_ROWS);
+      if (needed === 0) continue; // nothing to add for this section
+      // Drive by needed rows, not "≥1 present" — some ATS show an empty section
+      // with just an "Add Work Experience" button. findAddButton falls back to a
+      // section-specific button (unambiguous text) when there are no fields to
+      // scope a generic "Add", so it can't mis-click a neighbouring section.
+      for (let guard = 0; guard <= MAX_ROWS; guard++) {
         if (signal?.aborted) return;
         const present = rowsPresent(lastFields, kind);
-        if (present === 0) break; // section not on this page
-        if (present >= Math.min(rowsNeeded(lastProfile, kind), MAX_ROWS)) break;
+        if (present >= needed) break;
         const btn = findAddButton(lastFields, kind, (id) => registry.get(id)?.el);
         if (!btn) break;
         activateElement(btn);
