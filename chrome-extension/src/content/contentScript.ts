@@ -48,7 +48,7 @@ import type {
   UserApplicationProfile,
 } from "../shared/types";
 import { deepQueryAll, isVisible, cleanText } from "./domUtils";
-import { base64ToFile, downloadBase64File, injectResumeFile } from "./fileUpload";
+import { base64ToFile, downloadBase64File, injectResumeFile, type UploadResult } from "./fileUpload";
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
 import { getLocalAnswers } from "./localAnswers";
@@ -93,6 +93,22 @@ declare global {
 
 /** Show the overlay after detecting at least this many recognizable fields. */
 const MIN_FIELDS_FOR_OVERLAY = 1;
+
+/**
+ * Attach a downloaded résumé/cover file to `el`. When the site's upload can't be
+ * scripted at all (a custom button that opens a native picker with no persistent
+ * <input type=file> — SAP SuccessFactors), download the file so the user can pick
+ * it in the site's own dialog, and say so.
+ */
+function attachOrGuide(el: HTMLElement, dataBase64: string, name: string, contentType: string): UploadResult {
+  const result = injectResumeFile(el, base64ToFile(dataBase64, name, contentType));
+  if (!result.manual) return result;
+  downloadBase64File(dataBase64, name, contentType);
+  return {
+    ok: false,
+    reason: `This site opens its own file picker — I downloaded "${name}" to your Downloads. Click the page's upload button and choose it.`,
+  };
+}
 
 if (!window.__apContentScriptLoaded) {
   window.__apContentScriptLoaded = true;
@@ -981,10 +997,7 @@ function initialize(): void {
       if (!file?.ok || !file.dataBase64) {
         return { ok: false, reason: file?.error ?? "Could not download your résumé." };
       }
-      return injectResumeFile(
-        control.el,
-        base64ToFile(file.dataBase64, file.name, file.contentType)
-      );
+      return attachOrGuide(control.el, file.dataBase64, file.name, file.contentType);
     },
     onTailorResume: async (opts: TailorResumeOpts) => {
       const resp = await sendToBackground<TailorResumeResponse>({
@@ -1020,7 +1033,7 @@ function initialize(): void {
       if (!file?.ok || !file.dataBase64) {
         return { ok: false, reason: file?.error ?? "Could not render your résumé." };
       }
-      return injectResumeFile(control.el, base64ToFile(file.dataBase64, file.name, file.contentType));
+      return attachOrGuide(control.el, file.dataBase64, file.name, file.contentType);
     },
     onDownloadTailored: async (document: ResumeDoc) => {
       const company = extractJobContext().company;
@@ -1080,7 +1093,7 @@ function initialize(): void {
         if (!file?.ok || !file.dataBase64) {
           return { ok: false, reason: file?.error ?? "Could not render your cover letter." };
         }
-        return injectResumeFile(fileControl.el, base64ToFile(file.dataBase64, file.name, file.contentType));
+        return attachOrGuide(fileControl.el, file.dataBase64, file.name, file.contentType);
       }
       return { ok: false, reason: "No cover-letter field found on this page." };
     },

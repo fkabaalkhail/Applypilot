@@ -15,6 +15,11 @@ import { flashHighlight } from "./domUtils";
 export interface UploadResult {
   ok: boolean;
   reason?: string;
+  /** True when the site's upload can't be scripted at all (a custom button that
+   *  opens a native picker with no persistent <input type=file>, e.g. SAP
+   *  SuccessFactors). The caller should download the file so the user can pick
+   *  it in the site's own dialog. */
+  manual?: boolean;
 }
 
 /** Rebuild a File from the base64 bytes the background worker downloaded. */
@@ -102,6 +107,7 @@ export function injectResumeFile(target: HTMLElement, file: File): UploadResult 
   ) {
     return {
       ok: false,
+      manual: true,
       reason: "This site needs the résumé attached manually — auto-attach isn't available here.",
     };
   }
