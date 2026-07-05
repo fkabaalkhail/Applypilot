@@ -568,6 +568,52 @@ function initialize(): void {
     }
   }
 
+  /** True when the page has a location cascade (Country + State/City), the case
+   *  where a child dropdown only offers valid options once its parent is set. */
+  function hasLocationCascade(): boolean {
+    return (
+      lastFields.some((f) => f.category === "country") &&
+      lastFields.some((f) => f.category === "addressState" || f.category === "addressCity")
+    );
+  }
+
+  /**
+   * Cascading dropdowns (Country → State → City): a child only lists valid
+   * options after its parent is filled, so its first attempt found nothing and
+   * left proposedValue null. Now that parents are set, settle → rescan (which
+   * re-reads the repopulated options and re-resolves proposedValue against them)
+   * → re-fill the still-empty children. Two rounds cover the country→state→city
+   * chain; stops as soon as a round fills nothing.
+   */
+  async function retryDependentDropdowns(
+    signal?: AbortSignal
+  ): Promise<{ reports: FieldReport[]; outcomes: PassOutcome[] }> {
+    const reports: FieldReport[] = [];
+    const outcomes: PassOutcome[] = [];
+    if (!hasLocationCascade()) return { reports, outcomes };
+    for (let round = 0; round < 2; round++) {
+      if (signal?.aborted) break;
+      await waitForDomSettle(signal);
+      runScan();
+      engine?.updateRegistry(registry);
+      const retry = lastFields
+        .filter(
+          (f) =>
+            (f.controlType === "select" || f.controlType === "combobox") &&
+            f.fillable &&
+            f.proposedValue !== null &&
+            controlIsEmpty(f.id)
+        )
+        .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
+      if (retry.length === 0) break;
+      const r = await fillItems(retry, true, signal);
+      reports.push(...r.reports);
+      outcomes.push(...r.outcomes);
+      if (!r.reports.some((rep) => rep.ok) && !r.outcomes.some((o) => o.ok)) break;
+    }
+    return { reports, outcomes };
+  }
+
   async function fillOnce(ids: string[] | null, signal?: AbortSignal): Promise<StepTally> {
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       // Let a React ATS finish hydrating before we scan+fill: filling a form
@@ -695,6 +741,12 @@ function initialize(): void {
       // Skipped once cancelled.
       const missingFill = signal?.aborted ? { reports: [], outcomes: [] } : await refillLocalAnswers(signal);
 
+      // Cascading location dropdowns (Country → State → City) now that parents
+      // are set — a no-op unless the page actually has a location cascade.
+      const cascadeFill = signal?.aborted
+        ? { reports: [], outcomes: [] as PassOutcome[] }
+        : await retryDependentDropdowns(signal);
+
       const { ok, fail, total } = tallyOutcomes(
         localFill.reports,
         aiFill.reports,
@@ -702,12 +754,14 @@ function initialize(): void {
         reaskFill.reports,
         demoFill.reports,
         missingFill.reports,
+        cascadeFill.reports,
         localFill.outcomes,
         aiFill.outcomes,
         fallbackFill.outcomes,
         reaskFill.outcomes,
         demoFill.outcomes,
-        missingFill.outcomes
+        missingFill.outcomes,
+        cascadeFill.outcomes
       );
 
       // Fire-and-forget telemetry (field labels + outcomes only, never values) so
@@ -715,11 +769,11 @@ function initialize(): void {
       if (!signal?.aborted && total > 0) {
         const allReports = [
           ...localFill.reports, ...aiFill.reports, ...fallbackFill.reports,
-          ...reaskFill.reports, ...demoFill.reports, ...missingFill.reports,
+          ...reaskFill.reports, ...demoFill.reports, ...missingFill.reports, ...cascadeFill.reports,
         ];
         const allOutcomes = [
           ...localFill.outcomes, ...aiFill.outcomes, ...fallbackFill.outcomes,
-          ...reaskFill.outcomes, ...demoFill.outcomes, ...missingFill.outcomes,
+          ...reaskFill.outcomes, ...demoFill.outcomes, ...missingFill.outcomes, ...cascadeFill.outcomes,
         ];
         const telemetry = buildAutofillTelemetry(
           lastFields,
