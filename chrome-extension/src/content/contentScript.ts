@@ -382,12 +382,13 @@ function initialize(): void {
     const reask: ReaskCandidate[] = [];
     for (const t of targets) {
       if (signal?.aborted) break; // Stop pressed — don't open more menus
-      const el = registry.get(t.fieldId)?.el;
+      const control = registry.get(t.fieldId);
+      const el = control?.el;
       if (!el) {
         outcomes.push({ fieldId: t.fieldId, ok: false, reason: "Field no longer found — rescan the page" });
         continue;
       }
-      const res = await fillAriaCombobox(el, t.value);
+      const res = await fillAriaCombobox(el, t.value, { multi: control?.multi });
       // Carry the specific reason (couldn't-open / no-match / didn't-commit) into
       // telemetry — otherwise a dropdown failure is logged with an empty reason.
       outcomes.push({ fieldId: t.fieldId, ok: res.filled, reason: res.reason });

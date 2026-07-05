@@ -47,6 +47,9 @@ export interface RuntimeControl {
   checkboxes?: HTMLInputElement[];
   /** For customDropdown/combobox: which MAIN-world driver fills it, if any. */
   driver?: FillDriver;
+  /** A multi-select combobox (skills, multiple locations): its value is a list,
+   *  added one chip at a time rather than matched as a single option. */
+  multi?: boolean;
 }
 
 export interface ScanResult {
@@ -517,7 +520,12 @@ export function scanPage(
       controlType === "combobox" || controlType === "customDropdown"
         ? detectFillDriver(el) ?? undefined
         : undefined;
-    const control: RuntimeControl = { id, controlType, el, driver };
+    // A skills combobox is multi-value ("Type to Add Skills"): the engine adds
+    // one chip per skill rather than matching the joined list as one option.
+    const multi =
+      controlType === "combobox" &&
+      (category === "skills" || el.getAttribute("aria-multiselectable") === "true");
+    const control: RuntimeControl = { id, controlType, el, driver, multi };
     registry.set(id, control);
 
     const label = bestDisplayLabel(signals);

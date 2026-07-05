@@ -32,6 +32,9 @@ export interface FillComboboxOptions {
   commitWaitMs?: number;
   /** Poll interval while waiting. */
   pollMs?: number;
+  /** Force multi-select handling (value split into one chip per item). Also
+   *  auto-detected from aria-multiselectable / react-select "is-multi". */
+  multi?: boolean;
 }
 
 const DEFAULTS = { openWaitMs: 1500, commitWaitMs: 2500, pollMs: 50 };
@@ -56,7 +59,57 @@ export function isAriaCombobox(el: HTMLElement): boolean {
   return false;
 }
 
+/** Detect a multi-select combobox (react-select "is-multi", or an
+ *  aria-multiselectable trigger/listbox) — its value is a list, added one chip
+ *  at a time rather than matched as one option. */
+function isMultiSelect(trigger: HTMLElement): boolean {
+  if (trigger.getAttribute("aria-multiselectable") === "true") return true;
+  const ids = `${trigger.getAttribute("aria-controls") ?? ""} ${trigger.getAttribute("aria-owns") ?? ""}`.trim();
+  for (const id of ids.split(/\s+/).filter(Boolean)) {
+    if (trigger.ownerDocument.getElementById(id)?.getAttribute("aria-multiselectable") === "true") return true;
+  }
+  return Boolean(trigger.closest('[class*="is-multi" i], [class*="multiselect" i]'));
+}
+
+/** Split a multi-value answer into distinct items (never applied to a
+ *  single-select — a single answer may legitimately contain a comma). */
+function splitMultiValue(value: string): string[] {
+  return [...new Set(value.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean))];
+}
+
+/**
+ * Fill an ARIA combobox. Single-select by default; for a multi-select widget
+ * (skills, multiple locations) the value is split and each item is added as its
+ * own chip via a type→select cycle.
+ */
 export async function fillAriaCombobox(
+  trigger: HTMLElement,
+  value: string,
+  opts: FillComboboxOptions = {}
+): Promise<ComboboxResult> {
+  if (!trigger.isConnected) return { filled: false, reason: "Field was removed — rescan the page" };
+  const multi = opts.multi || isMultiSelect(trigger);
+  const parts = multi ? splitMultiValue(value) : [value];
+  if (parts.length <= 1) return selectOne(trigger, parts[0] ?? value, opts);
+
+  let anyFilled = false;
+  const missing: string[] = [];
+  let lastOptions: string[] | undefined;
+  for (const part of parts) {
+    const r = await selectOne(trigger, part, opts);
+    if (r.filled) anyFilled = true;
+    else {
+      missing.push(part);
+      if (r.options) lastOptions = r.options;
+    }
+  }
+  if (anyFilled) {
+    return { filled: true, reason: missing.length ? `Added; couldn't match: ${missing.join(", ")}` : undefined };
+  }
+  return { filled: false, reason: `No option matches "${truncate(value)}"`, options: lastOptions };
+}
+
+async function selectOne(
   trigger: HTMLElement,
   value: string,
   opts: FillComboboxOptions = {}

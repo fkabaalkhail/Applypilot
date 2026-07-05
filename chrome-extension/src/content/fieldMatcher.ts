@@ -354,6 +354,16 @@ const CATEGORY_SPECS: CategorySpec[] = [
     ],
     negative: /\bcurrent salary\b/,
   },
+  {
+    category: "skills",
+    patterns: [
+      { re: /\bskills?\b/ },
+      { re: /\bareas? of (expertise|specialization)\b/ },
+      { re: /\b(technical|core|key) competenc(y|ies)\b/, weight: 0.9 },
+      { re: /\btech(nologies)? (you|used)\b/, weight: 0.8 },
+    ],
+    negative: /\bcover letter\b|\blanguage\b/,
+  },
 ];
 
 /**
@@ -543,6 +553,10 @@ export function resolveProfileValue(
       return orNull(gi !== null ? profile.experience?.[gi]?.title : profile.currentTitle);
     case "salary":
       return orNull(profile.salaryExpectation);
+    case "skills":
+      // Joined for display / single-text fields; a multi-select combobox splits
+      // this back into one chip per skill (see comboboxEngine).
+      return orNull(profile.skills?.filter((s) => s.trim()).join(", "));
     case "school":
       return orNull(edu?.school);
     case "degree":

@@ -167,6 +167,7 @@ export type FieldCategory =
   | "currentCompany"
   | "currentTitle"
   | "salary"
+  | "skills"
   // EEO / demographic — detected but never autofilled unless explicitly enabled
   | "eeoGender"
   | "eeoGenderIdentity"

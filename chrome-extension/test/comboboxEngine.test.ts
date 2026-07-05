@@ -729,3 +729,64 @@ describe("SuccessFactors rcmpaginatedselect (commits via title)", () => {
     expect(res.filled).toBe(true);
   });
 });
+
+describe("multi-select combobox (skills / tags)", () => {
+  /** A react-select-style multi-select: aria-multiselectable input; selecting an
+   *  option adds a chip and removes it from the open menu (menu stays open). */
+  function multiSelect(options: string[]) {
+    const control = document.createElement("div");
+    control.className = "select__control select__value-container--is-multi";
+    const chipsBox = document.createElement("div");
+    const input = document.createElement("input");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-multiselectable", "true");
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("aria-autocomplete", "list");
+    const lbId = `mlb-${Math.random().toString(36).slice(2)}`;
+    input.setAttribute("aria-controls", lbId);
+    control.append(chipsBox, input);
+    document.body.append(control);
+    const render = (): void => {
+      if (input.getAttribute("aria-expanded") !== "true") return;
+      if (document.getElementById(lbId)) return;
+      const lb = document.createElement("div");
+      lb.id = lbId;
+      lb.setAttribute("role", "listbox");
+      for (const label of options) {
+        const o = document.createElement("div");
+        o.setAttribute("role", "option");
+        o.textContent = label;
+        o.addEventListener("mousedown", () => {
+          const chip = document.createElement("div");
+          chip.className = "select__multi-value";
+          chip.textContent = label;
+          chipsBox.append(chip);
+          input.value = "";
+          o.remove(); // remove from the still-open menu
+        });
+        lb.append(o);
+      }
+      control.append(lb);
+    };
+    input.addEventListener("mousedown", () => {
+      input.setAttribute("aria-expanded", "true");
+      render();
+    });
+    return { input, chips: () => Array.from(chipsBox.querySelectorAll(".select__multi-value")).map((c) => c.textContent) };
+  }
+
+  it("adds each item of a multi-select value as its own chip", async () => {
+    const { input, chips } = multiSelect(["Python", "Java", "TypeScript", "Go"]);
+    const res = await fillAriaCombobox(input, "Python, Java, TypeScript", fast);
+    expect(res.filled).toBe(true);
+    expect(chips().sort()).toEqual(["Java", "Python", "TypeScript"]);
+  });
+
+  it("reports success even if one item has no matching option", async () => {
+    const { input, chips } = multiSelect(["Python", "Java"]);
+    const res = await fillAriaCombobox(input, "Python, Rust", fast);
+    expect(res.filled).toBe(true); // Python added
+    expect(chips()).toEqual(["Python"]);
+    expect(res.reason).toContain("Rust");
+  });
+});
