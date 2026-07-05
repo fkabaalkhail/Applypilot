@@ -57,10 +57,15 @@ interface CategorySpec {
 const CATEGORY_SPECS: CategorySpec[] = [
   // --- EEO / demographics (sensitive — detected, never filled by default) ---
   {
+    category: "eeoGenderIdentity",
+    sensitive: true,
+    patterns: [{ re: /\bgender identity\b/ }],
+  },
+  {
     category: "eeoGender",
     sensitive: true,
     patterns: [{ re: /\bgender\b/ }, { re: /\bsex\b/, weight: 0.85 }],
-    negative: /\bsexual orientation\b/,
+    negative: /\bsexual orientation\b|\bgender identity\b/,
   },
   {
     category: "eeoRace",
@@ -83,11 +88,15 @@ const CATEGORY_SPECS: CategorySpec[] = [
     patterns: [{ re: /\bdisabilit(y|ies)\b/ }, { re: /\bdisabled\b/ }, { re: /\bhandicap\b/ }],
   },
   {
+    category: "eeoSexualOrientation",
+    sensitive: true,
+    patterns: [{ re: /\bsexual orientation\b/ }, { re: /\borientation\b/, weight: 0.8 }],
+  },
+  {
     category: "eeoOther",
     sensitive: true,
     patterns: [
       { re: /\bpronouns?\b/ },
-      { re: /\bsexual orientation\b/ },
       { re: /\blgbtq?\b/ },
       { re: /\btransgender\b/ },
       { re: /\bdemographic\b/ },
@@ -574,6 +583,9 @@ export function resolveProfileValue(
     // for review, and the user can still deselect any before filling.
     case "eeoGender":
       return orNull(profile.eeo?.gender);
+    case "eeoGenderIdentity":
+      // Falls back to the plain gender answer when no distinct identity is set.
+      return orNull(profile.eeo?.genderIdentity || profile.eeo?.gender);
     case "eeoRace":
       return orNull(profile.eeo?.race);
     case "eeoHispanic":
@@ -582,6 +594,8 @@ export function resolveProfileValue(
       return orNull(profile.eeo?.veteranStatus);
     case "eeoDisability":
       return orNull(profile.eeo?.disabilityStatus);
+    case "eeoSexualOrientation":
+      return orNull(profile.eeo?.sexualOrientation);
     case "eeoOther":
       return null;
 

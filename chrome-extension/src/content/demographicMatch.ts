@@ -7,7 +7,16 @@
  */
 import type { FieldCategory } from "../shared/types";
 
-const DECLINE_PATTERNS = ["prefer not", "decline", "do not wish", "not to disclose", "not disclosed", "choose not"];
+const DECLINE_PATTERNS = [
+  "prefer not",
+  "decline",
+  "do not wish",
+  "wish to answer", // catches "I don't wish to answer" (apostrophe → space on normalize)
+  "not to disclose",
+  "not disclosed",
+  "choose not",
+  "rather not",
+];
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
@@ -52,17 +61,32 @@ const DISABILITY: Record<string, string[]> = {
   "yes": ["yes i have", "have a disability", "yes"],
 };
 
+const ORIENTATION: Record<string, string[]> = {
+  "straight": ["heterosexual", "straight"],
+  "heterosexual": ["heterosexual", "straight"],
+  "gay": ["gay", "lesbian", "homosexual"],
+  "lesbian": ["lesbian", "gay", "homosexual"],
+  "homosexual": ["gay", "lesbian", "homosexual"],
+  "bisexual": ["bisexual", "bi"],
+  "queer": ["queer", "lgbtq"],
+  "asexual": ["asexual"],
+  "pansexual": ["pansexual", "bisexual"],
+};
+
 function tableFor(category: FieldCategory): Record<string, string[]> | null {
   switch (category) {
     case "eeoRace":
     case "eeoHispanic":
       return RACE;
     case "eeoGender":
+    case "eeoGenderIdentity":
       return GENDER;
     case "eeoVeteran":
       return VETERAN;
     case "eeoDisability":
       return DISABILITY;
+    case "eeoSexualOrientation":
+      return ORIENTATION;
     default:
       return null;
   }

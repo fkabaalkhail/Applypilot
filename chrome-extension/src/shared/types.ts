@@ -27,10 +27,12 @@ export interface ExperienceEntry {
  */
 export interface EeoAnswers {
   gender?: string;
+  genderIdentity?: string;
   race?: string;
   hispanicLatino?: string;
   veteranStatus?: string;
   disabilityStatus?: string;
+  sexualOrientation?: string;
 }
 
 /**
@@ -167,10 +169,12 @@ export type FieldCategory =
   | "salary"
   // EEO / demographic — detected but never autofilled unless explicitly enabled
   | "eeoGender"
+  | "eeoGenderIdentity"
   | "eeoRace"
   | "eeoHispanic"
   | "eeoVeteran"
   | "eeoDisability"
+  | "eeoSexualOrientation"
   | "eeoOther"
   // Account signup password — first-class but locked down: scanned so the
   // account sub-flow can fill it, but never generically fillable or AI-eligible.
