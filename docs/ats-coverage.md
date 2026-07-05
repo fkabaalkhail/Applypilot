@@ -176,3 +176,38 @@ gaps.** Equivalents already present:
 | `onInstalled`, sync alarm | ✅ | |
 | DNR header-strip (X-Frame-Options/CSP) for lever/ashby | ⛔ **intentional** | only needed to *embed* ATS forms in Jobright's own tab; Tailrd injects a side-panel overlay **into** the real ATS page — more robust, no header manipulation |
 | `cookies.getAll` auth sync | ⛔ **intentional** | Tailrd uses PKCE + `identity`, not cookie scraping |
+
+## Fill-quality improvements — 2026-07-05 (autonomous batch)
+
+Landed after the SF/Workday live-fix loop, all TDD + suite green (642 tests):
+
+- **Repeating work-experience / education rows**: clicks "Add another" to create
+  as many rows as the profile has, then fills each from `experience[N]` /
+  `education[N]`. Handles Workday's arbitrary instance numbers (`workExperience-8`
+  → positional 0) via `remapRepeatingRows`, and empty sections (just an "Add
+  Work Experience" button, no initial row).
+- **Workday work-experience classification**: `formField-jobTitle` /
+  `-companyName` → currentTitle / currentCompany (the generic matcher missed
+  plain "Company"/"Job Title").
+- **Complete work-history model**: `experienceStartDate` / `experienceEndDate` /
+  `experienceDescription` / `experienceCurrent` ("I currently work here" checked
+  only for the row with no end date) — all row-index-gated.
+- **Cascading dropdowns** (Country → State → City): after the main fill, settle →
+  rescan → re-fill still-empty children (the rescan re-resolves against the
+  parent-repopulated options). Native selects AND comboboxes.
+- **Multi-select comboboxes + skills**: "Type to Add Skills" and any
+  react-select `is-multi` / `aria-multiselectable` widget now adds one chip per
+  item; new `skills` category resolves `profile.skills`.
+- **EEO gender identity + sexual orientation**: distinct sensitive categories +
+  profile fields + on-device option matching; decline-detection widened to catch
+  "I don't wish to answer" (helps every EEO dropdown).
+- **Native date inputs**: flexible profile dates ("2020-01", "Jan 2020") reshaped
+  to ISO for `type=date`/`month`; verify normalizes too (no reconciler loop).
+- **Text signature fields**: "type your name to sign" / "E-Signature" → fullName.
+- **Stable field ids**: deterministic from a re-render-stable identifier — killed
+  Workday's "Field no longer found" (My Information now fills 12/12).
+
+### Still needs live ATS DOM (not guessed)
+iCIMS (iframe), Ashby search-select, BambooHR custom widget, Workday's From/To
+date widget + the "Partial List/All" skills picker specifics, calendar date
+pickers, SF State/Province (city-list picker). Same capture→fix loop as SF/Workday.
