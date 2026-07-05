@@ -51,6 +51,17 @@ describe("experience dates + description", () => {
     expect(starts.map((f) => f.proposedValue)).toEqual(["2020-01", "2022-07"]);
   });
 
+  it("checks 'I currently work here' only for the row with no end date", () => {
+    const cb = (i: number) =>
+      `<div><label for="cur${i}">I currently work here</label><input type="checkbox" id="cur${i}" name="experience[${i}][currentlyWorkHere]"></div>`;
+    document.body.innerHTML = cb(0) + cb(1);
+    const { fields } = scanPage(profile, false);
+    const cur = fields
+      .filter((f) => f.category === "experienceCurrent")
+      .sort((a, b) => (a.groupIndex ?? 0) - (b.groupIndex ?? 0));
+    expect(cur.map((f) => f.proposedValue)).toEqual(["no", "yes"]); // row0 ended 2022-06, row1 is Present
+  });
+
   it("does NOT pull an employment date for a standalone availability 'Start Date'", () => {
     document.body.innerHTML = `<div><label for="avail">When can you start? Start Date</label><input id="avail" name="availableStartDate"></div>`;
     const { fields } = scanPage(profile, false);

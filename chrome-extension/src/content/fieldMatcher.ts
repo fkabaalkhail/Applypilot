@@ -353,6 +353,15 @@ const CATEGORY_SPECS: CategorySpec[] = [
     ],
   },
   {
+    category: "experienceCurrent",
+    patterns: [
+      { re: /\bcurrently work(ing)? here\b/ },
+      { re: /\bi currently work\b/ },
+      { re: /\bpresently (work|employ)/ },
+      { re: /\bmy current (job|role|position|employer)\b/ },
+    ],
+  },
+  {
     category: "experienceDescription",
     patterns: [
       { re: /\b(job|role|position) description\b/ },
@@ -587,6 +596,13 @@ export function resolveProfileValue(
       return orNull(gi !== null ? profile.experience?.[gi]?.endDate : undefined);
     case "experienceDescription":
       return orNull(gi !== null ? profile.experience?.[gi]?.description : undefined);
+    case "experienceCurrent": {
+      // Check the box only for the row that has no end date (the current job).
+      if (gi === null) return null;
+      const end = profile.experience?.[gi]?.endDate;
+      if (end === undefined) return null;
+      return !end.trim() || /\b(present|current|now|ongoing|to date)\b/i.test(end) ? "yes" : "no";
+    }
     case "salary":
       return orNull(profile.salaryExpectation);
     case "skills":

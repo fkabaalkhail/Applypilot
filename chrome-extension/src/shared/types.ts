@@ -169,6 +169,7 @@ export type FieldCategory =
   | "experienceStartDate"
   | "experienceEndDate"
   | "experienceDescription"
+  | "experienceCurrent"
   | "salary"
   | "skills"
   // EEO / demographic — detected but never autofilled unless explicitly enabled

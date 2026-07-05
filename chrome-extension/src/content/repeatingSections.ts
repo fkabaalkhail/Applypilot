@@ -29,6 +29,7 @@ const KIND_CATEGORIES: Record<SectionKind, ReadonlySet<FieldCategory>> = {
     "experienceStartDate",
     "experienceEndDate",
     "experienceDescription",
+    "experienceCurrent",
   ]),
   education: new Set<FieldCategory>(["school", "degree", "graduationYear"]),
 };

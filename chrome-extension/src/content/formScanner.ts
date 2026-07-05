@@ -371,6 +371,7 @@ const REPEAT_CATEGORIES: ReadonlyArray<ReadonlySet<FieldCategory>> = [
     "experienceStartDate",
     "experienceEndDate",
     "experienceDescription",
+    "experienceCurrent",
   ]),
   new Set<FieldCategory>(["school", "degree", "graduationYear"]),
 ];
