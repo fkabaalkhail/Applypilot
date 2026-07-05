@@ -57,6 +57,38 @@ export const SF_RACE_OPTIONS = [
   "Decline to self-identify",
 ];
 
+/** SF's résumé attachment widget: a labelled `<div role="button">Upload a
+ *  Resume</div>` (no native <input type=file>), verbatim shape from the capture.
+ *  `hiddenInput` optionally adds the scriptable file input some SF tenants keep
+ *  in the attach wrapper (when present, auto-attach works). */
+export function successFactorsAttachmentHtml(
+  opts: { kind: "resume" | "cover"; hiddenInput?: boolean } = { kind: "resume" }
+): string {
+  const isCover = opts.kind === "cover";
+  const label = isCover ? "Cover Letter:" : "Resume / CV:";
+  const action = isCover ? "Upload a Cover Letter" : "Upload a Resume";
+  const p = isCover ? "cov" : "res";
+  const hidden = opts.hiddenInput
+    ? `<input type="file" id="${p}-file" class="hiddenFileInput" style="display:none">`
+    : "";
+  return `
+<div class="RCMFormField rcmFormElement attachmentField">
+  <label id="${p}-lbl" for="" class="rcmFormFieldLabel"><span class="requiredField" aria-hidden="true">*</span> ${label}</label>
+  <div class="attachmentComponentInput" id="${p}-input">
+    <div id="${p}-wrap" class="attachWrapper">
+      <div id="${p}-btn" class="attachmentBtn">
+        <div id="${p}-attachLabel" class="attachmentLabel attachmentText"><span>${action}</span></div>
+        <div class="attachActions">
+          <span tabindex="0" role="button" aria-labelledby="${p}-lbl ${p}-ariaAction" id="${p}-icon" class="glyphicon addAttachments"></span>
+          <span class="hiddenAriaContent" role="tooltip" id="${p}-ariaAction">${action} Opens a dialog</span>
+        </div>
+        ${hidden}
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
 /** The full self-identification section: gender, race (with its listbox mounted
  *  open so option-matching is exercised), veteran, plus a custom Yes/No question. */
 export function successFactorsEeoHtml(): string {

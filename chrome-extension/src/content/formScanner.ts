@@ -8,7 +8,7 @@
  * they are stored on the elements themselves (FIELD_ID_ATTR).
  */
 import { FIELD_ID_ATTR } from "../shared/constants";
-import type { ControlType, DetectedField, UserApplicationProfile } from "../shared/types";
+import type { ControlType, DetectedField, FieldCategory, UserApplicationProfile } from "../shared/types";
 import {
   bestDisplayLabel,
   cleanText,
@@ -246,6 +246,79 @@ function checkboxGroupContainer(el: HTMLInputElement): Element | null {
   return null;
 }
 
+const UPLOAD_VERB_RE = /\b(upload|attach|add|choose|browse|select|drag)\b/i;
+const RESUME_NOUN_RE = /\b(resume|r[ée]sum[ée]|cv|curriculum\s*vitae)\b/i;
+const COVER_NOUN_RE = /\bcover\s*letter\b/i;
+
+/** Accessible name of a clickable: aria-label, else the joined text of its
+ *  aria-labelledby targets, else its own text. Capped for sanity. */
+function accessibleNameOf(el: HTMLElement): string {
+  const aria = cleanText(el.getAttribute("aria-label"));
+  if (aria) return aria;
+  const ids = el.getAttribute("aria-labelledby");
+  if (ids) {
+    const doc = el.ownerDocument;
+    const txt = ids
+      .split(/\s+/)
+      .map((id) => cleanText(doc.getElementById(id)?.textContent))
+      .filter(Boolean)
+      .join(" ");
+    if (txt) return txt;
+  }
+  return cleanText(el.textContent);
+}
+
+/**
+ * Custom (non-`<input>`) résumé / cover-letter upload widgets. Some ATS — SAP
+ * SuccessFactors most notably — render the upload as a `<div role="button">Upload
+ * a Resume</div>` that opens a file dialog, with no scannable `<input type=file>`.
+ * The generic loop never sees these (a role=button div isn't a form control), so
+ * the panel reported "no résumé field" and its Attach button stayed disabled.
+ *
+ * This detects at most one widget per category, requiring BOTH an upload verb and
+ * a résumé/cover noun in the accessible name so ordinary buttons never match, and
+ * skips a category a native file input already covers (no duplicates). Emitted as
+ * a `file` control the panel's Attach flow already understands. `deepQueryAll`
+ * excludes our own panel, so its "Attach"/"Generate Custom Resume" buttons can't
+ * be mistaken for a page field.
+ */
+function scanCustomUploads(fields: DetectedField[], registry: Map<string, RuntimeControl>): void {
+  const covered = new Set<FieldCategory>(
+    fields.filter((f) => f.controlType === "file").map((f) => f.category)
+  );
+  const seenWidgets = new Set<Element>();
+  for (const el of deepQueryAll(document, '[role="button"], button')) {
+    const name = accessibleNameOf(el);
+    if (!name || name.length > 120 || !UPLOAD_VERB_RE.test(name)) continue;
+    const category: FieldCategory | null = COVER_NOUN_RE.test(name)
+      ? "coverLetter"
+      : RESUME_NOUN_RE.test(name)
+        ? "resumeUpload"
+        : null;
+    if (!category || covered.has(category)) continue;
+    // One field per widget: SF renders several role=button parts (icon + label).
+    const widget = el.closest('[class*="attach" i], [class*="upload" i], [class*="dropzone" i]') ?? el;
+    if (seenWidgets.has(widget)) continue;
+    seenWidgets.add(widget);
+    covered.add(category);
+    const id = ensureFieldId(el);
+    registry.set(id, { id, controlType: "file", el });
+    fields.push({
+      id,
+      category,
+      confidence: 0.9,
+      label: name.slice(0, 80),
+      controlType: "file",
+      required: false,
+      proposedValue: null,
+      fillable: false,
+      sensitive: false,
+      note: noteFor("file", category),
+      currentValue: undefined,
+    });
+  }
+}
+
 export function scanPage(
   profile: UserApplicationProfile | null,
   fillEEO: boolean,
@@ -460,6 +533,9 @@ export function scanPage(
       currentValue: checkedLabels.length ? checkedLabels.join(", ") : undefined,
     });
   }
+
+  // Custom (non-<input>) résumé / cover-letter upload widgets (SuccessFactors).
+  scanCustomUploads(fields, registry);
 
   // Scope to the application-form container; anything outside is noise even
   // when its category is known. No qualifying container → unscoped fallback.

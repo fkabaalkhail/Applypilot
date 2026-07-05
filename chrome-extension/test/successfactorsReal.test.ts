@@ -2,7 +2,12 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { stubLayout } from "./helpers/layout";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
-import { successFactorsEeoHtml, SF_RACE_OPTIONS } from "./fixtures/successfactorsReal";
+import { injectResumeFile, findFileInput } from "../src/content/fileUpload";
+import {
+  successFactorsEeoHtml,
+  successFactorsAttachmentHtml,
+  SF_RACE_OPTIONS,
+} from "./fixtures/successfactorsReal";
 
 let restore: () => void;
 beforeAll(() => {
@@ -53,5 +58,45 @@ describe("SuccessFactors rcmpaginatedselect — real DOM", () => {
     // is constrained to what the widget actually offers
     expect(race!.options).toContain("Asian (not Hispanic or Latino)");
     expect(race!.options!.length).toBe(SF_RACE_OPTIONS.length);
+  });
+});
+
+describe("SuccessFactors custom résumé / cover-letter upload widgets", () => {
+  it("detects the <div role=button> résumé + cover uploads as file fields", () => {
+    document.body.innerHTML =
+      successFactorsAttachmentHtml({ kind: "resume" }) + successFactorsAttachmentHtml({ kind: "cover" });
+    const { fields } = scanPage(MOCK_PROFILE, false);
+    const resume = fields.find((f) => f.category === "resumeUpload");
+    const cover = fields.find((f) => f.category === "coverLetter");
+    expect(resume, "résumé upload detected").toBeTruthy();
+    expect(resume!.controlType).toBe("file");
+    expect(cover, "cover-letter upload detected").toBeTruthy();
+    expect(cover!.controlType).toBe("file");
+  });
+
+  it("detects only ONE field per widget (not each role=button part)", () => {
+    document.body.innerHTML = successFactorsAttachmentHtml({ kind: "resume" });
+    const { fields } = scanPage(MOCK_PROFILE, false);
+    expect(fields.filter((f) => f.category === "resumeUpload").length).toBe(1);
+  });
+
+  it("finds the widget's hidden <input type=file> (a sibling several levels up)", () => {
+    // The real attach mechanism (DataTransfer → input.files) needs a browser;
+    // jsdom can't assign input.files. What we verify here is the part that was
+    // broken: findFileInput must climb from the role=button to the sibling input
+    // so injectResumeFile has something to attach to when SF exposes one.
+    document.body.innerHTML = successFactorsAttachmentHtml({ kind: "resume", hiddenInput: true });
+    const { fields, registry } = scanPage(MOCK_PROFILE, false);
+    const el = registry.get(fields.find((f) => f.category === "resumeUpload")!.id)!.el!;
+    expect(findFileInput(el)?.id).toBe("res-file");
+  });
+
+  it("reports honestly (no false success) when there is no scriptable input", () => {
+    document.body.innerHTML = successFactorsAttachmentHtml({ kind: "resume", hiddenInput: false });
+    const { fields, registry } = scanPage(MOCK_PROFILE, false);
+    const el = registry.get(fields.find((f) => f.category === "resumeUpload")!.id)!.el!;
+    const res = injectResumeFile(el, new File(["x"], "r.pdf", { type: "application/pdf" }));
+    expect(res.ok).toBe(false);
+    expect(res.reason).toMatch(/manually/i);
   });
 });

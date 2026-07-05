@@ -25,14 +25,22 @@ export function base64ToFile(b64: string, name: string, type: string): File {
   return new File([bytes], name || "resume", { type: type || "application/octet-stream" });
 }
 
-/** Locate the real <input type=file> for a detected resume-upload control. */
+/** Locate the real <input type=file> for a detected resume-upload control.
+ *  Climbs from the control outward (nearest first) so it finds an input that is
+ *  a sibling/uncle several levels up — SuccessFactors keeps its hidden file
+ *  input beside the visible upload button, not inside it. Bounded and stops at
+ *  the form so it never reaches an unrelated field. */
 export function findFileInput(el: HTMLElement): HTMLInputElement | null {
   if (el instanceof HTMLInputElement && el.type === "file") return el;
-  // Dropzone widgets usually hide a file input within the same container.
-  const scope =
-    el.closest("form, [class*='dropzone' i], [class*='upload' i], [class*='attach' i]") ||
-    el.ownerDocument;
-  return scope.querySelector<HTMLInputElement>('input[type="file"]:not([disabled])');
+  let node: HTMLElement | null =
+    el.closest<HTMLElement>("form, [class*='dropzone' i], [class*='upload' i], [class*='attach' i], [class*='field' i]") ??
+    el.parentElement;
+  for (let i = 0; node && i < 6; i++, node = node.parentElement) {
+    const input = node.querySelector<HTMLInputElement>('input[type="file"]:not([disabled])');
+    if (input) return input;
+    if (node.tagName === "FORM") break;
+  }
+  return null;
 }
 
 function assignToInput(input: HTMLInputElement, file: File): boolean {
@@ -81,6 +89,21 @@ export function injectResumeFile(target: HTMLElement, file: File): UploadResult 
     } catch {
       // Some frameworks lock the input — fall through to drop simulation.
     }
+  }
+
+  // A custom upload button (SAP SuccessFactors' <div role="button">Upload a
+  // Resume</div>) exposes no scriptable input and opens a native file dialog.
+  // A simulated drop on it is a no-op that would falsely report success — be
+  // honest so the user knows to attach manually. (A dropzone button still
+  // falls through to the drop path below.)
+  if (
+    target.matches('[role="button"], button') &&
+    !target.closest("[class*='dropzone' i],[class*='drop' i]")
+  ) {
+    return {
+      ok: false,
+      reason: "This site needs the résumé attached manually — auto-attach isn't available here.",
+    };
   }
 
   const zone =
