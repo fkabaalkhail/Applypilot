@@ -128,8 +128,14 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\blegal name\b/ },
       { re: /^(your )?name$/ },
       { re: /\bcomplete name\b/ },
+      // Text signature ("type your name to sign / certify"). A drawing-pad
+      // signature is a canvas (never a text input), so it won't reach here.
+      { re: /\bsignature\b/, weight: 0.85 },
+      { re: /\btype (your |in )?(full |legal )?name\b/, weight: 0.9 },
+      { re: /\bsign(ature)? (here|below)\b/, weight: 0.85 },
+      { re: /\bplease sign\b/, weight: 0.85 },
     ],
-    negative: /\bfirst\b|\blast\b|\bgiven\b|\bfamily\b|\bmiddle\b|\buser ?name\b|\bcompany\b|\bemployer\b|\bschool\b|\bfile\b|\bcontact name\b/,
+    negative: /\bfirst\b|\blast\b|\bgiven\b|\bfamily\b|\bmiddle\b|\buser ?name\b|\bcompany\b|\bemployer\b|\bschool\b|\bfile\b|\bcontact name\b|\bsign in\b|\bsign up\b/,
   },
   {
     category: "email",
