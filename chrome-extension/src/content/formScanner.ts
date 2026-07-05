@@ -361,6 +361,55 @@ function scanCustomUploads(fields: DetectedField[], registry: Map<string, Runtim
   }
 }
 
+const REPEAT_CATEGORIES: ReadonlyArray<ReadonlySet<FieldCategory>> = [
+  new Set<FieldCategory>(["currentCompany", "currentTitle"]),
+  new Set<FieldCategory>(["school", "degree", "graduationYear"]),
+];
+
+/**
+ * Remap repeating-section rows to 0-based POSITIONAL indices and re-resolve.
+ * Workday numbers work-experience rows with an arbitrary instance id
+ * ("workExperience-8--jobTitle"), so a field parsed as groupIndex 8 would read
+ * profile.experience[8] (undefined) and never fill. Ranking the distinct raw
+ * indices maps 8 → 0 and {8,12} → {0,1}, while a standard experience[0]/[1] form
+ * is left unchanged.
+ */
+function remapRepeatingRows(
+  fields: DetectedField[],
+  registry: Map<string, RuntimeControl>,
+  profile: UserApplicationProfile | null,
+  adapter: SiteAdapter | null,
+  fillEEO: boolean
+): void {
+  if (!profile) return;
+  for (const cats of REPEAT_CATEGORIES) {
+    const rowFields = fields.filter((f) => cats.has(f.category) && f.groupIndex != null);
+    if (rowFields.length === 0) continue;
+    const distinct = [...new Set(rowFields.map((f) => f.groupIndex as number))].sort((a, b) => a - b);
+    if (distinct.length === 1 && distinct[0] === 0) continue; // already positional
+    const posOf = new Map(distinct.map((raw, i) => [raw, i] as const));
+    for (const f of rowFields) {
+      const pos = posOf.get(f.groupIndex as number) ?? 0;
+      if (pos === f.groupIndex) continue;
+      f.groupIndex = pos;
+      const control = registry.get(f.id);
+      if (!control?.el) continue;
+      f.proposedValue = guardConstrainedOption(
+        resolveAnswerWithAdapter(
+          adapter,
+          f.category,
+          profile,
+          { controlType: f.controlType, options: f.options, groupIndex: pos },
+          fillEEO,
+          control.el
+        ),
+        f.controlType,
+        f.options
+      );
+    }
+  }
+}
+
 export function scanPage(
   profile: UserApplicationProfile | null,
   fillEEO: boolean,
@@ -582,6 +631,9 @@ export function scanPage(
 
   // Custom (non-<input>) résumé / cover-letter upload widgets (SuccessFactors).
   scanCustomUploads(fields, registry);
+
+  // Repeating-section rows → positional indices (Workday's instance-numbered rows).
+  remapRepeatingRows(fields, registry, profile, adapter, fillEEO);
 
   // Scope to the application-form container; anything outside is noise even
   // when its category is known. No qualifying container → unscoped fallback.

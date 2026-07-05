@@ -18,6 +18,11 @@ const AUTOMATION_RULES: Array<[RegExp, FieldCategory]> = [
   [/phone.*number|^phone/i, "phone"],
   [/country|region/i, "country"],
   [/(address)?.*city/i, "addressCity"],
+  // Work-experience rows (data-automation-id="formField-jobTitle" /
+  // "formField-companyName"). Plain "Company"/"Job Title" aren't caught by the
+  // generic matcher, so the whole repeating section went unfilled on Workday.
+  [/job.?title|jobtitle/i, "currentTitle"],
+  [/company.?name|companyname|employer/i, "currentCompany"],
 ];
 
 function automationId(el: HTMLElement): string {
