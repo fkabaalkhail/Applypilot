@@ -137,6 +137,11 @@ function controlTypeOf(el: HTMLElement): ControlType | null {
     if (el.type === "checkbox") return "checkbox";
     if (el.type === "radio") return "radioGroup"; // grouped later
     if (el.type === "file") return "file";
+    // Workday's multiselect/typeahead trigger (e.g. Country Phone Code) is a bare
+    // <input> with NO role=combobox / aria-haspopup — its widget type lives only
+    // in data-uxi-widget-type="selectinput". Drive it through the listbox engine
+    // instead of typing the value into what is actually a search box.
+    if (el.getAttribute("data-uxi-widget-type") === "selectinput") return "combobox";
     return "text"; // text, email, tel, url, number, date…
   }
   if (el instanceof HTMLTextAreaElement) return "textarea";
