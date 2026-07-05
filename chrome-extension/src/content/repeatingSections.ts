@@ -23,7 +23,13 @@ export const SECTION_KINDS: readonly SectionKind[] = ["experience", "education"]
 export const MAX_ROWS = 6;
 
 const KIND_CATEGORIES: Record<SectionKind, ReadonlySet<FieldCategory>> = {
-  experience: new Set<FieldCategory>(["currentCompany", "currentTitle"]),
+  experience: new Set<FieldCategory>([
+    "currentCompany",
+    "currentTitle",
+    "experienceStartDate",
+    "experienceEndDate",
+    "experienceDescription",
+  ]),
   education: new Set<FieldCategory>(["school", "degree", "graduationYear"]),
 };
 

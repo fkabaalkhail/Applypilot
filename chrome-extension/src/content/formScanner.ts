@@ -365,7 +365,13 @@ function scanCustomUploads(fields: DetectedField[], registry: Map<string, Runtim
 }
 
 const REPEAT_CATEGORIES: ReadonlyArray<ReadonlySet<FieldCategory>> = [
-  new Set<FieldCategory>(["currentCompany", "currentTitle"]),
+  new Set<FieldCategory>([
+    "currentCompany",
+    "currentTitle",
+    "experienceStartDate",
+    "experienceEndDate",
+    "experienceDescription",
+  ]),
   new Set<FieldCategory>(["school", "degree", "graduationYear"]),
 ];
 

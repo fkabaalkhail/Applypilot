@@ -334,6 +334,34 @@ const CATEGORY_SPECS: CategorySpec[] = [
     negative: /\bsalutation\b|\bmr\b|\bmrs\b|\bdegree\b|\bapply(ing)?\b|\bapplied\b|\bdesired\b|\binterested\b|\bsong\b/,
   },
   {
+    category: "experienceStartDate",
+    patterns: [
+      { re: /\bstart date\b/ },
+      { re: /\bstart (month|year)\b/ },
+      { re: /\bdate started\b|\bstarted\b/, weight: 0.75 },
+      { re: /\bemployment start\b/ },
+    ],
+    negative: /\bavailable\b|\bearliest\b|\bnotice\b|\bwhen can you\b/,
+  },
+  {
+    category: "experienceEndDate",
+    patterns: [
+      { re: /\bend date\b/ },
+      { re: /\bend (month|year)\b/ },
+      { re: /\bdate ended\b|\bended\b/, weight: 0.75 },
+      { re: /\bemployment end\b/ },
+    ],
+  },
+  {
+    category: "experienceDescription",
+    patterns: [
+      { re: /\b(job|role|position) description\b/ },
+      { re: /\bresponsibilit(y|ies)\b/ },
+      { re: /\b(key )?(duties|accomplishments|achievements)\b/, weight: 0.8 },
+      { re: /\bdescribe your (role|work|responsibilit)/ },
+    ],
+  },
+  {
     category: "experience",
     patterns: [
       { re: /\byears? of (relevant |professional |work )?experience\b/, weight: 0.9 },
@@ -551,6 +579,14 @@ export function resolveProfileValue(
       return orNull(gi !== null ? profile.experience?.[gi]?.company : profile.currentCompany);
     case "currentTitle":
       return orNull(gi !== null ? profile.experience?.[gi]?.title : profile.currentTitle);
+    // Experience dates / description only resolve inside a repeating row (gi set),
+    // so a standalone "Start Date" (availability) never pulls an employment date.
+    case "experienceStartDate":
+      return orNull(gi !== null ? profile.experience?.[gi]?.startDate : undefined);
+    case "experienceEndDate":
+      return orNull(gi !== null ? profile.experience?.[gi]?.endDate : undefined);
+    case "experienceDescription":
+      return orNull(gi !== null ? profile.experience?.[gi]?.description : undefined);
     case "salary":
       return orNull(profile.salaryExpectation);
     case "skills":
