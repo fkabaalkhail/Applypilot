@@ -500,6 +500,7 @@ export function scanPage(
       options,
       helpText: signals.nearby,
       inputType: signals.typeHint,
+      groupIndex,
       currentValue: currentValueOf(el, controlType),
     });
   }
@@ -536,6 +537,7 @@ export function scanPage(
       options,
       helpText: signals.nearby,
       inputType: signals.typeHint,
+      groupIndex,
       currentValue: checked ? radioOptionLabel(checked) : undefined,
     });
   }
@@ -573,6 +575,7 @@ export function scanPage(
       options,
       helpText: signals.nearby,
       inputType: signals.typeHint,
+      groupIndex,
       currentValue: checkedLabels.length ? checkedLabels.join(", ") : undefined,
     });
   }

@@ -60,7 +60,8 @@ import { closestDemographicOption } from "./demographicMatch";
 import { toApplicantProfile } from "./applicantProfile";
 import { splitByCache, cacheAnswers } from "./answerCache";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
-import { fillAriaCombobox, harvestComboboxOptions, readComboboxValue } from "./comboboxEngine";
+import { activateElement, fillAriaCombobox, harvestComboboxOptions, readComboboxValue } from "./comboboxEngine";
+import { SECTION_KINDS, MAX_ROWS, rowsPresent, rowsNeeded, findAddButton } from "./repeatingSections";
 import { driveField, setDialogSuppression } from "./mainWorldClient";
 import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
 import { verifyControl, writeControl } from "./writeEngine";
@@ -543,6 +544,30 @@ function initialize(): void {
     return localFill;
   }
 
+  /**
+   * Click "Add another" to create the work-experience / education rows the
+   * profile needs (the resolver already fills row N from experience[N]). Re-finds
+   * the button and re-counts after each click so it survives the row re-render,
+   * caps rows, and stops the moment a click adds nothing (wrong button / limit).
+   */
+  async function expandRepeatingSections(signal?: AbortSignal): Promise<void> {
+    if (!lastProfile) return;
+    for (const kind of SECTION_KINDS) {
+      for (let guard = 0; guard < MAX_ROWS; guard++) {
+        if (signal?.aborted) return;
+        const present = rowsPresent(lastFields, kind);
+        if (present === 0) break; // section not on this page
+        if (present >= Math.min(rowsNeeded(lastProfile, kind), MAX_ROWS)) break;
+        const btn = findAddButton(lastFields, kind, (id) => registry.get(id)?.el);
+        if (!btn) break;
+        activateElement(btn);
+        await waitForDomSettle(signal);
+        runScan();
+        if (rowsPresent(lastFields, kind) <= present) break; // click added no row — stop
+      }
+    }
+  }
+
   async function fillOnce(ids: string[] | null, signal?: AbortSignal): Promise<StepTally> {
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       // Let a React ATS finish hydrating before we scan+fill: filling a form
@@ -554,6 +579,9 @@ function initialize(): void {
       await waitForDomSettle(signal);
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       runScan();
+      // Create the extra work-experience / education rows the profile needs before
+      // filling, so a candidate with several jobs doesn't get only the first row.
+      await expandRepeatingSections(signal);
       engine?.updateRegistry(registry);
       const wanted = ids ? new Set(ids) : defaultSelectedIds(lastFields);
       const selected = lastFields.filter(

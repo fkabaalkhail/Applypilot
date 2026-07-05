@@ -230,6 +230,9 @@ export interface DetectedField {
   helpText?: string;
   /** Native input type hint (FieldSignals.typeHint: "date", "number"…) — AI format cue. */
   inputType?: string;
+  /** 0-based repeating-row index parsed from the field name (`experience[1][company]`),
+   *  or null/undefined when the field is not part of a repeating section. */
+  groupIndex?: number | null;
 }
 
 // ---------------------------------------------------------------------------
