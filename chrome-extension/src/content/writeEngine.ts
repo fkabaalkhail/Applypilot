@@ -65,14 +65,43 @@ export function writeControl(control: RuntimeControl, value: string): WriteResul
  * setter between focus and input so handlers reading `el.value` see the new
  * value. .focus()/.blur() are used so document.activeElement is correct too.
  */
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/** Parse a flexible date ("2020-01", "Jan 2020", "01/2020", "1/15/2020", "2020")
+ *  into ISO parts, or null. */
+function parseFlexibleDate(v: string): { y: string; m: string; d: string } | null {
+  const s = v.trim();
+  const pad = (n: string): string => n.padStart(2, "0");
+  let m: RegExpMatchArray | null;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/))) return { y: m[1], m: pad(m[2]), d: pad(m[3] ?? "1") };
+  if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) return { y: m[3], m: pad(m[1]), d: pad(m[2]) };
+  if ((m = s.match(/^(\d{1,2})\/(\d{4})$/))) return { y: m[2], m: pad(m[1]), d: "01" };
+  if ((m = s.match(/^([A-Za-z]{3,})\.?\s+(\d{4})/))) {
+    const mi = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase());
+    if (mi >= 0) return { y: m[2], m: pad(String(mi + 1)), d: "01" };
+  }
+  if ((m = s.match(/^(\d{4})$/))) return { y: m[1], m: "01", d: "01" };
+  return null;
+}
+
+/** Native date/month inputs only accept ISO (YYYY-MM-DD / YYYY-MM). Reshape a
+ *  flexible profile date to fit; anything else passes through unchanged. */
+export function formatForDateInput(el: HTMLElement, value: string): string {
+  if (!(el instanceof HTMLInputElement) || (el.type !== "date" && el.type !== "month")) return value;
+  const p = parseFlexibleDate(value);
+  if (!p) return value;
+  return el.type === "month" ? `${p.y}-${p.m}` : `${p.y}-${p.m}-${p.d}`;
+}
+
 function writeTextLike(
   el: HTMLInputElement | HTMLTextAreaElement,
   value: string
 ): WriteResult {
   if (isStale(el)) return { written: false, reason: STALE };
+  const v = formatForDateInput(el, value);
   el.focus({ preventScroll: true });
-  setNativeValue(el, value);
-  dispatchInputEvents(el, value);
+  setNativeValue(el, v);
+  dispatchInputEvents(el, v);
   el.blur(); // many ATS validate on blur
   return { written: true };
 }
@@ -141,7 +170,7 @@ export function verifyControl(control: RuntimeControl, value: string): boolean {
     case "textarea": {
       const el = control.el as HTMLInputElement | HTMLTextAreaElement | undefined;
       if (isStale(el)) return false;
-      return valueReflects(value, el!.value);
+      return valueReflects(formatForDateInput(el!, value), el!.value);
     }
     case "select": {
       const el = control.el as HTMLSelectElement | undefined;
