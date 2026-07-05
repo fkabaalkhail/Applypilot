@@ -228,13 +228,23 @@ function typeInto(input: HTMLInputElement, value: string): void {
  *  DIFFERENT widget. */
 function getListbox(trigger: HTMLElement): HTMLElement | null {
   const doc = trigger.ownerDocument;
-  const ids = `${trigger.getAttribute("aria-controls") ?? ""} ${trigger.getAttribute("aria-owns") ?? ""}`.trim();
-  for (const id of ids.split(/\s+/).filter(Boolean)) {
+  const declared = `${trigger.getAttribute("aria-controls") ?? ""} ${trigger.getAttribute("aria-owns") ?? ""}`
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  for (const id of declared) {
     const el = doc.getElementById(id);
     if (!el) continue;
     const lb = (el.getAttribute("role") === "listbox" ? el : el.querySelector('[role="listbox"]')) as HTMLElement | null;
     if (lb && isVisible(lb) && hasOptions(lb)) return lb;
   }
+  // A trigger that NAMES its listbox (aria-owns / aria-controls) must only ever
+  // use THAT listbox — never a neighbour's. SAP SuccessFactors renders each
+  // picklist's options into its own aria-owns'd <ul> a beat after opening;
+  // falling back to "a visible listbox" here grabbed the previously-opened
+  // field's still-open menu (race read gender's options, gender read the city
+  // field's). Return null so waitFor keeps polling for the declared one.
+  if (declared.length > 0) return null;
   // Fallback for widgets that declare no association. Prefer the menu inside the
   // trigger's OWN widget container (its own popup). Only then trust a document-
   // wide portaled menu — and ONLY when it is UNAMBIGUOUS (exactly one open):

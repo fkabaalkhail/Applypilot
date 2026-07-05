@@ -668,4 +668,64 @@ describe("SuccessFactors rcmpaginatedselect (commits via title)", () => {
     expect(res.reason).toContain("saw:");
     expect(res.reason).toContain("Male");
   });
+
+  it("reads its OWN aria-owns'd listbox, never a lingering neighbour's", async () => {
+    // A previous field's menu is still open (gender: Male/Female) while we fill
+    // race — whose own listbox mounts a beat later. The engine must wait for
+    // race's declared listbox, not grab the visible gender one (the SF bug).
+    const genderInput = document.createElement("input");
+    genderInput.setAttribute("role", "combobox");
+    genderInput.setAttribute("aria-owns", "gender-lb");
+    genderInput.setAttribute("aria-expanded", "true");
+    document.body.append(genderInput);
+    const genderLb = document.createElement("ul");
+    genderLb.id = "gender-lb";
+    genderLb.setAttribute("role", "listbox");
+    for (const label of ["No Selection", "Female", "Male", "I decline to provide this information"]) {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.textContent = label;
+      genderLb.append(li);
+    }
+    document.body.append(genderLb);
+
+    // Race: its listbox mounts asynchronously on open (after gender's is visible).
+    const raceInput = document.createElement("input");
+    raceInput.type = "text";
+    raceInput.setAttribute("role", "combobox");
+    raceInput.setAttribute("aria-owns", "race-lb");
+    raceInput.setAttribute("aria-expanded", "false");
+    raceInput.placeholder = "No Selection";
+    document.body.append(raceInput);
+    let clicked = "";
+    raceInput.addEventListener("click", () => {
+      raceInput.setAttribute("aria-expanded", "true");
+      setTimeout(() => {
+        const lb = document.createElement("ul");
+        lb.id = "race-lb";
+        lb.setAttribute("role", "listbox");
+        for (const label of ["No Selection", "Asian (not Hispanic or Latino)", "White (not Hispanic or Latino)"]) {
+          const li = document.createElement("li");
+          li.setAttribute("role", "option");
+          li.textContent = label;
+          li.addEventListener("click", () => {
+            clicked = label;
+            raceInput.setAttribute("title", label);
+          });
+          lb.append(li);
+        }
+        document.body.append(lb);
+      }, 5);
+    });
+
+    // Use a real (tiny) sleep so the async listbox actually mounts while polling.
+    const res = await fillAriaCombobox(raceInput, "Asian", {
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      openWaitMs: 200,
+      commitWaitMs: 200,
+      pollMs: 10,
+    });
+    expect(clicked).toContain("Asian"); // clicked race's option, not gender's
+    expect(res.filled).toBe(true);
+  });
 });
