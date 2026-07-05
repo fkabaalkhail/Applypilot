@@ -11,6 +11,7 @@
  * user had picked it. Triggered by an explicit user click in the overlay.
  */
 import { flashHighlight } from "./domUtils";
+import { activateElement } from "./comboboxEngine";
 
 export interface UploadResult {
   ok: boolean;
@@ -72,39 +73,80 @@ function simulateDrop(target: HTMLElement, file: File): void {
   }
 }
 
+/** Assign via DataTransfer, highlighting the input on success. */
+function tryAssign(input: HTMLInputElement, file: File): boolean {
+  try {
+    if (assignToInput(input, file)) {
+      flashHighlight(input.labels?.[0] ?? input);
+      return true;
+    }
+  } catch {
+    // Some frameworks lock the input — caller falls back.
+  }
+  return false;
+}
+
+/** Poll for a scriptable file input to appear. SuccessFactors mounts its
+ *  "Upload from device" <input type=file> only AFTER the upload button is
+ *  clicked, so we wait for it. Prefers one inside the widget, then any enabled
+ *  one anywhere (SF portals the menu). */
+async function waitForRevealedInput(
+  near: HTMLElement,
+  budgetMs: number,
+  sleep: (ms: number) => Promise<void>
+): Promise<HTMLInputElement | null> {
+  const doc = near.ownerDocument;
+  const pollMs = 60;
+  for (let elapsed = 0; elapsed <= budgetMs; elapsed += pollMs) {
+    const scoped = findFileInput(near);
+    if (scoped) return scoped;
+    const any = doc.querySelector<HTMLInputElement>('input[type="file"]:not([disabled])');
+    if (any) return any;
+    await sleep(pollMs);
+  }
+  return null;
+}
+
 /**
  * Attach `file` to the upload control represented by `target`.
  *
- * Strategy, in order: (1) assign to the nearest real file input via
- * DataTransfer; (2) if that doesn't take, simulate a drag-and-drop on the
- * surrounding dropzone. Returns a clear ok/reason for the overlay to display.
+ * Order: (1) a scriptable `<input type=file>` already present → assign via
+ * DataTransfer; (2) a dropzone → simulate a drop; (3) a custom upload button
+ * (SAP SuccessFactors) → click it to REVEAL its "Upload from device" input,
+ * then assign to that — never clicking the device option itself, which would
+ * open the OS dialog (this is how Jobright attaches on SF); (4) nothing
+ * scriptable turned up → `manual`, so the caller can download the file for a
+ * manual pick.
  */
-export function injectResumeFile(target: HTMLElement, file: File): UploadResult {
+export async function injectResumeFile(
+  target: HTMLElement,
+  file: File,
+  opts: { revealWaitMs?: number; sleep?: (ms: number) => Promise<void> } = {}
+): Promise<UploadResult> {
   if (!target.isConnected) {
     return { ok: false, reason: "Upload field was removed — rescan the page." };
   }
+  const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
 
-  const input = findFileInput(target);
-  if (input) {
+  const existing = findFileInput(target);
+  if (existing && tryAssign(existing, file)) return { ok: true };
+
+  const dropzone = target.closest("[class*='dropzone' i],[class*='drop' i]") as HTMLElement | null;
+  if (dropzone) {
     try {
-      if (assignToInput(input, file)) {
-        flashHighlight(input.labels?.[0] ?? input);
-        return { ok: true };
-      }
-    } catch {
-      // Some frameworks lock the input — fall through to drop simulation.
+      simulateDrop(dropzone, file);
+      flashHighlight(dropzone);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : "Could not attach the file — upload manually." };
     }
   }
 
-  // A custom upload button (SAP SuccessFactors' <div role="button">Upload a
-  // Resume</div>) exposes no scriptable input and opens a native file dialog.
-  // A simulated drop on it is a no-op that would falsely report success — be
-  // honest so the user knows to attach manually. (A dropzone button still
-  // falls through to the drop path below.)
-  if (
-    target.matches('[role="button"], button') &&
-    !target.closest("[class*='dropzone' i],[class*='drop' i]")
-  ) {
+  // Custom upload button (SF): click it to reveal its file input, then attach.
+  if (target.matches('[role="button"], button') || target.closest("[class*='attach' i]")) {
+    activateElement(target);
+    const revealed = await waitForRevealedInput(target, opts.revealWaitMs ?? 1500, sleep);
+    if (revealed && tryAssign(revealed, file)) return { ok: true };
     return {
       ok: false,
       manual: true,
@@ -112,18 +154,14 @@ export function injectResumeFile(target: HTMLElement, file: File): UploadResult 
     };
   }
 
-  const zone =
-    (target.closest("[class*='dropzone' i],[class*='drop' i],[class*='upload' i]") as HTMLElement) ||
-    target;
+  // An upload zone without a recognised drop/attach class — try a drop.
+  const zone = (target.closest("[class*='upload' i]") as HTMLElement) || target;
   try {
     simulateDrop(zone, file);
     flashHighlight(zone);
     return { ok: true };
   } catch (err) {
-    return {
-      ok: false,
-      reason: err instanceof Error ? err.message : "Could not attach the file — upload manually.",
-    };
+    return { ok: false, reason: err instanceof Error ? err.message : "Could not attach the file — upload manually." };
   }
 }
 

@@ -100,8 +100,8 @@ const MIN_FIELDS_FOR_OVERLAY = 1;
  * <input type=file> — SAP SuccessFactors), download the file so the user can pick
  * it in the site's own dialog, and say so.
  */
-function attachOrGuide(el: HTMLElement, dataBase64: string, name: string, contentType: string): UploadResult {
-  const result = injectResumeFile(el, base64ToFile(dataBase64, name, contentType));
+async function attachOrGuide(el: HTMLElement, dataBase64: string, name: string, contentType: string): Promise<UploadResult> {
+  const result = await injectResumeFile(el, base64ToFile(dataBase64, name, contentType));
   if (!result.manual) return result;
   downloadBase64File(dataBase64, name, contentType);
   return {

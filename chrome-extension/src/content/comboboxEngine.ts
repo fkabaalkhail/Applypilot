@@ -34,7 +34,7 @@ export interface FillComboboxOptions {
   pollMs?: number;
 }
 
-const DEFAULTS = { openWaitMs: 1000, commitWaitMs: 2500, pollMs: 50 };
+const DEFAULTS = { openWaitMs: 1500, commitWaitMs: 2500, pollMs: 50 };
 
 /**
  * True when an element is an ARIA combobox/listbox we can drive by clicking an
@@ -77,6 +77,13 @@ export async function fillAriaCombobox(
   // Wait for the listbox to mount. Typeahead inputs may need the value typed in
   // to surface (and filter, or async-load) the options.
   let listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
+  // SF's paginated picklists occasionally swallow the first activation (the
+  // listbox never mounts). Re-open once — open() re-activates only while the
+  // widget is still collapsed, so this is a no-op when it did open.
+  if (!listbox) {
+    open(trigger);
+    listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
+  }
   let option = listbox ? findOption(listbox, value) : null;
   if (isTypeahead(trigger) && !option) {
     typeInto(trigger as HTMLInputElement, value);

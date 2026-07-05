@@ -91,12 +91,36 @@ describe("SuccessFactors custom résumé / cover-letter upload widgets", () => {
     expect(findFileInput(el)?.id).toBe("res-file");
   });
 
-  it("reports honestly (no false success) when there is no scriptable input", () => {
+  it("clicks the upload button to reveal SF's file input (Jobright approach)", async () => {
     document.body.innerHTML = successFactorsAttachmentHtml({ kind: "resume", hiddenInput: false });
     const { fields, registry } = scanPage(MOCK_PROFILE, false);
     const el = registry.get(fields.find((f) => f.category === "resumeUpload")!.id)!.el!;
-    const res = injectResumeFile(el, new File(["x"], "r.pdf", { type: "application/pdf" }));
+    let clicked = false;
+    el.addEventListener("click", () => {
+      clicked = true;
+      // SF mounts its "Upload from device" input only after the button is clicked.
+      const input = document.createElement("input");
+      input.type = "file";
+      input.id = "revealed-file";
+      document.body.append(input);
+    });
+    await injectResumeFile(el, new File(["x"], "r.pdf", { type: "application/pdf" }), {
+      revealWaitMs: 200,
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    });
+    expect(clicked).toBe(true); // it activated the upload button
+    expect(document.getElementById("revealed-file")).toBeTruthy(); // and revealed the input to target
+  });
+
+  it("reports manual (for download-and-guide) when clicking reveals nothing", async () => {
+    document.body.innerHTML = successFactorsAttachmentHtml({ kind: "resume", hiddenInput: false });
+    const { fields, registry } = scanPage(MOCK_PROFILE, false);
+    const el = registry.get(fields.find((f) => f.category === "resumeUpload")!.id)!.el!;
+    const res = await injectResumeFile(el, new File(["x"], "r.pdf", { type: "application/pdf" }), {
+      revealWaitMs: 30,
+      sleep: () => Promise.resolve(),
+    });
     expect(res.ok).toBe(false);
-    expect(res.reason).toMatch(/manually/i);
+    expect(res.manual).toBe(true);
   });
 });
