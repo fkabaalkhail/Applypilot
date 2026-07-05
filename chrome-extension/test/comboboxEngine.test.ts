@@ -86,6 +86,46 @@ function reactSelect(
   return input;
 }
 
+/** A SuccessFactors rcmpaginatedselect: an <input role=combobox aria-owns=…>
+ *  that opens a <ul role=listbox><li role=option><a> on click and, on select,
+ *  commits the label into the input's `title` (NOT its value — SF leaves the
+ *  "No Selection" placeholder in place). Reproduces the "didn't stick" false
+ *  negative. */
+function sfPicklist(options: string[]): HTMLInputElement {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-expanded", "false");
+  input.placeholder = "No Selection";
+  const lbId = `sf-${Math.random().toString(36).slice(2)}`;
+  input.setAttribute("aria-owns", lbId);
+  document.body.append(input);
+
+  input.addEventListener("click", () => {
+    if (input.getAttribute("aria-expanded") === "true") return;
+    input.setAttribute("aria-expanded", "true");
+    const lb = document.createElement("ul");
+    lb.id = lbId;
+    lb.setAttribute("role", "listbox");
+    for (const label of options) {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      const a = document.createElement("a");
+      a.setAttribute("role", "menuitem");
+      a.textContent = label;
+      li.append(a);
+      li.addEventListener("click", () => {
+        input.setAttribute("title", label); // SF commits into title, not value
+        input.setAttribute("aria-expanded", "false");
+        lb.remove();
+      });
+      lb.append(li);
+    }
+    document.body.append(lb);
+  });
+  return input;
+}
+
 /** A Workday-style trigger: a <button aria-haspopup="listbox"> that opens a
  *  sibling listbox on click and writes the chosen label back into itself. */
 function buttonListbox(options: string[]): HTMLButtonElement {
@@ -604,5 +644,28 @@ describe("harvestComboboxOptions", () => {
     input.setAttribute("aria-controls", "never");
     document.body.append(input);
     expect(await harvestComboboxOptions(input, fast)).toBeUndefined();
+  });
+});
+
+describe("SuccessFactors rcmpaginatedselect (commits via title)", () => {
+  it("counts a selection as filled when the widget shows it in `title`, not value", async () => {
+    const input = sfPicklist([
+      "No Selection",
+      "Asian (not Hispanic or Latino)",
+      "White (not Hispanic or Latino)",
+      "Decline to self-identify",
+    ]);
+    const res = await fillAriaCombobox(input, "Asian", fast);
+    expect(res.filled).toBe(true);
+    expect(input.getAttribute("title")).toBe("Asian (not Hispanic or Latino)");
+  });
+
+  it("still fails cleanly (not a false positive) when no option matches", async () => {
+    const input = sfPicklist(["Male", "Female", "Decline to self-identify"]);
+    const res = await fillAriaCombobox(input, "Nonbinary", fast);
+    expect(res.filled).toBe(false);
+    // the diagnostic reason now names what the listbox actually offered
+    expect(res.reason).toContain("saw:");
+    expect(res.reason).toContain("Male");
   });
 });

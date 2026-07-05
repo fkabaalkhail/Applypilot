@@ -99,9 +99,13 @@ export async function fillAriaCombobox(
   if (!option) {
     const options = optionLabels(listbox);
     close(trigger);
+    // Record what the listbox actually offered — distinguishes an async/empty
+    // read from a contaminated (wrong-field) menu from a genuine match miss.
+    const seen =
+      options && options.length ? ` (saw: ${options.slice(0, 6).join(" | ")})` : " (listbox had no options)";
     return {
       filled: false,
-      reason: `No option matches "${truncate(value)}" — select it manually`,
+      reason: `No option matches "${truncate(value)}"${seen}`,
       options,
     };
   }
@@ -409,6 +413,11 @@ function comboboxShowsValue(trigger: HTMLElement, value: string): boolean {
   const candidates: string[] = [];
   if (trigger instanceof HTMLInputElement && trigger.value) candidates.push(trigger.value);
   if (trigger.tagName === "BUTTON") candidates.push(cleanText(trigger.textContent));
+  // SAP SuccessFactors' rcmpaginatedselect commits the choice into the input's
+  // `title` while leaving `value` empty and the placeholder ("No Selection")
+  // in place — so a successful selection read as "didn't stick" without this.
+  const title = cleanText(trigger.getAttribute("title"));
+  if (title && !/^no selection$/i.test(title)) candidates.push(title);
   const active = activeDescendantText(trigger);
   if (active) candidates.push(active);
   candidates.push(...valueContainerTexts(trigger));
