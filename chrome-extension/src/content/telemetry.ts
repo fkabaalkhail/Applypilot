@@ -14,7 +14,7 @@ export function buildAutofillTelemetry(
   fields: DetectedField[],
   ctx: { host: string; url: string; atsType: string },
   reports: FieldReport[],
-  outcomes: { fieldId: string; ok: boolean }[]
+  outcomes: { fieldId: string; ok: boolean; reason?: string }[]
 ): AutofillTelemetry {
   // Final outcome per attempted field: ok in ANY pass wins (a field the AI pass
   // filled after the local pass missed counts as filled).
@@ -25,7 +25,7 @@ export function buildAutofillTelemetry(
     if (!ok && reason && !reasonById.has(id)) reasonById.set(id, reason);
   };
   for (const r of reports) mark(r.fieldId, r.ok, r.reason);
-  for (const o of outcomes) mark(o.fieldId, o.ok);
+  for (const o of outcomes) mark(o.fieldId, o.ok, o.reason);
 
   const byId = new Map(fields.map((f) => [f.id, f]));
   const failedFields: { label: string; category: string; reason: string }[] = [];

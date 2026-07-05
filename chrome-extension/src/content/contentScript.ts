@@ -347,6 +347,10 @@ function initialize(): void {
     return fields.filter((f) => f.category !== "unknown").length;
   }
 
+  /** One field's result from a non-reconciler pass (combobox / driver / adapter
+   *  op), carrying the failure reason so telemetry records WHY it failed. */
+  type PassOutcome = { fieldId: string; ok: boolean; reason?: string };
+
   /**
    * Fill custom ARIA dropdowns one at a time by opening the listbox and clicking
    * the matching option (comboboxEngine). Sequential so two menus never fight,
@@ -356,18 +360,20 @@ function initialize(): void {
   async function fillComboboxTargets(
     targets: { fieldId: string; value: string }[],
     signal?: AbortSignal
-  ): Promise<{ outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] }> {
-    const outcomes: { fieldId: string; ok: boolean }[] = [];
+  ): Promise<{ outcomes: PassOutcome[]; reask: ReaskCandidate[] }> {
+    const outcomes: PassOutcome[] = [];
     const reask: ReaskCandidate[] = [];
     for (const t of targets) {
       if (signal?.aborted) break; // Stop pressed — don't open more menus
       const el = registry.get(t.fieldId)?.el;
       if (!el) {
-        outcomes.push({ fieldId: t.fieldId, ok: false });
+        outcomes.push({ fieldId: t.fieldId, ok: false, reason: "Field no longer found — rescan the page" });
         continue;
       }
       const res = await fillAriaCombobox(el, t.value);
-      outcomes.push({ fieldId: t.fieldId, ok: res.filled });
+      // Carry the specific reason (couldn't-open / no-match / didn't-commit) into
+      // telemetry — otherwise a dropdown failure is logged with an empty reason.
+      outcomes.push({ fieldId: t.fieldId, ok: res.filled, reason: res.reason });
       if (!res.filled && res.options) reask.push({ fieldId: t.fieldId, options: res.options });
     }
     return { outcomes, reask };
@@ -377,8 +383,8 @@ function initialize(): void {
   async function fillDriverTargets(
     targets: { fieldId: string; value: string }[],
     signal?: AbortSignal
-  ): Promise<{ outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] }> {
-    const outcomes: { fieldId: string; ok: boolean }[] = [];
+  ): Promise<{ outcomes: PassOutcome[]; reask: ReaskCandidate[] }> {
+    const outcomes: PassOutcome[] = [];
     const reask: ReaskCandidate[] = [];
     for (const t of targets) {
       if (signal?.aborted) break; // Stop pressed — don't drive more fields
@@ -386,12 +392,12 @@ function initialize(): void {
       if (!control?.driver) { outcomes.push({ fieldId: t.fieldId, ok: false }); continue; }
       const res = await driveField(t.fieldId, t.value, control.driver);
       if (res.ok || !control.el) {
-        outcomes.push({ fieldId: t.fieldId, ok: res.ok });
+        outcomes.push({ fieldId: t.fieldId, ok: res.ok, reason: res.ok ? undefined : res.reason });
         continue;
       }
       // Driver miss — best-effort ARIA fallback: may fill, or harvest options.
       const fb = await fillAriaCombobox(control.el, t.value);
-      outcomes.push({ fieldId: t.fieldId, ok: fb.filled });
+      outcomes.push({ fieldId: t.fieldId, ok: fb.filled, reason: fb.reason });
       if (!fb.filled && fb.options) reask.push({ fieldId: t.fieldId, options: fb.options });
     }
     return { outcomes, reask };
