@@ -90,6 +90,78 @@ class TestTailorResume:
         assert resp.status_code == 400
 
 
+ANALYSIS = ('{"overall_score":72,"ats_score":68,"match_label":"GOOD MATCH",'
+            '"matched_keywords":["Python"],"missing_keywords":["AWS"],'
+            '"strengths":["Ships fast"],"weaknesses":["No cloud"],'
+            '"suggestions":["Add AWS projects"]}')
+
+
+class TestCustomResumeAnalysis:
+    def test_returns_job_analysis(self, client, db_session, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        _seed_resume(db_session)
+        gen = AsyncMock(side_effect=[ANALYSIS])
+        with patch("backend.services.openai_service.OpenAIService._generate", gen):
+            resp = client.post("/api/custom-resume-analysis", json={
+                "job_title": "Engineer", "company": "Acme",
+                "job_description": "We need Python and AWS.",
+            })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["overall_score"] == 72
+        assert data["ats_score"] == 68
+        assert data["matched_keywords"] == ["Python"]
+        assert data["missing_keywords"] == ["AWS"]
+        assert data["suggestions"] == ["Add AWS projects"]
+
+    def test_400_when_no_resume(self, client, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        resp = client.post("/api/custom-resume-analysis", json={
+            "job_title": "Engineer", "company": "Acme", "job_description": "JD",
+        })
+        assert resp.status_code == 400
+
+
+class TestCustomResume:
+    def test_returns_rewrite_and_saves_version_with_null_job_id(self, client, db_session, monkeypatch):
+        from backend.db.models import ResumeVersion
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        _seed_resume(db_session)
+        gen = AsyncMock(side_effect=[BEFORE, EDITED, AFTER])
+        with patch("backend.services.openai_service.OpenAIService._generate", gen):
+            resp = client.post("/api/custom-resume", json={
+                "job_title": "Engineer", "company": "Acme",
+                "job_description": "We need Python, AWS and TypeScript.",
+                "sections": ["Skills"], "add_keywords": ["AWS"],
+            })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "document" in data and "original_document" in data
+        assert data["original_overall_score"] == 60
+        assert data["new_overall_score"] == 80
+        assert data["version_id"] is not None
+        saved = db_session.query(ResumeVersion).filter_by(id=data["version_id"]).one()
+        assert saved.job_id is None
+        assert saved.source == "ai"
+        assert saved.label == "AI · Engineer"
+
+    def test_503_on_llm_connection_error(self, client, db_session, monkeypatch):
+        import httpx
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        _seed_resume(db_session)
+        gen = AsyncMock(side_effect=httpx.ConnectError("boom"))
+        with patch("backend.services.openai_service.OpenAIService._generate", gen):
+            resp = client.post("/api/custom-resume", json={
+                "job_title": "Engineer", "company": "Acme", "job_description": "JD",
+            })
+        assert resp.status_code == 503
+
+    def test_400_when_no_resume(self, client, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        resp = client.post("/api/custom-resume", json={"job_description": "JD"})
+        assert resp.status_code == 400
+
+
 class TestRenderResume:
     def test_returns_base64_pdf(self, client):
         doc = {"header": {"name": "Jane Doe"},

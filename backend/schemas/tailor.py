@@ -27,6 +27,20 @@ class TailorResumeOut(BaseModel):
     diff_summary: str = ""
 
 
+class CustomResumeAnalysisIn(BaseModel):
+    """Analyze a résumé against a scraped job (no job_id)."""
+    resume_id: int | None = None
+    job_title: str = ""
+    company: str = ""
+    job_description: str = ""
+
+
+class CustomResumeIn(CustomResumeAnalysisIn):
+    """Analysis inputs + the Align-step choices."""
+    sections: list[str] | None = None
+    add_keywords: list[str] | None = None
+
+
 class RenderResumeIn(BaseModel):
     document: ResumeDocument
     filename: str | None = None
