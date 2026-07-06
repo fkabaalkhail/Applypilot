@@ -20,7 +20,7 @@ import { recordApplication } from "../api/applications";
 import { reportAutofillTelemetry } from "../api/telemetry";
 import { fetchAndCacheOverrides, getCachedOverrideRules } from "../api/overrides";
 import { matchApplyIntent, recordApplyIntent } from "./applyIntent";
-import { clearSessionExpired, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
+import { clearSessionExpired, getAuth, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import { getFlowState, setFlowState, watchTabRemoval } from "./flowState";
 import type {
   AiFillResponse,
@@ -33,6 +33,7 @@ import type {
   ProfileResponse,
   RenderCoverLetterResponse,
   RecordApplicationResponse,
+  AccessTokenResponse,
   RenderResumeResponse,
   ResumeFileResponse,
   ResumesResponse,
@@ -315,6 +316,7 @@ export async function handle(
   | AiFillResponse
   | TailorResumeResponse
   | RenderResumeResponse
+  | AccessTokenResponse
   | GenerateCoverLetterResponse
   | RenderCoverLetterResponse
   | RecordApplicationResponse
@@ -551,6 +553,24 @@ export async function handle(
           return { ok: false, needsLogin: true, name: "", contentType: "", error: err.message };
         }
         return { ok: false, name: "", contentType: "", error: err instanceof Error ? err.message : "Render failed" };
+      }
+    }
+
+    case "GET_ACCESS_TOKEN": {
+      // Hand the current access token to the /embed/* iframe bridge. We ensure
+      // freshness (silent refresh) so the iframe's same-origin /api/* calls
+      // succeed without the iframe needing the refresh cookie (third-party).
+      try {
+        const config = await getConfig();
+        await ensureFreshAccessToken();
+        const auth = await getAuth();
+        if (!auth?.accessToken) return { ok: false, token: "", apiBaseUrl: config.apiBaseUrl, error: "Not connected" };
+        return { ok: true, token: auth.accessToken, apiBaseUrl: config.apiBaseUrl };
+      } catch (err) {
+        if (err instanceof AuthRequiredError) {
+          return { ok: false, token: "", needsLogin: true, error: err.message };
+        }
+        return { ok: false, token: "", error: err instanceof Error ? err.message : "Token unavailable" };
       }
     }
 

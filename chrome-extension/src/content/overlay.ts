@@ -92,6 +92,12 @@ export interface OverlayCallbacks {
    * fields back via `updateOverlay`.
    */
   onProfileResolved: (profile: UserApplicationProfile | null) => void;
+  /**
+   * Open the real Tailrd app AI modal (résumé rewrite / cover letter) in an
+   * iframe overlay — the extension parity path for "exactly like the app".
+   * Runs locally in the panel's frame (not proxied cross-frame).
+   */
+  onOpenAiModal: (kind: "resume" | "cover") => void;
 }
 
 export interface OverlayViewState {
@@ -1307,11 +1313,11 @@ function wireEvents(root: HTMLDivElement): void {
   // Upload résumé to the current form
   root.querySelector("#ap-btn-upload-resume")!.addEventListener("click", () => void doUploadResume());
 
-  // Tailor button
-  root.querySelector("#ap-btn-tailor")!.addEventListener("click", () => void doTailor());
+  // Résumé rewrite → open the real app modal (iframe overlay) for full parity.
+  root.querySelector("#ap-btn-tailor")!.addEventListener("click", () => callbacks?.onOpenAiModal?.("resume"));
 
-  // Generate Cover Letter button
-  root.querySelector("#ap-btn-cover")!.addEventListener("click", () => void doGenerateCoverLetter());
+  // Cover letter → open the real app modal (iframe overlay).
+  root.querySelector("#ap-btn-cover")!.addEventListener("click", () => callbacks?.onOpenAiModal?.("cover"));
 
   // Info view close
   root.querySelector("#ap-info-close")!.addEventListener("click", () => {

@@ -415,6 +415,15 @@ export interface TailorResumeResponse {
   result?: TailorResult;
 }
 
+/** Background reply for GET_ACCESS_TOKEN (feeds the /embed/* iframe bridge). */
+export interface AccessTokenResponse {
+  ok: boolean;
+  token: string;
+  apiBaseUrl?: string;
+  needsLogin?: boolean;
+  error?: string;
+}
+
 /** Background reply for RENDER_RESUME (mirrors ResumeFileResponse). */
 export interface RenderResumeResponse {
   ok: boolean;
@@ -621,6 +630,7 @@ export type BackgroundRequest =
       baseText?: string | null;
     }
   | { type: "RENDER_COVER_LETTER"; text: string; filename?: string }
+  | { type: "GET_ACCESS_TOKEN" }
   | { type: "FLOW_STATE_GET" }
   | { type: "FLOW_STATE_SET"; state: FlowState | null }
   | { type: "RECORD_APPLICATION"; application: ApplicationLog }

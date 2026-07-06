@@ -35,6 +35,7 @@ import type {
   GenerateCoverLetterResponse,
   PingResponse,
   RecordApplicationResponse,
+  AccessTokenResponse,
   RenderCoverLetterResponse,
   RenderResumeResponse,
   ResumeDoc,
@@ -49,6 +50,7 @@ import type {
 } from "../shared/types";
 import { deepQueryAll, isVisible, cleanText } from "./domUtils";
 import { base64ToFile, downloadBase64File, injectResumeFile, type UploadResult } from "./fileUpload";
+import { openAiModal } from "./aiModalBridge";
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
 import { getLocalAnswers } from "./localAnswers";
@@ -1070,6 +1072,47 @@ function initialize(): void {
       reportFields();
       void maybeResumeFlow();
     },
+    onOpenAiModal: (kind: "resume" | "cover") => {
+      void (async () => {
+        const auth = await sendToBackground<AccessTokenResponse>({ type: "GET_ACCESS_TOKEN" });
+        if (!auth?.ok || !auth.token) {
+          void sendToBackground<SimpleResponse>({ type: "OPEN_DASHBOARD" }).catch(() => {});
+          return;
+        }
+        let appOrigin: string;
+        try {
+          appOrigin = new URL(auth.apiBaseUrl ?? "").origin;
+        } catch {
+          return;
+        }
+        const jc = extractJobContext();
+        openAiModal({
+          kind,
+          appOrigin,
+          job: {
+            title: jc.jobTitle,
+            company: jc.company,
+            description: jc.jobDescription,
+            url: location.href,
+          },
+          getToken: async () => auth.token,
+          refreshToken: async () => {
+            const r = await sendToBackground<AccessTokenResponse>({ type: "GET_ACCESS_TOKEN" });
+            return r?.token ?? auth.token;
+          },
+          onAttach: async (attachKind, file) => {
+            const category = attachKind === "resume" ? "resumeUpload" : "coverLetter";
+            const field = lastFields.find(
+              (f) => f.category === category && f.controlType === "file"
+            );
+            const control = field ? registry.get(field.id) : undefined;
+            if (!control?.el) return;
+            await attachOrGuide(control.el, file.dataBase64, file.filename, file.contentType);
+          },
+          mount: document.body,
+        });
+      })();
+    },
     onUploadResume: async (resumeId: number) => {
       const field = lastFields.find(
         (f) => f.category === "resumeUpload" && f.controlType === "file"
@@ -1467,6 +1510,9 @@ function initialize(): void {
               sendToRuntime<FormOpResult>({ type: "RELAY_FORM_OP", frameId, op, args }) as Promise<FormOpResult>;
             remoteFields = message.fields;
             remoteCallbacks = makeProxyCallbacks(send);
+            // The AI modal opens an iframe overlay in THIS (panel) frame, so it
+            // must run locally rather than being proxied to the adopted subframe.
+            remoteCallbacks.onOpenAiModal = overlayCallbacks.onOpenAiModal;
             overlayShown = true;
             adoptedRemote = true;
             console.log(`[Tailrd overlay] adopting form in frame ${frameId} (${message.recognized} recognized fields)`);
