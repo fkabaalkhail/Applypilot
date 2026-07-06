@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { AxiosInstance } from "axios";
 import api from "../auth/api";
 import { downloadDocx } from "../lib/docx";
 import type { AIJob } from "./CustomResumeModal";
@@ -28,11 +29,18 @@ interface CoverLetterModalProps {
   canSave?: boolean;
   /** When set, the footer shows "Attach to application" instead of "Apply Now". */
   onAttach?: () => Promise<void>;
+  /**
+   * Axios instance for every request. Defaults to the web app's auth client;
+   * the extension embed passes a token-bridged client so calls work inside a
+   * third-party iframe (and a 401 never redirects the iframe to /sign-in).
+   */
+  apiClient?: AxiosInstance;
 }
 
-export default function CoverLetterModal({ job, onClose, generate: generateProp, canSave = true, onAttach }: CoverLetterModalProps) {
+export default function CoverLetterModal({ job, onClose, generate: generateProp, canSave = true, onAttach, apiClient }: CoverLetterModalProps) {
+  const client = apiClient ?? api;
   const doGenerate = generateProp ?? ((rid: number | null, tone?: string, base?: string) =>
-    api.post<{ text: string }>(`/ai/cover-letter/${job.id}`, {
+    client.post<{ text: string }>(`/ai/cover-letter/${job.id}`, {
       resume_id: rid, tone: tone?.toLowerCase() ?? null, base_text: base ?? null,
     }).then((r) => r.data));
   const [resumes, setResumes] = useState<ResumeOption[]>([]);
@@ -70,7 +78,7 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
   async function save() {
     setSaving(true);
     try {
-      await api.post("/ai/cover-letters", {
+      await client.post("/ai/cover-letters", {
         job_id: job.id,
         company: job.company,
         job_title: job.title,
@@ -94,7 +102,7 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get<ResumeOption[]>("/resumes");
+        const res = await client.get<ResumeOption[]>("/resumes");
         if (cancelled) return;
         setResumes(res.data);
         const def = res.data.find((r) => r.is_primary) ?? res.data[0];

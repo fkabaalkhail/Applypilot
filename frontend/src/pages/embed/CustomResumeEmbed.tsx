@@ -71,6 +71,7 @@ export default function CustomResumeEmbed() {
       generate={generate}
       jobId={null}
       onAttach={onAttach}
+      apiClient={api}
     />
   );
 }

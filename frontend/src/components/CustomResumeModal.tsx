@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AxiosInstance } from "axios";
 import api from "../auth/api";
 import { FittedResume } from "./ResumeRenderer";
 import ResumeEditor from "./ResumeEditor";
@@ -40,6 +41,13 @@ interface CustomResumeModalProps {
   jobId?: number | null;
   /** When set, the footer shows "Attach to application" instead of "Apply Now". */
   onAttach?: () => Promise<void>;
+  /**
+   * Axios instance for every request (résumé list/detail + default AI calls).
+   * Defaults to the web app's auth client. The extension embed passes a
+   * token-bridged client so calls work inside a third-party iframe (and a 401
+   * never redirects the iframe to /sign-in).
+   */
+  apiClient?: AxiosInstance;
 }
 
 interface ResumeOption {
@@ -158,13 +166,14 @@ function countChangedLines(original: string, tailored: string): number {
 }
 
 export default function CustomResumeModal({
-  job, onClose, analyze, generate: generateProp, jobId, onAttach,
+  job, onClose, analyze, generate: generateProp, jobId, onAttach, apiClient,
 }: CustomResumeModalProps) {
+  const client = apiClient ?? api;
   const effJobId = jobId !== undefined ? jobId : (job.id ?? null);
   const doAnalyze = analyze ?? ((rid: number | null) =>
-    api.post<Analysis>(`/ai/custom-resume-analysis/${job.id}`, { resume_id: rid }).then((r) => r.data));
+    client.post<Analysis>(`/ai/custom-resume-analysis/${job.id}`, { resume_id: rid }).then((r) => r.data));
   const doGenerate = generateProp ?? ((rid: number | null, secs: string[], kws: string[]) =>
-    api.post<RewriteResult>(`/ai/custom-resume/${job.id}`, { resume_id: rid, sections: secs, add_keywords: kws }).then((r) => r.data));
+    client.post<RewriteResult>(`/ai/custom-resume/${job.id}`, { resume_id: rid, sections: secs, add_keywords: kws }).then((r) => r.data));
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
@@ -230,7 +239,7 @@ export default function CustomResumeModal({
       try {
         const [analysisData, detailRes] = await Promise.all([
           doAnalyze(rid),
-          rid ? api.get(`/resumes/${rid}`) : Promise.resolve(null),
+          rid ? client.get(`/resumes/${rid}`) : Promise.resolve(null),
         ]);
         setAnalysis(analysisData);
         setKeywords(new Set());
@@ -262,7 +271,7 @@ export default function CustomResumeModal({
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get<ResumeOption[]>("/resumes");
+        const res = await client.get<ResumeOption[]>("/resumes");
         if (cancelled) return;
         setResumes(res.data);
         const def = res.data.find((r) => r.is_primary) ?? res.data[0];

@@ -61,6 +61,7 @@ export default function CoverLetterEmbed() {
       generate={generate}
       canSave={false}
       onAttach={onAttach}
+      apiClient={api}
     />
   );
 }
