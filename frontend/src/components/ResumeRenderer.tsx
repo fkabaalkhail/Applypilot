@@ -14,27 +14,75 @@ const PAGE_DIMS: Record<Theme["page_size"], { width: string; minHeight: string }
 
 const pt = (n: number) => `${n}pt`;
 
-// ── Keyword heatmap (Phase 3) ───────────────────────────────────────────────
+// ── Dual highlight layers (keyword match + what changed) ─────────────────────
+// All decorations render as <mark> so the PDF export's strip rule (see
+// resumeExport.printResume) removes every layer uniformly.
 export type HighlightTerm = { term: string; color: "green" | "yellow" };
+export type HighlightMode = "changed" | "keyword" | "off";
+export interface HighlightState {
+  mode: HighlightMode;
+  terms: HighlightTerm[];        // keyword-match layer
+  changed: Set<string>;          // normalized strings the rewrite added/reworded
+  figures: string[];             // fabricated figures to flag ("verify") in-place
+}
 
 const HILITE_BG: Record<"green" | "yellow", string> = { green: "#bbf7d0", yellow: "#fde68a" };
-const HighlightContext = createContext<HighlightTerm[]>([]);
+const OFF: HighlightState = { mode: "off", terms: [], changed: new Set(), figures: [] };
+const HighlightContext = createContext<HighlightState>(OFF);
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
-// Wraps keyword occurrences in colored marks when a heatmap is active; renders
-// plain text otherwise. Word-boundary matching avoids highlighting substrings.
+// Wrap fabricated-figure tokens in a warning mark, in-place, wherever they occur.
+function markFigures(text: string, figures: string[]) {
+  if (!figures.length) return text;
+  const pattern = [...figures].sort((a, b) => b.length - a.length).map(escapeRe).join("|");
+  if (!pattern) return text;
+  const re = new RegExp(`(${pattern})`, "g");
+  return text.split(re).map((part, i) =>
+    figures.includes(part) ? (
+      <mark
+        key={i}
+        title="Verify this figure — it was not found in your original resume"
+        style={{ background: "#fed7aa", color: "inherit", borderRadius: "2px", padding: "0 1px" }}
+      >
+        {part}
+      </mark>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
+
+// Renders text with the active highlight layer applied; plain text when off.
 function HiText({ children }: { children: string }) {
-  const terms = useContext(HighlightContext);
-  if (!terms.length || !children) return <>{children}</>;
+  const hl = useContext(HighlightContext);
+  if (hl.mode === "off" || !children) return <>{children}</>;
+
+  if (hl.mode === "changed") {
+    const inner = markFigures(children, hl.figures);
+    if (hl.changed.has(norm(children))) {
+      // Green underline marks a bullet/summary the rewrite added or reworded.
+      return (
+        <mark style={{ background: "transparent", borderBottom: "2px solid #86efac", padding: "0 1px" }}>
+          {inner}
+        </mark>
+      );
+    }
+    return <>{inner}</>;
+  }
+
+  // keyword mode: highlight JD terms by presence. Word-boundary + longest-first
+  // so multi-word phrases match before their component words.
+  const terms = hl.terms;
+  if (!terms.length) return <>{children}</>;
   const sorted = [...terms].sort((a, b) => b.term.length - a.term.length);
   const colorByLower = new Map(sorted.map((t) => [t.term.toLowerCase(), t.color] as const));
   const pattern = sorted.map((t) => escapeRe(t.term)).join("|");
   if (!pattern) return <>{children}</>;
   const re = new RegExp(`(?<![a-zA-Z0-9])(${pattern})(?![a-zA-Z0-9])`, "gi");
-  const parts = children.split(re);
   return (
     <>
-      {parts.map((part, i) => {
+      {children.split(re).map((part, i) => {
         const color = colorByLower.get(part.toLowerCase());
         return color ? (
           <mark key={i} style={{ background: HILITE_BG[color], color: "inherit", borderRadius: "2px", padding: "0 1px" }}>
@@ -183,13 +231,13 @@ interface ResumeRendererProps {
   /** Screen-only chrome (page shadow, centered, light bg). Off for print/export. */
   screen?: boolean;
   style?: CSSProperties;
-  /** When set, keyword occurrences are highlighted (the ATS heatmap). */
-  highlightTerms?: HighlightTerm[];
+  /** When set, the active highlight layer (keyword match / what changed) is applied. */
+  highlight?: HighlightState;
 }
 
 /** Renders a ResumeDocument as a paginated, print-ready page. */
 const ResumeRenderer = forwardRef<HTMLDivElement, ResumeRendererProps>(
-  ({ document: doc, screen = true, style, highlightTerms }, ref) => {
+  ({ document: doc, screen = true, style, highlight }, ref) => {
     const theme = doc.theme;
     const dims = PAGE_DIMS[theme.page_size] ?? PAGE_DIMS.letter;
     const pageStyle: CSSProperties = {
@@ -206,7 +254,7 @@ const ResumeRenderer = forwardRef<HTMLDivElement, ResumeRendererProps>(
       ...style,
     };
     return (
-      <HighlightContext.Provider value={highlightTerms ?? []}>
+      <HighlightContext.Provider value={highlight ?? OFF}>
         <div ref={ref} style={pageStyle} data-resume-page>
           <Header doc={doc} />
           {doc.sections.map((section) => (
@@ -230,11 +278,11 @@ export default ResumeRenderer;
 export function FittedResume({
   document: doc,
   innerRef,
-  highlightTerms,
+  highlight,
 }: {
   document: ResumeDocument;
   innerRef?: RefObject<HTMLDivElement>;
-  highlightTerms?: HighlightTerm[];
+  highlight?: HighlightState;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const localRef = useRef<HTMLDivElement>(null);
@@ -267,7 +315,7 @@ export function FittedResume({
             ref={pageRef}
             document={doc}
             screen={false}
-            highlightTerms={highlightTerms}
+            highlight={highlight}
             style={{ boxShadow: "0 1px 8px rgba(30, 20, 70, 0.12)" }}
           />
         </div>

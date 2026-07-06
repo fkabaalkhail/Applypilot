@@ -51,8 +51,10 @@ export function printResume(node: HTMLElement, pageSize: Theme["page_size"] = "l
     `<!doctype html><html><head><meta charset="utf-8"><title>Resume</title>` +
       `<style>@page{size:${pageSize};margin:0;}html,body{margin:0;padding:0;background:#fff;}` +
       `[data-resume-page]{box-shadow:none !important;margin:0 auto !important;}` +
-      // Strip the on-screen keyword heatmap so downloads never carry highlights.
-      `mark{background:transparent !important;padding:0 !important;}</style>` +
+      // Strip every on-screen highlight layer (keyword heatmap + "what changed"
+      // underline + figure flags) so downloads never carry highlights.
+      `mark{background:transparent !important;border:0 !important;box-shadow:none !important;` +
+      `text-decoration:none !important;padding:0 !important;}</style>` +
       `</head><body>${html}</body></html>`
   );
   win.document.close();
