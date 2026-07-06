@@ -25,6 +25,9 @@ class TailorResumeOut(BaseModel):
     matched_keywords: list[str] = []
     missing_keywords: list[str] = []
     diff_summary: str = ""
+    changes: list[str] = []
+    gaps: list[str] = []
+    figures_to_verify: list[str] = []
 
 
 class CustomResumeAnalysisIn(BaseModel):

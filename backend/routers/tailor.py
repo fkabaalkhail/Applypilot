@@ -69,6 +69,9 @@ async def tailor_resume_endpoint(
         matched_keywords=result.before.matched_keywords,
         missing_keywords=result.before.missing_keywords,
         diff_summary=result.diff_summary,
+        changes=result.changes,
+        gaps=result.gaps,
+        figures_to_verify=result.figures_to_verify,
     )
 
 
@@ -159,4 +162,7 @@ async def custom_resume_endpoint(
         new_ats_score=result.after.ats_score,
         new_keyword_coverage=result.after.keyword_coverage,
         version_id=version.id,
+        changes=result.changes,
+        gaps=result.gaps,
+        figures_to_verify=result.figures_to_verify,
     )

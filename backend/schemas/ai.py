@@ -69,6 +69,9 @@ class RewriteOut(BaseModel):
     new_ats_score: int
     new_keyword_coverage: int
     version_id: int | None = None
+    changes: list[str] = []
+    gaps: list[str] = []
+    figures_to_verify: list[str] = []
 
 
 class CoverLetterIn(BaseModel):

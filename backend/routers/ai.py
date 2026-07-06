@@ -411,6 +411,9 @@ async def rewrite_resume(
         new_ats_score=after.ats_score,
         new_keyword_coverage=after.keyword_coverage,
         version_id=version.id,
+        changes=result.changes,
+        gaps=result.gaps,
+        figures_to_verify=result.figures_to_verify,
     )
 
 

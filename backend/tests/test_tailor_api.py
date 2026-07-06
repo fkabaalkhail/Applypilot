@@ -42,9 +42,9 @@ class TestTailorResume:
         # chip set is the BEFORE candidate set (stable across regenerates)
         assert data["missing_keywords"] == ["AWS", "TypeScript"]
         assert data["document"]["sections"][0]["skills"] == ["Python", "AWS", "TypeScript"]
-        # omitted add_keywords -> all missing keywords woven into the tailor prompt
+        # omitted add_keywords -> all missing keywords surfaced in the tailor prompt
         tailor_prompt = gen.call_args_list[1].args[0]
-        assert "weave in these keywords: AWS, TypeScript." in tailor_prompt
+        assert "surface these job terms: AWS, TypeScript." in tailor_prompt
 
     def test_explicit_keywords_used_exactly(self, client, db_session, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -57,7 +57,7 @@ class TestTailorResume:
             })
         assert resp.status_code == 200
         tailor_prompt = gen.call_args_list[1].args[0]
-        assert "weave in these keywords: AWS." in tailor_prompt
+        assert "surface these job terms: AWS." in tailor_prompt
         assert resp.json()["missing_keywords"] == ["AWS", "TypeScript"]
 
     def test_explicit_empty_keywords_skip_weaving(self, client, db_session, monkeypatch):
@@ -71,7 +71,28 @@ class TestTailorResume:
             })
         assert resp.status_code == 200
         tailor_prompt = gen.call_args_list[1].args[0]
-        assert "weave in these keywords:" not in tailor_prompt
+        assert "surface these job terms:" not in tailor_prompt
+
+    def test_wrapped_contract_surfaces_gaps_changes_and_figures(self, client, db_session, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        _seed_resume(db_session)
+        wrapped = (
+            '{"resume":{"sections":['
+            '{"type":"experience","items":[{"bullets":["Owned billing; cut costs 45%"]}]},'
+            '{"type":"skills","skills":["Python","AWS"]}'
+            ']},"section_order":[],"new_summary":null,'
+            '"gaps":["Role wants Kubernetes; not shown"]}'
+        )
+        gen = AsyncMock(side_effect=[BEFORE, wrapped, AFTER])
+        with patch("backend.services.openai_service.OpenAIService._generate", gen):
+            resp = client.post("/api/tailor-resume", json={
+                "job_title": "Engineer", "company": "Acme", "job_description": "Kubernetes role",
+            })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["gaps"] == ["Role wants Kubernetes; not shown"]
+        assert data["figures_to_verify"] == ["45%"]        # 45% absent from source → flagged
+        assert any("entr" in c.lower() or "skill" in c.lower() for c in data["changes"])
 
     def test_503_on_llm_connection_error(self, client, db_session, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
