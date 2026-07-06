@@ -66,6 +66,8 @@
 }
 .setup-resume-card:hover { border-color: var(--accent, #533afd); background: var(--accent-light, #eef0ff); box-shadow: var(--shadow-card-hover, 0 8px 24px rgba(0,55,112,0.10)); }
 .setup-resume-card.filled { border-style: solid; border-color: var(--accent, #533afd); background: var(--accent-light, #eef0ff); }
+.setup-resume-card[aria-busy="true"] { cursor: default; }
+.setup-resume .spin { animation: spin 0.9s linear infinite; }
 .setup-resume-icon {
   position: relative; width: 60px; height: 60px; border-radius: 14px; display: grid; place-items: center;
   background: #fff; color: var(--accent, #533afd); box-shadow: 0 6px 16px rgba(0, 55, 112, 0.12);

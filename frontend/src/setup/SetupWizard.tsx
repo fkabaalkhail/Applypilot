@@ -20,7 +20,7 @@ export default function SetupWizard() {
   const [index, setIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [uploadedResumeId, setUploadedResumeId] = useState<number | null>(null);
   const [answers, setAnswers] = useState<SetupAnswers>(() => ({
     ...emptyAnswers,
     first_name: user?.first_name ?? "",
@@ -59,16 +59,8 @@ export default function SetupWizard() {
     } catch {
       /* non-fatal: user can re-save in Settings */
     }
-    // 2) Resume upload (optional). Failure is non-fatal.
-    if (resumeFile) {
-      try {
-        const fd = new FormData();
-        fd.append("file", resumeFile);
-        await api.post("/settings/resume", fd);
-      } catch {
-        /* non-fatal */
-      }
-    }
+    // 2) Resume already uploaded inline via the real /resumes/upload pipeline
+    //    on the resume step (required — finish is gated on it), so nothing to do.
     // 3) Seed dashboard filters so first load is personalized.
     try {
       localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(answersToFilters(answers)));
@@ -101,7 +93,7 @@ export default function SetupWizard() {
   return (
     <SetupLayout headline={step.headline} stepIndex={index} total={steps.length}>
       {step.id === "resume"
-        ? <ResumeStep answers={answers} update={update} file={resumeFile} onFile={setResumeFile} />
+        ? <ResumeStep uploadedResumeId={uploadedResumeId} onUploaded={setUploadedResumeId} />
         : step.Component && <step.Component answers={answers} update={update} />}
       {error && <div className="setup-error" role="alert">{error}</div>}
       <div className="setup-footer">
@@ -109,8 +101,11 @@ export default function SetupWizard() {
           ? <button className="setup-back" onClick={handleBack} disabled={submitting}>Back</button>
           : <span />}
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          {isLast && <button className="setup-skip" onClick={handleNext} disabled={submitting}>I'll do this later</button>}
-          <button className="setup-btn" onClick={handleNext} disabled={submitting}>
+          <button
+            className="setup-btn"
+            onClick={handleNext}
+            disabled={submitting || (isLast && uploadedResumeId === null)}
+          >
             {isLast ? (submitting ? "Starting…" : "Start Matching") : "Next"}
           </button>
         </div>
