@@ -1114,7 +1114,7 @@ export default function Landing() {
           </div>
           <div className="footer-col">
             <h4>Legal</h4>
-            <a href="#">Privacy Policy</a>
+            <a href="/privacy">Privacy Policy</a>
             <a href="#">Terms of Service</a>
             <a href="#">Cookie Policy</a>
           </div>

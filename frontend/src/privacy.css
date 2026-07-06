@@ -1,0 +1,147 @@
+/* ─── Public legal document — flat "notice" layout (Termly/Jobright style) ── */
+
+.legal-page {
+  min-height: 100vh;
+  background: #f3f3f3;
+  color: #333;
+  font-family: 'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif;
+  padding: 2.5rem 1.5rem 6rem;
+}
+
+.legal-doc {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* Brand */
+.legal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 800;
+  font-size: 1.35rem;
+  color: #111;
+  text-decoration: none;
+  margin-bottom: 3rem;
+}
+
+.legal-brand-img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+/* Title block */
+.legal-title {
+  font-size: 1.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  color: #111;
+  margin-bottom: 0.5rem;
+}
+
+.legal-updated {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 2.75rem;
+}
+
+/* Headings */
+.legal-doc h2 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  color: #111;
+  margin: 2.25rem 0 0.75rem;
+  scroll-margin-top: 1.5rem;
+}
+
+.legal-doc section {
+  scroll-margin-top: 1.5rem;
+}
+
+/* Body copy */
+.legal-doc p {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #4a4a4a;
+  margin-bottom: 0.9rem;
+}
+
+.legal-doc strong {
+  color: #111;
+  font-weight: 700;
+}
+
+.legal-lead {
+  font-style: italic;
+  font-weight: 600;
+  color: #222 !important;
+}
+
+/* Lists — small square bullets like the reference */
+.legal-doc ul {
+  list-style: square;
+  margin: 0 0 1rem 1.4rem;
+  padding: 0;
+}
+
+.legal-doc ul li {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #4a4a4a;
+  margin-bottom: 0.55rem;
+  padding-left: 0.25rem;
+}
+
+.legal-doc ul li::marker {
+  color: #999;
+  font-size: 0.8em;
+}
+
+/* Table of contents (numbered) */
+ol.legal-toc {
+  margin: 0 0 1.5rem 1.4rem;
+  padding: 0;
+}
+
+ol.legal-toc li {
+  font-size: 0.95rem;
+  line-height: 1.9;
+  color: #4a4a4a;
+}
+
+/* Links — indigo, underlined */
+.legal-doc a {
+  color: #4f46e5;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legal-doc a:hover {
+  color: #372dbf;
+}
+
+.legal-brand,
+.legal-brand:hover {
+  color: #111;
+  text-decoration: none;
+}
+
+.legal-footer-link {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #ddd;
+}
+
+@media (max-width: 600px) {
+  .legal-title {
+    font-size: 1.4rem;
+  }
+  .legal-page {
+    padding: 1.75rem 1.15rem 4rem;
+  }
+}

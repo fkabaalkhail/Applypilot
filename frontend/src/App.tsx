@@ -21,11 +21,13 @@ import {
 } from "@phosphor-icons/react";
 import { ApplyTrackingProvider } from "./context/ApplyTracking";
 import ApplyConfirmModal from "./components/ApplyConfirmModal";
+import SettingsModal from "./components/SettingsModal";
 import { OnboardingProvider } from "./onboarding";
 
 export default function App() {
   const { user, logout } = useAuth();
   const [showReferModal, setShowReferModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [referCopied, setReferCopied] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -115,12 +117,12 @@ export default function App() {
               </span>
               <span className="nav-label">Feedback</span>
             </NavLink>
-            <NavLink to="/app/settings" className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}>
+            <button className="nav-item" onClick={() => setShowSettingsModal(true)}>
               <span className="nav-icon">
                 <GearSix size={20} weight="duotone" />
               </span>
               <span className="nav-label">Settings</span>
-            </NavLink>
+            </button>
           </nav>
         </div>
 
@@ -193,6 +195,9 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+      {showSettingsModal && (
+        <SettingsModal onClose={() => setShowSettingsModal(false)} />
       )}
       <ApplyConfirmModal />
     </div>

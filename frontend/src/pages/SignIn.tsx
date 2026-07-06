@@ -59,7 +59,7 @@ export default function SignInPage() {
         </div>
 
         <div className="auth-head">
-          <h1 className="auth-title">Sign in to Resumate</h1>
+          <h1 className="auth-title">Sign in to Tailrd</h1>
           <p className="auth-subtitle">Welcome back. Let's find your next role.</p>
         </div>
 

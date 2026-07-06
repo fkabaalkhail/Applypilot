@@ -6,6 +6,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { SetupRoute } from "./auth/SetupRoute";
 import App from "./App";
 import Landing from "./pages/Landing";
+import Privacy from "./pages/Privacy";
 import Jobs from "./pages/Jobs";
 import JobsList from "./pages/JobsList";
 import Applications from "./pages/Applications";
@@ -31,6 +32,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route path="/sign-in/*" element={<SignInPage />} />
           <Route path="/sign-up/*" element={<SignUpPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
