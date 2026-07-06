@@ -35,8 +35,8 @@ export default function Privacy() {
           when you:
         </p>
         <ul>
-          <li>Visit our website at <a href="/">[App Name]</a>, or any website of ours that links to this Privacy Policy.</li>
-          <li>Use <strong>[App Name]</strong> and our browser extension to tailor résumés, generate cover letters, match with jobs, and auto-fill applications.</li>
+          <li>Visit our website at <a href="https://www.tailrd.ca">www.tailrd.ca</a>, or any website of ours that links to this Privacy Policy.</li>
+          <li>Use <strong>Tailrd</strong> and our browser extension to tailor résumés, generate cover letters, match with jobs, and auto-fill applications.</li>
           <li>Use our AI features, automation, or external API integrations.</li>
           <li>Engage with us in other related ways, including any sales, marketing, or events.</li>
         </ul>
@@ -123,7 +123,7 @@ export default function Privacy() {
           <h2>1. Introduction &amp; scope</h2>
           <p>
             This Privacy Policy explains how <strong>[Company Name]</strong> collects, uses,
-            discloses, and protects personal information when you use <strong>[App Name]</strong> and
+            discloses, and protects personal information when you use <strong>Tailrd</strong> and
             any related websites, browser extensions, and services (together, the “Service”).
           </p>
           <p>
