@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ResumeDocument } from "../lib/resumeDocument";
+import type { HighlightMode } from "./ResumeRenderer";
 import { analyzeKeywords } from "../lib/keywordMatch";
 import "./ats-panel.css";
 
@@ -12,17 +13,23 @@ interface AtsPanelProps {
   document: ResumeDocument;
   suggestions?: string[];
   onAddSkills: (skills: string[]) => void;
-  highlightOn: boolean;
-  onToggleHighlight: () => void;
+  highlightMode: HighlightMode;
+  onHighlightModeChange: (mode: HighlightMode) => void;
 }
+
+const HIGHLIGHT_MODES: { value: HighlightMode; label: string }[] = [
+  { value: "changed", label: "What changed" },
+  { value: "keyword", label: "Keyword match" },
+  { value: "off", label: "Off" },
+];
 
 export default function AtsPanel({
   keywords,
   document: doc,
   suggestions = [],
   onAddSkills,
-  highlightOn,
-  onToggleHighlight,
+  highlightMode,
+  onHighlightModeChange,
 }: AtsPanelProps) {
   const analysis = useMemo(() => analyzeKeywords(keywords, doc), [keywords, doc]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -62,10 +69,33 @@ export default function AtsPanel({
         {analysis.matched}/{analysis.total} matched{analysis.partial ? ` · ${analysis.partial} partial` : ""}
       </div>
 
-      <label className="ats-toggle">
-        <input type="checkbox" checked={highlightOn} onChange={onToggleHighlight} />
-        Highlight matches on resume
-      </label>
+      <div className="ats-hl">
+        <span className="ats-hl-label">Highlight</span>
+        <div className="ats-toggle-group" role="group" aria-label="Highlight mode">
+          {HIGHLIGHT_MODES.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              className={`ats-seg${highlightMode === m.value ? " on" : ""}`}
+              onClick={() => onHighlightModeChange(m.value)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        {highlightMode === "changed" && (
+          <div className="ats-legend">
+            <span className="ats-legend-item"><i className="ats-swatch changed" /> Rewritten / added</span>
+            <span className="ats-legend-item"><i className="ats-swatch verify" /> Verify figure</span>
+          </div>
+        )}
+        {highlightMode === "keyword" && (
+          <div className="ats-legend">
+            <span className="ats-legend-item"><i className="ats-swatch green" /> Present</span>
+            <span className="ats-legend-item"><i className="ats-swatch yellow" /> Partial</span>
+          </div>
+        )}
+      </div>
 
       {missing.length > 0 && (
         <div className="ats-group">

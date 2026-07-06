@@ -8,6 +8,8 @@ import VersionsPanel from "./VersionsPanel";
 import { DEFAULT_THEME, type ResumeDocument } from "../lib/resumeDocument";
 import { addSkills, useDocumentHistory } from "../lib/resumeEdit";
 import { analyzeKeywords, heatmapTerms } from "../lib/keywordMatch";
+import { changedStrings } from "../lib/resumeDiff";
+import type { HighlightMode, HighlightState } from "./ResumeRenderer";
 import { downloadResumeDocx, printResume } from "../lib/resumeExport";
 import "./ai-flow.css";
 
@@ -79,6 +81,9 @@ interface RewriteResult {
   new_ats_score: number;
   new_keyword_coverage: number;
   version_id?: number | null;
+  changes?: string[];
+  gaps?: string[];
+  figures_to_verify?: string[];
 }
 
 const ALL_SECTIONS = ["Skills", "Work Experience", "Projects", "Education"] as const;
@@ -153,18 +158,6 @@ function Gauge({ score, size = "lg" }: { score: number; size?: "lg" | "sm" }) {
   );
 }
 
-// Count lines in the tailored resume that are new/changed vs the original
-// (a lightweight "what changed" stat for the sidebar).
-function countChangedLines(original: string, tailored: string): number {
-  const seen = new Set(original.split("\n").map((l) => l.trim()));
-  let n = 0;
-  for (const line of tailored.split("\n")) {
-    const t = line.trim();
-    if (t && !seen.has(t)) n++;
-  }
-  return n;
-}
-
 export default function CustomResumeModal({
   job, onClose, analyze, generate: generateProp, jobId, onAttach, apiClient,
 }: CustomResumeModalProps) {
@@ -196,9 +189,9 @@ export default function CustomResumeModal({
 
   // Visual editor: edited document + undo/redo history, seeded on generate.
   const [editing, setEditing] = useState(false);
-  // Default ON so the review opens with the woven-in keywords highlighted
-  // (the printed PDF/DOCX stay clean — see printResume + the schema-built DOCX).
-  const [highlightOn, setHighlightOn] = useState(true);
+  // Default to the "what changed" layer so the review opens showing what the
+  // rewrite did (the printed PDF/DOCX stay clean — see printResume + schema DOCX).
+  const [highlightMode, setHighlightMode] = useState<HighlightMode>("changed");
   const {
     doc: editedDoc,
     set: setEditedDoc,
@@ -247,12 +240,12 @@ export default function CustomResumeModal({
         const profile = detailRes?.data?.profile;
         const avail = profile
           ? ALL_SECTIONS.filter((s) => {
-              if (s === "Skills") return (profile.skills ?? []).length > 0;
-              if (s === "Work Experience") return (profile.experience ?? []).length > 0;
-              if (s === "Projects") return (profile.projects ?? []).length > 0;
-              if (s === "Education") return (profile.education ?? []).length > 0;
-              return false;
-            })
+            if (s === "Skills") return (profile.skills ?? []).length > 0;
+            if (s === "Work Experience") return (profile.experience ?? []).length > 0;
+            if (s === "Projects") return (profile.projects ?? []).length > 0;
+            if (s === "Education") return (profile.education ?? []).length > 0;
+            return false;
+          })
           : ["Skills", "Work Experience", "Projects"];
         const finalAvail = avail.length ? avail : ["Skills", "Work Experience", "Projects"];
         setAvailableSections(finalAvail);
@@ -586,11 +579,15 @@ export default function CustomResumeModal({
       );
     }
 
-    const hlTerms = highlightOn ? heatmapTerms(analyzeKeywords(jobKeywords, editedDoc)) : undefined;
+    const highlight: HighlightState = {
+      mode: highlightMode,
+      terms: heatmapTerms(analyzeKeywords(jobKeywords, editedDoc)),
+      changed: changedStrings(rewrite.original_document, editedDoc),
+      figures: rewrite.figures_to_verify ?? [],
+    };
     const hasContent = rewrite.document.sections.some(
       (s) => s.items.length > 0 || s.skills.length > 0 || s.text.trim() !== "" || Object.keys(s.groups).length > 0
     );
-    const changedCount = countChangedLines(rewrite.original_text, rewrite.tailored_text);
 
     const orig = rewrite.original_overall_score;
     const next = rewrite.new_overall_score;
@@ -601,17 +598,12 @@ export default function CustomResumeModal({
           ? `Your score held strong at ${(next / 10).toFixed(1)}`
           : "Your resume is now tailored to this role";
 
-    const changes: string[] = [];
-    if (sections.size > 0) {
-      const list = [...sections].slice(0, 3).join(", ");
-      changes.push(`Enhanced ${list}${sections.size > 3 ? " and more" : ""}`);
-    }
-    if (keywords.size > 0) {
-      const list = [...keywords].slice(0, 4).join(", ");
-      changes.push(`Wove in ${keywords.size} keyword${keywords.size > 1 ? "s" : ""}: ${list}${keywords.size > 4 ? "…" : ""}`);
-    }
-    if (changedCount > 0) changes.push(`Rewrote ${changedCount} line${changedCount === 1 ? "" : "s"} to match the role`);
-    changes.push(`Aligned wording to lift ATS to ${rewrite.new_ats_score}`);
+    const changes: string[] =
+      rewrite.changes && rewrite.changes.length
+        ? rewrite.changes
+        : ["Tailored your resume to this role"];
+    const gaps = rewrite.gaps ?? [];
+    const figures = rewrite.figures_to_verify ?? [];
 
     return (
       <>
@@ -634,50 +626,66 @@ export default function CustomResumeModal({
         <div className="ai-review">
           {/* Left: full tailored resume rendered by the single-source renderer */}
           <div className="ai-doc-wrap">
-            <FittedResume document={editedDoc} innerRef={previewRef} highlightTerms={hlTerms} />
+            <FittedResume document={editedDoc} innerRef={previewRef} highlight={highlight} />
           </div>
 
-        {/* Right: score jump + what changed */}
-        <aside className="ai-side">
-          <div className="ai-side-gauge"><Gauge score={next} size="sm" /></div>
-          <div className="ai-side-jump">
-            <Spark />
-            <p>{jumpHeadline}</p>
-          </div>
-          <div className="ai-side-stats">
-            ATS {rewrite.new_ats_score} · {rewrite.new_keyword_coverage}% keyword coverage
-          </div>
-          <button className="ai-btn ai-btn-soft" style={{ width: "100%", justifyContent: "center" }} onClick={() => setEditing(true)}>
-            ✏️ Edit resume
-          </button>
+          {/* Right: score jump + what changed */}
+          <aside className="ai-side">
+            <div className="ai-side-gauge"><Gauge score={next} size="sm" /></div>
+            <div className="ai-side-jump">
+              <Spark />
+              <p>{jumpHeadline}</p>
+            </div>
+            <div className="ai-side-stats">
+              ATS {rewrite.new_ats_score} · {rewrite.new_keyword_coverage}% keyword coverage
+            </div>
+            <button className="ai-btn ai-btn-soft" style={{ width: "100%", justifyContent: "center" }} onClick={() => setEditing(true)}>
+              Edit resume
+            </button>
 
-          <AtsPanel
-            keywords={jobKeywords}
-            document={editedDoc}
-            suggestions={analysis?.suggestions}
-            onAddSkills={applySkills}
-            highlightOn={highlightOn}
-            onToggleHighlight={() => setHighlightOn((v) => !v)}
-          />
-
-          {effJobId != null && (
-            <VersionsPanel
-              jobId={effJobId}
-              resumeId={resumeId}
-              currentDoc={editedDoc}
-              originalDoc={rewrite.original_document}
-              refreshKey={rewrite.version_id}
-              onRestore={(doc) => resetEditedDoc(doc)}
+            <AtsPanel
+              keywords={jobKeywords}
+              document={editedDoc}
+              suggestions={analysis?.suggestions}
+              onAddSkills={applySkills}
+              highlightMode={highlightMode}
+              onHighlightModeChange={setHighlightMode}
             />
-          )}
 
-          <div className="ai-card-label">See what's changed</div>
-          <ul className="ai-changes-list">
-            {changes.map((c, i) => (
-              <li key={i}><span className="ai-change-tick"><Check /></span>{c}</li>
-            ))}
-          </ul>
-        </aside>
+            {effJobId != null && (
+              <VersionsPanel
+                jobId={effJobId}
+                resumeId={resumeId}
+                currentDoc={editedDoc}
+                originalDoc={rewrite.original_document}
+                refreshKey={rewrite.version_id}
+                onRestore={(doc) => resetEditedDoc(doc)}
+              />
+            )}
+
+            <div className="ai-card-label">See what's changed</div>
+            <ul className="ai-changes-list">
+              {changes.map((c, i) => (
+                <li key={i}><span className="ai-change-tick"><Check /></span>{c}</li>
+              ))}
+            </ul>
+
+            {(gaps.length > 0 || figures.length > 0) && (
+              <div className="ai-gaps-card">
+                <div className="ai-card-label">Gaps to consider</div>
+                {gaps.length > 0 && (
+                  <ul className="ai-gaps-list">
+                    {gaps.map((g, i) => <li key={i}>{g}</li>)}
+                  </ul>
+                )}
+                {figures.length > 0 && (
+                  <div className="ai-gaps-verify">
+                    Verify these figures — not in your original: <strong>{figures.join(", ")}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+          </aside>
         </div>
       </>
     );

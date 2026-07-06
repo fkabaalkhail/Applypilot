@@ -54,4 +54,28 @@ describe("CustomResumeModal", () => {
     expect(await screen.findByRole("button", { name: /Attach to application/i })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Apply Now/i })).toBeNull();
   });
+
+  it("renders honest gaps and figures-to-verify at review", async () => {
+    get.mockResolvedValue({ data: [{ id: 3, name: "CV", is_primary: true }] });
+    const analyze = vi.fn().mockResolvedValue(analysis);
+    const rewrite = {
+      document: { header: {}, sections: [], theme: {} },
+      original_document: { header: {}, sections: [], theme: {} },
+      tailored_text: "t", original_text: "o", diff_summary: "",
+      original_overall_score: 60, new_overall_score: 75, new_ats_score: 70, new_keyword_coverage: 80,
+      version_id: null,
+      changes: ["Reordered sections to lead with the most relevant experience"],
+      gaps: ["Role requires Kubernetes; not shown"],
+      figures_to_verify: ["50%"],
+    };
+    const generate = vi.fn().mockResolvedValue(rewrite);
+    render(<CustomResumeModal job={{ title: "SWE", company: "Acme", url: "u" }} onClose={() => {}} analyze={analyze} generate={generate} jobId={null} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Improve My Resume/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Generate My New Resume/i }));
+    await waitFor(() => expect(generate).toHaveBeenCalled());
+    expect(await screen.findByText(/Gaps to consider/i)).toBeTruthy();
+    expect(screen.getByText(/Role requires Kubernetes/i)).toBeTruthy();
+    expect(screen.getByText(/Verify these figures/i)).toBeTruthy();
+    expect(screen.getByText(/Reordered sections/i)).toBeTruthy();
+  });
 });
