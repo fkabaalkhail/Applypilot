@@ -21,6 +21,8 @@ import SignUpPage from "./pages/SignUp";
 import VerifyEmailPage from "./pages/VerifyEmail";
 import DemoApply from "./pages/DemoApply";
 import ExtensionConnect from "./pages/ExtensionConnect";
+import CustomResumeEmbed from "./pages/embed/CustomResumeEmbed";
+import CoverLetterEmbed from "./pages/embed/CoverLetterEmbed";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -33,6 +35,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/sign-up/*" element={<SignUpPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/extension/connect" element={<ExtensionConnect />} />
+          <Route path="/embed/custom-resume" element={<CustomResumeEmbed />} />
+          <Route path="/embed/cover-letter" element={<CoverLetterEmbed />} />
           <Route path="/list" element={<JobsList />} />
           <Route path="/demo-apply" element={<DemoApply />} />
           <Route path="/setup" element={<SetupRoute />} />
