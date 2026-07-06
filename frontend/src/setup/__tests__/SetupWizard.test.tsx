@@ -5,8 +5,9 @@ import SetupWizard from "../SetupWizard";
 import { AuthContext } from "../../auth/AuthContext";
 
 const putMock = vi.fn().mockResolvedValue({ data: {} });
+const postMock = vi.fn().mockResolvedValue({ data: { id: 1, profile: { name: "Jane Doe" } } });
 const navigateMock = vi.fn();
-vi.mock("../../auth/api", () => ({ default: { put: (...a: unknown[]) => putMock(...a), post: vi.fn() } }));
+vi.mock("../../auth/api", () => ({ default: { put: (...a: unknown[]) => putMock(...a), post: (...a: unknown[]) => postMock(...a) } }));
 vi.mock("react-router-dom", async (orig) => ({
   ...(await orig<typeof import("react-router-dom")>()),
   useNavigate: () => navigateMock,
@@ -47,8 +48,34 @@ function advanceToFinalStep() {
   fireEvent.click(screen.getByRole("button", { name: /next/i }));
 }
 
+// The final resume step now requires a real upload before finishing.
+async function uploadResumeOnFinalStep() {
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, { target: { files: [new File(["x"], "cv.pdf", { type: "application/pdf" })] } });
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/resumes/upload", expect.any(FormData)));
+  await waitFor(() => expect(screen.getByRole("button", { name: /start matching/i })).not.toBeDisabled());
+}
+
 describe("SetupWizard", () => {
-  beforeEach(() => { localStorage.clear(); putMock.mockClear(); navigateMock.mockClear(); });
+  beforeEach(() => {
+    localStorage.clear();
+    putMock.mockClear();
+    navigateMock.mockClear();
+    postMock.mockClear();
+    postMock.mockResolvedValue({ data: { id: 1, profile: { name: "Jane Doe" } } });
+  });
+
+  it("has no 'I'll do this later' skip button on the resume step", () => {
+    renderWizard();
+    advanceToFinalStep();
+    expect(screen.queryByText(/i'll do this later/i)).toBeNull();
+  });
+
+  it("keeps Start Matching disabled until a resume is uploaded", () => {
+    renderWizard();
+    advanceToFinalStep();
+    expect(screen.getByRole("button", { name: /start matching/i })).toBeDisabled();
+  });
 
   it("blocks advancing past a step that fails validation", () => {
     renderWizard();
@@ -68,7 +95,8 @@ describe("SetupWizard", () => {
 
     advanceToFinalStep();
 
-    // Step 5: resume (final) -> Start Matching
+    // Step 5: resume (final, required) -> upload -> Start Matching
+    await uploadResumeOnFinalStep();
     fireEvent.click(screen.getByRole("button", { name: /start matching/i }));
 
     await waitFor(() => expect(setSetupComplete).toHaveBeenCalledWith(true));
@@ -77,6 +105,9 @@ describe("SetupWizard", () => {
       "/settings",
       expect.objectContaining({ job_title: "Software Engineering", regions: ["CA"] }),
     );
+    // The resume is uploaded inline via the real pipeline, not the old /settings/resume.
+    expect(postMock).toHaveBeenCalledWith("/resumes/upload", expect.any(FormData));
+    expect(postMock).not.toHaveBeenCalledWith("/settings/resume", expect.anything());
 
     const stored = JSON.parse(localStorage.getItem("job-aggregator-filters") as string);
     expect(stored.country).toBe("CA");
@@ -90,6 +121,7 @@ describe("SetupWizard", () => {
     renderWizard(setSetupComplete);
 
     advanceToFinalStep();
+    await uploadResumeOnFinalStep();
 
     const startButton = screen.getByRole("button", { name: /start matching/i });
     fireEvent.click(startButton);
