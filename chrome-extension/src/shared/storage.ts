@@ -24,7 +24,42 @@ const KEYS = {
   // Persistent: set when a refresh fails on an invalid/revoked/expired refresh
   // token, so the UI can show "session expired" instead of "never connected".
   sessionExpired: "ap_session_expired",
+  // Most-recent job posting whose page had a substantial description — reused as
+  // context on the application form page (which rarely repeats the description).
+  lastJobContext: "ap_last_job_context",
 } as const;
+
+// ---------------------------------------------------------------------------
+// Last job context (posting → application carry-over)
+// ---------------------------------------------------------------------------
+
+export interface CachedJobContext {
+  jobDescription: string;
+  jobTitle: string;
+  company: string;
+  url: string;
+  ts: number; // epoch ms when captured
+}
+
+/** Remember the last posting page that had a real description. */
+export async function saveLastJobContext(
+  ctx: Omit<CachedJobContext, "ts">
+): Promise<void> {
+  await chrome.storage.local.set({
+    [KEYS.lastJobContext]: { ...ctx, ts: Date.now() } satisfies CachedJobContext,
+  });
+}
+
+/** The last captured posting context, or null if none / older than maxAgeMs. */
+export async function getLastJobContext(
+  maxAgeMs = 6 * 60 * 60 * 1000
+): Promise<CachedJobContext | null> {
+  const data = await chrome.storage.local.get(KEYS.lastJobContext);
+  const ctx = data[KEYS.lastJobContext] as CachedJobContext | undefined;
+  if (!ctx) return null;
+  if (Date.now() - ctx.ts > maxAgeMs) return null;
+  return ctx;
+}
 
 // ---------------------------------------------------------------------------
 // Config

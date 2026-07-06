@@ -31,6 +31,7 @@ import type {
   FlowStateResponse,
   FormOpName,
   FormOpResult,
+  JobContext,
   OverridesResponse,
   GenerateCoverLetterResponse,
   PingResponse,
@@ -51,6 +52,9 @@ import type {
 import { deepQueryAll, isVisible, cleanText } from "./domUtils";
 import { base64ToFile, downloadBase64File, injectResumeFile, type UploadResult } from "./fileUpload";
 import { openAiModal } from "./aiModalBridge";
+import { getLastJobContext, saveLastJobContext } from "../shared/storage";
+
+const MIN_CACHEABLE_DESC = 200;
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
 import { getLocalAnswers } from "./localAnswers";
@@ -1085,7 +1089,7 @@ function initialize(): void {
         } catch {
           return;
         }
-        const jc = extractJobContext();
+        const jc = await resolveJobContext();
         openAiModal({
           kind,
           appOrigin,
@@ -1346,8 +1350,46 @@ function initialize(): void {
     }
   }
 
+  /**
+   * If this page is a real job posting (has a substantial description), remember
+   * it so the application form page — which almost never repeats the description
+   * — can still give the AI real context for the résumé rewrite / cover letter.
+   */
+  function captureJobDescription(): void {
+    try {
+      const ctx = extractJobContext();
+      if (ctx.jobDescription && ctx.jobDescription.length >= MIN_CACHEABLE_DESC) {
+        void saveLastJobContext({
+          jobDescription: ctx.jobDescription,
+          jobTitle: ctx.jobTitle,
+          company: ctx.company,
+          url: location.href,
+        });
+      }
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /**
+   * Job context for the AI modals: this page's context, but falling back to the
+   * last posting we saw for the description (application forms rarely have it).
+   */
+  async function resolveJobContext(): Promise<JobContext> {
+    const ctx = extractJobContext();
+    if (ctx.jobDescription && ctx.jobDescription.length >= MIN_CACHEABLE_DESC) return ctx;
+    const cached = await getLastJobContext();
+    if (!cached) return ctx;
+    return {
+      jobTitle: ctx.jobTitle || cached.jobTitle,
+      company: ctx.company || cached.company,
+      jobDescription: cached.jobDescription,
+    };
+  }
+
   function autoInit(): void {
     runScan();
+    captureJobDescription();
     ensureObserver();
     void loadOverrides();
     if (isTopFrame) {
