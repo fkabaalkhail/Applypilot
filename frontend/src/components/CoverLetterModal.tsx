@@ -125,10 +125,10 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
   }
 
   function download() {
-    const slug = job.company.toLowerCase().replace(/\s+/g, "-");
-    void downloadDocx(`cover-letter-${slug}.docx`, text, {
-      title: `Cover Letter — ${job.company}`,
-    });
+    const slug = job.company.toLowerCase().replace(/\s+/g, "-") || "company";
+    // No title heading — the letter body already opens with the candidate's
+    // own contact header, so a "Cover Letter — …" heading just duplicates it.
+    void downloadDocx(`cover-letter-${slug}.docx`, text);
   }
 
   function copy() {

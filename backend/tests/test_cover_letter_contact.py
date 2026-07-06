@@ -28,6 +28,17 @@ class TestStripPlaceholders:
         assert "June 30, 2026" in out
         assert "[" not in out and "]" not in out
 
+    def test_collapses_duplicated_url_from_resume_hyperlink(self):
+        url = "https://www.linkedin.com/in/jane-doe-98461b301/"
+        out = _strip_placeholders(f"LinkedIn: {url}({url})", {})
+        assert out == f"LinkedIn: {url}"
+        assert out.count(url) == 1
+
+    def test_collapses_markdown_link_to_single_url(self):
+        url = "https://www.linkedin.com/in/jane-doe/"
+        out = _strip_placeholders(f"[{url}]({url})", {})
+        assert out == url
+
     def test_removes_unknown_or_unfilled_brackets(self):
         text = "[Your Name]\n[Address]\n[Some Unknown Token]\n\nBody."
         out = _strip_placeholders(text, {"name": None})

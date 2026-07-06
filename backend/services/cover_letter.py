@@ -141,7 +141,21 @@ def _strip_placeholders(text: str, values: dict[str, str | None]) -> str:
         value = resolve(match.group(1))
         return value if value is not None else ""
 
-    out = re.sub(r"\[([^\[\]]+)\]", replace, text)
+    # Markdown links copied from a résumé (e.g. "[https://…](https://…)") — keep
+    # just the visible text so the URL isn't shown twice.
+    out = re.sub(r"\[([^\[\]]+)\]\((https?://[^)\s]+)\)", r"\1", text)
+    out = re.sub(r"\[([^\[\]]+)\]", replace, out)
+    # Collapse "URL (URL)" / "URL(URL)" duplications that come from PDF hyperlink
+    # extraction (visible text == href), tolerating a trailing-slash difference.
+    def _dedupe_url(match: re.Match[str]) -> str:
+        a, b = match.group(1), match.group(2)
+        return a if a.rstrip("/") == b.rstrip("/") else match.group(0)
+
+    out = re.sub(
+        r"(https?://[^\s()]+)\s*\(\s*(https?://[^\s()]+)\s*\)",
+        _dedupe_url,
+        out,
+    )
     # Tidy up artifacts left by removed placeholders: stray "  •  " separators,
     # doubled spaces, and blank lines.
     out = re.sub(r"[ \t]*•[ \t]*\n", "\n", out)
