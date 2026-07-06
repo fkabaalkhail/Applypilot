@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../hooks/useAuthFetch";
+import { useResumeUpload, RESUME_UPLOAD_TIPS } from "../hooks/useResumeUpload";
 import "../resume.css";
 import { PageIntro } from "../onboarding";
 
@@ -197,71 +198,24 @@ export default function Resume() {
 }
 
 /* ===== Upload Modal Component ===== */
-type ModalState = "upload" | "progress" | "success" | "error";
-
-const ROTATING_TIPS = [
-  "Extracting text from your resume...",
-  "Identifying your skills and experience...",
-  "Analyzing education and certifications...",
-  "Building your structured profile...",
-];
-
-const ACCEPTED_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-const ACCEPTED_EXTENSIONS = [".pdf", ".docx"];
-
-function isValidFileType(file: File): boolean {
-  if (ACCEPTED_TYPES.includes(file.type)) return true;
-  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
-  return ACCEPTED_EXTENSIONS.includes(ext);
-}
-
 interface UploadModalProps {
   onClose: () => void;
   onUploadSuccess: () => void;
 }
 
-interface UploadResponse {
-  id: number;
-  profile: { name?: string; [key: string]: unknown };
-}
-
 function UploadModal({ onClose, onUploadSuccess }: UploadModalProps) {
-  const [modalState, setModalState] = useState<ModalState>("upload");
   const [dragOver, setDragOver] = useState(false);
-  const [fileError, setFileError] = useState<string | null>(null);
-  const [apiError, setApiError] = useState<string | null>(null);
-  const [tipIndex, setTipIndex] = useState(0);
-  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const tipIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (modalState === "progress") {
-      tipIntervalRef.current = setInterval(() => setTipIndex((p) => (p + 1) % ROTATING_TIPS.length), 3000);
-    } else if (tipIntervalRef.current) { clearInterval(tipIntervalRef.current); tipIntervalRef.current = null; }
-    return () => { if (tipIntervalRef.current) clearInterval(tipIntervalRef.current); };
-  }, [modalState]);
-
-  const handleFile = useCallback(async (file: File) => {
-    setFileError(null); setApiError(null);
-    if (!isValidFileType(file)) { setFileError("Only PDF and DOCX files are accepted."); return; }
-    setModalState("progress"); setTipIndex(0);
-    try {
-      const formData = new FormData(); formData.append("file", file);
-      const res = await api.post("/resumes/upload", formData);
-      const data: UploadResponse = res.data;
-      setUploadResult(data);
-      setModalState("success"); onUploadSuccess();
-    } catch (err: any) { setApiError(err.response?.data?.detail || err.message || "Upload failed."); setModalState("error"); }
-  }, [onUploadSuccess]);
+  const { state, tipIndex, fileError, apiError, result, upload, reset } =
+    useResumeUpload({ onSuccess: () => onUploadSuccess() });
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content upload-modal-new" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose}><i className="fa-solid fa-xmark"></i></button>
 
-        {modalState === "upload" && (
+        {state === "upload" && (
           <>
             <div className="upload-modal-icon"><i className="fa-solid fa-cloud-arrow-up"></i></div>
             <h2>Upload Resume</h2>
@@ -270,48 +224,48 @@ function UploadModal({ onClose, onUploadSuccess }: UploadModalProps) {
               className={`upload-drop-zone${dragOver ? " drag-over" : ""}`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
-              onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files[0]) void upload(e.dataTransfer.files[0]); }}
               onClick={() => fileInputRef.current?.click()}
             >
               <i className="fa-regular fa-file-pdf"></i>
               <span><strong>Drop file here</strong> or click to browse</span>
               <span className="upload-formats">PDF, DOCX (max 10MB)</span>
             </div>
-            <input ref={fileInputRef} type="file" accept=".pdf,.docx" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+            <input ref={fileInputRef} type="file" accept=".pdf,.docx" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) void upload(e.target.files[0]); }} />
             {fileError && <p className="upload-error-text">{fileError}</p>}
           </>
         )}
 
-        {modalState === "progress" && (
+        {state === "progress" && (
           <div className="upload-progress-state">
             <div className="upload-spinner-ring"><div className="spinner" /></div>
             <h2>Analyzing Your Resume</h2>
             <div className="upload-progress-bar"><div className="upload-progress-fill" /></div>
-            <p className="upload-tip">{ROTATING_TIPS[tipIndex]}</p>
+            <p className="upload-tip">{RESUME_UPLOAD_TIPS[tipIndex]}</p>
           </div>
         )}
 
-        {modalState === "success" && (
+        {state === "success" && (
           <div className="upload-success-state">
             <div className="upload-success-icon"><i className="fa-solid fa-circle-check"></i></div>
             <h2>Resume Uploaded</h2>
             <p>Your resume has been analyzed and is ready to use for job matching.</p>
             <div className="upload-success-actions">
-              <button className="resume-add-btn" onClick={() => navigate(`/app/resume/${uploadResult?.id}`)}>
+              <button className="resume-add-btn" onClick={() => navigate(`/app/resume/${result?.id}`)}>
                 View Resume
               </button>
             </div>
           </div>
         )}
 
-        {modalState === "error" && (
+        {state === "error" && (
           <div className="upload-error-state">
             <div className="upload-error-icon"><i className="fa-solid fa-circle-xmark"></i></div>
             <h2>Upload Failed</h2>
             <p>{apiError || "Something went wrong."}</p>
             <div className="upload-success-actions">
               <button className="btn-pill" onClick={onClose}>Close</button>
-              <button className="resume-add-btn" onClick={() => { setModalState("upload"); setApiError(null); }}>Try Again</button>
+              <button className="resume-add-btn" onClick={reset}>Try Again</button>
             </div>
           </div>
         )}
