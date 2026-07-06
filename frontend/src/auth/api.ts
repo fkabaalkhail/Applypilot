@@ -7,6 +7,21 @@ const api = axios.create({
   withCredentials: true, // Send cookies with all requests
 });
 
+/**
+ * True when the app is running inside the extension's /embed/* iframe. There we
+ * must NEVER navigate to /sign-in or /verify-email: the modal authenticates via
+ * the extension's own token (passed over a MessageChannel), not a web session,
+ * so a web-session 401 is expected and must not hijack the iframe.
+ */
+export function isEmbedded(): boolean {
+  try {
+    if (window.location.pathname.startsWith("/embed")) return true;
+    return window.self !== window.top;
+  } catch {
+    return true; // cross-origin frame access throws → we are framed
+  }
+}
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("access_token");
   if (token) {
@@ -25,7 +40,7 @@ api.interceptors.response.use(
       error.response?.status === 403 &&
       error.response?.data?.detail === "Email verification required"
     ) {
-      window.location.href = "/verify-email";
+      if (!isEmbedded()) window.location.href = "/verify-email";
       return Promise.reject(error);
     }
 
@@ -43,7 +58,9 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch {
         localStorage.removeItem("access_token");
-        window.location.href = "/sign-in";
+        // In the extension embed the modal has its own token — don't hijack the
+        // iframe to /sign-in; let the caller (embed axios) handle the 401.
+        if (!isEmbedded()) window.location.href = "/sign-in";
       }
     }
     return Promise.reject(error);

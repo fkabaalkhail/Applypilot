@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, ReactNode } from "react";
 import { AuthContext, AuthContextValue, UserProfile } from "./AuthContext";
-import api from "./api";
+import api, { isEmbedded } from "./api";
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -14,6 +14,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // On mount, check localStorage for access token and validate by calling /auth/me
   useEffect(() => {
+    // The extension embed authenticates via its own token (not a web session),
+    // so skip the /auth/me bootstrap entirely — a stale localStorage token would
+    // otherwise 401 and bounce the iframe to /sign-in.
+    if (isEmbedded()) {
+      setIsLoading(false);
+      return;
+    }
     const token = localStorage.getItem("access_token");
     if (!token) {
       setIsLoading(false);
