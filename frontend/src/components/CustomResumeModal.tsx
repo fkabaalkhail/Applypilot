@@ -17,10 +17,29 @@ const EMPTY_DOCUMENT: ResumeDocument = {
 };
 
 export interface AIJob {
-  id: number;
+  id?: number;
   title: string;
   company: string;
   url: string;
+}
+
+export interface AttachFile {
+  dataBase64: string;
+  filename: string;
+  contentType: string;
+}
+
+interface CustomResumeModalProps {
+  job: AIJob;
+  onClose: () => void;
+  /** Override the analysis fetch (default: POST /ai/custom-resume-analysis/:jobId). */
+  analyze?: (resumeId: number | null) => Promise<Analysis>;
+  /** Override the rewrite fetch (default: POST /ai/custom-resume/:jobId). */
+  generate?: (resumeId: number | null, sections: string[], keywords: string[]) => Promise<RewriteResult>;
+  /** Job id threaded to VersionsPanel/ResumeEditor (default: job.id ?? null). */
+  jobId?: number | null;
+  /** When set, the footer shows "Attach to application" instead of "Apply Now". */
+  onAttach?: () => Promise<void>;
 }
 
 interface ResumeOption {
@@ -138,7 +157,15 @@ function countChangedLines(original: string, tailored: string): number {
   return n;
 }
 
-export default function CustomResumeModal({ job, onClose }: { job: AIJob; onClose: () => void }) {
+export default function CustomResumeModal({
+  job, onClose, analyze, generate: generateProp, jobId, onAttach,
+}: CustomResumeModalProps) {
+  const effJobId = jobId !== undefined ? jobId : (job.id ?? null);
+  const doAnalyze = analyze ?? ((rid: number | null) =>
+    api.post<Analysis>(`/ai/custom-resume-analysis/${job.id}`, { resume_id: rid }).then((r) => r.data));
+  const doGenerate = generateProp ?? ((rid: number | null, secs: string[], kws: string[]) =>
+    api.post<RewriteResult>(`/ai/custom-resume/${job.id}`, { resume_id: rid, sections: secs, add_keywords: kws }).then((r) => r.data));
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   const [resumes, setResumes] = useState<ResumeOption[]>([]);
@@ -201,11 +228,11 @@ export default function CustomResumeModal({ job, onClose }: { job: AIJob; onClos
       setRewrite(null);
       setStep(1);
       try {
-        const [analysisRes, detailRes] = await Promise.all([
-          api.post<Analysis>(`/ai/custom-resume-analysis/${job.id}`, { resume_id: rid }),
+        const [analysisData, detailRes] = await Promise.all([
+          doAnalyze(rid),
           rid ? api.get(`/resumes/${rid}`) : Promise.resolve(null),
         ]);
-        setAnalysis(analysisRes.data);
+        setAnalysis(analysisData);
         setKeywords(new Set());
 
         const profile = detailRes?.data?.profile;
@@ -264,13 +291,9 @@ export default function CustomResumeModal({ job, onClose }: { job: AIJob; onClos
     setRewriteError("");
     setStep(3);
     try {
-      const res = await api.post<RewriteResult>(`/ai/custom-resume/${job.id}`, {
-        resume_id: resumeId,
-        sections: [...sections],
-        add_keywords: [...keywords],
-      });
-      setRewrite(res.data);
-      resetEditedDoc(res.data.document);
+      const data = await doGenerate(resumeId, [...sections], [...keywords]);
+      setRewrite(data);
+      resetEditedDoc(data.document);
       setEditing(false);
     } catch (err) {
       setRewriteError(errorMessage(err, "Couldn't generate your resume. Please try again."));
@@ -549,7 +572,7 @@ export default function CustomResumeModal({ job, onClose }: { job: AIJob; onClos
           canUndo={canUndo}
           canRedo={canRedo}
           keywords={jobKeywords}
-          jobId={job.id}
+          jobId={effJobId}
         />
       );
     }
@@ -628,14 +651,16 @@ export default function CustomResumeModal({ job, onClose }: { job: AIJob; onClos
             onToggleHighlight={() => setHighlightOn((v) => !v)}
           />
 
-          <VersionsPanel
-            jobId={job.id}
-            resumeId={resumeId}
-            currentDoc={editedDoc}
-            originalDoc={rewrite.original_document}
-            refreshKey={rewrite.version_id}
-            onRestore={(doc) => resetEditedDoc(doc)}
-          />
+          {effJobId != null && (
+            <VersionsPanel
+              jobId={effJobId}
+              resumeId={resumeId}
+              currentDoc={editedDoc}
+              originalDoc={rewrite.original_document}
+              refreshKey={rewrite.version_id}
+              onRestore={(doc) => resetEditedDoc(doc)}
+            />
+          )}
 
           <div className="ai-card-label">See what's changed</div>
           <ul className="ai-changes-list">
@@ -683,7 +708,9 @@ export default function CustomResumeModal({ job, onClose }: { job: AIJob; onClos
           <button className="ai-btn ai-btn-ghost ai-foot-left" onClick={() => setEditing(false)}>← Done editing</button>
           <button className="ai-btn ai-btn-soft" onClick={downloadPdf} disabled={!rewrite}>Download PDF</button>
           <button className="ai-btn ai-btn-soft" onClick={downloadDocxFile} disabled={!rewrite}>Download DOCX</button>
-          <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>
+          {onAttach
+            ? <button className="ai-btn ai-btn-primary" onClick={() => void onAttach()} disabled={!rewrite}>Attach to application</button>
+            : <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>}
         </div>
       );
     }
@@ -694,7 +721,9 @@ export default function CustomResumeModal({ job, onClose }: { job: AIJob; onClos
         <button className="ai-btn ai-btn-ghost" onClick={copy} disabled={!rewrite}>{copied ? "Copied!" : "Copy"}</button>
         <button className="ai-btn ai-btn-soft" onClick={downloadPdf} disabled={!rewrite}>Download PDF</button>
         <button className="ai-btn ai-btn-soft" onClick={downloadDocxFile} disabled={!rewrite}>Download DOCX</button>
-        <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>
+        {onAttach
+          ? <button className="ai-btn ai-btn-primary" onClick={() => void onAttach()} disabled={!rewrite}>Attach to application</button>
+          : <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>}
       </div>
     );
   }

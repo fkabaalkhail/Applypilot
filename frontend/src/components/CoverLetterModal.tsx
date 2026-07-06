@@ -19,7 +19,22 @@ function errorMessage(err: unknown, fallback: string): string {
   return r?.data?.detail || fallback;
 }
 
-export default function CoverLetterModal({ job, onClose }: { job: AIJob; onClose: () => void }) {
+interface CoverLetterModalProps {
+  job: AIJob;
+  onClose: () => void;
+  /** Override the generate fetch (default: POST /ai/cover-letter/:jobId). */
+  generate?: (resumeId: number | null, tone?: string, base?: string) => Promise<{ text: string }>;
+  /** Show the Save button (default true; embed passes false — no DB job_id to save under). */
+  canSave?: boolean;
+  /** When set, the footer shows "Attach to application" instead of "Apply Now". */
+  onAttach?: () => Promise<void>;
+}
+
+export default function CoverLetterModal({ job, onClose, generate: generateProp, canSave = true, onAttach }: CoverLetterModalProps) {
+  const doGenerate = generateProp ?? ((rid: number | null, tone?: string, base?: string) =>
+    api.post<{ text: string }>(`/ai/cover-letter/${job.id}`, {
+      resume_id: rid, tone: tone?.toLowerCase() ?? null, base_text: base ?? null,
+    }).then((r) => r.data));
   const [resumes, setResumes] = useState<ResumeOption[]>([]);
   const [resumeId, setResumeId] = useState<number | null>(null);
   const [text, setText] = useState("");
@@ -39,12 +54,8 @@ export default function CoverLetterModal({ job, onClose }: { job: AIJob; onClose
     else setLoading(true);
     setError("");
     try {
-      const res = await api.post<{ text: string }>(`/ai/cover-letter/${job.id}`, {
-        resume_id: rid,
-        tone: tone?.toLowerCase() ?? null,
-        base_text: base ?? null,
-      });
-      setText(res.data.text);
+      const data = await doGenerate(rid, tone, base);
+      setText(data.text);
       setTone(tone?.toLowerCase() ?? null);
       setDirty(false);
       setSaved(false);
@@ -193,11 +204,15 @@ export default function CoverLetterModal({ job, onClose }: { job: AIJob; onClose
             Regenerate
           </button>
           <button className="ai-btn ai-btn-ghost" onClick={copy} disabled={busy || !text}>{copied ? "Copied!" : "Copy"}</button>
-          <button className="ai-btn ai-btn-soft" onClick={save} disabled={busy || saving || !text || !dirty}>
-            {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
-          </button>
+          {canSave && (
+            <button className="ai-btn ai-btn-soft" onClick={save} disabled={busy || saving || !text || !dirty}>
+              {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
+            </button>
+          )}
           <button className="ai-btn ai-btn-soft" onClick={download} disabled={busy || !text}>Download .docx</button>
-          <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>
+          {onAttach
+            ? <button className="ai-btn ai-btn-primary" onClick={() => void onAttach()} disabled={busy || !text}>Attach to application</button>
+            : <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>}
         </div>
       </div>
     </div>
