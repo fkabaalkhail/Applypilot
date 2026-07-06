@@ -136,15 +136,28 @@ def db_record_to_document(record: Any) -> ResumeDocument:
     return ResumeDocument(header=header, sections=sections)
 
 
-def merge_rewrite(original: ResumeDocument, edited: ResumeDocument) -> ResumeDocument:
+def merge_rewrite(
+    original: ResumeDocument,
+    edited: ResumeDocument,
+    section_order: list[str] | None = None,
+    new_summary: dict | None = None,
+) -> ResumeDocument:
     """Fold an LLM rewrite into the original document, structurally.
 
     Only *content* is taken from ``edited`` — section summary text, the skills
-    list, technology groups, and item bullets. Every factual/structural field
-    (header/contact, section order + type + title, item title/company/dates/
-    detail/link, and all ids) is taken from ``original``. This makes it
-    impossible for the model to invent employers/dates or reorder/drop sections,
-    no matter what it returns.
+    list, technology groups, and item bullets. Every factual field
+    (header/contact, section type + title, item title/company/dates/detail/link,
+    and all ids) is taken from ``original``, so the model can never invent
+    employers/dates or drop a section.
+
+    Two structural moves ARE allowed, both safe:
+
+    - ``section_order`` — reorder the (existing) sections by id. Ids not listed
+      are appended in their original relative order, so nothing is ever lost;
+      unknown ids are ignored.
+    - ``new_summary`` — ``{"title", "text"}`` prepended as a ``summary`` section,
+      but only when the original has no ``summary``/``custom`` section (the one
+      place new prose is allowed: a summary of the candidate's real content).
     """
     edited_sections_by_id = {s.id: s for s in edited.sections}
 
@@ -177,12 +190,90 @@ def merge_rewrite(original: ResumeDocument, edited: ResumeDocument) -> ResumeDoc
                     ]
         merged_sections.append(new_sec)
 
+    # Reorder (never drop): listed ids first in the given order, remainder in
+    # original relative order.
+    if section_order:
+        listed = set(section_order)
+        by_id = {s.id: s for s in merged_sections}
+        ordered = [by_id[sid] for sid in section_order if sid in by_id]
+        ordered += [s for s in merged_sections if s.id not in listed]
+        merged_sections = ordered
+
+    # Add a summary only when the original truly has none.
+    has_summary = any(s.type in ("summary", "custom") for s in original.sections)
+    if new_summary and not has_summary:
+        text = str(new_summary.get("text", "")).strip()
+        if text:
+            merged_sections = [
+                Section(
+                    type="summary",
+                    title=str(new_summary.get("title") or "PROFESSIONAL SUMMARY"),
+                    text=text,
+                )
+            ] + merged_sections
+
     # Header and theme are never AI-editable in the rewrite path.
     return ResumeDocument(
         header=original.header.model_copy(deep=True),
         sections=merged_sections,
         theme=original.theme.model_copy(deep=True),
     )
+
+
+def describe_changes(original: ResumeDocument, final: ResumeDocument) -> list[str]:
+    """Human-readable, deterministic 'what changed' list.
+
+    Ids are stable across ``merge_rewrite``, so we align sections/items by id and
+    report only what actually differs. This is the source of truth for the UI's
+    "See what's changed" list — the model is never asked to self-report.
+    """
+    changes: list[str] = []
+    orig_ids = [s.id for s in original.sections]
+    orig_id_set = set(orig_ids)
+
+    # Reordering (compare the relative order of the sections that existed before).
+    kept = [s.id for s in final.sections if s.id in orig_id_set]
+    if kept != [i for i in orig_ids if i in set(kept)]:
+        changes.append("Reordered sections to lead with the most relevant experience")
+
+    # New sections (e.g. an added summary).
+    for s in final.sections:
+        if s.id not in orig_id_set and (s.text.strip() or s.items or s.skills):
+            changes.append(f"Added a {(s.title or s.type).title()} section")
+
+    # Reworded entries (match items by id).
+    orig_bullets = {
+        it.id: [b.strip() for b in it.bullets]
+        for sec in original.sections
+        for it in sec.items
+    }
+    reworded = 0
+    for sec in final.sections:
+        for it in sec.items:
+            before = orig_bullets.get(it.id)
+            if before is not None and [b.strip() for b in it.bullets] != before:
+                reworded += 1
+    if reworded:
+        changes.append(
+            f"Rewrote {reworded} entr{'y' if reworded == 1 else 'ies'} for stronger impact"
+        )
+
+    # Skills added.
+    orig_skills = {s.strip().lower() for sec in original.sections for s in sec.skills}
+    added = [
+        s
+        for sec in final.sections
+        for s in sec.skills
+        if s.strip().lower() not in orig_skills
+    ]
+    if added:
+        preview = ", ".join(added[:4])
+        changes.append(
+            f"Added {len(added)} skill{'s' if len(added) > 1 else ''}: {preview}"
+            f"{'…' if len(added) > 4 else ''}"
+        )
+
+    return changes
 
 
 def document_to_text(doc: ResumeDocument) -> str:
