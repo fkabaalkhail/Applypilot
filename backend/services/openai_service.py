@@ -14,6 +14,7 @@ import os
 import json
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -55,6 +56,14 @@ def _extract_json(response: str) -> str:
         if start >= 0 and end > start:
             return text[start:end + 1]
     return text
+
+
+@dataclass
+class TailorStructuredResult:
+    """Output of a structure-aware rewrite: merged document + honest gaps."""
+
+    document: ResumeDocument
+    gaps: list[str]
 
 
 class OpenAIService:
@@ -243,56 +252,97 @@ class OpenAIService:
         job_description: str,
         sections: list[str] | None = None,
         keywords: list[str] | None = None,
-    ) -> ResumeDocument:
-        """Rewrite a structured resume document, tailored to the target job."""
+    ) -> "TailorStructuredResult":
+        """Structure-aware rewrite. Returns the merged document + honest gaps.
+
+        The model does a genuine rewrite (structure review, achievement-based
+        bullets, holistic alignment) and returns a wrapped object
+        ``{resume, section_order, new_summary, gaps}``. ``merge_rewrite`` then
+        applies the reorder/summary while keeping every factual field locked. A
+        bare résumé document is still accepted for back-compat.
+        """
         from backend.services.resume_document import merge_rewrite
 
-        focus = ""
+        emphasis = ""
         if sections:
-            focus += (
-                "\n- Put extra effort into improving these sections: "
-                f"{', '.join(sections)}."
-            )
+            emphasis += f"\n- Put extra effort into these sections: {', '.join(sections)}."
         if keywords:
-            focus += (
-                "\n- Where it is truthful and supported by the candidate's real "
-                f"experience, naturally weave in these keywords: {', '.join(keywords)}. "
-                "Never fabricate experience, skills, or tools the candidate does not have."
+            emphasis += (
+                "\n- Secondary: where the candidate's REAL experience already supports "
+                f"them, you may surface these job terms: {', '.join(keywords)}. If a term "
+                "is not genuinely supported, DO NOT insert it — list it under \"gaps\"."
             )
 
         doc_json = document.model_dump_json()
         prompt = (
-            "You are a professional resume writer. You will be given a candidate's "
-            "resume as a JSON object and a target job description. Rewrite the "
-            "resume to be tailored to the job, then return the SAME JSON object.\n\n"
-            "STRICT RULES:\n"
-            "- Return ONLY valid JSON with the exact same shape, keys, and array "
-            "lengths. Keep every section's `id` and `type` and every item's `id` "
-            "unchanged, in the same order.\n"
-            "- You may ONLY change the wording of: each section's `text`, the "
-            "`skills` array, the `groups` values, and each item's `bullets`.\n"
-            "- NEVER change `header`, `theme`, section `title`s, or item `title`, "
-            "`subtitle`, `location`, `start_date`, `end_date`, `detail`, or `link`.\n"
-            "- NEVER invent employers, job titles, dates, degrees, metrics, or "
-            "skills the candidate does not already have. Only rephrase what is "
-            "there, using strong action verbs and keeping real quantified results.\n"
-            "- Rephrase bullets to emphasize what matches the job; lead with the "
-            "most relevant qualifications."
-            f"{focus}\n\n"
-            f"Target job description:\n{job_description[:3000]}\n\n"
+            "You are an expert resume writer and career coach. Rewrite the candidate's "
+            "resume (given as JSON) to genuinely fit the target job — a real rewrite, not "
+            "a keyword patch. Then return ONE JSON object with this exact shape:\n"
+            "{\n"
+            '  "resume":        <the same resume JSON, with rewritten content>,\n'
+            '  "section_order": [<section ids in the best order for this job>],\n'
+            '  "new_summary":   {"title": "PROFESSIONAL SUMMARY", "text": "..."} or null,\n'
+            '  "gaps":          [<job priorities the candidate genuinely cannot support>]\n'
+            "}\n\n"
+            "STEP 1 — STRUCTURE: choose the section order that presents this candidate best "
+            "for this job (e.g. lead with Projects when experience is thin). Only include ids "
+            "that already exist; reorder only when it clearly helps. If the resume has no "
+            "summary/profile section and one would help, write a concise `new_summary` from "
+            "the candidate's real experience; otherwise set it to null.\n"
+            "STEP 2 — CONTENT: rewrite bullets to lead with strong action verbs and outcomes, "
+            "not duties ('Responsible for…'). Keep real quantified results; NEVER introduce a "
+            "number, percentage, or metric that is not already in the source. Cut filler; fix "
+            "tense and consistency.\n"
+            "STEP 3 — ALIGNMENT: match the job's real priorities, seniority, and domain "
+            "language — not just its keyword list.\n"
+            "STEP 4 — HONESTY: never invent employers, titles, dates, degrees, or skills. "
+            "Anything the job needs that the candidate cannot truthfully show goes in `gaps`, "
+            "never into the resume.\n\n"
+            "JSON RULES for `resume`: same keys, ids, types, and array lengths as the input. "
+            "Keep every section `id`/`type`/`title` and every item `id`/`title`/`subtitle`/"
+            "`location`/`start_date`/`end_date`/`detail`/`link` UNCHANGED. You may only reword "
+            "each section's `text`, the `skills` array, `groups` values, and each item's "
+            "`bullets`."
+            f"{emphasis}\n\n"
+            f"Target job description:\n{job_description[:3500]}\n\n"
             f"Resume JSON:\n{doc_json}\n\n"
-            "Return ONLY the rewritten JSON object."
+            "Return ONLY the JSON object."
         )
 
         try:
             response = await self._generate(prompt)
             data = json.loads(_extract_json(response))
-            edited = ResumeDocument(**data)
-        except Exception as e:
-            logger.warning("Structured tailor failed (%s); returning original", e)
-            return document
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Structured tailor failed to parse (%s); returning original", e)
+            return TailorStructuredResult(document=document, gaps=[])
 
-        return merge_rewrite(document, edited)
+        if isinstance(data, dict) and "resume" in data:
+            resume_data = data.get("resume")
+            section_order = data.get("section_order")
+            new_summary = data.get("new_summary")
+            gaps_raw = data.get("gaps", [])
+        else:
+            # Back-compat: a bare résumé document (no wrapper).
+            resume_data, section_order, new_summary, gaps_raw = data, None, None, []
+
+        gaps = (
+            [str(g).strip() for g in gaps_raw if str(g).strip()]
+            if isinstance(gaps_raw, list)
+            else []
+        )
+        if not isinstance(section_order, list):
+            section_order = None
+        if not isinstance(new_summary, dict):
+            new_summary = None
+
+        try:
+            edited = ResumeDocument(**resume_data)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Structured tailor bad resume shape (%s); returning original", e)
+            return TailorStructuredResult(document=document, gaps=gaps)
+
+        merged = merge_rewrite(document, edited, section_order=section_order, new_summary=new_summary)
+        return TailorStructuredResult(document=merged, gaps=gaps)
 
     async def edit_snippet(self, text: str, action: str, job_description: str = "") -> str:
         """Apply a single AI editing action to a selected snippet of resume text."""

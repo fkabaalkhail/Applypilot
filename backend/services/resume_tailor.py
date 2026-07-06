@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session
 from backend.db.models import TailoredResume, ScrapedJob, ResumeProfileDB
 from backend.schemas.ai import JobAnalysisOut, TailoredResumeOut
 from backend.schemas.resume_document import ResumeDocument
+from backend.services.fabrication_check import find_unsupported_figures
 from backend.services.llm import get_llm_service
-from backend.services.resume_document import document_to_text
+from backend.services.resume_document import document_to_text, describe_changes
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,15 @@ class ResumeTailor:
 
     def __init__(self, db: Session):
         self.db = db
-        self.llm = get_llm_service()
+        self._llm = None
+
+    @property
+    def llm(self):
+        """Lazily construct the LLM service so pure helpers (and tests that
+        monkeypatch the methods) don't need an OPENAI_API_KEY at import time."""
+        if self._llm is None:
+            self._llm = get_llm_service()
+        return self._llm
 
     async def tailor_resume(
         self, resume_text: str, job_description: str, job_id: int, user_id: str | None = None
@@ -115,6 +124,9 @@ class TailorResult:
     before: JobAnalysisOut
     after: JobAnalysisOut
     diff_summary: str
+    changes: list[str]
+    gaps: list[str]
+    figures_to_verify: list[str]
 
 
 async def tailor_document(
@@ -142,13 +154,26 @@ async def tailor_document(
     original_text = document_to_text(original_document)
     before = await engine.analyze_job(original_text, job_title, company, job_description)
     keywords = add_keywords if add_keywords is not None else list(before.missing_keywords)
-    document = await tailor.llm.tailor_resume_structured(
+    structured = await tailor.llm.tailor_resume_structured(
         original_document, job_description, sections, keywords
     )
+    document = structured.document
     tailored_text = document_to_text(document)
     after = await engine.analyze_job(tailored_text, job_title, company, job_description)
     diff_summary = tailor.compute_diff(original_text, tailored_text)
+    changes = describe_changes(original_document, document)
+
+    # Rule-based guard: flag any metric in the rewrite not grounded in the source.
+    rewritten_texts: list[str] = []
+    for sec in document.sections:
+        if sec.text.strip():
+            rewritten_texts.append(sec.text)
+        for it in sec.items:
+            rewritten_texts.extend(it.bullets)
+    figures_to_verify = find_unsupported_figures(original_text, rewritten_texts)
+
     return TailorResult(
         document=document, original_text=original_text, tailored_text=tailored_text,
         before=before, after=after, diff_summary=diff_summary,
+        changes=changes, gaps=structured.gaps, figures_to_verify=figures_to_verify,
     )
