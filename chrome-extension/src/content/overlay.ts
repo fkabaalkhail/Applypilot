@@ -366,13 +366,7 @@ export const STYLES = `
   flex-shrink: 0;
 }
 .ap-brand { display: flex; align-items: center; gap: 10px; }
-.ap-brand-logo {
-  width: 30px; height: 30px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--stripe-primary);
-}
-.ap-brand-logo svg { width: 28px; height: 28px; }
-.ap-brand-img { width: 30px; height: 30px; object-fit: contain; display: block; }
+.ap-brand-lockup { height: 26px; width: auto; max-width: 160px; object-fit: contain; display: block; }
 .ap-brand-name { font-weight: 800; font-size: 18px; color: var(--stripe-ink); letter-spacing: -0.3px; }
 .ap-header-right { display: flex; align-items: center; gap: 6px; }
 .ap-icon-btn {
@@ -1076,11 +1070,12 @@ function ensureMounted(): void {
  * and let the "Tailrd" wordmark carry the brand.
  */
 function wireBrandLogo(root: HTMLElement): void {
-  const img = root.querySelector<HTMLImageElement>(".ap-brand-img");
+  const img = root.querySelector<HTMLImageElement>(".ap-brand-lockup");
   if (!img) return;
   img.addEventListener("error", () => {
-    const holder = img.closest<HTMLElement>(".ap-brand-logo");
-    if (holder) holder.style.display = "none";
+    img.style.display = "none";
+    const wordmark = root.querySelector<HTMLElement>(".ap-brand-name");
+    if (wordmark) wordmark.style.display = "";
   });
   img.src = BRAND_LOGO_DATA_URI;
 }
@@ -1110,8 +1105,8 @@ export function buildHTML(): string {
       <!-- Header -->
       <header class="ap-header">
         <div class="ap-brand">
-          <span class="ap-brand-logo"><img class="ap-brand-img" alt="Tailrd" /></span>
-          <span class="ap-brand-name">Tailrd</span>
+          <img class="ap-brand-lockup" alt="Tailrd" />
+          <span class="ap-brand-name" style="display:none">Tailrd</span>
         </div>
         <div class="ap-header-right">
           <button class="ap-icon-btn" id="ap-btn-settings" title="Settings">${I_GEAR}</button>
