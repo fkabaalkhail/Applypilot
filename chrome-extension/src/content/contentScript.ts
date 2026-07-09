@@ -58,6 +58,7 @@ const MIN_CACHEABLE_DESC = 200;
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
 import { getLocalAnswers } from "./localAnswers";
+import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
@@ -530,10 +531,13 @@ function initialize(): void {
   }> {
     const empty = { reports: [], outcomes: [] };
 
-    // Device-local sensitive answers, refilled silently before we hand off.
+    // Device-local sensitive answers + the user's own custom autofill fields,
+    // refilled silently before we hand off (both matched by exact-normalized
+    // label — custom fields are just user-authored local answers).
     let localFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] } = empty;
     try {
       const stored = await getLocalAnswers();
+      for (const [k, v] of customFieldAnswers(await getExtras())) stored.set(k, v);
       if (stored.size > 0) {
         const storedTargets = lastFields
           .filter((f) => f.fillable && f.proposedValue === null && controlIsEmpty(f.id))

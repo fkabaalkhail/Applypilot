@@ -15,6 +15,15 @@ import { reattachIfDetached } from "./domUtils";
 import { base64ToFile } from "./fileUpload";
 import { resolveCompanyLogo } from "./companyLogo";
 import { BRAND_LOGO_DATA_URI } from "./brandLogo";
+import {
+  cryptoId,
+  emptyExtras,
+  getExtras,
+  mergeProfileWithExtras,
+  pruneExtras,
+  saveExtras,
+  type AutofillExtras,
+} from "./autofillExtras";
 import { buildTailorCardHtml } from "./tailorCard";
 import { buildCoverLetterCardHtml } from "./coverLetterCard";
 import {
@@ -36,8 +45,6 @@ import type {
   FlowProgress,
   LoginResponse,
   ProfileResponse,
-  AnswersResponse,
-  SavedAnswerItem,
   ProfileSource,
   RenderResumeResponse,
   ResumeDoc,
@@ -705,6 +712,45 @@ export const STYLES = `
   border: 1px solid var(--stripe-hairline-soft);
   border-radius: 6px; padding: 8px 10px; margin-bottom: 14px;
 }
+.ap-form-row textarea {
+  width: 100%; padding: 8px 10px; font-size: 13px; font-family: inherit;
+  border: 1px solid var(--stripe-hairline-soft); border-radius: 8px;
+  color: var(--stripe-ink); background: #fff; box-sizing: border-box; resize: vertical;
+}
+.ap-form-row textarea:focus {
+  outline: none; border-color: var(--stripe-primary);
+  box-shadow: 0 0 0 2px rgba(var(--stripe-primary-rgb),0.1);
+}
+/* Editable work-experience entry */
+.ap-exp-entry { padding-bottom: 6px; margin-bottom: 14px; border-bottom: 1px solid var(--stripe-hairline-soft); }
+.ap-exp-del, .ap-custom-del {
+  background: none; border: none; color: #b4232a; font-size: 12px; font-weight: 600;
+  cursor: pointer; padding: 2px 0;
+}
+.ap-exp-del:hover { text-decoration: underline; }
+/* User-added custom fields */
+.ap-custom-section { margin-top: 8px; }
+.ap-custom-heading { font-size: 12px; font-weight: 700; color: var(--stripe-ink-secondary); margin: 6px 0 8px; }
+.ap-custom-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ap-custom-row input {
+  flex: 1; min-width: 0; padding: 8px 10px; font-size: 13px; font-family: inherit;
+  border: 1px solid var(--stripe-hairline-soft); border-radius: 8px;
+  color: var(--stripe-ink); background: #fff; box-sizing: border-box;
+}
+.ap-custom-row input:focus {
+  outline: none; border-color: var(--stripe-primary);
+  box-shadow: 0 0 0 2px rgba(var(--stripe-primary-rgb),0.1);
+}
+.ap-custom-del { flex-shrink: 0; display: flex; align-items: center; color: var(--stripe-ink-mute); }
+.ap-custom-del:hover { color: #b4232a; }
+.ap-custom-del svg { width: 16px; height: 16px; }
+.ap-add-field {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 1px dashed var(--stripe-hairline);
+  color: var(--stripe-primary); font-size: 13px; font-weight: 600;
+  cursor: pointer; padding: 8px 12px; border-radius: 8px; margin-top: 4px;
+}
+.ap-add-field:hover { background: var(--stripe-canvas-soft); }
 .ap-modal-footer {
   padding: 14px 24px;
   border-top: 1px solid var(--stripe-hairline-soft);
@@ -728,11 +774,6 @@ export const STYLES = `
 }
 .ap-btn-update:hover { box-shadow: 0 6px 16px rgba(var(--stripe-primary-rgb),0.35); }
 .ap-btn-update:disabled { opacity: 0.6; cursor: default; box-shadow: none; }
-.ap-answer-row { padding: 12px 0; border-bottom: 1px solid var(--stripe-hairline-soft); }
-.ap-answer-q { font-size: 12.5px; font-weight: 600; color: var(--stripe-ink); margin-bottom: 6px; }
-.ap-answer-a { width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid var(--stripe-hairline-soft); border-radius: 8px; resize: vertical; font-family: inherit; color: var(--stripe-ink); background: #fff; box-sizing: border-box; }
-.ap-answer-del { margin-top: 6px; background: none; border: none; color: #b4232a; font-size: 12px; font-weight: 600; cursor: pointer; padding: 2px 0; }
-.ap-answer-del:hover { text-decoration: underline; }
 /* Account-creation credentials (password + reveal toggle) */
 .ap-signup-pass-row { display: flex; gap: 8px; align-items: center; }
 .ap-signup-pass-row input { flex: 1; }
@@ -894,11 +935,13 @@ interface PanelState {
   scanned: boolean;
   view: View;
   infoCategory: string;
-  /** Remembered answers (Question Memory) shown in the Autofill Information modal. */
-  rememberedAnswers: SavedAnswerItem[];
-  rememberedLoaded: boolean;
   /** Working copy of the editable profile fields while the info modal is open. */
   profileDraft: EditableProfileDraft | null;
+  /** Device-local autofill extras (GitHub/experience overrides + custom fields)
+   *  merged over the synced profile — loaded once, edited via extrasDraft. */
+  extras: AutofillExtras;
+  /** Working copy of `extras` while the info modal is open. */
+  extrasDraft: AutofillExtras | null;
   /** Account-creation credentials draft (device-local; Account creation tab). */
   signupDraft: DefaultCredential | null;
   signupLoaded: boolean;
@@ -934,9 +977,9 @@ const overlayState: PanelState = {
   scanned: false,
   view: "main",
   infoCategory: "personal",
-  rememberedAnswers: [],
-  rememberedLoaded: false,
   profileDraft: null,
+  extras: emptyExtras(),
+  extrasDraft: null,
   signupDraft: null,
   signupLoaded: false,
   tailorResult: null,
@@ -1209,7 +1252,6 @@ export function buildHTML(): string {
             <button class="ap-modal-sidebar-item" data-cat="preference">Preference</button>
             <button class="ap-modal-sidebar-item" data-cat="eeo">Equal Employment</button>
             <button class="ap-modal-sidebar-item" data-cat="signup">Account creation</button>
-            <button class="ap-modal-sidebar-item" data-cat="answers">Remembered answers</button>
           </div>
           <div class="ap-modal-form" id="ap-info-form"></div>
         </div>
@@ -1428,10 +1470,13 @@ async function loadProfile(): Promise<void> {
     overlayState.profile = resp.profile ?? null;
     overlayState.source = resp.source ?? null;
   }
-  // Feed the profile to the scanner so fields get proposed values; it re-scans
-  // and calls updateOverlay() (which re-derives the selection). Done before our
-  // own applyDefaultSelection() so the button reflects the enriched fields.
-  callbacks?.onProfileResolved(overlayState.profile);
+  // Device-local edits + custom fields the user added, merged over the synced
+  // profile so what they see in the panel is exactly what the scanner fills.
+  overlayState.extras = await getExtras();
+  // Feed the (merged) profile to the scanner so fields get proposed values; it
+  // re-scans and calls updateOverlay() (which re-derives the selection). Done
+  // before applyDefaultSelection() so the button reflects the enriched fields.
+  callbacks?.onProfileResolved(fillProfile());
   overlayState.scanned = true;
   applyDefaultSelection();
   refreshMainView();
@@ -1490,8 +1535,6 @@ async function showInfoView(): Promise<void> {
   if (!refs) return;
   refs.modalBackdrop.classList.add("visible");
   overlayState.infoCategory = "personal";
-  overlayState.rememberedAnswers = [];
-  overlayState.rememberedLoaded = false;
   overlayState.signupDraft = null;
   overlayState.signupLoaded = false;
   signupOriginal = null;
@@ -1501,6 +1544,7 @@ async function showInfoView(): Promise<void> {
   );
   // Render immediately from what we already have so the modal opens instantly.
   overlayState.profileDraft = overlayState.profile ? draftFromProfile(overlayState.profile) : null;
+  overlayState.extrasDraft = structuredClone(overlayState.extras);
   renderInfoForm();
 
   // Then pull the latest profile from the server (a cheap sync-version check;
@@ -1976,6 +2020,16 @@ const EEO_CHOICES: Record<keyof EditableProfileDraft["eeo"], string[]> = {
   ],
 };
 
+/** The profile the scanner + AI actually fill from: the synced profile with the
+ *  user's device-local extras (GitHub / experience overrides) merged on top, so
+ *  the panel shows exactly what will fill. Custom fields are applied separately
+ *  in the fill path (contentScript), matched by label. */
+function fillProfile(): UserApplicationProfile | null {
+  return overlayState.profile
+    ? mergeProfileWithExtras(overlayState.profile, overlayState.extras)
+    : null;
+}
+
 function draftFromProfile(p: UserApplicationProfile): EditableProfileDraft {
   return {
     firstName: p.firstName ?? "",
@@ -2019,6 +2073,53 @@ function apReadonly(label: string, value: string): string {
   return `<div class="ap-form-row"><label>${label}</label><input value="${esc(value)}" readonly /></div>`;
 }
 
+/** One field bound to the device-local extras (extrasDraft.fields[key]) via
+ *  data-extra — for scalar fields the sync treats as read-only, e.g. GitHub. */
+function apExtraField(key: string, label: string, value: string, opts: { type?: string } = {}): string {
+  return `<div class="ap-form-row"><label>${label}</label><input data-extra="${esc(key)}" type="${opts.type ?? "text"}" value="${esc(value)}" /></div>`;
+}
+
+/** One work-experience field bound to extrasDraft.experience[idx][key]. */
+function apExpField(
+  idx: number,
+  key: "company" | "title" | "startDate" | "endDate" | "description",
+  label: string,
+  value: string,
+  opts: { type?: string } = {}
+): string {
+  const control =
+    opts.type === "textarea"
+      ? `<textarea data-exp-idx="${idx}" data-exp-key="${esc(key)}" rows="2">${esc(value)}</textarea>`
+      : `<input data-exp-idx="${idx}" data-exp-key="${esc(key)}" type="${opts.type ?? "text"}" value="${esc(value)}" />`;
+  return `<div class="ap-form-row"><label>${label}</label>${control}</div>`;
+}
+
+/**
+ * The user's own added fields for a section (label + value, editable + removable)
+ * plus an "Add field" button. Custom fields are device-local and fill any
+ * application question whose label matches, so people can teach the extension
+ * answers the standard profile has no slot for.
+ */
+function renderSectionCustom(section: string): string {
+  const ed = overlayState.extrasDraft ?? emptyExtras();
+  const rows = ed.customFields
+    .filter((c) => c.section === section)
+    .map(
+      (c) => `
+      <div class="ap-custom-row">
+        <input class="ap-custom-label" data-custom-id="${esc(c.id)}" data-custom-key="label" value="${esc(c.label)}" placeholder="Field name (e.g. Pronouns)" />
+        <input class="ap-custom-value" data-custom-id="${esc(c.id)}" data-custom-key="value" value="${esc(c.value)}" placeholder="Your answer" />
+        <button type="button" class="ap-custom-del" data-custom-del="${esc(c.id)}" title="Remove field">${I_CLOSE}</button>
+      </div>`
+    )
+    .join("");
+  return `
+    <div class="ap-custom-section">
+      ${rows ? `<div class="ap-custom-heading">Your added fields</div>${rows}` : ""}
+      <button type="button" class="ap-add-field" data-add-field="${esc(section)}">+ Add field</button>
+    </div>`;
+}
+
 /** One EEO select bound to draft.eeo via data-eeo. */
 function apEeoSelect(field: keyof EditableProfileDraft["eeo"], label: string, value: string): string {
   const opts = ['<option value="">Select…</option>']
@@ -2042,8 +2143,19 @@ function renderInfoForm(): void {
     return;
   }
 
+  const ed = overlayState.extrasDraft ?? emptyExtras();
   switch (cat) {
-    case "personal":
+    case "personal": {
+      // Data-driven links: a link row only appears when the user actually has
+      // one, so nobody sees a phantom GitHub/LinkedIn they never filled. GitHub
+      // is editable via the device-local extras (the sync treats it read-only);
+      // to add a link they don't have yet, use "Add field".
+      const github = ed.fields.github ?? p.github;
+      const links = [
+        d.linkedin ? apField("linkedin", "LinkedIn", d.linkedin, { type: "url" }) : "",
+        github ? apExtraField("github", "GitHub", github, { type: "url" }) : "",
+        d.portfolio ? apField("portfolio", "Portfolio", d.portfolio, { type: "url" }) : "",
+      ].filter(Boolean);
       form.innerHTML = `
         <div class="ap-form-grid">
           ${apField("firstName", "First Name", d.firstName, { required: true })}
@@ -2052,13 +2164,11 @@ function renderInfoForm(): void {
         ${apField("email", "Email Address", d.email, { required: true, type: "email" })}
         ${apField("phone", "Phone", d.phone, { required: true, type: "tel" })}
         ${apField("location", "Location", d.location)}
-        <div class="ap-form-grid">
-          ${apField("linkedin", "LinkedIn", d.linkedin, { type: "url" })}
-          ${apReadonly("GitHub", p.github)}
-        </div>
-        ${apField("portfolio", "Portfolio", d.portfolio, { type: "url" })}
+        ${links.join("")}
+        ${renderSectionCustom("personal")}
       `;
       break;
+    }
     case "address":
       form.innerHTML = `
         ${apField("addressStreet", "Street Address", d.addressStreet)}
@@ -2070,59 +2180,66 @@ function renderInfoForm(): void {
           ${apField("postalCode", "Postal Code", d.postalCode)}
           ${apField("country", "Country", d.country)}
         </div>
+        ${renderSectionCustom("address")}
       `;
       break;
-    case "education":
-      if ((p.education ?? []).length === 0) {
-        form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No education entries yet.</div>';
-      } else {
-        let html = RESUME_HINT;
-        for (const e of p.education ?? []) {
-          html += `
-            ${apReadonly("School", e.school)}
-            <div class="ap-form-grid">
-              ${apReadonly("Degree", e.degree)}
-              ${apReadonly("Graduation Year", e.graduationYear)}
-            </div>
-            <hr style="border:none;border-top:1px solid var(--stripe-hairline-soft);margin:14px 0" />
-          `;
-        }
-        form.innerHTML = html;
+    case "education": {
+      let html =
+        (p.education ?? []).length === 0
+          ? '<div class="ap-form-hint">No education synced from your résumé yet.</div>'
+          : RESUME_HINT;
+      for (const e of p.education ?? []) {
+        html += `
+          ${apReadonly("School", e.school)}
+          <div class="ap-form-grid">
+            ${apReadonly("Degree", e.degree)}
+            ${apReadonly("Graduation Year", e.graduationYear)}
+          </div>
+          <hr style="border:none;border-top:1px solid var(--stripe-hairline-soft);margin:14px 0" />
+        `;
       }
+      form.innerHTML = html + renderSectionCustom("education");
       break;
-    case "experience":
-      if ((p.experience ?? []).length === 0) {
-        form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No work experience entries yet.</div>';
-      } else {
-        let html = RESUME_HINT;
-        for (const e of p.experience ?? []) {
-          html += `
+    }
+    case "experience": {
+      // Editable: work off the user's edited copy if there is one, else the
+      // synced résumé entries. Edits + added roles persist to device-local extras.
+      const entries = ed.experience ?? p.experience ?? [];
+      let html =
+        '<div class="ap-form-hint">Edit any role, add ones your résumé missed, or add your own fields. Saved on this device and used to autofill applications.</div>';
+      entries.forEach((e, i) => {
+        html += `
+          <div class="ap-exp-entry">
             <div class="ap-form-grid">
-              ${apReadonly("Company", e.company)}
-              ${apReadonly("Title", e.title)}
+              ${apExpField(i, "company", "Company", e.company)}
+              ${apExpField(i, "title", "Title", e.title)}
             </div>
             <div class="ap-form-grid">
-              ${apReadonly("Start Date", e.startDate)}
-              ${apReadonly("End Date", e.endDate || "Present")}
+              ${apExpField(i, "startDate", "Start Date", e.startDate)}
+              ${apExpField(i, "endDate", "End Date", e.endDate)}
             </div>
-            <hr style="border:none;border-top:1px solid var(--stripe-hairline-soft);margin:14px 0" />
-          `;
-        }
-        form.innerHTML = html;
-      }
+            ${apExpField(i, "description", "Description", e.description ?? "", { type: "textarea" })}
+            <button type="button" class="ap-exp-del" data-exp-del="${i}">Remove role</button>
+          </div>`;
+      });
+      html += `<button type="button" class="ap-add-field" data-add-exp="1">+ Add work experience</button>`;
+      html += renderSectionCustom("experience");
+      form.innerHTML = html;
       break;
+    }
     case "skill":
-      if ((p.skills ?? []).length === 0) {
-        form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No skills on file yet.</div>';
-      } else {
-        form.innerHTML = RESUME_HINT + apReadonly("Skills", (p.skills ?? []).join(", "));
-      }
+      form.innerHTML =
+        ((p.skills ?? []).length === 0
+          ? '<div class="ap-form-hint">No skills synced from your résumé yet.</div>'
+          : RESUME_HINT + apReadonly("Skills", (p.skills ?? []).join(", "))) +
+        renderSectionCustom("skill");
       break;
     case "preference":
       form.innerHTML = `
         ${apField("workAuthorization", "Work Authorization", d.workAuthorization)}
         ${apField("requiresSponsorship", "Requires Sponsorship", d.requiresSponsorship)}
         ${apField("salaryExpectation", "Salary Expectation", d.salaryExpectation)}
+        ${renderSectionCustom("preference")}
       `;
       break;
     case "eeo":
@@ -2137,9 +2254,6 @@ function renderInfoForm(): void {
       break;
     case "signup":
       renderSignupForm(form, p);
-      break;
-    case "answers":
-      renderAnswersForm(form);
       break;
   }
 }
@@ -2193,79 +2307,40 @@ async function loadSignupDefaults(): Promise<void> {
 /** Snapshot of the stored defaults, for change detection on Update. */
 let signupOriginal: DefaultCredential | null = null;
 
-/**
- * Render the "Remembered answers" list — every free-form question the user has
- * answered in an application pop-up, editable and removable here. Built with DOM
- * APIs (not innerHTML) so saved answer text can never inject markup.
- */
-function renderAnswersForm(form: HTMLElement): void {
-  form.innerHTML = "";
-  if (!overlayState.rememberedLoaded) {
-    form.innerHTML =
-      '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Loading…</div>';
-    void loadRememberedAnswers();
-    return;
-  }
-  const answers = overlayState.rememberedAnswers;
-  if (answers.length === 0) {
-    form.innerHTML =
-      '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">No remembered answers yet. Answers you give in application pop-ups appear here.</div>';
-    return;
-  }
-  const hint = document.createElement("div");
-  hint.className = "ap-form-hint";
-  hint.textContent = "Answers Tailrd remembered from application questions. Edit or remove any — changes save automatically.";
-  form.appendChild(hint);
-  for (const a of answers) {
-    const row = document.createElement("div");
-    row.className = "ap-answer-row";
-    const q = document.createElement("div");
-    q.className = "ap-answer-q";
-    q.textContent = a.question;
-    const ta = document.createElement("textarea");
-    ta.className = "ap-answer-a";
-    ta.rows = 2;
-    ta.value = a.answer;
-    ta.dataset.answerId = String(a.id);
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "ap-answer-del";
-    del.dataset.delId = String(a.id);
-    del.textContent = "Remove";
-    row.append(q, ta, del);
-    form.appendChild(row);
-  }
-}
-
-/** Fetch remembered answers, then re-render if the user is still on that tab. */
-async function loadRememberedAnswers(): Promise<void> {
-  try {
-    const resp = await bg<AnswersResponse>({ type: "GET_ANSWERS" });
-    overlayState.rememberedAnswers = resp?.ok ? resp.answers : [];
-  } catch {
-    overlayState.rememberedAnswers = [];
-  }
-  overlayState.rememberedLoaded = true;
-  if (overlayState.infoCategory === "answers") renderInfoForm();
-}
-
 /** Delegated input handler: mirror form edits into the draft (survives re-render). */
 function onInfoInput(e: Event): void {
   const t = e.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-  // Remembered-answer edit: persist on change/blur, not on every keystroke.
-  const answerId = t.dataset.answerId;
-  if (answerId) {
-    if (e.type === "change") {
-      const item = overlayState.rememberedAnswers.find((a) => String(a.id) === answerId);
-      if (item) item.answer = t.value;
-      void bg<SimpleResponse>({ type: "UPDATE_ANSWER", id: Number(answerId), answer: t.value });
-    }
-    return;
-  }
   // Account-creation credentials (device-local; not part of the profile draft).
   const signupField = t.dataset.signup;
   if (signupField === "email" || signupField === "password") {
     if (overlayState.signupDraft) overlayState.signupDraft[signupField] = t.value;
+    return;
+  }
+  const ed = overlayState.extrasDraft;
+  // Device-local scalar override (e.g. GitHub).
+  const extraKey = t.dataset.extra;
+  if (extraKey && ed) {
+    ed.fields[extraKey] = t.value;
+    return;
+  }
+  // Work-experience entry edit — lazily fork the synced entries into the draft
+  // the first time one is touched, so "no override" holds until the user edits.
+  const expIdx = t.dataset.expIdx;
+  const expKey = t.dataset.expKey;
+  if (expIdx !== undefined && expKey && ed) {
+    if (!ed.experience) {
+      ed.experience = (overlayState.profile?.experience ?? []).map((x) => ({ ...x }));
+    }
+    const entry = ed.experience[Number(expIdx)];
+    if (entry) (entry as unknown as Record<string, string>)[expKey] = t.value;
+    return;
+  }
+  // Custom field label/value edit.
+  const customId = t.dataset.customId;
+  const customKey = t.dataset.customKey;
+  if (customId && (customKey === "label" || customKey === "value") && ed) {
+    const cf = ed.customFields.find((c) => c.id === customId);
+    if (cf) cf[customKey] = t.value;
     return;
   }
   const d = overlayState.profileDraft;
@@ -2279,8 +2354,8 @@ function onInfoInput(e: Event): void {
   }
 }
 
-/** Delegated click handler on the info form: "Remove" a remembered answer,
- *  or the account-password Show/Hide toggle. */
+/** Delegated click handler on the info form: password Show/Hide, and the
+ *  add/remove controls for custom fields and work-experience entries. */
 function onInfoFormClick(e: Event): void {
   const target = e.target as HTMLElement;
   const reveal = target.closest<HTMLButtonElement>("[data-signup-reveal]");
@@ -2293,12 +2368,50 @@ function onInfoFormClick(e: Event): void {
     }
     return;
   }
-  const btn = target.closest<HTMLElement>("[data-del-id]");
-  if (!btn) return;
-  const id = Number(btn.dataset.delId);
-  overlayState.rememberedAnswers = overlayState.rememberedAnswers.filter((a) => a.id !== id);
-  void bg<SimpleResponse>({ type: "DELETE_ANSWER", id });
-  if (overlayState.infoCategory === "answers") renderInfoForm();
+  const ed = overlayState.extrasDraft;
+  if (!ed) return;
+
+  const add = target.closest<HTMLElement>("[data-add-field]");
+  if (add) {
+    ed.customFields.push({
+      id: cryptoId(),
+      section: add.dataset.addField ?? "personal",
+      label: "",
+      value: "",
+    });
+    renderInfoForm();
+    focusLastCustomLabel();
+    return;
+  }
+  const del = target.closest<HTMLElement>("[data-custom-del]");
+  if (del) {
+    ed.customFields = ed.customFields.filter((c) => c.id !== del.dataset.customDel);
+    renderInfoForm();
+    return;
+  }
+  if (target.closest("[data-add-exp]")) {
+    if (!ed.experience) {
+      ed.experience = (overlayState.profile?.experience ?? []).map((x) => ({ ...x }));
+    }
+    ed.experience.push({ company: "", title: "", startDate: "", endDate: "", description: "" });
+    renderInfoForm();
+    return;
+  }
+  const expDel = target.closest<HTMLElement>("[data-exp-del]");
+  if (expDel) {
+    if (!ed.experience) {
+      ed.experience = (overlayState.profile?.experience ?? []).map((x) => ({ ...x }));
+    }
+    ed.experience.splice(Number(expDel.dataset.expDel), 1);
+    renderInfoForm();
+    return;
+  }
+}
+
+/** After adding a custom field, put the cursor in its (empty) name input. */
+function focusLastCustomLabel(): void {
+  const inputs = refs?.infoForm.querySelectorAll<HTMLInputElement>(".ap-custom-label");
+  inputs?.[inputs.length - 1]?.focus();
 }
 
 function setInfoError(msg: string): void {
@@ -2329,6 +2442,15 @@ async function saveInfoEdits(): Promise<void> {
     }
   }
 
+  // Device-local autofill extras (GitHub / work-experience edits + custom
+  // fields), also independent of the backend profile — they never leave the
+  // machine. Saved regardless of whether any synced field changed.
+  if (overlayState.extrasDraft) {
+    const pruned = pruneExtras(overlayState.extrasDraft);
+    await saveExtras(pruned);
+    overlayState.extras = pruned;
+  }
+
   // Send only what changed so we don't bump the sync version (and force a
   // re-download) when the user opens the modal and clicks Update without edits.
   const orig = overlayState.profile ?? ({} as UserApplicationProfile);
@@ -2350,7 +2472,14 @@ async function saveInfoEdits(): Promise<void> {
   });
   if (Object.keys(eeoDiff).length > 0) update.eeo = eeoDiff;
 
-  if (Object.keys(update).length === 0) { hideInfoView(); return; }
+  if (Object.keys(update).length === 0) {
+    // Nothing to sync — but device-local extras may have changed, so re-feed the
+    // scanner with the merged profile before closing.
+    callbacks?.onProfileResolved(fillProfile());
+    refreshMainView();
+    hideInfoView();
+    return;
+  }
 
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   try {
@@ -2358,8 +2487,9 @@ async function saveInfoEdits(): Promise<void> {
     if (resp?.ok && resp.profile) {
       overlayState.profile = resp.profile;
       overlayState.source = resp.source ?? overlayState.source;
-      // Re-feed the scanner so the just-edited values immediately propose fills.
-      callbacks?.onProfileResolved(overlayState.profile);
+      // Re-feed the scanner (merged with device-local extras) so the just-edited
+      // values immediately propose fills.
+      callbacks?.onProfileResolved(fillProfile());
       refreshMainView();
       hideInfoView();
     } else if (resp?.needsLogin) {
