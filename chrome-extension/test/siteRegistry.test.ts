@@ -64,10 +64,10 @@ describe("detectSite", () => {
     expect(detectSite("notgreenhouse.io.evil.com", "https://notgreenhouse.io.evil.com/")).toBeNull();
   });
 
-  it("registry has all 69 ids, unique, each with a matcher", () => {
-    expect(SITE_REGISTRY.length).toBe(69);
+  it("registry has all 71 ids, unique, each with a matcher", () => {
+    expect(SITE_REGISTRY.length).toBe(71);
     const ids = SITE_REGISTRY.map((e) => e.id);
-    expect(new Set(ids).size).toBe(69);
+    expect(new Set(ids).size).toBe(71);
     for (const e of SITE_REGISTRY) {
       expect(
         Boolean(e.domains || e.patterns || e.iframeDomains || e.pageSourceKeyword)

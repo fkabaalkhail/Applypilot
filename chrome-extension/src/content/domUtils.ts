@@ -374,34 +374,126 @@ export function isRequiredField(el: HTMLElement, signals: FieldSignals): boolean
 // Value writing — must look like real user input to React/Vue/Angular
 // ---------------------------------------------------------------------------
 
-type ValueElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-
 /**
- * Set .value through the native prototype setter. React overrides the value
- * property on instances to track programmatic writes; going through the
- * prototype setter makes the framework see the change as user input.
+ * Set .value so the framework backing the control registers a real user write.
+ *
+ * For the standard form elements this goes through the native PROTOTYPE setter:
+ * React overrides `value` on the instance to track programmatic writes, so
+ * assigning `el.value` directly is swallowed — calling the prototype's setter
+ * with the instance as `this` is what makes React/Vue/Angular see user input.
+ *
+ * Custom elements (ADP's `sdf-select-simple`, Lightning, some Angular-Material
+ * widgets) don't inherit from the standard prototypes; their `value` setter
+ * lives on their own class prototype, or they only accept a `value` attribute /
+ * a `setValue()` method. Walk the prototype chain for a real setter, then fall
+ * back through instance assignment → attribute → setValue()/setAttributeValue().
+ * Each strategy is best-effort — a readonly own-property or a missing method must
+ * not abort the ones after it.
  */
-export function setNativeValue(el: ValueElement, value: string): void {
-  const proto =
+export function setNativeValue(el: HTMLElement, value: string): void {
+  const std =
     el instanceof HTMLTextAreaElement
       ? HTMLTextAreaElement.prototype
       : el instanceof HTMLSelectElement
         ? HTMLSelectElement.prototype
-        : HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-  if (setter) setter.call(el, value);
-  else el.value = value;
+        : el instanceof HTMLInputElement
+          ? HTMLInputElement.prototype
+          : null;
+  if (std) {
+    const setter = Object.getOwnPropertyDescriptor(std, "value")?.set;
+    if (setter) {
+      setter.call(el, value);
+      return;
+    }
+  }
+  // Non-standard / custom element: a `value` setter may sit anywhere on its own
+  // prototype chain (react-aware widgets define one there).
+  if (setValueViaPrototypeChain(el, value)) return;
+  // Last-resort strategies for web components with no discoverable setter.
+  const anyEl = el as unknown as {
+    value?: unknown;
+    setValue?: (v: string) => void;
+    setAttributeValue?: (v: string) => void;
+  };
+  try {
+    anyEl.value = value;
+  } catch {
+    /* value is a readonly own property — try the attribute path */
+  }
+  try {
+    el.setAttribute("value", value);
+  } catch {
+    /* some elements reject setAttribute('value') — ignore */
+  }
+  try {
+    anyEl.setValue?.(value);
+  } catch {
+    /* custom setter threw — ignore */
+  }
+  try {
+    anyEl.setAttributeValue?.(value);
+  } catch {
+    /* custom setter threw — ignore */
+  }
+}
+
+/** Walk the prototype chain looking for a `value` setter and call it with `el`
+ *  as receiver. Returns true if one was found and invoked. */
+function setValueViaPrototypeChain(el: HTMLElement, value: string): boolean {
+  let proto: object | null = Object.getPrototypeOf(el);
+  while (proto && proto !== Object.prototype) {
+    const desc = Object.getOwnPropertyDescriptor(proto, "value");
+    if (desc?.set) {
+      desc.set.call(el, value);
+      return true;
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
+  return false;
 }
 
 /**
  * Fire the events frameworks listen for. React uses "input"; Angular and
- * many validation libraries also want "change" and "blur".
+ * many validation libraries also want "change" and "blur". `composed: true`
+ * lets the event escape an open shadow root so handlers delegated at the
+ * document (Workday, many web components) actually receive it.
  */
 export function dispatchInputEvents(el: HTMLElement, value?: string): void {
   el.dispatchEvent(
-    new InputEvent("input", { bubbles: true, data: value ?? null, inputType: "insertText" })
+    new InputEvent("input", {
+      bubbles: true,
+      composed: true,
+      data: value ?? null,
+      inputType: "insertText",
+    })
   );
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+}
+
+/**
+ * Fire Enter keydown/keyup on a control. This is what commits an autocomplete /
+ * typeahead selection, applies an input mask, and wakes "validate on Enter"
+ * handlers — the value is already set through the native setter, so this is the
+ * belt-and-suspenders that makes stubborn framework fields register it.
+ *
+ * The `KeyboardEvent` constructor drops `keyCode`/`which` (they always read 0),
+ * yet a lot of legacy handlers still branch on `keyCode === 13`. Force both to
+ * 13 with defineProperty so those paths run. Synthetic keyboard events never
+ * trigger the browser's own implicit form submission, so this cannot submit.
+ */
+export function dispatchCommitKeys(el: HTMLElement): void {
+  for (const type of ["keydown", "keyup"] as const) {
+    const ev = new KeyboardEvent(type, {
+      key: "Enter",
+      code: "Enter",
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    });
+    Object.defineProperty(ev, "keyCode", { get: () => 13 });
+    Object.defineProperty(ev, "which", { get: () => 13 });
+    el.dispatchEvent(ev);
+  }
 }
 
 /** Briefly outline a filled control so the user can review what changed. */

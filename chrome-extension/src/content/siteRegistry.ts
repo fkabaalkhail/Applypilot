@@ -91,6 +91,18 @@ export const SITE_REGISTRY: SiteEntry[] = [
     domains: ["myworkdayjobs.com","myworkdayjobs-impl.com","myworkdaysite.com","myworkday.com"],
   },
   {
+    id: "jibe",
+    label: "Jibe",
+    tier: "vendor",
+    patterns: ["*://*.jibeapply.com/jobs/*"],
+  },
+  {
+    id: "welcometothejungle",
+    label: "Welcome to the Jungle",
+    tier: "vendor",
+    patterns: ["*://app.welcometothejungle.com/jobs*", "*://app.welcometothejungle.com/dashboard/jobs*"],
+  },
+  {
     id: "kula",
     label: "Kula",
     tier: "vendor",

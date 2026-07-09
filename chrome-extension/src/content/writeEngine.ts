@@ -11,7 +11,7 @@
  * and verify separate is what lets the reconciler retry, detect drift and stay
  * idempotent (verify-before-write means an already-correct field is untouched).
  */
-import { cleanText, dispatchInputEvents, setNativeValue } from "./domUtils";
+import { cleanText, dispatchCommitKeys, dispatchInputEvents, setNativeValue } from "./domUtils";
 import { normalize } from "./fieldMatcher";
 import type { RuntimeControl } from "./formScanner";
 
@@ -102,6 +102,10 @@ function writeTextLike(
   el.focus({ preventScroll: true });
   setNativeValue(el, v);
   dispatchInputEvents(el, v);
+  // Enter commits typeaheads / applies input masks / wakes keyup validators.
+  // Only for single-line inputs: Enter is a newline in a textarea, and a
+  // password field gains nothing (and stays safest untouched by key events).
+  if (el instanceof HTMLInputElement && el.type !== "password") dispatchCommitKeys(el);
   el.blur(); // many ATS validate on blur
   return { written: true };
 }
