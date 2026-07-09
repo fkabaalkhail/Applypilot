@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tailrd — Job Application Autofill",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Detects job application forms (Greenhouse, Lever, Workday, Ashby, BambooHR, SmartRecruiters, iCIMS, Jobvite, Taleo, SuccessFactors and more) and fills them from your Tailrd profile. Never submits anything automatically.",
   "minimum_chrome_version": "110",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6sY+hbPT1GwLGgXZNDSn0WgOmOd4i43k0DJWVdWOkNRioRmU9Mqi+4gwJUUN4V69PtBBNBjwiL6VIGD0RTzSCnvRBI7QiFb68flKZuq9gemYE2u90rspfseu//HytM/73oGWaGxFmTBDcsx+XW3v0EVkJeZsmOPhJHcaPbgxL9yymR/rqCELQJIDYNCfmTej8c5VUkFmfDNDz46GzxLpNSsBg44NvxTb1VLPyhK6q+GBJ205d083tnN98+6aBj1SQlnl0W4MqFToCZ6NUm+RRMsTpRqwmDENdhzfpG4zK8UnkGfVyzHIUVJgMwJkDGz7N54HnSgm1Z0VCjurRYKr9QIDAQAB",
@@ -44,6 +44,6 @@
     { "resources": ["mainWorld.js"], "matches": ["<all_urls>"] }
   ],
   "externally_connectable": {
-    "matches": ["https://www.tailrd.ca/*", "https://tailrd.ca/*", "http://localhost/*"]
+    "matches": ["https://www.tailrd.ca/*", "https://tailrd.ca/*"]
   }
 }

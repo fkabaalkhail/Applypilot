@@ -10,6 +10,7 @@ __pycache__/
 test.db
 test_*.db
 ci_test.db
+*.db-journal
 .hypothesis/
 node_modules/
 dist/
@@ -26,3 +27,6 @@ backend/data/autoapply.db
 tmp/
 1.15.0_0/
 .analysis-jr/
+
+# Store upload artifacts (rebuilt from dist/ on demand)
+chrome-extension/*.zip

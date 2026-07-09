@@ -88,6 +88,12 @@ def _hit(db: Session, name: str, identity: str, max_requests: int, window_second
             .first()
         )
         if row is None:
+            # Opportunistic purge: expired buckets are dead weight and nothing
+            # else deletes them. Piggybacking on new-bucket creation keeps the
+            # table bounded (~active identities × 2 windows) with no cron.
+            db.query(RateCounter).filter(
+                RateCounter.expires_at < datetime.now(timezone.utc)
+            ).delete(synchronize_session=False)
             row = RateCounter(
                 bucket_key=key,
                 count=0,
