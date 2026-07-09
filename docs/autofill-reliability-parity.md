@@ -116,3 +116,41 @@ web_accessible_resources round-trip, works offline). Keep the wordmark text.
 3. `npm run test:flow` / browser probes where feasible.
 4. Manual load-unpacked smoke on a Greenhouse + Workday form.
 5. Commit on a feature branch; do not push unless asked.
+
+---
+
+## OUTCOME — what shipped this session (branch `feat/autofill-reliability-parity`)
+
+**Shipped + tested (662 vitest green, typecheck clean, verified in real Chromium):**
+- **P0 value-commit cascade** — `dispatchCommitKeys` (Enter down/up, forced
+  keyCode 13) + `composed:true` input/change; wired into `writeTextLike` for
+  single-line inputs. Real-browser test confirmed it defeats a React-style
+  controlled-input revert.
+- **P0 web-component value setting** — `setNativeValue` fallback chain
+  (prototype-chain setter → instance value → setAttribute → setValue/
+  setAttributeValue). Real-browser test confirmed a custom-element setter fires.
+- **P1 split-date `<select>`** — `matchSelectOption` reduces a full-date answer
+  to Month/Day/Year when the option set is a date part; write+verify agree; zero
+  scanner/contentScript change. Real-browser test: `1995-06-15` → June/15/1995.
+- **Site registry parity** — added Jibe + Welcome to the Jungle.
+- **Real logo** — header now renders a faithful inline SVG of the Tailrd origami
+  paper-dart (CSP-safe), replacing the generic filled glyph.
+
+**Key finding:** our engine was already at/ahead of Jobright on architecture,
+combobox anti-contamination, honeypot detection, verify-retry, option matching,
+and ATS coverage — so NO architectural rewrite was warranted (it would have
+regressed safety logic Jobright lacks). Effort went to the real value-commit gaps.
+
+**Deferred — need live ATS validation before shipping (higher blast radius):**
+- **react-datepicker calendar popups** & 3-INPUT (not select) date groups — the
+  self-contained select reduction covers the common 3-`<select>` case; calendar
+  widgets need a new async driver + live testing.
+- **Pure ARIA `role=checkbox`/`role=radio`** not backed by a native input — the
+  scanner doesn't surface these; adding a control type is a scanner change best
+  validated live.
+- **Phone dial-code extraction** (`+NNN` from a phone number) — `matchOption`
+  already handles country-name and `+1`-style answers; full dial-code parsing is
+  a central-matcher change with regression risk, defer until a real failure case.
+- **Custom checkbox/radio styled-wrapper clicking** — `el.click()` already sets
+  the correct native value; only pure-CSS-`:checked` widgets that ignore the
+  input would benefit, and the double-toggle risk needs live verification.
