@@ -11,7 +11,13 @@
  * and verify separate is what lets the reconciler retry, detect drift and stay
  * idempotent (verify-before-write means an already-correct field is untouched).
  */
-import { cleanText, dispatchCommitKeys, dispatchInputEvents, setNativeValue } from "./domUtils";
+import {
+  cleanText,
+  dispatchCommitKeys,
+  dispatchInputEvents,
+  isPlaceholderFiller,
+  setNativeValue,
+} from "./domUtils";
 import { normalize } from "./fieldMatcher";
 import type { RuntimeControl } from "./formScanner";
 
@@ -66,6 +72,10 @@ export function writeControl(control: RuntimeControl, value: string): WriteResul
  * value. .focus()/.blur() are used so document.activeElement is correct too.
  */
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTHS_FULL = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 /** Parse a flexible date ("2020-01", "Jan 2020", "01/2020", "1/15/2020", "2020")
  *  into ISO parts, or null. */
@@ -347,7 +357,59 @@ function parseRange(text: string): [number, number] | null {
 
 function matchSelectOption(el: HTMLSelectElement, value: string): HTMLOptionElement | null {
   const options = Array.from(el.options).filter((o) => !o.disabled);
-  return matchOption(options, (o) => cleanText(o.textContent), (o) => o.value, value);
+  // Split-date pickers render Month / Day / Year as three separate <select>s
+  // that often share one visual label ("Date of birth"), so the resolver hands
+  // the SAME full date to each. Reduce it to the part this select expects before
+  // matching — a no-op for every non-date select (returns the value unchanged).
+  const target =
+    reduceDateForOptions(value, options.map((o) => cleanText(o.textContent))) ?? value;
+  return matchOption(options, (o) => cleanText(o.textContent), (o) => o.value, target);
+}
+
+type DatePart = "monthName" | "monthNum" | "day" | "year";
+
+/**
+ * When `value` is a full date AND this option set is one part of a split date
+ * picker, return just that part (as the form expects it); otherwise null so the
+ * caller matches the value unchanged. Gated on BOTH conditions so an ordinary
+ * numeric or text select is never reinterpreted as a date.
+ */
+function reduceDateForOptions(value: string, optionTexts: string[]): string | null {
+  const p = parseFlexibleDate(value);
+  if (!p) return null; // not a date answer — leave every other select untouched
+  switch (classifyDatePartOptions(optionTexts)) {
+    case "monthName":
+      return MONTHS_FULL[Number(p.m) - 1] ?? null;
+    case "monthNum":
+      return String(Number(p.m));
+    case "day":
+      return String(Number(p.d));
+    case "year":
+      return p.y;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Classify a select's options as a date part, or null. Requires a strong,
+ * near-complete signature (all 12 months, days running to 28–31, a run of
+ * 4-digit years) so a short numeric or bucketed-range select never trips it.
+ */
+function classifyDatePartOptions(texts: string[]): DatePart | null {
+  const vals = texts.map((t) => t.trim()).filter((t) => t && !isPlaceholderFiller(t));
+  if (vals.length < 4) return null;
+  const monthHits = vals.filter((t) => MONTHS.includes(t.slice(0, 3).toLowerCase())).length;
+  if (monthHits >= 12) return "monthName";
+  // Every remaining candidate must be a bare integer, or this isn't a date part.
+  if (!vals.every((t) => /^\d{1,4}$/.test(t))) return null;
+  const nums = vals.map(Number);
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  if (vals.every((t) => /^\d{4}$/.test(t)) && min >= 1900 && max <= 2100) return "year";
+  if (min === 1 && max >= 28 && max <= 31) return "day";
+  if (min === 1 && max === 12 && vals.length >= 12) return "monthNum";
+  return null;
 }
 
 function matchRadio(radios: HTMLInputElement[], value: string): HTMLInputElement | null {
