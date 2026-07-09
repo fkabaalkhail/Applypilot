@@ -374,7 +374,7 @@ describe("FlowController", () => {
     expect(progress[progress.length - 1].phase).toBe("done"); // resumed, not stopped
   });
 
-  it("narrates account walls and labels the manual gate after the real button", async () => {
+  it("self-advances an account wall without parking (creating the account is the flow's job)", async () => {
     const pages = [[field("1", "A")], [field("2", "B")]];
     const create = document.createElement("button");
     create.textContent = "Create Account";
@@ -382,12 +382,10 @@ describe("FlowController", () => {
     deps.accountStep = async () => ({ wall: "signup" as const });
     deps.hasUnfilledRequired = (snap): boolean => snap.fields[0]?.id === "1"; // page 1 only
     const controller = new FlowController(deps);
-    const run = controller.run(freshState(), null);
-    while (!progress.some((p) => p.pauseReason === "unfilled-required")) await Promise.resolve();
-    const gate = progress.find((p) => p.pauseReason === "unfilled-required");
-    expect(gate?.nextLabel).toBe("Create Account");
-    controller.notifyAdvanceRequested();
-    await run;
+    await controller.run(freshState(), null);
+    // No user gate on a wall: the flow clicks Create Account on its own — the
+    // Autofill click asked it to create the account. (Form pages still park.)
+    expect(progress.some((p) => p.phase === "ready" || p.pauseReason === "unfilled-required")).toBe(false);
     expect(progress.some((p) => p.phase === "filling" && p.detail === "creating account…")).toBe(true);
     expect(progress.some((p) => p.phase === "advancing" && p.detail === "creating account…")).toBe(true);
     expect(log).toContain("click:0");

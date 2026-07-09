@@ -210,7 +210,21 @@ async function main() {
   const pair = saved?.[origin];
   check("per-site pair recorded under Saved sign-ins", pair?.email === REG_EMAIL && pair?.password === REG_PASSWORD);
 
-  // 6. The application form fills from the profile and auto-advances (Next).
+  // 6. The application form fills from the profile, then parks at the user's
+  //    Next-page gate — one Autofill click fills every page; the USER turns
+  //    each page. Press the panel gate as the user would.
+  await pg.waitForFunction(
+    () => {
+      const sr = document.getElementById("applypilot-overlay-host")?.shadowRoot;
+      const btn = sr?.querySelector("#ap-flow-next");
+      const wrap = btn?.closest(".ap-flow-next-wrap");
+      return Boolean(wrap && wrap.style.display !== "none");
+    },
+    null,
+    { timeout: 45000 }
+  );
+  check("form page parked at the user's Next-page gate", true);
+  await pg.locator("#ap-flow-next").click({ timeout: 10000 });
   await pg.waitForURL((u) => u.pathname === "/form2", { timeout: 45000 });
   const form = new URL(pg.url()).searchParams;
   check(

@@ -205,8 +205,15 @@ export function updateFlowProgress(p: FlowProgress): void {
   refs.flowNextBtn.textContent = formatNextLabel(p);
   refs.flowNext.style.display =
     p.phase === "ready" || (p.phase === "paused" && p.pauseReason === "unfilled-required") ? "flex" : "none";
-  if (p.phase === "done") showBanner(formatFlowProgress(p), "ok");
-  if (p.phase === "stopped") showBanner(formatFlowProgress(p), "warn");
+  // Terminal beats are logged, never shown: a lingering "Done — 3 steps filled"
+  // / "Autofill flow stopped" sentence reads as clutter in the panel — the
+  // filled form itself is the feedback. Real errors still use the banner (see
+  // the autofill catch), and any earlier banner is cleared so it can't outlive
+  // the run it narrated.
+  if (p.phase === "done" || p.phase === "stopped") {
+    console.info(`[Tailrd] ${formatFlowProgress(p)}`);
+    showBanner("", "ok", true);
+  }
 }
 
 export function removeOverlay(): void {

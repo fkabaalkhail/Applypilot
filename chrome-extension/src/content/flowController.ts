@@ -195,20 +195,29 @@ export class FlowController {
       }
 
       // The page is filled — hand control back to the user. The flow never turns
-      // a page on its own: the panel shows a contextual bottom button (Create
-      // Account / Sign In / Continue / Next page, mirroring advText) and the flow
-      // advances only when the user presses it. One Autofill click fills every
-      // page; the user decides each page turn. A page with an unfilled required
-      // field surfaces the same gate as a "paused" beat so the panel can explain
-      // why (the site's own validation would reject an advance otherwise).
-      if (this.deps.hasUnfilledRequired(snap)) {
-        console.log("[Tailrd flow] parked — required field(s) still empty; press the advance button to continue anyway");
-        this.emit("paused", { pauseReason: "unfilled-required", nextLabel: advText || undefined });
+      // a FORM page on its own: the panel shows a contextual bottom button
+      // (Continue / Next page, mirroring advText) and the flow advances only
+      // when the user presses it. One Autofill click fills every page; the user
+      // decides each page turn. A page with an unfilled required field surfaces
+      // the same gate as a "paused" beat so the panel can explain why (the
+      // site's own validation would reject an advance otherwise).
+      //
+      // ACCOUNT WALLS are the exception: creating the account is the flow's own
+      // job (the user asked for it with the Autofill click), so Create Account /
+      // Sign In is clicked without parking — and if that click can't get
+      // through, the wall-didn't-advance branch below hands it to the user.
+      if (account.wall) {
+        console.log(`[Tailrd flow] account wall — clicking "${advText || "Create Account"}" without parking`);
       } else {
-        console.log(`[Tailrd flow] parked at ready — press "${advText || "Next page"}" to advance`);
-        this.emit("ready", { nextLabel: advText || undefined });
+        if (this.deps.hasUnfilledRequired(snap)) {
+          console.log("[Tailrd flow] parked — required field(s) still empty; press the advance button to continue anyway");
+          this.emit("paused", { pauseReason: "unfilled-required", nextLabel: advText || undefined });
+        } else {
+          console.log(`[Tailrd flow] parked at ready — press "${advText || "Next page"}" to advance`);
+          this.emit("ready", { nextLabel: advText || undefined });
+        }
+        if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
       }
-      if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
       // A blocker (e.g. a captcha) may have re-appeared while the flow waited, so
       // re-check before clicking advance.
       if (!(await this.waitWhileBlocked())) return this.finishStopped();
