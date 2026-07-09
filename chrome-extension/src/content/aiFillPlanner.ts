@@ -145,6 +145,12 @@ export interface FillRoute {
   backendFields: DetectedField[];
 }
 
+/** Values a single checkbox can actually take (mirrors writeEngine's
+ *  parseDesiredBool — duplicated so this module stays dependency-free). */
+export function isBoolish(value: string): boolean {
+  return /^(yes|y|true|1|agree|checked|no|n|false|0|unchecked)$/i.test(value.trim());
+}
+
 /**
  * Split the user-selected (already `fillable` + `proposedValue!=null`) fields into
  * the deterministic local fast-path vs the backend-primary judgment fields. EEO/
@@ -154,13 +160,19 @@ export function planFillRoute(selected: DetectedField[], threshold: number): Fil
   const localTargets: { fieldId: string; value: string }[] = [];
   const backendFields: DetectedField[] = [];
   for (const f of selected) {
+    // A single checkbox can only take a yes/no-ish value. Profile text routed at
+    // one (a job title landing on a "Current role" checkbox) can only fail as
+    // "Ambiguous checkbox value" — send it to the option-aware AI pass instead.
+    const checkboxMismatch =
+      f.controlType === "checkbox" && f.proposedValue !== null && !isBoolish(f.proposedValue);
     const deterministic =
+      !checkboxMismatch &&
       LOCAL_FAST_PATH.has(f.category) && f.confidence >= threshold && f.proposedValue !== null;
     if (deterministic) {
       localTargets.push({ fieldId: f.id, value: f.proposedValue as string });
     } else if (isAiCandidate(f)) {
       backendFields.push(f);
-    } else if (f.proposedValue !== null) {
+    } else if (f.proposedValue !== null && !checkboxMismatch) {
       localTargets.push({ fieldId: f.id, value: f.proposedValue });
     }
   }

@@ -303,6 +303,12 @@ export function matchOption<T>(
     }
   }
 
+  // A bucketed-range option set that the range tier could not place the answer
+  // in must FAIL here: the buckets normalize to the same tokens ("years",
+  // "000"), so token overlap would just select the first bucket — a confidently
+  // wrong answer. No match lets the re-ask round supply the real options.
+  if (items.filter((item) => parseRange(getText(item)) !== null).length >= 2) return null;
+
   const targetTokens = t.split(" ").filter((w) => w.length > 2);
   const targetSet = new Set(targetTokens);
   let best: { item: T; score: number } | null = null;
@@ -317,7 +323,9 @@ export function matchOption<T>(
       (w) => targetSet.has(w) || targetTokens.some((tw) => sharedPrefixLen(w, tw) >= 5)
     ).length;
     const score = overlap / tokens.length;
-    if (overlap > 0 && (!best || score > best.score)) best = { item, score };
+    // Below half the option's tokens is incidental overlap ("years", "other"),
+    // not a match — selecting on it is how wrong options get picked.
+    if (score >= 0.5 && (!best || score > best.score)) best = { item, score };
   }
   return best ? best.item : null;
 }

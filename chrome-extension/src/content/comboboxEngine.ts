@@ -68,13 +68,20 @@ function isMultiSelect(trigger: HTMLElement): boolean {
   for (const id of ids.split(/\s+/).filter(Boolean)) {
     if (trigger.ownerDocument.getElementById(id)?.getAttribute("aria-multiselectable") === "true") return true;
   }
-  return Boolean(trigger.closest('[class*="is-multi" i], [class*="multiselect" i]'));
+  // Workday's multiselect ("Type to Add Skills") exposes no ARIA multi signal —
+  // its container automation-id is the only reliable marker.
+  return Boolean(
+    trigger.closest(
+      '[class*="is-multi" i], [class*="multiselect" i], [data-automation-id*="multiselect" i]'
+    )
+  );
 }
 
 /** Split a multi-value answer into distinct items (never applied to a
- *  single-select — a single answer may legitimately contain a comma). */
+ *  single-select — a single answer may legitimately contain a comma). Capped so
+ *  a 30-skill profile can't turn one field into a minutes-long type/select loop. */
 function splitMultiValue(value: string): string[] {
-  return [...new Set(value.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean))];
+  return [...new Set(value.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean))].slice(0, 12);
 }
 
 /**
@@ -125,6 +132,17 @@ async function selectOne(
   // Already showing the desired value — idempotent no-op, never opens the menu.
   if (comboboxShowsValue(trigger, value)) return { filled: true };
 
+  // Anything we type into a typeahead is OURS to clean up: on any failure the
+  // input must go back to what it held before, so a filter string ("Quebec",
+  // a comma-joined skills list) is never left sitting in the field looking
+  // like an entered answer.
+  const input = trigger instanceof HTMLInputElement ? trigger : null;
+  const originalText = input?.value ?? "";
+  let lastTyped: string | null = null;
+  const restoreTyped = (): void => {
+    if (input && input.value !== originalText) typeInto(input, originalText);
+  };
+
   open(trigger);
 
   // Wait for the listbox to mount. Typeahead inputs may need the value typed in
@@ -139,25 +157,51 @@ async function selectOne(
   }
   let option = listbox ? findOption(listbox, value) : null;
   if (isTypeahead(trigger) && !option) {
-    typeInto(trigger as HTMLInputElement, value);
-    listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
-    option = listbox ? findOption(listbox, value) : null;
-    // A long answer can over-filter a substring-matching widget down to zero
-    // options ("I am not a protected veteran" never substring-matches "No, I am
-    // not a veteran"). Clear the filter text and re-match against the full list.
-    if (!option) {
-      typeInto(trigger as HTMLInputElement, "");
-      listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
-      option = listbox ? findOption(listbox, value) : null;
+    // Progressively broader filter texts: the full answer, its first word (a
+    // literal-substring search finds "TypeScript" but not "TypeScript /
+    // JavaScript"), then no filter at all (a long answer can over-filter a
+    // substring-matching widget down to zero options — "I am not a protected
+    // veteran" never substring-matches "No, I am not a veteran").
+    const firstWord = value.split(/[\s/,;]+/).filter(Boolean)[0] ?? "";
+    const attempts = [value];
+    if (firstWord.length >= 3 && firstWord.toLowerCase() !== value.trim().toLowerCase()) {
+      attempts.push(firstWord);
+    }
+    attempts.push("");
+    for (const text of attempts) {
+      lastTyped = text;
+      typeInto(trigger as HTMLInputElement, text);
+      // POLL for a match the whole budget after typing: async widgets (Workday's
+      // skills search, SF's paginated picklists) repopulate an already-mounted
+      // listbox a beat after the input event, so a single immediate read matches
+      // against the stale pre-filter options and misses every time.
+      const hit = await waitFor(
+        () => {
+          const lb = getListbox(trigger);
+          const opt = lb ? findOption(lb, value) : null;
+          return opt ? { lb, opt } : null;
+        },
+        sleep,
+        openWaitMs,
+        pollMs
+      );
+      if (hit) {
+        listbox = hit.lb;
+        option = hit.opt;
+        break;
+      }
+      listbox = getListbox(trigger) ?? listbox;
     }
   }
   if (!listbox) {
+    restoreTyped();
     close(trigger);
     return { filled: false, reason: `Couldn't open the "${truncate(value)}" dropdown — select it manually` };
   }
 
   if (!option) {
     const options = optionLabels(listbox);
+    restoreTyped();
     close(trigger);
     // Record what the listbox actually offered — distinguishes an async/empty
     // read from a contaminated (wrong-field) menu from a genuine match miss.
@@ -178,17 +222,35 @@ async function selectOne(
   // trigger collapsed, and reporting that as filled hides a real failure from
   // the user (the empty-required-dropdown bug). The widget displays the OPTION's
   // text, which for a fuzzy match ("I am not a protected veteran" → "No, I am
-  // not a veteran") differs from the target — accept either.
+  // not a veteran") differs from the target — accept either. One more trap: the
+  // input echoing back exactly what WE typed proves nothing (a click that lands
+  // nowhere leaves our filter text sitting there) — that echo only counts when
+  // the menu's dismissal corroborates that the selection landed.
   const committed = await waitFor(
-    () =>
-      comboboxShowsValue(trigger, value) || (chosenText && comboboxShowsValue(trigger, chosenText))
-        ? true
-        : null,
+    () => {
+      if (
+        comboboxShowsValue(trigger, value, lastTyped) ||
+        (chosenText && comboboxShowsValue(trigger, chosenText, lastTyped))
+      ) {
+        return true;
+      }
+      if (
+        input &&
+        input.value &&
+        input.value === lastTyped &&
+        (textMatches(input.value, value) || (chosenText !== "" && textMatches(input.value, chosenText)))
+      ) {
+        const lb = getListbox(trigger);
+        if (!lb || !isVisible(lb) || trigger.getAttribute("aria-expanded") === "false") return true;
+      }
+      return null;
+    },
     sleep,
     commitWaitMs,
     pollMs
   );
   if (!committed) {
+    restoreTyped();
     return { filled: false, reason: "Selection didn't stick — select it manually" };
   }
   return { filled: true };
@@ -275,8 +337,15 @@ function isTypeahead(trigger: HTMLElement): boolean {
 }
 
 function typeInto(input: HTMLInputElement, value: string): void {
+  // Bracket the value change with key events: legacy widgets (SAP
+  // SuccessFactors picklists) refresh their suggestion list on keyup, not on
+  // the input event, so without these the filter text lands but never filters.
+  const key = value ? value[value.length - 1] : "Backspace";
+  const init: KeyboardEventInit = { key, bubbles: true, cancelable: true, composed: true };
+  input.dispatchEvent(new KeyboardEvent("keydown", init));
   setNativeValue(input, value);
   dispatchInputEvents(input, value);
+  input.dispatchEvent(new KeyboardEvent("keyup", init));
 }
 
 // ---------------------------------------------------------------------------
@@ -453,7 +522,11 @@ function activeDescendantText(trigger: HTMLElement): string {
 }
 
 const VALUE_DISPLAY_SELECTOR =
-  '[class*="single-value" i], [class*="singlevalue" i], [class*="multi-value" i], [class*="multivalue" i]';
+  '[class*="single-value" i], [class*="singlevalue" i], [class*="multi-value" i], [class*="multivalue" i], ' +
+  // Chip/pill widgets (Workday's selectedItem, generic tag/token multiselects)
+  // show committed values outside any *-value class — without these a
+  // successful chip add verifies as "didn't stick".
+  '[data-automation-id*="selecteditem" i], [class*="chip" i], [class*="pill" i], [class*="token" i]';
 
 /** Texts of react-select-style single/multi-value display elements near the trigger.
  *  The committed-value div is a COUSIN of the input (react-select: value-container
@@ -478,10 +551,14 @@ function valueContainerTexts(trigger: HTMLElement): string[] {
 // Verification
 // ---------------------------------------------------------------------------
 
-/** Whether the combobox's committed/displayed value reflects the target. */
-function comboboxShowsValue(trigger: HTMLElement, value: string): boolean {
+/** Whether the combobox's committed/displayed value reflects the target.
+ *  `selfTyped` is the filter text WE typed into the input this run — when the
+ *  input still holds exactly that, it is our own echo, not commit evidence. */
+function comboboxShowsValue(trigger: HTMLElement, value: string, selfTyped?: string | null): boolean {
   const candidates: string[] = [];
-  if (trigger instanceof HTMLInputElement && trigger.value) candidates.push(trigger.value);
+  if (trigger instanceof HTMLInputElement && trigger.value && trigger.value !== selfTyped) {
+    candidates.push(trigger.value);
+  }
   if (trigger.tagName === "BUTTON") candidates.push(cleanText(trigger.textContent));
   // SAP SuccessFactors' rcmpaginatedselect commits the choice into the input's
   // `title` while leaving `value` empty and the placeholder ("No Selection")

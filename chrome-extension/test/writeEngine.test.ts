@@ -267,3 +267,26 @@ describe("matchOption — shared-prefix tier", () => {
     expect(matchOption(["category"], id, id, "cat")).toBeNull();
   });
 });
+
+describe("matchOption — wrong-option guards", () => {
+  const id = (s: string): string => s;
+
+  it("fails a bucketed-range set it can't place the answer in (never picks the first bucket)", () => {
+    // "seven years" has no digits, so the range tier can't place it; token
+    // overlap on "years" must not select an arbitrary bucket.
+    expect(
+      matchOption(["Under 1 year", "1-2 years", "3-5 years"], id, id, "seven years")
+    ).toBeNull();
+  });
+
+  it("still snaps a numeric answer into its bucket", () => {
+    expect(matchOption(["1-2 years", "3-5 years", "5+ years"], id, id, "7")).toBe("5+ years");
+  });
+
+  it("rejects incidental single-token overlap on a long option", () => {
+    // Only "working" overlaps (1 of 3 tokens) — that's noise, not a match.
+    expect(
+      matchOption(["Working Holiday Visa"], id, id, "several years working abroad")
+    ).toBeNull();
+  });
+});

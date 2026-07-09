@@ -7,6 +7,7 @@ Used by both the Plasmo extension and the React frontend.
 
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel
@@ -292,7 +293,9 @@ async def fill_form(
     if ai_fields:
         try:
             llm = get_llm_service()
-            context_parts = []
+            # Today's date lets the model compute durations ("Present" roles,
+            # years-of-experience questions) instead of guessing them.
+            context_parts = [f"TODAY'S DATE: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"]
             if request.profile is not None:
                 context_parts.append("APPLICANT:\n" + _profile_context(request.profile))
             elif settings:
@@ -329,11 +332,15 @@ async def fill_form(
                     # Match to options if applicable. Keep the AI's raw answer
                     # when nothing matches — the client fuzzy-matches (writeSelect
                     # / fillAriaCombobox); snapping to options[0] used to silently
-                    # select a "Select…" placeholder.
+                    # select a "Select…" placeholder. A LONG unmatched answer is
+                    # the exception: a conversational sentence can never land in
+                    # a choice control, so leave the field for the user instead.
                     if field.options:
                         matched_opt = _match_option(answer, field.options)
                         if matched_opt:
                             answer = matched_opt
+                        elif len(answer) > 80:
+                            continue
 
                     answers.append(FieldAnswer(
                         id=field.id, label=field.label, answer=answer,
@@ -401,6 +408,11 @@ def _match_option(answer: str, options: list[str]) -> str | None:
             rng = _parse_range(opt)
             if rng and rng[0] <= target_num <= rng[1]:
                 return opt
+    # A bucketed-range option set the range tier couldn't place the answer in
+    # must fail here: the buckets normalize to the same tokens ("years", "000"),
+    # so token overlap would just pick the first bucket — confidently wrong.
+    if sum(1 for opt in options if _parse_range(opt) is not None) >= 2:
+        return None
     # Morphological near-miss: a >=5-char shared token prefix ("canada" ↔
     # "canadian"). Mirrors the extension's matchOption tier (writeEngine.ts).
     answer_tokens = [w for w in re.split(r"[^a-z0-9]+", a) if len(w) > 2]
@@ -413,8 +425,10 @@ def _match_option(answer: str, options: list[str]) -> str | None:
             1 for w in tokens
             if any(_shared_prefix_len(w, t) >= 5 or w == t for t in answer_tokens)
         )
-        if overlap:
-            score = overlap / len(tokens)
+        # Below half the option's tokens is incidental overlap, not a match —
+        # selecting on it is how wrong options get picked (writeEngine parity).
+        score = overlap / len(tokens)
+        if overlap and score >= 0.5:
             if best is None or score > best[1]:
                 best = (opt, score)
     if best:

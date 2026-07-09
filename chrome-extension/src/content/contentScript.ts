@@ -62,7 +62,7 @@ import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
-import { aiFillCandidates, needsOptionHarvest, planAiFill, planFillRoute, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
+import { aiFillCandidates, isBoolish, needsOptionHarvest, planAiFill, planFillRoute, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { closestDemographicOption } from "./demographicMatch";
 import { toApplicantProfile } from "./applicantProfile";
 import { splitByCache, cacheAnswers } from "./answerCache";
@@ -415,13 +415,21 @@ function initialize(): void {
       if (signal?.aborted) break; // Stop pressed — don't drive more fields
       const control = registry.get(t.fieldId);
       if (!control?.driver) { outcomes.push({ fieldId: t.fieldId, ok: false }); continue; }
+      // A multi-value widget (skills) takes one chip per item — the driver sets
+      // a single value, so route it to the combobox engine's chip loop instead.
+      if (control.multi && control.el) {
+        const res = await fillAriaCombobox(control.el, t.value, { multi: true });
+        outcomes.push({ fieldId: t.fieldId, ok: res.filled, reason: res.reason });
+        if (!res.filled && res.options) reask.push({ fieldId: t.fieldId, options: res.options });
+        continue;
+      }
       const res = await driveField(t.fieldId, t.value, control.driver);
       if (res.ok || !control.el) {
         outcomes.push({ fieldId: t.fieldId, ok: res.ok, reason: res.ok ? undefined : res.reason });
         continue;
       }
       // Driver miss — best-effort ARIA fallback: may fill, or harvest options.
-      const fb = await fillAriaCombobox(control.el, t.value);
+      const fb = await fillAriaCombobox(control.el, t.value, { multi: control.multi });
       outcomes.push({ fieldId: t.fieldId, ok: fb.filled, reason: fb.reason });
       if (!fb.filled && fb.options) reask.push({ fieldId: t.fieldId, options: fb.options });
     }
@@ -696,10 +704,13 @@ function initialize(): void {
         aiFill = await fillItems(plan.simpleTargets, true, signal);
 
         // Local fallback: judgment fields that had a local value but weren't answered
-        // by the backend still fill from proposedValue — no regression.
+        // by the backend still fill from proposedValue — no regression. A single
+        // checkbox with a non-boolean value is excluded: it was routed to the AI
+        // precisely because that value can only fail as "Ambiguous checkbox value".
         const answered = new Set<string>(plan.simpleTargets.map((t) => t.fieldId));
         const fallbackTargets = route.backendFields
           .filter((f) => !answered.has(f.id) && f.proposedValue !== null)
+          .filter((f) => f.controlType !== "checkbox" || isBoolish(f.proposedValue as string))
           .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
         fallbackFill = await fillItems(fallbackTargets, true, signal);
       }

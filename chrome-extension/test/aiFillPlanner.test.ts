@@ -172,6 +172,30 @@ describe("planFillRoute", () => {
     expect(r.localTargets).toEqual([{ fieldId: "a", value: "me@x.com" }]);
     expect(r.backendFields).toEqual([]);
   });
+  it("routes a checkbox holding a non-boolean profile value to the backend (never 'Ambiguous checkbox value')", () => {
+    const r = planFillRoute(
+      [pfField({ id: "a", category: "currentTitle", confidence: 0.9, controlType: "checkbox", proposedValue: "Software Engineer" })],
+      0.7
+    );
+    expect(r.backendFields.map((f) => f.id)).toEqual(["a"]);
+    expect(r.localTargets).toEqual([]);
+  });
+  it("still fills a checkbox locally when the value is boolean-ish", () => {
+    const r = planFillRoute(
+      [pfField({ id: "a", category: "email", confidence: 0.9, controlType: "checkbox", proposedValue: "Yes" })],
+      0.7
+    );
+    expect(r.localTargets).toEqual([{ fieldId: "a", value: "Yes" }]);
+    expect(r.backendFields).toEqual([]);
+  });
+  it("drops a sensitive checkbox with a non-boolean value instead of failing it", () => {
+    const r = planFillRoute(
+      [pfField({ id: "a", category: "eeoGender", confidence: 0.9, controlType: "checkbox", proposedValue: "Female", sensitive: true })],
+      0.7
+    );
+    expect(r.localTargets).toEqual([]);
+    expect(r.backendFields).toEqual([]);
+  });
 });
 
 import { planReaskFields, type ReaskCandidate } from "../src/content/aiFillPlanner";

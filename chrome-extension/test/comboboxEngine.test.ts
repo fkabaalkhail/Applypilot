@@ -790,3 +790,172 @@ describe("multi-select combobox (skills / tags)", () => {
     expect(res.reason).toContain("Rust");
   });
 });
+
+describe("fillAriaCombobox — async type-to-filter (paginated picklists)", () => {
+  /** An SF-style paginated picklist: mounts page 1 (alphabetical) on open; the
+   *  target option only appears after the filter text is typed, and the
+   *  filtered options arrive ASYNCHRONOUSLY (server round-trip). Commits the
+   *  choice into the input's `title`, like SF's rcmpaginatedselect. */
+  function paginatedPicklist(
+    firstPage: string[],
+    filtered: Record<string, string[]>
+  ): HTMLInputElement {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    const lbId = `pp-${Math.random().toString(36).slice(2)}`;
+    input.setAttribute("aria-owns", lbId);
+    document.body.append(input);
+
+    const renderOptions = (labels: string[]): void => {
+      const lb = document.getElementById(lbId);
+      if (!lb) return;
+      lb.textContent = "";
+      for (const label of labels) {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.textContent = label;
+        li.addEventListener("click", () => {
+          input.setAttribute("title", label);
+          input.setAttribute("aria-expanded", "false");
+          lb.remove();
+        });
+        lb.append(li);
+      }
+    };
+
+    input.addEventListener("click", () => {
+      if (input.getAttribute("aria-expanded") === "true") return;
+      input.setAttribute("aria-expanded", "true");
+      const lb = document.createElement("ul");
+      lb.id = lbId;
+      lb.setAttribute("role", "listbox");
+      document.body.append(lb);
+      renderOptions(firstPage);
+    });
+    // The filter runs on keyup (like SAP) and repopulates a beat later (server).
+    input.addEventListener("keyup", () => {
+      const q = input.value.trim();
+      setTimeout(() => renderOptions(q ? filtered[q] ?? [] : firstPage), 10);
+    });
+    return input;
+  }
+
+  it("polls past the stale page-1 list for asynchronously filtered options", async () => {
+    const input = paginatedPicklist(
+      ["No Selection", "Aarhus", "Abaco", "Abidjan"],
+      { Quebec: ["Quebec", "Quebec City"] }
+    );
+    // real timers so the async repopulate is observed
+    const res = await fillAriaCombobox(input, "Quebec", { openWaitMs: 500, commitWaitMs: 300, pollMs: 20 });
+    expect(res.filled).toBe(true);
+    expect(input.getAttribute("title")).toBe("Quebec");
+  });
+
+  it("restores the typed filter text when the selection never commits", async () => {
+    // Typing surfaces a clickable option, but the widget never commits a value —
+    // the typed filter must not remain in the field, where it reads as an answer.
+    const input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    const lbId = "inert-lb";
+    input.setAttribute("aria-owns", lbId);
+    document.body.append(input);
+    input.addEventListener("click", () => {
+      input.setAttribute("aria-expanded", "true");
+      if (!document.getElementById(lbId)) {
+        const lb = document.createElement("ul");
+        lb.id = lbId;
+        lb.setAttribute("role", "listbox");
+        document.body.append(lb);
+      }
+    });
+    input.addEventListener("keyup", () => {
+      const lb = document.getElementById(lbId);
+      if (!lb) return;
+      lb.textContent = "";
+      if (input.value === "Quebec") {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.textContent = "Quebec";
+        lb.append(li); // clicking it does nothing — the commit never happens
+      }
+    });
+    const res = await fillAriaCombobox(input, "Quebec", { openWaitMs: 300, commitWaitMs: 200, pollMs: 20 });
+    expect(res.filled).toBe(false);
+    expect(input.value).toBe(""); // typed filter cleaned up, not left as an "answer"
+  });
+});
+
+describe("fillAriaCombobox — Workday multiselect (Type to Add Skills)", () => {
+  /** Workday's skills widget: input inside a multiselectInputContainer, server
+   *  suggestions arrive async after typing ("No Items." when nothing matches),
+   *  each selection becomes a chip and clears the input. */
+  function workdaySkills(catalog: string[]): { input: HTMLInputElement; chips: () => (string | null)[] } {
+    const container = document.createElement("div");
+    container.setAttribute("data-automation-id", "multiselectInputContainer");
+    const chipsBox = document.createElement("div");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    const lbId = `wd-${Math.random().toString(36).slice(2)}`;
+    input.setAttribute("aria-controls", lbId);
+    container.append(chipsBox, input);
+    document.body.append(container);
+
+    input.addEventListener("keyup", () => {
+      setTimeout(() => {
+        let lb = document.getElementById(lbId);
+        if (!lb) {
+          lb = document.createElement("div");
+          lb.id = lbId;
+          lb.setAttribute("role", "listbox");
+          document.body.append(lb);
+        }
+        lb.textContent = "";
+        const q = input.value.trim().toLowerCase();
+        const hits = q ? catalog.filter((s) => s.toLowerCase().includes(q)) : [];
+        for (const label of hits.length ? hits : ["No Items."]) {
+          const o = document.createElement("div");
+          o.setAttribute("role", "option");
+          o.textContent = label;
+          if (label !== "No Items.") {
+            o.addEventListener("click", () => {
+              const chip = document.createElement("span");
+              chip.className = "chip";
+              chip.setAttribute("data-automation-id", "selectedItem");
+              chip.textContent = label;
+              chipsBox.append(chip);
+              input.value = "";
+              input.setAttribute("aria-expanded", "false");
+              document.getElementById(lbId)?.remove();
+            });
+          }
+          lb.append(o);
+        }
+      }, 10);
+    });
+    return {
+      input,
+      chips: () => Array.from(chipsBox.querySelectorAll(".chip")).map((c) => c.textContent),
+    };
+  }
+
+  it("detects multi via the automation id and adds one chip per skill", async () => {
+    const { input, chips } = workdaySkills(["Python", "Java", "TypeScript"]);
+    const res = await fillAriaCombobox(input, "Python, Java", { openWaitMs: 200, commitWaitMs: 300, pollMs: 20 });
+    expect(res.filled).toBe(true);
+    expect(chips().sort()).toEqual(["Java", "Python"]);
+  });
+
+  it("skips skills the catalog doesn't offer and leaves no typed residue", async () => {
+    const { input, chips } = workdaySkills(["Python"]);
+    const res = await fillAriaCombobox(input, "Python, COBOL", { openWaitMs: 200, commitWaitMs: 300, pollMs: 20 });
+    expect(res.filled).toBe(true);
+    expect(chips()).toEqual(["Python"]);
+    expect(input.value).toBe(""); // the unmatched "COBOL" isn't left in the box
+  });
+});
