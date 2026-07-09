@@ -17,9 +17,9 @@ const SRC = path.join(root, "docs", "Logo.jpeg");
 const OUT = path.join(root, "chrome-extension", "src", "content", "brandLogo.ts");
 
 // The full horizontal logo lockup (paper-plane ring mark + "Tailrd" wordmark),
-// hand-cropped tight from the 1024×1024 source (auto-trim collapses on the
-// mostly-white art).
-const CROP = { left: 125, top: 378, width: 772, height: 250 };
+// hand-cropped from the 1024×1024 source with even margins so the ring/plane top
+// is never clipped (auto-trim collapses on the mostly-white art).
+const CROP = { left: 128, top: 336, width: 770, height: 286 };
 
 const png = await sharp(SRC)
   .extract(CROP)
