@@ -34,6 +34,7 @@ from backend.services.resume_document import (
     document_to_profile,
 )
 from backend.services.resume_metrics import build_digest, render_digest
+from backend.services.resume_pdf import render_resume_pdf
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -236,6 +237,28 @@ async def download_resume_file(
     )
     if not record:
         raise HTTPException(status_code=404, detail="Resume not found.")
+
+    # Edited after upload → the stored original no longer matches what the user
+    # sees in the web app. Render the CURRENT document so the extension attaches
+    # exactly that; the untouched original streams below as before. Render
+    # failures fall back to the original rather than failing the attach.
+    if record.content_updated_at is not None:
+        try:
+            pdf = render_resume_pdf(db_record_to_document(record))
+            base = (record.file_name or record.name or "resume").rsplit(".", 1)[0] or "resume"
+            return Response(
+                content=pdf,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'inline; filename="{base}.pdf"',
+                    "Cache-Control": "private, no-store",
+                },
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "Fresh render failed for resume %s (%s) — serving the stored original", resume_id, e
+            )
+
     if not record.file_blob_url:
         raise HTTPException(
             status_code=404,
@@ -311,6 +334,10 @@ def update_resume(
             record.custom_sections = [cs.model_dump() for cs in profile.custom_sections]
         if "section_order" in sent:
             record.section_order = profile.section_order
+
+        # The document's content diverged from the uploaded file — from now on
+        # the file download renders the current document (see download_resume_file).
+        record.content_updated_at = datetime.datetime.utcnow()
 
     record.updated_at = datetime.datetime.utcnow()
     db.commit()

@@ -208,6 +208,14 @@ export async function getSnapshotForUi(
 export async function downloadResumeFile(
   resumeId: number
 ): Promise<{ dataBase64: string; name: string; contentType: string }> {
+  // The snapshot's TTL must never decide what lands in an ATS: a résumé edited
+  // on the web seconds ago has already bumped the server version, so revalidate
+  // NOW (one cheap version GET). Offline/auth errors keep the cached paths below.
+  try {
+    await syncIfStale();
+  } catch {
+    // authedRaw below surfaces a real auth failure; cache covers offline.
+  }
   const currentVersion = (await getSnapshotVersion()) ?? 0;
 
   const cached = await getCachedResumeFile(resumeId);

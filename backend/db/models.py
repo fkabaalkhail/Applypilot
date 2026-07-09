@@ -218,6 +218,10 @@ class ResumeProfileDB(Base):
     file_content_type = Column(String, nullable=True)
     file_size = Column(Integer, nullable=True)
     file_uploaded_at = Column(DateTime, nullable=True)
+    # When the structured content was last edited AFTER upload (web-app editor).
+    # Set → the stored original no longer matches what the user sees, so the
+    # file download renders the current document instead of streaming the blob.
+    content_updated_at = Column(DateTime, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

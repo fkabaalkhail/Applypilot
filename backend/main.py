@@ -25,6 +25,7 @@ from backend.migrations.add_onboarding_field import run_migration as run_onboard
 from backend.migrations.add_setup_field import run_migration as run_setup_migration
 from backend.migrations.add_autofill_profile_fields import run_migration as run_autofill_profile_migration
 from backend.migrations.add_resume_sections import run_migration as run_resume_sections_migration
+from backend.migrations.add_resume_content_updated import run_migration as run_resume_content_updated_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile, answers, autofill
 from backend.routers import auth, auth_extension, extension, tailor, cover_letter
 from backend.routers.feedback import router as feedback_router
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
     run_setup_migration()
     run_autofill_profile_migration()
     run_resume_sections_migration()
+    run_resume_content_updated_migration()
     yield
 
 
