@@ -14,6 +14,7 @@
 import { reattachIfDetached } from "./domUtils";
 import { base64ToFile } from "./fileUpload";
 import { resolveCompanyLogo } from "./companyLogo";
+import { BRAND_LOGO_DATA_URI } from "./brandLogo";
 import { buildTailorCardHtml } from "./tailorCard";
 import { buildCoverLetterCardHtml } from "./coverLetterCard";
 import {
@@ -266,27 +267,11 @@ const I_CHECK = ph(P_CHECK);
 const I_DASH = ph(P_DASH);
 const I_INFO = ph(P_INFO);
 
-// The real Tailrd brand mark, reproduced as inline SVG: an OUTLINED origami
-// paper-dart (a far wing + a folded near wing sharing the centre crease) with
-// three trailing motion dashes, inside a thin ring — matching logo-icon.png.
-// Line-art (stroke, not fill) is what makes it the actual logo rather than a
-// generic solid paper-plane glyph. currentColor picks up --stripe-primary (the
-// brand purple). Inline SVG is immune to the page's img-src CSP, which blocks
-// data:-URI <img> on strict ATS sites.
-const I_BRAND =
-  '<svg viewBox="0 0 256 256" fill="none" aria-hidden="true">' +
-  '<circle cx="128" cy="128" r="112" stroke="currentColor" stroke-width="9"/>' +
-  '<g stroke="currentColor" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">' +
-  // Far (upper) wing: nose → back tip → centre keel.
-  '<path d="M198 68 L54 148 L122 150 Z"/>' +
-  // Near (folded) wing: nose → centre keel → tail point.
-  '<path d="M198 68 L122 150 L146 202 Z"/>' +
-  // Motion dashes trailing the tail toward the lower-left, clear of the body.
-  '<line x1="56" y1="178" x2="76" y2="166"/>' +
-  '<line x1="49" y1="188" x2="69" y2="176"/>' +
-  '<line x1="42" y1="198" x2="62" y2="186"/>' +
-  "</g>" +
-  "</svg>";
+// The header brand mark is the real Tailrd wing logo, rendered as a data-URI
+// <img> (see brandLogo.ts + wireBrandLogo). It is NOT an inline SVG because the
+// real logo is a gradient wing that can't be faithfully reproduced as hand-coded
+// vector; the <img> shows the true logo where the page CSP allows it and the
+// header falls back to the "Tailrd" wordmark where a strict img-src CSP blocks it.
 
 
 // ---------------------------------------------------------------------------
@@ -380,6 +365,7 @@ export const STYLES = `
   color: var(--stripe-primary);
 }
 .ap-brand-logo svg { width: 28px; height: 28px; }
+.ap-brand-img { width: 30px; height: 30px; object-fit: contain; display: block; }
 .ap-brand-name { font-weight: 800; font-size: 18px; color: var(--stripe-ink); letter-spacing: -0.3px; }
 .ap-header-right { display: flex; align-items: center; gap: 6px; }
 .ap-icon-btn {
@@ -1033,8 +1019,27 @@ function ensureMounted(): void {
   // wireEvents dereferenced a null refs and threw, aborting overlay mount — the
   // panel then never opened on any form page.)
   refs = collectRefs(root);
+  wireBrandLogo(root);
   wireEvents(root);
   installMountWatchdog();
+}
+
+/**
+ * The header mark is the real Tailrd logo as a data-URI <img>. Pages with a
+ * strict `img-src` CSP (Greenhouse, Workday, many banks) block data-URI images,
+ * and inline `onerror=""` handlers are blocked too — so attach the error handler
+ * from our own (allowed) content-script JS, and set `src` only AFTER it is live
+ * so a synchronous failure can't beat the listener. On failure we hide the mark
+ * and let the "Tailrd" wordmark carry the brand.
+ */
+function wireBrandLogo(root: HTMLElement): void {
+  const img = root.querySelector<HTMLImageElement>(".ap-brand-img");
+  if (!img) return;
+  img.addEventListener("error", () => {
+    const holder = img.closest<HTMLElement>(".ap-brand-logo");
+    if (holder) holder.style.display = "none";
+  });
+  img.src = BRAND_LOGO_DATA_URI;
 }
 
 /**
@@ -1062,7 +1067,7 @@ export function buildHTML(): string {
       <!-- Header -->
       <header class="ap-header">
         <div class="ap-brand">
-          <span class="ap-brand-logo">${I_BRAND}</span>
+          <span class="ap-brand-logo"><img class="ap-brand-img" alt="Tailrd" /></span>
           <span class="ap-brand-name">Tailrd</span>
         </div>
         <div class="ap-header-right">
