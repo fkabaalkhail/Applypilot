@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../hooks/useAuthFetch";
 import { useResumeUpload, RESUME_UPLOAD_TIPS } from "../hooks/useResumeUpload";
+import { formatDate, timeAgo } from "../lib/datetime";
 import "../resume.css";
 import { PageIntro } from "../onboarding";
 
@@ -15,19 +16,6 @@ interface ResumeListItem {
   status: string;
   created_at: string;
   updated_at: string;
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "1 day ago";
-  if (days < 30) return `${days} days ago`;
-  const months = Math.floor(days / 30);
-  return months === 1 ? "a month ago" : `${months} months ago`;
 }
 
 export default function Resume() {
@@ -158,8 +146,8 @@ export default function Resume() {
                     </span>
                   </td>
                   <td className="resume-target-cell">{resume.target_job_title || <span className="text-muted">Not set</span>}</td>
-                  <td className="resume-date-cell">{timeAgo(resume.updated_at)}</td>
-                  <td className="resume-date-cell">{timeAgo(resume.created_at)}</td>
+                  <td className="resume-date-cell" title={formatDate(resume.updated_at)}>{timeAgo(resume.updated_at)}</td>
+                  <td className="resume-date-cell" title={formatDate(resume.created_at)}>{timeAgo(resume.created_at)}</td>
                   <td className="resume-actions-cell">
                     <button
                       className="resume-menu-btn"

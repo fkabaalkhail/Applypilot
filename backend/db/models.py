@@ -194,11 +194,18 @@ class ResumeProfileDB(Base):
     other_link = Column(String, nullable=True)
 
     # Structured sections (JSON)
+    summary = Column(Text, nullable=True)
+    summary_title = Column(String, nullable=True)
     skills = Column(JSON, default=list)
     experience = Column(JSON, default=list)
     education = Column(JSON, default=list)
     projects = Column(JSON, default=list)
     technologies = Column(JSON, default=dict)
+    # Everything a resume can have that isn't one of the sections above:
+    # certifications, awards, volunteering, publications, languages…
+    custom_sections = Column(JSON, default=list)
+    # The order the sections appeared in the uploaded file.
+    section_order = Column(JSON, default=list)
 
     # Raw text and analysis
     raw_text = Column(Text, nullable=True)

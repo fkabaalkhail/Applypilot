@@ -3,20 +3,33 @@ Adapters between the stored resume profile and the structured ``ResumeDocument``
 
 ``db_record_to_document`` builds a document from a ``ResumeProfileDB`` row using
 the structured columns that were already parsed at upload time (no re-parse, no
-LLM call). ``document_to_text`` flattens a document back to plain text for the
-"Copy" button and for diffing/match-scoring.
+LLM call). ``document_to_profile`` is its inverse, so a rewritten document can be
+folded back into the profile columns. ``document_to_text`` flattens a document to
+plain text for the "Copy" button and for diffing/match-scoring.
+
+Section and item ids are *semantic and stable* ("experience", "experience-0",
+"custom-a1b2"). That is what lets ``merge_rewrite`` re-impose the original facts
+onto an LLM rewrite, and what lets ``document_to_profile`` route each section back
+to the column it came from.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from backend.schemas.resume import ResumeProfile
 from backend.schemas.resume_document import (
     ResumeDocument,
     ResumeHeader,
     Section,
     SectionItem,
 )
+
+# Prefix marking a section id that came from a ResumeProfile.custom_sections entry.
+CUSTOM_PREFIX = "custom-"
+
+_COURSEWORK_PREFIX = "Relevant coursework: "
+_GPA_PREFIX = "GPA: "
 
 
 def _get(obj: Any, key: str, default: Any = "") -> Any:
@@ -34,11 +47,120 @@ def _str_list(value: Any) -> list[str]:
     return [str(v).strip() for v in value if str(v).strip()]
 
 
-def db_record_to_document(record: Any) -> ResumeDocument:
-    """Build a ``ResumeDocument`` from a ``ResumeProfileDB`` row.
+def _experience_section(experience: list[Any]) -> Section:
+    return Section(
+        id="experience",
+        type="experience",
+        title="WORK EXPERIENCE",
+        items=[
+            SectionItem(
+                id=f"experience-{i}",
+                title=_get(e, "title"),
+                subtitle=_get(e, "company"),
+                location=_get(e, "location"),
+                start_date=_get(e, "start_date"),
+                end_date=_get(e, "end_date"),
+                bullets=_str_list(_get(e, "bullets", [])),
+            )
+            for i, e in enumerate(experience)
+        ],
+    )
 
-    Only sections that actually have content are emitted, in a conventional
-    order. The theme is the default (clean, ATS-safe) template.
+
+def _education_section(education: list[Any]) -> Section:
+    items: list[SectionItem] = []
+    for i, ed in enumerate(education):
+        gpa = _get(ed, "gpa")
+        coursework = _str_list(_get(ed, "coursework", []))
+        bullets = _str_list(_get(ed, "achievements", []))
+        if coursework:
+            bullets = bullets + [f"{_COURSEWORK_PREFIX}{', '.join(coursework)}"]
+        items.append(
+            SectionItem(
+                id=f"education-{i}",
+                title=_get(ed, "degree"),
+                subtitle=_get(ed, "school"),
+                location=_get(ed, "location"),
+                start_date=_get(ed, "start_date"),
+                end_date=_get(ed, "end_date"),
+                detail=f"{_GPA_PREFIX}{gpa}" if gpa else "",
+                bullets=bullets,
+            )
+        )
+    return Section(id="education", type="education", title="EDUCATION", items=items)
+
+
+def _projects_section(projects: list[Any]) -> Section:
+    return Section(
+        id="projects",
+        type="projects",
+        title="PROJECTS",
+        items=[
+            SectionItem(
+                id=f"projects-{i}",
+                title=_get(p, "name"),
+                subtitle=_get(p, "organization"),
+                location=_get(p, "location"),
+                start_date=_get(p, "start_date"),
+                end_date=_get(p, "end_date"),
+                link=_get(p, "link"),
+                bullets=_str_list(_get(p, "bullets", [])),
+            )
+            for i, p in enumerate(projects)
+        ],
+    )
+
+
+def _custom_section(raw: Any) -> Section | None:
+    """A stored ``CustomSection`` → a renderable ``Section``.
+
+    Flat ``bullets`` become a single untitled item so the renderer, the PDF, and
+    the rewriter all see one uniform shape.
+    """
+    cid = _get(raw, "id")
+    title = _get(raw, "title")
+    text = _get(raw, "text")
+    bullets = _str_list(_get(raw, "bullets", []))
+    raw_items = _get(raw, "items", []) or []
+
+    items = [
+        SectionItem(
+            id=f"{CUSTOM_PREFIX}{cid}-{i}",
+            title=_get(it, "title"),
+            subtitle=_get(it, "subtitle"),
+            location=_get(it, "location"),
+            start_date=_get(it, "start_date"),
+            end_date=_get(it, "end_date"),
+            detail=_get(it, "detail"),
+            link=_get(it, "link"),
+            bullets=_str_list(_get(it, "bullets", [])),
+        )
+        for i, it in enumerate(raw_items)
+    ]
+    if bullets:
+        items.append(SectionItem(id=f"{CUSTOM_PREFIX}{cid}-bullets", bullets=bullets))
+
+    if not (text or items):
+        return None
+
+    kind = _get(raw, "kind") or "custom"
+    return Section(
+        id=f"{CUSTOM_PREFIX}{cid}",
+        type="certifications" if kind == "certifications" else "custom",
+        title=title or "ADDITIONAL",
+        text=text,
+        items=items,
+    )
+
+
+def db_record_to_document(record: Any) -> ResumeDocument:
+    """Build a ``ResumeDocument`` from a ``ResumeProfileDB`` row or ResumeProfile.
+
+    Only sections with content are emitted. They follow the record's own
+    ``section_order`` when it has one — that is the order the sections appeared in
+    the file the user uploaded — and a conventional order otherwise. Any section
+    with content that ``section_order`` omits is still appended, so nothing is
+    lost to a bad or stale ordering.
     """
     header = ResumeHeader(
         name=_get(record, "profile_name") or _get(record, "name") or "",
@@ -50,76 +172,32 @@ def db_record_to_document(record: Any) -> ResumeDocument:
         other_link=_get(record, "other_link"),
     )
 
-    sections: list[Section] = []
+    by_key: dict[str, Section] = {}
+
+    summary = _get(record, "summary")
+    if summary:
+        by_key["summary"] = Section(
+            id="summary",
+            type="summary",
+            title=_get(record, "summary_title") or "PROFESSIONAL SUMMARY",
+            text=summary,
+        )
 
     experience = _get(record, "experience", []) or []
     if experience:
-        sections.append(
-            Section(
-                type="experience",
-                title="WORK EXPERIENCE",
-                items=[
-                    SectionItem(
-                        title=_get(e, "title"),
-                        subtitle=_get(e, "company"),
-                        location=_get(e, "location"),
-                        start_date=_get(e, "start_date"),
-                        end_date=_get(e, "end_date"),
-                        bullets=_str_list(_get(e, "bullets", [])),
-                    )
-                    for e in experience
-                ],
-            )
-        )
+        by_key["experience"] = _experience_section(experience)
 
     education = _get(record, "education", []) or []
     if education:
-        items: list[SectionItem] = []
-        for ed in education:
-            detail_bits = []
-            gpa = _get(ed, "gpa")
-            if gpa:
-                detail_bits.append(f"GPA: {gpa}")
-            coursework = _str_list(_get(ed, "coursework", []))
-            bullets = _str_list(_get(ed, "achievements", []))
-            if coursework:
-                bullets = bullets + [f"Relevant coursework: {', '.join(coursework)}"]
-            items.append(
-                SectionItem(
-                    title=_get(ed, "degree"),
-                    subtitle=_get(ed, "school"),
-                    start_date=_get(ed, "start_date"),
-                    end_date=_get(ed, "end_date"),
-                    detail="  ".join(detail_bits),
-                    bullets=bullets,
-                )
-            )
-        sections.append(Section(type="education", title="EDUCATION", items=items))
+        by_key["education"] = _education_section(education)
 
     projects = _get(record, "projects", []) or []
     if projects:
-        sections.append(
-            Section(
-                type="projects",
-                title="PROJECTS",
-                items=[
-                    SectionItem(
-                        title=_get(p, "name"),
-                        subtitle=_get(p, "organization"),
-                        location=_get(p, "location"),
-                        start_date=_get(p, "start_date"),
-                        end_date=_get(p, "end_date"),
-                        link=_get(p, "link"),
-                        bullets=_str_list(_get(p, "bullets", [])),
-                    )
-                    for p in projects
-                ],
-            )
-        )
+        by_key["projects"] = _projects_section(projects)
 
     skills = _str_list(_get(record, "skills", []))
     if skills:
-        sections.append(Section(type="skills", title="SKILLS", skills=skills))
+        by_key["skills"] = Section(id="skills", type="skills", title="SKILLS", skills=skills)
 
     technologies = _get(record, "technologies", {}) or {}
     if isinstance(technologies, dict) and technologies:
@@ -129,11 +207,107 @@ def db_record_to_document(record: Any) -> ResumeDocument:
             if _str_list(items)
         }
         if groups:
-            sections.append(
-                Section(type="technologies", title="TECHNOLOGIES", groups=groups)
+            by_key["technologies"] = Section(
+                id="technologies", type="technologies", title="TECHNOLOGIES", groups=groups
             )
 
-    return ResumeDocument(header=header, sections=sections)
+    for raw in _get(record, "custom_sections", []) or []:
+        section = _custom_section(raw)
+        if section is not None:
+            by_key[f"custom:{_get(raw, 'id')}"] = section
+
+    default_order = [
+        "summary", "experience", "education", "projects", "skills", "technologies",
+        *(k for k in by_key if k.startswith("custom:")),
+    ]
+    requested = _str_list(_get(record, "section_order", []))
+    ordered_keys = [k for k in requested if k in by_key]
+    ordered_keys += [k for k in default_order if k in by_key and k not in ordered_keys]
+
+    return ResumeDocument(header=header, sections=[by_key[k] for k in ordered_keys])
+
+
+def document_to_profile(doc: ResumeDocument, base: ResumeProfile) -> ResumeProfile:
+    """Fold a (possibly rewritten) document back into a ResumeProfile.
+
+    ``base`` supplies every factual field; the document supplies the *content* the
+    AI is allowed to touch — summary text, skills, technology groups, and bullets —
+    plus the new section order. Sections and items are matched by their semantic
+    ids, so an item can never land under the wrong employer.
+    """
+    profile = base.model_copy(deep=True)
+    sections = {s.id: s for s in doc.sections}
+
+    summary_section = sections.get("summary")
+    if summary_section is not None and summary_section.text.strip():
+        profile.summary = summary_section.text.strip()
+        profile.summary_title = summary_section.title or profile.summary_title or "PROFESSIONAL SUMMARY"
+
+    def bullets_for(section_id: str, index: int) -> list[str] | None:
+        section = sections.get(section_id)
+        if section is None:
+            return None
+        item = next((i for i in section.items if i.id == f"{section_id}-{index}"), None)
+        if item is None or not item.bullets:
+            return None
+        return [b.strip() for b in item.bullets if b.strip()]
+
+    for i, entry in enumerate(profile.experience):
+        updated = bullets_for("experience", i)
+        if updated is not None:
+            entry.bullets = updated
+
+    for i, entry in enumerate(profile.projects):
+        updated = bullets_for("projects", i)
+        if updated is not None:
+            entry.bullets = updated
+
+    # Education bullets carry a synthesized coursework line; strip it back out.
+    for i, entry in enumerate(profile.education):
+        updated = bullets_for("education", i)
+        if updated is None:
+            continue
+        achievements = [b for b in updated if not b.startswith(_COURSEWORK_PREFIX)]
+        coursework_line = next((b for b in updated if b.startswith(_COURSEWORK_PREFIX)), "")
+        entry.achievements = achievements
+        if coursework_line:
+            entry.coursework = [
+                c.strip()
+                for c in coursework_line[len(_COURSEWORK_PREFIX):].split(",")
+                if c.strip()
+            ]
+
+    skills_section = sections.get("skills")
+    if skills_section is not None and skills_section.skills:
+        profile.skills = [s.strip() for s in skills_section.skills if s.strip()]
+
+    tech_section = sections.get("technologies")
+    if tech_section is not None and tech_section.groups:
+        profile.technologies = {
+            k: [v.strip() for v in vals if v.strip()]
+            for k, vals in tech_section.groups.items()
+        }
+
+    for custom in profile.custom_sections:
+        section = sections.get(f"{CUSTOM_PREFIX}{custom.id}")
+        if section is None:
+            continue
+        if section.text.strip():
+            custom.text = section.text.strip()
+        by_id = {i.id: i for i in section.items}
+        flat = by_id.get(f"{CUSTOM_PREFIX}{custom.id}-bullets")
+        if flat is not None and flat.bullets:
+            custom.bullets = [b.strip() for b in flat.bullets if b.strip()]
+        for i, item in enumerate(custom.items):
+            edited = by_id.get(f"{CUSTOM_PREFIX}{custom.id}-{i}")
+            if edited is not None and edited.bullets:
+                item.bullets = [b.strip() for b in edited.bullets if b.strip()]
+
+    profile.section_order = [
+        s.id.replace(CUSTOM_PREFIX, "custom:", 1) if s.id.startswith(CUSTOM_PREFIX) else s.id
+        for s in doc.sections
+    ]
+    return profile
 
 
 def merge_rewrite(
@@ -206,6 +380,7 @@ def merge_rewrite(
         if text:
             merged_sections = [
                 Section(
+                    id="summary",
                     type="summary",
                     title=str(new_summary.get("title") or "PROFESSIONAL SUMMARY"),
                     text=text,

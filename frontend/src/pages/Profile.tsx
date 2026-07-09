@@ -41,6 +41,26 @@ interface ProjectItem {
   bullets: string[];
 }
 
+interface CustomSectionItem {
+  title: string;
+  subtitle: string;
+  detail: string;
+  start_date: string;
+  end_date: string;
+  bullets: string[];
+}
+
+/** Certifications, awards, volunteering, languages — carried through from the
+ *  uploaded resume. Edited on the resume page; shown here so nothing is hidden. */
+interface CustomSection {
+  id: string;
+  title: string;
+  kind: string;
+  text: string;
+  bullets: string[];
+  items: CustomSectionItem[];
+}
+
 interface ResumeProfile {
   name: string;
   email: string;
@@ -49,11 +69,15 @@ interface ResumeProfile {
   linkedin_url: string;
   github_url: string;
   other_link: string;
+  summary: string;
+  summary_title: string;
   skills: string[];
   experience: ExperienceItem[];
   education: EducationItem[];
   projects: ProjectItem[];
   technologies: Record<string, string[]>;
+  custom_sections: CustomSection[];
+  section_order: string[];
 }
 
 interface ResumeListItem {
@@ -97,12 +121,23 @@ function emptyProfile(): ResumeProfile {
     linkedin_url: "",
     github_url: "",
     other_link: "",
+    summary: "",
+    summary_title: "",
     skills: [],
     experience: [],
     education: [],
     projects: [],
     technologies: {},
+    custom_sections: [],
+    section_order: [],
   };
+}
+
+/** Resume headings arrive uppercased ("CERTIFICATIONS"); soften them for the UI. */
+function titleCase(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
@@ -401,6 +436,16 @@ export default function Profile() {
         )}
       </section>
 
+      {/* ── Professional summary (only when the resume has one) ── */}
+      {profile.summary && (
+        <section className="profile-card" id="profile-sec-summary">
+          <div className="profile-card-head">
+            <h2 className="profile-section-title">{titleCase(profile.summary_title || "Professional Summary")}</h2>
+          </div>
+          <p className="profile-section-sub">{profile.summary}</p>
+        </section>
+      )}
+
       {/* ── Education ── */}
       <Section id="education" title="Education" onEdit={() => toggleEdit("education")}>
         {editingSection === "education" ? (
@@ -516,6 +561,45 @@ export default function Profile() {
           </div>
         )}
       </Section>
+
+      {/* ── Anything else the resume carried: certifications, awards, languages… ── */}
+      {profile.custom_sections.map((custom) => (
+        <section className="profile-card" id={`profile-sec-custom-${custom.id}`} key={custom.id}>
+          <div className="profile-card-head">
+            <h2 className="profile-section-title">{titleCase(custom.title)}</h2>
+          </div>
+          {custom.text && <p className="profile-section-sub">{custom.text}</p>}
+          {custom.bullets.length > 0 && (
+            <ul className="profile-bullets">
+              {custom.bullets.filter(Boolean).map((b, i) => <li key={i}>{b}</li>)}
+            </ul>
+          )}
+          {custom.items.length > 0 && (
+            <div className="profile-timeline">
+              {custom.items.map((item, i) => (
+                <div key={i} className="profile-timeline-item">
+                  <div className="profile-timeline-dot" />
+                  <div className="profile-timeline-content">
+                    {(item.start_date || item.end_date) && (
+                      <span className="profile-timeline-date">
+                        {item.start_date}{item.end_date ? ` → ${item.end_date}` : ""}
+                      </span>
+                    )}
+                    <strong>{item.title}</strong>
+                    {item.subtitle && <span>{item.subtitle}</span>}
+                    {item.detail && <span>{item.detail}</span>}
+                    {item.bullets.length > 0 && (
+                      <ul className="profile-bullets">
+                        {item.bullets.filter(Boolean).map((b, j) => <li key={j}>{b}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
 
       {/* ── Equal Employment (EEO self-identification) ── */}
       <Section id="eeo" title="Equal Employment" onEdit={() => toggleEdit("eeo")}>

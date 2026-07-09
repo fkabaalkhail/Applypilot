@@ -20,6 +20,7 @@ from backend.schemas.resume import (
     ResumeUploadResponse,
     ResumeListItem,
     ResumeDetailResponse,
+    ResumeImproveResponse,
     ResumeUpdateRequest,
     AnalysisReport,
 )
@@ -27,9 +28,68 @@ from backend.services.resume_parser import extract_text
 from backend.services.llm import get_llm_service
 from backend.services import blob_storage
 from backend.services.profile_version import bump_profile_version
+from backend.services.resume_document import (
+    db_record_to_document,
+    describe_changes,
+    document_to_profile,
+)
+from backend.services.resume_metrics import build_digest, render_digest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _record_to_profile(record: ResumeProfileDB) -> ResumeProfile:
+    """The one place a DB row becomes a ResumeProfile.
+
+    Every section the parser can extract has to be listed here — a field missed
+    here is a section the user silently loses.
+    """
+    return ResumeProfile(
+        name=record.profile_name or "",
+        email=record.email or "",
+        phone=record.phone or "",
+        location=record.location or "",
+        linkedin_url=record.linkedin_url or "",
+        github_url=record.github_url or "",
+        other_link=record.other_link or "",
+        summary=record.summary or "",
+        summary_title=record.summary_title or "",
+        skills=record.skills or [],
+        experience=record.experience or [],
+        education=record.education or [],
+        projects=record.projects or [],
+        technologies=record.technologies or {},
+        custom_sections=record.custom_sections or [],
+        section_order=record.section_order or [],
+    )
+
+
+def _record_to_detail(record: ResumeProfileDB) -> ResumeDetailResponse:
+    analysis_report = (
+        AnalysisReport(**record.analysis_report) if record.analysis_report is not None else None
+    )
+    return ResumeDetailResponse(
+        id=record.id,
+        name=record.name,
+        target_job_title=record.target_job_title,
+        is_primary=bool(record.is_primary),
+        profile=_record_to_profile(record),
+        analysis_report=analysis_report,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def _owned_resume(resume_id: int, user_id: int, db: Session) -> ResumeProfileDB:
+    record = (
+        db.query(ResumeProfileDB)
+        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Resume not found.")
+    return record
 
 
 @router.get("", response_model=list[ResumeListItem])
@@ -66,13 +126,7 @@ def set_primary_resume(
     db: Session = Depends(get_db),
 ):
     """Set a resume as primary, unsetting all others for this user."""
-    record = (
-        db.query(ResumeProfileDB)
-        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
-        .first()
-    )
-    if not record:
-        raise HTTPException(status_code=404, detail="Resume not found.")
+    record = _owned_resume(resume_id, user_id, db)
 
     # Unset all user's resumes as primary
     db.query(ResumeProfileDB).filter(ResumeProfileDB.user_id == user_id).update(
@@ -86,35 +140,7 @@ def set_primary_resume(
     # The active resume changed — sync it to the extension.
     bump_profile_version(db, user_id)
 
-    profile = ResumeProfile(
-        name=record.profile_name or "",
-        email=record.email or "",
-        phone=record.phone or "",
-        location=record.location or "",
-        linkedin_url=record.linkedin_url or "",
-        github_url=record.github_url or "",
-        other_link=record.other_link or "",
-        skills=record.skills or [],
-        experience=record.experience or [],
-        education=record.education or [],
-        projects=record.projects or [],
-        technologies=record.technologies or {},
-    )
-
-    analysis_report = None
-    if record.analysis_report is not None:
-        analysis_report = AnalysisReport(**record.analysis_report)
-
-    return ResumeDetailResponse(
-        id=record.id,
-        name=record.name,
-        target_job_title=record.target_job_title,
-        is_primary=bool(record.is_primary),
-        profile=profile,
-        analysis_report=analysis_report,
-        created_at=record.created_at,
-        updated_at=record.updated_at,
-    )
+    return _record_to_detail(record)
 
 
 @router.post("/{resume_id}/analyze", response_model=AnalysisReport)
@@ -123,31 +149,72 @@ async def analyze_resume(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Run AI quality analysis on a resume and persist the report."""
-    record = (
-        db.query(ResumeProfileDB)
-        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
-        .first()
-    )
-    if not record:
-        raise HTTPException(status_code=404, detail="Resume not found.")
+    """Run AI quality analysis on a resume and persist the report.
+
+    The model is handed a deterministic digest of the resume alongside the raw
+    text, so its counts and evidence describe what is actually on the page.
+    """
+    record = _owned_resume(resume_id, user_id, db)
 
     if not record.raw_text:
         raise HTTPException(status_code=422, detail="Resume has no extracted text to analyze.")
 
+    digest = render_digest(build_digest(record.raw_text, _record_to_profile(record)))
+
     llm = get_llm_service()
     try:
-        report = await llm.analyze_resume_quality(record.raw_text)
+        report = await llm.analyze_resume_quality(record.raw_text, digest)
     except Exception as e:
         logger.error("AI quality analysis failed: %s", e)
         raise HTTPException(status_code=502, detail=f"AI quality analysis failed: {e}")
 
-    record.analysis_report = report.model_dump()
+    record.analysis_report = report.model_dump(mode="json")
     record.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(record)
 
     return report
+
+
+@router.post("/{resume_id}/improve", response_model=ResumeImproveResponse)
+async def improve_resume(
+    resume_id: int,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Rewrite a resume against its own analysis report.
+
+    Returns a *preview*: the improved profile plus a deterministic list of what
+    changed. Nothing is persisted — the client applies it with PUT /resumes/{id}
+    once the user accepts. Every factual field is re-imposed from the stored
+    record by ``merge_rewrite``, so the rewrite can reword but never invent.
+    """
+    record = _owned_resume(resume_id, user_id, db)
+
+    original_profile = _record_to_profile(record)
+    if not (original_profile.experience or original_profile.projects or original_profile.education):
+        raise HTTPException(
+            status_code=422,
+            detail="This resume has no parsed content to improve. Try re-uploading it.",
+        )
+
+    report = (
+        AnalysisReport(**record.analysis_report) if record.analysis_report is not None else None
+    )
+    original_doc = db_record_to_document(record)
+
+    llm = get_llm_service()
+    try:
+        result = await llm.improve_resume_structured(original_doc, report)
+    except Exception as e:
+        logger.error("AI improvement failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"AI improvement failed: {e}")
+
+    improved_profile = document_to_profile(result.document, original_profile)
+    changes = describe_changes(original_doc, result.document)
+    changes += [f"Needs your input: {u}" for u in result.unresolved]
+
+    return ResumeImproveResponse(profile=improved_profile, changes=changes)
 
 
 @router.get("/{resume_id}/file")
@@ -200,43 +267,7 @@ def get_resume(
     db: Session = Depends(get_db),
 ):
     """Get full resume detail by id, including profile and analysis report."""
-    record = (
-        db.query(ResumeProfileDB)
-        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
-        .first()
-    )
-    if not record:
-        raise HTTPException(status_code=404, detail="Resume not found.")
-
-    profile = ResumeProfile(
-        name=record.profile_name or "",
-        email=record.email or "",
-        phone=record.phone or "",
-        location=record.location or "",
-        linkedin_url=record.linkedin_url or "",
-        github_url=record.github_url or "",
-        other_link=record.other_link or "",
-        skills=record.skills or [],
-        experience=record.experience or [],
-        education=record.education or [],
-        projects=record.projects or [],
-        technologies=record.technologies or {},
-    )
-
-    analysis_report = None
-    if record.analysis_report is not None:
-        analysis_report = AnalysisReport(**record.analysis_report)
-
-    return ResumeDetailResponse(
-        id=record.id,
-        name=record.name,
-        target_job_title=record.target_job_title,
-        is_primary=bool(record.is_primary),
-        profile=profile,
-        analysis_report=analysis_report,
-        created_at=record.created_at,
-        updated_at=record.updated_at,
-    )
+    return _record_to_detail(_owned_resume(resume_id, user_id, db))
 
 
 @router.put("/{resume_id}", response_model=ResumeDetailResponse)
@@ -247,13 +278,7 @@ def update_resume(
     db: Session = Depends(get_db),
 ):
     """Update a resume's name, target_job_title, and/or profile fields."""
-    record = (
-        db.query(ResumeProfileDB)
-        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
-        .first()
-    )
-    if not record:
-        raise HTTPException(status_code=404, detail="Resume not found.")
+    record = _owned_resume(resume_id, user_id, db)
 
     if body.name is not None:
         record.name = body.name
@@ -274,6 +299,19 @@ def update_resume(
         record.projects = [proj.model_dump() for proj in profile.projects]
         record.technologies = profile.technologies
 
+        # A client that predates these fields (the extension, an old tab) sends a
+        # profile without them. Writing the schema default would silently delete
+        # the user's summary and custom sections, so only touch what was sent.
+        sent = profile.model_fields_set
+        if "summary" in sent:
+            record.summary = profile.summary
+        if "summary_title" in sent:
+            record.summary_title = profile.summary_title
+        if "custom_sections" in sent:
+            record.custom_sections = [cs.model_dump() for cs in profile.custom_sections]
+        if "section_order" in sent:
+            record.section_order = profile.section_order
+
     record.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(record)
@@ -281,35 +319,7 @@ def update_resume(
     # Profile fields may have changed — sync to the extension.
     bump_profile_version(db, user_id)
 
-    response_profile = ResumeProfile(
-        name=record.profile_name or "",
-        email=record.email or "",
-        phone=record.phone or "",
-        location=record.location or "",
-        linkedin_url=record.linkedin_url or "",
-        github_url=record.github_url or "",
-        other_link=record.other_link or "",
-        skills=record.skills or [],
-        experience=record.experience or [],
-        education=record.education or [],
-        projects=record.projects or [],
-        technologies=record.technologies or {},
-    )
-
-    analysis_report = None
-    if record.analysis_report is not None:
-        analysis_report = AnalysisReport(**record.analysis_report)
-
-    return ResumeDetailResponse(
-        id=record.id,
-        name=record.name,
-        target_job_title=record.target_job_title,
-        is_primary=bool(record.is_primary),
-        profile=response_profile,
-        analysis_report=analysis_report,
-        created_at=record.created_at,
-        updated_at=record.updated_at,
-    )
+    return _record_to_detail(record)
 
 
 @router.delete("/{resume_id}", status_code=204)
@@ -319,13 +329,7 @@ async def delete_resume(
     db: Session = Depends(get_db),
 ):
     """Delete a resume by id. Returns 204 on success, 404 if not found."""
-    record = (
-        db.query(ResumeProfileDB)
-        .filter(ResumeProfileDB.id == resume_id, ResumeProfileDB.user_id == user_id)
-        .first()
-    )
-    if not record:
-        raise HTTPException(status_code=404, detail="Resume not found.")
+    record = _owned_resume(resume_id, user_id, db)
     blob_url = record.file_blob_url
     db.delete(record)
     db.commit()
@@ -391,13 +395,17 @@ async def upload_resume(
         linkedin_url=profile.linkedin_url,
         github_url=profile.github_url,
         other_link=profile.other_link,
+        summary=profile.summary,
+        summary_title=profile.summary_title,
         skills=profile.skills,
         experience=[exp.model_dump() for exp in profile.experience],
         education=[edu.model_dump() for edu in profile.education],
         projects=[proj.model_dump() for proj in profile.projects],
         technologies=profile.technologies,
+        custom_sections=[cs.model_dump() for cs in profile.custom_sections],
+        section_order=profile.section_order,
         raw_text=raw_text,
-        status="analyzed" if profile.experience else "uploaded",
+        status="analyzed" if (profile.experience or profile.projects) else "uploaded",
         file_blob_url=blob["url"] if blob else None,
         file_name=blob["name"] if blob else None,
         file_content_type=blob["content_type"] if blob else None,

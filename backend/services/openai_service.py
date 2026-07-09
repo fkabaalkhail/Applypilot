@@ -19,9 +19,10 @@ from pathlib import Path
 
 import httpx
 
-from backend.schemas.resume import ResumeProfile, ExperienceItem, EducationItem, AnalysisReport
+from backend.schemas.resume import AnalysisReport, ResumeProfile
 from backend.schemas.resume_document import ResumeDocument
 from backend.schemas.application import JobPosting
+from backend.services.resume_extraction import build_analysis_report, build_profile
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,41 @@ class TailorStructuredResult:
 
     document: ResumeDocument
     gaps: list[str]
+
+
+@dataclass
+class ImproveStructuredResult:
+    """Output of a job-agnostic improvement pass: merged document + the metrics
+    the candidate still has to supply (the model is forbidden from guessing)."""
+
+    document: ResumeDocument
+    unresolved: list[str]
+
+
+def _render_findings(report: AnalysisReport | None) -> str:
+    """Flatten an analysis report into the instruction block for improve_resume."""
+    if report is None or not report.categories:
+        return (
+            "(no analysis available — apply general best practice: achievement-led "
+            "bullets, strong verbs, no filler, consistent tense)"
+        )
+
+    lines: list[str] = []
+    for category in report.categories:
+        if not category.issues:
+            continue
+        lines.append(f"## {category.name}")
+        for issue in category.issues:
+            where = f" in {issue.section}" if issue.section else ""
+            lines.append(
+                f"- [{issue.severity.upper()}] {issue.title}{where} "
+                f"({issue.count} occurrence(s)): {issue.description}"
+            )
+            for snippet in issue.evidence:
+                lines.append(f'    evidence: "{snippet}"')
+            if issue.suggestion:
+                lines.append(f"    fix: {issue.suggestion}")
+    return "\n".join(lines) or "(no issues found)"
 
 
 class OpenAIService:
@@ -138,30 +174,73 @@ class OpenAIService:
         prompt = template.replace("{{RESUME_TEXT}}", raw_text)
         response = await self._generate(prompt)
         data = json.loads(_extract_json(response))
-        return ResumeProfile(
-            name=data.get("name", ""),
-            email=data.get("email", ""),
-            phone=data.get("phone", ""),
-            location=data.get("location", ""),
-            linkedin_url=data.get("linkedin_url", ""),
-            skills=data.get("skills", []),
-            experience=[ExperienceItem(**e) for e in data.get("experience", [])],
-            education=[EducationItem(**e) for e in data.get("education", [])],
-        )
+        return build_profile(data)
 
-    async def analyze_resume_quality(self, raw_text: str) -> AnalysisReport:
+    async def analyze_resume_quality(
+        self, raw_text: str, metrics_digest: str = ""
+    ) -> AnalysisReport:
         template = _load_prompt("analyze_resume_quality.txt")
-        prompt = template.replace("{{RESUME_TEXT}}", raw_text)
+        prompt = (
+            template
+            .replace("{{METRICS}}", metrics_digest or "(not available)")
+            .replace("{{RESUME_TEXT}}", raw_text)
+        )
         response = await self._generate(prompt)
         data = json.loads(_extract_json(response))
-        return AnalysisReport(
-            overall_grade=data.get("overall_grade", "FAIR"),
-            urgent_fix_count=data.get("urgent_fix_count", 0),
-            critical_fix_count=data.get("critical_fix_count", 0),
-            optional_fix_count=data.get("optional_fix_count", 0),
-            summary=data.get("summary", ""),
-            highlights=data.get("highlights", []),
+        return build_analysis_report(data)
+
+    async def improve_resume_structured(
+        self, document: ResumeDocument, report: AnalysisReport | None
+    ) -> "ImproveStructuredResult":
+        """Apply an analysis report's findings to a document, facts locked.
+
+        The model rewrites only wording; ``merge_rewrite`` re-imposes every
+        factual field from the original, so a bad rewrite can degrade the prose
+        but can never invent an employer, a date, or a degree.
+        """
+        from backend.services.resume_document import merge_rewrite
+
+        prompt = (
+            _load_prompt("improve_resume.txt")
+            .replace("{{FINDINGS}}", _render_findings(report))
+            .replace("{{RESUME_JSON}}", document.model_dump_json())
         )
+
+        try:
+            response = await self._generate(prompt)
+            data = json.loads(_extract_json(response))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Resume improve failed to parse (%s); returning original", e)
+            return ImproveStructuredResult(document=document, unresolved=[])
+
+        if not isinstance(data, dict):
+            return ImproveStructuredResult(document=document, unresolved=[])
+
+        resume_data = data.get("resume")
+        section_order = data.get("section_order")
+        new_summary = data.get("new_summary")
+        unresolved_raw = data.get("unresolved", [])
+
+        unresolved = (
+            [str(u).strip() for u in unresolved_raw if str(u).strip()]
+            if isinstance(unresolved_raw, list)
+            else []
+        )
+        if not isinstance(section_order, list):
+            section_order = None
+        if not isinstance(new_summary, dict):
+            new_summary = None
+
+        try:
+            edited = ResumeDocument(**resume_data)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Resume improve bad shape (%s); returning original", e)
+            return ImproveStructuredResult(document=document, unresolved=unresolved)
+
+        merged = merge_rewrite(
+            document, edited, section_order=section_order, new_summary=new_summary
+        )
+        return ImproveStructuredResult(document=merged, unresolved=unresolved)
 
     async def generate_cover_letter(self, profile: ResumeProfile, job: JobPosting) -> str:
         template = _load_prompt("cover_letter.txt")

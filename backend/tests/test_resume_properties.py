@@ -10,6 +10,8 @@ produce an identical ResumeProfile object.
 **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5**
 """
 
+import time
+
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -218,6 +220,7 @@ def test_primary_resume_invariant(num_resumes, target_index, prop6_db_session, p
     created_ids = []
     for i in range(num_resumes):
         record = ResumeProfileDB(
+            user_id=1,
             name=f"Resume {i}",
             profile_name=f"Person {i}",
             email=f"person{i}@example.com",
@@ -360,6 +363,7 @@ def test_api_crud_round_trip(profile, resume_name, target_job_title, prop8_db_se
     """
     # Step 1: Create a resume directly in DB (avoids needing Ollama for upload)
     record = ResumeProfileDB(
+        user_id=1,
         name="Initial Resume",
         profile_name="Initial Person",
         email="initial@example.com",
@@ -522,6 +526,7 @@ def test_delete_removes_resume(profile_name, email, prop9_db_session, prop9_clie
 
     # Step 1: Create a resume in the database
     record = ResumeProfileDB(
+        user_id=1,
         name="Resume to Delete",
         profile_name=profile_name,
         email=email,
@@ -711,6 +716,7 @@ def test_analysis_report_persistence(report_data, prop11_db_session, prop11_clie
     """
     # Step 1: Create a resume in DB with raw_text
     record = ResumeProfileDB(
+        user_id=1,
         name="Resume for Analysis",
         profile_name="Test Person",
         email="test@example.com",
@@ -963,6 +969,7 @@ def test_autofill_returns_primary_resume_data(
     created_ids = []
     for i in range(3):
         record = ResumeProfileDB(
+            user_id=1,
             name=f"Resume {i}",
             profile_name=f"Person {i}",
             email=f"person{i}@example.com",
@@ -995,6 +1002,9 @@ def test_autofill_returns_primary_resume_data(
         "job_id": 99999,
         "resume_version": "original",
         "status": "initiated",
+        # Without this the session reads as created at epoch 0 and _get_session
+        # discards it as expired.
+        "_created_at": time.time(),
     }
 
     # Step 5: Call GET /apply/{session}/profile
@@ -1201,6 +1211,7 @@ def test_skills_list_merges_all_technology_categories(
 
     # Step 2: Create a resume with the generated technologies dict and empty skills list
     record = ResumeProfileDB(
+        user_id=1,
         name="Tech Resume",
         profile_name="Tech Person",
         email="tech@example.com",
@@ -1222,6 +1233,9 @@ def test_skills_list_merges_all_technology_categories(
         "job_id": 99999,
         "resume_version": "original",
         "status": "initiated",
+        # Without this the session reads as created at epoch 0 and _get_session
+        # discards it as expired.
+        "_created_at": time.time(),
     }
 
     # Step 4: Call GET /apply/{session}/profile
