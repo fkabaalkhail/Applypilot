@@ -547,7 +547,7 @@ export default function CustomResumeModal({
         <div className="ai-loading">
           <div className="ai-spinner" />
           <div className="ai-loading-title">Finalizing Your New Resume…</div>
-          <span>ⓘ It usually takes about 10–20 seconds.</span>
+          
         </div>
       );
     }
