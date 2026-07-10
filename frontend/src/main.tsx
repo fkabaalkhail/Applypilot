@@ -29,6 +29,7 @@ import DemoApply from "./pages/DemoApply";
 import ExtensionConnect from "./pages/ExtensionConnect";
 import CustomResumeEmbed from "./pages/embed/CustomResumeEmbed";
 import CoverLetterEmbed from "./pages/embed/CoverLetterEmbed";
+import LinkedInComplete from "./pages/LinkedInComplete";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -46,6 +47,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/sign-in/*" element={<SignInPage />} />
           <Route path="/sign-up/*" element={<SignUpPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/linkedin/complete" element={<LinkedInComplete />} />
           <Route path="/extension/connect" element={<ExtensionConnect />} />
           <Route path="/embed/custom-resume" element={<CustomResumeEmbed />} />
           <Route path="/embed/cover-letter" element={<CoverLetterEmbed />} />

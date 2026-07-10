@@ -72,6 +72,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(profile);
   }, []);
 
+  const completeOAuthRedirect = useCallback(async () => {
+    // The backend OAuth callback already set the HttpOnly refresh cookie. Trade
+    // it for an access token, store it, and load the profile — same end state as
+    // loginWithGoogle, but the token was never exposed in a URL.
+    const { data } = await api.post("/auth/refresh", {});
+    localStorage.setItem("access_token", data.access_token);
+    const { data: profile } = await api.get("/auth/me");
+    setUser(profile);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       // Call backend to revoke refresh token and clear cookie
@@ -111,6 +121,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     login,
     register,
     loginWithGoogle,
+    completeOAuthRedirect,
     logout,
     getToken,
     resendVerification,

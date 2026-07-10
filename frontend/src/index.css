@@ -4526,3 +4526,23 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   font-feature-settings: "tnum";
   letter-spacing: -0.3px;
 }
+
+/* LinkedIn SSO button (auth pages) */
+.linkedin-signin-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 320px;
+  max-width: 100%;
+  margin: 12px auto 0;
+  padding: 10px 16px;
+  border-radius: 9999px;
+  background: #0a66c2;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.linkedin-signin-button:hover { background: #004182; }
