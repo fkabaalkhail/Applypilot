@@ -49,7 +49,6 @@ import type {
   RenderResumeResponse,
   ResumeDoc,
   ResumeSummary,
-  SimpleResponse,
   StatusResponse,
   TailorResult,
   TailorResumeOpts,
@@ -255,7 +254,6 @@ function ph(pathData: string): string {
 
 const P_X = '<path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/>';
 const P_CARET_RIGHT = '<path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/>';
-const P_GEAR = '<path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z"/>';
 const P_FILE = '<path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Zm-32-80a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,136Zm0,32a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,168Z"/>';
 const P_UPLOAD = '<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z"/>';
 const P_STAR = '<path d="M239.18,97.26A16.38,16.38,0,0,0,224.92,86l-59-4.76L143.14,26.15a16.36,16.36,0,0,0-30.27,0L90.11,81.23,31.08,86a16.46,16.46,0,0,0-9.37,28.86l45,38.83L53,211.75a16.38,16.38,0,0,0,24.5,17.82L128,198.49l50.53,31.08A16.4,16.4,0,0,0,203,211.75l-13.76-58.07,45-38.83A16.43,16.43,0,0,0,239.18,97.26Z"/>';
@@ -269,7 +267,6 @@ const P_INFO = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,2
 
 const I_CLOSE = ph(P_X);
 const I_CHEVRON_RIGHT = ph(P_CARET_RIGHT);
-const I_GEAR = ph(P_GEAR);
 const I_FILE = ph(P_FILE);
 const I_UPLOAD = ph(P_UPLOAD);
 const I_STAR = ph(P_STAR);
@@ -1116,7 +1113,6 @@ export function buildHTML(): string {
           <span class="ap-brand-name" style="display:none">Tailrd</span>
         </div>
         <div class="ap-header-right">
-          <button class="ap-icon-btn" id="ap-btn-settings" title="Settings">${I_GEAR}</button>
           <button class="ap-icon-btn" id="ap-btn-close" title="Close">${I_CLOSE}</button>
         </div>
       </header>
@@ -1220,11 +1216,6 @@ export function buildHTML(): string {
           </div>
         </div>
       </div>
-
-      <!-- Footer -->
-      <footer class="ap-footer">
-        <button class="ap-footer-link" id="ap-btn-dashboard">Open Dashboard</button>
-      </footer>
 
       <!-- Next-page gate — pinned at the panel bottom, shown only while a
            multi-page flow is parked at "ready" (see updateFlowProgress). -->
@@ -1334,16 +1325,6 @@ function wireEvents(root: HTMLDivElement): void {
 
   // Close button
   root.querySelector("#ap-btn-close")!.addEventListener("click", () => setExpanded(false));
-
-  // Settings -> open dashboard (simplified: no in-panel settings for now)
-  root.querySelector("#ap-btn-settings")!.addEventListener("click", () => {
-    void bg<SimpleResponse>({ type: "OPEN_DASHBOARD" });
-  });
-
-  // Dashboard footer link
-  root.querySelector("#ap-btn-dashboard")!.addEventListener("click", () => {
-    void bg<SimpleResponse>({ type: "OPEN_DASHBOARD" });
-  });
 
   // Autofill button
   root.querySelector("#ap-btn-autofill")!.addEventListener("click", () => void doAutofill());
