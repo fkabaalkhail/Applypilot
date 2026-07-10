@@ -107,7 +107,7 @@ Add to `main.tsx`:
 | `/pricing` | `pages/Pricing.tsx` | marketing chrome |
 | `/terms` | `pages/Terms.tsx` | `legal-page` (like Privacy) |
 | `/cookies` | `pages/Cookies.tsx` | `legal-page` (like Privacy) |
-| `/auth/linkedin/complete` | `pages/LinkedInComplete.tsx` | minimal (SSO landing) |
+| `/linkedin/complete` | `pages/LinkedInComplete.tsx` | minimal (SSO landing) |
 
 - **About** — marketing header/footer; mission, what Tailrd does, who it's for
   (interns / new grads). Copy drafted from existing landing + privacy content;
@@ -162,7 +162,7 @@ token out of URLs by reusing the existing refresh-cookie mechanism.
    - find-or-creates the `User` (mirrors `google_auth`; `auth_provider="linkedin"`;
      links an existing `local` account by email; no migration);
    - starts a web session, sets the refresh cookie via `_set_refresh_cookie`;
-   - 302-redirects to `/auth/linkedin/complete?next=/app`.
+   - 302-redirects to `/linkedin/complete?next=/app`.
 4. **`LinkedInComplete.tsx`** calls a new `completeOAuthRedirect()` on
    `AuthProvider` → `POST /auth/refresh` (uses the refresh cookie) → stores the
    returned `access_token` → `GET /auth/me` → `setUser` → navigates to `next`
@@ -174,7 +174,7 @@ token out of URLs by reusing the existing refresh-cookie mechanism.
   `GoogleSignInButton`, gated behind `VITE_LINKEDIN_ENABLED`; renders a LinkedIn
   button that sets `window.location = "/auth/linkedin/start?next=" + next`.
   Added to Sign In and Sign Up next to Google.
-- **New** `frontend/src/pages/LinkedInComplete.tsx` (route `/auth/linkedin/complete`).
+- **New** `frontend/src/pages/LinkedInComplete.tsx` (route `/linkedin/complete`).
 - **Edit** `AuthProvider.tsx` / `AuthContext.tsx` — add `completeOAuthRedirect()`.
 
 **Backend:**
@@ -218,7 +218,7 @@ unset, the button is hidden and behavior is unchanged (mirrors Google gating).
 - **Backend (pytest, mocked LinkedIn HTTP, style of `test_auth_properties.py`):**
   - `/auth/linkedin/callback` with mismatched `state` → 401.
   - Successful callback: exchanges code, creates a new `linkedin` user, sets the
-    refresh cookie, redirects to `/auth/linkedin/complete`.
+    refresh cookie, redirects to `/linkedin/complete`.
   - Existing-email user is linked (not duplicated).
 - **Link audit:** no remaining `href="#"` dead links in nav/footer.
 
@@ -246,5 +246,5 @@ FastAPI app wiring).
 - Home pricing: keep a teaser linking to `/pricing`.
 - Cookies: policy page only, no consent banner.
 - Pro CTA copy: "Get started" (routes to sign-up); billing not wired.
-- LinkedIn: server-side auth-code flow + `/auth/linkedin/complete` hydration
+- LinkedIn: server-side auth-code flow + `/linkedin/complete` hydration
   (access token never in a URL).
