@@ -293,3 +293,22 @@ export function issueMatchesSection(issueSection: string, label: string): boolea
   if (!a) return false;
   return a === b || a.includes(b) || b.includes(a);
 }
+
+/** The analysis findings that point at a section, summed by severity for its heading badge. */
+export function sectionFlags(
+  report: AnalysisReport | null,
+  label: string,
+): { severity: Severity; count: number }[] {
+  if (!report) return [];
+  const counts: Partial<Record<Severity, number>> = {};
+  for (const category of report.categories) {
+    for (const issue of category.issues) {
+      if (issueMatchesSection(issue.section, label)) {
+        counts[issue.severity] = (counts[issue.severity] ?? 0) + issue.count;
+      }
+    }
+  }
+  return (["urgent", "critical", "optional"] as Severity[])
+    .filter((s) => counts[s])
+    .map((s) => ({ severity: s, count: counts[s] as number }));
+}
