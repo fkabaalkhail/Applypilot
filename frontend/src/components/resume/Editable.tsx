@@ -37,15 +37,18 @@ export function EditableArea({
   ariaLabel,
   className = "",
   rows = 1,
-}: TextProps & { rows?: number }) {
+  maxHeight,
+}: TextProps & { rows?: number; maxHeight?: number }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
+    const target = maxHeight ? Math.min(el.scrollHeight, maxHeight) : el.scrollHeight;
+    el.style.height = `${target}px`;
+    el.style.overflowY = maxHeight && el.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [value, maxHeight]);
 
   return (
     <textarea
