@@ -959,3 +959,58 @@ describe("fillAriaCombobox — Workday multiselect (Type to Add Skills)", () => 
     expect(input.value).toBe(""); // the unmatched "COBOL" isn't left in the box
   });
 });
+
+describe("fillAriaCombobox — no dead-time on settled filters", () => {
+  it("gives up quickly once a filtering widget settles with no match", async () => {
+    // A synchronous keyup filter over options that never contain the target:
+    // each typed attempt settles immediately, so the engine must NOT burn the
+    // full per-attempt budget re-polling a list that already gave its final
+    // answer — that dead time is what reads as "types text, stares, erases it".
+    const input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    const lbId = "settle-lb";
+    input.setAttribute("aria-owns", lbId);
+    document.body.append(input);
+    const renderOptions = (labels: string[]): void => {
+      const lb = document.getElementById(lbId);
+      if (!lb) return;
+      lb.textContent = "";
+      for (const label of labels) {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.textContent = label;
+        lb.append(li);
+      }
+    };
+    input.addEventListener("click", () => {
+      input.setAttribute("aria-expanded", "true");
+      if (!document.getElementById(lbId)) {
+        const lb = document.createElement("ul");
+        lb.id = lbId;
+        lb.setAttribute("role", "listbox");
+        document.body.append(lb);
+        renderOptions(["Alpha", "Beta"]);
+      }
+    });
+    input.addEventListener("keyup", () => {
+      const q = input.value.trim().toLowerCase();
+      renderOptions(["Alpha", "Beta"].filter((o) => o.toLowerCase().includes(q)));
+    });
+
+    let sleeps = 0;
+    const res = await fillAriaCombobox(input, "Zorp", {
+      sleep: async () => {
+        sleeps++;
+      },
+      openWaitMs: 200,
+      commitWaitMs: 200,
+      pollMs: 10,
+    });
+    expect(res.filled).toBe(false);
+    // Budget-burning behavior would be ~40+ polls (2 attempts × 20); settled
+    // early-exits keep the whole failure fast.
+    expect(sleeps).toBeLessThan(25);
+  });
+});

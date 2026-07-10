@@ -680,7 +680,12 @@ function initialize(): void {
           if (signal?.aborted) break;
           const control = registry.get(f.id);
           if (!needsOptionHarvest(f, Boolean(control?.driver)) || !control?.el) continue;
-          const harvested = await harvestComboboxOptions(control.el).catch(() => undefined);
+          // Short open budget: a widget that hasn't mounted its menu in 600ms
+          // isn't going to — the default 1.5s (×2 with the re-open) per field
+          // was seconds of visible dead time before the AI round even started.
+          const harvested = await harvestComboboxOptions(control.el, { openWaitMs: 600 }).catch(
+            () => undefined
+          );
           if (harvested && harvested.length > 0) f.options = harvested;
         }
         let answers: PlannedAnswer[] = hits;

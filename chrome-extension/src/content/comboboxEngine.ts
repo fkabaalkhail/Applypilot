@@ -169,22 +169,10 @@ async function selectOne(
     }
     attempts.push("");
     for (const text of attempts) {
+      const preTypeKey = optionsKey(getListbox(trigger));
       lastTyped = text;
       typeInto(trigger as HTMLInputElement, text);
-      // POLL for a match the whole budget after typing: async widgets (Workday's
-      // skills search, SF's paginated picklists) repopulate an already-mounted
-      // listbox a beat after the input event, so a single immediate read matches
-      // against the stale pre-filter options and misses every time.
-      const hit = await waitFor(
-        () => {
-          const lb = getListbox(trigger);
-          const opt = lb ? findOption(lb, value) : null;
-          return opt ? { lb, opt } : null;
-        },
-        sleep,
-        openWaitMs,
-        pollMs
-      );
+      const hit = await pollForMatch(trigger, value, preTypeKey, sleep, openWaitMs, pollMs);
       if (hit) {
         listbox = hit.lb;
         option = hit.opt;
@@ -334,6 +322,53 @@ function isTypeahead(trigger: HTMLElement): boolean {
   if (!(trigger instanceof HTMLInputElement)) return false;
   const ac = (trigger.getAttribute("aria-autocomplete") || "").toLowerCase();
   return ac === "list" || ac === "both" || ac === "inline" || trigger.type === "text";
+}
+
+/** Cheap identity of a listbox's current options — change/settle detection. */
+function optionsKey(listbox: HTMLElement | null): string {
+  if (!listbox) return "";
+  return deepQueryAll(listbox, '[role="option"]')
+    .map((o) => optionText(o))
+    .join(" ");
+}
+
+/**
+ * After typing a filter, poll for a MATCH — but stop as soon as the widget has
+ * given its final answer for this text. Async widgets (Workday's skills search,
+ * SF's paginated picklists) repopulate a beat after the input event, so we keep
+ * polling while the option list is still CHANGING; once it has reacted and gone
+ * stable — or never reacts within the reaction window (a widget that doesn't
+ * filter as you type) — burning the rest of the budget is pure user-visible
+ * dead time: the field sits there with our filter text looking half-filled.
+ */
+async function pollForMatch(
+  trigger: HTMLElement,
+  target: string,
+  preTypeKey: string,
+  sleep: (ms: number) => Promise<void>,
+  budgetMs: number,
+  pollMs: number
+): Promise<{ lb: HTMLElement; opt: HTMLElement } | null> {
+  const reactionWindowMs = Math.min(budgetMs, 800);
+  let lastKey = preTypeKey;
+  let reacted = false;
+  let stablePolls = 0;
+  for (let elapsed = 0; ; elapsed += pollMs) {
+    const lb = getListbox(trigger);
+    const opt = lb ? findOption(lb, target) : null;
+    if (lb && opt) return { lb, opt };
+    const key = optionsKey(lb);
+    if (key !== lastKey) {
+      reacted = true;
+      stablePolls = 0;
+      lastKey = key;
+    } else if (reacted && ++stablePolls >= 3) {
+      return null; // the filter answered and settled — no match in its final list
+    }
+    if (!reacted && elapsed >= reactionWindowMs) return null;
+    if (elapsed >= budgetMs) return null;
+    await sleep(pollMs);
+  }
 }
 
 function typeInto(input: HTMLInputElement, value: string): void {
