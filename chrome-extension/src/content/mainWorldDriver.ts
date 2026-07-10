@@ -30,8 +30,14 @@ export function pickOption(labels: string[], target: string): number {
   for (let i = 0; i < labels.length; i++) {
     const toks = norm(labels[i]).split(" ").filter((w) => w.length > 2);
     if (!toks.length) continue;
-    const overlap = toks.filter((w) => tt.has(w)).length / toks.length;
-    if (overlap > bestScore) { bestScore = overlap; best = i; }
+    const overlap = toks.filter((w) => tt.has(w)).length;
+    const score = overlap / toks.length;
+    // One shared token is noise, not a match: every school option shares
+    // "university" with "University of Ottawa", and selecting on that is how
+    // a WRONG university gets filled. Require at least two shared tokens, or
+    // a fully-covered short option ("Canada", "Yes").
+    if (score < 0.5 || (overlap < 2 && score !== 1)) continue;
+    if (score > bestScore) { bestScore = score; best = i; }
   }
   return bestScore > 0 ? best : -1;
 }

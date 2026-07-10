@@ -323,9 +323,12 @@ export function matchOption<T>(
       (w) => targetSet.has(w) || targetTokens.some((tw) => sharedPrefixLen(w, tw) >= 5)
     ).length;
     const score = overlap / tokens.length;
-    // Below half the option's tokens is incidental overlap ("years", "other"),
-    // not a match — selecting on it is how wrong options get picked.
-    if (score >= 0.5 && (!best || score > best.score)) best = { item, score };
+    // Incidental overlap must not select: one shared generic token scores 0.5
+    // on a two-token option ("University of Ottawa" → "University of
+    // Oklahoma"). Require at least two shared tokens, or a fully-covered
+    // single-token option ("Canadian", "Canada").
+    if (score < 0.5 || (overlap < 2 && score !== 1)) continue;
+    if (!best || score > best.score) best = { item, score };
   }
   return best ? best.item : null;
 }

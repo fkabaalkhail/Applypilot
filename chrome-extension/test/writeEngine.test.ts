@@ -289,4 +289,15 @@ describe("matchOption — wrong-option guards", () => {
       matchOption(["Working Holiday Visa"], id, id, "several years working abroad")
     ).toBeNull();
   });
+
+  it("never picks a DIFFERENT university on the shared 'University' token", () => {
+    expect(
+      matchOption(
+        ["University of Oklahoma", "University of Texas"],
+        id,
+        id,
+        "University of Ottawa"
+      )
+    ).toBeNull();
+  });
 });

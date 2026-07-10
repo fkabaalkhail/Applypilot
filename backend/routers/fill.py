@@ -425,12 +425,15 @@ def _match_option(answer: str, options: list[str]) -> str | None:
             1 for w in tokens
             if any(_shared_prefix_len(w, t) >= 5 or w == t for t in answer_tokens)
         )
-        # Below half the option's tokens is incidental overlap, not a match —
-        # selecting on it is how wrong options get picked (writeEngine parity).
+        # Incidental overlap must not select: one shared generic token scores
+        # 0.5 on a two-token option ("University of Ottawa" → "University of
+        # Oklahoma"). Require two shared tokens, or a fully-covered
+        # single-token option ("Canadian") — writeEngine/pickOption parity.
         score = overlap / len(tokens)
-        if overlap and score >= 0.5:
-            if best is None or score > best[1]:
-                best = (opt, score)
+        if score < 0.5 or (overlap < 2 and score != 1):
+            continue
+        if best is None or score > best[1]:
+            best = (opt, score)
     if best:
         return best[0]
     return None

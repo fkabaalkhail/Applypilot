@@ -28,6 +28,18 @@ describe("pickOption", () => {
     expect(pickOption(["Bachelor of Science", "Master of Science"], "master science")).toBe(1);
     expect(pickOption(["A", "B"], "Zorp")).toBe(-1);
   });
+
+  it("never picks a DIFFERENT university on the shared 'University' token", () => {
+    // The random-university bug: every school option overlaps on "university",
+    // so single-token overlap must not select anything.
+    expect(
+      pickOption(["University of Oklahoma", "University of Texas", "Oklahoma State University"], "University of Ottawa")
+    ).toBe(-1);
+    // …while the actual school still matches when present.
+    expect(
+      pickOption(["University of Oklahoma", "University of Ottawa"], "University of Ottawa")
+    ).toBe(1);
+  });
 });
 
 describe("installDriver", () => {

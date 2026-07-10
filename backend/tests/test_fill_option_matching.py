@@ -23,6 +23,15 @@ def test_low_token_overlap_is_rejected():
     assert _match_option("several years working abroad", ["Working Holiday Visa"]) is None
 
 
+def test_never_picks_a_different_university_on_the_shared_token():
+    # The random-university bug: every school shares "University" with the
+    # answer; a single shared token must not select anything.
+    assert (
+        _match_option("University of Ottawa", ["University of Oklahoma", "University of Texas"])
+        is None
+    )
+
+
 def test_morphological_prefix_still_matches():
     assert _match_option("Canada", ["American", "Canadian", "Other"]) == "Canadian"
 

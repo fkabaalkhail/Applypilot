@@ -191,29 +191,29 @@ export function formatNextLabel(p: FlowProgress): string {
   return `${label || "Next page"} →`;
 }
 
-/** Render a flow beat: status line + Stop button, plus the bottom Next page gate. */
+/** Render a flow beat: minimal strip (no narration) + the bottom Next page gate. */
 export function updateFlowProgress(p: FlowProgress): void {
   if (!refs) return;
   const running =
     p.phase === "filling" || p.phase === "advancing" || p.phase === "paused" || p.phase === "ready";
   refs.flow.style.display = running ? "flex" : "none";
-  refs.flowText.textContent = formatFlowProgress(p);
+  // NO status sentences in the panel — "Step 1 · paused — solve the captcha…"
+  // style narration reads as clutter. The strip shows one calm word while the
+  // flow is actively working (plus Stop); parked/paused pages show just the
+  // controls — the page itself displays the captcha/validation, and the bottom
+  // gate shows the next action. Every beat still logs for debugging.
+  const active = p.phase === "filling" || p.phase === "advancing";
+  refs.flowText.textContent = active ? "Autofilling…" : "";
+  console.info(`[Tailrd] ${formatFlowProgress(p)}`);
   // The advance gate is pinned at the panel bottom. The flow parks on every
   // filled page — at a "ready" beat, or a "paused" beat when a required field is
   // still empty — and turns the page only when the user presses this button. Its
-  // label mirrors the real button the flow will click (Next / Create Account / Sign In).
+  // label mirrors the real button the flow will click (Next / Continue).
   refs.flowNextBtn.textContent = formatNextLabel(p);
   refs.flowNext.style.display =
     p.phase === "ready" || (p.phase === "paused" && p.pauseReason === "unfilled-required") ? "flex" : "none";
-  // Terminal beats are logged, never shown: a lingering "Done — 3 steps filled"
-  // / "Autofill flow stopped" sentence reads as clutter in the panel — the
-  // filled form itself is the feedback. Real errors still use the banner (see
-  // the autofill catch), and any earlier banner is cleared so it can't outlive
-  // the run it narrated.
-  if (p.phase === "done" || p.phase === "stopped") {
-    console.info(`[Tailrd] ${formatFlowProgress(p)}`);
-    showBanner("", "ok", true);
-  }
+  // A terminal beat clears any earlier banner so nothing outlives the run.
+  if (p.phase === "done" || p.phase === "stopped") showBanner("", "ok", true);
 }
 
 export function removeOverlay(): void {
