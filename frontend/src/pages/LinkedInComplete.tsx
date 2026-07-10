@@ -13,16 +13,11 @@ export default function LinkedInComplete() {
   const ranRef = useRef(false);
 
   useEffect(() => {
-    // React 18 StrictMode invokes effects twice in dev; without this guard two
-    // concurrent completeOAuthRedirect() calls each POST /auth/refresh, and the
-    // second rotation revokes the token the first just minted.
     if (ranRef.current) return;
     ranRef.current = true;
-    let cancelled = false;
     completeOAuthRedirect()
-      .then(() => { if (!cancelled) navigate(safeNextPath(searchParams.get("next")), { replace: true }); })
-      .catch(() => { if (!cancelled) setFailed(true); });
-    return () => { cancelled = true; };
+      .then(() => navigate(safeNextPath(searchParams.get("next")), { replace: true }))
+      .catch(() => setFailed(true));
   }, [completeOAuthRedirect, navigate, searchParams]);
 
   return (

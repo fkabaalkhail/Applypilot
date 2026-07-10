@@ -39,6 +39,19 @@ def test_callback_rejects_state_mismatch(client, monkeypatch):
     assert resp.status_code == 401
 
 
+def test_callback_non_ascii_state_is_401_not_500(client, monkeypatch):
+    """An attacker-supplied non-ASCII state must compare cleanly (as bytes) to a
+    401, never raise TypeError from secrets.compare_digest and 500."""
+    _prime_env(monkeypatch)
+    resp = client.get(
+        "/auth/linkedin/callback",
+        params={"code": "abc", "state": "café-☃"},
+        cookies={"li_oauth_state": "real", "li_oauth_next": "/app"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 401
+
+
 def test_callback_creates_user_sets_cookie_and_redirects(client, db_session, monkeypatch):
     _prime_env(monkeypatch)
     monkeypatch.setattr(li, "_exchange_code", lambda code: {"access_token": "tok"})

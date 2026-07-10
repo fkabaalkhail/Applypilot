@@ -123,7 +123,7 @@ def linkedin_callback(
     if error:
         logger.warning("LinkedIn returned an error: %s", error)
         raise HTTPException(status_code=401, detail="LinkedIn sign-in was cancelled")
-    if not code or not state or not li_oauth_state or not secrets.compare_digest(state, li_oauth_state):
+    if not code or not state or not li_oauth_state or not secrets.compare_digest(state.encode(), li_oauth_state.encode()):
         logger.warning("LinkedIn state mismatch or missing code")
         raise HTTPException(status_code=401, detail="Invalid or expired LinkedIn sign-in state")
 
