@@ -12,6 +12,7 @@ import AnimatedSection, {
 } from "../components/ui/animated-section";
 import AutoApplyShowcase from "../components/ui/AutoApplyShowcase";
 import { TiltCard } from "../components/ui/tilt-card";
+import PricingTiers from "../components/PricingTiers";
 import "./Landing.css";
 
 const TESTIMONIALS = [
@@ -989,52 +990,11 @@ export default function Landing() {
       <AnimatedSection animation="fadeUp">
         <section className="section" id="pricing">
           <h2 className="section-title">Simple Pricing</h2>
-          <p className="section-sub">Start free, upgrade when you're ready</p>
-          <StaggerContainer className="pricing-grid" staggerDelay={0.15}>
-            <StaggerItem animation="fadeUp">
-              <div className="pricing-card">
-                <h3>Free</h3>
-                <div className="pricing-price">$0<span>/month</span></div>
-                <ul className="pricing-features">
-                  <li>✓ 10 auto-applies per day</li>
-                  <li>✓ Basic job matching</li>
-                  <li>✓ Application tracker</li>
-                  <li>✓ 1 resume profile</li>
-                </ul>
-                <button className="btn-outline-lg w-full" onClick={() => navigate("/app")}>Get Started</button>
-              </div>
-            </StaggerItem>
-            <StaggerItem animation="fadeUp">
-              <div className="pricing-card pricing-featured">
-                <div className="pricing-badge">Most Popular</div>
-                <h3>Pro</h3>
-                <div className="pricing-price">$29<span>/month</span></div>
-                <ul className="pricing-features">
-                  <li>✓ Unlimited auto-applies</li>
-                  <li>✓ AI screening answers</li>
-                  <li>✓ Resume tailoring per job</li>
-                  <li>✓ Cover letter generation</li>
-                  <li>✓ Priority AI processing</li>
-                  <li>✓ Advanced match scoring</li>
-                </ul>
-                <button className="btn-cta btn-lg w-full" onClick={() => navigate("/app")}>Start Pro Trial</button>
-              </div>
-            </StaggerItem>
-            <StaggerItem animation="fadeUp">
-              <div className="pricing-card">
-                <h3>Lifetime</h3>
-                <div className="pricing-price">$149<span>one-time</span></div>
-                <ul className="pricing-features">
-                  <li>✓ Everything in Pro</li>
-                  <li>✓ Lifetime updates</li>
-                  <li>✓ Priority support</li>
-                  <li>✓ Early access to features</li>
-                  <li>✓ No recurring fees</li>
-                </ul>
-                <button className="btn-outline-lg w-full" onClick={() => navigate("/app")}>Get Lifetime</button>
-              </div>
-            </StaggerItem>
-          </StaggerContainer>
+          <p className="section-sub">Start free, upgrade when you're ready. Prices in CAD.</p>
+          <PricingTiers variant="teaser" />
+          <div style={{ textAlign: "center", marginTop: 24 }}>
+            <button className="btn-ghost" onClick={() => navigate("/pricing")}>See full pricing →</button>
+          </div>
         </section>
       </AnimatedSection>
 

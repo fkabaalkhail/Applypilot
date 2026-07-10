@@ -8,6 +8,7 @@ import App from "./App";
 import Landing from "./pages/Landing";
 import Privacy from "./pages/Privacy";
 import Support from "./pages/Support";
+import Pricing from "./pages/Pricing";
 import Jobs from "./pages/Jobs";
 import JobsList from "./pages/JobsList";
 import Applications from "./pages/Applications";
@@ -35,6 +36,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<Landing />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/support" element={<Support />} />
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="/sign-in/*" element={<SignInPage />} />
           <Route path="/sign-up/*" element={<SignUpPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
