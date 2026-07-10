@@ -6,6 +6,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { SetupRoute } from "./auth/SetupRoute";
 import App from "./App";
 import Landing from "./pages/Landing";
+import About from "./pages/About";
 import Privacy from "./pages/Privacy";
 import Support from "./pages/Support";
 import Pricing from "./pages/Pricing";
@@ -34,6 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/about" element={<About />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/support" element={<Support />} />
           <Route path="/pricing" element={<Pricing />} />
