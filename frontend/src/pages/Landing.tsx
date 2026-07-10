@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../auth/useAuth";
+import { useNavigate, useLocation } from "react-router-dom";
+import SiteHeader from "../components/site/SiteHeader";
+import SiteFooter from "../components/site/SiteFooter";
 import { motion } from "framer-motion";
 import TypewriterText from "../components/ui/typewriter-text";
 import AnimatedSection, {
@@ -298,7 +299,12 @@ function SuccessStoryCarousel() {
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+  useEffect(() => {
+    if (!location.hash) return;
+    const el = document.getElementById(location.hash.slice(1));
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [location.hash]);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const faqs = [
@@ -313,29 +319,7 @@ export default function Landing() {
   return (
     <div className="landing">
       {/* Nav */}
-      <nav className="landing-nav">
-        <div className="landing-nav-inner">
-          <div className="landing-brand">
-            <img src="/logo-full.png" alt="Tailrd" className="landing-logo-full" />
-          </div>
-          <div className="landing-nav-links">
-            <a href="#features" className="nav-link-item">Features</a>
-            <a href="#pricing" className="nav-link-item">Pricing</a>
-            <a href="#success-story" className="nav-link-item">Results</a>
-            <a href="#faq" className="nav-link-item">FAQ</a>
-          </div>
-          <div className="landing-nav-actions">
-            {isAuthenticated ? (
-              <button className="btn-cta nav-cta" onClick={() => navigate("/app")}>Dashboard</button>
-            ) : (
-              <>
-                <button className="btn-ghost nav-login" onClick={() => navigate("/sign-in")}>Log in</button>
-                <button className="btn-cta nav-cta" onClick={() => navigate("/sign-up")}>Sign up</button>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
+      <SiteHeader />
 
       {/* Hero — Full viewport height */}
       <section className="hero">
@@ -1092,37 +1076,7 @@ export default function Landing() {
       </AnimatedSection>
 
       {/* Footer */}
-      <footer className="landing-footer">
-        <div className="footer-inner">
-          <div className="footer-col">
-            <div className="footer-brand">
-              <img src="/logo-full.png" alt="Tailrd" className="landing-logo-full" />
-            </div>
-            <p className="footer-tagline">AI-powered job applications.<br />Apply smarter, not harder.</p>
-          </div>
-          <div className="footer-col">
-            <h4>Product</h4>
-            <a href="#features">Features</a>
-            <a href="#pricing">Pricing</a>
-            <a href="#faq">FAQ</a>
-          </div>
-          <div className="footer-col">
-            <h4>Company</h4>
-            <a href="#">About</a>
-            <a href="#">Blog</a>
-            <a href="#">Careers</a>
-          </div>
-          <div className="footer-col">
-            <h4>Legal</h4>
-            <a href="/privacy">Privacy Policy</a>
-            <a href="#">Terms of Service</a>
-            <a href="#">Cookie Policy</a>
-          </div>
-        </div>
-        <div className="footer-bottom">
-          <p>© 2026 Tailrd. All rights reserved.</p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

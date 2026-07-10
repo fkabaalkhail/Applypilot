@@ -2096,3 +2096,11 @@
   .footer-inner { grid-template-columns: 1fr; }
   .stats-headline-light { font-size: 1.85rem; }
 }
+
+/* Standalone marketing sub-pages (About, Pricing) render the fixed .landing-nav,
+   so their body needs top offset to clear it. */
+.marketing-page {
+  padding-top: 100px;
+  padding-bottom: 64px;
+  min-height: 100vh;
+}
