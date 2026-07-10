@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../auth/useAuth";
+import { useNavigate, useLocation } from "react-router-dom";
+import SiteHeader from "../components/site/SiteHeader";
+import SiteFooter from "../components/site/SiteFooter";
 import { motion } from "framer-motion";
 import TypewriterText from "../components/ui/typewriter-text";
 import AnimatedSection, {
@@ -11,6 +12,7 @@ import AnimatedSection, {
 } from "../components/ui/animated-section";
 import AutoApplyShowcase from "../components/ui/AutoApplyShowcase";
 import { TiltCard } from "../components/ui/tilt-card";
+import PricingTiers from "../components/PricingTiers";
 import "./Landing.css";
 
 const TESTIMONIALS = [
@@ -298,7 +300,12 @@ function SuccessStoryCarousel() {
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+  useEffect(() => {
+    if (!location.hash) return;
+    const el = document.getElementById(location.hash.slice(1));
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [location.hash]);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const faqs = [
@@ -313,29 +320,7 @@ export default function Landing() {
   return (
     <div className="landing">
       {/* Nav */}
-      <nav className="landing-nav">
-        <div className="landing-nav-inner">
-          <div className="landing-brand">
-            <img src="/logo-full.png" alt="Tailrd" className="landing-logo-full" />
-          </div>
-          <div className="landing-nav-links">
-            <a href="#features" className="nav-link-item">Features</a>
-            <a href="#pricing" className="nav-link-item">Pricing</a>
-            <a href="#success-story" className="nav-link-item">Results</a>
-            <a href="#faq" className="nav-link-item">FAQ</a>
-          </div>
-          <div className="landing-nav-actions">
-            {isAuthenticated ? (
-              <button className="btn-cta nav-cta" onClick={() => navigate("/app")}>Dashboard</button>
-            ) : (
-              <>
-                <button className="btn-ghost nav-login" onClick={() => navigate("/sign-in")}>Log in</button>
-                <button className="btn-cta nav-cta" onClick={() => navigate("/sign-up")}>Sign up</button>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
+      <SiteHeader />
 
       {/* Hero — Full viewport height */}
       <section className="hero">
@@ -1005,52 +990,11 @@ export default function Landing() {
       <AnimatedSection animation="fadeUp">
         <section className="section" id="pricing">
           <h2 className="section-title">Simple Pricing</h2>
-          <p className="section-sub">Start free, upgrade when you're ready</p>
-          <StaggerContainer className="pricing-grid" staggerDelay={0.15}>
-            <StaggerItem animation="fadeUp">
-              <div className="pricing-card">
-                <h3>Free</h3>
-                <div className="pricing-price">$0<span>/month</span></div>
-                <ul className="pricing-features">
-                  <li>✓ 10 auto-applies per day</li>
-                  <li>✓ Basic job matching</li>
-                  <li>✓ Application tracker</li>
-                  <li>✓ 1 resume profile</li>
-                </ul>
-                <button className="btn-outline-lg w-full" onClick={() => navigate("/app")}>Get Started</button>
-              </div>
-            </StaggerItem>
-            <StaggerItem animation="fadeUp">
-              <div className="pricing-card pricing-featured">
-                <div className="pricing-badge">Most Popular</div>
-                <h3>Pro</h3>
-                <div className="pricing-price">$29<span>/month</span></div>
-                <ul className="pricing-features">
-                  <li>✓ Unlimited auto-applies</li>
-                  <li>✓ AI screening answers</li>
-                  <li>✓ Resume tailoring per job</li>
-                  <li>✓ Cover letter generation</li>
-                  <li>✓ Priority AI processing</li>
-                  <li>✓ Advanced match scoring</li>
-                </ul>
-                <button className="btn-cta btn-lg w-full" onClick={() => navigate("/app")}>Start Pro Trial</button>
-              </div>
-            </StaggerItem>
-            <StaggerItem animation="fadeUp">
-              <div className="pricing-card">
-                <h3>Lifetime</h3>
-                <div className="pricing-price">$149<span>one-time</span></div>
-                <ul className="pricing-features">
-                  <li>✓ Everything in Pro</li>
-                  <li>✓ Lifetime updates</li>
-                  <li>✓ Priority support</li>
-                  <li>✓ Early access to features</li>
-                  <li>✓ No recurring fees</li>
-                </ul>
-                <button className="btn-outline-lg w-full" onClick={() => navigate("/app")}>Get Lifetime</button>
-              </div>
-            </StaggerItem>
-          </StaggerContainer>
+          <p className="section-sub">Start free, upgrade when you're ready. Prices in CAD.</p>
+          <PricingTiers variant="teaser" />
+          <div style={{ textAlign: "center", marginTop: 24 }}>
+            <button className="btn-ghost" onClick={() => navigate("/pricing")}>See full pricing →</button>
+          </div>
         </section>
       </AnimatedSection>
 
@@ -1092,37 +1036,7 @@ export default function Landing() {
       </AnimatedSection>
 
       {/* Footer */}
-      <footer className="landing-footer">
-        <div className="footer-inner">
-          <div className="footer-col">
-            <div className="footer-brand">
-              <img src="/logo-full.png" alt="Tailrd" className="landing-logo-full" />
-            </div>
-            <p className="footer-tagline">AI-powered job applications.<br />Apply smarter, not harder.</p>
-          </div>
-          <div className="footer-col">
-            <h4>Product</h4>
-            <a href="#features">Features</a>
-            <a href="#pricing">Pricing</a>
-            <a href="#faq">FAQ</a>
-          </div>
-          <div className="footer-col">
-            <h4>Company</h4>
-            <a href="#">About</a>
-            <a href="#">Blog</a>
-            <a href="#">Careers</a>
-          </div>
-          <div className="footer-col">
-            <h4>Legal</h4>
-            <a href="/privacy">Privacy Policy</a>
-            <a href="#">Terms of Service</a>
-            <a href="#">Cookie Policy</a>
-          </div>
-        </div>
-        <div className="footer-bottom">
-          <p>© 2026 Tailrd. All rights reserved.</p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

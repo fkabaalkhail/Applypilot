@@ -27,7 +27,7 @@ from backend.migrations.add_autofill_profile_fields import run_migration as run_
 from backend.migrations.add_resume_sections import run_migration as run_resume_sections_migration
 from backend.migrations.add_resume_content_updated import run_migration as run_resume_content_updated_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile, answers, autofill
-from backend.routers import auth, auth_extension, extension, tailor, cover_letter
+from backend.routers import auth, auth_extension, extension, tailor, cover_letter, auth_linkedin
 from backend.routers.feedback import router as feedback_router
 
 
@@ -137,6 +137,7 @@ async def add_security_headers(request: Request, call_next):
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(auth_extension.router, prefix="/auth/extension", tags=["auth-extension"])
+app.include_router(auth_linkedin.router, prefix="/auth/linkedin", tags=["auth-linkedin"])
 app.include_router(fill.router, prefix="/api", tags=["fill"])
 app.include_router(answers.router, prefix="/api", tags=["answers"])
 app.include_router(tailor.router, prefix="/api", tags=["tailor"])

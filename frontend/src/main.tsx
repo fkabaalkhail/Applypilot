@@ -6,8 +6,12 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { SetupRoute } from "./auth/SetupRoute";
 import App from "./App";
 import Landing from "./pages/Landing";
+import About from "./pages/About";
 import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import Cookies from "./pages/Cookies";
 import Support from "./pages/Support";
+import Pricing from "./pages/Pricing";
 import Jobs from "./pages/Jobs";
 import JobsList from "./pages/JobsList";
 import Applications from "./pages/Applications";
@@ -25,6 +29,7 @@ import DemoApply from "./pages/DemoApply";
 import ExtensionConnect from "./pages/ExtensionConnect";
 import CustomResumeEmbed from "./pages/embed/CustomResumeEmbed";
 import CoverLetterEmbed from "./pages/embed/CoverLetterEmbed";
+import LinkedInComplete from "./pages/LinkedInComplete";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -33,11 +38,16 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/about" element={<About />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/cookies" element={<Cookies />} />
           <Route path="/support" element={<Support />} />
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="/sign-in/*" element={<SignInPage />} />
           <Route path="/sign-up/*" element={<SignUpPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/linkedin/complete" element={<LinkedInComplete />} />
           <Route path="/extension/connect" element={<ExtensionConnect />} />
           <Route path="/embed/custom-resume" element={<CustomResumeEmbed />} />
           <Route path="/embed/cover-letter" element={<CoverLetterEmbed />} />

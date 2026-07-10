@@ -3,6 +3,7 @@ import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Envelope, Lock, Eye, EyeSlash } from "@phosphor-icons/react";
 import { useAuth } from "../auth/useAuth";
 import { GoogleSignInButton } from "../auth/GoogleSignInButton";
+import { LinkedInSignInButton } from "../auth/LinkedInSignInButton";
 import { safeNextPath } from "../auth/nextRedirect";
 
 export default function SignInPage() {
@@ -127,6 +128,7 @@ export default function SignInPage() {
         </form>
 
         <GoogleSignInButton />
+        <LinkedInSignInButton />
 
         <p className="auth-footer">
           Don't have an account?{" "}
