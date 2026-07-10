@@ -8,6 +8,8 @@ import App from "./App";
 import Landing from "./pages/Landing";
 import About from "./pages/About";
 import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import Cookies from "./pages/Cookies";
 import Support from "./pages/Support";
 import Pricing from "./pages/Pricing";
 import Jobs from "./pages/Jobs";
@@ -37,6 +39,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<Landing />} />
           <Route path="/about" element={<About />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/cookies" element={<Cookies />} />
           <Route path="/support" element={<Support />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/sign-in/*" element={<SignInPage />} />
