@@ -1,0 +1,199 @@
+/**
+ * Generate the Chrome Web Store promo tiles from the same design language as
+ * the store screenshots (store-previews/tailrd-*.png): soft white→lavender
+ * gradient, heavy near-black headline with one phrase in Tailrd indigo, and
+ * the white panel card with the indigo pill button.
+ *
+ *   node scripts/gen-promo-tiles.mjs
+ *
+ * Outputs (store spec: JPEG or 24-bit PNG, NO alpha):
+ *   store-previews/tailrd-promo-small-440x280.png
+ *   store-previews/tailrd-promo-marquee-1400x560.png
+ *
+ * Rendered in headless Chromium (exact CSS gradients/shadows/typography),
+ * then flattened + alpha-stripped with sharp.
+ */
+import { chromium } from "playwright";
+import sharp from "sharp";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const LOGO_SRC = path.join(root, "docs", "Logo.jpeg");
+// Same lockup crop as scripts/gen-brand-logo.mjs (wing mark + "Tailrd").
+const LOGO_CROP = { left: 128, top: 336, width: 770, height: 286 };
+const OUT_DIR = path.join(root, "store-previews");
+
+const INK = "#17161d";
+const INDIGO = "#5b2ef5";
+const BODY = "#55525e";
+const FAINT = "#8a8894";
+
+const logoUri = async (heightPx) => {
+  const buf = await sharp(LOGO_SRC)
+    .extract(LOGO_CROP)
+    .flatten({ background: "#ffffff" })
+    .resize({ height: heightPx * 2 }) // 2x for crispness
+    .png()
+    .toBuffer();
+  return `data:image/png;base64,${buf.toString("base64")}`;
+};
+
+const baseCss = `
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: "Segoe UI", "Inter", Arial, sans-serif;
+    background:
+      radial-gradient(120% 140% at 100% 115%, #e3dffa 0%, rgba(227,223,250,0) 55%),
+      linear-gradient(135deg, #ffffff 0%, #f4f2fc 55%, #e9e6fa 100%);
+    color: ${INK};
+  }
+  .accent { color: ${INDIGO}; }
+`;
+
+/* ---- Small promo tile: 440×280 — pure typographic lockup ---- */
+function smallHtml(logo) {
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  ${baseCss}
+  .wrap { padding: 26px 30px; height: 100%; display: flex; flex-direction: column; }
+  .logo { height: 30px; width: auto; align-self: flex-start; }
+  h1 {
+    margin-top: 26px;
+    font-size: 46px; line-height: 1.06; font-weight: 800;
+    letter-spacing: -0.022em;
+  }
+  .foot {
+    margin-top: auto;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+    color: ${FAINT}; text-transform: uppercase;
+  }
+  </style></head><body>
+    <div class="wrap">
+      <img class="logo" src="${logo}" alt="" />
+      <h1>Fill every job<br/>application —<br/><span class="accent">automatically.</span></h1>
+      <div class="foot">Works on 60+ ATS &amp; career sites</div>
+    </div>
+  </body></html>`;
+}
+
+/* ---- Marquee promo tile: 1400×560 — hero copy + panel card replica ---- */
+function marqueeHtml(logo, logoSmall) {
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  ${baseCss}
+  .wrap { position: relative; height: 100%; padding: 64px 0 0 84px; }
+  .logo { height: 44px; width: auto; }
+  h1 {
+    margin-top: 42px;
+    font-size: 63px; line-height: 1.07; font-weight: 800;
+    letter-spacing: -0.024em; max-width: 780px;
+  }
+  .sub {
+    margin-top: 26px; font-size: 23px; line-height: 1.45; color: ${BODY};
+    max-width: 700px; font-weight: 400;
+  }
+  .foot {
+    position: absolute; left: 86px; bottom: 44px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.13em;
+    color: ${FAINT}; text-transform: uppercase;
+  }
+
+  /* Panel card — simplified replica of the real side panel */
+  .card {
+    position: absolute; right: 72px; top: 52px; width: 372px;
+    background: #ffffff; border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(35, 28, 80, 0.16), 0 2px 8px rgba(35, 28, 80, 0.06);
+    overflow: hidden;
+  }
+  .card-h { display: flex; align-items: center; gap: 10px; padding: 16px 18px; }
+  .card-h img { height: 26px; }
+  .dot { margin-left: auto; width: 10px; height: 10px; border-radius: 50%; background: #e5e3ee; }
+  .div { height: 1px; background: #eeedf4; }
+  .job { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+  .job-logo {
+    width: 40px; height: 40px; border-radius: 10px; background: ${INK};
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700;
+  }
+  .job b { display: block; font-size: 15px; }
+  .job span { font-size: 12.5px; color: ${BODY}; }
+  .pad { padding: 14px 18px 18px; }
+  .btn {
+    background: ${INDIGO}; color: #fff; border-radius: 999px;
+    font-size: 14.5px; font-weight: 700; text-align: center; padding: 13px 0;
+    box-shadow: 0 8px 18px rgba(91, 46, 245, 0.35);
+  }
+  .cap { margin-top: 10px; text-align: center; font-size: 11.5px; color: ${FAINT}; }
+  .row {
+    display: flex; align-items: center; padding: 13px 18px;
+    font-size: 13.5px; font-weight: 600;
+  }
+  .row .chev { margin-left: auto; color: #b9b6c6; font-weight: 400; }
+  .file { display: flex; align-items: center; gap: 8px; padding: 0 18px 6px; font-size: 12px; color: ${BODY}; }
+  .chip {
+    margin-left: auto; border: 1px solid #e4e2ee; border-radius: 999px;
+    font-size: 11px; font-weight: 600; padding: 4px 10px; color: ${INK};
+  }
+  .ghost {
+    margin: 8px 18px 16px; background: #efecfd; color: ${INDIGO};
+    border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    text-align: center; padding: 9px 0;
+  }
+  </style></head><body>
+    <div class="wrap">
+      <img class="logo" src="${logo}" alt="" />
+      <h1>Create the account &amp;<br/><span class="accent">fill the form</span> — automatically.</h1>
+      <div class="sub">Tailrd signs you up and completes every field from your profile
+      on Greenhouse, Workday, Lever and 60+ other&nbsp;ATSs.</div>
+      <div class="foot">You always review and submit</div>
+
+      <div class="card">
+        <div class="card-h"><img src="${logoSmall}" alt="" /><span class="dot"></span></div>
+        <div class="div"></div>
+        <div class="job">
+          <div class="job-logo">▲</div>
+          <div><b>Vercel</b><span>Senior Frontend Engineer</span></div>
+        </div>
+        <div class="pad">
+          <div class="btn">Account Creation &amp; Autofill</div>
+          <div class="cap">18 fields ready to fill on this page</div>
+        </div>
+        <div class="div"></div>
+        <div class="row">Your Autofill Information <span class="chev">›</span></div>
+        <div class="div"></div>
+        <div class="row">Upload Resume</div>
+        <div class="file">Alex_Rivera_Resume.pdf <span class="chip">Change</span></div>
+        <div class="ghost">✦&nbsp; Tailor résumé for this job</div>
+      </div>
+    </div>
+  </body></html>`;
+}
+
+async function shoot(browser, html, width, height, outName) {
+  const page = await browser.newPage({
+    viewport: { width, height },
+    deviceScaleFactor: 2, // render at 2x, downscale for crisp text
+  });
+  await page.setContent(html, { waitUntil: "networkidle" });
+  const raw = await page.screenshot({ type: "png" });
+  await page.close();
+  const out = path.join(OUT_DIR, outName);
+  await sharp(raw)
+    .resize(width, height) // back to exact spec size
+    .flatten({ background: "#ffffff" })
+    .removeAlpha() // store requires 24-bit, no alpha
+    .png({ compressionLevel: 9 })
+    .toFile(out);
+  const meta = await sharp(out).metadata();
+  console.log(`${outName}: ${meta.width}x${meta.height}, alpha=${meta.hasAlpha}`);
+}
+
+const browser = await chromium.launch();
+try {
+  const big = await logoUri(44);
+  const small = await logoUri(26);
+  await shoot(browser, smallHtml(await logoUri(30)), 440, 280, "tailrd-promo-small-440x280.png");
+  await shoot(browser, marqueeHtml(big, small), 1400, 560, "tailrd-promo-marquee-1400x560.png");
+} finally {
+  await browser.close();
+}
