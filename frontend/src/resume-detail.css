@@ -609,6 +609,81 @@
 
 .rd-state { padding: 4rem 1.5rem; text-align: center; color: var(--rd-mute); }
 
+/* ── Two-pane workspace ───────────────────────────────────────────────────── */
+
+.rd-workspace-wrap { max-width: 88rem; margin: 0 auto; padding: 1.5rem; }
+
+.rd-pane-toggle { display: none; }
+
+.rd-workspace { margin-top: 1.5rem; }
+
+@media (min-width: 56.25rem) {
+  .rd-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+  .rd-editor-pane { min-width: 0; }
+  .rd-preview-pane { position: sticky; top: 4.75rem; min-width: 0; }
+}
+
+.rd-form { display: flex; flex-direction: column; gap: 1.25rem; }
+.rd-form-section {
+  background: #fff; border: 1px solid var(--rd-rule); border-radius: 12px;
+  padding: 1.1rem 1.25rem 1.25rem; box-shadow: var(--shadow-card);
+}
+.rd-form-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; }
+.rd-form-title { flex: 1; font-size: 0.95rem; font-weight: 650; letter-spacing: -0.01em; color: var(--rd-ink); }
+.rd-reorder { display: inline-flex; flex-direction: column; gap: 1px; }
+.rd-reorder-btn { border: 0; background: none; color: #c3cbd6; cursor: pointer; padding: 0 0.2rem; line-height: 1; }
+.rd-reorder-btn:hover:not(:disabled) { color: var(--rd-ink); }
+.rd-reorder-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.rd-form-body { display: flex; flex-direction: column; gap: 0.85rem; }
+.rd-field { display: block; }
+.rd-field-label {
+  display: block; font-size: 0.7rem; font-weight: 650; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--rd-mute); margin-bottom: 0.3rem;
+}
+.rd-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+
+/* Inputs fill their field — the fix for the cut-off degree. */
+.rd-form .rd-edit {
+  width: 100%;
+  border: 1px solid var(--rd-rule);
+  background: #fff;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+}
+.rd-form .rd-edit:hover { background: #fff; border-color: var(--stripe-hairline-input); }
+.rd-form .rd-edit:focus { background: #fff; border-color: var(--stripe-primary); box-shadow: 0 0 0 3px var(--rd-optional-soft); }
+.rd-form .rd-edit-area { min-height: 3rem; }
+
+.rd-entry-card { border: 1px solid var(--rd-rule-soft); border-radius: 10px; padding: 0.9rem 1rem; }
+.rd-entry-card + .rd-entry-card { margin-top: 0.85rem; }
+.rd-entry-card-body { display: flex; flex-direction: column; gap: 0.85rem; }
+.rd-entry-del {
+  margin-top: 0.75rem; display: inline-flex; align-items: center; gap: 0.4rem;
+  border: 0; background: none; color: var(--rd-mute); font: inherit; font-size: 0.8rem; cursor: pointer;
+}
+.rd-entry-del:hover { color: var(--rd-urgent); }
+
+@media (max-width: 56.24rem) {
+  .rd-pane-toggle {
+    display: flex; width: 100%; margin: 1rem 0; padding: 0.2rem;
+    background: var(--rd-rule-soft); border-radius: 10px;
+  }
+  .rd-pane-toggle button {
+    flex: 1; border: 0; background: none; padding: 0.45rem 1rem;
+    font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--rd-mute);
+    border-radius: 8px; cursor: pointer;
+  }
+  .rd-pane-toggle button[aria-selected="true"] { background: #fff; color: var(--rd-ink); box-shadow: var(--shadow-card); }
+  .rd-workspace[data-pane="edit"] .rd-preview-pane { display: none; }
+  .rd-workspace[data-pane="preview"] .rd-editor-pane { display: none; }
+}
+
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 
 @media (max-width: 48rem) {

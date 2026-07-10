@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../auth/api";
-import ResumeRenderer from "../components/ResumeRenderer";
+import ResumeRenderer, { FittedResume } from "../components/ResumeRenderer";
 import AnalysisReportView from "../components/resume/AnalysisReportView";
 import ImproveModal from "../components/resume/ImproveModal";
-import ResumeCanvas from "../components/resume/ResumeCanvas";
+import ResumeForm from "../components/resume/ResumeForm";
 import ResumeScoreStrip, { UnanalyzedStrip } from "../components/resume/ResumeScoreStrip";
 import { profileToDocument } from "../lib/resumeProfile";
 import type {
@@ -38,6 +38,7 @@ export default function ResumeDetail() {
   const [view, setView] = useState<View>("resume");
   const [focusSeverity, setFocusSeverity] = useState<Severity | null>(null);
   const [improvement, setImprovement] = useState<{ profile: ResumeProfile; changes: string[] } | null>(null);
+  const [pane, setPane] = useState<"edit" | "preview">("edit");
 
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -223,7 +224,7 @@ export default function ResumeDetail() {
           onSetPrimary={setPrimary}
         />
       ) : (
-        <div className="rd-shell">
+        <div className="rd-workspace-wrap">
           {report ? (
             <ResumeScoreStrip
               report={report}
@@ -237,12 +238,19 @@ export default function ResumeDetail() {
             <UnanalyzedStrip onAnalyze={analyze} analyzing={analyzing} />
           )}
 
-          <ResumeCanvas
-            profile={profile}
-            report={report}
-            onChange={update}
-            onFlagClick={(severity) => openReport(severity)}
-          />
+          <div className="rd-pane-toggle" role="tablist" aria-label="Editor or preview">
+            <button role="tab" aria-selected={pane === "edit"} onClick={() => setPane("edit")}>Edit</button>
+            <button role="tab" aria-selected={pane === "preview"} onClick={() => setPane("preview")}>Preview</button>
+          </div>
+
+          <div className="rd-workspace" data-pane={pane}>
+            <div className="rd-editor-pane">
+              <ResumeForm profile={profile} report={report} onChange={update} onFlagClick={(severity) => openReport(severity)} />
+            </div>
+            <aside className="rd-preview-pane" aria-label="Live preview">
+              <FittedResume document={doc} />
+            </aside>
+          </div>
         </div>
       )}
 
