@@ -247,7 +247,9 @@ describe("Property 3: every section the profile has reaches the canvas", () => {
     const { container } = renderDetail();
     await screen.findByRole("heading", { name: /Skills/i });
 
-    const headings = [...container.querySelectorAll(".rd-section-title")].map((h) => h.textContent);
+    const headings = [...container.querySelectorAll(".rd-form-title")]
+      .map((h) => h.textContent)
+      .filter((t) => t !== "Basics");
     expect(headings).toEqual(["Skills", "Projects"]);
   });
 
@@ -255,7 +257,7 @@ describe("Property 3: every section the profile has reaches the canvas", () => {
     api.get.mockResolvedValue({ data: detailOf({ ...emptyProfile(), name: "W" }) });
     const { container } = renderDetail();
     await screen.findByRole("textbox", { name: /your name/i });
-    expect(container.querySelectorAll(".rd-entry")).toHaveLength(0);
+    expect(container.querySelectorAll(".rd-entry-card")).toHaveLength(0);
   });
 });
 
@@ -271,10 +273,10 @@ describe("Property 4: add entry grows the section", () => {
 
     const { container } = renderDetail();
     await screen.findByDisplayValue("Acme");
-    expect(container.querySelectorAll(".rd-entry")).toHaveLength(1);
+    expect(container.querySelectorAll(".rd-entry-card")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: /Add a role/i }));
-    await waitFor(() => expect(container.querySelectorAll(".rd-entry")).toHaveLength(2));
+    await waitFor(() => expect(container.querySelectorAll(".rd-entry-card")).toHaveLength(2));
   });
 });
 
