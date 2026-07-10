@@ -10,7 +10,7 @@ import "../privacy.css";
  *
  * Written for a worldwide audience — Quebec (Law 25), Canada (PIPEDA),
  * EU/EEA + UK (GDPR / UK GDPR), California (CCPA/CPRA), and other regions.
- * Bracketed [Placeholders] are meant to be filled in before publishing.
+ * Placeholder-free: contact/jurisdiction details are filled in for publication.
  */
 export default function Privacy() {
   return (
@@ -24,11 +24,11 @@ export default function Privacy() {
 
         {/* Title */}
         <h1 className="legal-title">Privacy Policy</h1>
-        <p className="legal-updated">Last updated [Effective Date]</p>
+        <p className="legal-updated">Last updated July 10, 2026</p>
 
         {/* Intro */}
         <p>
-          This Privacy Policy for <strong>[Company Name]</strong> (“<strong>we</strong>,”
+          This Privacy Policy for <strong>Tailrd</strong> (“<strong>we</strong>,”
           “<strong>us</strong>,” or “<strong>our</strong>”) describes how and why we may
           collect, store, use, and/or share (“<strong>process</strong>”) your personal
           information when you use our services (“<strong>Services</strong>”), including
@@ -45,7 +45,7 @@ export default function Privacy() {
           understand your privacy rights and choices. We are responsible for making
           decisions about how your personal information is processed. If you do not agree
           with our policies and practices, please do not use our Services. If you still
-          have questions or concerns, contact us at <a href="mailto:[Contact Email]">[Contact Email]</a>.
+          have questions or concerns, contact us at <a href="mailto:support@tailrd.ca">support@tailrd.ca</a>.
         </p>
 
         {/* Summary of key points */}
@@ -122,7 +122,7 @@ export default function Privacy() {
         <section id="intro">
           <h2>1. Introduction &amp; scope</h2>
           <p>
-            This Privacy Policy explains how <strong>[Company Name]</strong> collects, uses,
+            This Privacy Policy explains how <strong>Tailrd</strong> collects, uses,
             discloses, and protects personal information when you use <strong>Tailrd</strong> and
             any related websites, browser extensions, and services (together, the “Service”).
           </p>
@@ -134,7 +134,7 @@ export default function Privacy() {
             Regulation (GDPR / UK GDPR), and the California Consumer Privacy Act as amended by
             the CPRA (CCPA/CPRA). Where a specific law grants you stronger rights than
             described here, that law governs. This policy is adaptable to the laws of
-            [Jurisdiction] and other regions where applicable privacy laws apply.
+            Canada and other regions where applicable privacy laws apply.
           </p>
           <p>
             By using the Service, you acknowledge that you have read and understood this
@@ -149,11 +149,11 @@ export default function Privacy() {
             controller,” or under Quebec law the entity accountable for the information) is:
           </p>
           <ul>
-            <li><strong>Company:</strong> [Company Name]</li>
-            <li><strong>Person in charge of personal information / Privacy Officer:</strong> [Privacy Officer Name]</li>
-            <li><strong>Contact email:</strong> [Contact Email]</li>
-            <li><strong>Primary jurisdiction:</strong> [Jurisdiction]</li>
-            <li><strong>Hosting country:</strong> [Hosting Country]</li>
+            <li><strong>Company:</strong> Tailrd</li>
+            <li><strong>Person in charge of personal information / Privacy Officer:</strong> Wissam Elmasry</li>
+            <li><strong>Contact email:</strong> support@tailrd.ca</li>
+            <li><strong>Primary jurisdiction:</strong> Canada</li>
+            <li><strong>Hosting country:</strong> the United States</li>
           </ul>
           <p>
             You may contact our Privacy Officer at any time using the details above to ask
@@ -326,8 +326,8 @@ export default function Privacy() {
         <section id="transfers">
           <h2>15. Cross-border data transfers</h2>
           <p>
-            We may store and process personal information in [Hosting Country] and other
-            countries where we or our providers operate ([Data Transfer Countries]). This means
+            We may store and process personal information in the United States and other
+            countries where we or our providers operate (the United States). This means
             your information may be transferred outside Quebec, the rest of Canada, the EEA, the
             UK, or your home region. When we transfer personal information across borders, we
             use appropriate safeguards required by applicable law — such as the European
@@ -377,7 +377,7 @@ export default function Privacy() {
             <li><strong>Complaint</strong> — lodge a complaint with your local data protection authority.</li>
           </ul>
           <p>
-            To exercise any right, contact us at <a href="mailto:[Contact Email]">[Contact Email]</a>. We
+            To exercise any right, contact us at <a href="mailto:support@tailrd.ca">support@tailrd.ca</a>. We
             will verify your identity and respond within the timeframe required by applicable
             law. You will not be discriminated against for exercising your rights.
           </p>
@@ -387,11 +387,11 @@ export default function Privacy() {
           <h2>19. Quebec-specific rights &amp; Law 25 disclosures</h2>
           <p>If you are in Quebec, the following additional disclosures apply:</p>
           <ul>
-            <li>Our Privacy Officer (the person in charge of protecting personal information) is [Privacy Officer Name], reachable at [Contact Email].</li>
+            <li>Our Privacy Officer (the person in charge of protecting personal information) is Wissam Elmasry, reachable at support@tailrd.ca.</li>
             <li>You have the right to access, correct, and request the deletion of your personal information, and to withdraw consent.</li>
             <li>You have the right to <strong>data portability</strong> — to receive computerized personal information you provided us in a structured, commonly used technological format.</li>
             <li>Where we use technology to identify, locate, or profile you, we inform you and offer available means to activate or deactivate those functions.</li>
-            <li>We conduct privacy impact assessments before transferring personal information outside Quebec ([Data Transfer Countries]) and before certain new uses.</li>
+            <li>We conduct privacy impact assessments before transferring personal information outside Quebec (the United States) and before certain new uses.</li>
             <li>You may file a complaint with the <em>Commission d’accès à l’information du Québec</em>.</li>
           </ul>
         </section>
@@ -417,7 +417,7 @@ export default function Privacy() {
             information and of certain uses of sensitive personal information, as those terms
             are defined under the CCPA/CPRA. We do not sell your personal information for money.
             We will not discriminate against you for exercising your rights. To make a request,
-            contact us at [Contact Email]; you may use an authorized agent where permitted.
+            contact us at support@tailrd.ca; you may use an authorized agent where permitted.
           </p>
         </section>
 
@@ -428,7 +428,7 @@ export default function Privacy() {
             age of majority in their jurisdiction (or, at minimum, 16, or the age required by
             local law). We do not knowingly collect personal information from children below
             the applicable age. If you believe a child has provided us personal information,
-            contact us at [Contact Email] and we will delete it.
+            contact us at support@tailrd.ca and we will delete it.
           </p>
         </section>
 
@@ -461,9 +461,9 @@ export default function Privacy() {
             information, contact:
           </p>
           <ul>
-            <li><strong>[Company Name]</strong></li>
-            <li><strong>Privacy Officer:</strong> [Privacy Officer Name]</li>
-            <li><strong>Email:</strong> [Contact Email]</li>
+            <li><strong>Tailrd</strong></li>
+            <li><strong>Privacy Officer:</strong> Wissam Elmasry</li>
+            <li><strong>Email:</strong> support@tailrd.ca</li>
           </ul>
           <p>
             We will acknowledge and respond to your request within the time required by
