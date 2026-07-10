@@ -67,7 +67,7 @@ import { closestDemographicOption } from "./demographicMatch";
 import { toApplicantProfile } from "./applicantProfile";
 import { splitByCache, cacheAnswers } from "./answerCache";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
-import { activateElement, fillAriaCombobox, harvestComboboxOptions, readComboboxValue } from "./comboboxEngine";
+import { activateElement, comboboxDisplaysValue, fillAriaCombobox, harvestComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { SECTION_KINDS, MAX_ROWS, rowsPresent, rowsNeeded, findAddButton } from "./repeatingSections";
 import { driveField, setDialogSuppression } from "./mainWorldClient";
 import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
@@ -415,6 +415,12 @@ function initialize(): void {
       if (signal?.aborted) break; // Stop pressed — don't drive more fields
       const control = registry.get(t.fieldId);
       if (!control?.driver) { outcomes.push({ fieldId: t.fieldId, ok: false }); continue; }
+      // Already displaying this value (an earlier pass, or the user, committed
+      // it) — driving it again would visibly erase and re-pick the selection.
+      if (control.el && comboboxDisplaysValue(control.el, t.value)) {
+        outcomes.push({ fieldId: t.fieldId, ok: true });
+        continue;
+      }
       // A multi-value widget (skills) takes one chip per item — the driver sets
       // a single value, so route it to the combobox engine's chip loop instead.
       if (control.multi && control.el) {
@@ -623,6 +629,14 @@ function initialize(): void {
       const retry = lastFields
         .filter(
           (f) =>
+            // Only the LOCATION cascade re-fills (its stated purpose): pulling
+            // every "empty-looking" dropdown back in re-drives fields whose
+            // committed value the empty-check simply couldn't read (the
+            // fill/remove/fill churn on school pickers and the like).
+            (f.category === "country" ||
+              f.category === "addressState" ||
+              f.category === "addressCity" ||
+              f.category === "location") &&
             (f.controlType === "select" || f.controlType === "combobox") &&
             f.fillable &&
             f.proposedValue !== null &&

@@ -461,6 +461,17 @@ function optionText(option: HTMLElement): string {
 }
 
 /**
+ * Whether the widget already DISPLAYS `value` as its committed selection.
+ * Callers use it to skip re-driving an already-filled dropdown: re-driving a
+ * react-select types into it, which visually ERASES the committed value and
+ * re-picks it — the fill/remove/fill churn users see when a later pass
+ * re-targets a field an earlier pass already filled.
+ */
+export function comboboxDisplaysValue(trigger: HTMLElement, value: string): boolean {
+  return comboboxShowsValue(trigger, value);
+}
+
+/**
  * Read a combobox's option labels WITHOUT opening it — only when the listbox is
  * already mounted in the DOM. Many widgets keep a hidden listbox; react-select
  * mounts it lazily on open, so this returns undefined there (the AI then answers

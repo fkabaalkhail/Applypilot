@@ -164,7 +164,12 @@ async function fillReactSelect(el: HTMLElement, value: string): Promise<string |
           await sleep(150);
           hit = pick();
         }
-        if (!hit) fireKey(input, "Escape"); // close the menu we opened by typing
+        if (!hit) {
+          // Clear our filter text before closing — leaving it in the box reads
+          // as an entered answer sitting on top of (or instead of) the value.
+          setNativeInputValue(input, "");
+          fireKey(input, "Escape");
+        }
       }
     }
     if (!hit) return null;

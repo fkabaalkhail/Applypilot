@@ -1014,3 +1014,12 @@ describe("fillAriaCombobox — no dead-time on settled filters", () => {
     expect(sleeps).toBeLessThan(25);
   });
 });
+
+describe("comboboxDisplaysValue", () => {
+  it("reports an already-committed selection so callers can skip re-driving", async () => {
+    const { comboboxDisplaysValue } = await import("../src/content/comboboxEngine");
+    const el = reactSelect(["United States", "Canada"], { initial: "Canada" });
+    expect(comboboxDisplaysValue(el, "Canada")).toBe(true);
+    expect(comboboxDisplaysValue(el, "Mexico")).toBe(false);
+  });
+});
