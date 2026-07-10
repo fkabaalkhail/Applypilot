@@ -123,13 +123,13 @@ def linkedin_callback(
     if error:
         logger.warning("LinkedIn returned an error: %s", error)
         raise HTTPException(status_code=401, detail="LinkedIn sign-in was cancelled")
-    if not code or not state or not li_oauth_state or state != li_oauth_state:
+    if not code or not state or not li_oauth_state or not secrets.compare_digest(state, li_oauth_state):
         logger.warning("LinkedIn state mismatch or missing code")
         raise HTTPException(status_code=401, detail="Invalid or expired LinkedIn sign-in state")
 
     try:
         token_json = _exchange_code(code)
-    except httpx.HTTPError as e:
+    except (httpx.HTTPError, ValueError) as e:
         logger.error("LinkedIn token exchange failed: %s", e)
         raise HTTPException(status_code=502, detail="Could not complete LinkedIn sign-in")
 
@@ -139,7 +139,7 @@ def linkedin_callback(
 
     try:
         info = _fetch_userinfo(access)
-    except httpx.HTTPError as e:
+    except (httpx.HTTPError, ValueError) as e:
         logger.error("LinkedIn userinfo fetch failed: %s", e)
         raise HTTPException(status_code=502, detail="Could not read LinkedIn profile")
 
@@ -180,7 +180,7 @@ def linkedin_callback(
     refresh_tok = create_refresh_token(user.id, client="web", sid=web_session.sid)
 
     next_path = _safe_next(li_oauth_next)
-    redirect = RedirectResponse(url=f"{COMPLETE_PATH}?next={next_path}", status_code=302)
+    redirect = RedirectResponse(url=f"{COMPLETE_PATH}?{urlencode({'next': next_path})}", status_code=302)
     _set_refresh_cookie(redirect, refresh_tok)
     redirect.delete_cookie(STATE_COOKIE, path="/auth")
     redirect.delete_cookie(NEXT_COOKIE, path="/auth")

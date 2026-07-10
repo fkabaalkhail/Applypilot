@@ -14,7 +14,7 @@ export function LinkedInSignInButton() {
   const next = searchParams.get("next") || "/app";
   const href = `/auth/linkedin/start?next=${encodeURIComponent(next)}`;
   return (
-    <a className="linkedin-signin-button" href={href} aria-label="Continue with LinkedIn">
+    <a className="linkedin-signin-button" href={href}>
       <LinkedinLogo size={18} weight="fill" />
       <span>Continue with LinkedIn</span>
     </a>

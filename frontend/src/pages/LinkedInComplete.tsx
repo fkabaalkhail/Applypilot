@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import { safeNextPath } from "../auth/nextRedirect";
@@ -10,8 +10,14 @@ export default function LinkedInComplete() {
   const [searchParams] = useSearchParams();
   const { completeOAuthRedirect } = useAuth();
   const [failed, setFailed] = useState(false);
+  const ranRef = useRef(false);
 
   useEffect(() => {
+    // React 18 StrictMode invokes effects twice in dev; without this guard two
+    // concurrent completeOAuthRedirect() calls each POST /auth/refresh, and the
+    // second rotation revokes the token the first just minted.
+    if (ranRef.current) return;
+    ranRef.current = true;
     let cancelled = false;
     completeOAuthRedirect()
       .then(() => { if (!cancelled) navigate(safeNextPath(searchParams.get("next")), { replace: true }); })
