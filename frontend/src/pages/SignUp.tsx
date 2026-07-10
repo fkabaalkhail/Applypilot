@@ -1,11 +1,13 @@
 import { useState, FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Envelope, Lock, Eye, EyeSlash } from "@phosphor-icons/react";
 import { useAuth } from "../auth/useAuth";
 import { GoogleSignInButton } from "../auth/GoogleSignInButton";
+import { safeNextPath } from "../auth/nextRedirect";
 
 export default function SignUpPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { register } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -33,7 +35,10 @@ export default function SignUpPage() {
 
     try {
       await register(email, password);
-      navigate("/verify-email");
+      // A ?next= caller (the extension connect handshake) must get the user
+      // BACK — the connect page itself handles a still-unverified account.
+      // Without next, keep the normal verify-email landing.
+      navigate(safeNextPath(searchParams.get("next"), "/verify-email"));
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string }; status?: number } };
@@ -161,7 +166,7 @@ export default function SignUpPage() {
 
         <p className="auth-footer">
           Already have an account?{" "}
-          <Link to="/sign-in" className="auth-link">
+          <Link to={{ pathname: "/sign-in", search: searchParams.toString() }} className="auth-link">
             Sign in
           </Link>
         </p>

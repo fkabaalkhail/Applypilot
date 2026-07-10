@@ -130,7 +130,7 @@ export default function SignInPage() {
 
         <p className="auth-footer">
           Don't have an account?{" "}
-          <Link to="/sign-up" className="auth-link">
+          <Link to={{ pathname: "/sign-up", search: searchParams.toString() }} className="auth-link">
             Sign up
           </Link>
         </p>
