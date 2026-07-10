@@ -136,6 +136,47 @@ creditworthiness.
 - [ ] AFTER upload: append the store-assigned id to `EXTENSION_ALLOWED_IDS`
       (comma-separated with the dev id) + add it to extensionBridge.ts → redeploy
 
+## Test instructions (paste into the dashboard's "Test instructions" form)
+
+A dedicated reviewer account exists on prod, pre-loaded with a full profile
+and a résumé file (created 2026-07-10; password also below):
+
+```
+TEST ACCOUNT
+Email: cws.reviewer@tailrd.ca
+Password: Tailrd!Review2026
+(Pre-loaded with a complete profile and resume. No email verification needed.)
+
+SETUP (once)
+1. Install the extension.
+2. Click the Tailrd icon in the Chrome toolbar to open the side panel.
+3. Click "Connect your Tailrd account" — a tailrd.ca sign-in window opens.
+   Sign in with the credentials above. The panel syncs the profile automatically.
+
+CORE FUNCTIONALITY (no real application is submitted)
+4. Go to https://www.tailrd.ca/demo-apply — a demo job-application form.
+5. Open the panel (toolbar icon) and click "Account Creation & Autofill".
+6. Expected: the form fills from the signed-in profile within a few seconds
+   (name, email, phone, address, work authorization…), and the resume file
+   attaches where an upload field exists. Questions the profile cannot answer
+   truthfully are left blank BY DESIGN — the extension never guesses.
+7. The extension never submits an application by itself; the final Submit is
+   always left to the user.
+
+OPTIONAL — real ATS detection
+Open any public Greenhouse or Lever job posting; the panel detects the
+application form the same way. Please avoid pressing a real employer's final
+Submit button — running Autofill itself is safe.
+
+NOTES
+- AI answers are grounded in the account profile; ungroundable fields stay empty.
+- Demographic (EEO) answers are stored on-device only and never transmitted.
+```
+
+**Prerequisite:** the store-assigned extension ID must already be in
+`EXTENSION_ALLOWED_IDS` (see "Extension IDs" above) or the reviewer's Connect
+step fails closed.
+
 ## After review approval
 
 1. Install from the store, sign in, run one real application end to end.
