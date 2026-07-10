@@ -172,11 +172,11 @@ export default function ResumeDetail() {
     setView("report");
   }, []);
 
+  const doc = useMemo(() => (profile ? profileToDocument(profile) : null), [profile]);
+
   if (loading) return <div className="rd"><div className="rd-state">Loading your resume…</div></div>;
   if (error) return <div className="rd"><div className="rd-state">{error}</div></div>;
-  if (!profile || !resume) return null;
-
-  const doc = profileToDocument(profile);
+  if (!profile || !resume || !doc) return null;
 
   return (
     <div className="rd">
@@ -239,8 +239,8 @@ export default function ResumeDetail() {
           )}
 
           <div className="rd-pane-toggle" role="tablist" aria-label="Editor or preview">
-            <button role="tab" aria-selected={pane === "edit"} onClick={() => setPane("edit")}>Edit</button>
-            <button role="tab" aria-selected={pane === "preview"} onClick={() => setPane("preview")}>Preview</button>
+            <button type="button" role="tab" aria-selected={pane === "edit"} onClick={() => setPane("edit")}>Edit</button>
+            <button type="button" role="tab" aria-selected={pane === "preview"} onClick={() => setPane("preview")}>Preview</button>
           </div>
 
           <div className="rd-workspace" data-pane={pane}>

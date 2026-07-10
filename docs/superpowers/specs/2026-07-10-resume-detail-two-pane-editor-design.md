@@ -93,8 +93,9 @@ data flow into `ResumeDetail` is identical. Each section renders as a labelled-f
 - **Projects** — one card per project: Name, Organization, Link, Start → End, Bullets. Add/remove.
 - **Skills** — chips. **Technologies** — chips grouped per category.
 - **Custom sections** — text and/or item list (title, subtitle, dates, bullets), as today.
-- **Section reorder** — retained via a per-card control: up/down buttons plus keyboard
-  arrow-key move (keeps the existing a11y behaviour; drag optional).
+- **Section reorder** — retained via a per-card control: up/down buttons that are keyboard-operable
+  (Tab + Enter/Space), intentionally replacing the old arrow-key grip reorder while keeping the
+  live-region announcement.
 - **Per-section analysis flags** — retained: each card header shows that section's findings
   (reusing `flagsFor`); clicking calls `onFlagClick(severity)` → opens the report focused there.
 

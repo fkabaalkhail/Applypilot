@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import ResumeForm from "./ResumeForm";
 import { emptyProfile } from "../../lib/resumeProfile";
-import type { ResumeProfile } from "../../lib/resumeProfile";
+import type { AnalysisReport, ResumeProfile } from "../../lib/resumeProfile";
 
 const make = (over: Partial<ResumeProfile> = {}): ResumeProfile => ({
   ...emptyProfile(), name: "Ada Lovelace", summary: "Engineer.", ...over,
@@ -95,5 +95,26 @@ describe("ResumeForm — projects, skills, technologies, custom", () => {
     render(<ResumeForm profile={profile} report={null} onChange={() => {}} onFlagClick={() => {}} />);
     expect(screen.getByRole("heading", { name: "Certifications" })).toBeTruthy();
     expect((screen.getByLabelText("Certifications entry 1") as HTMLInputElement).value).toBe("AWS SAA");
+  });
+});
+
+describe("ResumeForm — finding flags", () => {
+  it("shows a section's findings and fires onFlagClick with the severity", () => {
+    const onFlagClick = vi.fn();
+    const report: AnalysisReport = {
+      overall_grade: "FAIR", letter_grade: "C", score: 55,
+      urgent_fix_count: 2, critical_fix_count: 0, optional_fix_count: 0,
+      summary: "", highlights: [], strengths: [], analyzed_at: null,
+      categories: [{
+        id: "c", name: "Impact", score: 50, why_it_matters: "",
+        issues: [{ id: "i", title: "Weak", severity: "urgent", count: 2, description: "", evidence: [], suggestion: "", section: "Education" }],
+      }],
+    };
+    const profile = make({
+      education: [{ school: "MIT", degree: "BSc", location: "", start_date: "", end_date: "", gpa: "", achievements: [], coursework: [] }],
+    });
+    render(<ResumeForm profile={profile} report={report} onChange={() => {}} onFlagClick={onFlagClick} />);
+    fireEvent.click(screen.getByTitle(/for Education/i));
+    expect(onFlagClick).toHaveBeenCalledWith("urgent");
   });
 });
