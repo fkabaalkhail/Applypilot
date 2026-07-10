@@ -163,7 +163,7 @@ No AI endpoint, prompt, or component behaviour is modified.
 
 - **Form parity across all section types** (experience/education/projects/skills/technologies/
   summary/custom) — must match `ResumeCanvas`'s current coverage; this is the main surface area.
-- **Section reorder** in a form layout — preserve keyboard arrow-move + live-region announcement.
+- **Section reorder** in a form layout — up/down buttons (keyboard-operable via Tab + Enter/Space), live-region announcement retained.
 - **Live preview cost** — re-renders on each keystroke; `doc` is memoized and the render is small,
   but confirm no jank on fast typing (debounce only if needed).
 - **Sticky offset** — the preview's `top` must account for the sticky topbar + score strip height.
