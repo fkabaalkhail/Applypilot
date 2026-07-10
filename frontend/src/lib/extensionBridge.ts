@@ -9,11 +9,19 @@
  * to URL-based tracking. Nothing here can break the apply flow.
  */
 
-// Stable extension id (pinned via the extension manifest "key"). Overridable for
-// local/unpacked builds with a different id via VITE_EXTENSION_ID.
-const EXTENSION_ID =
-  (import.meta.env.VITE_EXTENSION_ID as string | undefined) ||
-  "apgogjfdpleeajnngkfkfekbddcpodkl";
+// Every known extension id: the dev/unpacked id (pinned via the manifest "key",
+// which the Web Store strips) plus the store-assigned id once published. Sends
+// are fire-and-forget no-ops for ids that aren't installed, so notifying every
+// known id is safe. Extendable without a code change via VITE_EXTENSION_IDS
+// (comma-separated).
+const EXTENSION_IDS = (
+  (import.meta.env.VITE_EXTENSION_IDS as string | undefined) ??
+  (import.meta.env.VITE_EXTENSION_ID as string | undefined) ??
+  "apgogjfdpleeajnngkfkfekbddcpodkl"
+)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 interface ChromeRuntimeLike {
   sendMessage?: (
@@ -45,23 +53,25 @@ export function notifyApplyIntent(job: ApplyIntentJob, url?: string): void {
   const rt = runtime();
   const applyUrl = url ?? job.url ?? "";
   if (!rt?.sendMessage || !applyUrl || !job.id) return;
-  try {
-    rt.sendMessage(
-      EXTENSION_ID,
-      {
-        type: "TAILRD_APPLY_INTENT",
-        jobId: job.id,
-        url: applyUrl,
-        title: job.title ?? "",
-        company: job.company ?? "",
-      },
-      () => {
-        // Reading lastError suppresses the "Unchecked runtime.lastError" console
-        // warning that Chrome logs when no extension answered.
-        void rt.lastError;
-      }
-    );
-  } catch {
-    // chrome.runtime present but messaging blocked — ignore.
+  for (const extensionId of EXTENSION_IDS) {
+    try {
+      rt.sendMessage(
+        extensionId,
+        {
+          type: "TAILRD_APPLY_INTENT",
+          jobId: job.id,
+          url: applyUrl,
+          title: job.title ?? "",
+          company: job.company ?? "",
+        },
+        () => {
+          // Reading lastError suppresses the "Unchecked runtime.lastError" console
+          // warning that Chrome logs when no extension answered.
+          void rt.lastError;
+        }
+      );
+    } catch {
+      // chrome.runtime present but messaging blocked — ignore.
+    }
   }
 }

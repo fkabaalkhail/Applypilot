@@ -5,16 +5,32 @@ Everything below is ready to paste into the CWS developer dashboard
 
 ## The package
 
-- Zip: `chrome-extension/tailrd-extension-0.4.0.zip` (manifest at zip root, built from `dist/`).
-- Version `0.4.0`, MV3, no remote code (everything is bundled by esbuild; no eval, no CDN scripts).
-- `manifest.json` **keeps the `key` field on purpose**: the Web Store derives the
-  extension ID from it, so the published ID stays
-  `apgogjfdpleeajnngkfkfekbddcpodkl` — the same ID already pinned in the
-  backend's `EXTENSION_ALLOWED_IDS` and used by the PKCE
-  `https://<id>.chromiumapp.org/` redirect. **Do not strip the key.**
-  - Fallback: if the dashboard ever rejects the `key` field, upload without it,
-    read the new ID the store assigns, and append it to `EXTENSION_ALLOWED_IDS`
-    in Vercel (comma-separated — both IDs can stay allowed).
+- Zip: `chrome-extension/tailrd-extension-0.4.0.zip` — built by
+  `node build.mjs && python scripts/make-store-zip.py` (run from
+  `chrome-extension/`). The script strips the dev-only `key` field (the
+  dashboard rejects manifests that carry it) and enforces the 132-char
+  description limit, so a bad zip fails locally instead of at upload.
+- Version `0.4.0`, MV3, no remote code (everything is bundled by esbuild; no
+  eval, no CDN scripts). `dist/` keeps the `key`, so the locally-loaded
+  unpacked extension keeps its pinned dev ID.
+
+### Extension IDs — REQUIRED follow-up right after the first upload
+
+The store assigns a NEW extension ID at first upload (it ignores dev keys),
+and that ID is permanent for the item from then on. Two things depend on it:
+
+1. **`EXTENSION_ALLOWED_IDS` (Vercel)** — as soon as the upload succeeds, copy
+   the item ID from the dashboard (it's in the item's URL and details page) and
+   set the var to BOTH ids, comma-separated:
+   `apgogjfdpleeajnngkfkfekbddcpodkl,<store-id>` → redeploy. Until then the
+   store build's "Connect account" fails closed (the dev/unpacked build keeps
+   working via the first id).
+2. **Web-app → extension bridge** (`frontend/src/lib/extensionBridge.ts`) —
+   sends apply-intent to every id in its list. Add the store id to the default
+   list (or set `VITE_EXTENSION_IDS=<dev-id>,<store-id>`) and redeploy so
+   dashboard-initiated applies are tracked by the store build too.
+
+You can do both immediately after upload — no need to wait for review.
 
 ## Before testers can use it (Vercel env — 2 minutes, REQUIRED)
 
@@ -111,9 +127,11 @@ creditworthiness.
 - [x] `externally_connectable` limited to tailrd.ca (localhost removed)
 - [x] Icons 16/32/48/128 present; screenshots 1280×800
 - [x] Privacy policy live at `/privacy`
-- [ ] Vercel: `REQUIRE_EMAIL_VERIFICATION=false` (USER ACTION)
-- [ ] Vercel: `EXTENSION_ALLOWED_IDS=apgogjfdpleeajnngkfkfekbddcpodkl` (USER ACTION)
+- [x] Vercel: `REQUIRE_EMAIL_VERIFICATION=false` (verified live 2026-07-09: register → email_verified true)
+- [x] Vercel: `EXTENSION_ALLOWED_IDS=apgogjfdpleeajnngkfkfekbddcpodkl` (verified live: authorize → 200)
 - [ ] Upload zip, paste listing + justifications, submit for review
+- [ ] AFTER upload: append the store-assigned id to `EXTENSION_ALLOWED_IDS`
+      (comma-separated with the dev id) + add it to extensionBridge.ts → redeploy
 
 ## After review approval
 
