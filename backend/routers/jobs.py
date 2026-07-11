@@ -173,8 +173,10 @@ def create_job(
     db: Session = Depends(get_db),
 ):
     """Create a new job listing (admin only — used by scrapers to push jobs)."""
-    # Dedup by URL
-    existing = db.query(ScrapedJob).filter(ScrapedJob.url == url).first()
+    # Dedup by URL. Query the id, not the entity: loading the row would pull its
+    # ~1.9 KB description over the wire just to read back an id. Scrapers call
+    # this once per job, hourly, and nearly every call is a duplicate.
+    existing = db.query(ScrapedJob.id).filter(ScrapedJob.url == url).first()
     if existing:
         return {"status": "duplicate", "id": existing.id}
 
