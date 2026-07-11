@@ -348,7 +348,10 @@ export const STYLES = `
 .ap-panel {
   position: fixed;
   top: 0; right: 0; bottom: 0;
-  width: 380px;
+  /* A snapped or narrow browser window can be under 380px; the panel must
+     shrink with it rather than run off the right edge of the host page.
+     .ap-pdf-modal, which covers this panel, already guards the same way. */
+  width: 380px; max-width: 100vw;
   background: #fff;
   border-left: 1px solid var(--stripe-hairline);
   box-shadow: -4px 0 24px rgba(var(--stripe-shadow-rgb), 0.12);

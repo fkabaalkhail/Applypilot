@@ -23,18 +23,27 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
+  gap: 1rem;
+  /* min-height, not height: the links wrap to a second row on a 320px screen and
+     a fixed 64px would cut them off. */
+  min-height: 64px;
+  padding: 0.5rem 0;
 }
 
+/* The brand never gives way. Without this the flex layout shrank .jl-nav-left
+   from 91px to 73px and "Tailrd" spilled 18px out of its own <a>. */
 .jl-nav-left {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .jl-logo {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-shrink: 0;
+  min-height: 40px;
   text-decoration: none;
   color: #111827;
 }
@@ -42,6 +51,7 @@
 .jl-logo-img {
   width: 32px;
   height: 32px;
+  flex-shrink: 0;
   border-radius: 8px;
 }
 
@@ -49,15 +59,22 @@
   font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .jl-nav-right {
   display: flex;
   align-items: center;
-  gap: 2rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 0.35rem 2rem;
 }
 
 .jl-nav-link {
+  display: flex;
+  align-items: center;
+  min-height: 36px; /* the text is 19px tall — not a thumb target on its own */
   text-decoration: none;
   color: #6b7280;
   font-size: 0.875rem;

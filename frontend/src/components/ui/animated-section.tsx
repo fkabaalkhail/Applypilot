@@ -14,21 +14,39 @@ interface AnimatedSectionProps {
   stagger?: boolean
 }
 
+/**
+ * How far an element slides in from.
+ *
+ * Vertical offsets are free: the page already scrolls on that axis.
+ *
+ * Horizontal offsets are NOT. The element is parked at its `hidden` offset until
+ * it scrolls into view, so a section below the fold sits translated sideways for
+ * the whole time the user is above it. On a grid column that already fills its
+ * track that widens the document and puts a horizontal scrollbar on the page —
+ * this is where the landing page's mystery 28px of sideways scroll came from.
+ *
+ * So X_OFFSET must stay within the narrowest gutter any consumer has, which is
+ * the 2rem (32px) side padding on .showcase-section / .stats-section-light.
+ * 24px leaves 8px of slack at every viewport in the matrix.
+ */
+const X_OFFSET = 24
+const Y_OFFSET = 60
+
 const animations: Record<AnimationType, Variants> = {
   fadeUp: {
-    hidden: { opacity: 0, y: 60 },
+    hidden: { opacity: 0, y: Y_OFFSET },
     visible: { opacity: 1, y: 0 },
   },
   fadeDown: {
-    hidden: { opacity: 0, y: -60 },
+    hidden: { opacity: 0, y: -Y_OFFSET },
     visible: { opacity: 1, y: 0 },
   },
   fadeLeft: {
-    hidden: { opacity: 0, x: -60 },
+    hidden: { opacity: 0, x: -X_OFFSET },
     visible: { opacity: 1, x: 0 },
   },
   fadeRight: {
-    hidden: { opacity: 0, x: 60 },
+    hidden: { opacity: 0, x: X_OFFSET },
     visible: { opacity: 1, x: 0 },
   },
   scale: {

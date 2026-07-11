@@ -1,7 +1,7 @@
 .setup-root { position: fixed; inset: 0; display: grid; grid-template-columns: 45% 55%; background: var(--bg-white, #fff); z-index: 60; }
 .setup-left {
   position: relative; padding: 48px; display: flex; flex-direction: column;
-  justify-content: center; align-items: center; text-align: center;
+  justify-content: center; align-items: center; text-align: center; min-width: 0;
   /* Same Stripe-signature gradient mesh as the landing page hero (.hero-bg) */
   background:
     radial-gradient(ellipse 60% 50% at 88% 8%, rgba(249, 107, 238, 0.28) 0%, transparent 60%),
@@ -21,28 +21,32 @@
 .setup-headline { font-size: 30px; line-height: 1.2; font-weight: 600; color: var(--text, #1a1a1a); max-width: 460px; margin: 0 auto; }
 .setup-headline b { color: var(--accent, #533afd); font-weight: 750; }
 
-.setup-right { position: relative; padding: 40px 56px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.setup-right { position: relative; padding: 40px 56px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; }
 .setup-logout { position: absolute; top: 20px; right: 24px; background: transparent; border: 1px solid var(--border, #e6e6e6); border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; color: var(--text-secondary, #555); }
 .setup-logout:hover { border-color: var(--accent, #533afd); color: var(--accent, #533afd); }
 .setup-dots { display: flex; gap: 6px; margin: 8px 0 28px; justify-content: center; }
 .setup-dot { width: 22px; height: 5px; border-radius: 9999px; background: var(--border, #e2e2e2); transition: background .2s ease; }
 .setup-dot.active { background: var(--accent, #533afd); }
 .setup-dot.done { background: var(--accent-soft, #d8d4ff); }
-.setup-form { flex: 1; max-width: 620px; width: 100%; }
-.setup-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; max-width: 620px; }
+.setup-form { flex: 1; max-width: 620px; width: 100%; min-width: 0; }
+.setup-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 32px; max-width: 620px; }
 .setup-field { margin-bottom: 22px; }
 .setup-label { display: block; font-size: 13px; font-weight: 600; color: var(--text, #1a1a1a); margin-bottom: 8px; }
 .setup-label .req { color: #d1435b; margin-right: 4px; }
 .setup-input, .setup-select {
-  width: 100%; padding: 11px 14px; border: 1px solid var(--border, #e6e6e6); border-radius: 10px;
+  width: 100%; min-width: 0; padding: 11px 14px; border: 1px solid var(--border, #e6e6e6); border-radius: 10px;
   font: inherit; font-size: 14px; background: var(--bg-page, #fafbfc); color: var(--text, #1a1a1a);
 }
 .setup-input:focus, .setup-select:focus { outline: none; border-color: var(--accent, #533afd); background: #fff; }
-.setup-checkgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* minmax(0, 1fr): a bare `1fr` track has an `auto` minimum, so it refuses to
+   shrink below the widest option label and the grid spills out of the form. */
+.setup-checkgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .setup-check {
   display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid var(--border, #e6e6e6);
   border-radius: 10px; cursor: pointer; background: var(--bg-page, #fafbfc); font-size: 14px;
+  min-width: 0; overflow-wrap: anywhere;
 }
+.setup-check input { flex-shrink: 0; }
 .setup-check.checked { border-color: var(--accent, #533afd); background: var(--accent-light, #eef0ff); }
 .setup-error { color: #d1435b; font-size: 13px; margin-top: -12px; margin-bottom: 16px; }
 .setup-btn {
@@ -79,9 +83,54 @@
 }
 .setup-resume-title { font-size: 16px; font-weight: 650; color: var(--text, #1a1a1a); }
 .setup-resume-hint { font-size: 13px; color: var(--text-secondary, #555); }
-.setup-resume-filename { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: var(--accent-hover, #4434d4); }
+.setup-resume-filename { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: var(--accent-hover, #4434d4); max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
 .setup-resume-change { font-size: 12px; color: var(--text-muted, #888); margin-top: 2px; }
 .setup-resume-privacy { font-size: 12px; color: var(--text-muted, #888); max-width: 380px; margin-top: 16px; line-height: 1.5; }
 
-@media (max-width: 860px) { .setup-root { grid-template-columns: 1fr; } .setup-left { display: none; } }
+/* --- Stacked wizard (< 1024px) ------------------------------------------------
+   The left column used to be `display: none` below 860px, which threw away the
+   headline — the only context a first-time user is given — and left the form
+   squeezed into a column that was still padded for a desktop. Below 1024px the
+   two columns stack: the assistant becomes a band above the form, and the form
+   gets the full width. `.setup-root` is position:fixed, so it (not `.setup-right`)
+   becomes the scroller — otherwise a form taller than the phone would put the
+   Next button somewhere nothing scrolls to. */
+@media (max-width: 1023.98px) {
+  .setup-root {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .setup-left {
+    padding: 26px 20px 22px;
+    border-bottom: 1px solid var(--border-light, #eef2f6);
+  }
+  .setup-assistant { gap: 8px; margin-bottom: 14px; }
+  .setup-assistant-avatar { width: 54px; height: 54px; border-radius: 15px; }
+  .setup-assistant-logo { width: 36px; height: 36px; }
+  .setup-headline { font-size: 22px; }
+  .setup-right {
+    overflow: visible; /* .setup-root owns the scrolling now */
+    justify-content: flex-start;
+    padding: 54px 20px 44px; /* top room for the absolutely-placed Logout */
+  }
+  .setup-logout { top: 12px; right: 16px; min-height: 36px; padding: 8px 16px; }
+  .setup-dots { margin: 4px 0 24px; }
+  /* touch targets */
+  .setup-back { min-height: 36px; padding: 0 12px; margin-left: -12px; }
+  .setup-check input { width: 18px; height: 18px; }
+}
+
+/* Two 14px columns cannot hold "Customer Service and Support" on a phone. */
+@media (max-width: 639.98px) {
+  .setup-checkgrid { grid-template-columns: minmax(0, 1fr); }
+  .setup-left { padding: 22px 16px 18px; }
+  .setup-right { padding: 52px 16px 40px; }
+  .setup-headline { font-size: 20px; }
+  .setup-resume-card { padding: 26px 18px; }
+  .setup-btn { padding: 11px 24px; }
+}
+
 @media (prefers-reduced-motion: reduce) { .setup-anim { transition: none !important; } }

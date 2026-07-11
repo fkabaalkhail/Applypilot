@@ -63,6 +63,37 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ===== Responsive foundation =====
+ * Breakpoint scale, used everywhere: 640 / 768 / 1024 / 1280.
+ *   <640   phone
+ *   <768   large phone           → app nav is an off-canvas drawer
+ *   <1024  tablet                → app nav is a 64px icon rail
+ *   <1280  small laptop
+ *   ≥1280  desktop
+ *
+ * The rules below exist because two browser defaults fight against fluid
+ * layouts, and both bite at *every* viewport, not just small ones:
+ *
+ *   1. A flex/grid child defaults to `min-width: auto` — it refuses to shrink
+ *      below its content's intrinsic width. One long job title is then enough
+ *      to shove the whole page sideways. Every text-bearing flex/grid child
+ *      needs `min-width: 0`.
+ *   2. A long unbroken string (an email, a URL, a company slug) has an
+ *      intrinsic width equal to its full length, and will happily widen its
+ *      container past the screen.
+ */
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* Opt-in helper for containers that hold employer- or user-supplied strings. */
+.wrap-anywhere {
+  overflow-wrap: anywhere;
+}
+
 /* ===== Stripe typography: thin display tier with negative tracking ===== */
 h1, h2, h3, .display-xxl, .display-xl, .display-lg, .display-md {
   font-weight: 300;
@@ -102,53 +133,121 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 /* ===== Layout ===== */
 .app-layout {
   display: flex;
+  /* On a mobile browser `100vh` is measured against the viewport with the URL
+   * bar *hidden*, so a 100vh shell is taller than the screen you can actually
+   * see and the page gains a strip of phantom scroll. `dvh` tracks the visible
+   * viewport. The `vh` line stays as the fallback for browsers without dvh. */
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
-.app-layout.sidebar-collapsed .sidebar {
-  width: 64px;
+/* The manual collapse toggle only exists where there is a sidebar to collapse.
+ * Below 768px the sidebar is a drawer, and these rules must not leak into it —
+ * a drawer with its labels hidden is just a mystery. */
+@media (min-width: 768px) {
+  .app-layout.sidebar-collapsed .sidebar {
+    width: 64px;
+  }
+
+  .app-layout.sidebar-collapsed .logo-text,
+  .app-layout.sidebar-collapsed .nav-label,
+  .app-layout.sidebar-collapsed .sidebar-section-label,
+  .app-layout.sidebar-collapsed .sidebar-user-info {
+    display: none;
+  }
+
+  .app-layout.sidebar-collapsed .sidebar-logo {
+    padding: 0;
+    justify-content: center;
+  }
+
+  .app-layout.sidebar-collapsed .sidebar-section {
+    padding: 0 0.5rem;
+  }
+
+  .app-layout.sidebar-collapsed .sidebar-user {
+    padding: 1rem 0.5rem;
+    justify-content: center;
+  }
+
+  .app-layout.sidebar-collapsed .sidebar-user-avatar {
+    display: none;
+  }
+
+  .app-layout.sidebar-collapsed .nav-item {
+    justify-content: center;
+    padding: 0.65rem;
+  }
+
+  .app-layout.sidebar-collapsed .nav-item.active::before {
+    left: -0.5rem;
+  }
+
+  .app-layout.sidebar-collapsed .main-content {
+    margin-left: 64px;
+  }
+
+  .app-layout.sidebar-collapsed .sidebar-collapse-btn {
+    margin: 0 auto 1rem;
+  }
 }
 
-.app-layout.sidebar-collapsed .logo-text,
-.app-layout.sidebar-collapsed .nav-label,
-.app-layout.sidebar-collapsed .sidebar-section-label,
-.app-layout.sidebar-collapsed .sidebar-user-info {
+/* ===== Phone top bar + drawer chrome (inert from 768px up) ===== */
+.app-topbar {
+  display: none;
+  align-items: center;
+  gap: 0.6rem;
+  height: 56px;
+  padding: 0 0.75rem;
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.app-topbar-menu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.app-topbar-menu:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.app-topbar-logo {
+  height: 24px;
+  width: auto;
+}
+
+.app-topbar-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.sidebar-backdrop {
   display: none;
 }
 
-.app-layout.sidebar-collapsed .sidebar-logo {
-  padding: 0;
-  justify-content: center;
-}
-
-.app-layout.sidebar-collapsed .sidebar-section {
-  padding: 0 0.5rem;
-}
-
-.app-layout.sidebar-collapsed .sidebar-user {
-  padding: 1rem 0.5rem;
-  justify-content: center;
-}
-
-.app-layout.sidebar-collapsed .sidebar-user-avatar {
+.sidebar-close {
   display: none;
-}
-
-.app-layout.sidebar-collapsed .nav-item {
+  align-items: center;
   justify-content: center;
-  padding: 0.65rem;
-}
-
-.app-layout.sidebar-collapsed .nav-item.active::before {
-  left: -0.5rem;
-}
-
-.app-layout.sidebar-collapsed .main-content {
-  margin-left: 64px;
-}
-
-.app-layout.sidebar-collapsed .sidebar-collapse-btn {
-  margin: 0 auto 1rem;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
 }
 
 .sidebar {
@@ -359,8 +458,8 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   border: none;
   background: transparent;
@@ -378,7 +477,11 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 .main-content {
   margin-left: var(--sidebar-width);
   flex: 1;
+  /* Without this the flex item cannot shrink past its content's intrinsic
+   * width, and the page scrolls sideways at any viewport the content outgrows. */
+  min-width: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg-page);
 }
 
@@ -387,6 +490,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Header Bar */
@@ -502,14 +606,19 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   margin-left: auto;
   display: flex;
   align-items: center;
+  /* The search box is the only thing in here, and it must be allowed to give
+   * ground on a 320px phone instead of shoving the header off the screen. */
+  min-width: 0;
 }
 
 .search-input {
-  padding: 0.5rem 1rem 0.5rem 2.2rem;
+  padding: 0.6rem 1rem 0.6rem 2.2rem;
   border: 1px solid var(--border-light);
   border-radius: 8px;
   font-size: 0.84rem;
-  width: 260px;
+  /* Sized by the wrapper's flex-basis (260px), capped by the space available. */
+  width: 100%;
+  min-width: 0;
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
   background: var(--bg-page);
@@ -523,15 +632,23 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 
 .search-wrapper {
   position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
-.search-wrapper i {
+/* The icon is rendered as an <svg> (phosphor), not an <i> — it has to be taken
+ * out of flow either way, since the input reserves 2.2rem of left padding for it. */
+.search-wrapper > i,
+.search-wrapper > svg {
   position: absolute;
   left: 0.85rem;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-muted);
   font-size: 0.8rem;
+  pointer-events: none;
 }
 
 /* ===== Filter Bar ===== */
@@ -676,8 +793,10 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  min-width: 280px;
-  max-height: 360px;
+  /* 280px is a floor on a desktop and a wall on a 320px phone. */
+  min-width: min(280px, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  max-height: min(360px, calc(100dvh - 8rem));
   display: flex;
   flex-direction: column;
 }
@@ -772,10 +891,12 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   flex-direction: row;
   flex: 1;
   overflow: hidden;
+  min-width: 0;
 }
 
 .jobs-content-area .jobs-feed {
   width: 100%;
+  min-width: 0;
   overflow-y: auto;
   height: 100%;
 }
@@ -795,6 +916,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   max-width: 1100px;
   margin: 0 auto;
   width: 100%;
+  min-width: 0;
 }
 
 /* ===== Job Card ===== */
@@ -882,17 +1004,21 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   border-radius: var(--radius-pill);
 }
 
+/* Employer-supplied strings: a 60-character company name or an unbroken job
+ * slug must wrap, not widen the card. */
 .job-title {
   font-size: 1.05rem;
   font-weight: 650;
   color: var(--text);
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .job-company {
   font-size: 0.85rem;
   color: var(--text-secondary);
   margin-top: 0.15rem;
+  overflow-wrap: anywhere;
 }
 
 .company-meta {
@@ -901,12 +1027,18 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 }
 
 .btn-bookmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   background: none;
   border: none;
+  border-radius: 8px;
   font-size: 1.3rem;
   cursor: pointer;
   color: var(--text-muted);
-  padding: 0.25rem;
+  padding: 0;
   transition: color 0.15s;
   flex-shrink: 0;
 }
@@ -1003,11 +1135,17 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   letter-spacing: 0.5px;
 }
 
-/* Card Footer */
+/* Card Footer
+ * `space-between` with no wrap means that once the applicant count plus the
+ * action buttons stop fitting, the free space goes negative and the *last*
+ * item — the action row — is pushed straight out of the card. Wrapping lets
+ * the actions drop to their own line instead. */
 .job-card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border-light);
 }
@@ -1015,6 +1153,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 .applicant-text {
   font-size: 0.78rem;
   color: var(--text-muted);
+  min-width: 0;
 }
 
 .job-actions {
@@ -1023,6 +1162,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .btn-icon {
@@ -1184,7 +1324,8 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 .page-stub p { font-size: 1rem; }
 
 /* ===== Responsive ===== */
-@media (max-width: 1100px) {
+/* Normalized to the 640/768/1024/1280 scale (was an off-scale 1100). */
+@media (max-width: 1023.98px) {
   .match-badge {
     width: 140px;
     min-width: 140px;
@@ -1195,9 +1336,10 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   }
 }
 
-@media (max-width: 768px) {
-  .sidebar { 
-    width: 64px; 
+/* Tablet (768–1023): the sidebar collapses to a permanent icon rail. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .sidebar {
+    width: 64px;
   }
   .sidebar .logo-text,
   .sidebar .nav-label,
@@ -1211,17 +1353,115 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   .nav-item { justify-content: center; padding: 0.65rem; }
   .nav-item.active::before { left: -0.5rem; }
   .main-content { margin-left: 64px; }
+  .sidebar-collapse-btn { display: none; }
+}
+
+/* Phone (<768): the sidebar becomes an off-canvas drawer behind a top bar, and
+ * the content finally gets the whole width instead of sharing it with a rail. */
+@media (max-width: 767.98px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .app-topbar {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 90;
+  }
+
+  .sidebar {
+    width: min(84vw, 288px);
+    transform: translateX(-100%);
+    /* Translating the drawer off-screen hides it from the eye but not from the
+     * keyboard or a screen reader — its links stay focusable and announced.
+     * `visibility: hidden` takes it out of the tab order; the delay keeps it
+     * on screen for the length of the slide-out. */
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
+    will-change: transform;
+  }
+
+  .app-layout.nav-open .sidebar {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.22s ease, visibility 0s;
+    box-shadow: 0 0 48px rgba(13, 37, 61, 0.22);
+  }
+
+  .app-layout.nav-open .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    background: rgba(13, 37, 61, 0.45);
+  }
+
+  .sidebar-close { display: flex; }
+  .sidebar-collapse-btn { display: none; }
+
+  .main-content {
+    margin-left: 0;
+    width: 100%;
+    min-height: 0;
+  }
+
   .jobs-header { padding: 0 1rem; gap: 1rem; }
   .filter-bar { padding: 0.75rem 1rem; }
   .jobs-feed { padding: 0 1rem 1rem; }
   .job-details-grid { grid-template-columns: 1fr; }
   .match-badge { display: none; }
-  .search-input { width: 160px; }
+}
+
+/* A drawer that slides in is nice; a drawer that lurches in is not. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
+
+/* Page chrome on phones. The shell block above owns the nav; this one owns the
+ * gutters. 2rem of padding on a 320px screen spends 20% of the viewport on
+ * whitespace, which is what forces the toolbar and the job cards to fight. */
+@media (max-width: 767.98px) {
+  .jobs-page {
+    /* The topbar already took 56px; asking for a further 100vh just adds a
+     * second scrollbar's worth of dead space under the fold. */
+    min-height: calc(100dvh - 56px);
+  }
+
+  .jobs-toolbar { padding: 0.75rem 1rem 0.5rem; }
+
+  .jobs-toolbar-top {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .jobs-tabs { flex-wrap: wrap; }
+
+  .job-filter-bar { padding: 0.75rem 1rem; }
+  .filters-expanded { padding: 0 1rem 1rem; }
+}
+
+@media (max-width: 639.98px) {
+  .job-card-body { padding: 1rem; }
+
+  /* The score badge is a fixed 90px column carved out of a 288px card — it
+   * leaves the card body too narrow for its own buttons. Slim it down rather
+   * than hide it; the number is the reason people scan the list. */
+  .match-score-badge {
+    min-width: 72px;
+    padding: 0.75rem 0.5rem;
+  }
+
+  .match-circle-sm {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 /* === Job Detail Inline Panel === */
 .job-detail-inline {
   width: 100%;
+  min-width: 0;
   height: 100%;
   overflow-y: auto;
   background: var(--bg-white);
@@ -1296,12 +1536,14 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+  min-width: 0;
 }
 
 .job-detail-company {
   font-weight: 600;
   font-size: 0.95rem;
   color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .job-detail-posted {
@@ -1316,6 +1558,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   line-height: 1.25;
   margin: 0 0 1rem;
   padding-right: 3rem;
+  overflow-wrap: anywhere;
 }
 
 /* Tags */
@@ -1385,6 +1628,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   display: flex;
   gap: 0.75rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .btn-apply-detail {
@@ -1435,20 +1679,33 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   padding: 2rem;
 }
 
-@media (max-width: 768px) {
+/* 767.98, not 768 — at exactly 768px the tablet rail query (min-width: 768px)
+ * is also live, and both were matching. */
+@media (max-width: 767.98px) {
   .job-detail-content {
     grid-template-columns: 1fr;
+    padding: 1.25rem 1rem;
   }
   .job-detail-header-section {
-    padding: 1.5rem 1.5rem 1.25rem;
+    padding: 1.25rem 1rem 1rem;
   }
-  .job-detail-content {
-    padding: 1.5rem;
+  .job-detail-title {
+    font-size: 1.3rem;
+    padding-right: 2.5rem;
   }
 }
 
 .job-detail-main {
   min-width: 0;
+}
+
+/* Descriptions and hand-entered links are the longest strings in the app. */
+.description-content,
+.job-detail-meta-row,
+.insider-connections,
+.email-finder {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Description section */
@@ -1524,6 +1781,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-width: 0;
 }
 
 .match-score-card {
@@ -1793,9 +2051,13 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   margin-bottom: 0.4rem;
 }
 
+/* The subtitle interpolates the signed-in address ("we sent a link to <email>").
+ * A 60-character corporate address is one unbreakable word, and without this it
+ * sets its own width — 600px of it — and drags the card off the screen. */
 .auth-subtitle {
   font-size: 0.9rem;
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 .auth-form {
@@ -1853,17 +2115,24 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 
 .auth-input-toggle {
   position: absolute;
-  right: 0.6rem;
+  right: 0.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.25rem;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   border: none;
   background: transparent;
   color: var(--stripe-ink-mute);
   cursor: pointer;
   border-radius: 6px;
   transition: color 0.15s, background 0.15s;
+}
+
+/* Only the password fields carry a toggle; only they need to reserve room for it. */
+.auth-input-wrap:has(.auth-input-toggle) .auth-input {
+  padding-right: 2.9rem;
 }
 
 .auth-input-toggle:hover {
@@ -1978,9 +2247,14 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 }
 
 /* --- Responsive --- */
-@media (max-width: 480px) {
+/* Normalized to the 640/768/1024/1280 scale (was an off-scale 480). */
+@media (max-width: 639.98px) {
+  .auth-page {
+    padding: 1.5rem 1rem;
+  }
+
   .auth-card {
-    padding: 2rem 1.5rem;
+    padding: 2rem 1.25rem;
     border-radius: 14px;
   }
 }
@@ -2251,6 +2525,9 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 22rem;
+  /* A flex item of the inline-flex chip: without this it refuses to shrink
+   * below the full width of the address and the ellipsis never engages. */
+  min-width: 0;
 }
 
 /* Sub-section (mailing address, technologies) */
@@ -2287,6 +2564,8 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.4rem;
+  min-width: 36px;
+  min-height: 36px;
   cursor: pointer;
   color: var(--text-secondary);
   display: flex;
@@ -2296,7 +2575,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   flex-shrink: 0;
 }
 
-.profile-edit-btn.small { padding: 0.3rem; }
+.profile-edit-btn.small { padding: 0.3rem; min-width: 36px; min-height: 36px; }
 
 .profile-edit-btn:hover {
   border-color: var(--accent);
@@ -2328,7 +2607,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 .profile-info-value {
   font-size: 0.9rem;
   color: var(--text);
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Form grid (edit mode) */
@@ -2695,8 +2974,8 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   }
 }
 
-/* Responsive */
-@media (max-width: 768px) {
+/* Responsive — 767.98 so this never co-fires with the min-width:768 rail query. */
+@media (max-width: 767.98px) {
   .profile-page {
     padding: 1rem;
   }
@@ -2721,6 +3000,20 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 
   .profile-name {
     font-size: 1.35rem;
+  }
+
+  .profile-timeline-item {
+    gap: 0.75rem;
+  }
+}
+
+@media (max-width: 639.98px) {
+  .profile-card {
+    padding: 1.25rem 1rem;
+  }
+
+  .profile-skill-input-row {
+    flex-wrap: wrap;
   }
 }
 
@@ -2840,7 +3133,9 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 1rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .preview-modal {
@@ -2848,8 +3143,9 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   border-radius: 12px;
   width: 100%;
   max-width: 700px;
-  max-height: 90vh;
+  max-height: calc(100dvh - 2rem);
   overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
   position: relative;
 }
@@ -2963,8 +3259,12 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   margin-bottom: 1rem;
 }
 
+/* An <input> carries an intrinsic min-width (its `size`), so `flex: 1` alone
+ * will not let it shrink — it holds its ground and evicts the Copy button
+ * through the right edge of the page instead. */
 .refer-link-input {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 0.6rem 1rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -2993,6 +3293,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 .refer-share-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -3061,7 +3362,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   font-weight: 500;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .refer-steps {
     flex-direction: column;
   }
@@ -3070,11 +3371,25 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   }
 }
 
+@media (max-width: 639.98px) {
+  .refer-page {
+    padding: 1.25rem 1rem;
+  }
+  .refer-link-section,
+  .refer-rewards {
+    padding: 1.25rem 1rem;
+  }
+  .refer-header h1 {
+    font-size: 1.3rem;
+  }
+}
+
 /* ===== Interview Page ===== */
 .interview-page {
   max-width: 1000px;
   margin: 0 auto;
   padding: 2rem;
+  min-width: 0;
 }
 
 .interview-header {
@@ -3106,9 +3421,11 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   border-color: var(--accent);
 }
 
+/* min() keeps the track from insisting on 220px inside a container narrower
+ * than that — the classic auto-fill overflow. */
 .interview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
   gap: 1rem;
 }
 
@@ -3153,6 +3470,9 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 }
 
 .interview-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
   background: none;
   border: none;
   color: var(--accent);
@@ -3166,8 +3486,15 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 .interview-company-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 2rem;
+  min-width: 0;
+}
+
+.interview-company-header-info {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .interview-company-logo {
@@ -3242,7 +3569,9 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 
 .interview-question-meta {
   display: flex;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
   font-size: 0.75rem;
   color: var(--text-muted);
 }
@@ -3335,7 +3664,8 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 /* Stats */
 .interview-stats {
   display: flex;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
   margin-top: 0.75rem;
 }
 
@@ -3352,6 +3682,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 .interview-request-cta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 1rem;
   padding: 1.25rem 1.5rem;
   margin-top: 2rem;
@@ -3376,6 +3707,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 
 .interview-request-cta > div {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -3470,15 +3802,20 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 
 .modal-close {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   background: none;
   border: none;
   font-size: 1.1rem;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 6px;
+  padding: 0;
+  border-radius: 8px;
   transition: background 0.15s;
 }
 
@@ -3487,7 +3824,12 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   color: var(--text);
 }
 
-/* Generic Modal */
+/* ===== Generic Modal =====
+ * One pattern, every modal. The overlay scrolls so a modal can never be taller
+ * than the screen it is centred in, and the content is capped against `dvh`,
+ * not `vh` — on a phone `100vh` is measured against the *expanded* viewport, so
+ * a 90vh modal is taller than what you can actually see the moment the URL bar
+ * is showing. That is exactly how a primary button ends up under the fold. */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -3496,12 +3838,22 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   backdrop-filter: blur(2px);
   animation: fadeIn 0.15s ease;
 }
 
 .modal-content {
   position: relative;
+  /* The gutter lives here rather than as overlay padding, so that modals which
+   * are not .modal-content (the settings modal sets its own width) are left
+   * exactly as they were. Each modal's own max-width still caps this. */
+  width: calc(100% - 2rem);
+  margin: 1rem 0;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--bg-white);
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
@@ -3535,12 +3887,45 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   color: var(--text-secondary);
   line-height: 1.5;
   margin-bottom: 1.5rem;
+  /* It interpolates the job title and the company name. */
+  overflow-wrap: anywhere;
 }
 
 .apply-confirm-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+/* ApplyFlowModal ships no skin of its own — without a cap it would inherit the
+ * generic content width and stretch to the full overlay. */
+.apply-flow-modal {
+  max-width: 480px;
+  padding: 1.75rem;
+}
+
+.apply-flow-modal .apply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.apply-flow-modal .checklist-items {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.apply-flow-modal .checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
 
 /* Refer Modal */
@@ -3572,7 +3957,8 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 .refer-modal-steps {
   display: flex;
   justify-content: center;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
   margin-bottom: 1.5rem;
 }
 
@@ -3605,7 +3991,8 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 }
 
 .refer-modal-link .refer-link-input {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 0.6rem 0.75rem;
   border: 1.5px solid var(--border);
   border-radius: 8px;
@@ -3633,6 +4020,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 
 .refer-modal-share {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   justify-content: center;
 }
@@ -3764,15 +4152,21 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   max-width: 600px;
 }
 
+/* Three stats side by side need ~250px; a 320px phone offers ~208 inside the
+ * hero. Without wrapping, the third one ("Free to practice") walks straight out
+ * of the hero — which clips it, because the hero has overflow:hidden for its
+ * gradient. */
 .interview-hero-stats {
   display: flex;
-  gap: 2.25rem;
+  flex-wrap: wrap;
+  gap: 1.25rem 2.25rem;
   margin-top: 1.75rem;
 }
 
 .interview-hero-stat {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .interview-hero-stat strong {
@@ -3909,7 +4303,8 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 
 .interview-dist-legend {
   display: flex;
-  gap: 1.25rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
   margin-top: 0.6rem;
   font-size: 0.78rem;
   color: var(--text-secondary);
@@ -3984,11 +4379,12 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 
 .submit-toggle button {
   flex: 1;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  padding: 0.55rem;
+  padding: 0.65rem 0.55rem;
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -4016,10 +4412,22 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   margin-bottom: 0;
 }
 
-@media (max-width: 640px) {
-  .interview-hero { padding: 2rem 1.5rem; }
+@media (max-width: 767.98px) {
+  .interview-page { padding: 1.25rem 1rem; }
+}
+
+@media (max-width: 639.98px) {
+  .interview-hero { padding: 1.75rem 1.25rem; }
   .interview-hero h1 { font-size: 1.5rem; }
-  .interview-hero-stats { gap: 1.5rem; }
+  .interview-hero-stats { gap: 1rem 1.5rem; }
+
+  .interview-question-card,
+  .interview-company-card { padding: 1rem; }
+
+  .interview-request-cta { padding: 1rem; }
+
+  .interview-request-modal,
+  .refer-modal { padding: 2rem 1.25rem; }
 }
 
 /* ===== Tailored Resume Overlay ===== */
@@ -4041,7 +4449,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   border-radius: 16px;
   width: 100%;
   max-width: 1400px;
-  height: 90vh;
+  height: 90dvh;
   max-height: 900px;
   display: flex;
   flex-direction: column;
@@ -4142,6 +4550,13 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   display: grid;
   grid-template-columns: 220px 1fr 300px;
   overflow: hidden;
+  min-width: 0;
+}
+
+/* Grid children default to min-width:auto and will not shrink below their
+ * content — which is a résumé, i.e. arbitrarily wide. */
+.tailor-overlay-content > * {
+  min-width: 0;
 }
 
 /* Left column */
@@ -4150,6 +4565,11 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   padding: 1.5rem;
   overflow-y: auto;
   background: var(--bg-page);
+}
+
+.tailor-overlay-job-title,
+.tailor-overlay-job-company {
+  overflow-wrap: anywhere;
 }
 
 .tailor-overlay-job-info {
@@ -4377,14 +4797,14 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   transform: translateY(-1px);
 }
 
-/* Responsive */
-@media (max-width: 1100px) {
+/* Responsive — normalized from the off-scale 1100/900/600 to 1280/1024/640. */
+@media (max-width: 1279.98px) {
   .tailor-overlay-content {
     grid-template-columns: 180px 1fr 260px;
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1023.98px) {
   .tailor-overlay-content {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr auto;
@@ -4403,7 +4823,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   }
 
   .tailor-overlay-container {
-    height: 95vh;
+    height: 95dvh;
     max-height: none;
     border-radius: 12px;
   }
@@ -4413,7 +4833,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 639.98px) {
   .tailor-overlay-bottom {
     flex-direction: column;
     gap: 0.5rem;
@@ -4430,7 +4850,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   }
 
   .tailor-overlay-container {
-    height: 100vh;
+    height: 100dvh;
     max-height: none;
     border-radius: 0;
   }

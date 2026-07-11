@@ -141,7 +141,7 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="ai-modal" style={{ width: "min(760px, 94vw)", height: "min(760px, 90vh)" }} onClick={(e) => e.stopPropagation()}>
+      <div className="ai-modal ai-modal-narrow" onClick={(e) => e.stopPropagation()}>
         <div className="ai-modal-head">
           <div className="ai-head-top">
             <button className="ai-modal-close" onClick={onClose} aria-label="Close">✕</button>

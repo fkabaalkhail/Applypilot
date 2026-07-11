@@ -322,7 +322,7 @@
 .rd-grip:hover { color: var(--rd-ink); }
 .rd-grip:active { cursor: grabbing; }
 
-.rd-section-flags { display: flex; align-items: center; gap: 0.4rem; }
+.rd-section-flags { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; }
 .rd-flag {
   display: inline-flex;
   align-items: center;
@@ -410,11 +410,19 @@
 
 .rd-report { max-width: 52rem; margin: 0 auto; padding: 1.5rem; }
 
+/* "Back to Wissam_Elmasry_Resume_Senior_Platform_Engineer_v7_FINAL.pdf" is one
+   unbreakable token. Left unchecked it is 426px wide and drags the whole
+   document sideways on a phone. `anywhere` is the only wrap rule that also
+   lowers the min-content width, which is what the flex item actually measures. */
 .rd-report-back {
-  display: inline-flex; align-items: center; gap: 0.4rem;
+  display: inline-flex; align-items: flex-start; gap: 0.4rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
   border: 0; background: none; color: var(--rd-mute);
-  font: inherit; font-size: 0.8125rem; cursor: pointer; padding: 0.25rem 0;
+  font: inherit; font-size: 0.8125rem; cursor: pointer; padding: 0.4rem 0;
 }
+.rd-report-back i { margin-top: 0.2em; }
 .rd-report-back:hover { color: var(--stripe-primary); }
 
 .rd-report h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; margin-top: 0.5rem; }
@@ -555,19 +563,26 @@
 .rd-modal-overlay {
   position: fixed; inset: 0; z-index: 60;
   display: grid; place-items: center;
-  padding: 1.5rem;
+  padding: 1rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: rgba(13, 37, 61, 0.45);
   backdrop-filter: blur(2px);
 }
+/* `dvh`, not `vh`: on mobile `vh` is measured against the viewport with the URL
+   bar hidden, so an 85vh sheet is taller than the screen and "Apply to my
+   resume" ends up under the fold. The body scrolls; the actions never move. */
 .rd-modal {
+  display: flex;
+  flex-direction: column;
   width: min(38rem, 100%);
-  max-height: 85vh;
-  overflow-y: auto;
+  max-height: calc(100dvh - 2rem);
   background: #fff;
   border-radius: 14px;
   padding: 1.75rem;
   box-shadow: 0 24px 64px -16px rgba(0, 55, 112, 0.35);
 }
+.rd-modal-body { min-height: 0; overflow-y: auto; overflow-wrap: anywhere; }
 .rd-modal h2 { font-size: 1.25rem; font-weight: 650; letter-spacing: -0.01em; }
 .rd-modal-changes { list-style: none; margin: 1.25rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
 .rd-modal-changes li {
@@ -578,11 +593,16 @@
   font-size: 0.875rem;
   color: var(--rd-ink-2);
   line-height: 1.5;
+  min-width: 0;
 }
 .rd-modal-changes li i { color: var(--stripe-primary); margin-top: 0.15rem; }
 .rd-modal-changes li[data-kind="input"] { background: var(--rd-critical-soft); border-color: #fde8c8; }
 .rd-modal-changes li[data-kind="input"] i { color: var(--rd-critical); }
-.rd-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.5rem; }
+.rd-modal-actions {
+  flex-shrink: 0;
+  display: flex; flex-wrap: wrap; justify-content: flex-end;
+  gap: 0.6rem; margin-top: 1.5rem;
+}
 
 /* ── Toast ────────────────────────────────────────────────────────────────── */
 
@@ -613,19 +633,25 @@
 
 .rd-workspace-wrap { max-width: 88rem; margin: 0 auto; padding: 1.5rem; }
 
+/* Both panes hold text and a scaled document: without this they refuse to
+   shrink below their content and the split stops being a split. */
+.rd-editor-pane,
+.rd-preview-pane { min-width: 0; }
+
+/* Below 1024px only one pane is on screen at a time, so the toggle is the only
+   way to reach the other one. Above it, both fit and the toggle is noise. */
 .rd-pane-toggle { display: none; }
 
 .rd-workspace { margin-top: 1.5rem; }
 
-@media (min-width: 56.25rem) {
+@media (min-width: 64rem) {
   .rd-workspace {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 1.5rem;
     align-items: start;
   }
-  .rd-editor-pane { min-width: 0; }
-  .rd-preview-pane { position: sticky; top: 4.75rem; min-width: 0; }
+  .rd-preview-pane { position: sticky; top: 4.75rem; }
 }
 
 .rd-form { display: flex; flex-direction: column; gap: 1.25rem; }
@@ -633,8 +659,11 @@
   background: #fff; border: 1px solid var(--rd-rule); border-radius: 12px;
   padding: 1.1rem 1.25rem 1.25rem; box-shadow: var(--shadow-card);
 }
-.rd-form-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; }
-.rd-form-title { flex: 1; font-size: 0.95rem; font-weight: 650; letter-spacing: -0.01em; color: var(--rd-ink); }
+/* The section title, the reorder arrows and the severity flags share one row.
+   On a narrow card the flags are what runs out of room, so let the row wrap
+   instead of pushing them out of the card. */
+.rd-form-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 0.6rem; margin-bottom: 0.9rem; }
+.rd-form-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: 0.95rem; font-weight: 650; letter-spacing: -0.01em; color: var(--rd-ink); }
 .rd-reorder { display: inline-flex; flex-direction: column; gap: 1px; }
 .rd-reorder-btn { border: 0; background: none; color: #c3cbd6; cursor: pointer; padding: 0 0.2rem; line-height: 1; }
 .rd-reorder-btn:hover:not(:disabled) { color: var(--rd-ink); }
@@ -669,13 +698,13 @@
 }
 .rd-entry-del:hover { color: var(--rd-urgent); }
 
-@media (max-width: 56.24rem) {
+@media (max-width: 63.99rem) {
   .rd-pane-toggle {
     display: flex; width: 100%; margin: 1rem 0; padding: 0.2rem;
     background: var(--rd-rule-soft); border-radius: 10px;
   }
   .rd-pane-toggle button {
-    flex: 1; border: 0; background: none; padding: 0.45rem 1rem;
+    flex: 1; min-width: 0; border: 0; background: none; padding: 0.5rem 1rem;
     font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--rd-mute);
     border-radius: 8px; cursor: pointer;
   }
@@ -688,15 +717,23 @@
 
 @media (max-width: 48rem) {
   .rd-shell, .rd-report { padding: 1rem; }
+  .rd-workspace-wrap { padding: 1rem; }
   .rd-sheet { padding: 1.5rem 1.25rem 2rem; }
   .rd-score { flex-direction: column; align-items: stretch; gap: 1rem; }
-  .rd-score-actions { flex-direction: row; }
+  .rd-score-actions { flex-direction: row; flex-wrap: wrap; }
   .rd-score-actions .rd-btn { flex: 1; justify-content: center; }
   .rd-grip, .rd-entry-remove { position: static; opacity: 1; }
   .rd-entry-top { flex-direction: column; align-items: stretch; gap: 0.25rem; }
   .rd-cta-actions { margin-left: 0; width: 100%; }
   .rd-cta-actions .rd-btn { flex: 1; justify-content: center; }
   .rd-topbar { padding: 0.6rem 0.75rem; gap: 0.4rem; overflow-x: auto; }
+
+  /* Touch targets. Only on touch widths — a 36px-tall reorder chevron would be
+     absurd next to a desktop pointer, but a 20×13px one is unhittable by thumb. */
+  .rd-btn, .rd-legend-item, .rd-add, .rd-entry-del, .rd-flag { min-height: 36px; }
+  .rd-legend-item, .rd-entry-del { padding: 0.35rem 0; }
+  .rd-reorder-btn { min-width: 36px; min-height: 22px; }
+  .rd-chip button { min-width: 28px; min-height: 28px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

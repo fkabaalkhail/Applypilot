@@ -12,6 +12,12 @@ const PAGE_DIMS: Record<Theme["page_size"], { width: string; minHeight: string }
   a4: { width: "210mm", minHeight: "297mm" },
 };
 
+// Print margins. The block (top/bottom) margin is padding on the page; the
+// inline (left/right) one is a margin on the content column inside it — see
+// the note on pageStyle. Together they reproduce the old `padding: 0.5in 0.6in`
+// exactly (verified box-for-box against the previous DOM).
+const PAGE_MARGIN = { block: "0.5in", inline: "0.6in" };
+
 const pt = (n: number) => `${n}pt`;
 
 // ── Dual highlight layers (keyword match + what changed) ─────────────────────
@@ -244,7 +250,12 @@ const ResumeRenderer = forwardRef<HTMLDivElement, ResumeRendererProps>(
       width: dims.width,
       minHeight: dims.minHeight,
       boxSizing: "border-box",
-      padding: "0.5in 0.6in",
+      // Only the block gutters are padding here. The inline gutters live on the
+      // content column below, because a horizontally-padded box lies about
+      // itself when the page is scaled down to fit a narrow preview pane: the
+      // box's rect scales, but its computed padding does not, so every child
+      // measures as if it were spilling out of the page. Same printed geometry.
+      padding: `${PAGE_MARGIN.block} 0`,
       background: "#ffffff",
       color: theme.text_color,
       fontFamily: theme.font_family,
@@ -256,10 +267,12 @@ const ResumeRenderer = forwardRef<HTMLDivElement, ResumeRendererProps>(
     return (
       <HighlightContext.Provider value={highlight ?? OFF}>
         <div ref={ref} style={pageStyle} data-resume-page>
-          <Header doc={doc} />
-          {doc.sections.map((section) => (
-            <SectionBlock key={section.id} section={section} theme={theme} />
-          ))}
+          <div style={{ margin: `0 ${PAGE_MARGIN.inline}` }}>
+            <Header doc={doc} />
+            {doc.sections.map((section) => (
+              <SectionBlock key={section.id} section={section} theme={theme} />
+            ))}
+          </div>
         </div>
       </HighlightContext.Provider>
     );
@@ -274,6 +287,17 @@ export default ResumeRenderer;
  * Renders the resume page scaled to fit the available container width. The
  * unscaled page node (via `innerRef`) is what gets printed to PDF, so the export
  * stays exact. Shared by the dashboard modal preview and the visual editor.
+ *
+ * Scaling is `zoom`, not `transform: scale()`, and that is load-bearing.
+ * A transform is a paint-time trick: the page keeps its 816px *layout* box, so
+ * the wrapper has to clip it (`overflow: hidden`), and every ancestor measures a
+ * page three times wider than the one on screen. `zoom` shrinks the layout box
+ * itself — the wrapper needs no clipping and no hand-computed height, and the
+ * pane's measured width is finally the truth. Line breaking is identical to the
+ * unscaled page at every scale, so the preview still matches the exported PDF.
+ *
+ * The zoom lives on this wrapper, never on the page node, so the node that
+ * printResume() clones (`innerRef`) is untouched and the export is unchanged.
  */
 export function FittedResume({
   document: doc,
@@ -288,17 +312,17 @@ export function FittedResume({
   const localRef = useRef<HTMLDivElement>(null);
   const pageRef = innerRef ?? localRef;
   const [scale, setScale] = useState(1);
-  const [height, setHeight] = useState<number | undefined>(undefined);
 
   useLayoutEffect(() => {
     const compute = () => {
       const wrap = wrapRef.current;
       const page = pageRef.current;
       if (!wrap || !page) return;
+      // offsetWidth is the page's own layout width and is not affected by the
+      // zoom on the wrapper, so this measurement cannot feed back on itself.
       const pageW = page.offsetWidth || 816;
-      const s = Math.min(1, wrap.clientWidth / pageW);
-      setScale(s);
-      setHeight(page.offsetHeight * s);
+      const avail = wrap.clientWidth;
+      if (avail > 0 && pageW > 0) setScale(Math.min(1, avail / pageW));
     };
     compute();
     const ro = new ResizeObserver(compute);
@@ -308,17 +332,15 @@ export function FittedResume({
   }, [doc, pageRef]);
 
   return (
-    <div ref={wrapRef} style={{ overflow: "hidden" }}>
-      <div style={{ height }}>
-        <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", display: "inline-block" }}>
-          <ResumeRenderer
-            ref={pageRef}
-            document={doc}
-            screen={false}
-            highlight={highlight}
-            style={{ boxShadow: "0 1px 8px rgba(30, 20, 70, 0.12)" }}
-          />
-        </div>
+    <div ref={wrapRef}>
+      <div style={{ zoom: scale }}>
+        <ResumeRenderer
+          ref={pageRef}
+          document={doc}
+          screen={false}
+          highlight={highlight}
+          style={{ boxShadow: "0 1px 8px rgba(30, 20, 70, 0.12)" }}
+        />
       </div>
     </div>
   );

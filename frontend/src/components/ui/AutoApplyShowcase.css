@@ -246,15 +246,21 @@
   50% { opacity: 1; transform: scale(1.1); }
 }
 
-/* Company badges at bottom */
+/* Company badges at bottom.
+   `flex: 1` (basis 0) + the default min-width:auto meant three badges held a
+   ~297px floor and burst out of a 224px panel on a 320px phone — the panel's
+   overflow:hidden then cut 60px off them. Basis `auto` lets the row wrap onto a
+   second line instead; at desktop they still fit on one line and grow equally. */
 .spp-companies {
   display: flex;
+  flex-wrap: wrap;
   border-top: 1px solid #f3f4f6;
   padding: 0;
 }
 
 .spp-company-badge {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -275,17 +281,20 @@
 .spp-badge-info {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .spp-badge-name {
   font-size: 0.72rem;
   font-weight: 700;
   color: #111827;
+  overflow-wrap: anywhere;
 }
 
 .spp-badge-time {
   font-size: 0.62rem;
   color: #9ca3af;
+  overflow-wrap: anywhere;
 }
 
 /* ===== Responsive ===== */

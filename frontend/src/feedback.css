@@ -3,6 +3,7 @@
   max-width: 640px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
+  min-width: 0;
 }
 
 .feedback-header {
@@ -82,6 +83,7 @@
 
 .feedback-textarea {
   width: 100%;
+  min-width: 0;
   padding: 0.75rem 1rem;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -186,4 +188,37 @@
 .feedback-success p {
   color: var(--text-secondary);
   margin-bottom: 1.5rem;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 1024px) {
+  /* the checkbox itself is a 13px target; the label around it is the real one */
+  .feedback-checkbox-label {
+    min-height: 36px;
+  }
+
+  .feedback-checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .feedback-page .btn-primary {
+    min-height: 36px;
+  }
+}
+
+@media (max-width: 640px) {
+  .feedback-page {
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  .feedback-form,
+  .feedback-success {
+    padding: 1.25rem;
+  }
+
+  .feedback-page .btn-primary {
+    width: 100%;
+  }
 }

@@ -63,10 +63,13 @@
   text-align: center;
 }
 
-/* Form Grid */
+/* Form Grid.
+   minmax(0, 1fr) rather than 1fr: a bare `1fr` track has an `auto` minimum, so
+   it refuses to shrink below the intrinsic width of the <input> it holds and
+   the grid pushes the page sideways. */
 .settings-form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -74,6 +77,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .settings-field.full-width {
@@ -89,6 +93,7 @@
 }
 
 .settings-field input {
+  min-width: 0;
   padding: 0.6rem 0.85rem;
   border: 1.5px solid var(--border);
   border-radius: 8px;
@@ -107,6 +112,7 @@
 }
 
 .settings-field select {
+  min-width: 0;
   padding: 0.6rem 0.85rem;
   border: 1.5px solid var(--border);
   border-radius: 8px;
@@ -142,6 +148,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .toggle-label-text {
@@ -214,6 +222,7 @@
 
 .kv-row input {
   flex: 1;
+  min-width: 0; /* an <input>'s intrinsic width would otherwise widen the row */
   padding: 0.6rem 0.85rem;
   border: 1.5px solid var(--border);
   border-radius: 8px;
@@ -232,8 +241,8 @@
 }
 
 .kv-remove-btn {
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -286,17 +295,24 @@
   border: 1px solid var(--border-light);
   border-radius: 8px;
   margin-bottom: 1rem;
+  min-width: 0;
 }
 
 .settings-resume-info i {
   color: var(--accent);
   font-size: 1rem;
+  flex-shrink: 0;
 }
 
+/* A real resume filename is one 58-character unbroken word. As a flex item with
+   the default min-width:auto it will not shrink below that, which is what shoved
+   the whole settings page 206px off the right of a 320px phone. */
 .settings-resume-filename {
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .settings-upload-btn {
@@ -325,6 +341,7 @@
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
+  max-width: calc(100vw - 3rem);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -476,6 +493,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  min-width: 0;
 }
 
 .device-client {
@@ -489,9 +507,11 @@
   font-weight: 500;
 }
 
+/* user agents and IPs are long unbroken strings — they must wrap, not widen */
 .device-times {
   font-size: 0.8rem;
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .device-revoke,
@@ -505,6 +525,10 @@
   font-weight: 600;
   color: var(--text-secondary);
   transition: all 0.15s;
+}
+
+.device-revoke {
+  flex-shrink: 0;
 }
 
 .device-revoke:hover:not(:disabled),
@@ -523,24 +547,54 @@
 }
 
 /* Responsive */
+@media (max-width: 1024px) {
+  /* touch widths: comfortable targets without inflating the desktop chrome */
+  .device-revoke,
+  .device-revoke-all,
+  .kv-add-btn,
+  .settings-upload-btn {
+    min-height: 36px;
+  }
+}
+
 @media (max-width: 768px) {
   .settings-page {
     padding: 1.5rem 1rem 5rem;
   }
 
   .settings-form-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
+  .settings-section {
+    padding: 1.25rem;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Question / Answer / remove cannot share a 288px row. Stack them. */
   .kv-row {
     flex-wrap: wrap;
   }
 
   .kv-row input {
-    min-width: 0;
+    flex: 1 1 100%;
   }
 
-  .settings-section {
-    padding: 1.25rem;
+  .kv-remove-btn {
+    margin-left: auto;
+  }
+
+  .device-row {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .device-revoke-all {
+    width: 100%;
+  }
+
+  .settings-save-btn {
+    width: 100%;
   }
 }

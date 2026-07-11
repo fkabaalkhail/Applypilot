@@ -1,6 +1,6 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/useAuth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   SquaresFour,
   FileText,
@@ -13,6 +13,7 @@ import {
   SignOut,
   CaretLeft,
   CaretRight,
+  List,
   X,
   Check,
   Copy,
@@ -26,10 +27,13 @@ import { OnboardingProvider } from "./onboarding";
 
 export default function App() {
   const { user, logout } = useAuth();
+  const { pathname } = useLocation();
   const [showReferModal, setShowReferModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [referCopied, setReferCopied] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Under 768px the sidebar is an off-canvas drawer rather than a rail.
+  const [navOpen, setNavOpen] = useState(false);
 
   const referralCode = user?.id?.toString().slice(-8) || "tailrd";
   const referralLink = `https://www.tailrd.ca?ref=${referralCode}`;
@@ -40,15 +44,59 @@ export default function App() {
     setTimeout(() => setReferCopied(false), 2000);
   };
 
+  // Navigating is the whole point of opening the drawer, so close it on arrival.
+  useEffect(() => setNavOpen(false), [pathname]);
+
+  // While the drawer is over the page, the page behind it must not scroll.
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setNavOpen(false);
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [navOpen]);
+
   return (
     <ApplyTrackingProvider>
     <OnboardingProvider>
-    <div className={`app-layout${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
-      <aside className="sidebar">
+    <div className={`app-layout${sidebarCollapsed ? " sidebar-collapsed" : ""}${navOpen ? " nav-open" : ""}`}>
+      {/* Phone-width top bar. Hidden from 768px up, where the sidebar is visible. */}
+      <header className="app-topbar">
+        <button
+          className="app-topbar-menu"
+          onClick={() => setNavOpen(true)}
+          aria-label="Open navigation menu"
+          aria-expanded={navOpen}
+          aria-controls="app-sidebar"
+        >
+          <List size={22} weight="bold" />
+        </button>
+        <img src="/logo-icon.png" alt="" className="app-topbar-logo" />
+        <span className="app-topbar-title">Tailrd</span>
+      </header>
+
+      <div
+        className="sidebar-backdrop"
+        onClick={() => setNavOpen(false)}
+        aria-hidden="true"
+      />
+
+      <aside className="sidebar" id="app-sidebar">
         {/* Logo */}
         <div className="sidebar-logo">
           <img src="/logo-icon.png" alt="Tailrd" className="sidebar-logo-img" />
           <span className="logo-text">Tailrd</span>
+          <button
+            className="sidebar-close"
+            onClick={() => setNavOpen(false)}
+            aria-label="Close navigation menu"
+          >
+            <X size={18} weight="bold" />
+          </button>
         </div>
 
         {/* Collapse Toggle */}

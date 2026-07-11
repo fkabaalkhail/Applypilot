@@ -106,7 +106,12 @@
   background: var(--bg-white);
   border: 1px solid var(--border);
   border-radius: 14px;
-  overflow: hidden;
+  /* Was `overflow: hidden` (to clip the rounded corners), which silently cut the
+     Created column off at every width. The table's real minimum is set by the
+     longest resume filename, so it can outgrow its column: let it scroll rather
+     than disappear. In practice the wrap rules below shrink it enough to fit,
+     so the scrollbar only ever appears on the narrowest phones. */
+  overflow-x: auto;
   box-shadow: var(--shadow-card);
 }
 
@@ -155,6 +160,15 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  min-width: 0;
+}
+
+/* A resume filename is one unbroken 55-character token. Without this it sets the
+   table's minimum width and pushes the last column off the screen. */
+.resume-name-text,
+.resume-target-cell {
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .resume-avatar {
@@ -874,4 +888,21 @@
   .resume-detail .field-grid {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 640px) {
+  /* 4rem of side padding on a 320px screen is 20% of the viewport — it is what
+     forces the table to scroll. Give the content the width back. */
+  .resume-page-new { padding: 1.5rem 1rem; }
+
+  .resume-page-header { flex-wrap: wrap; gap: 1rem; }
+  .resume-add-btn { width: 100%; justify-content: center; }
+
+  .resume-table-new th,
+  .resume-table-new td { padding: 0.75rem 0.7rem; }
+
+  .upload-modal-new { padding: 1.75rem 1.25rem; }
+
+  /* 24×28px is not a thumb target. */
+  .resume-menu-btn { min-width: 36px; min-height: 36px; }
 }

@@ -1,22 +1,33 @@
+/* The overlay is a fixed layer nothing else scrolls, so it has to scroll itself:
+   the intro card (banner + preview mock + button) is ~640px tall and does not
+   fit a 320×568 phone. Without this the "Start Now" button is simply
+   unreachable. dvh, not vh — 100vh is taller than the visible screen while the
+   mobile URL bar is showing. */
 .pgi-overlay {
   position: fixed; inset: 0; z-index: 10001; display: grid; place-items: center; padding: 20px;
   background: rgba(15, 23, 42, 0.5);
+  overflow-y: auto; overscroll-behavior: contain;
   animation: pgi-fade 0.18s ease both;
 }
 .pgi-card {
   position: relative; width: 100%; max-width: 520px; background: var(--bg-white, #fff);
   border-radius: 20px; box-shadow: 0 24px 60px rgba(0, 55, 112, 0.22); overflow: hidden;
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  display: flex; flex-direction: column;
   animation: pgi-pop 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .pgi-close {
-  position: absolute; top: 14px; right: 14px; z-index: 2; width: 32px; height: 32px; border-radius: 9999px;
+  position: absolute; top: 14px; right: 14px; z-index: 2; width: 36px; height: 36px; border-radius: 9999px;
   display: grid; place-items: center; background: rgba(255, 255, 255, 0.7); border: none; cursor: pointer;
   color: var(--text-secondary, #555); transition: background 0.15s ease, color 0.15s ease;
 }
 .pgi-close:hover { background: #fff; color: var(--text, #1a1a1a); }
 
+/* the body scrolls; the footer button stays pinned and always reachable */
 .pgi-banner {
   position: relative; padding: 44px 36px 32px; text-align: center;
+  overflow-y: auto; min-height: 0;
   /* Stripe-signature washes over a soft lavender base — our theme, not green */
   background:
     radial-gradient(ellipse 65% 60% at 82% 6%, rgba(249, 107, 238, 0.18) 0%, transparent 60%),
@@ -94,7 +105,7 @@
 .pgi-field { margin-bottom: 10px; }
 .pgi-input { display: block; height: 26px; border-radius: 8px; border: 1px solid var(--border, #e6e6e6); background: var(--bg-page, #fafbfc); }
 
-.pgi-footer { padding: 20px 36px 26px; display: flex; justify-content: center; }
+.pgi-footer { padding: 20px 36px 26px; display: flex; justify-content: center; flex: 0 0 auto; }
 .pgi-btn {
   font: inherit; font-size: 15px; font-weight: 650; cursor: pointer; border: none; border-radius: 9999px;
   padding: 12px 44px; background: var(--accent, #533afd); color: #fff;
@@ -102,6 +113,16 @@
 }
 .pgi-btn:hover { background: var(--accent-hover, #4434d4); }
 .pgi-btn:active { transform: scale(0.98); }
+
+@media (max-width: 639.98px) {
+  .pgi-overlay { padding: 12px; }
+  .pgi-card { max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); }
+  .pgi-banner { padding: 30px 20px 24px; }
+  .pgi-title { font-size: 20px; }
+  .pgi-badge { width: 52px; height: 52px; margin-bottom: 12px; }
+  .pgi-footer { padding: 14px 20px 18px; }
+  .pgi-btn { width: 100%; padding: 12px 24px; }
+}
 
 @keyframes pgi-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pgi-pop { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }

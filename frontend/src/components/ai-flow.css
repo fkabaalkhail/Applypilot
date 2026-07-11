@@ -4,17 +4,32 @@
    design tokens from index.css (--accent #7C6CFF, etc.).
    ============================================================ */
 
+/* Sizing rules for every AI modal:
+   · `dvh`, not `vh` — on a phone `vh` measures the viewport with the URL bar
+     retracted, so a 90vh modal is taller than the screen you can actually see
+     and the footer CTA lands under the fold.
+   · the viewport minus a 2rem gutter, never a bare percentage of it, so the
+     modal fits whether or not the overlay is padded.
+   · max-width/height: 100% so a padded overlay can still clamp it. */
 .ai-modal {
   position: relative;
   background: var(--bg-page);
   border-radius: 18px;
   box-shadow: 0 24px 70px rgba(30, 20, 70, 0.35);
-  width: min(1080px, 94vw);
-  height: min(860px, 90vh);
+  width: min(1080px, calc(100vw - 2rem));
+  height: min(860px, calc(100dvh - 2rem));
+  max-width: 100%;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.2s ease;
+}
+
+/* The cover-letter flow is a single column and wants a narrower sheet. */
+.ai-modal-narrow {
+  width: min(760px, calc(100vw - 2rem));
+  height: min(760px, calc(100dvh - 2rem));
 }
 
 /* ---- Header + step tabs ---- */
@@ -27,11 +42,12 @@
 .ai-head-top {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 8px 14px;
 }
 .ai-modal-close {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border: none;
   background: var(--bg-page);
   border-radius: 8px;
@@ -50,6 +66,8 @@
   font-size: 1.05rem;
   font-weight: 800;
   color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .ai-modal-sub {
   font-size: 0.78rem;
@@ -58,6 +76,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
   max-width: 280px;
 }
 
@@ -65,6 +84,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 14px;
 }
@@ -105,6 +125,11 @@
 }
 
 /* ---- Footer CTA bar ---- */
+/* Five buttons in a nowrap row need ~630px. On a phone that put the primary CTA
+   ("Apply Now" / "Attach to application") off the right edge of a fixed overlay
+   with nothing to scroll to it — the action was simply unreachable. The row
+   wraps now, and the footer grows while the body (flex:1, min-height:0) gives up
+   the space, so the CTA stays pinned above the fold. */
 .ai-modal-foot {
   flex-shrink: 0;
   border-top: 1px solid var(--border);
@@ -113,21 +138,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px 12px;
 }
 .ai-foot-left { margin-right: auto; }
 .ai-foot-right { margin-left: auto; }
+
+/* Once the row wraps, `margin-right: auto` on a line of its own would strand the
+   button on the left; keep the wrapped rows centred instead. */
+@media (max-width: 640px) {
+  .ai-modal-foot { padding: 12px; }
+  .ai-foot-left, .ai-foot-right { margin: 0; }
+}
 
 /* ---- Buttons ---- */
 .ai-btn {
   border: none;
   border-radius: 10px;
   padding: 11px 22px;
+  min-height: 36px;
+  max-width: 100%;
   font-size: 0.85rem;
   font-weight: 700;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   transition: all 0.15s;
 }
@@ -181,10 +217,12 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 16px 20px;
   margin-bottom: 18px;
 }
-.ai-s1-title { font-size: 1.4rem; font-weight: 800; color: var(--text); margin: 0 0 8px; line-height: 1.25; }
+.ai-s1-head > div { min-width: 0; }
+.ai-s1-title { font-size: 1.4rem; font-weight: 800; color: var(--text); margin: 0 0 8px; line-height: 1.25; overflow-wrap: anywhere; }
 .ai-info {
   display: inline-flex;
   align-items: center;
@@ -216,7 +254,9 @@
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
-.ai-ov-cell { display: flex; flex-direction: column; gap: 4px; }
+/* Grid items default to min-width:auto, and this one holds a <select> whose only
+   option is a 55-character filename — without this the column refuses to shrink. */
+.ai-ov-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .ai-ov-eyebrow { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .ai-ov-name { font-size: 0.95rem; font-weight: 700; color: var(--text); }
 .ai-ov-meta { font-size: 0.82rem; color: var(--text-secondary); }
@@ -224,11 +264,13 @@
 .ai-resume-pick {
   margin-top: 6px;
   padding: 8px 10px;
+  min-height: 36px;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--bg-white);
   font-size: 0.85rem;
   color: var(--text);
+  width: 100%;
   max-width: 100%;
 }
 
@@ -236,6 +278,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 12px;
 }
 .ai-chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -341,6 +385,7 @@
 .ai-review-top {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 18px;
   background: var(--bg-white);
   border: 1px solid var(--border);
@@ -417,6 +462,8 @@
   font-size: 0.8rem;
   font-weight: 700;
   padding: 8px 14px;
+  min-height: 36px;
+  max-width: 100%;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   background: var(--bg-white);
@@ -523,6 +570,7 @@
   font-size: 0.9rem;
   font-weight: 800;
   color: var(--text);
+  min-width: 0;
 }
 .ai-cmp-label.warn { background: #fdf4e7; border-color: #f3e2c5; }
 .ai-cmp-label .ai-cmp-sub { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
@@ -573,15 +621,18 @@
 /* ---- Step 3: full resume document + sidebar ---- */
 .ai-review {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 18px;
   align-items: start;
 }
+/* Holds the scaled résumé page — it must be free to shrink so FittedResume gets
+   a truthful width to scale into. */
 .ai-doc-wrap {
   background: var(--bg-page);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 18px;
+  min-width: 0;
   max-height: 560px;
   overflow-y: auto;
 }
@@ -610,7 +661,7 @@
 .ai-doc-li::before { content: "•"; position: absolute; left: 4px; color: var(--accent); }
 .ai-doc-add { background: #fff7d6; box-shadow: inset 3px 0 0 #f6c945; }
 
-.ai-side { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; }
+.ai-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; position: sticky; top: 0; }
 .ai-side-gauge {
   display: flex;
   justify-content: center;
@@ -664,12 +715,18 @@
   line-height: 1.4;
 }
 
-@media (max-width: 860px) {
+/* Breakpoints on the app-wide scale (640 / 768 / 1024 / 1280). The résumé
+   document + 320px sidebar needs a real desktop column to sit side by side. */
+@media (max-width: 1024px) {
   .ai-cmp { grid-template-columns: 1fr; }
   .ai-cmp-wide { grid-column: 1; }
-  .ai-review { grid-template-columns: 1fr; }
+  .ai-review { grid-template-columns: minmax(0, 1fr); }
   .ai-side { position: static; }
 }
-@media (max-width: 760px) {
-  .ai-overview, .ai-align, .ai-diff-grid { grid-template-columns: 1fr; }
+@media (max-width: 768px) {
+  .ai-overview, .ai-align, .ai-diff-grid { grid-template-columns: minmax(0, 1fr); }
+  .ai-modal-body { padding: 18px 16px; }
+  .ai-modal-head { padding: 12px 16px; }
+  .ai-doc { padding: 24px 20px; }
+  .ai-modal-sub { max-width: 100%; }
 }

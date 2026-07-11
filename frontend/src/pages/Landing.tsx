@@ -330,9 +330,13 @@ export default function Landing() {
         <FloatingElement className="hero-orb hero-orb-2" duration={5} distance={12} />
         <FloatingElement className="hero-orb hero-orb-3" duration={6} distance={8} />
         <div className="hero-content">
+          {/* Entry offsets are capped at the hero's own 24px side gutter: the
+              columns fill their grid tracks, so anything bigger translates the
+              content past the viewport edge and flashes a horizontal scrollbar
+              for the length of the animation. */}
           <motion.div
             className="hero-left"
-            initial={{ opacity: 0, x: -80 }}
+            initial={{ opacity: 0, x: -24 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.9, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
           >
@@ -437,7 +441,7 @@ export default function Landing() {
           </motion.div>
           <motion.div
             className="hero-right"
-            initial={{ opacity: 0, x: 80 }}
+            initial={{ opacity: 0, x: 24 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.9, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
           >
