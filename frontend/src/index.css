@@ -3131,7 +3131,10 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   background: rgba(0, 0, 0, 0.5);
   z-index: 1000;
   display: flex;
+  /* See .modal-overlay — centring a scrolling overlay strands the top of a
+   * too-tall preview above the scroll origin. */
   align-items: center;
+  align-items: safe center;
   justify-content: center;
   padding: 1rem;
   overflow-y: auto;
@@ -3835,7 +3838,13 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
+  /* `safe` is doing real work here. A plain `center` on a scrolling overlay
+   * pushes a too-tall modal out of BOTH ends, and scrollTop cannot go negative
+   * — so the top of the modal (its title, its close button) becomes impossible
+   * to scroll to. `safe` drops back to start-alignment exactly then, and still
+   * centres modals that fit. Same fix as .setup-right. */
   align-items: center;
+  align-items: safe center;
   justify-content: center;
   z-index: 1000;
   overflow-y: auto;

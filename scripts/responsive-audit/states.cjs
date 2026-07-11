@@ -7,6 +7,24 @@
 const AUTHED = { authed: true };
 const ANON = { authed: false };
 
+/* Setup wizard: each step gates on its own validate(), so reaching a later step
+ * means genuinely satisfying the earlier ones — the path a new user walks. */
+const NEXT = "button.setup-btn";
+const SETUP_NAME = [
+  { fill: ".setup-input", nth: 0, value: "Wissam" },
+  { fill: ".setup-input", nth: 1, value: "Elmasry" },
+  { click: NEXT },
+];
+const SETUP_ROLE = [
+  { click: ".setup-checkgrid .setup-check", nth: 0 }, // a job function
+  { selectIndex: ".setup-select", index: 1 },         // a country (skip the placeholder)
+  { click: NEXT },
+];
+const SETUP_EXPERIENCE = [
+  { click: ".setup-checkgrid .setup-check", nth: 0 },
+  { click: NEXT },
+];
+
 /** @type {{id:string, url:string, authed?:boolean, user?:object, wait?:string, steps?:Array}[]} */
 const STATES = [
   /* ---------------- public / marketing ---------------- */
@@ -25,22 +43,51 @@ const STATES = [
   { id: "jobs-list-public", url: "/list", ...ANON },
   { id: "demo-apply", url: "/demo-apply", ...ANON },
 
-  /* ---------------- setup wizard (every step) ---------------- */
+  /* ---------------- setup wizard — ALL FIVE steps ----------------
+     Only the first two were covered before, which is how a broken `role` step
+     shipped. Each step gates on its own validate(), so reaching step N means
+     satisfying steps 1..N-1 for real — the same path a new user walks. */
   {
     id: "setup-1-welcome",
     url: "/setup",
     ...AUTHED,
     user: { has_completed_setup: false },
-    wait: ".setup-shell, .setup-card, .setup-layout, main",
+    wait: ".setup-right",
   },
   {
-    id: "setup-2-titles",
+    id: "setup-2-role",
     url: "/setup",
     ...AUTHED,
     user: { has_completed_setup: false },
+    wait: ".setup-right",
+    steps: [...SETUP_NAME, { waitFor: ".setup-checkgrid" }],
+  },
+  {
+    id: "setup-3-experience",
+    url: "/setup",
+    ...AUTHED,
+    user: { has_completed_setup: false },
+    wait: ".setup-right",
+    steps: [...SETUP_NAME, ...SETUP_ROLE, { waitFor: ".setup-check" }],
+  },
+  {
+    id: "setup-4-targets",
+    url: "/setup",
+    ...AUTHED,
+    user: { has_completed_setup: false },
+    wait: ".setup-right",
+    steps: [...SETUP_NAME, ...SETUP_ROLE, ...SETUP_EXPERIENCE, { waitFor: ".setup-form" }],
+  },
+  {
+    id: "setup-5-resume",
+    url: "/setup",
+    ...AUTHED,
+    user: { has_completed_setup: false },
+    wait: ".setup-right",
     steps: [
-      { fill: ".setup-input, input[type=text]", value: "Wissam" },
-      { click: "button:has-text('Continue'), button:has-text('Next')" },
+      ...SETUP_NAME, ...SETUP_ROLE, ...SETUP_EXPERIENCE,
+      { click: NEXT },
+      { waitFor: ".setup-resume" },
     ],
   },
 

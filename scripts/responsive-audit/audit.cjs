@@ -234,11 +234,22 @@ async function runState(browser, state, viewport) {
         }
       }
       if (step.click) {
-        const el = page.locator(step.click).first();
+        const el = page.locator(step.click).nth(step.nth || 0);
         await el.click({ timeout: 5000 }).catch((e) => cell.errors.push("click " + step.click + ": " + e.message.split("\n")[0]));
       }
       if (step.fill) {
-        await page.locator(step.fill).first().fill(step.value, { timeout: 5000 }).catch(() => {});
+        await page
+          .locator(step.fill)
+          .nth(step.nth || 0)
+          .fill(step.value, { timeout: 5000 })
+          .catch((e) => cell.errors.push("fill " + step.fill + ": " + e.message.split("\n")[0]));
+      }
+      if (step.selectIndex !== undefined) {
+        await page
+          .locator(step.selectIndex)
+          .first()
+          .selectOption({ index: step.index }, { timeout: 5000 })
+          .catch((e) => cell.errors.push("select " + step.selectIndex + ": " + e.message.split("\n")[0]));
       }
       if (step.waitFor) {
         // If the thing we were supposed to open never opened, we are about to

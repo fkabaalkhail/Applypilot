@@ -346,6 +346,48 @@ function pageAudit(opts) {
     }
   }
 
+  /* ---------- 4b. content stranded above a scroll container's origin ----------
+     A scrollable column with `justify-content: center` (or `align-items: center`
+     on a row) pushes its overflow out of BOTH ends once the content is taller
+     than the box. scrollTop cannot go negative, so everything above the origin
+     is unreachable — and the browser does not even count it in scrollHeight, so
+     rules 2 and 3 are blind to it. This is a real bug we shipped: the setup
+     wizard's first rows of options were unreachable on any screen under ~900px. */
+  for (const el of all) {
+    const cs = cs_(el);
+    if (!visible(el, cs)) continue;
+    const scrolls = cs.overflowY === "auto" || cs.overflowY === "scroll";
+    if (!scrolls || el.scrollHeight <= el.clientHeight) continue;
+    if (el.scrollTop > 1) continue; // already scrolled down; the origin is elsewhere
+
+    const r = el.getBoundingClientRect();
+    const top = r.top + (parseFloat(cs.borderTopWidth) || 0);
+    let worst = null;
+    for (const c of el.children) {
+      const ccs = cs_(c);
+      if (!visible(c, ccs) || isDecorative(c) || !hasRealContent(c)) continue;
+      if (ccs.position === "absolute" || ccs.position === "fixed" || ccs.position === "sticky") continue;
+      const cr = c.getBoundingClientRect();
+      if (cr.height < 2) continue;
+      const above = top - cr.top;
+      if (above > 2 && (!worst || above > worst.above)) worst = { el: c, above };
+    }
+    if (worst) {
+      push({
+        type: "unreachable-above-scroll-origin",
+        severity: "high",
+        selector: sel(worst.el),
+        chain: chain(worst.el),
+        text: text(worst.el),
+        detail:
+          Math.round(worst.above) + "px of content sits above the top of " + sel(el) +
+          " while it is scrolled to the origin (justify-content:" + cs.justifyContent +
+          ") — scrollTop cannot go negative, so the user can never reach it",
+        overflowPx: Math.round(worst.above),
+      });
+    }
+  }
+
   /* ---------- 5. unreachable controls inside fixed / sticky layers ---------- */
   const fixedRoots = all.filter((el) => {
     const cs = cs_(el);
