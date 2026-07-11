@@ -239,8 +239,12 @@ class JobMatchNotification(Base):
     __tablename__ = "job_match_notifications"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    job_id = Column(Integer, ForeignKey("scraped_jobs.id"), nullable=False, index=True)
+    # A notification is a receipt, not a record worth keeping past the thing it
+    # points at: without the cascades, deleting a user failed on this table
+    # alone (every other user-owned table cascades), and so did deleting any job
+    # a user had already been alerted about.
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
     match_score = Column(Integer, default=0)
     sent_at = Column(DateTime, default=datetime.datetime.utcnow)
 
