@@ -180,8 +180,9 @@ async def cron_ats(
         new_count = 0
         skipped_dupe = 0
         for job in jobs:
-            # Dedup by URL
-            existing = db.query(ScrapedJob).filter(ScrapedJob.url == job.url).first()
+            # Dedup by URL. Query the column, not the entity: loading the row
+            # would pull its ~1.9 KB description across the wire for a boolean.
+            existing = db.query(ScrapedJob.url).filter(ScrapedJob.url == job.url).first()
             if existing:
                 skipped_dupe += 1
                 continue
@@ -293,8 +294,9 @@ async def scrape_linkedin_jobs(
         new_count = 0
         skipped_dupe = 0
         for job in jobs:
-            # Dedup by URL
-            existing = db.query(ScrapedJob).filter(ScrapedJob.url == job.url).first()
+            # Dedup by URL. Query the column, not the entity: loading the row
+            # would pull its ~1.9 KB description across the wire for a boolean.
+            existing = db.query(ScrapedJob.url).filter(ScrapedJob.url == job.url).first()
             if existing:
                 skipped_dupe += 1
                 continue

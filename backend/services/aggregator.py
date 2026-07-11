@@ -516,9 +516,10 @@ class AggregatorService:
         if not company_domain:
             company_logo, company_domain = resolve_logo(job.company, job.company_url)
 
-        # Deduplication: check if URL already exists
+        # Deduplication: check if URL already exists. Query the column, not the
+        # entity: loading the row pulls its description over the wire for a boolean.
         existing = (
-            self.db.query(ScrapedJob)
+            self.db.query(ScrapedJob.url)
             .filter(ScrapedJob.url == job.url)
             .first()
         )

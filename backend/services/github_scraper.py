@@ -243,9 +243,10 @@ class GitHubScraper:
         """
         new_count = 0
         for job in jobs:
-            # Check for existing job with same URL
+            # Check for existing job with same URL. Query the column, not the
+            # entity: loading the row pulls its description over the wire for a boolean.
             existing = (
-                self.db.query(ScrapedJob)
+                self.db.query(ScrapedJob.url)
                 .filter(ScrapedJob.url == job.url)
                 .first()
             )
