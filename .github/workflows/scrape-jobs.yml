@@ -2,11 +2,14 @@ name: Scrape Jobs
 
 on:
   schedule:
-    # Temporarily every 6h, not hourly: each run opens one Postgres connection
-    # per scraped job (the scrapers POST to /jobs/create one at a time), and
-    # every new Neon connection costs ~4.6 KB of TLS certificate chain in
-    # egress -- ~18 MB per run. Restore to '0 * * * *' once the scrapers post
-    # to the batch endpoint instead.
+    # Temporarily every 6h, not hourly, while the Neon network-transfer overage
+    # is still unexplained (the project sat at ~97% of its monthly allowance).
+    #
+    # Measured since: a run costs the DB well under 1 MB. Every dedup site is a
+    # column query, confirmed against prod -- cron-ats issued 1,486 and cron-poll
+    # 593 `SELECT scraped_jobs.url` and no whole-row fetches. So the scrape run
+    # is NOT the source of the overage, and restoring the hourly cron is likely
+    # safe; it stays at 6h only until the real source is identified.
     - cron: '0 */6 * * *'
   workflow_dispatch:
 
