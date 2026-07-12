@@ -2,7 +2,12 @@ name: Scrape Jobs
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    # Temporarily every 6h, not hourly: each run opens one Postgres connection
+    # per scraped job (the scrapers POST to /jobs/create one at a time), and
+    # every new Neon connection costs ~4.6 KB of TLS certificate chain in
+    # egress -- ~18 MB per run. Restore to '0 * * * *' once the scrapers post
+    # to the batch endpoint instead.
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
