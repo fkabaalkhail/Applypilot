@@ -49,7 +49,9 @@ Set both for **Production**, then redeploy (env changes need a redeploy to apply
 
 - **Name:** Tailrd — Job Application Autofill
 - **Summary (132 chars max):**
-  `Autofill job applications on Greenhouse, Workday, Lever and 60+ ATSs from your Tailrd profile. Reviews with you — never auto-submits.`
+  `Fills job application forms from the profile in your Tailrd account. You always review every answer and submit the form yourself.`
+  (Must match `manifest.json`'s `description`. Keep it free of applicant-tracking-system
+  brand names — a brand list here reads as keyword stuffing to review.)
 - **Category:** Productivity → Workflow & Planning
 - **Language:** English
 - **Privacy policy URL:** `https://www.tailrd.ca/privacy` (live, returns 200)
@@ -62,22 +64,30 @@ Set both for **Production**, then redeploy (env changes need a redeploy to apply
 - **Description (long):**
 
 ```
-Tailrd fills job applications for you — accurately, and always under your control.
+Tailrd fills job application forms for you — accurately, and always under your control.
+
+Applying online means retyping the same details into a new form for every role. Tailrd keeps that information in one profile and puts it into the form in front of you, so you can spend your time on the parts of the application that actually need you.
 
 WHAT IT DOES
-• Detects application forms on Greenhouse, Lever, Workday, Ashby, BambooHR, SmartRecruiters, iCIMS, Jobvite, Taleo, SuccessFactors and 60+ other applicant tracking systems.
-• Fills every field it can ground in your Tailrd profile: contact details, work history, education, links, work authorization, and screening questions.
-• Handles multi-page applications end to end: one click fills each page, creates the account step when a site requires one, and waits for you to turn each page.
-• Answers dropdowns and multiple-choice questions only with options that actually exist on the form — if it can't answer truthfully from your profile, it leaves the field for you.
-• Attaches your résumé and generates tailored résumés and cover letters from your Tailrd account.
+• Recognizes an application form when you open one, on company career sites and on the hiring platforms they run on, and offers to fill it.
+• Fills the fields it can answer from your Tailrd profile: contact details, work history, education, links, work authorization, and screening questions.
+• Works through applications that span several pages. You click once per page; if the site asks you to create an account first, Tailrd fills that step too.
+• Answers dropdowns and multiple-choice questions only with options the form actually offers. If your profile does not answer a question, Tailrd leaves it blank for you to complete.
+• Attaches the résumé from your account, and can generate a résumé or cover letter tailored to the job you are applying for.
 
 WHAT IT NEVER DOES
 • It never submits an application by itself. The final Submit is always yours.
-• It never guesses. Answers come from your profile or are left blank.
+• It never invents an answer. Every answer comes from your profile, or the field is left empty.
 • Demographic (EEO) answers never leave your device — they are stored locally and filled locally.
 
 You need a free Tailrd account (www.tailrd.ca) to sync your profile.
 ```
+
+> **Do not reintroduce a list of applicant-tracking-system names here.** The v0.4.0
+> draft was rejected under "Spam and Placement in the Store" (ref: Yellow Argon,
+> 2026-07-11) for exactly that: the line naming ten ATS vendors was judged
+> "excessive keywords in the item's description." Describe what the extension does;
+> let the screenshots show where it runs.
 
 ## Privacy tab — permission justifications (paste per field)
 
