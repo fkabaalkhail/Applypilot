@@ -314,9 +314,23 @@ export default function Jobs() {
           {saveError}
         </div>
       )}
-      {/* Header Bar */}
+      {/* Header Bar: title + tabs share one line, search sits on the right */}
       <header className="jobs-header">
         <h1>Jobs</h1>
+        <div className="jobs-tabs">
+          {TABS.map((tab) => (
+            <button
+              key={tab.label}
+              className={`tab-btn ${activeTab === tab.label ? "active" : ""}`}
+              onClick={() => { setActiveTab(tab.label); setPage(1); }}
+            >
+              {tab.label}
+              {tab.count !== null && tab.count > 0 && (
+                <span className="tab-count">{tab.count}</span>
+              )}
+            </button>
+          ))}
+        </div>
         <div className="header-right">
           <div className="search-wrapper">
             <MagnifyingGlass size={16} weight="bold" />
@@ -331,23 +345,9 @@ export default function Jobs() {
         </div>
       </header>
 
-      {/* Tabs + Filter Bar */}
+      {/* Filter Bar */}
       <div className="jobs-toolbar">
         <div className="jobs-toolbar-top">
-          <div className="jobs-tabs">
-            {TABS.map((tab) => (
-              <button
-                key={tab.label}
-                className={`tab-btn ${activeTab === tab.label ? "active" : ""}`}
-                onClick={() => { setActiveTab(tab.label); setPage(1); }}
-              >
-                {tab.label}
-                {tab.count !== null && tab.count > 0 && (
-                  <span className="tab-count">{tab.count}</span>
-                )}
-              </button>
-            ))}
-          </div>
           <button
             className="filter-toggle-btn"
             onClick={() => setFiltersVisible(!filtersVisible)}
@@ -362,7 +362,6 @@ export default function Jobs() {
             <JobFilterBar
               filters={aggFilters}
               onChange={(newFilters) => { setAggFilters(newFilters); setPage(1); }}
-              totalCount={stats.total}
             />
           </div>
         )}

@@ -13,7 +13,6 @@ export interface JobFilters {
 interface JobFilterBarProps {
   filters: JobFilters;
   onChange: (filters: JobFilters) => void;
-  totalCount?: number;
 }
 
 // --- Constants ---
@@ -219,7 +218,7 @@ const styles = {
 
 // --- Component ---
 
-export default function JobFilterBar({ filters, onChange, totalCount }: JobFilterBarProps) {
+export default function JobFilterBar({ filters, onChange }: JobFilterBarProps) {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -682,13 +681,6 @@ export default function JobFilterBar({ filters, onChange, totalCount }: JobFilte
           </DropdownPanel>
         )}
       </div>
-
-      {/* Total Count */}
-      {totalCount !== undefined && (
-        <span style={{ marginLeft: "auto", fontSize: "14px", color: "#64748d", fontWeight: 400, fontFeatureSettings: '"tnum"', letterSpacing: "-0.42px" }}>
-          {totalCount.toLocaleString()} jobs
-        </span>
-      )}
     </div>
   );
 }

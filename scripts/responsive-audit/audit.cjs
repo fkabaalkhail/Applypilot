@@ -83,7 +83,7 @@ const json = (body, status = 200) => ({
   body: JSON.stringify(body),
 });
 
-function stubFor(pathname, method, userOverrides) {
+function stubFor(pathname, method, userOverrides, empty) {
   const p = pathname;
   const user = { ...F.user, ...(userOverrides || {}) };
 
@@ -99,7 +99,9 @@ function stubFor(pathname, method, userOverrides) {
   if (p === "/auth/extension/authorize") return json({ code: "stubcode" });
 
   if (p === "/jobs/stats") return json(F.stats);
-  if (p === "/jobs/applications") return json(F.applications);
+  // A state can ask for the collection to come back empty: the empty state is the
+  // first screen every new user sees, so it gets audited like any other screen.
+  if (p === "/jobs/applications") return json(empty ? [] : F.applications);
   if (p === "/jobs") return json(F.jobs);
   if (/^\/jobs\/\d+\/fetch-details$/.test(p)) return json(F.jobs[0]);
   if (/^\/jobs\/\d+\/mark-applied$/.test(p)) return json({ ok: true });
@@ -169,7 +171,7 @@ async function runState(browser, state, viewport) {
       return route.fulfill({ status: 204, body: "" });
     }
     if (API_PREFIX.test(url.pathname)) {
-      const stub = stubFor(url.pathname, req.method(), state.user);
+      const stub = stubFor(url.pathname, req.method(), state.user, state.empty);
       if (stub) return route.fulfill(stub);
       return route.fulfill(json({}, 200));
     }

@@ -516,7 +516,8 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   font-feature-settings: "ss01";
 }
 
-/* Toolbar: Tabs + Filters in one row */
+/* Toolbar: filter toggle + filter pills. The All/Liked tabs sit up in the
+ * header next to the page title, so the toggle is alone on this row. */
 .jobs-toolbar {
   display: flex;
   flex-direction: column;
@@ -529,7 +530,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 .jobs-toolbar-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-bottom: 0.25rem;
 }
 
@@ -562,6 +563,9 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   display: flex;
   gap: 0.25rem;
   align-items: center;
+  /* Shares the header line with the title and the search box; the search box is
+   * the one that gives ground when the line runs out of room, not the tabs. */
+  flex-shrink: 0;
 }
 
 .tab-btn {
@@ -590,6 +594,17 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 
 .tab-btn.active::after {
   display: none;
+}
+
+/* A bare <button> box is only 31px tall here, which is under the 36px touch
+ * floor on any tablet. The tabs are a primary header control now, so they hold
+ * that floor at every width rather than only on phones. */
+.jobs-tabs .tab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 36px;
 }
 
 .tab-count {
@@ -1309,6 +1324,92 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   font-size: 0.95rem;
 }
 
+/* Illustrated empty state: art, one line of direction, one way out. The feed
+ * it drops into is 1100px wide, which is far too wide to read a sentence
+ * across — so it caps itself and centers. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  max-width: 560px;
+  margin: 2rem auto;
+  padding: 3rem 2rem 3.25rem;
+  background: var(--bg-white);
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+  animation: empty-state-enter 0.4s ease-out both;
+}
+
+.empty-state-art {
+  width: 100%;
+  max-width: 264px;
+  height: auto;
+  margin-bottom: 1.5rem;
+}
+
+.empty-state h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 400px;
+  margin-bottom: 1.75rem;
+}
+
+.empty-state-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 1.5rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--stripe-primary);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.empty-state-cta:hover {
+  background: var(--stripe-primary-press);
+  box-shadow: 0 6px 16px rgba(83, 58, 253, 0.24);
+}
+
+.empty-state-cta:focus-visible {
+  outline: 2px solid var(--stripe-primary);
+  outline-offset: 2px;
+}
+
+@keyframes empty-state-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-state { animation: none; }
+}
+
+@media (max-width: 639.98px) {
+  .empty-state {
+    margin: 1rem auto;
+    padding: 2.25rem 1.25rem 2.5rem;
+  }
+
+  .empty-state-art { max-width: 200px; }
+}
+
 /* ===== Utility ===== */
 .page-stub {
   display: flex;
@@ -1406,7 +1507,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
     min-height: 0;
   }
 
-  .jobs-header { padding: 0 1rem; gap: 1rem; }
+  .jobs-header { padding: 0 1rem; gap: 0.75rem; }
   .filter-bar { padding: 0.75rem 1rem; }
   .jobs-feed { padding: 0 1rem 1rem; }
   .job-details-grid { grid-template-columns: 1fr; }
@@ -1435,7 +1536,18 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
     gap: 0.5rem;
   }
 
-  .jobs-tabs { flex-wrap: wrap; }
+  /* The tabs now sit on the header's fixed 64px line, which cannot grow a
+   * second row — so they tighten instead of wrapping, and the search box
+   * absorbs what's left. Tighten the horizontal padding only: the box still
+   * has to clear 36px vertically to stay a legal tap target. */
+  .jobs-tabs { flex-wrap: nowrap; }
+
+  .jobs-tabs .tab-btn {
+    padding: 0 0.7rem;
+    font-size: 0.8rem;
+  }
+
+  .search-wrapper { flex-basis: 150px; }
 
   .job-filter-bar { padding: 0.75rem 1rem; }
   .filters-expanded { padding: 0 1rem 1rem; }

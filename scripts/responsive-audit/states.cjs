@@ -25,7 +25,7 @@ const SETUP_EXPERIENCE = [
   { click: NEXT },
 ];
 
-/** @type {{id:string, url:string, authed?:boolean, user?:object, wait?:string, steps?:Array}[]} */
+/** @type {{id:string, url:string, authed?:boolean, user?:object, empty?:boolean, wait?:string, steps?:Array}[]} */
 const STATES = [
   /* ---------------- public / marketing ---------------- */
   { id: "landing", url: "/", ...ANON, wait: ".site-header, header, body" },
@@ -220,6 +220,7 @@ const STATES = [
   /* ---------------- profile / applications / interview / feedback ---------------- */
   { id: "app-profile", url: "/app/profile", ...AUTHED, wait: ".profile-page, main" },
   { id: "app-applications", url: "/app/applications", ...AUTHED, wait: ".jobs-page" },
+  { id: "app-applications-empty", url: "/app/applications", ...AUTHED, empty: true, wait: ".empty-state" },
   { id: "app-interview", url: "/app/interview", ...AUTHED, wait: ".interview-page" },
   {
     id: "app-interview-company",

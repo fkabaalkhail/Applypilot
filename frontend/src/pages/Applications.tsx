@@ -3,6 +3,7 @@ import api from "../auth/api";
 import { avatarColor, resolveLogoUrl } from "../lib/companyLogo";
 import { ArrowSquareOut, Calendar } from "@phosphor-icons/react";
 import { PageIntro } from "../onboarding";
+import ApplicationsEmpty from "../components/ApplicationsEmpty";
 
 interface ApplicationRecord {
   id: number;
@@ -60,9 +61,7 @@ export default function Applications() {
       <div className="jobs-content-area">
         <div className="jobs-feed">
           {loading && <p className="loading-text">Loading applications...</p>}
-          {!loading && applications.length === 0 && (
-            <p className="empty-text">No applications yet — jobs you apply to will show up here.</p>
-          )}
+          {!loading && applications.length === 0 && <ApplicationsEmpty />}
 
           {applications.map((application) => (
             <div key={application.id} className="job-card">
