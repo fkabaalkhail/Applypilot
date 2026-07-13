@@ -40,11 +40,9 @@ function advanceToFinalStep() {
   fireEvent.change(countrySelect, { target: { value: "CA" } });
   fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-  // Step 3: experience
-  fireEvent.click(screen.getByText("Intern/New Grad"));
-  fireEvent.click(screen.getByRole("button", { name: /next/i }));
-
-  // Step 4: target titles (optional) -> Next
+  // Step 3: experience level + job type
+  fireEvent.click(screen.getByText("Internship / Co-op"));
+  fireEvent.click(screen.getByText("Full-time"));
   fireEvent.click(screen.getByRole("button", { name: /next/i }));
 }
 
@@ -95,7 +93,7 @@ describe("SetupWizard", () => {
 
     advanceToFinalStep();
 
-    // Step 5: resume (final, required) -> upload -> Start Matching
+    // Step 4: resume (final, required) -> upload -> Start Matching
     await uploadResumeOnFinalStep();
     fireEvent.click(screen.getByRole("button", { name: /start matching/i }));
 
@@ -103,7 +101,13 @@ describe("SetupWizard", () => {
 
     expect(putMock).toHaveBeenCalledWith(
       "/settings",
-      expect.objectContaining({ job_title: "Software Engineering", regions: ["CA"] }),
+      expect.objectContaining({
+        job_title: "Software Engineering",
+        regions: ["CA"],
+        // Canonical value — the spelling scraped_jobs actually stores.
+        experience_levels: ["internship"],
+        prefilled_answers: expect.objectContaining({ job_types: "full_time" }),
+      }),
     );
     // The resume is uploaded inline via the real pipeline, not the old /settings/resume.
     expect(postMock).toHaveBeenCalledWith("/resumes/upload", expect.any(FormData));
@@ -112,8 +116,40 @@ describe("SetupWizard", () => {
     const stored = JSON.parse(localStorage.getItem("job-aggregator-filters") as string);
     expect(stored.country).toBe("CA");
     expect(stored.role_category).toContain("Software Engineering");
+    expect(stored.experience_level).toEqual(["internship"]);
 
     expect(navigateMock).toHaveBeenCalledWith("/app");
+  });
+
+  it("offers only levels the job catalogue actually has, in student language", () => {
+    renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: /next/i })); // welcome -> role
+
+    // Job Type has moved off the role step onto the experience step.
+    expect(screen.queryByText("Job Type")).toBeNull();
+
+    fireEvent.click(screen.getByText("Software Engineering"));
+    const countrySelect = screen.getByText("Select country").closest("select") as HTMLSelectElement;
+    fireEvent.change(countrySelect, { target: { value: "CA" } });
+    fireEvent.click(screen.getByRole("button", { name: /next/i })); // role -> experience
+
+    expect(screen.getByText("Internship / Co-op")).toBeInTheDocument();
+    expect(screen.getByText("New Grad / Entry Level")).toBeInTheDocument();
+    // Job Type now lives here, alongside experience.
+    expect(screen.getByText("Job Type")).toBeInTheDocument();
+    expect(screen.getByText("Full-time")).toBeInTheDocument();
+
+    // The corporate-ladder options the catalogue has no jobs for are gone.
+    for (const dead of ["Director/Executive", "Lead/Staff", "Senior", "Mid Level", "Entry Level"]) {
+      expect(screen.queryByText(dead)).toBeNull();
+    }
+  });
+
+  it("goes straight from experience to the resume step (no target-titles page)", () => {
+    renderWizard();
+    advanceToFinalStep();
+    expect(screen.queryByText(/target roles or industries/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /start matching/i })).toBeInTheDocument();
   });
 
   it("shows an error and re-enables Start Matching when setSetupComplete fails, allowing retry", async () => {

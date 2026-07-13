@@ -53,7 +53,6 @@ export default function SetupWizard() {
         prefilled_answers: {
           job_types: answers.job_types.join(","),
           work_authorization: answers.work_authorization.join(","),
-          target_titles: answers.target_titles.join(","),
         },
       });
     } catch {

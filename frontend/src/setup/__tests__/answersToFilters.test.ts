@@ -17,13 +17,13 @@ describe("answersToFilters", () => {
       city: "Ottawa",
       open_to_remote: true,
       job_functions: ["Software Engineering", "Data Analysis"],
-      experience_level: "intern_new_grad",
+      experience_level: "internship",
     });
     expect(r.country).toBe("CA");
     expect(r.location).toEqual(["Ottawa"]);
     expect(r.work_type).toEqual(["remote"]);
     expect(r.role_category).toEqual(["Software Engineering", "Data Analysis"]);
-    expect(r.experience_level).toEqual(["intern_new_grad"]);
+    expect(r.experience_level).toEqual(["internship"]);
   });
 
   it("omits city from location when blank and remote when false", () => {

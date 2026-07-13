@@ -43,7 +43,7 @@ const STATES = [
   { id: "jobs-list-public", url: "/list", ...ANON },
   { id: "demo-apply", url: "/demo-apply", ...ANON },
 
-  /* ---------------- setup wizard — ALL FIVE steps ----------------
+  /* ---------------- setup wizard — ALL FOUR steps ----------------
      Only the first two were covered before, which is how a broken `role` step
      shipped. Each step gates on its own validate(), so reaching step N means
      satisfying steps 1..N-1 for real — the same path a new user walks. */
@@ -63,6 +63,7 @@ const STATES = [
     steps: [...SETUP_NAME, { waitFor: ".setup-checkgrid" }],
   },
   {
+    // Experience level + job type now share one step; the target-titles step is gone.
     id: "setup-3-experience",
     url: "/setup",
     ...AUTHED,
@@ -71,22 +72,13 @@ const STATES = [
     steps: [...SETUP_NAME, ...SETUP_ROLE, { waitFor: ".setup-check" }],
   },
   {
-    id: "setup-4-targets",
-    url: "/setup",
-    ...AUTHED,
-    user: { has_completed_setup: false },
-    wait: ".setup-right",
-    steps: [...SETUP_NAME, ...SETUP_ROLE, ...SETUP_EXPERIENCE, { waitFor: ".setup-form" }],
-  },
-  {
-    id: "setup-5-resume",
+    id: "setup-4-resume",
     url: "/setup",
     ...AUTHED,
     user: { has_completed_setup: false },
     wait: ".setup-right",
     steps: [
       ...SETUP_NAME, ...SETUP_ROLE, ...SETUP_EXPERIENCE,
-      { click: NEXT },
       { waitFor: ".setup-resume" },
     ],
   },

@@ -2,7 +2,6 @@ import type { SetupStep } from "./types";
 import { WelcomeNameStep } from "./steps/WelcomeNameStep";
 import { RolePreferencesStep } from "./steps/RolePreferencesStep";
 import { ExperienceStep } from "./steps/ExperienceStep";
-import { TargetTitlesStep } from "./steps/TargetTitlesStep";
 
 // ResumeStep is rendered specially by the wizard (needs file props), so it is
 // NOT in this array — the wizard appends it as the final step.
@@ -25,13 +24,8 @@ export const SETUP_STEPS: SetupStep[] = [
   },
   {
     id: "experience",
-    headline: "How much <b>experience</b> do you have?",
+    headline: "Are you looking for an <b>internship</b> or a <b>new grad</b> role?",
     Component: ExperienceStep,
-    validate: (a) => (a.experience_level ? null : "Please select your experience level."),
-  },
-  {
-    id: "targets",
-    headline: "Any <b>specific roles</b> you're targeting?",
-    Component: TargetTitlesStep,
+    validate: (a) => (a.experience_level ? null : "Please select what you're looking for."),
   },
 ];

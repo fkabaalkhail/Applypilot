@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import JobFilterBar, { JobFilters } from "../components/JobFilterBar";
+import JobFilterBar, { JobFilters, normalizeExperienceLevels } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
 import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
@@ -141,7 +141,7 @@ export default function Jobs() {
               : [],
           work_type: Array.isArray(parsed.work_type) ? parsed.work_type : [],
           role_category: Array.isArray(parsed.role_category) ? parsed.role_category : [],
-          experience_level: Array.isArray(parsed.experience_level) ? parsed.experience_level : parsed.experience_level ? [parsed.experience_level] : [],
+          experience_level: normalizeExperienceLevels(parsed.experience_level),
           date_posted: parsed.date_posted || "",
         };
       }

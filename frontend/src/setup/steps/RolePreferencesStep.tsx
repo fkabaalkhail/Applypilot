@@ -1,13 +1,6 @@
 import type { StepProps } from "../types";
 import { JOB_FUNCTION_OPTIONS, COUNTRY_OPTIONS } from "../../components/JobFilterBar";
 
-const JOB_TYPES = [
-  { value: "full_time", label: "Full-time" },
-  { value: "contract", label: "Contract" },
-  { value: "part_time", label: "Part-time" },
-  { value: "internship", label: "Internship" },
-];
-
 function toggle(list: string[], v: string): string[] {
   return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 }
@@ -23,19 +16,6 @@ export function RolePreferencesStep({ answers, update }: StepProps) {
               <input type="checkbox" checked={answers.job_functions.includes(fn)}
                 onChange={() => update({ job_functions: toggle(answers.job_functions, fn) })} />
               {fn}
-            </label>
-          ))}
-        </div>
-      </div>
-
-      <div className="setup-field">
-        <label className="setup-label"><span className="req">*</span>Job Type</label>
-        <div className="setup-checkgrid">
-          {JOB_TYPES.map((t) => (
-            <label key={t.value} className={`setup-check${answers.job_types.includes(t.value) ? " checked" : ""}`}>
-              <input type="checkbox" checked={answers.job_types.includes(t.value)}
-                onChange={() => update({ job_types: toggle(answers.job_types, t.value) })} />
-              {t.label}
             </label>
           ))}
         </div>

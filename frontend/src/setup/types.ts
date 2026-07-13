@@ -4,13 +4,12 @@ export interface SetupAnswers {
   first_name: string;
   last_name: string;
   job_functions: string[];      // values from JOB_FUNCTION_OPTIONS -> role_category
-  job_types: string[];          // "full_time"|"part_time"|"contract"|"internship" (captured only)
+  job_types: string[];          // "full_time"|"part_time"|"contract" (captured only)
   country: string;              // "CA" | "US" | ""
   city: string;
   open_to_remote: boolean;
   work_authorization: string[]; // e.g. ["needs_sponsorship"] (captured only)
-  experience_level: string;     // one EXPERIENCE_OPTIONS value
-  target_titles: string[];      // free-text chips (captured only)
+  experience_level: string;     // one EXPERIENCE_OPTIONS value: "internship" | "new_grad"
 }
 
 export interface StepProps {
@@ -35,5 +34,4 @@ export const emptyAnswers: SetupAnswers = {
   open_to_remote: false,
   work_authorization: [],
   experience_level: "",
-  target_titles: [],
 };
