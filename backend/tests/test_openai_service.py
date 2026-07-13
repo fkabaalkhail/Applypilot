@@ -76,3 +76,39 @@ def test_missing_api_key_raises(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(ValueError):
         OpenAIService()
+
+
+@pytest.mark.asyncio
+async def test_generate_model_override_and_json_mode(monkeypatch):
+    """Per-call model routing: cheap high-volume calls must not be forced onto
+    the account-wide flagship, and json_mode must request JSON output."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4o")
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    with patch("httpx.AsyncClient", _mock_client_factory(handler)):
+        svc = OpenAIService()
+        await svc._generate("score this as JSON", model="gpt-4o-mini", json_mode=True)
+
+    assert captured["body"]["model"] == "gpt-4o-mini"
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_generate_defaults_do_not_send_response_format(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    with patch("httpx.AsyncClient", _mock_client_factory(handler)):
+        svc = OpenAIService()
+        await svc._generate("plain prose call")
+
+    assert "response_format" not in captured["body"]

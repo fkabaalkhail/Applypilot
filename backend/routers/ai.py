@@ -154,7 +154,9 @@ async def match_breakdown(
     try:
         engine = MatchEngine(db)
         return await engine.compute_breakdown(resume_text, description)
-    except (ConnectionError, httpx.ConnectError):
+    except (ConnectionError, httpx.ConnectError, ValueError):
+        # ValueError = the model's answer had no parsable score. Retryable, and
+        # 503 is more honest than presenting an all-zero breakdown as real.
         raise HTTPException(status_code=503, detail=LLM_503_DETAIL)
 
 

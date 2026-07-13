@@ -448,8 +448,13 @@ async def upload_resume(
 
     # Trigger batch scoring for top jobs in background
     import asyncio
+    from backend.db.models import JobMatchScore
     from backend.services.match_engine import MatchEngine
-    from backend.services.match_notifier import notify_high_matches
+    from backend.services.match_notifier import (
+        _remember_score,
+        _resume_fingerprint,
+        notify_high_matches,
+    )
 
     async def _score_top_jobs():
         try:
@@ -465,8 +470,27 @@ async def upload_resume(
                 .limit(10)
                 .all()
             )
+            # Share the sweep's score cache: whichever of the two runs first
+            # for a (user, job, resume) triple pays the LLM; the other reads
+            # the receipt. Without this, every upload re-buys scores the cron
+            # already owns — and the cron re-buys these within the hour.
+            fingerprint = _resume_fingerprint(raw_text)
+            cached: dict[int, int] = {}
+            if jobs_to_score:
+                cached = dict(
+                    db.query(JobMatchScore.job_id, JobMatchScore.score)
+                    .filter(
+                        JobMatchScore.user_id == user_id,
+                        JobMatchScore.job_id.in_([j.id for j in jobs_to_score]),
+                        JobMatchScore.resume_fingerprint == fingerprint,
+                    )
+                    .all()
+                )
             scored: list[tuple[ScrapedJob, int]] = []
             for job in jobs_to_score:
+                if job.id in cached:
+                    scored.append((job, cached[job.id]))
+                    continue
                 if job.description and len(job.description) > 50:
                     try:
                         breakdown = await engine.compute_breakdown(raw_text, job.description)
@@ -476,6 +500,7 @@ async def upload_resume(
                         job.industry_score = breakdown.industry_score
                         job.match_label = breakdown.match_label
                         db.commit()
+                        _remember_score(db, user_id, job.id, breakdown.overall_score, fingerprint)
                         scored.append((job, breakdown.overall_score))
                     except Exception:
                         pass

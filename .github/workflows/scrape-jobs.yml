@@ -11,29 +11,36 @@ on:
     # whole rows -- ~6,000 x ~2.3 KB = ~14 MB every hour. Killed on 2026-07-13
     # by rotating the neondb_owner password; it had also been the source of
     # ~all new jobs since 2026-06-26, so cron-ats now carries the feed.
-    - cron: '0 * * * *'
+    # Minute 17, not 0: GitHub fires scheduled workflows on a shared queue and
+    # top-of-hour is its most contended slot -- fires there get delayed or
+    # silently dropped (observed: the 00:00Z and 02:00Z fires on 2026-07-13
+    # never ran at all). An off-peak minute makes the hourly cadence real.
+    - cron: '17 * * * *'
   workflow_dispatch:
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: pip install python-jobspy httpx
-
-      - name: Run JobSpy scraper (Indeed + LinkedIn)
-        run: python scripts/scrape_jobspy.py
-        continue-on-error: true
-
-      - name: Run LinkedIn guest API scraper
-        run: python scripts/scrape_linkedin.py
-        continue-on-error: true
+      # The JobSpy and LinkedIn guest-API scrapers are parked. They POST to
+      # /jobs/create one job at a time with no auth header, and /jobs/create is
+      # admin-only -- so every single request 401s (measured in e1177e6): zero
+      # jobs stored, thousands of pointless Vercel invocations per run, plus
+      # minutes of scraping per hour to produce them. Bring them back once a
+      # batched, authenticated ingest endpoint exists for them to call:
+      #
+      #   - uses: actions/checkout@v4
+      #   - uses: actions/setup-python@v5
+      #     with:
+      #       python-version: '3.12'
+      #   - name: Install dependencies
+      #     run: pip install python-jobspy httpx
+      #   - name: Run JobSpy scraper (Indeed + LinkedIn)
+      #     run: python scripts/scrape_jobspy.py
+      #     continue-on-error: true
+      #   - name: Run LinkedIn guest API scraper
+      #     run: python scripts/scrape_linkedin.py
+      #     continue-on-error: true
 
       - name: Trigger ATS scraper
         run: |

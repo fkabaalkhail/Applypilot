@@ -379,8 +379,12 @@ async def sweep_match_alerts(
             .filter(JobMatchNotification.user_id == user.id)
             .subquery()
         )
-        jobs = (
-            db.query(ScrapedJob)
+        # The scoring window: the newest N jobs this user hasn't been alerted
+        # about. Selected as ids first so the window stays anchored to "newest
+        # N" — filtering by cache state before the LIMIT would make each run
+        # dig further into the backlog, growing the bill instead of capping it.
+        window = (
+            db.query(ScrapedJob.id)
             .filter(
                 ScrapedJob.description != "",
                 ScrapedJob.description != None,  # noqa: E711
@@ -389,12 +393,33 @@ async def sweep_match_alerts(
             )
             .order_by(ScrapedJob.id.desc())
             .limit(jobs_per_user)
+            .subquery()
+        )
+        # Fetch full rows only for window jobs this run can actually use:
+        # unscored ones (they go to the LLM) and cached strong matches (they
+        # may be emailed). A job already scored below threshold for this same
+        # resume can be neither scored nor sent, so its row — description and
+        # all — stays in the database instead of crossing the wire every run.
+        fingerprint = _resume_fingerprint(profile.raw_text)
+        jobs = (
+            db.query(ScrapedJob)
+            .outerjoin(
+                JobMatchScore,
+                (JobMatchScore.job_id == ScrapedJob.id)
+                & (JobMatchScore.user_id == user.id),
+            )
+            .filter(ScrapedJob.id.in_(db.query(window.c.id)))
+            .filter(
+                (JobMatchScore.id == None)  # noqa: E711
+                | (JobMatchScore.resume_fingerprint != fingerprint)
+                | (JobMatchScore.score >= threshold)
+            )
+            .order_by(ScrapedJob.id.desc())
             .all()
         )
 
         # Reuse anything we already paid to learn. Columns only — never whole
         # rows — so the lookup stays cheap on the wire.
-        fingerprint = _resume_fingerprint(profile.raw_text)
         cached: dict[int, int] = {}
         if jobs:
             cached = dict(

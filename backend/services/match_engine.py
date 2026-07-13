@@ -7,6 +7,8 @@ for experience, skills, and industry.
 
 import json
 import logging
+import os
+
 from sqlalchemy.orm import Session
 
 from backend.db.models import ScrapedJob, ResumeProfileDB
@@ -15,6 +17,21 @@ from backend.schemas.ai import JobAnalysisOut
 from backend.services.llm import get_llm_service
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_MATCH_MODEL = "gpt-4o-mini"
+
+
+def _match_model() -> str:
+    """Model used for match scoring — the highest-volume LLM call in the app.
+
+    The cron sweep buys a score for every (user, new job) pair whether or not
+    anyone opens the app, so this call runs orders of magnitude more often than
+    any user-triggered generation. Scoring fit 0-100 does not need the flagship
+    model: default to the cheap sibling and leave the quality-sensitive rewrite
+    flows on OPENAI_MODEL.
+    """
+    return os.getenv("OPENAI_MATCH_MODEL", DEFAULT_MATCH_MODEL).strip().strip("﻿") or DEFAULT_MATCH_MODEL
 
 
 def score_to_label(score: int) -> str:
@@ -131,8 +148,13 @@ class MatchEngine:
             job_description=job_description[:3000],
         )
 
-        response = await self.llm._generate(prompt)
+        response = await self.llm._generate(prompt, model=_match_model(), json_mode=True)
         data = self._parse_json_response(response)
+        if not isinstance(data, dict) or "overall_score" not in data:
+            # Raising (instead of returning zeros) matters to callers that
+            # persist the result: a zero born from a parse hiccup would be
+            # banked as this pair's score forever, silencing a real match.
+            raise ValueError("match response missing overall_score")
 
         overall = data.get("overall_score", 0)
         return MatchBreakdown(

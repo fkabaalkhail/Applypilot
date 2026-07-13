@@ -128,6 +128,35 @@ class TestMatchBreakdown:
             assert response.status_code == 503
             assert "AI service unavailable" in response.json()["detail"]
 
+    def test_returns_503_when_score_is_unparseable(self, client, db_session):
+        """An LLM answer with no parsable score is a retryable 503, not a fake
+        all-zero breakdown presented as real."""
+        job = ScrapedJob(
+            title="Software Engineer",
+            company="TestCo",
+            url="https://example.com/job/3",
+            description="Build things with Python, distributed systems, and modern cloud infrastructure.",
+        )
+        db_session.add(job)
+
+        profile = ResumeProfileDB(
+            user_id=TEST_USER_ID,
+            profile_name="Test User",
+            email="test@example.com",
+            raw_text="Experienced software engineer with 5 years...",
+        )
+        db_session.add(profile)
+        db_session.commit()
+        db_session.refresh(job)
+
+        with patch(
+            "backend.routers.ai.MatchEngine.compute_breakdown",
+            new_callable=AsyncMock,
+            side_effect=ValueError("match response missing overall_score"),
+        ):
+            response = client.post(f"/ai/match-breakdown/{job.id}")
+            assert response.status_code == 503
+
 
 class TestCoverLetter:
     """Tests for POST /ai/cover-letter/{job_id}."""

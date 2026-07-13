@@ -113,7 +113,20 @@ class OpenAIService:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set in environment")
 
-    async def _generate(self, prompt: str, system: str = None) -> str:
+    async def _generate(
+        self,
+        prompt: str,
+        system: str = None,
+        model: str = None,
+        json_mode: bool = False,
+    ) -> str:
+        """Run one chat completion.
+
+        ``model`` overrides the account-wide default for calls that don't need
+        the flagship (e.g. high-volume match scoring). ``json_mode`` turns on
+        OpenAI's JSON response format for callers that parse the output as
+        JSON — the prompt must still mention JSON, per the API contract.
+        """
         import asyncio
 
         url = "https://api.openai.com/v1/chat/completions"
@@ -124,10 +137,12 @@ class OpenAIService:
         messages.append({"role": "user", "content": prompt})
 
         body: dict = {
-            "model": self.model,
+            "model": model or self.model,
             "max_tokens": self.max_tokens,
             "messages": messages,
         }
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
 
         headers = {
             "Content-Type": "application/json",

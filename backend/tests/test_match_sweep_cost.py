@@ -171,3 +171,173 @@ async def test_new_resume_invalidates_the_cached_score(
     rows = db_session.query(JobMatchScore).filter_by(user_id=swept_user.id).all()
     assert len(rows) == 1
     assert rows[0].score == 42
+
+
+@pytest.mark.asyncio
+async def test_cached_low_scores_do_not_cross_the_wire_again(
+    db_session, swept_user, llm_calls
+):
+    """A job already scored below threshold must not be re-fetched, row and all.
+
+    Memoization (above) stops the re-buying of LLM scores; this pins the other
+    half of the bill: a below-threshold job can be neither scored nor emailed,
+    so later sweeps must not keep dragging its full row — description included —
+    over the wire just to look up a cached number and drop it.
+    """
+    for i in range(3):
+        _make_job(db_session, title=f"Role {i}")
+
+    await match_notifier.sweep_match_alerts(db_session)
+    assert len(llm_calls) == 3
+
+    # Empty the identity map so any row the second sweep materializes counts
+    # as a fresh load.
+    db_session.expunge_all()
+    loaded: list = []
+
+    def _record(session, instance):
+        if isinstance(instance, ScrapedJob):
+            loaded.append(instance)
+
+    event.listen(db_session, "loaded_as_persistent", _record)
+    try:
+        await match_notifier.sweep_match_alerts(db_session)
+    finally:
+        event.remove(db_session, "loaded_as_persistent", _record)
+
+    assert len(llm_calls) == 3
+    assert loaded == []
+
+
+@pytest.mark.asyncio
+async def test_cached_strong_match_is_still_emailed_without_a_new_llm_call(
+    db_session, swept_user, llm_calls
+):
+    """A banked >=threshold score must still produce the alert on a later run.
+
+    That happens when the score was bought but the email couldn't go out (send
+    budget spent, transient Resend failure). The pair is cached and un-notified:
+    the sweep must fetch the row and email it from the cache — zero LLM spend.
+    """
+    job = _make_job(db_session)
+    fingerprint = match_notifier._resume_fingerprint("resume body text")
+    db_session.add(
+        JobMatchScore(
+            user_id=swept_user.id,
+            job_id=job.id,
+            score=91,
+            resume_fingerprint=fingerprint,
+        )
+    )
+    db_session.commit()
+
+    result = await match_notifier.sweep_match_alerts(db_session)
+
+    assert llm_calls == []
+    assert result["jobs_notified"] == 1
+    assert (
+        db_session.query(JobMatchNotification)
+        .filter_by(user_id=swept_user.id, job_id=job.id)
+        .count()
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_unparseable_llm_response_is_not_banked_as_zero(
+    db_session, swept_user, monkeypatch
+):
+    """A parse hiccup must cost one wasted call, not a permanent wrong answer.
+
+    compute_breakdown runs for real here; only the HTTP layer is stubbed to
+    return garbage. If the resulting zero were banked, this (user, job, resume)
+    triple would be silenced forever — a real match never alerted. The sweep
+    must skip banking and pay to retry on the next run.
+    """
+    _make_job(db_session)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        match_notifier.email_service,
+        "send_job_match_alert",
+        lambda to, jobs, name=None: True,
+    )
+
+    calls = []
+
+    async def garbage(self, prompt, system=None, model=None, json_mode=False):
+        calls.append(prompt)
+        return "I am not JSON at all"
+
+    monkeypatch.setattr(
+        "backend.services.openai_service.OpenAIService._generate", garbage
+    )
+
+    await match_notifier.sweep_match_alerts(db_session)
+    assert len(calls) == 1
+    assert db_session.query(JobMatchScore).count() == 0
+
+    # Nothing banked, so the next run tries again instead of serving the zero.
+    await match_notifier.sweep_match_alerts(db_session)
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_scoring_runs_on_the_cheap_model(db_session, swept_user, monkeypatch):
+    """Sweep scoring must go to OPENAI_MATCH_MODEL (default gpt-4o-mini), in
+    JSON mode — not to the flagship OPENAI_MODEL the rewrite flows use."""
+    _make_job(db_session)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        match_notifier.email_service,
+        "send_job_match_alert",
+        lambda to, jobs, name=None: True,
+    )
+
+    seen = {}
+
+    async def fake(self, prompt, system=None, model=None, json_mode=False):
+        seen["model"] = model
+        seen["json_mode"] = json_mode
+        return (
+            '{"overall_score": 55, "experience_score": 50, "skill_score": 60,'
+            ' "industry_score": 40, "strengths": [], "weaknesses": []}'
+        )
+
+    monkeypatch.setattr(
+        "backend.services.openai_service.OpenAIService._generate", fake
+    )
+
+    await match_notifier.sweep_match_alerts(db_session)
+
+    assert seen["model"] == "gpt-4o-mini"
+    assert seen["json_mode"] is True
+
+
+@pytest.mark.asyncio
+async def test_scoring_model_is_env_overridable(db_session, swept_user, monkeypatch):
+    """OPENAI_MATCH_MODEL lets prod try a different cheap model without a deploy."""
+    _make_job(db_session)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MATCH_MODEL", "gpt-5-nano")
+    monkeypatch.setattr(
+        match_notifier.email_service,
+        "send_job_match_alert",
+        lambda to, jobs, name=None: True,
+    )
+
+    seen = {}
+
+    async def fake(self, prompt, system=None, model=None, json_mode=False):
+        seen["model"] = model
+        return (
+            '{"overall_score": 55, "experience_score": 50, "skill_score": 60,'
+            ' "industry_score": 40, "strengths": [], "weaknesses": []}'
+        )
+
+    monkeypatch.setattr(
+        "backend.services.openai_service.OpenAIService._generate", fake
+    )
+
+    await match_notifier.sweep_match_alerts(db_session)
+
+    assert seen["model"] == "gpt-5-nano"
