@@ -6,7 +6,7 @@ export interface JobFilters {
   location: string[];        // array of city search tags
   work_type: string[];       // ["remote", "hybrid", "onsite"]
   role_category: string[];   // selected categories
-  experience_level: string[];  // ["intern_new_grad", "entry", "mid", "senior", "lead", "director"]
+  experience_level: string[];  // ["internship", "new_grad"]
   date_posted: string;       // "24h" | "3d" | "week" | "month" | ""
 }
 
@@ -42,14 +42,46 @@ export const JOB_FUNCTION_OPTIONS = [
   "Other",
 ];
 
+// Values are the spellings stored in scraped_jobs.experience_level — the only two
+// levels the catalogue actually contains. Labels carry both the US ("internship",
+// "entry level") and Canadian ("co-op", "new grad") vocabulary.
 export const EXPERIENCE_OPTIONS = [
-  { value: "intern_new_grad", label: "Intern/New Grad" },
-  { value: "entry", label: "Entry Level" },
-  { value: "mid", label: "Mid Level" },
-  { value: "senior", label: "Senior" },
-  { value: "lead", label: "Lead/Staff" },
-  { value: "director", label: "Director/Executive" },
+  { value: "internship", label: "Internship / Co-op" },
+  { value: "new_grad", label: "New Grad / Entry Level" },
 ];
+
+const EXPERIENCE_VALUES = EXPERIENCE_OPTIONS.map((o) => o.value);
+
+// Experience values persisted by the pre-2026-07 taxonomy, which offered levels the
+// catalogue never had. Mid/senior/lead/director are absent on purpose: they matched
+// zero jobs, so they are dropped rather than remapped.
+const LEGACY_EXPERIENCE_MAP: Record<string, string[]> = {
+  intern_new_grad: ["internship", "new_grad"],
+  entry: ["new_grad"],
+};
+
+/**
+ * Migrate persisted experience filters onto the current taxonomy.
+ *
+ * Saved filters outlive the options that produced them. Without this, a user holding
+ * `["senior"]` in localStorage would carry an invisible filter — no checkbox renders
+ * for it, so it cannot be cleared, and it silently returns an empty job list.
+ * Unknown values are dropped, which restores an unfiltered view instead.
+ */
+export function normalizeExperienceLevels(values: unknown): string[] {
+  const raw = Array.isArray(values) ? values : typeof values === "string" && values ? [values] : [];
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const key = item.trim().toLowerCase();
+    if (!key) continue;
+    const mapped = EXPERIENCE_VALUES.includes(key) ? [key] : (LEGACY_EXPERIENCE_MAP[key] ?? []);
+    for (const value of mapped) {
+      if (!out.includes(value)) out.push(value);
+    }
+  }
+  return out;
+}
 
 const WORK_MODEL_OPTIONS = [
   { value: "onsite", label: "Onsite" },

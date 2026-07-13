@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import * as fc from "fast-check";
+import { normalizeExperienceLevels } from "../components/JobFilterBar";
 
 /**
  * Feature: job-scraper-aggregator, Property 11: Filter Persistence Round-Trip
@@ -26,7 +27,7 @@ const ROLE_CATEGORIES = [
   "Public Sector and Government", "Education and Training",
   "Customer Service and Support", "Marketing", "Consultant",
 ];
-const EXPERIENCE_VALUES = ["new_grad", "internship", "entry", "mid", "senior", "lead", "director"];
+const EXPERIENCE_VALUES = ["internship", "new_grad"];
 
 // Strategy for generating valid JobFilters
 const jobFiltersArb = fc.record({
@@ -50,7 +51,7 @@ function loadFilters(): JobFilters {
         country: parsed.country || "",
         work_type: Array.isArray(parsed.work_type) ? parsed.work_type : [],
         role_category: Array.isArray(parsed.role_category) ? parsed.role_category : [],
-        experience_level: Array.isArray(parsed.experience_level) ? parsed.experience_level : parsed.experience_level ? [parsed.experience_level] : [],
+        experience_level: normalizeExperienceLevels(parsed.experience_level),
       };
     }
   } catch {

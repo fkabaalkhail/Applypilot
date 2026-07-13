@@ -5,13 +5,21 @@ from __future__ import annotations
 import datetime
 
 # UI filter values → stored experience_level spellings in scraped_jobs.
+#
+# The catalogue only ever contains "internship" and "new_grad" (jobs are seeded from
+# GitHub internship / new-grad repos), so the UI now uses those spellings directly and
+# the canonical entries are identities.
+#
+# The legacy keys are the pre-2026-07 taxonomy. They are kept so a stale client, an
+# open tab, or a bookmarked /jobs?experience_level=… URL still resolves. Legacy
+# "mid"/"senior"/"lead"/"director" are intentionally absent: they never matched a row,
+# and the fall-through below expands an unknown key to itself, which keeps their
+# behaviour (zero results) exactly as it was.
 EXPERIENCE_FILTER_MAP: dict[str, list[str]] = {
-    "intern_new_grad": ["internship", "new_grad", "intern_new_grad"],
-    "entry": ["new_grad", "entry", "internship"],
-    "mid": ["mid", "associate"],
-    "senior": ["senior", "sr"],
-    "lead": ["lead", "staff", "principal"],
-    "director": ["director", "executive", "vp"],
+    "internship": ["internship"],
+    "new_grad": ["new_grad"],
+    "intern_new_grad": ["internship", "new_grad"],
+    "entry": ["new_grad", "internship"],
 }
 
 
