@@ -253,6 +253,33 @@ class JobMatchNotification(Base):
     )
 
 
+class JobMatchScore(Base):
+    """Memoizes what the LLM said about a (user, job) pair.
+
+    The cron sweep scores jobs on a schedule, so every re-score is money spent
+    with nobody using the app. A notification row only exists for jobs that beat
+    the alert threshold *and* got emailed, which left every below-threshold job
+    looking unscored forever — so the sweep bought the same answers again on
+    every run. This table is the receipt for the score itself, whatever it was.
+
+    ``resume_fingerprint`` hashes the resume text the score was computed from,
+    so a user who uploads a new resume gets re-scored instead of served a stale
+    answer. One row per (user, job): a new fingerprint overwrites in place.
+    """
+    __tablename__ = "job_match_scores"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    score = Column(Integer, nullable=False)
+    resume_fingerprint = Column(String(64), nullable=False)
+    scored_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "job_id", name="uq_job_match_score_user_job"),
+    )
+
+
 class ApplicationRecord(Base):
     """Tracks every job application the bot makes or the user logs."""
     __tablename__ = "application_records"

@@ -7,6 +7,7 @@ and by the recurring cron sweep.
 """
 
 import datetime
+import hashlib
 import logging
 import os
 from typing import Optional
@@ -14,7 +15,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.db.models import JobMatchNotification, ScrapedJob, User
+from backend.db.models import JobMatchNotification, JobMatchScore, ScrapedJob, User
 from backend.services.email_service import email_service
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,13 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 def get_threshold() -> int:
     """Minimum match score (0-100) that triggers an alert. Env-overridable."""
     return _env_int("MATCH_NOTIFY_THRESHOLD", DEFAULT_THRESHOLD)
@@ -48,6 +56,16 @@ def get_cooldown_hours() -> int:
 def get_daily_budget() -> int:
     """Max alert emails to send across all users per UTC day (0 disables sending)."""
     return _env_int("MATCH_NOTIFY_DAILY_BUDGET", DEFAULT_DAILY_BUDGET)
+
+
+def alerts_enabled() -> bool:
+    """Master switch for the recurring sweep.
+
+    The sweep runs on the scrape cron and spends LLM budget whether or not a
+    single person opens the app, so it needs an off-switch that costs nothing
+    but an env var.
+    """
+    return _env_flag("MATCH_ALERTS_ENABLED", True)
 
 
 def _recently_notified(db: Session, user_id: int, hours: int) -> bool:
@@ -82,6 +100,46 @@ def _emails_sent_today(db: Session) -> int:
         .scalar()
         or 0
     )
+
+
+def _resume_fingerprint(raw_text: str) -> str:
+    """Identify which resume a score was computed from.
+
+    A cached score is only reusable while the resume it was computed from is
+    unchanged; fingerprinting the text means an edit invalidates the score
+    instead of serving a stale match forever.
+    """
+    return hashlib.sha256(raw_text.encode("utf-8", "replace")).hexdigest()
+
+
+def _remember_score(
+    db: Session, user_id: int, job_id: int, score: int, fingerprint: str
+) -> None:
+    """Bank a score the moment it is bought, so no later run pays for it again.
+
+    Committed per score rather than once at the end of the sweep: the cron runs
+    under a wall-clock limit, and a run that dies halfway through must not throw
+    away the calls it already paid for.
+    """
+    row = (
+        db.query(JobMatchScore)
+        .filter(JobMatchScore.user_id == user_id, JobMatchScore.job_id == job_id)
+        .first()
+    )
+    if row is None:
+        db.add(
+            JobMatchScore(
+                user_id=user_id,
+                job_id=job_id,
+                score=score,
+                resume_fingerprint=fingerprint,
+            )
+        )
+    else:
+        row.score = score
+        row.resume_fingerprint = fingerprint
+        row.scored_at = datetime.datetime.utcnow()
+    db.commit()
 
 
 def _frontend_base() -> str:
@@ -250,6 +308,15 @@ async def sweep_match_alerts(
     from backend.db.models import ResumeProfileDB
     from backend.services.match_engine import MatchEngine
 
+    if not alerts_enabled():
+        logger.info("Match-alert sweep disabled (MATCH_ALERTS_ENABLED); skipping.")
+        return {
+            "status": "disabled",
+            "users_scanned": 0,
+            "users_notified": 0,
+            "jobs_notified": 0,
+        }
+
     if max_users is None:
         max_users = _env_int("CRON_MATCH_MAX_USERS", 25)
     if jobs_per_user is None:
@@ -325,13 +392,38 @@ async def sweep_match_alerts(
             .all()
         )
 
+        # Reuse anything we already paid to learn. Columns only — never whole
+        # rows — so the lookup stays cheap on the wire.
+        fingerprint = _resume_fingerprint(profile.raw_text)
+        cached: dict[int, int] = {}
+        if jobs:
+            cached = dict(
+                db.query(JobMatchScore.job_id, JobMatchScore.score)
+                .filter(
+                    JobMatchScore.user_id == user.id,
+                    JobMatchScore.job_id.in_([j.id for j in jobs]),
+                    JobMatchScore.resume_fingerprint == fingerprint,
+                )
+                .all()
+            )
+
+        # Snapshot what we score on while these rows are still loaded. Banking a
+        # score commits, and a commit expires every ORM object in the session —
+        # so reading job.description later in the loop would drag each whole row
+        # back over the wire, which is the very cost this table exists to avoid.
+        candidates = [(job, job.id, job.description) for job in jobs]
+
         scored: list[tuple[ScrapedJob, int]] = []
-        for job in jobs:
+        for job, job_id, description in candidates:
+            if job_id in cached:
+                scored.append((job, cached[job_id]))
+                continue
             try:
-                breakdown = await engine.compute_breakdown(profile.raw_text, job.description)
-                scored.append((job, breakdown.overall_score))
+                breakdown = await engine.compute_breakdown(profile.raw_text, description)
             except Exception:
                 continue
+            _remember_score(db, user.id, job_id, breakdown.overall_score, fingerprint)
+            scored.append((job, breakdown.overall_score))
 
         sent = notify_high_matches(db, user.id, scored)
         if sent:
