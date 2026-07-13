@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import zlib
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,11 @@ logger = logging.getLogger(__name__)
 # platforms (e.g. workday, which needs a tenant host) are kept in the registry
 # for reference but skipped by the scraper until support is added.
 SUPPORTED_PLATFORMS = {"greenhouse", "lever", "ashby", "smartrecruiters"}
+
+# One cron-ats invocation scrapes its whole slice inside a single Vercel
+# request capped at 300 s by the workflow. This is roughly how many boards
+# fit that budget with headroom.
+CRON_ATS_SHARD_TARGET = 150
 
 _REGISTRY_PATH = os.path.join(os.path.dirname(__file__), "ats_companies.json")
 
@@ -89,6 +95,40 @@ def load_companies(
         out.append((platform, slug, name))
 
     return out
+
+
+def shard_for_hour(
+    companies: list[tuple[str, str, str]],
+    hour: int,
+) -> tuple[int, int, list[tuple[str, str, str]]]:
+    """Return (shard_index, shard_count, subset) for this hour's cron run.
+
+    Shard count comes from ``CRON_ATS_SHARDS`` when set, otherwise it is sized
+    so a run scrapes ~CRON_ATS_SHARD_TARGET companies. Assignment hashes the
+    board slug with crc32 — Python's ``hash()`` is salted per process, and the
+    assignment must be stable across serverless invocations so every board
+    lands in exactly one shard and gets refreshed every ``shard_count`` hours.
+    """
+    shard_count = 0
+    raw = os.getenv("CRON_ATS_SHARDS", "").strip()
+    if raw:
+        try:
+            shard_count = int(raw)
+        except ValueError:
+            logger.warning("CRON_ATS_SHARDS=%r is not an integer; ignoring", raw)
+    if shard_count < 1:
+        shard_count = max(1, -(-len(companies) // CRON_ATS_SHARD_TARGET))
+
+    shard_index = hour % shard_count
+    if shard_count == 1:
+        return 0, 1, list(companies)
+
+    subset = [
+        entry
+        for entry in companies
+        if zlib.crc32(entry[1].lower().encode("utf-8")) % shard_count == shard_index
+    ]
+    return shard_index, shard_count, subset
 
 
 def load_logo_map() -> dict[str, str]:

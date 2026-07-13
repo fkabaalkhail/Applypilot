@@ -275,12 +275,17 @@ class ATSScraper:
         self.filter_entry_level = filter_entry_level
         self.filter_north_america = filter_north_america
 
-    async def scrape_all(self) -> list[ATSJob]:
-        """Scrape all configured ATS companies. Returns filtered job list."""
+    async def scrape_all(
+        self, companies: Optional[list[tuple[str, str, str]]] = None
+    ) -> list[ATSJob]:
+        """Scrape the given (platform, slug, name) companies — the full
+        registry when omitted. Returns filtered job list."""
         all_jobs: list[ATSJob] = []
+        if companies is None:
+            companies = ATS_COMPANIES
 
         async with httpx.AsyncClient(timeout=30) as client:
-            for platform, slug, company_name in ATS_COMPANIES:
+            for platform, slug, company_name in companies:
                 try:
                     if platform == "greenhouse":
                         jobs = await self._scrape_greenhouse(client, slug, company_name)

@@ -694,13 +694,6 @@
       "enabled": true
     },
     {
-      "company_name": "Figma (Greenhouse)",
-      "ats_platform": "greenhouse",
-      "board_slug": "figma",
-      "company_logo_url": "https://www.google.com/s2/favicons?domain=figma.com&sz=128",
-      "enabled": true
-    },
-    {
       "company_name": "Fivetran",
       "ats_platform": "greenhouse",
       "board_slug": "fivetran",
@@ -1748,6 +1741,195 @@
       "board_slug": "lightspeed",
       "company_logo_url": "",
       "enabled": true
+    },
+    {
+      "company_name": "Zip",
+      "ats_platform": "ashby",
+      "board_slug": "zip",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=ziphq.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Blue Moon Metals",
+      "ats_platform": "greenhouse",
+      "board_slug": "bluemoonmetals",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=bluemoonmetals.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Opendoor",
+      "ats_platform": "greenhouse",
+      "board_slug": "opendoor",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=opendoor.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "ProCogia",
+      "ats_platform": "greenhouse",
+      "board_slug": "procogia",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=procogia.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Sony Music",
+      "ats_platform": "greenhouse",
+      "board_slug": "sonymusicentertainment",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=sonymusic.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "StackAdapt",
+      "ats_platform": "greenhouse",
+      "board_slug": "stackadapt",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=stackadapt.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Tenstorrent",
+      "ats_platform": "greenhouse",
+      "board_slug": "tenstorrent",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=tenstorrent.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Equativ",
+      "ats_platform": "lever",
+      "board_slug": "equativ",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=equativ.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "GoMaterials",
+      "ats_platform": "lever",
+      "board_slug": "gomaterials",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=gomaterials.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Kepler Communications",
+      "ats_platform": "lever",
+      "board_slug": "kepler",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=kepler.space&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Larian Studios",
+      "ats_platform": "lever",
+      "board_slug": "larian",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=larian.com&sz=128",
+      "enabled": true
+    },
+    {
+      "company_name": "Air Liquide",
+      "ats_platform": "workday",
+      "board_slug": "airliquidehr.wd3.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=airliquide.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Autodesk",
+      "ats_platform": "workday",
+      "board_slug": "autodesk.wd1.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=autodesk.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "QNX",
+      "ats_platform": "workday",
+      "board_slug": "bb.wd3.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=qnx.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "BDO",
+      "ats_platform": "workday",
+      "board_slug": "bdo.wd3.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=bdo.ca&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Hitachi",
+      "ats_platform": "workday",
+      "board_slug": "hitachi.wd1.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=hitachi.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Interac",
+      "ats_platform": "workday",
+      "board_slug": "interac.wd3.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=interac.ca&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Eli Lilly",
+      "ats_platform": "workday",
+      "board_slug": "lilly.wd115.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=lilly.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Lumentum",
+      "ats_platform": "workday",
+      "board_slug": "lumentum.wd5.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=lumentum.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Magna",
+      "ats_platform": "workday",
+      "board_slug": "magna.wd3.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=magna.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Dotdash Meredith",
+      "ats_platform": "workday",
+      "board_slug": "meredith.wd5.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=dotdashmeredith.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "MLSE",
+      "ats_platform": "workday",
+      "board_slug": "mlse.wd3.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=mlse.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Parsons",
+      "ats_platform": "workday",
+      "board_slug": "parsons.wd5.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=parsons.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Procter & Gamble",
+      "ats_platform": "workday",
+      "board_slug": "pg.wd5.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=pg.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "Roche",
+      "ats_platform": "workday",
+      "board_slug": "roche.wd3.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=roche.com&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "SOTI",
+      "ats_platform": "workday",
+      "board_slug": "soti.wd3.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=soti.net&sz=128",
+      "enabled": false
+    },
+    {
+      "company_name": "TMX Group",
+      "ats_platform": "workday",
+      "board_slug": "tmx.wd3.myworkdayjobs.com",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=tmx.com&sz=128",
+      "enabled": false
     }
   ]
 }

@@ -158,7 +158,8 @@ async def cron_ats(
 ):
     """Scrape ATS platforms (Greenhouse, Lever) for intern/new-grad jobs.
 
-    Polls all configured companies' public ATS APIs and stores jobs
+    Polls the current hour's shard of the company registry (the whole run
+    must fit one serverless request — see shard_for_hour) and stores jobs
     with direct apply links. Filters to entry-level + US/Canada only.
     Designed to be called by Vercel Cron Jobs on a schedule.
     """
@@ -168,14 +169,19 @@ async def cron_ats(
         from backend.services.country_filter import CountryFilter
         from backend.services.work_type_classifier import WorkTypeClassifier
         from backend.services.logo_resolver import resolve_logo
-        from backend.data.company_registry import load_logo_map
+        from backend.data import company_registry
 
         scraper = ATSScraper(filter_entry_level=True, filter_north_america=True)
         country_filter = CountryFilter()
         work_type_classifier = WorkTypeClassifier()
-        logo_map = load_logo_map()
+        logo_map = company_registry.load_logo_map()
 
-        jobs = await scraper.scrape_all()
+        hour = datetime.datetime.now(datetime.timezone.utc).hour
+        shard_index, shard_count, companies = company_registry.shard_for_hour(
+            company_registry.load_companies(), hour
+        )
+
+        jobs = await scraper.scrape_all(companies=companies)
 
         new_count = 0
         skipped_dupe = 0
@@ -236,6 +242,11 @@ async def cron_ats(
             "total_found": len(jobs),
             "new_jobs": new_count,
             "duplicates_skipped": skipped_dupe,
+            "shard": {
+                "index": shard_index,
+                "count": shard_count,
+                "companies": len(companies),
+            },
         }
     except Exception:
         logger.error(f"ATS cron failed: {traceback.format_exc()}")
