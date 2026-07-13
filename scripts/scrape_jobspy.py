@@ -14,13 +14,21 @@ Usage:
 
 import asyncio
 import argparse
+import os
 import sys
-from datetime import datetime
 
 import httpx
 
 # Tailrd API
 API_BASE = "https://www.tailrd.ca"
+
+# Auth for POST /jobs/ingest-batch (verify_cron_secret). In CI this comes from
+# the CRON_SECRET repository secret; without it the API rejects the batch.
+CRON_SECRET = os.getenv("CRON_SECRET", "")
+
+# Jobs per request. The endpoint caps a batch at 500; 100 keeps each request
+# small while still turning ~thousands of per-job calls into a handful.
+BATCH_SIZE = 100
 
 # Search configurations for Canadian intern/new-grad jobs
 SEARCHES = [
@@ -39,63 +47,89 @@ SEARCHES = [
 ]
 
 
-async def push_job(client: httpx.AsyncClient, job_data: dict) -> str:
-    """Push a single job to the Tailrd API. Returns 'created', 'duplicate', or 'error'."""
-    try:
-        # Determine experience level
-        title = (job_data.get("title") or "").lower()
-        if "intern" in title or "co-op" in title or "coop" in title:
-            exp_level = "internship"
-        else:
-            exp_level = "new_grad"
+def to_payload(job_data: dict) -> dict | None:
+    """Map a JobSpy row to an ingest-batch job payload. None if unusable."""
+    job_url = job_data.get("job_url") or ""
+    if not job_url or job_url == "nan":
+        return None
 
-        # Determine work type
-        if job_data.get("is_remote"):
+    # Determine experience level
+    title = (job_data.get("title") or "").lower()
+    if "intern" in title or "co-op" in title or "coop" in title:
+        exp_level = "internship"
+    else:
+        exp_level = "new_grad"
+
+    # Determine work type
+    if job_data.get("is_remote"):
+        work_type = "remote"
+    else:
+        loc = (job_data.get("location") or "").lower()
+        if "remote" in loc:
             work_type = "remote"
+        elif "hybrid" in loc:
+            work_type = "hybrid"
         else:
-            loc = (job_data.get("location") or "").lower()
-            if "remote" in loc:
-                work_type = "remote"
-            elif "hybrid" in loc:
-                work_type = "hybrid"
-            else:
-                work_type = "onsite"
+            work_type = "onsite"
 
-        # Determine country
-        country = "CA"
-        state = job_data.get("state") or ""
-        if state and len(state) == 2 and state.upper() not in (
-            "ON", "QC", "BC", "AB", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "YT", "NU"
-        ):
-            country = "US"
+    # Determine country
+    country = "CA"
+    state = job_data.get("state") or ""
+    if state and len(state) == 2 and state.upper() not in (
+        "ON", "QC", "BC", "AB", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "YT", "NU"
+    ):
+        country = "US"
 
-        # Build location string
-        city = job_data.get("city") or ""
-        location = f"{city}, {state}" if city and state else city or state or job_data.get("location") or ""
+    # Build location string
+    city = job_data.get("city") or ""
+    location = f"{city}, {state}" if city and state else city or state or job_data.get("location") or ""
 
-        # Get job URL
-        job_url = job_data.get("job_url") or ""
-        if not job_url:
-            return "error"
+    payload = {
+        "title": job_data.get("title") or "",
+        "company": job_data.get("company") or "",
+        "location": location,
+        "url": job_url,
+        "source_platform": job_data.get("site") or "indeed",
+        "experience_level": exp_level,
+        "work_type": work_type,
+        "country": country,
+    }
+    posted = job_data.get("date_posted")
+    if posted is not None and str(posted) not in ("", "nan", "NaT", "None"):
+        payload["posted_date"] = str(posted)
+    return payload
 
-        resp = await client.post(
-            f"{API_BASE}/jobs/create",
-            params={
-                "title": job_data.get("title") or "",
-                "company": job_data.get("company") or "",
-                "location": location,
-                "url": job_url,
-                "source_platform": job_data.get("site") or "indeed",
-                "experience_level": exp_level,
-                "work_type": work_type,
-                "country": country,
-            },
-        )
-        if resp.status_code == 200:
-            return resp.json().get("status", "error")
-        return "error"
-    except Exception as e:
-        return "error"
+
+async def push_batches(jobs: list[dict]) -> tuple[int, int, int, int]:
+    """POST jobs to /jobs/ingest-batch in chunks. One request dedupes and
+    inserts a whole chunk — the old per-job /jobs/create loop cost one
+    (unauthenticated, always-401) request per job.
+
+    Returns (created, duplicates, skipped, errors).
+    """
+    created = duplicates = skipped = errors = 0
+    headers = {"x-cron-secret": CRON_SECRET} if CRON_SECRET else {}
+    async with httpx.AsyncClient(timeout=60) as client:
+        for start in range(0, len(jobs), BATCH_SIZE):
+            chunk = jobs[start:start + BATCH_SIZE]
+            try:
+                resp = await client.post(
+                    f"{API_BASE}/jobs/ingest-batch",
+                    json={"jobs": chunk},
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    created += data.get("created", 0)
+                    duplicates += data.get("duplicates", 0)
+                    skipped += data.get("skipped", 0)
+                else:
+                    print(f"  batch {start // BATCH_SIZE + 1}: HTTP {resp.status_code} {resp.text[:200]}")
+                    errors += len(chunk)
+            except Exception as e:
+                print(f"  batch {start // BATCH_SIZE + 1}: {e}")
+                errors += len(chunk)
+    return created, duplicates, skipped, errors
 
 
 async def main():
@@ -159,23 +193,15 @@ async def main():
         print("No jobs found.")
         return
 
-    # Push to API
-    print(f"\nPushing {len(all_jobs)} jobs to {API_BASE}...")
-    created = 0
-    duplicates = 0
-    errors = 0
+    # Push to API in batches
+    if not CRON_SECRET:
+        print("WARNING: CRON_SECRET is not set; the API will reject the batches.")
+    payloads = [p for p in (to_payload(j) for j in all_jobs) if p]
+    print(f"\nPushing {len(payloads)} jobs to {API_BASE} in batches of {BATCH_SIZE}...")
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        for job in all_jobs:
-            result = await push_job(client, job)
-            if result == "created":
-                created += 1
-            elif result == "duplicate":
-                duplicates += 1
-            else:
-                errors += 1
+    created, duplicates, skipped, errors = await push_batches(payloads)
 
-    print(f"\nResults: {created} created, {duplicates} duplicates, {errors} errors")
+    print(f"\nResults: {created} created, {duplicates} duplicates, {skipped} skipped, {errors} errors")
 
 
 if __name__ == "__main__":

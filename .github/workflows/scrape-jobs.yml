@@ -22,25 +22,27 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
-      # The JobSpy and LinkedIn guest-API scrapers are parked. They POST to
-      # /jobs/create one job at a time with no auth header, and /jobs/create is
-      # admin-only -- so every single request 401s (measured in e1177e6): zero
-      # jobs stored, thousands of pointless Vercel invocations per run, plus
-      # minutes of scraping per hour to produce them. Bring them back once a
-      # batched, authenticated ingest endpoint exists for them to call:
-      #
-      #   - uses: actions/checkout@v4
-      #   - uses: actions/setup-python@v5
-      #     with:
-      #       python-version: '3.12'
-      #   - name: Install dependencies
-      #     run: pip install python-jobspy httpx
-      #   - name: Run JobSpy scraper (Indeed + LinkedIn)
-      #     run: python scripts/scrape_jobspy.py
-      #     continue-on-error: true
-      #   - name: Run LinkedIn guest API scraper
-      #     run: python scripts/scrape_linkedin.py
-      #     continue-on-error: true
+      # JobSpy + LinkedIn were parked from e1177e6 until the batched ingest
+      # endpoint existed: they used to POST /jobs/create once per job with no
+      # auth, and every request 401'd. They now collect everything and POST
+      # /jobs/ingest-batch in chunks of 100 with the cron secret — a handful
+      # of authenticated requests per run instead of thousands of dead ones.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install python-jobspy httpx
+      - name: Run JobSpy scraper (Indeed + LinkedIn)
+        run: python scripts/scrape_jobspy.py
+        continue-on-error: true
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      - name: Run LinkedIn guest API scraper
+        run: python scripts/scrape_linkedin.py
+        continue-on-error: true
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
       - name: Trigger ATS scraper
         run: |

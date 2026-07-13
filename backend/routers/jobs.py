@@ -19,8 +19,13 @@ from sqlalchemy import func, or_
 
 from backend.db.database import get_db
 from backend.db.models import ScrapedJob, JobStatus, ApplicationRecord, UserSavedJob
-from backend.auth.dependencies import get_verified_user_id, get_optional_user_id, get_admin_user_id
-from backend.schemas.jobs import ScrapedJobOut
+from backend.auth.dependencies import (
+    get_verified_user_id,
+    get_optional_user_id,
+    get_admin_user_id,
+    verify_cron_secret,
+)
+from backend.schemas.jobs import ScrapedJobOut, IngestBatchIn
 from backend.schemas.application import ApplicationOut
 from backend.services.description_extractor import (
     BROWSER_HEADERS,
@@ -201,6 +206,101 @@ def create_job(
     db.commit()
     db.refresh(job)
     return {"status": "created", "id": job.id}
+
+
+@router.post("/ingest-batch")
+def ingest_batch(
+    batch: IngestBatchIn,
+    _cron: None = Depends(verify_cron_secret),
+    db: Session = Depends(get_db),
+):
+    """Bulk-ingest scraped jobs (cron-secret auth — for the JobSpy/LinkedIn
+    scraper scripts).
+
+    The per-job /jobs/create path costs one request + one query per job and is
+    admin-JWT-only, which the scripts can't send — every call 401'd since
+    809c80f. This dedupes the whole batch with ONE url query and bulk-inserts
+    the rest.
+    """
+    from sqlalchemy.exc import IntegrityError
+    from backend.services.role_classifier import classify as classify_role
+
+    received = len(batch.jobs)
+    skipped = 0
+    duplicates = 0
+    unique = {}
+    for job in batch.jobs:
+        url = (job.url or "").strip()
+        if not url:
+            skipped += 1
+            continue
+        if url in unique:
+            duplicates += 1
+            continue
+        unique[url] = job
+
+    existing: set[str] = set()
+    if unique:
+        rows = db.query(ScrapedJob.url).filter(ScrapedJob.url.in_(unique.keys())).all()
+        existing = {row[0] for row in rows}
+
+    to_insert = []
+    for url, job in unique.items():
+        if url in existing:
+            duplicates += 1
+            continue
+
+        posted_date = None
+        if job.posted_date:
+            try:
+                posted_date = datetime.datetime.fromisoformat(job.posted_date)
+            except (ValueError, TypeError):
+                posted_date = None
+
+        cleaned_company = re.sub(r"[^a-z0-9]", "", job.company.lower())
+        to_insert.append(
+            ScrapedJob(
+                title=job.title,
+                company=job.company,
+                location=job.location,
+                url=url,
+                description="",
+                source_platform=job.source_platform,
+                posted_date=posted_date,
+                easy_apply=0,
+                work_type=job.work_type,
+                role_category=classify_role(job.title),
+                country=job.country,
+                experience_level=job.experience_level,
+                company_logo=f"https://icon.horse/icon/{cleaned_company}.com",
+            )
+        )
+
+    created = 0
+    if to_insert:
+        db.add_all(to_insert)
+        try:
+            db.commit()
+            created = len(to_insert)
+        except IntegrityError:
+            # Race: another writer landed one of these URLs between our dedup
+            # query and the commit. Retry row by row so the rest still insert.
+            db.rollback()
+            for row in to_insert:
+                db.add(row)
+                try:
+                    db.commit()
+                    created += 1
+                except IntegrityError:
+                    db.rollback()
+                    duplicates += 1
+
+    return {
+        "received": received,
+        "created": created,
+        "duplicates": duplicates,
+        "skipped": skipped,
+    }
 
 
 @router.get("/stats")

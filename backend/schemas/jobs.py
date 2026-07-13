@@ -3,7 +3,7 @@ Pydantic schemas for scraped jobs and pending questions.
 """
 
 import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from backend.db.models import JobStatus
 
@@ -50,6 +50,24 @@ class ScrapedJobOut(BaseModel):
     posted_date: Optional[datetime.datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class IngestJobIn(BaseModel):
+    """One scraped job pushed by a scraper script (POST /jobs/ingest-batch)."""
+    title: str
+    company: str
+    url: str = ""
+    location: str = ""
+    source_platform: str = "linkedin"
+    experience_level: str = "new_grad"
+    work_type: str = "onsite"
+    country: str = "CA"
+    posted_date: Optional[str] = None  # ISO date; unparseable values are dropped
+
+
+class IngestBatchIn(BaseModel):
+    """A batch of scraped jobs. Sized so one request stays cheap to dedupe."""
+    jobs: list[IngestJobIn] = Field(default_factory=list, max_length=500)
 
 
 class PendingQuestionOut(BaseModel):

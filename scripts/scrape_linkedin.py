@@ -15,6 +15,7 @@ This script:
 
 import asyncio
 import argparse
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -23,7 +24,14 @@ from urllib.parse import quote
 import httpx
 
 # Your deployed API base URL
-API_BASE = "https://resumate-smoky.vercel.app"
+API_BASE = "https://www.tailrd.ca"
+
+# Auth for POST /jobs/ingest-batch (verify_cron_secret). In CI this comes from
+# the CRON_SECRET repository secret; without it the API rejects the batch.
+CRON_SECRET = os.getenv("CRON_SECRET", "")
+
+# Jobs per request. The endpoint caps a batch at 500.
+BATCH_SIZE = 100
 
 # Canadian cities to search
 CITIES = [
@@ -140,8 +148,8 @@ async def search_linkedin(client: httpx.AsyncClient, query: str, city: str, prov
     return []
 
 
-async def push_job_to_api(client: httpx.AsyncClient, job: Job) -> str:
-    """Push a job to the Tailrd API. Returns 'created', 'duplicate', or 'error'."""
+def to_payload(job: Job) -> dict:
+    """Map a parsed LinkedIn card to an ingest-batch job payload."""
     # Determine experience level
     title_lower = job.title.lower()
     if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
@@ -163,26 +171,48 @@ async def push_job_to_api(client: httpx.AsyncClient, job: Job) -> str:
     if any(x in loc_lower for x in ["united states", "usa", ", ca", ", ny", ", tx"]):
         country = "US"
 
-    try:
-        resp = await client.post(
-            f"{API_BASE}/jobs/create",
-            params={
-                "title": job.title,
-                "company": job.company,
-                "location": job.location,
-                "url": job.url,
-                "source_platform": "linkedin",
-                "experience_level": exp_level,
-                "work_type": work_type,
-                "country": country,
-            },
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            return data.get("status", "error")
-        return "error"
-    except Exception:
-        return "error"
+    return {
+        "title": job.title,
+        "company": job.company,
+        "location": job.location,
+        "url": job.url,
+        "source_platform": "linkedin",
+        "experience_level": exp_level,
+        "work_type": work_type,
+        "country": country,
+    }
+
+
+async def push_batches(jobs: list[dict]) -> tuple[int, int, int, int]:
+    """POST jobs to /jobs/ingest-batch in chunks. One request dedupes and
+    inserts a whole chunk — the old per-job /jobs/create loop cost one
+    (unauthenticated, always-401) request per job.
+
+    Returns (created, duplicates, skipped, errors).
+    """
+    created = duplicates = skipped = errors = 0
+    headers = {"x-cron-secret": CRON_SECRET} if CRON_SECRET else {}
+    async with httpx.AsyncClient(timeout=60) as client:
+        for start in range(0, len(jobs), BATCH_SIZE):
+            chunk = jobs[start:start + BATCH_SIZE]
+            try:
+                resp = await client.post(
+                    f"{API_BASE}/jobs/ingest-batch",
+                    json={"jobs": chunk},
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    created += data.get("created", 0)
+                    duplicates += data.get("duplicates", 0)
+                    skipped += data.get("skipped", 0)
+                else:
+                    print(f"  batch {start // BATCH_SIZE + 1}: HTTP {resp.status_code} {resp.text[:200]}")
+                    errors += len(chunk)
+            except Exception as e:
+                print(f"  batch {start // BATCH_SIZE + 1}: {e}")
+                errors += len(chunk)
+    return created, duplicates, skipped, errors
 
 
 async def main():
@@ -224,23 +254,15 @@ async def main():
     print(f"Total unique jobs found: {len(all_jobs)}")
     print(f"{'='*60}")
 
-    # Push jobs to the API
-    print(f"\nPushing jobs to {API_BASE}...")
-    created = 0
-    duplicates = 0
-    errors = 0
+    # Push jobs to the API in batches
+    if not CRON_SECRET:
+        print("WARNING: CRON_SECRET is not set; the API will reject the batches.")
+    payloads = [to_payload(job) for job in all_jobs]
+    print(f"\nPushing {len(payloads)} jobs to {API_BASE} in batches of {BATCH_SIZE}...")
 
-    async with httpx.AsyncClient(timeout=30) as api_client:
-        for job in all_jobs:
-            result = await push_job_to_api(api_client, job)
-            if result == "created":
-                created += 1
-            elif result == "duplicate":
-                duplicates += 1
-            else:
-                errors += 1
+    created, duplicates, skipped, errors = await push_batches(payloads)
 
-    print(f"\nResults: {created} created, {duplicates} duplicates, {errors} errors")
+    print(f"\nResults: {created} created, {duplicates} duplicates, {skipped} skipped, {errors} errors")
     print(f"Total in DB: check {API_BASE}/jobs/stats")
 
 
