@@ -2,15 +2,16 @@ name: Scrape Jobs
 
 on:
   schedule:
-    # Temporarily every 6h, not hourly, while the Neon network-transfer overage
-    # is still unexplained (the project sat at ~97% of its monthly allowance).
+    # Hourly. A run costs the database well under 1 MB: every dedup site is a
+    # column query (`SELECT scraped_jobs.url`), verified against prod.
     #
-    # Measured since: a run costs the DB well under 1 MB. Every dedup site is a
-    # column query, confirmed against prod -- cron-ats issued 1,486 and cron-poll
-    # 593 `SELECT scraped_jobs.url` and no whole-row fetches. So the scrape run
-    # is NOT the source of the overage, and restoring the hourly cron is likely
-    # safe; it stays at 6h only until the real source is identified.
-    - cron: '0 */6 * * *'
+    # The Neon transfer overage was never this workflow. It was a stale
+    # resumate-scraper deployment connecting straight to Neon with the DB
+    # password, running a pre-2026-05-11 ScrapedJob model whose dedup fetched
+    # whole rows -- ~6,000 x ~2.3 KB = ~14 MB every hour. Killed on 2026-07-13
+    # by rotating the neondb_owner password; it had also been the source of
+    # ~all new jobs since 2026-06-26, so cron-ats now carries the feed.
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
