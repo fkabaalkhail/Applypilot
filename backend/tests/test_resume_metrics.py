@@ -6,6 +6,8 @@ right: what fraction of bullets carry a metric, which ones open with a duty
 phrase, whether the dates are written one way or three.
 """
 
+import pytest
+
 from backend.services.resume_extraction import build_profile
 from backend.services.resume_metrics import build_digest, render_digest
 
@@ -116,3 +118,187 @@ def test_render_digest_states_the_facts_the_prompt_relies_on():
     assert "Bullets containing a number/metric: 25%" in text
     assert "Responsible for maintaining the regression suite" in text
     assert "INCONSISTENT" in text
+
+
+# ---------------------------------------------------------------------------
+# The Yale rules. Each is a fact the analyzer is handed as ground truth, so each
+# needs a fixture that trips it and — where a naive check would misfire — one that
+# must not.
+# ---------------------------------------------------------------------------
+
+def build(raw: str = "", **profile) -> dict:
+    return build_digest(raw, build_profile(profile))
+
+
+@pytest.mark.parametrize(
+    "degree, expected, pages",
+    [
+        ("B.S. Computer Science", "undergraduate", "1"),
+        ("Bachelor of Arts", "undergraduate", "1"),
+        ("M.Eng Software Engineering", "masters", "1-2"),
+        ("Master of Business Administration", "masters", "1-2"),
+        ("Ph.D. Physics", "phd", "2-3"),
+        ("Doctor of Philosophy", "phd", "2-3"),
+    ],
+)
+def test_level_and_page_target_come_from_the_highest_degree(degree, expected, pages):
+    d = build(education=[{"school": "Yale", "degree": degree}])
+    assert d["level"] == expected
+    assert d["formatting"]["page_target"] == pages
+
+
+def test_the_highest_degree_wins_not_the_first_listed():
+    d = build(education=[
+        {"degree": "Ph.D. Physics"},
+        {"degree": "B.S. Physics"},
+    ])
+    assert d["level"] == "phd"
+
+
+def test_an_unreadable_degree_still_reads_as_a_student():
+    """Tailrd's job catalogue is internships and new grads. An education section we
+    cannot parse means a student, not a 20-year professional."""
+    assert build(education=[{"school": "Yale", "degree": "Directed Studies"}])["level"] == (
+        "undergraduate"
+    )
+    assert build()["level"] == "professional"  # no education at all
+
+
+def test_length_is_judged_against_the_level_not_a_fixed_page_count():
+    long_text = "word " * 1400  # ~2 pages
+    undergrad = build(long_text, education=[{"degree": "B.S."}])
+    phd = build(long_text, education=[{"degree": "Ph.D."}])
+
+    assert undergrad["formatting"]["length_ok"] is False   # 2 pages, target is 1
+    assert phd["formatting"]["length_ok"] is True          # 2 pages, target is 2-3
+    assert "OVER the 1-page target" in render_digest(undergrad)
+
+
+def test_flags_personal_data_that_must_never_be_on_a_resume():
+    d = build("Jane Doe\nDate of Birth: 1999-04-02\nMarital Status: Single\nGender: F")
+    assert set(d["formatting"]["personal_data"]) == {"date of birth", "marital status",
+                                                     "sex or gender"}
+
+
+def test_ordinary_resume_lines_are_not_mistaken_for_personal_data():
+    """Every pattern demands an explicit label, so a normal header stays clean."""
+    d = build("Jane Doe\njane@yale.edu | New Haven, CT | 203-555-0100\nAuthorized to work in the US")
+    assert d["formatting"]["personal_data"] == []
+
+
+def test_flags_a_present_continuous_opener():
+    d = build(experience=[{"company": "Acme", "end_date": "Present",
+                           "bullets": ["Building the billing service"]}])
+    hits = d["language"]["present_continuous"]
+    assert len(hits) == 1 and "Building the billing service" in hits[0]
+
+
+def test_flags_tense_that_contradicts_the_entrys_dates():
+    d = build(experience=[
+        {"company": "Acme", "title": "Now", "end_date": "Present",
+         "bullets": ["Managed the regression suite"]},          # past tense, current role
+        {"company": "Globex", "title": "Then", "end_date": "Aug 2024",
+         "bullets": ["Develop internal tools"]},                # present tense, ended role
+    ])
+    hits = d["language"]["tense_mismatches"]
+    assert any("is current, but this bullet is past tense" in h for h in hits)
+    assert any("has ended, but this bullet is present tense" in h for h in hits)
+
+
+def test_correct_tense_is_not_flagged():
+    d = build(experience=[
+        {"company": "Acme", "end_date": "Present", "bullets": ["Lead the platform team"]},
+        {"company": "Globex", "end_date": "Aug 2024", "bullets": ["Shipped the dashboard"]},
+    ])
+    assert d["language"]["tense_mismatches"] == []
+
+
+def test_an_undated_entry_is_not_guessed_at():
+    """With no end date we cannot know the right tense, so we say nothing."""
+    d = build(experience=[{"company": "Acme", "bullets": ["Develop internal tools"]}])
+    assert d["language"]["tense_mismatches"] == []
+
+
+def test_flags_contractions_but_not_possessives():
+    d = build(experience=[{"company": "A", "bullets": [
+        "Didn't ship the migration on time",
+        "Owned the team's deployment pipeline",   # possessive — legitimate
+    ]}])
+    hits = d["language"]["contractions"]
+    assert len(hits) == 1 and "Didn't ship" in hits[0]
+
+
+def test_counts_bullets_per_entry_against_the_three_to_five_rule():
+    d = build(experience=[
+        {"company": "Thin", "title": "A", "bullets": ["Shipped it"]},
+        {"company": "Right", "title": "B", "bullets": ["Shipped it"] * 4},
+        {"company": "Bloated", "title": "C", "bullets": ["Shipped it"] * 7},
+        {"company": "Empty", "title": "D", "bullets": []},
+    ])
+    entries = d["entries"]
+    assert any("A at Thin" in x for x in entries["too_few_bullets"])
+    assert any("C at Bloated" in x for x in entries["too_many_bullets"])
+    assert any("D at Empty" in x for x in entries["no_bullets"])
+    # The entry that follows the rule appears in none of them.
+    assert not any("B at Right" in x for group in entries.values() for x in group)
+
+
+def test_flags_an_opening_verb_used_three_or_more_times():
+    d = build(experience=[{"company": "A", "bullets": [
+        "Developed dashboards", "Developed reports", "Developed pipelines", "Shipped the API",
+    ]}])
+    assert d["language"]["repeated_openers"] == ["developed (3x)"]
+
+
+def test_detects_entries_out_of_reverse_chronological_order():
+    d = build(experience=[
+        {"company": "Old", "title": "Older role", "end_date": "Jan 2020", "bullets": []},
+        {"company": "New", "title": "Newer role", "end_date": "Jan 2024", "bullets": []},
+    ])
+    assert d["structure"]["reverse_chronological"] is False
+    assert any("Newer role" in v for v in d["structure"]["order_violations"])
+
+
+def test_correctly_ordered_entries_are_not_flagged():
+    d = build(experience=[
+        {"company": "New", "end_date": "Present", "bullets": []},
+        {"company": "Old", "end_date": "Jan 2020", "bullets": []},
+    ])
+    assert d["structure"]["reverse_chronological"] is True
+
+
+def test_a_bare_year_next_to_a_month_year_is_not_an_ordering_violation():
+    """"2024" and "May 2024" is untidy, not out of order. Comparing them by an invented
+    month would manufacture a finding the candidate cannot act on."""
+    d = build(experience=[
+        {"company": "A", "end_date": "May 2024", "bullets": []},
+        {"company": "B", "end_date": "2024", "bullets": []},
+    ])
+    assert d["structure"]["reverse_chronological"] is True
+
+
+def test_flags_skills_that_are_listed_but_never_evidenced():
+    d = build(
+        skills=["Python", "Kubernetes", "Go"],
+        experience=[{"company": "A", "bullets": ["Built data pipelines in Python"]}],
+    )
+    unevidenced = d["keywords"]["skills_not_evidenced"]
+    assert "Kubernetes" in unevidenced   # listed, never shown
+    assert "Python" not in unevidenced   # shown in a bullet
+    assert "Go" not in unevidenced       # too short to match without noise
+
+
+def test_render_digest_states_the_new_facts():
+    text = render_digest(build(
+        "Marital Status: Single",
+        education=[{"degree": "B.S. Computer Science"}],
+        skills=["Kubernetes"],
+        experience=[{"company": "Acme", "title": "Dev", "end_date": "Present",
+                     "bullets": ["Building the service", "Managed the suite"]}],
+    ))
+    assert "Candidate level (from their degrees): undergraduate" in text
+    assert "Personal data that must never appear on a resume: marital status" in text
+    assert "Bullets opening in the present continuous" in text
+    assert "is current, but this bullet is past tense" in text
+    assert "Entries with fewer than 3 bullets" in text
+    assert "Skills listed but never evidenced in a bullet" in text

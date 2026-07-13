@@ -47,6 +47,34 @@ def test_factual_fields_stay_locked():
     assert exp.items[0].bullets == ["Reworded bullet"]   # bullets ARE taken from edited
 
 
+def test_the_model_cannot_add_a_bullet():
+    """The fabrication guard.
+
+    A live run caught the rewriter inventing "Utilized React for the frontend" on a project
+    that only ever said Python — it was trying to satisfy a "skills not evidenced" finding.
+    A bullet the source never had is a claim the candidate never made, so extra bullets are
+    dropped here, exactly as an invented employer would be.
+    """
+    edited = ResumeDocument(sections=[
+        Section(id="exp", type="experience", title="WORK EXPERIENCE",
+                items=[SectionItem(id="i1", title="Engineer", subtitle="Acme",
+                                   bullets=["Rewrote the real one"])]),
+        Section(id="prj", type="projects", title="PROJECTS",
+                items=[SectionItem(id="p1", title="Proj", bullets=[
+                    "Built it in Python",
+                    "Utilized React for the frontend",      # invented
+                    "Leveraged PostgreSQL for storage",     # invented
+                ])]),
+    ])
+    out = merge_rewrite(_doc(), edited)
+    by_id = {s.id: s for s in out.sections}
+
+    # The original project had exactly one bullet; it still has exactly one.
+    assert by_id["prj"].items[0].bullets == ["Built it in Python"]
+    # The legitimate reword still lands.
+    assert by_id["exp"].items[0].bullets == ["Rewrote the real one"]
+
+
 def test_describe_changes_reports_reorder_and_summary_and_bullets():
     orig = _doc()
     final = merge_rewrite(

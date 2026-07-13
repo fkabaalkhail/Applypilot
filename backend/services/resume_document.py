@@ -324,6 +324,9 @@ def merge_rewrite(
     and all ids) is taken from ``original``, so the model can never invent
     employers/dates or drop a section.
 
+    An item never comes back with more bullets than it started with: the model may
+    rewrite each bullet, but a bullet it *adds* is a claim the candidate never made.
+
     Two structural moves ARE allowed, both safe:
 
     - ``section_order`` — reorder the (existing) sections by id. Ids not listed
@@ -359,9 +362,14 @@ def merge_rewrite(
                 if ed_item is None and j < len(ed_sec.items):
                     ed_item = ed_sec.items[j]
                 if ed_item is not None and ed_item.bullets:
-                    orig_item.bullets = [
-                        b for b in ed_item.bullets if str(b).strip()
-                    ]
+                    # Rewording a bullet is allowed; ADDING one is not. A bullet the
+                    # source never had is a claim the candidate never made — asked to
+                    # evidence a listed skill, a model will happily write "Used React
+                    # on this project" about a project that never used React. Extra
+                    # bullets are dropped here, so an entry that needs more comes back
+                    # short and is reported as a gap for the candidate to fill.
+                    kept = [b for b in ed_item.bullets if str(b).strip()]
+                    orig_item.bullets = kept[: len(orig_item.bullets)]
         merged_sections.append(new_sec)
 
     # Reorder (never drop): listed ids first in the given order, remainder in

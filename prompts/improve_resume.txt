@@ -9,7 +9,9 @@ findings from a quality analysis of it. Rewrite the resume so those findings are
 resolved — a genuine rewrite, not a polish pass.
 
 There is NO target job here. You are making this resume the strongest general-purpose
-version of itself.
+version of itself, against the standard below.
+
+{{RESUME_STANDARDS}}
 
 ## WHAT YOU MAY CHANGE
 
@@ -25,39 +27,26 @@ Every `id`, `type`, `title`, `subtitle`, `location`, `start_date`, `end_date`,
 `detail`, and `link` must come back EXACTLY as given. Same keys, same array lengths,
 same order of items within a section. You are rewriting words, not facts.
 
-## HOW TO REWRITE A BULLET
+Each item's `bullets` array comes back with **the same number of bullets it went in with** —
+rewrite each one in place. Do not add a bullet, and do not delete one. An entry with too few
+bullets is an `unresolved` item for the candidate, not an invitation to invent one.
 
-Lead with a strong, specific action verb. State the outcome, not the duty. Keep the
-scope and the tools. Drop filler. One line, ideally 12-28 words.
+Use each item's `end_date` to pick the tense: "Present" means the current role (present simple);
+any other date means it has ended (past tense).
 
-  before: "Responsible for maintaining the billing service and fixing bugs."
-  after:  "Owned the billing service end to end, cutting recurring incidents by [X]%."
+Reordering sections is how you fix structure: only use ids that already exist, and only move
+something when it clearly presents this candidate better.
 
-## THE HONESTY RULE — this overrides everything above
+## `unresolved` — WHAT THE CANDIDATE MUST SUPPLY
 
-**Never introduce a number, percentage, duration, dollar amount, or scope figure that
-is not already in the source resume.** If a bullet would be stronger with a metric and
-the resume does not supply one, write a bracketed placeholder — `[X]%`,
-`[N] users`, `[X] hours/week` — and add a line to `unresolved` naming what the
-candidate must fill in. A placeholder the candidate completes is worth more than a
-number you guessed, and a guessed number will get them caught in an interview.
+The honesty rule above forbids you from inventing a metric. So every time you write a
+`[placeholder]`, add a line to `unresolved` naming exactly what the candidate has to look up
+— "the % that incidents dropped in the billing role", not "add metrics".
 
-Never invent employers, titles, dates, degrees, certifications, or skills. Never move a
-bullet from one role to another. Never claim seniority the resume does not show.
-
-If the resume already contains a figure that has no baseline or unit ("improved
-efficiency by 75%"), do not delete it and do not restate it as fact — rephrase it so it
-names what was measured, and add it to `unresolved` so the candidate can ground it.
-
-## STRUCTURE
-
-Choose the section order that presents THIS candidate best. Lead with whatever proves
-capability fastest: Projects for a student with thin work history; Work Experience for
-a professional. Only reorder when it clearly helps; only use ids that already exist.
-
-If the resume has no summary section and the candidate's experience would read better
-with a 2-3 sentence opener, write `new_summary` from their real content. Otherwise
-`null`. Never write a summary made of adjectives.
+The same applies to a figure the resume already claims but cannot defend ("improved
+efficiency by 75%" — 75% of what, measured how?). Do not delete it and do not restate it as
+fact: rephrase it so it names what was measured, and list it in `unresolved` so the candidate
+can ground it before an interviewer asks.
 
 ## OUTPUT
 

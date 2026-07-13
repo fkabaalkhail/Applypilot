@@ -28,12 +28,34 @@ logger = logging.getLogger(__name__)
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 
+STANDARDS_TOKEN = "{{RESUME_STANDARDS}}"
+STANDARDS_FILE = "_standards.md"
+
+
+def _load_standards() -> str:
+    """The shared resume-standards partial, minus its developer header comment.
+
+    Everything before the partial's first ``##`` heading is a note to us, not to the
+    model, so it is stripped before the block reaches a prompt.
+    """
+    text = (PROMPTS_DIR / STANDARDS_FILE).read_text(encoding="utf-8")
+    _, sep, body = text.partition("\n## ")
+    return f"## {body}".strip() if sep else text.strip()
+
 
 def _load_prompt(name: str) -> str:
+    """Read a prompt template, inlining the shared standards block if it asks for one.
+
+    One canonical copy of the standards means the prompt that grades a resume and the
+    prompts that rewrite it cannot drift apart.
+    """
     path = PROMPTS_DIR / name
     if not path.exists():
         raise FileNotFoundError(f"Prompt file not found: {path}")
-    return path.read_text(encoding="utf-8")
+    template = path.read_text(encoding="utf-8")
+    if STANDARDS_TOKEN in template:
+        template = template.replace(STANDARDS_TOKEN, _load_standards())
+    return template
 
 
 def _extract_json(response: str) -> str:
@@ -74,6 +96,25 @@ class ImproveStructuredResult:
 
     document: ResumeDocument
     unresolved: list[str]
+
+
+def _render_emphasis(sections: list[str] | None, keywords: list[str] | None) -> str:
+    """The per-request focus block shared by both tailoring prompts.
+
+    ``sections`` is what the user asked us to work on; ``keywords`` are the job's missing
+    terms. Both are advisory — the honesty rule in the standards block still overrules them,
+    which is why an unsupported term is dropped rather than inserted.
+    """
+    lines: list[str] = []
+    if sections:
+        lines.append(f"- Put extra effort into these sections: {', '.join(sections)}.")
+    if keywords:
+        lines.append(
+            "- Where the candidate's REAL experience already supports them, use the job's own "
+            f"words for these terms: {', '.join(keywords)}. If a term is not genuinely "
+            "supported, leave it out."
+        )
+    return ("## THIS REQUEST\n\n" + "\n".join(lines)) if lines else ""
 
 
 def _render_findings(report: AnalysisReport | None) -> str:
@@ -302,41 +343,11 @@ class OpenAIService:
         keywords: list[str] | None = None,
     ) -> str:
         """Rewrite the candidate's COMPLETE resume, tailored to the target job."""
-        focus = ""
-        if sections:
-            focus += (
-                "\n- Put extra effort into improving these sections: "
-                f"{', '.join(sections)}."
-            )
-        if keywords:
-            focus += (
-                "\n- Where it is truthful and supported by the candidate's real "
-                f"experience, naturally weave in these keywords: {', '.join(keywords)}. "
-                "Never fabricate experience, skills, or tools the candidate does not have."
-            )
-
         prompt = (
-            "You are a professional resume writer. Rewrite the candidate's COMPLETE "
-            "resume, tailored to the target job below. Output the FULL resume as clean "
-            "plain text, preserving every section the candidate actually has (contact "
-            "information, professional summary, skills, work experience, projects, "
-            "education, and any others present).\n\n"
-            "Rules:\n"
-            "- Keep all real, factual content — never invent employers, job titles, "
-            "dates, degrees, metrics, or skills the candidate does not have.\n"
-            "- Reorder and rephrase to emphasize what matches the job; lead with the "
-            "most relevant qualifications.\n"
-            "- Use strong action verbs and keep any real quantifiable achievements.\n"
-            "- Start with the candidate's real name on the first line, then their "
-            "contact details.\n"
-            "- Use UPPERCASE section headers (e.g. PROFESSIONAL SUMMARY, SKILLS, WORK "
-            "EXPERIENCE, PROJECTS, EDUCATION).\n"
-            "- Use '- ' for bullet points. Plain text only — no markdown symbols such "
-            "as ** or #.\n"
-            f"{focus}\n\n"
-            f"Candidate resume:\n{resume_text[:6000]}\n\n"
-            f"Target job description:\n{job_description[:3000]}\n\n"
-            "Return ONLY the rewritten resume text — no preamble, notes, or commentary."
+            _load_prompt("tailor_resume_guided.txt")
+            .replace("{{FOCUS}}", _render_emphasis(sections, keywords))
+            .replace("{{RESUME_TEXT}}", resume_text[:6000])
+            .replace("{{JOB_DESCRIPTION}}", job_description[:3000])
         )
         return await self._generate(prompt)
 
@@ -357,50 +368,11 @@ class OpenAIService:
         """
         from backend.services.resume_document import merge_rewrite
 
-        emphasis = ""
-        if sections:
-            emphasis += f"\n- Put extra effort into these sections: {', '.join(sections)}."
-        if keywords:
-            emphasis += (
-                "\n- Secondary: where the candidate's REAL experience already supports "
-                f"them, you may surface these job terms: {', '.join(keywords)}. If a term "
-                "is not genuinely supported, DO NOT insert it — list it under \"gaps\"."
-            )
-
-        doc_json = document.model_dump_json()
         prompt = (
-            "You are an expert resume writer and career coach. Rewrite the candidate's "
-            "resume (given as JSON) to genuinely fit the target job — a real rewrite, not "
-            "a keyword patch. Then return ONE JSON object with this exact shape:\n"
-            "{\n"
-            '  "resume":        <the same resume JSON, with rewritten content>,\n'
-            '  "section_order": [<section ids in the best order for this job>],\n'
-            '  "new_summary":   {"title": "PROFESSIONAL SUMMARY", "text": "..."} or null,\n'
-            '  "gaps":          [<job priorities the candidate genuinely cannot support>]\n'
-            "}\n\n"
-            "STEP 1 — STRUCTURE: choose the section order that presents this candidate best "
-            "for this job (e.g. lead with Projects when experience is thin). Only include ids "
-            "that already exist; reorder only when it clearly helps. If the resume has no "
-            "summary/profile section and one would help, write a concise `new_summary` from "
-            "the candidate's real experience; otherwise set it to null.\n"
-            "STEP 2 — CONTENT: rewrite bullets to lead with strong action verbs and outcomes, "
-            "not duties ('Responsible for…'). Keep real quantified results; NEVER introduce a "
-            "number, percentage, or metric that is not already in the source. Cut filler; fix "
-            "tense and consistency.\n"
-            "STEP 3 — ALIGNMENT: match the job's real priorities, seniority, and domain "
-            "language — not just its keyword list.\n"
-            "STEP 4 — HONESTY: never invent employers, titles, dates, degrees, or skills. "
-            "Anything the job needs that the candidate cannot truthfully show goes in `gaps`, "
-            "never into the resume.\n\n"
-            "JSON RULES for `resume`: same keys, ids, types, and array lengths as the input. "
-            "Keep every section `id`/`type`/`title` and every item `id`/`title`/`subtitle`/"
-            "`location`/`start_date`/`end_date`/`detail`/`link` UNCHANGED. You may only reword "
-            "each section's `text`, the `skills` array, `groups` values, and each item's "
-            "`bullets`."
-            f"{emphasis}\n\n"
-            f"Target job description:\n{job_description[:3500]}\n\n"
-            f"Resume JSON:\n{doc_json}\n\n"
-            "Return ONLY the JSON object."
+            _load_prompt("tailor_resume_structured.txt")
+            .replace("{{EMPHASIS}}", _render_emphasis(sections, keywords))
+            .replace("{{JOB_DESCRIPTION}}", job_description[:3500])
+            .replace("{{RESUME_JSON}}", document.model_dump_json())
         )
 
         try:
