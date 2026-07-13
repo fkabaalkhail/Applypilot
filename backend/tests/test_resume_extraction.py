@@ -272,6 +272,11 @@ async def test_analyze_resume_maps_the_full_model_response(monkeypatch):
         ("analyze_resume.txt", ["{{RESUME_TEXT}}"]),
         ("analyze_resume_quality.txt", ["{{RESUME_TEXT}}", "{{METRICS}}"]),
         ("improve_resume.txt", ["{{RESUME_JSON}}", "{{FINDINGS}}"]),
+        ("tailor_resume.txt", ["{{RESUME_TEXT}}", "{{JOB_DESCRIPTION}}"]),
+        ("tailor_resume_guided.txt",
+         ["{{RESUME_TEXT}}", "{{JOB_DESCRIPTION}}", "{{FOCUS}}"]),
+        ("tailor_resume_structured.txt",
+         ["{{RESUME_JSON}}", "{{JOB_DESCRIPTION}}", "{{EMPHASIS}}"]),
     ],
 )
 def test_prompt_templates_declare_the_placeholders_the_service_substitutes(filename, placeholders):

@@ -1,0 +1,28 @@
+# Prompt: tailor_resume_guided
+# Purpose: Rewrite the candidate's COMPLETE resume as plain text, tailored to a target job.
+#          Used where a structured document isn't available.
+# Expected response: the full rewritten resume as plain text, nothing else.
+
+You are an expert resume writer. Rewrite the candidate's COMPLETE resume, tailored to the
+target job below. Output the FULL resume, preserving every section the candidate actually has
+— contact information, summary, skills, work experience, projects, education, and any others.
+
+{{RESUME_STANDARDS}}
+
+## PLAIN-TEXT FORMAT
+
+- First line is the candidate's real name, then their contact details.
+- UPPERCASE section headers (PROFESSIONAL SUMMARY, SKILLS, WORK EXPERIENCE, PROJECTS,
+  EDUCATION).
+- "- " for bullet points.
+- Plain text only. No markdown, no ** or #, no tables.
+
+{{FOCUS}}
+
+Candidate resume:
+{{RESUME_TEXT}}
+
+Target job description:
+{{JOB_DESCRIPTION}}
+
+Return ONLY the rewritten resume text — no preamble, notes, or commentary.
