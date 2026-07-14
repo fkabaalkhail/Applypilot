@@ -349,41 +349,34 @@ const sessions = [
   },
 ];
 
+// GET /api/user/application-profile. Mirror `ApplicationProfileOut`
+// (backend/routers/profile.py) exactly — camelCase, nested `eeo`.
+//
+// This fixture was snake_case until 2026-07-14, which meant /app/profile
+// audited an essentially EMPTY page: Profile.tsx reads `addressStreet`,
+// `currentTitle`, `eeo.gender` and friends, found none of them, and rendered
+// placeholder dashes. The audit dutifully reported 0/0 — on nothing. If you
+// change the endpoint's shape, change this too, or the audit quietly stops
+// measuring the page.
+//
+// Values are worst-case on purpose. The extension writes back the *literal
+// option text* it harvested from a real form, so `workAuthorization` is a full
+// sentence — the widest string on the page and the real 320px overflow risk.
 const applicationProfile = {
-  first_name: "Wissam",
-  last_name: "Elmasry",
+  firstName: "Wissam",
+  lastName: "Elmasry",
   email: LONG_EMAIL,
   phone: "+1 (416) 555-0142",
-  address_line1: "1234 Bloor Street West, Suite 1800",
-  address_line2: "",
-  city: "Toronto",
-  state: "Ontario",
-  postal_code: "M6H 1M9",
-  country: "Canada",
-  linkedin_url: "https://www.linkedin.com/in/wissam-elmasry-software-engineer-toronto",
-  website: "https://portfolio.wissamelmasry.example.com",
-  work_authorized: true,
-  requires_sponsorship: false,
-  gender: "Male",
-  race: "Prefer not to say",
-  veteran_status: "I am not a protected veteran",
-  disability_status: "No",
-  answers: {},
-
-  // The endpoint actually answers in camelCase with a nested `eeo` (see
-  // backend/routers/profile.py + frontend/src/lib/profileExtras.ts). The
-  // snake_case keys above are stale, so /app/profile used to audit with an
-  // EMPTY address / EEO / screening card — i.e. it audited nothing. These are
-  // the keys Profile.tsx actually reads.
-  //
-  // Worst case on purpose: the extension writes back the *literal option text*
-  // it harvested from a real form, so workAuthorization is a full sentence and
-  // is the widest string on the page.
+  location: "Toronto, Ontario, Canada",
   addressStreet: "1234 Bloor Street West, Suite 1800",
   addressCity: "Toronto",
   addressState: "Ontario",
   postalCode: "M6H 1M9",
   country: "Canada",
+  linkedin: "https://www.linkedin.com/in/wissam-elmasry-software-engineer-toronto",
+  github: "https://github.com/wissam-elmasry-platform",
+  portfolio: "https://portfolio.wissamelmasry.example.com/case-studies/platform",
+  currentCompany: "Shopify",
   currentTitle: "Software Engineer Intern, Platform Infrastructure",
   workAuthorization:
     "Yes, I am legally authorized to work in the United States for any employer without sponsorship now or in the future",
