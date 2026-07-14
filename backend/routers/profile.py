@@ -77,6 +77,7 @@ class ApplicationProfileOut(BaseModel):
     currentTitle: str = ""
     workAuthorization: str = ""
     requiresSponsorship: str = ""
+    salaryExpectation: str = ""
     education: list[EducationEntry] = []
     experience: list[ExperienceEntry] = []
     skills: list[str] = []
@@ -151,14 +152,20 @@ def _split_name(full_name: str) -> tuple[str, str]:
     return parts[0], " ".join(parts[1:])
 
 
-def _mine_screening(prefilled: dict | None) -> tuple[str, str]:
+def _mine_screening(prefilled: dict | None) -> tuple[str, str, str]:
     """
-    Pull work-authorization and sponsorship answers out of the free-form
-    prefilled_answers question→answer map. Mirrors the client-side logic that
-    used to live in chrome-extension/src/api/client.ts (mapSettingsToProfile).
+    Pull the work-authorization, sponsorship and salary answers out of the
+    free-form prefilled_answers question→answer map. Mirrors the client-side
+    logic that used to live in chrome-extension/src/api/client.ts
+    (mapSettingsToProfile).
+
+    The PUT side writes these under fixed question keys (see update_application_
+    profile), but the extension also writes whatever question text a real form
+    used — hence substring matching rather than exact keys.
     """
     work_authorization = ""
     requires_sponsorship = ""
+    salary_expectation = ""
     for question, answer in (prefilled or {}).items():
         if not isinstance(answer, str):
             continue
@@ -167,7 +174,9 @@ def _mine_screening(prefilled: dict | None) -> tuple[str, str]:
             requires_sponsorship = answer
         elif not work_authorization and ("authoriz" in q or "eligible" in q):
             work_authorization = answer
-    return work_authorization, requires_sponsorship
+        elif not salary_expectation and ("salary" in q or "compensation" in q):
+            salary_expectation = answer
+    return work_authorization, requires_sponsorship, salary_expectation
 
 
 def _flatten_skills(skills: object, technologies: object) -> list[str]:
@@ -280,7 +289,7 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
         experience[0].title if experience else "",
     )
 
-    work_authorization, requires_sponsorship = _mine_screening(
+    work_authorization, requires_sponsorship, salary_expectation = _mine_screening(
         settings.prefilled_answers if settings else None
     )
 
@@ -331,6 +340,7 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
         currentTitle=current_title,
         workAuthorization=work_authorization,
         requiresSponsorship=requires_sponsorship,
+        salaryExpectation=salary_expectation,
         education=education,
         experience=experience,
         skills=skills,

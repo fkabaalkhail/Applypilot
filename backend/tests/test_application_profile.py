@@ -247,3 +247,36 @@ def test_sync_snapshot_carries_address_and_eeo(client, db_session, user):
     assert profile["country"] == "Canada"
     assert profile["eeo"]["veteranStatus"] == "Not a protected veteran"
     assert profile["eeo"]["disabilityStatus"] == "No, I do not have a disability"
+
+
+# ── Screening answers round-trip (salaryExpectation was write-only) ───────────
+
+def test_salary_expectation_round_trips(client, db_session, user):
+    """It is written into prefilled_answers, so it must also be mined back out."""
+    put = client.put(
+        "/api/user/application-profile",
+        json={"salaryExpectation": "90000 CAD"},
+    )
+    assert put.status_code == 200
+
+    got = client.get("/api/user/application-profile")
+    assert got.status_code == 200
+    assert got.json()["salaryExpectation"] == "90000 CAD"
+
+
+def test_screening_answers_round_trip_together(client, db_session, user):
+    client.put(
+        "/api/user/application-profile",
+        json={
+            "currentTitle": "Software Engineer Intern",
+            "workAuthorization": "Yes, authorized to work for any employer",
+            "requiresSponsorship": "No",
+            "salaryExpectation": "$85,000",
+        },
+    )
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["currentTitle"] == "Software Engineer Intern"
+    assert body["workAuthorization"] == "Yes, authorized to work for any employer"
+    assert body["requiresSponsorship"] == "No"
+    assert body["salaryExpectation"] == "$85,000"
