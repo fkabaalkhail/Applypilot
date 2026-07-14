@@ -75,3 +75,74 @@ export function notifyApplyIntent(job: ApplyIntentJob, url?: string): void {
     }
   }
 }
+
+/** Installed-and-signed-in state of the extension, as reported by TAILRD_PING. */
+export type ExtensionState = "unknown" | "not-installed" | "installed" | "connected";
+
+interface PingResponse {
+  ok?: boolean;
+  connected?: boolean;
+}
+
+/**
+ * Ask the extension whether it is installed and signed in.
+ *
+ * The service worker's onMessageExternal handler answers TAILRD_PING with
+ * {ok, connected}. We ask every known id and take the first real answer.
+ * Resolves "not-installed" when chrome.runtime is absent (non-Chromium), every
+ * send errors, or nothing answers within `timeoutMs`.
+ *
+ * Never rejects: the only caller is UI, and a messaging failure must not break a
+ * page render.
+ *
+ * The extension's externally_connectable.matches covers only
+ * https://(www.)tailrd.ca, so on localhost this always resolves "not-installed".
+ * ExtensionBanner has a dev-only ?extState= override for that reason.
+ */
+export function pingExtension(timeoutMs = 400): Promise<ExtensionState> {
+  const rt = runtime();
+  if (!rt?.sendMessage || EXTENSION_IDS.length === 0) {
+    return Promise.resolve("not-installed");
+  }
+  // Hoist the narrowed method: TS drops the `rt.sendMessage` narrowing inside the
+  // executor closure below, and binding keeps `this` on chrome.runtime.
+  const send = rt.sendMessage.bind(rt);
+
+  return new Promise<ExtensionState>((resolve) => {
+    let settled = false;
+    let outstanding = EXTENSION_IDS.length;
+
+    const finish = (state: ExtensionState) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(state);
+    };
+
+    const timer = setTimeout(() => finish("not-installed"), timeoutMs);
+
+    const miss = () => {
+      outstanding -= 1;
+      if (outstanding <= 0) finish("not-installed");
+    };
+
+    for (const extensionId of EXTENSION_IDS) {
+      try {
+        send(extensionId, { type: "TAILRD_PING" }, (response: unknown) => {
+          // Reading lastError suppresses Chrome's "Unchecked runtime.lastError"
+          // console warning when no extension answered.
+          const errored = Boolean(rt.lastError);
+          const res = response as PingResponse | undefined;
+          if (!errored && res?.ok) {
+            finish(res.connected ? "connected" : "installed");
+            return;
+          }
+          miss();
+        });
+      } catch {
+        // chrome.runtime present but messaging blocked.
+        miss();
+      }
+    }
+  });
+}
