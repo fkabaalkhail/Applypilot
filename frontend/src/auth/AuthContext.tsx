@@ -6,6 +6,7 @@ export interface UserProfile {
   first_name: string;
   last_name: string;
   profile_image_url?: string;
+  auth_provider?: string;
   created_at?: string;
   email_verified: boolean;
   has_completed_onboarding?: boolean;

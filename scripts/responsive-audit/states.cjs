@@ -151,6 +151,22 @@ const STATES = [
       { waitFor: ".settings-modal, .sm-panel, .modal-overlay" },
     ],
   },
+  // ?extState= is ExtensionBanner's dev-only override. The extension's
+  // externally_connectable covers tailrd.ca only, so the real ping can never
+  // answer from localhost — and the audit runs against `npm run dev`, where
+  // import.meta.env.DEV is true and the override is compiled in.
+  // `wait` is swallowed on timeout, so a banner that never renders would leave the
+  // audit measuring the bare dashboard and reporting it clean — a false all-clear,
+  // and the banner has three independent ways to silently stop rendering (the
+  // override, the ping, the snooze). `steps[].waitFor` is the loud form: it emits a
+  // high-severity `state-not-reached` finding instead.
+  {
+    id: "app-extension-banner",
+    url: "/app?extState=not-installed",
+    ...AUTHED,
+    wait: ".jobs-page",
+    steps: [{ waitFor: ".ext-banner" }],
+  },
 
   /* ---------------- in-app AI modals (same CSS as the /embed pages, but
      rendered over the dashboard rather than in an extension iframe) --------- */
@@ -230,7 +246,6 @@ const STATES = [
   },
   { id: "app-feedback", url: "/app/feedback", ...AUTHED, wait: ".feedback-page, main" },
   { id: "app-refer-page", url: "/app/refer", ...AUTHED, wait: "main" },
-  { id: "app-settings-page", url: "/app/settings", ...AUTHED, wait: "main" },
 ];
 
 /** Device matrix. `touch` widths get the tap-target detector. */

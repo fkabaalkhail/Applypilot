@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthProvider";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { SetupRoute } from "./auth/SetupRoute";
@@ -18,7 +18,6 @@ import Applications from "./pages/Applications";
 import Resume from "./pages/Resume";
 import ResumeDetail from "./pages/ResumeDetail";
 import Profile from "./pages/Profile";
-import Settings from "./pages/Settings";
 import Feedback from "./pages/Feedback";
 import Refer from "./pages/Refer";
 import Interview from "./pages/Interview";
@@ -66,11 +65,14 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="resume" element={<Resume />} />
             <Route path="resume/:id" element={<ResumeDetail />} />
             <Route path="profile" element={<Profile />} />
-            <Route path="settings" element={<Settings />} />
             <Route path="refer" element={<Refer />} />
             <Route path="feedback" element={<Feedback />} />
             <Route path="interview" element={<Interview />} />
             <Route path="applications" element={<Applications />} />
+            {/* /app/settings shipped, then became the SettingsModal. There is no
+                catch-all 404, so without this the URL matches nothing and the
+                router renders a blank page at a bookmark that used to work. */}
+            <Route path="settings" element={<Navigate to="/app" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>

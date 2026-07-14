@@ -480,6 +480,11 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   /* Without this the flex item cannot shrink past its content's intrinsic
    * width, and the page scrolls sideways at any viewport the content outgrows. */
   min-width: 0;
+  /* This is the shell's full-bleed surface: it guarantees the viewport height and
+   * paints the page background, so a page inside it never has to do either. It
+   * stays a BLOCK container on purpose — every page root is written as a block
+   * child, and making this a flex/grid container re-sizes them as flex items
+   * (they size to max-content and scroll the page sideways). */
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg-page);
@@ -489,8 +494,13 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 .jobs-page {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  /* Deliberately NO viewport min-height. .main-content above already guarantees
+   * 100dvh and paints the background, so asking for it again here bought nothing
+   * — and once anything else renders in .main-content (the extension banner), a
+   * second 100dvh is purely additive: the page becomes viewport + banner tall and
+   * every user without the extension gets a banner's worth of dead scroll under
+   * the fold, even when the content fits. The floor was never a cap either (a
+   * taller feed always grew the page), so nothing here scrolled inside it. */
 }
 
 /* Header Bar */
@@ -1523,11 +1533,13 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
  * gutters. 2rem of padding on a 320px screen spends 20% of the viewport on
  * whitespace, which is what forces the toolbar and the job cards to fight. */
 @media (max-width: 767.98px) {
-  .jobs-page {
-    /* The topbar already took 56px; asking for a further 100vh just adds a
-     * second scrollbar's worth of dead space under the fold. */
-    min-height: calc(100dvh - 56px);
-  }
+  /* .jobs-page used to hand-subtract the 56px topbar here
+   * (`min-height: calc(100dvh - 56px)`) — a floor that compensated for one piece
+   * of chrome above it by hardcoding that chrome's height. It is gone with the
+   * desktop floor, and must not come back: the shell is a column on phones, so
+   * .main-content is already sized to what the topbar left and already paints the
+   * background. A floor here could only ever count the chrome it was told about,
+   * and it was never told about the banner. */
 
   .jobs-toolbar { padding: 0.75rem 1rem 0.5rem; }
 

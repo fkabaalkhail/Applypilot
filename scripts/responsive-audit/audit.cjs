@@ -291,10 +291,15 @@ async function runState(browser, state, viewport) {
       { src: pageAudit.toString(), opts: { touch: viewport.touch } }
     );
 
-    cell.findings = findings;
+    // push, NOT assign. The steps loop above pushes `state-not-reached` findings
+    // into cell.findings; an assignment here silently discarded every one of them
+    // before any consumer (the counts, the report) could see it — so the loud form
+    // was never loud, and a state that never rendered still reported clean. That is
+    // the precise false all-clear the waitFor step exists to prevent.
+    cell.findings.push(...findings);
     cell.errors.push(...consoleErrors);
 
-    const shouldShoot = flag("shots") || findings.some((f) => f.severity === "high");
+    const shouldShoot = flag("shots") || cell.findings.some((f) => f.severity === "high");
     if (shouldShoot) {
       fs.mkdirSync(SHOTS, { recursive: true });
       await page
