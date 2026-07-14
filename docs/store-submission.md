@@ -142,9 +142,19 @@ creditworthiness.
 - [x] Privacy policy live at `/privacy`
 - [x] Vercel: `REQUIRE_EMAIL_VERIFICATION=false` (verified live 2026-07-09: register → email_verified true)
 - [x] Vercel: `EXTENSION_ALLOWED_IDS=apgogjfdpleeajnngkfkfekbddcpodkl` (verified live: authorize → 200)
-- [ ] Upload zip, paste listing + justifications, submit for review
-- [ ] AFTER upload: append the store-assigned id to `EXTENSION_ALLOWED_IDS`
-      (comma-separated with the dev id) + add it to extensionBridge.ts → redeploy
+- [x] Upload zip, paste listing + justifications, submit for review
+- [x] **APPROVED + LIVE 2026-07-14.** Store-assigned id: `dadbhjlflnljgailcpgehdainjdmjeej`
+      (the Store strips the manifest `key`, so this is NOT the dev id
+      `apgogjfdpleeajnngkfkfekbddcpodkl` — both must be trusted everywhere).
+      Listing: https://chromewebstore.google.com/detail/tailrd-%E2%80%94-job-application/dadbhjlflnljgailcpgehdainjdmjeej
+- [x] Frontend: both ids baked into `extensionBridge.ts` `EXTENSION_IDS`, and the real
+      listing URL into `extensionStore.ts` `CHROME_STORE_URL`. No env var needed.
+- [ ] **BLOCKING — Vercel: `EXTENSION_ALLOWED_IDS` must become**
+      `apgogjfdpleeajnngkfkfekbddcpodkl,dadbhjlflnljgailcpgehdainjdmjeej`
+      → redeploy. `auth_extension.py:104` fails **closed** in production: until this is
+      set, every user who installs from the Web Store and clicks Connect is rejected,
+      because their redirect_uri is `https://dadbhj….chromiumapp.org/` and that id is
+      not on the allowlist. The extension is DOA for store users until this lands.
 
 ## Test instructions (paste into the dashboard's "Test instructions" form)
 

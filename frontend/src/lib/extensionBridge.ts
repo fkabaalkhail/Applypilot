@@ -10,14 +10,19 @@
  */
 
 // Every known extension id: the dev/unpacked id (pinned via the manifest "key",
-// which the Web Store strips) plus the store-assigned id once published. Sends
-// are fire-and-forget no-ops for ids that aren't installed, so notifying every
-// known id is safe. Extendable without a code change via VITE_EXTENSION_IDS
-// (comma-separated).
+// which the Web Store strips) and the store-assigned id (live since 2026-07-14).
+// They are DIFFERENT — the Store does not honour the manifest key — so both must
+// be here or store users are invisible to us: pingExtension() would never hear
+// back from a store install, and the banner would tell someone who already has
+// the extension to go install it.
+//
+// Sends are fire-and-forget no-ops for ids that aren't installed, so notifying
+// every known id is safe. VITE_EXTENSION_IDS (comma-separated) still overrides,
+// but the defaults below mean a forgotten env var cannot break this.
 const EXTENSION_IDS = (
   (import.meta.env.VITE_EXTENSION_IDS as string | undefined) ??
   (import.meta.env.VITE_EXTENSION_ID as string | undefined) ??
-  "apgogjfdpleeajnngkfkfekbddcpodkl"
+  "apgogjfdpleeajnngkfkfekbddcpodkl,dadbhjlflnljgailcpgehdainjdmjeej"
 )
   .split(",")
   .map((s) => s.trim())
