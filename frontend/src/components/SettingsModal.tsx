@@ -30,12 +30,8 @@ import "../settings-modal.css";
  * (backend/routers/extension.py) — we only stopped offering a second, competing
  * editor.
  *
- * One honest gap: job_title and prefilled_answers have no web editor at all
- * right now. The backend accepts them on the application-profile endpoint
- * (backend/routers/profile.py:392,421-430), but the Profile page's payload
- * never sends those keys — only the extension does. Adding them to
- * ProfileUpdatePayload + Profile.tsx is a tracked follow-up. Until then, do not
- * tell users their screening answers are editable on Profile; they are not.
+ * job_title and the screening answers live on the same application-profile
+ * endpoint and are edited on /app/profile's "Application Answers" card.
  */
 interface ExtensionSettings {
   pause_before_submit: boolean;
@@ -362,11 +358,10 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           }
         >
           {/* Only claim what /app/profile can actually edit. Screening answers
-              (work authorization, sponsorship, salary) are stored and read by the
-              extension, but the Profile page has no editor for them — promising
-              one here sends the user to a page that cannot keep the promise. */}
+              (work authorization, sponsorship, salary) are now editable there on
+              the "Application Answers" card, so we can name them again. */}
           <span className="sm-muted">
-            Name, contact details, address and EEO answers.
+            Name, contact details, address, EEO answers and saved screening answers.
           </span>
         </SettingRow>
       </div>

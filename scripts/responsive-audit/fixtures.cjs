@@ -369,6 +369,33 @@ const applicationProfile = {
   veteran_status: "I am not a protected veteran",
   disability_status: "No",
   answers: {},
+
+  // The endpoint actually answers in camelCase with a nested `eeo` (see
+  // backend/routers/profile.py + frontend/src/lib/profileExtras.ts). The
+  // snake_case keys above are stale, so /app/profile used to audit with an
+  // EMPTY address / EEO / screening card — i.e. it audited nothing. These are
+  // the keys Profile.tsx actually reads.
+  //
+  // Worst case on purpose: the extension writes back the *literal option text*
+  // it harvested from a real form, so workAuthorization is a full sentence and
+  // is the widest string on the page.
+  addressStreet: "1234 Bloor Street West, Suite 1800",
+  addressCity: "Toronto",
+  addressState: "Ontario",
+  postalCode: "M6H 1M9",
+  country: "Canada",
+  currentTitle: "Software Engineer Intern, Platform Infrastructure",
+  workAuthorization:
+    "Yes, I am legally authorized to work in the United States for any employer without sponsorship now or in the future",
+  requiresSponsorship: "No, I will not require sponsorship for employment visa status",
+  salaryExpectation: "$120,000 - $165,000 CAD",
+  eeo: {
+    gender: "Male",
+    race: "Prefer not to say",
+    hispanicLatino: "No",
+    veteranStatus: "I am not a protected veteran",
+    disabilityStatus: "No, I do not have a disability",
+  },
 };
 
 const githubSources = [

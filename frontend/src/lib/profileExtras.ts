@@ -1,7 +1,8 @@
 /**
  * Shared model for the "application profile extras" — the structured mailing
- * address and EEO self-identification that live on the application-profile
- * endpoint (camelCase, nested `eeo`) rather than on /settings or the resume.
+ * address, the saved screening answers and the EEO self-identification that live
+ * on the application-profile endpoint (camelCase, nested `eeo`) rather than on
+ * /settings or the resume.
  *
  * These fields are what the Chrome extension autofills into job applications,
  * so the web app's Profile page edits them through the same endpoint the
@@ -29,6 +30,18 @@ export interface ProfileExtras {
   addressState: string;
   postalCode: string;
   country: string;
+  /**
+   * Answers the extension fills into screening questions. FREE TEXT, not enums:
+   * the extension learns these from real application forms and writes back the
+   * form's literal option text (see chrome-extension/src/shared/profileCategories.ts),
+   * so a stored workAuthorization may read "Yes, I am legally authorized to work
+   * in the United States for any employer". Constraining these to a select would
+   * destroy the more specific answer that actually matched a form.
+   */
+  currentTitle: string;
+  workAuthorization: string;
+  requiresSponsorship: string;
+  salaryExpectation: string;
   eeo: EeoData;
 }
 
@@ -47,6 +60,10 @@ export interface ProfileUpdatePayload {
   addressState?: string;
   postalCode?: string;
   country?: string;
+  currentTitle?: string;
+  workAuthorization?: string;
+  requiresSponsorship?: string;
+  salaryExpectation?: string;
   eeo?: Partial<EeoData>;
 }
 
@@ -64,6 +81,10 @@ export const EMPTY_PROFILE_EXTRAS: ProfileExtras = {
   addressState: "",
   postalCode: "",
   country: "",
+  currentTitle: "",
+  workAuthorization: "",
+  requiresSponsorship: "",
+  salaryExpectation: "",
   eeo: { ...EMPTY_EEO },
 };
 
@@ -95,8 +116,8 @@ export const EEO_OPTIONS = {
 } as const;
 
 /**
- * Build the PATCH body for the application-profile endpoint: only address / EEO
- * keys that changed. Returns null when nothing changed.
+ * Build the PATCH body for the application-profile endpoint: only address /
+ * screening / EEO keys that changed. Returns null when nothing changed.
  */
 export function computeProfileDiff(
   original: ProfileExtras,
@@ -104,14 +125,18 @@ export function computeProfileDiff(
 ): ProfileUpdatePayload | null {
   const diff: ProfileUpdatePayload = {};
 
-  const addressKeys: (keyof Omit<ProfileExtras, "eeo">)[] = [
+  const flatKeys: (keyof Omit<ProfileExtras, "eeo">)[] = [
     "addressStreet",
     "addressCity",
     "addressState",
     "postalCode",
     "country",
+    "currentTitle",
+    "workAuthorization",
+    "requiresSponsorship",
+    "salaryExpectation",
   ];
-  for (const key of addressKeys) {
+  for (const key of flatKeys) {
     if (current[key] !== original[key]) {
       diff[key] = current[key];
     }
