@@ -23,6 +23,7 @@ import {
 import { ApplyTrackingProvider } from "./context/ApplyTracking";
 import ApplyConfirmModal from "./components/ApplyConfirmModal";
 import SettingsModal from "./components/SettingsModal";
+import ExtensionBanner from "./components/ExtensionBanner";
 import { OnboardingProvider } from "./onboarding";
 
 export default function App() {
@@ -195,6 +196,7 @@ export default function App() {
         </div>
       </aside>
       <main className="main-content">
+        <ExtensionBanner />
         <Outlet />
       </main>
 
