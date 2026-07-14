@@ -25,10 +25,17 @@ import "../settings-modal.css";
 /**
  * The extension toggles are the only thing this modal edits now.
  *
- * Contact details, job preferences and screening answers moved to /app/profile,
- * which is their single source of truth. The columns still exist and the
- * extension still reads them (backend/routers/extension.py) — we simply stopped
- * offering a second, competing editor for them.
+ * Contact details moved to /app/profile, which genuinely owns them. The columns
+ * this modal used to write all still exist and the extension still reads them
+ * (backend/routers/extension.py) — we only stopped offering a second, competing
+ * editor.
+ *
+ * One honest gap: job_title and prefilled_answers have no web editor at all
+ * right now. The backend accepts them on the application-profile endpoint
+ * (backend/routers/profile.py:392,421-430), but the Profile page's payload
+ * never sends those keys — only the extension does. Adding them to
+ * ProfileUpdatePayload + Profile.tsx is a tracked follow-up. Until then, do not
+ * tell users their screening answers are editable on Profile; they are not.
  */
 interface ExtensionSettings {
   pause_before_submit: boolean;
@@ -213,6 +220,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   useEffect(() => {
+    let alive = true;
     void (async () => {
       try {
         setLoading(true);
@@ -230,7 +238,17 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       }
     })();
     void loadSessions();
-    void pingExtension().then(setExtState);
+    // Same contract as ExtensionBanner: no explicit timeout (the default lives with
+    // its rationale in extensionBridge), guard the setState on unmount, and swallow
+    // a rejection that pingExtension promises never to produce but nothing enforces.
+    void pingExtension()
+      .then((s) => {
+        if (alive) setExtState(s);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const revokeSession = async (sid: string) => {
@@ -343,8 +361,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             </button>
           }
         >
+          {/* Only claim what /app/profile can actually edit. Screening answers
+              (work authorization, sponsorship, salary) are stored and read by the
+              extension, but the Profile page has no editor for them — promising
+              one here sends the user to a page that cannot keep the promise. */}
           <span className="sm-muted">
-            Name, contact details, address, EEO answers and saved screening answers.
+            Name, contact details, address and EEO answers.
           </span>
         </SettingRow>
       </div>
@@ -352,6 +374,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   }
 
   function renderExtension() {
+    // The /settings fetch gates THIS tab only — it is the only tab that reads it.
+    // Account renders from useAuth() and Security from /auth/sessions, so a failing
+    // GET /settings must not cost the user their identity row and their device list
+    // with an error about an endpoint neither tab touches.
+    if (loading) return <div className="settings-loading">Loading settings…</div>;
+    if (error) return <div className="settings-error">{error}</div>;
     if (!formData) return null;
     return (
       <div className="sm-rows" data-tour="extension-settings">
@@ -485,8 +513,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   }
 
   function renderTab() {
-    if (loading) return <div className="settings-loading">Loading settings…</div>;
-    if (error) return <div className="settings-error">{error}</div>;
     switch (activeTab) {
       case "account":
         return renderAccount();

@@ -1,168 +1,13 @@
-/* ===== Settings Page ===== */
-.settings-page {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 2.5rem 2rem 6rem;
-}
-
-.settings-page-header {
-  margin-bottom: 0.5rem;
-}
-
-.settings-page-header h1 {
-  font-size: 1.5rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  margin: 0;
-}
-
-.settings-page-header p {
-  font-size: 0.88rem;
-  color: var(--text-secondary);
-  margin-top: 0.35rem;
-}
-
-/* Section Cards */
-.settings-section {
-  background: var(--bg-white);
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  padding: 1.75rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  transition: box-shadow 0.15s;
-}
-
-.settings-section:hover {
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-}
-
-.settings-section-header {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 1.25rem;
-  padding-bottom: 0.85rem;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.settings-section-header h2 {
-  font-weight: 650;
-  font-size: 0.95rem;
-  color: var(--text);
-  margin: 0;
-}
-
-.settings-section-header i {
-  color: var(--accent);
-  font-size: 0.9rem;
-  width: 20px;
-  text-align: center;
-}
-
-/* Form Grid.
-   minmax(0, 1fr) rather than 1fr: a bare `1fr` track has an `auto` minimum, so
-   it refuses to shrink below the intrinsic width of the <input> it holds and
-   the grid pushes the page sideways. */
-.settings-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.settings-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
-.settings-field.full-width {
-  grid-column: 1 / -1;
-}
-
-.settings-field label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.settings-field input {
-  min-width: 0;
-  padding: 0.6rem 0.85rem;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  color: var(--text);
-  background: var(--bg-page);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.settings-field input:focus {
-  border-color: var(--accent);
-  background: var(--bg-white);
-  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
-}
-
-.settings-field select {
-  min-width: 0;
-  padding: 0.6rem 0.85rem;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  color: var(--text);
-  background: var(--bg-page);
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.settings-field select:focus {
-  border-color: var(--accent);
-  background: var(--bg-white);
-  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
-}
+/* ===== Settings — shared primitives =====
+   What is left after pages/Settings.tsx was deleted and the modal dropped its
+   profile / job-preference / autofill tabs. SettingsModal.tsx still imports this
+   file for the toggle switch, the toasts, the save button, the loading/error
+   states and the device-revoke buttons; its layout lives in settings-modal.css
+   (.sm-*). The rules for the deleted page and tabs (.settings-page, .settings-
+   section, .settings-field, .kv-*, .device-row/-meta/-client/-times, …) had no
+   referent left in any .ts/.tsx and are gone. */
 
 /* Toggle Switch */
-.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 0;
-}
-
-.toggle-row + .toggle-row {
-  border-top: 1px solid var(--border-light);
-}
-
-.toggle-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.toggle-label-text {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.toggle-label-desc {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
-
 .toggle-switch {
   position: relative;
   width: 40px;
@@ -205,135 +50,6 @@
 
 .toggle-switch input:checked + .toggle-track::after {
   transform: translateX(18px);
-}
-
-/* Key-Value Editor */
-.kv-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.kv-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.kv-row input {
-  flex: 1;
-  min-width: 0; /* an <input>'s intrinsic width would otherwise widen the row */
-  padding: 0.6rem 0.85rem;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  color: var(--text);
-  background: var(--bg-page);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.kv-row input:focus {
-  border-color: var(--accent);
-  background: var(--bg-white);
-  box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.08);
-}
-
-.kv-remove-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-white);
-  color: var(--text-muted);
-  font-size: 1.1rem;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.15s;
-}
-
-.kv-remove-btn:hover {
-  border-color: #ef4444;
-  color: #ef4444;
-  background: #fef2f2;
-}
-
-.kv-add-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.5rem 1rem;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  background: var(--bg-white);
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.15s;
-  align-self: flex-start;
-  margin-top: 0.25rem;
-}
-
-.kv-add-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-light);
-}
-
-/* Resume Section */
-.settings-resume-info {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg-page);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  min-width: 0;
-}
-
-.settings-resume-info i {
-  color: var(--accent);
-  font-size: 1rem;
-  flex-shrink: 0;
-}
-
-/* A real resume filename is one 58-character unbroken word. As a flex item with
-   the default min-width:auto it will not shrink below that, which is what shoved
-   the whole settings page 206px off the right of a 320px phone. */
-.settings-resume-filename {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.settings-upload-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-white);
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.settings-upload-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-light);
 }
 
 /* Toast Notification */
@@ -396,19 +112,7 @@
   }
 }
 
-/* Save Bar */
-.settings-save-bar {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 1rem 0;
-  display: flex;
-  justify-content: flex-end;
-  background: linear-gradient(to top, var(--bg-page) 60%, transparent);
-  z-index: 50;
-}
-
+/* Save button (the bar it sits in is .sm-save-bar, in settings-modal.css) */
 .settings-save-btn {
   padding: 0.65rem 2rem;
   border: none;
@@ -463,57 +167,7 @@
   text-align: center;
 }
 
-/* Section Sub-text */
-.settings-section-sub {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin: 0 0 0.75rem;
-}
-
 /* Connected Devices */
-.device-list {
-  list-style: none;
-  padding: 0;
-  margin: 0.5rem 0;
-}
-
-.device-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.device-row:last-child {
-  border-bottom: none;
-}
-
-.device-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.device-client {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.device-current {
-  color: var(--accent);
-  font-weight: 500;
-}
-
-/* user agents and IPs are long unbroken strings — they must wrap, not widen */
-.device-times {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
-}
-
 .device-revoke,
 .device-revoke-all {
   cursor: pointer;
@@ -550,46 +204,12 @@
 @media (max-width: 1024px) {
   /* touch widths: comfortable targets without inflating the desktop chrome */
   .device-revoke,
-  .device-revoke-all,
-  .kv-add-btn,
-  .settings-upload-btn {
+  .device-revoke-all {
     min-height: 36px;
   }
 }
 
-@media (max-width: 768px) {
-  .settings-page {
-    padding: 1.5rem 1rem 5rem;
-  }
-
-  .settings-form-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-section {
-    padding: 1.25rem;
-  }
-}
-
 @media (max-width: 640px) {
-  /* Question / Answer / remove cannot share a 288px row. Stack them. */
-  .kv-row {
-    flex-wrap: wrap;
-  }
-
-  .kv-row input {
-    flex: 1 1 100%;
-  }
-
-  .kv-remove-btn {
-    margin-left: auto;
-  }
-
-  .device-row {
-    flex-wrap: wrap;
-    gap: 0.6rem;
-  }
-
   .device-revoke-all {
     width: 100%;
   }

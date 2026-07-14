@@ -32,10 +32,11 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  /* 11px/600 is not "large text", so WCAG AA wants 4.5:1. At 0.72 alpha over the
-   * gradient's lightest stop (#665efd — which the 110deg angle puts directly
-   * under this line) it lands at ~2.9:1. 0.9 clears the bar. */
-  color: rgba(255, 255, 255, 0.9);
+  /* 11px/600 is not "large text", so WCAG AA wants 4.5:1 — and the ceiling here is
+   * low: over the gradient's lightest stop (#665efd, which the 110deg angle puts
+   * directly under this line) even pure white only reaches 4.58:1. Every alpha
+   * below 1 therefore fails — 0.9 lands at 4.03:1. No tint to spend; use #fff. */
+  color: #fff;
 }
 
 .ext-banner-headline {
@@ -152,8 +153,13 @@
   .ext-banner-headline {
     font-size: 1rem;
   }
+  /* The gutter above shrinks the content box, and this CTA is inside it — so a
+   * full-width button would stop ~54px short of the banner's right padding edge
+   * while starting flush left. The gutter is only needed to clear the close
+   * button, which sits well above the CTA. Give it back. */
   .ext-banner-cta {
     width: 100%;
+    margin-right: -2.25rem;
     justify-content: center;
   }
 }

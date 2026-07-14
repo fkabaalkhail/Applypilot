@@ -37,14 +37,10 @@ export default function ExtensionBanner() {
       return;
     }
     let alive = true;
-    // 1500ms, not the 400ms default: an MV3 service worker that has gone idle has
-    // to be woken to answer, and a cold start can outrun 400ms. Answering late is
-    // free — we render nothing until the ping resolves, so a longer timeout only
-    // delays the banner's appearance and can never flash the wrong one. Answering
-    // *wrong* is not free: this effect runs once per page load and is never
-    // retried, so one slow wake would pin "Add to Chrome" on a user who already
-    // has the extension for their whole session.
-    void pingExtension(1500)
+    // No explicit timeout: the 1500ms default in extensionBridge exists for this
+    // caller's reasons and is documented there. Passing one here is what let the
+    // modal drift onto a different (shorter) one.
+    void pingExtension()
       .then((s) => {
         if (alive) setState(s);
       })

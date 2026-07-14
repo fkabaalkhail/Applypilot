@@ -94,6 +94,25 @@ describe("SettingsModal", () => {
     expect(screen.queryByRole("button", { name: /profile & contact/i })).toBeNull();
   });
 
+  // jsdom resolves the accessible name from the visible label text and ignores the
+  // ≤768px rule that hides it, so the role-name queries above would still pass with
+  // no aria-label at all. Assert the attribute directly, or the icon-only phone nav
+  // could silently lose its accessible names again.
+  it("names the nav buttons with aria-label, not the (phone-hidden) label text", async () => {
+    renderModal();
+    expect(await screen.findByRole("button", { name: "Account" })).toHaveAttribute(
+      "aria-label",
+      "Account"
+    );
+    expect(screen.getByRole("button", { name: "Extension" })).toHaveAttribute("aria-label", "Extension");
+    expect(screen.getByRole("button", { name: "Security" })).toHaveAttribute("aria-label", "Security");
+    expect(screen.getByRole("button", { name: "Log Out" })).toHaveAttribute("aria-label", "Log Out");
+    expect(screen.getByRole("button", { name: "Privacy Policy" })).toHaveAttribute(
+      "aria-label",
+      "Privacy Policy"
+    );
+  });
+
   it("marks the open tab with aria-current, not colour alone", async () => {
     renderModal();
     const account = await screen.findByRole("button", { name: "Account" });

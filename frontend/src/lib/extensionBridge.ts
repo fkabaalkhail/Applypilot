@@ -98,8 +98,17 @@ interface PingResponse {
  * The extension's externally_connectable.matches covers only
  * https://(www.)tailrd.ca, so on localhost this always resolves "not-installed".
  * ExtensionBanner has a dev-only ?extState= override for that reason.
+ *
+ * The 1500ms default is load-bearing, and every caller needs it — so it lives
+ * here rather than being passed in, where two call sites drifted apart once
+ * already. An MV3 service worker that has gone idle must be woken to answer, and
+ * a cold start can outrun a short timeout. Answering late is free: callers render
+ * nothing until the ping resolves, so a longer timeout only delays the answer and
+ * can never flash the wrong one. Answering *wrong* is not free — callers ping once
+ * and never retry, so one slow wake pins "Add to Chrome" on a user who already has
+ * the extension for their whole session.
  */
-export function pingExtension(timeoutMs = 400): Promise<ExtensionState> {
+export function pingExtension(timeoutMs = 1500): Promise<ExtensionState> {
   const rt = runtime();
   // Type check, not truthiness: a truthy non-function `sendMessage` would survive a
   // truthiness guard and then throw out of `.bind()` below — synchronously, outside

@@ -155,11 +155,17 @@ const STATES = [
   // externally_connectable covers tailrd.ca only, so the real ping can never
   // answer from localhost — and the audit runs against `npm run dev`, where
   // import.meta.env.DEV is true and the override is compiled in.
+  // `wait` is swallowed on timeout, so a banner that never renders would leave the
+  // audit measuring the bare dashboard and reporting it clean — a false all-clear,
+  // and the banner has three independent ways to silently stop rendering (the
+  // override, the ping, the snooze). `steps[].waitFor` is the loud form: it emits a
+  // high-severity `state-not-reached` finding instead.
   {
     id: "app-extension-banner",
     url: "/app?extState=not-installed",
     ...AUTHED,
-    wait: ".ext-banner",
+    wait: ".jobs-page",
+    steps: [{ waitFor: ".ext-banner" }],
   },
 
   /* ---------------- in-app AI modals (same CSS as the /embed pages, but
