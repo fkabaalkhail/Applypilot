@@ -224,6 +224,16 @@ const isDirty = useMemo(() => {
 
 The `computeDiff` function compares `originalData` with the current form state field-by-field. Only fields where `current[key] !== original[key]` are included in the PUT payload. For `prefilled_answers`, the entire dictionary is sent if any entry changed (since the backend replaces the whole dict).
 
+> **OUT OF DATE as of 2026-07-14 — do not build the prefilled-answers card from this.**
+> `PUT /settings` now **merges** `prefilled_answers` instead of replacing it
+> (`backend/routers/settings.py`), because that map stopped being extension scratch
+> space and became user-owned data: a wholesale replace destroyed the user's saved
+> screening answers and salary expectation. Two consequences for any future editor:
+> **a key can no longer be deleted through this endpoint**, and sending the whole
+> dict is no longer required. The screening answers are now edited on the Profile
+> page's "Application Answers" card instead — see
+> `docs/superpowers/plans/2026-07-14-profile-application-answers.md`.
+
 ### Backend Schema Mapping
 
 | Frontend Field | Backend SettingsOut | Backend SettingsUpdate |
