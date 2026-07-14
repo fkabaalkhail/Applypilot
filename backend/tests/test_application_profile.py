@@ -280,3 +280,110 @@ def test_screening_answers_round_trip_together(client, db_session, user):
     assert body["workAuthorization"] == "Yes, authorized to work for any employer"
     assert body["requiresSponsorship"] == "No"
     assert body["salaryExpectation"] == "$85,000"
+
+
+# ── SetupWizard's internal keys must not shadow real screening answers ────────
+#
+# Onboarding (frontend/src/setup/SetupWizard.tsx) PUTs its own filter state into
+# the same prefilled_answers map: {"job_types": ..., "work_authorization": ...}.
+# The literal key "work_authorization" contains the substring "authoriz", is
+# non-empty, and is inserted first — so first-match substring mining used to
+# serve the internal enum token back as the user's answer AND block the real
+# fixed key from ever winning. The user's correction was silently discarded and
+# the extension kept autofilling "needs_sponsorship" into employers' forms.
+
+_SETUP_WIZARD_ANSWERS = {
+    "job_types": "internship",
+    "work_authorization": "needs_sponsorship",
+}
+
+
+def _seed_settings(db_session, **kwargs) -> UserSettings:
+    s = UserSettings(user_id=TEST_USER_ID, **kwargs)
+    db_session.add(s)
+    db_session.commit()
+    return s
+
+
+def test_setup_wizard_token_is_never_served_as_an_answer(client, db_session, user):
+    """"needs_sponsorship" is an internal enum, not something an employer sees."""
+    _seed_settings(db_session, prefilled_answers=dict(_SETUP_WIZARD_ANSWERS))
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["workAuthorization"] == ""
+    assert body["requiresSponsorship"] == ""
+
+
+def test_setup_wizard_key_cannot_shadow_a_saved_work_authorization(
+    client, db_session, user
+):
+    """A user who ticked "needs sponsorship" at onboarding must still be able to
+    correct their work-authorization answer. The onboarding key literally
+    contains "authoriz", so first-match substring mining used to win and
+    silently discard the correction."""
+    _seed_settings(db_session, prefilled_answers=dict(_SETUP_WIZARD_ANSWERS))
+
+    put = client.put(
+        "/api/user/application-profile",
+        json={"workAuthorization": "Yes, I am legally authorized to work in Canada"},
+    )
+    assert put.status_code == 200
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["workAuthorization"] == "Yes, I am legally authorized to work in Canada"
+
+
+def test_substring_fallback_still_mines_legacy_question_keys(client, db_session, user):
+    """The fix must not break the path it exists for: legacy rows and question
+    text the extension harvested verbatim from a real form still resolve."""
+    _seed_settings(
+        db_session,
+        prefilled_answers={
+            "Are you legally eligible to work in the US?": "Yes",
+            "Will you now or in the future require sponsorship?": "No",
+            "What are your salary expectations?": "80000",
+        },
+    )
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["workAuthorization"] == "Yes"
+    assert body["requiresSponsorship"] == "No"
+    assert body["salaryExpectation"] == "80000"
+
+
+def test_exact_saved_key_beats_a_conflicting_mined_key(client, db_session, user):
+    """An answer the user deliberately saved through the PUT is authoritative
+    over anything merely matched by substring, whatever the insertion order."""
+    _seed_settings(
+        db_session,
+        prefilled_answers={
+            "Are you legally eligible to work in the US?": "Stale harvested answer",
+        },
+    )
+
+    client.put(
+        "/api/user/application-profile",
+        json={"workAuthorization": "Yes, authorized for any employer"},
+    )
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["workAuthorization"] == "Yes, authorized for any employer"
+
+
+# ── PUT /settings must not destroy user-curated answers ───────────────────────
+
+def test_settings_put_merges_prefilled_answers(client, db_session, user):
+    """prefilled_answers is now user-owned, user-curated data (the Profile card
+    writes the three screening answers into it). A client sending its own keys —
+    SetupWizard is the only one — must not wipe the rest of the map."""
+    _seed_settings(db_session, prefilled_answers={"Salary expectation": "120000"})
+
+    res = client.put("/settings", json={"prefilled_answers": {"job_types": "internship"}})
+    assert res.status_code == 200
+
+    # The setup wizard's key landed, and the salary answer survived.
+    assert res.json()["prefilled_answers"] == {
+        "Salary expectation": "120000",
+        "job_types": "internship",
+    }
+    assert client.get("/api/user/application-profile").json()["salaryExpectation"] == "120000"
