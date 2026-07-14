@@ -1,4 +1,6 @@
-/* ─── Settings Modal (tabbed, image-inspired) ────────────────────────────── */
+/* ─── Settings Modal ─────────────────────────────────────────────────────────
+   Left nav + right panel of label/value/action rows separated by hairlines.
+   Every row is a .sm-row; there are no bespoke per-tab layouts. */
 
 /* .modal-overlay (index.css) centres this with no padding and does not scroll,
    so the modal has to fit the viewport itself — hence the calc() caps rather
@@ -28,7 +30,7 @@
   flex-shrink: 0;
   background: var(--bg-page);
   border-right: 1px solid var(--border);
-  padding: 1.25rem 0.75rem;
+  padding: 1.5rem 0.75rem 1.25rem;
 }
 
 .sm-nav-top,
@@ -36,6 +38,24 @@
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+}
+
+.sm-nav-header {
+  padding: 0 0.75rem;
+  margin-bottom: 1.1rem;
+}
+
+.sm-nav-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.sm-nav-sub {
+  margin-top: 0.15rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
 }
 
 .sm-nav-bottom {
@@ -48,11 +68,11 @@
   align-items: center;
   gap: 0.7rem;
   width: 100%;
-  padding: 0.6rem 0.75rem;
+  padding: 0.55rem 0.75rem;
   border: none;
   background: transparent;
-  border-radius: 10px;
-  font-size: 0.9rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
@@ -61,13 +81,14 @@
 }
 
 .sm-nav-item:hover {
-  background: var(--accent-light);
+  background: rgba(13, 37, 61, 0.05);
   color: var(--text);
 }
 
+/* The reference uses a neutral pill for the selected item, not a brand fill. */
 .sm-nav-item.active {
-  background: var(--accent-light);
-  color: var(--accent);
+  background: rgba(13, 37, 61, 0.07);
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -109,9 +130,9 @@
 }
 
 .sm-panel-header h2 {
-  font-size: 1.4rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text);
   min-width: 0;
   overflow-wrap: anywhere;
@@ -141,26 +162,147 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1.5rem 1.75rem;
+  padding: 0.5rem 1.75rem 1.5rem;
 }
 
-.sm-section {
+/* ── The row primitive ── */
+.sm-rows {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
 }
 
-.sm-subhead {
-  font-size: 1rem;
-  font-weight: 700;
+.sm-row {
+  display: grid;
+  grid-template-columns: 168px 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.05rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.sm-row:last-child {
+  border-bottom: none;
+}
+
+.sm-row-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.sm-row-value {
+  min-width: 0;
+  font-size: 0.875rem;
   color: var(--text);
-  margin-bottom: 0.35rem;
+  overflow-wrap: anywhere;
 }
 
-.sm-subhead-spaced {
-  margin-top: 1.75rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border);
+.sm-row-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.sm-muted {
+  color: var(--text-muted);
+}
+
+/* ── Row value ornaments ── */
+.sm-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.sm-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.sm-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sm-identity-name {
+  font-weight: 600;
+}
+
+.sm-provider {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sm-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.sm-pill-ok {
+  background: rgba(16, 133, 85, 0.1);
+  color: #0f7a4d;
+}
+
+.sm-pill-warn {
+  background: rgba(234, 34, 97, 0.1);
+  color: var(--stripe-ruby);
+}
+
+/* ── Row actions ── */
+.sm-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.15rem;
+  border: none;
+  background: transparent;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.sm-link:hover {
+  color: var(--accent);
+}
+
+.sm-cta {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.sm-cta:hover {
+  background: var(--accent-hover);
+}
+
+.sm-rows-footer {
+  padding-top: 1.25rem;
 }
 
 /* ── Sticky save bar ── */
@@ -173,7 +315,7 @@
   background: var(--bg-white);
 }
 
-/* ── Responsive: collapse to stacked layout (720 → 768, the standard stop) ── */
+/* ── Responsive: collapse to stacked layout (768 is the house breakpoint) ── */
 @media (max-width: 768px) {
   .settings-modal {
     flex-direction: column;
@@ -190,6 +332,10 @@
     padding: 0.6rem;
     border-right: none;
     border-bottom: 1px solid var(--border);
+  }
+  /* The title block only makes sense beside a vertical nav. */
+  .sm-nav-header {
+    display: none;
   }
   .sm-nav-top,
   .sm-nav-bottom {
@@ -208,16 +354,36 @@
   .sm-panel-header {
     padding: 1rem 1rem 0.75rem;
   }
-  .sm-panel-header h2 {
-    font-size: 1.15rem;
-  }
   .sm-panel-body {
-    padding: 1.1rem 1rem;
+    padding: 0.25rem 1rem 1.1rem;
   }
   .sm-save-bar {
     padding: 0.75rem 1rem;
   }
   .sm-save-bar .settings-save-btn {
     width: 100%;
+  }
+}
+
+/* Phone: the 3-column row cannot hold. Stack label over value, action right. */
+@media (max-width: 640px) {
+  .sm-row {
+    grid-template-columns: 1fr auto;
+    align-items: start;
+    gap: 0.5rem 1rem;
+    padding: 0.9rem 0;
+  }
+  .sm-row-label {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .sm-row-value {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .sm-row-action {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-items: center;
   }
 }

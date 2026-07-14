@@ -16,3 +16,13 @@ if (!("ResizeObserver" in globalThis)) {
   }
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
 }
+
+// jsdom's window.crypto shadows Node's webcrypto and omits randomUUID, which
+// SettingsModal uses to key toasts.
+if (typeof globalThis.crypto?.randomUUID !== "function") {
+  let n = 0;
+  Object.defineProperty(globalThis.crypto, "randomUUID", {
+    configurable: true,
+    value: () => `00000000-0000-4000-8000-${String(n++).padStart(12, "0")}`,
+  });
+}
