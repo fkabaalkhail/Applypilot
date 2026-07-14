@@ -397,24 +397,26 @@ export default function Profile() {
         <span>Your profile data is kept private and secure. It syncs only to your own extension.</span>
       </div>
 
-      {/* Sticky section nav */}
-      <nav className="profile-nav" aria-label="Profile sections">
-        {SECTIONS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className={`profile-nav-tab${activeSection === s.id ? " active" : ""}`}
-            onClick={() => scrollToSection(s.id)}
-          >
-            {s.label}
-          </button>
-        ))}
-        <div className="profile-nav-spacer" />
+      {/* Sticky section nav. The tabs scroll in their own lane; Save sits outside
+          it, so adding a section can never scroll the button out of reach. */}
+      <div className="profile-nav-bar">
+        <nav className="profile-nav" aria-label="Profile sections">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`profile-nav-tab${activeSection === s.id ? " active" : ""}`}
+              onClick={() => scrollToSection(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </nav>
         <button className="profile-save-btn" onClick={saveChanges} disabled={saving || !isDirty}>
           {saving ? "Saving…" : "Save changes"}
           {isDirty && !saving && <span className="profile-dirty-dot" />}
         </button>
-      </nav>
+      </div>
 
       {/* ── Personal (identity hero) ── */}
       <section id="profile-sec-personal" className="profile-card profile-hero">

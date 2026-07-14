@@ -2465,8 +2465,12 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 }
 
 /* ===== Profile Page ===== */
+/* 1200px, not 880: at the 1440px design width .main-content is 1200px (minus the
+   240px rail), so the page fills it and its 2rem padding lines the cards up
+   exactly with the extension banner above them, which insets by the same 2rem.
+   Still capped, so bullet text does not run to 2000px on an ultrawide. */
 .profile-page {
-  max-width: 880px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 2rem;
 }
@@ -2501,18 +2505,39 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   flex-shrink: 0;
 }
 
-/* Sticky section nav */
-.profile-nav {
+/* Sticky section nav.
+   The bar owns the sticky chrome; the tabs scroll in their own lane *inside* it
+   and the Save button sits outside that lane. Previously the button lived in the
+   scrolling row, so once the tabs outgrew the width it was silently scrolled out
+   of sight — and the scrollbar is hidden, so there was nothing to hint at it.
+   Adding a seventh section did exactly that. Now a new section can never push
+   Save out of view. */
+.profile-nav-bar {
   position: sticky;
   top: 0;
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.55rem 0;
+  gap: 0.75rem;
   margin-bottom: 1.25rem;
   background: var(--bg-page);
   border-bottom: 1px solid var(--border);
+}
+
+.profile-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  /* min-width: 0 is load-bearing. A flex child defaults to min-width: auto and
+     refuses to shrink below its content's intrinsic width — which would push the
+     Save button out of the bar instead of scrolling the tabs. */
+  flex: 1;
+  min-width: 0;
+  /* Keep the vertical padding here, not on the bar: the active tab's underline
+     is drawn at bottom: -0.55rem, i.e. inside this padding. overflow-x: auto
+     computes overflow-y to auto as well, so an underline outside the box would
+     be clipped. */
+  padding: 0.55rem 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -2547,11 +2572,10 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   border-radius: 2px;
 }
 
-.profile-nav-spacer { flex: 1; }
-
-/* Save button */
+/* Save button — outside the scrolling tab lane, so it is always reachable. */
 .profile-save-btn {
   position: relative;
+  flex-shrink: 0;
   background: var(--accent);
   color: white;
   border: none;
