@@ -32,7 +32,10 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.72);
+  /* 11px/600 is not "large text", so WCAG AA wants 4.5:1. At 0.72 alpha over the
+   * gradient's lightest stop (#665efd — which the 110deg angle puts directly
+   * under this line) it lands at ~2.9:1. 0.9 clears the bar. */
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .ext-banner-headline {
@@ -139,6 +142,12 @@
   }
   .ext-banner-art {
     display: none;
+  }
+  /* The art is gone, so the copy is full-width and runs under the close button,
+   * which stays pinned top-right. It clears it today only because the top line
+   * is the short eyebrow — one copy change from a collision. Reserve the gutter. */
+  .ext-banner-copy {
+    padding-right: 2.25rem;
   }
   .ext-banner-headline {
     font-size: 1rem;

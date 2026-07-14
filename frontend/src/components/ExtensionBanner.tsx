@@ -37,9 +37,21 @@ export default function ExtensionBanner() {
       return;
     }
     let alive = true;
-    void pingExtension().then((s) => {
-      if (alive) setState(s);
-    });
+    // 1500ms, not the 400ms default: an MV3 service worker that has gone idle has
+    // to be woken to answer, and a cold start can outrun 400ms. Answering late is
+    // free — we render nothing until the ping resolves, so a longer timeout only
+    // delays the banner's appearance and can never flash the wrong one. Answering
+    // *wrong* is not free: this effect runs once per page load and is never
+    // retried, so one slow wake would pin "Add to Chrome" on a user who already
+    // has the extension for their whole session.
+    void pingExtension(1500)
+      .then((s) => {
+        if (alive) setState(s);
+      })
+      // pingExtension never rejects by contract. Nothing local enforces that, so
+      // don't let a future throwing path become an unhandled rejection in the app
+      // shell: a rejection means we learned nothing, and "unknown" renders null.
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -63,7 +75,12 @@ export default function ExtensionBanner() {
   const installed = state === "installed";
 
   return (
-    <aside className="ext-banner" role="region" aria-label="Tailrd Chrome extension">
+    <aside
+      className="ext-banner"
+      // No role="region": <aside> already carries an implicit `complementary`
+      // role, and role="region" would override it with the weaker generic one.
+      aria-label="Tailrd Chrome extension"
+    >
       <div className="ext-banner-copy">
         <span className="ext-banner-eyebrow">
           {installed ? "Almost there" : "New · Chrome extension"}
@@ -97,7 +114,12 @@ export default function ExtensionBanner() {
         </span>
       </div>
 
-      <button type="button" className="ext-banner-close" onClick={snooze} aria-label="Dismiss">
+      <button
+        type="button"
+        className="ext-banner-close"
+        onClick={snooze}
+        aria-label="Dismiss extension banner"
+      >
         <X size={16} weight="bold" />
       </button>
     </aside>
