@@ -1,6 +1,8 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { CHROME_STORE_URL } from "../lib/extensionStore";
+import type { ExtensionState } from "../lib/extensionBridge";
 
 const get = vi.fn();
 const put = vi.fn();
@@ -19,22 +21,36 @@ vi.mock("react-router-dom", async () => ({
   useNavigate: () => navigate,
 }));
 
+// `auth_provider` is optional on UserProfile, so the mock user has to be settable
+// per test — the undefined case falls back to "Email & password".
+interface MockUser {
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  email_verified: boolean;
+  auth_provider?: string;
+}
+const BASE_USER: MockUser = {
+  id: 1,
+  email: "you@school.edu",
+  first_name: "Wissam",
+  last_name: "Elmasry",
+  email_verified: true,
+  auth_provider: "google",
+};
+let currentUser: MockUser = { ...BASE_USER };
+
+// The factories below are hoisted above the imports, so they must only *close
+// over* these bindings — never read them at factory time.
 vi.mock("../auth/useAuth", () => ({
-  useAuth: () => ({
-    user: {
-      id: 1,
-      email: "you@school.edu",
-      first_name: "Wissam",
-      last_name: "Elmasry",
-      email_verified: true,
-      auth_provider: "google",
-    },
-    logout: vi.fn(),
-  }),
+  useAuth: () => ({ user: currentUser, logout: vi.fn() }),
 }));
 
 vi.mock("../onboarding", () => ({ useOnboarding: () => ({ restart: vi.fn() }) }));
-vi.mock("../lib/extensionBridge", () => ({ pingExtension: () => Promise.resolve("connected") }));
+
+const ping = vi.fn();
+vi.mock("../lib/extensionBridge", () => ({ pingExtension: () => ping() }));
 
 import SettingsModal from "./SettingsModal";
 
@@ -51,11 +67,16 @@ const renderModal = () =>
     </MemoryRouter>
   );
 
+const setExtState = (state: ExtensionState) => ping.mockResolvedValue(state);
+
 describe("SettingsModal", () => {
   beforeEach(() => {
     get.mockReset();
     put.mockReset();
     navigate.mockReset();
+    ping.mockReset();
+    currentUser = { ...BASE_USER };
+    setExtState("connected");
     get.mockImplementation((url: string) =>
       url === "/settings"
         ? Promise.resolve({ data: SETTINGS })
@@ -71,6 +92,18 @@ describe("SettingsModal", () => {
     expect(screen.queryByRole("button", { name: /job preferences/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /autofill/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /profile & contact/i })).toBeNull();
+  });
+
+  it("marks the open tab with aria-current, not colour alone", async () => {
+    renderModal();
+    const account = await screen.findByRole("button", { name: "Account" });
+    const extension = screen.getByRole("button", { name: "Extension" });
+    expect(account).toHaveAttribute("aria-current", "page");
+    expect(extension).not.toHaveAttribute("aria-current");
+
+    fireEvent.click(extension);
+    expect(extension).toHaveAttribute("aria-current", "page");
+    expect(account).not.toHaveAttribute("aria-current");
   });
 
   it("no longer edits profile, job-preference or autofill fields", async () => {
@@ -91,6 +124,13 @@ describe("SettingsModal", () => {
     expect(screen.getByText("Verified")).toBeInTheDocument();
   });
 
+  it("falls back to Email & password when auth_provider is absent", async () => {
+    currentUser = { ...BASE_USER, auth_provider: undefined };
+    renderModal();
+    expect(await screen.findByText("Email & password")).toBeInTheDocument();
+    expect(screen.queryByText("Google")).toBeNull();
+  });
+
   it("sends the Profile link to /app/profile", async () => {
     renderModal();
     fireEvent.click(await screen.findByRole("button", { name: /update profile/i }));
@@ -107,6 +147,52 @@ describe("SettingsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => expect(put).toHaveBeenCalledWith("/settings", { smooth_scrolling: true }));
+  });
+
+  it("keeps the save bar mounted when an unsaved toggle survives a tab switch", async () => {
+    renderModal();
+    fireEvent.click(await screen.findByRole("button", { name: "Extension" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Smooth scrolling" }));
+
+    // Switching away must not strand the pending change: without the save bar the
+    // edit is silently dropped when the modal closes.
+    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    expect(await screen.findByText("you@school.edu")).toBeInTheDocument();
+
+    const save = screen.getByRole("button", { name: /save changes/i });
+    expect(save).toBeInTheDocument();
+    expect(save).toBeEnabled();
+  });
+
+  it("offers Add to Chrome when the extension is not installed", async () => {
+    setExtState("not-installed");
+    renderModal();
+    fireEvent.click(await screen.findByRole("button", { name: "Extension" }));
+
+    expect(await screen.findByText("Not installed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /add to chrome/i })).toHaveAttribute(
+      "href",
+      CHROME_STORE_URL
+    );
+  });
+
+  it("offers Finish setup when the extension is installed but not signed in", async () => {
+    setExtState("installed");
+    renderModal();
+    fireEvent.click(await screen.findByRole("button", { name: "Extension" }));
+
+    expect(await screen.findByText("Installed — not signed in")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /finish setup/i }));
+    expect(navigate).toHaveBeenCalledWith("/extension/connect");
+  });
+
+  it("offers no action when the extension is already connected", async () => {
+    renderModal(); // beforeEach pings "connected"
+    fireEvent.click(await screen.findByRole("button", { name: "Extension" }));
+
+    expect(await screen.findByText("Installed and connected")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /add to chrome/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /finish setup/i })).toBeNull();
   });
 
   it("lists connected devices on the Security tab", async () => {

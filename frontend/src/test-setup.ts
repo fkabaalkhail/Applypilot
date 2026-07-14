@@ -19,7 +19,7 @@ if (!("ResizeObserver" in globalThis)) {
 
 // jsdom's window.crypto shadows Node's webcrypto and omits randomUUID, which
 // SettingsModal uses to key toasts.
-if (typeof globalThis.crypto?.randomUUID !== "function") {
+if (globalThis.crypto && typeof globalThis.crypto.randomUUID !== "function") {
   let n = 0;
   Object.defineProperty(globalThis.crypto, "randomUUID", {
     configurable: true,

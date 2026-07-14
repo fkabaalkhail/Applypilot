@@ -519,6 +519,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 key={tab.key}
                 type="button"
                 className={`sm-nav-item${activeTab === tab.key ? " active" : ""}`}
+                // The selected tab must not be conveyed by background colour alone;
+                // aria-label survives the ≤768px rule that hides the label text and
+                // leaves an icon-only button.
+                aria-current={activeTab === tab.key ? "page" : undefined}
+                aria-label={tab.label}
                 onClick={() => setActiveTab(tab.key)}
               >
                 <span className="sm-nav-icon">{tab.icon}</span>
@@ -527,13 +532,23 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             ))}
           </div>
           <div className="sm-nav-bottom">
-            <button type="button" className="sm-nav-item" onClick={() => goTo("/privacy")}>
+            <button
+              type="button"
+              className="sm-nav-item"
+              aria-label="Privacy Policy"
+              onClick={() => goTo("/privacy")}
+            >
               <span className="sm-nav-icon">
                 <ShieldStar size={18} weight="duotone" />
               </span>
               <span>Privacy Policy</span>
             </button>
-            <button type="button" className="sm-nav-item sm-nav-danger" onClick={logout}>
+            <button
+              type="button"
+              className="sm-nav-item sm-nav-danger"
+              aria-label="Log Out"
+              onClick={logout}
+            >
               <span className="sm-nav-icon">
                 <SignOut size={18} weight="duotone" />
               </span>
@@ -552,7 +567,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
           <div className="sm-panel-body">{renderTab()}</div>
 
-          {activeTab === "extension" && !loading && !error && (
+          {/* Mounted on the Extension tab (its editor) *and* on any tab while a
+              toggle is unsaved — otherwise flipping a toggle and switching tabs
+              strands the change: the Save button and its dirty dot would vanish
+              while the edit is still pending, and closing the modal would drop it
+              silently. */}
+          {(activeTab === "extension" || isDirty) && !loading && !error && (
             <div className="sm-save-bar">
               <button
                 type="button"
