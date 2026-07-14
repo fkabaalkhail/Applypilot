@@ -101,7 +101,10 @@ interface PingResponse {
  */
 export function pingExtension(timeoutMs = 400): Promise<ExtensionState> {
   const rt = runtime();
-  if (!rt?.sendMessage || EXTENSION_IDS.length === 0) {
+  // Type check, not truthiness: a truthy non-function `sendMessage` would survive a
+  // truthiness guard and then throw out of `.bind()` below — synchronously, outside
+  // the promise and every try — breaking the never-rejects contract.
+  if (typeof rt?.sendMessage !== "function" || EXTENSION_IDS.length === 0) {
     return Promise.resolve("not-installed");
   }
   // Hoist the narrowed method: TS drops the `rt.sendMessage` narrowing inside the
