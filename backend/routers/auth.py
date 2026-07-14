@@ -529,6 +529,7 @@ def get_me(
         "first_name": user.first_name,
         "last_name": user.last_name,
         "profile_image_url": user.profile_image_url,
+        "auth_provider": user.auth_provider or "local",
         "email_verified": effective_email_verified(user),
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "has_completed_onboarding": bool(user.has_completed_onboarding),
