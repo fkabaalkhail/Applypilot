@@ -77,6 +77,7 @@ class ApplicationProfileOut(BaseModel):
     currentTitle: str = ""
     workAuthorization: str = ""
     requiresSponsorship: str = ""
+    salaryExpectation: str = ""
     education: list[EducationEntry] = []
     experience: list[ExperienceEntry] = []
     skills: list[str] = []
@@ -151,23 +152,55 @@ def _split_name(full_name: str) -> tuple[str, str]:
     return parts[0], " ".join(parts[1:])
 
 
-def _mine_screening(prefilled: dict | None) -> tuple[str, str]:
+# The exact keys update_application_profile writes. A value the user or the
+# extension explicitly saved must beat anything merely mined by substring.
+_WORK_AUTH_KEY = "Are you authorized to work in this country?"
+_SPONSOR_KEY = "Do you now or in the future require sponsorship?"
+_SALARY_KEY = "Salary expectation"
+
+# SetupWizard (frontend/src/setup/SetupWizard.tsx) dumps its own internal filter
+# state into the same map. These are enum tokens ("needs_sponsorship",
+# "internship"), not answers any employer should ever see — and
+# "work_authorization" happens to contain "authoriz", so substring mining used
+# to serve it back as the user's work-authorization answer and shadow their
+# real one.
+_SETUP_KEYS = frozenset({"job_types", "work_authorization", "target_titles"})
+
+
+def _mine_screening(prefilled: dict | None) -> tuple[str, str, str]:
     """
-    Pull work-authorization and sponsorship answers out of the free-form
-    prefilled_answers question→answer map. Mirrors the client-side logic that
-    used to live in chrome-extension/src/api/client.ts (mapSettingsToProfile).
+    Resolve the work-authorization, sponsorship and salary answers from the
+    free-form prefilled_answers question→answer map.
+
+    Exact fixed keys win — they are what update_application_profile writes, so an
+    answer the user or the extension deliberately saved is authoritative. Only a
+    still-empty slot falls back to substring mining, which exists for legacy rows
+    and for question text the extension harvested verbatim from a real form.
     """
-    work_authorization = ""
-    requires_sponsorship = ""
-    for question, answer in (prefilled or {}).items():
-        if not isinstance(answer, str):
+    p = prefilled or {}
+
+    def exact(key: str) -> str:
+        """Exact-key lookup, honouring only a string value (the map is
+        free-form JSON, so a malformed row must not reach the response model)."""
+        value = p.get(key)
+        return value if isinstance(value, str) else ""
+
+    work_authorization = exact(_WORK_AUTH_KEY)
+    requires_sponsorship = exact(_SPONSOR_KEY)
+    salary_expectation = exact(_SALARY_KEY)
+
+    for question, answer in p.items():
+        if not isinstance(answer, str) or question in _SETUP_KEYS:
             continue
         q = question.lower()
         if not requires_sponsorship and "sponsor" in q:
             requires_sponsorship = answer
         elif not work_authorization and ("authoriz" in q or "eligible" in q):
             work_authorization = answer
-    return work_authorization, requires_sponsorship
+        elif not salary_expectation and ("salary" in q or "compensation" in q):
+            salary_expectation = answer
+
+    return work_authorization, requires_sponsorship, salary_expectation
 
 
 def _flatten_skills(skills: object, technologies: object) -> list[str]:
@@ -280,7 +313,7 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
         experience[0].title if experience else "",
     )
 
-    work_authorization, requires_sponsorship = _mine_screening(
+    work_authorization, requires_sponsorship, salary_expectation = _mine_screening(
         settings.prefilled_answers if settings else None
     )
 
@@ -331,6 +364,7 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
         currentTitle=current_title,
         workAuthorization=work_authorization,
         requiresSponsorship=requires_sponsorship,
+        salaryExpectation=salary_expectation,
         education=education,
         experience=experience,
         skills=skills,
@@ -420,13 +454,15 @@ def update_application_profile(
 
     # Screening answers + salary live in the free-form prefilled_answers map.
     # Reassign (don't mutate in place) so SQLAlchemy detects the JSON change.
+    # These are the exact keys _mine_screening reads back first, so what the user
+    # saves here is authoritative over anything mined by substring.
     answers = dict(settings.prefilled_answers or {})
     if body.workAuthorization is not None:
-        answers["Are you authorized to work in this country?"] = body.workAuthorization
+        answers[_WORK_AUTH_KEY] = body.workAuthorization
     if body.requiresSponsorship is not None:
-        answers["Do you now or in the future require sponsorship?"] = body.requiresSponsorship
+        answers[_SPONSOR_KEY] = body.requiresSponsorship
     if body.salaryExpectation is not None:
-        answers["Salary expectation"] = body.salaryExpectation
+        answers[_SALARY_KEY] = body.salaryExpectation
     settings.prefilled_answers = answers
 
     db.commit()

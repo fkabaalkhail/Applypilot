@@ -94,6 +94,7 @@ type EditingSection =
   | "skills"
   | "technologies"
   | "projects"
+  | "screening"
   | "eeo"
   | null;
 
@@ -104,6 +105,7 @@ const SECTIONS = [
   { id: "experience", label: "Work Experience" },
   { id: "skills", label: "Skills" },
   { id: "projects", label: "Projects" },
+  { id: "screening", label: "Application Answers" },
   { id: "eeo", label: "Equal Employment" },
 ] as const;
 
@@ -265,6 +267,10 @@ export default function Profile() {
           addressState: d.addressState ?? "",
           postalCode: d.postalCode ?? "",
           country: d.country ?? "",
+          currentTitle: d.currentTitle ?? "",
+          workAuthorization: d.workAuthorization ?? "",
+          requiresSponsorship: d.requiresSponsorship ?? "",
+          salaryExpectation: d.salaryExpectation ?? "",
           eeo: {
             gender: d.eeo?.gender ?? "",
             race: d.eeo?.race ?? "",
@@ -600,6 +606,48 @@ export default function Profile() {
           )}
         </section>
       ))}
+
+      {/* ── Application answers (screening questions the extension fills) ── */}
+      <Section id="screening" title="Application Answers" onEdit={() => toggleEdit("screening")}>
+        <p className="profile-section-sub">
+          The answers Tailrd fills into screening questions on job applications. These
+          are the exact words that get submitted — edit them if an employer's form
+          needs different wording.
+        </p>
+        {editingSection === "screening" ? (
+          <div className="profile-form-grid">
+            <Field
+              label="Current / Target Job Title"
+              value={extras.currentTitle}
+              onChange={(v) => setExtras({ ...extras, currentTitle: v })}
+            />
+            <Field
+              label="Salary Expectation"
+              value={extras.salaryExpectation}
+              onChange={(v) => setExtras({ ...extras, salaryExpectation: v })}
+            />
+            <Field
+              label="Work Authorization"
+              value={extras.workAuthorization}
+              onChange={(v) => setExtras({ ...extras, workAuthorization: v })}
+              full
+            />
+            <Field
+              label="Requires Sponsorship"
+              value={extras.requiresSponsorship}
+              onChange={(v) => setExtras({ ...extras, requiresSponsorship: v })}
+              full
+            />
+          </div>
+        ) : (
+          <div className="profile-info-grid">
+            <InfoRow label="Current / Target Job Title" value={extras.currentTitle} />
+            <InfoRow label="Salary Expectation" value={extras.salaryExpectation} />
+            <InfoRow label="Work Authorization" value={extras.workAuthorization} />
+            <InfoRow label="Requires Sponsorship" value={extras.requiresSponsorship} />
+          </div>
+        )}
+      </Section>
 
       {/* ── Equal Employment (EEO self-identification) ── */}
       <Section id="eeo" title="Equal Employment" onEdit={() => toggleEdit("eeo")}>

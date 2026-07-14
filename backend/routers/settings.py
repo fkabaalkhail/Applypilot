@@ -139,7 +139,14 @@ def update_settings(
     if update.regions is not None:
         s.regions = ",".join(update.regions)
     if update.prefilled_answers is not None:
-        s.prefilled_answers = update.prefilled_answers
+        # Merge, never replace. This map is user-owned data — the Profile card
+        # stores the work-authorization/sponsorship/salary answers the extension
+        # autofills into real applications. A wholesale overwrite by any client
+        # sending only its own keys (SetupWizard sends job_types/work_authorization)
+        # would silently destroy them. Reassign so SQLAlchemy sees the JSON change.
+        merged = dict(s.prefilled_answers or {})
+        merged.update(update.prefilled_answers)
+        s.prefilled_answers = merged
     # Smart filter settings
     if update.company_blacklist is not None:
         s.company_blacklist = update.company_blacklist

@@ -7,6 +7,10 @@ const EMPTY = {
   addressState: "",
   postalCode: "",
   country: "",
+  currentTitle: "",
+  workAuthorization: "",
+  requiresSponsorship: "",
+  salaryExpectation: "",
   eeo: {
     gender: "",
     race: "",
@@ -47,5 +51,25 @@ describe("computeProfileDiff", () => {
       eeo: { ...EMPTY.eeo, race: "Asian" },
     });
     expect(diff).toEqual({ country: "Canada", eeo: { race: "Asian" } });
+  });
+
+  it("emits only changed application answers", () => {
+    const diff = computeProfileDiff(EMPTY, {
+      ...EMPTY,
+      currentTitle: "Software Engineer Intern",
+      salaryExpectation: "$85,000",
+    });
+    expect(diff).toEqual({
+      currentTitle: "Software Engineer Intern",
+      salaryExpectation: "$85,000",
+    });
+  });
+
+  it("does not send an application answer that did not change", () => {
+    const filled = { ...EMPTY, workAuthorization: "Yes", requiresSponsorship: "No" };
+    expect(computeProfileDiff(filled, filled)).toBeNull();
+    expect(computeProfileDiff(filled, { ...filled, requiresSponsorship: "Yes" })).toEqual({
+      requiresSponsorship: "Yes",
+    });
   });
 });
