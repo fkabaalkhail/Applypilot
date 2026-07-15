@@ -184,15 +184,32 @@ async def cron_ats(
 
         jobs = await scraper.scrape_all(companies=companies)
 
+        import httpx
+        from backend.services.description_extractor import (
+            extract_smartrecruiters_from_url,
+            sanitize_description,
+        )
+
         new_count = 0
         skipped_dupe = 0
-        for job in jobs:
+        async with httpx.AsyncClient(timeout=15) as sr_client:
+          for job in jobs:
             # Dedup by URL. Query the column, not the entity: loading the row
             # would pull its ~1.9 KB description across the wire for a boolean.
             existing = db.query(ScrapedJob.url).filter(ScrapedJob.url == job.url).first()
             if existing:
                 skipped_dupe += 1
                 continue
+
+            # Board APIs carry descriptions for GH/Lever/Ashby; SmartRecruiters
+            # needs one extra call per NEW job only.
+            description = (job.description or "").strip()
+            if not description and "smartrecruiters" in (job.url or ""):
+                try:
+                    description = await extract_smartrecruiters_from_url(sr_client, job.url)
+                except Exception:
+                    description = ""
+            description = sanitize_description(description) if description else ""
 
             # Classify country
             country = country_filter.classify(job.location)
@@ -219,7 +236,7 @@ async def cron_ats(
                 company=job.company,
                 location=job.location,
                 url=job.url,
-                description="",
+                description=description,
                 source_platform="ats",
                 **location_fields(job.location),
                 posted_date=job.posted_date,

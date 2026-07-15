@@ -26,7 +26,7 @@ BROWSER_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-MAX_DESC_LEN = 6000
+MAX_DESC_LEN = 10000
 
 
 def sanitize_description(text: str) -> str:
@@ -91,6 +91,17 @@ def compose_jobright_description(job_result: dict[str, Any]) -> str:
 def _clean_html(html: str) -> str:
     text = re.sub(r"<[^>]+>", "\n", unescape(html or ""))
     return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def clean_html(html: str) -> str:
+    """Public HTML→text cleaner (entity-unescape + tag strip + length cap).
+
+    Greenhouse double-escapes entities (&amp;lt;p&amp;gt;…), so unescape twice
+    before stripping tags.
+    """
+    text = unescape(unescape(html or ""))
+    text = re.sub(r"<[^>]+>", "\n", text)
+    return _cap(re.sub(r"\n{3,}", "\n\n", text).strip())
 
 
 def _cap(text: str) -> str:
@@ -452,6 +463,11 @@ async def extract_description_from_html(
         return text
 
     return _extract_generic_html(html)
+
+
+async def extract_smartrecruiters_from_url(client: httpx.AsyncClient, url: str) -> str:
+    """Fetch a SmartRecruiters posting's ad content given any SR job URL."""
+    return await _extract_smartrecruiters(client, url)
 
 
 async def extract_description_from_url(client: httpx.AsyncClient, url: str) -> str:

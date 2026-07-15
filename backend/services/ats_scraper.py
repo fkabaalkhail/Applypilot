@@ -20,6 +20,8 @@ from typing import Optional
 
 import httpx
 
+from backend.services.description_extractor import clean_html
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +35,7 @@ class ATSJob:
     posted_date: Optional[datetime.datetime] = None
     department: Optional[str] = None
     work_type: Optional[str] = None  # Remote, On Site, Hybrid
+    description: str = ""  # Plain text, captured from the board API when it carries content
 
 
 # ─── Company → ATS mapping ───────────────────────────────────────────────────
@@ -329,7 +332,7 @@ class ATSScraper:
         API docs: https://developers.greenhouse.io/job-board.html
         """
         url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
-        params = {"content": "false"}  # Skip full HTML descriptions for speed
+        params = {"content": "true"}  # Same single request, but with descriptions
 
         response = await client.get(url, params=params)
         response.raise_for_status()
@@ -362,6 +365,7 @@ class ATSScraper:
                 posted_date=posted_date,
                 department=department,
                 work_type=self._detect_work_type(location, title),
+                description=clean_html(job_data.get("content", "") or ""),
             )
 
             if self._passes_filters(job):
@@ -403,6 +407,13 @@ class ATSScraper:
             department = categories.get("department", "")
             commitment = categories.get("commitment", "")  # e.g., "Full-time", "Intern"
 
+            description = posting.get("descriptionPlain") or ""
+            for lst in posting.get("lists", []) or []:
+                content = clean_html(lst.get("content", ""))
+                if content:
+                    description += f"\n\n{lst.get('text', '')}\n{content}"
+            description = description.strip()[:10000]
+
             job = ATSJob(
                 title=title,
                 company=company_name,
@@ -411,6 +422,7 @@ class ATSScraper:
                 posted_date=posted_date,
                 department=department,
                 work_type=self._detect_work_type(location, title),
+                description=description,
             )
 
             if self._passes_filters(job):
@@ -453,6 +465,9 @@ class ATSScraper:
                 posted_date=posted_date,
                 department=department,
                 work_type=self._detect_work_type(location, title),
+                description=clean_html(
+                    job_data.get("descriptionHtml") or job_data.get("descriptionPlain") or ""
+                ),
             )
 
             if self._passes_filters(job):
