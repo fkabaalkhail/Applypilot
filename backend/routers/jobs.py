@@ -763,68 +763,53 @@ async def structure_description(
     if not job.description or len(job.description) < 50:
         return {"sections": [], "skills": [], "error": "No description available"}
 
-    # Check cache (stored in company_description field as JSON)
+    # Cache: proper column first, then the legacy company_description JSON hack
+    # (rows structured before description_sections existed).
+    if isinstance(job.description_sections, dict) and job.description_sections.get("sections"):
+        return job.description_sections
     if job.company_description and job.company_description.startswith("{"):
         try:
             cached = json.loads(job.company_description)
             if cached.get("sections"):
+                job.description_sections = cached
+                db.commit()
                 return cached
         except (json.JSONDecodeError, TypeError):
             pass
 
     llm = get_llm_service()
 
-    prompt = f"""Parse this job description into structured sections. Return a JSON object with:
+    prompt = f"""Parse this job description into structured JSON sections. Return ONLY a JSON object:
 {{
   "sections": [
-    {{"title": "Responsibilities", "icon": "clipboard-list", "items": ["item 1", "item 2", ...]}},
+    {{"title": "Responsibilities", "icon": "clipboard-list", "items": ["..."]}},
     {{"title": "Qualifications", "icon": "graduation-cap", "subsections": [
-      {{"title": "Required", "items": ["item 1", ...]}},
-      {{"title": "Preferred", "items": ["item 1", ...]}}
+      {{"title": "Required", "items": ["..."]}},
+      {{"title": "Preferred", "items": ["..."]}}
     ]}},
-    {{"title": "Benefits", "icon": "gift", "items": ["item 1", ...]}}
+    {{"title": "Benefits", "icon": "gift", "items": ["..."]}},
+    {{"title": "About the Company", "icon": "building", "items": ["..."]}}
   ],
-  "skills": ["Python", "Java", "AWS", "SQL", ...],
+  "skills": ["Python", "SQL", "Stakeholder engagement"],
   "experience_years": "2-4",
-  "education": "BS/MS in Computer Science"
+  "education": "BS in Computer Science"
 }}
 
 Rules:
-- Extract ALL bullet points into the appropriate section
-- Skills should be specific technologies, tools, languages, frameworks
-- If a section doesn't exist in the description, omit it
-- Keep items concise (one sentence each)
-- Include 5-15 skills maximum
+- Preserve every bullet from the posting in the matching section; do not invent content.
+- Qualifications MUST use Required/Preferred subsections when the posting distinguishes them; otherwise put everything under Required.
+- "skills" are 5-18 concrete skill tags from the posting: technologies, tools, languages, certifications, and named competencies (e.g. "Bilingualism English/French").
+- Omit sections the posting does not contain. Keep items to one sentence.
 
 Job Description:
-{job.description[:4000]}"""
+{job.description[:6000]}"""
 
     try:
-        response = await llm._generate(prompt)
-        # Parse JSON from response
-        json_str = response.strip()
-        if "```" in json_str:
-            parts = json_str.split("```")
-            for part in parts:
-                part = part.strip()
-                if part.startswith("json"):
-                    part = part[4:].strip()
-                if part.startswith("{"):
-                    json_str = part
-                    break
-        if not json_str.startswith("{"):
-            start = json_str.find("{")
-            end = json_str.rfind("}")
-            if start >= 0 and end > start:
-                json_str = json_str[start:end + 1]
-
-        data = json.loads(json_str)
-
-        # Cache the result in DB
+        response = await llm._generate(prompt, model="gpt-4o-mini", json_mode=True)
+        data = json.loads(response)
         if data.get("sections"):
-            job.company_description = json.dumps(data)
+            job.description_sections = data
             db.commit()
-
         return data
     except Exception as e:
         return {"sections": [], "skills": [], "error": str(e)}
