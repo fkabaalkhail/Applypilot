@@ -193,68 +193,68 @@ async def cron_ats(
         new_count = 0
         skipped_dupe = 0
         async with httpx.AsyncClient(timeout=15) as sr_client:
-          for job in jobs:
-            # Dedup by URL. Query the column, not the entity: loading the row
-            # would pull its ~1.9 KB description across the wire for a boolean.
-            existing = db.query(ScrapedJob.url).filter(ScrapedJob.url == job.url).first()
-            if existing:
-                skipped_dupe += 1
-                continue
+            for job in jobs:
+                # Dedup by URL. Query the column, not the entity: loading the row
+                # would pull its ~1.9 KB description across the wire for a boolean.
+                existing = db.query(ScrapedJob.url).filter(ScrapedJob.url == job.url).first()
+                if existing:
+                    skipped_dupe += 1
+                    continue
 
-            # Board APIs carry descriptions for GH/Lever/Ashby; SmartRecruiters
-            # needs one extra call per NEW job only.
-            description = (job.description or "").strip()
-            if not description and "smartrecruiters" in (job.url or ""):
+                # Board APIs carry descriptions for GH/Lever/Ashby; SmartRecruiters
+                # needs one extra call per NEW job only.
+                description = (job.description or "").strip()
+                if not description and "smartrecruiters" in (job.url or ""):
+                    try:
+                        description = await extract_smartrecruiters_from_url(sr_client, job.url)
+                    except Exception:
+                        description = ""
+                description = sanitize_description(description) if description else ""
+
+                # Classify country
+                country = country_filter.classify(job.location)
+                if not country:
+                    country = "US"  # ATS scraper already filtered to NA
+
+                # Classify work type
+                work_type = job.work_type or work_type_classifier.classify(job.location)
+
+                # Determine experience level from title
+                title_lower = job.title.lower()
+                if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
+                    experience_level = "internship"
+                else:
+                    experience_level = "new_grad"
+
+                # Resolve an accurate logo: prefer the curated registry logo,
+                # otherwise derive one from the company domain.
+                resolved_logo, resolved_domain = resolve_logo(job.company)
+                company_logo = logo_map.get(job.company.strip().lower()) or resolved_logo
+
+                scraped_job = ScrapedJob(
+                    title=job.title,
+                    company=job.company,
+                    location=job.location,
+                    url=job.url,
+                    description=description,
+                    source_platform="ats",
+                    **location_fields(job.location),
+                    posted_date=job.posted_date,
+                    easy_apply=0,
+                    work_type=work_type,
+                    role_category=classify_role(job.title, job.department or ""),
+                    country=country,
+                    experience_level=experience_level,
+                    company_logo=company_logo,
+                    company_domain=resolved_domain,
+                )
+                db.add(scraped_job)
                 try:
-                    description = await extract_smartrecruiters_from_url(sr_client, job.url)
+                    db.commit()
+                    new_count += 1
                 except Exception:
-                    description = ""
-            description = sanitize_description(description) if description else ""
-
-            # Classify country
-            country = country_filter.classify(job.location)
-            if not country:
-                country = "US"  # ATS scraper already filtered to NA
-
-            # Classify work type
-            work_type = job.work_type or work_type_classifier.classify(job.location)
-
-            # Determine experience level from title
-            title_lower = job.title.lower()
-            if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
-                experience_level = "internship"
-            else:
-                experience_level = "new_grad"
-
-            # Resolve an accurate logo: prefer the curated registry logo,
-            # otherwise derive one from the company domain.
-            resolved_logo, resolved_domain = resolve_logo(job.company)
-            company_logo = logo_map.get(job.company.strip().lower()) or resolved_logo
-
-            scraped_job = ScrapedJob(
-                title=job.title,
-                company=job.company,
-                location=job.location,
-                url=job.url,
-                description=description,
-                source_platform="ats",
-                **location_fields(job.location),
-                posted_date=job.posted_date,
-                easy_apply=0,
-                work_type=work_type,
-                role_category=classify_role(job.title, job.department or ""),
-                country=country,
-                experience_level=experience_level,
-                company_logo=company_logo,
-                company_domain=resolved_domain,
-            )
-            db.add(scraped_job)
-            try:
-                db.commit()
-                new_count += 1
-            except Exception:
-                db.rollback()
-                skipped_dupe += 1
+                    db.rollback()
+                    skipped_dupe += 1
 
         return {
             "status": "completed",
