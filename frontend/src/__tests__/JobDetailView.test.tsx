@@ -4,9 +4,44 @@ import JobDetailView from "../components/JobDetailView";
 import type { ReactElement } from "react";
 import { ApplyTrackingProvider } from "../context/ApplyTracking";
 
+const apiPost = vi.fn();
+const apiGet = vi.fn();
+vi.mock("../auth/api", () => ({
+  default: {
+    post: (...args: unknown[]) => apiPost(...args),
+    get: (...args: unknown[]) => apiGet(...args),
+  },
+}));
+
+// Real skillCovered; canned resume text so coverage highlighting is testable.
+vi.mock("../lib/resumeCoverage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/resumeCoverage")>();
+  return {
+    ...actual,
+    getPrimaryResumeText: () => Promise.resolve("Shipped Python services and SQL pipelines."),
+  };
+});
+
 function renderWithProviders(ui: ReactElement) {
   return render(<ApplyTrackingProvider>{ui}</ApplyTrackingProvider>);
 }
+
+const STRUCT = {
+  sections: [
+    { title: "Responsibilities", icon: "clipboard-list", items: ["Build planning models"] },
+    {
+      title: "Qualifications",
+      icon: "graduation-cap",
+      subsections: [
+        { title: "Required", items: ["3-5 years of experience"] },
+        { title: "Preferred", items: ["Project management experience"] },
+      ],
+    },
+  ],
+  skills: ["Python", "Hyperion Planning"],
+  experience_years: "3-5",
+  education: "",
+};
 
 const mockJob = {
   id: 1,
@@ -14,7 +49,8 @@ const mockJob = {
   company: "TechCorp",
   location: "San Francisco, CA",
   url: "https://example.com/job/1",
-  description: "We are looking for a senior engineer...",
+  description:
+    "We are looking for an engineer to build planning models and support EPM applications for finance teams.",
   match_score: 85,
   match_label: "STRONG MATCH",
   experience_score: 90,
@@ -27,84 +63,74 @@ const mockJob = {
   status: "new",
 };
 
-const mockJobNoMatch = {
-  ...mockJob,
-  id: 2,
-  match_score: 0,
-  match_label: "",
-  experience_score: 0,
-  skill_score: 0,
-  industry_score: 0,
-};
-
 describe("JobDetailView", () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    apiPost.mockReset();
+    apiGet.mockReset();
+    apiPost.mockImplementation((url: string) => {
+      if (url.endsWith("/structure-description")) return Promise.resolve({ data: STRUCT });
+      if (url.endsWith("/fetch-details")) {
+        return Promise.resolve({ data: { description: mockJob.description } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    apiGet.mockResolvedValue({ data: [] });
   });
 
-  it("renders job details with full match breakdown", () => {
+  it("renders job header with match score", () => {
     renderWithProviders(<JobDetailView job={mockJob} />);
-
     expect(screen.getByText("Senior Software Engineer")).toBeInTheDocument();
     expect(screen.getByText("TechCorp")).toBeInTheDocument();
     expect(screen.getByText("San Francisco, CA")).toBeInTheDocument();
-    expect(screen.getByText("We are looking for a senior engineer...")).toBeInTheDocument();
-    expect(screen.getByText("View Original Posting")).toBeInTheDocument();
-    expect(screen.getByText("👥 42 applicants")).toBeInTheDocument();
-  });
-
-  it("renders match breakdown bars", () => {
-    renderWithProviders(<JobDetailView job={mockJob} />);
-
-    expect(screen.getByText("Match Breakdown")).toBeInTheDocument();
-    expect(screen.getByText("Experience")).toBeInTheDocument();
-    expect(screen.getByText("Skill Match")).toBeInTheDocument();
-    expect(screen.getByText("Industry Experience")).toBeInTheDocument();
-    expect(screen.getByText("90%")).toBeInTheDocument();
-    expect(screen.getByText("80%")).toBeInTheDocument();
-  });
-
-  it("displays correct match label for strong match", () => {
-    renderWithProviders(<JobDetailView job={mockJob} />);
     expect(screen.getByText("STRONG MATCH")).toBeInTheDocument();
   });
 
-  it("displays correct match label for good match", () => {
-    const goodMatchJob = { ...mockJob, match_score: 65, match_label: "GOOD MATCH", experience_score: 65, skill_score: 60, industry_score: 70 };
-    renderWithProviders(<JobDetailView job={goodMatchJob} />);
-    expect(screen.getByText("GOOD MATCH")).toBeInTheDocument();
-  });
-
-  it("displays correct match label for fair match", () => {
-    const fairMatchJob = { ...mockJob, match_score: 45, match_label: "FAIR MATCH", experience_score: 40, skill_score: 50, industry_score: 45 };
-    renderWithProviders(<JobDetailView job={fairMatchJob} />);
-    expect(screen.getByText("FAIR MATCH")).toBeInTheDocument();
-  });
-
-  it("triggers match analysis when match_score is 0", async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        experience_score: 75,
-        skill_score: 70,
-        industry_score: 65,
-        overall_score: 70,
-        match_label: "GOOD MATCH",
-      }),
-    });
-    global.fetch = mockFetch;
-
-    renderWithProviders(<JobDetailView job={mockJobNoMatch} />);
-
+  it("upgrades to the server-side structured sections", async () => {
+    renderWithProviders(<JobDetailView job={mockJob} />);
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/ai/match-breakdown/2", { method: "POST" });
+      expect(screen.getByText("Responsibilities")).toBeInTheDocument();
     });
+    expect(screen.getByText("Build planning models")).toBeInTheDocument();
+    expect(screen.getByText("Required")).toBeInTheDocument();
+    expect(screen.getByText("Preferred")).toBeInTheDocument();
+    expect(screen.getByText("3-5 years of experience")).toBeInTheDocument();
   });
 
-  it("shows loading state during analysis", () => {
-    global.fetch = vi.fn().mockReturnValue(new Promise(() => {})); // Never resolves
+  it("highlights skill tags covered by the resume and leaves the rest neutral", async () => {
+    renderWithProviders(<JobDetailView job={mockJob} />);
+    await waitFor(() => {
+      expect(screen.getByText("Python")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Python").className).toContain("skill-tag-matched");
+    expect(screen.getByText("Hyperion Planning").className).not.toContain("skill-tag-matched");
+  });
 
-    renderWithProviders(<JobDetailView job={mockJobNoMatch} />);
-    expect(screen.getByText("Analyzing match...")).toBeInTheDocument();
+  it("shows a View Original Post CTA when no description could be fetched", async () => {
+    apiPost.mockImplementation((url: string) => {
+      if (url.endsWith("/fetch-details")) return Promise.resolve({ data: { description: "" } });
+      return Promise.resolve({ data: { sections: [], skills: [] } });
+    });
+    const emptyJob = { ...mockJob, id: 3, description: "" };
+    renderWithProviders(<JobDetailView job={emptyJob} />);
+    await waitFor(() => {
+      expect(screen.getByText("No description available")).toBeInTheDocument();
+    });
+    // Header action + the empty-state CTA both link out.
+    expect(screen.getAllByText("View Original Post").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("uses the locations_json display when present", () => {
+    const multiJob = {
+      ...mockJob,
+      id: 4,
+      location: "Ottawa,Ontario,Canada; Kraków,Kraków,Poland; Łódź,Łódź,Poland",
+      locations_json: [
+        { city: "Ottawa", region: "ON", region_name: "Ontario", country: "Canada" },
+        { city: "Kraków", region: "", region_name: "", country: "Poland" },
+        { city: "Łódź", region: "", region_name: "", country: "Poland" },
+      ],
+    };
+    renderWithProviders(<JobDetailView job={multiJob} />);
+    expect(screen.getByText(/Ottawa, ON, Canada · \+2 more/)).toBeInTheDocument();
   });
 });
