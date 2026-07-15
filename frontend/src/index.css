@@ -2044,6 +2044,26 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 }
 
 /* Company logo in job cards */
+/* CompanyLogo component: guarded provider cascade → letter avatar. */
+.company-logo-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.company-logo-cascade {
+  border-radius: 10px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid #eef1f5;
+  flex-shrink: 0;
+}
+
 .company-logo-wrapper {
   position: relative;
   width: 52px;

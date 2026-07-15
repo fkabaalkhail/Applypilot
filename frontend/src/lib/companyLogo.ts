@@ -151,6 +151,30 @@ export interface JobLike {
 }
 
 /**
+ * Ordered logo-source candidates; CompanyLogo walks them on error/low-res.
+ * (Clearbit was removed 2026-07-15: logo.clearbit.com no longer resolves.)
+ */
+export function logoProviderChain(job: JobLike): string[] {
+  const chain: string[] = [];
+  const stored = job.company_logo || "";
+  const isGenerated =
+    stored.includes("clearbit") ||
+    stored.includes("icon.horse") ||
+    stored.includes("google.com/s2") ||
+    stored.includes("apistemic") ||
+    stored.includes("hunter.io");
+  if (stored.startsWith("http") && !isGenerated) chain.push(stored);
+
+  let domain = (job.company_domain || "").trim();
+  if (!domain) domain = domainFromUrl(job.company_url) || "";
+  if (!domain) domain = domainFromName(job.company) || "";
+  if (domain) {
+    chain.push(`https://www.google.com/s2/favicons?domain=${domain}&sz=256`);
+  }
+  return chain;
+}
+
+/**
  * Resolve the best logo image URL for a job, or null if none is available
  * (caller should render the letter avatar).
  */

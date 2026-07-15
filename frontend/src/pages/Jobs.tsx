@@ -5,7 +5,7 @@ import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
 import api from "../auth/api";
 import { useApplyTracking } from "../context/ApplyTracking";
-import { resolveLogoUrl, avatarColor } from "../lib/companyLogo";
+import CompanyLogo from "../components/CompanyLogo";
 import {
   MagnifyingGlass,
   Sliders,
@@ -71,17 +71,6 @@ interface Filters {
   source: string;
   min_match_score: number;
   experience_level: string;
-}
-
-// Logo + letter-avatar resolution is centralized in lib/companyLogo.
-function getLogoColor(company: string): string {
-  return avatarColor(company);
-}
-
-// On error: fall back to the letter avatar (no broken-image flashes, no
-// cascade of third-party providers). The placeholder sits behind the <img>.
-function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>) {
-  (e.target as HTMLImageElement).style.display = "none";
 }
 
 function timeAgo(dateStr: string): string {
@@ -387,26 +376,13 @@ export default function Jobs() {
               <div className="job-card-body">
                 {/* Header: Logo + Info + Bookmark */}
                 <div className="job-card-header">
-                  <div className="company-logo-wrapper">
-                    <div
-                      className="company-logo"
-                      style={{ backgroundColor: getLogoColor(job.company) }}
-                    >
-                      {job.company.charAt(0).toUpperCase()}
-                    </div>
-                    {(() => {
-                      const logoUrl = resolveLogoUrl(job);
-                      return logoUrl ? (
-                        <img
-                          src={logoUrl}
-                          alt=""
-                          className="company-logo-img-overlay"
-                          loading="lazy"
-                          onError={handleLogoError}
-                        />
-                      ) : null;
-                    })()}
-                  </div>
+                  <CompanyLogo
+                    company={job.company}
+                    company_logo={job.company_logo}
+                    company_domain={job.company_domain}
+                    company_url={job.company_url}
+                    size={44}
+                  />
                   <div className="job-card-info">
                     <div className="job-card-badges">
                       <span className="badge-time">

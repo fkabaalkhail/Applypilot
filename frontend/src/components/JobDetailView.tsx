@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { resolveLogoUrl } from "../lib/companyLogo";
+import CompanyLogo from "./CompanyLogo";
 import {
   X,
   MapPin,
@@ -363,30 +363,13 @@ export default function JobDetailView({ job, onClose }: Props) {
       {/* Header section */}
       <div className="job-detail-header-section">
         <div className="job-detail-company-row">
-          {(() => {
-            const logoUrl = resolveLogoUrl({
-              company: job.company,
-              company_logo: companyLogo || job.company_logo,
-              company_domain: job.company_domain,
-              company_url: job.company_url,
-            });
-            return logoUrl ? (
-              <img
-                src={logoUrl}
-                alt={`${job.company} logo`}
-                className="detail-company-logo"
-                loading="lazy"
-                onError={(e) => {
-                  const img = e.target as HTMLImageElement;
-                  img.style.display = "none";
-                  (img.nextElementSibling as HTMLElement)?.classList.remove("hidden-logo");
-                }}
-              />
-            ) : null;
-          })()}
-          <div className={`detail-company-logo-placeholder ${(job.company_logo || job.company.length >= 2) ? "hidden-logo" : ""}`} aria-label={`${job.company} logo`}>
-            {job.company.charAt(0).toUpperCase()}
-          </div>
+          <CompanyLogo
+            company={job.company}
+            company_logo={companyLogo || job.company_logo}
+            company_domain={job.company_domain}
+            company_url={job.company_url}
+            size={52}
+          />
           <div className="detail-company-info">
             <span className="job-detail-company">{job.company}</span>
             <span className="job-detail-posted">{job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}</span>
