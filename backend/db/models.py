@@ -134,6 +134,14 @@ class ScrapedJob(Base):
     company_domain = Column(String, default="")
     company_url = Column(String, default="")
 
+    # Structured location (services/location_parser.py) + description pipeline
+    city = Column(String, default="")            # folded primary city ("ottawa")
+    region = Column(String, default="")          # 2-letter code ("ON")
+    locations_json = Column(JSON, default=list)  # [{city,region,region_name,country}]
+    location_search = Column(Text, default="")   # "|ottawa|on|ontario|canada|"
+    desc_fetch_attempts = Column(Integer, default=0)
+    description_sections = Column(JSON, nullable=True)
+
 
 class PendingQuestion(Base):
     """A question the bot got stuck on during an application. User must answer."""
