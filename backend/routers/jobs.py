@@ -15,7 +15,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 
 from backend.db.database import get_db
 from backend.db.models import ScrapedJob, JobStatus, ApplicationRecord, UserSavedJob
@@ -122,12 +122,43 @@ def list_jobs(
                 )
             )
     if location:
-        city_values = [c.strip() for c in location.split(",") if c.strip()]
-        if city_values:
-            location_conditions = [
-                ScrapedJob.location.ilike(f"%{city}%") for city in city_values
-            ]
-            q = q.filter(or_(*location_conditions))
+        from backend.services.location_parser import fold, location_tag_tokens
+
+        # Tags arrive ";"-joined (a single tag may contain a comma, e.g.
+        # "Ottawa, ON"); legacy clients joined plain city names with ",".
+        tags = location.split(";") if ";" in location else location.split(",")
+        tag_conditions = []
+        for tag in tags:
+            tag = tag.strip()
+            if not tag:
+                continue
+            if fold(tag) == "remote":
+                tag_conditions.append(
+                    or_(
+                        ScrapedJob.work_type == "remote",
+                        ScrapedJob.location_search.like("%|remote|%"),
+                        ScrapedJob.location.ilike("%remote%"),
+                    )
+                )
+                continue
+            tokens = location_tag_tokens(tag)
+            if not tokens:
+                continue
+            # Exact token-boundary match ("|ottawa|" can't hit Toronto), with
+            # a substring fallback for rows the backfill hasn't parsed yet.
+            token_match = and_(
+                *[ScrapedJob.location_search.like(f"%|{t}|%") for t in tokens]
+            )
+            legacy_fallback = and_(
+                or_(
+                    ScrapedJob.location_search.is_(None),
+                    ScrapedJob.location_search == "",
+                ),
+                ScrapedJob.location.ilike(f"%{_escape_like(tokens[0])}%"),
+            )
+            tag_conditions.append(or_(token_match, legacy_fallback))
+        if tag_conditions:
+            q = q.filter(or_(*tag_conditions))
 
     if country:
         country_values = [c.strip().upper() for c in country.split(",") if c.strip()]
@@ -417,6 +448,36 @@ def list_applications(
             out.company_url = job.company_url
         results.append(out)
     return results
+
+
+@router.get("/cities")
+def list_cities(
+    country: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = Query(12, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """Distinct parsed cities (with counts) for filter autocomplete."""
+    from backend.services.location_parser import fold
+
+    query = (
+        db.query(ScrapedJob.city, func.count(ScrapedJob.id))
+        .filter(ScrapedJob.city.isnot(None), ScrapedJob.city != "")
+    )
+    if country:
+        query = query.filter(ScrapedJob.country == country.strip().upper())
+    if q and q.strip():
+        query = query.filter(ScrapedJob.city.like(f"{fold(q)}%"))
+    rows = (
+        query.group_by(ScrapedJob.city)
+        .order_by(func.count(ScrapedJob.id).desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {"city": " ".join(w.capitalize() for w in city.split(" ")), "count": count}
+        for city, count in rows
+    ]
 
 
 @router.get("/{job_id}", response_model=ScrapedJobOut)
