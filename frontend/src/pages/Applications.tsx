@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import api from "../auth/api";
-import { avatarColor, resolveLogoUrl } from "../lib/companyLogo";
+import CompanyLogo from "../components/CompanyLogo";
 import { ArrowSquareOut, Calendar } from "@phosphor-icons/react";
 import { PageIntro } from "../onboarding";
 import ApplicationsEmpty from "../components/ApplicationsEmpty";
@@ -23,12 +23,6 @@ interface ApplicationRecord {
 function formatAppliedDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-// Same fallback behavior as the dashboard: hide a broken logo image so the
-// letter avatar underneath shows through instead.
-function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>) {
-  (e.target as HTMLImageElement).style.display = "none";
 }
 
 export default function Applications() {
@@ -67,26 +61,13 @@ export default function Applications() {
             <div key={application.id} className="job-card">
               <div className="job-card-body">
                 <div className="job-card-header">
-                  <div className="company-logo-wrapper">
-                    <div
-                      className="company-logo"
-                      style={{ backgroundColor: avatarColor(application.company) }}
-                    >
-                      {application.company.charAt(0).toUpperCase()}
-                    </div>
-                    {(() => {
-                      const logoUrl = resolveLogoUrl(application);
-                      return logoUrl ? (
-                        <img
-                          src={logoUrl}
-                          alt=""
-                          className="company-logo-img-overlay"
-                          loading="lazy"
-                          onError={handleLogoError}
-                        />
-                      ) : null;
-                    })()}
-                  </div>
+                  <CompanyLogo
+                    company={application.company}
+                    company_logo={application.company_logo}
+                    company_domain={application.company_domain}
+                    company_url={application.company_url}
+                    size={44}
+                  />
                   <div className="job-card-info">
                     <div className="job-card-badges">
                       <span className="badge-time applied-date-badge">
