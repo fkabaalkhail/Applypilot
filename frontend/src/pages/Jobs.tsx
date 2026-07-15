@@ -6,6 +6,7 @@ import CoverLetterModal from "../components/CoverLetterModal";
 import api from "../auth/api";
 import { useApplyTracking } from "../context/ApplyTracking";
 import CompanyLogo from "../components/CompanyLogo";
+import { displayLocation } from "../lib/jobLocation";
 import {
   MagnifyingGlass,
   Sliders,
@@ -57,6 +58,7 @@ interface Job {
   country: string;
   experience_level: string;
   posted_date: string | null;
+  locations_json?: { city?: string; region?: string; region_name?: string; country?: string }[] | null;
 }
 
 interface Stats {
@@ -218,7 +220,8 @@ export default function Jobs() {
 
     if (aggFilters.country) params.set("country", aggFilters.country);
     if (aggFilters.location.length > 0) {
-      const locationParam = aggFilters.location.map(c => c.trim()).filter(c => c.length > 0).join(",");
+      // ";" join: a single tag may itself contain a comma ("Ottawa, ON").
+      const locationParam = aggFilters.location.map(c => c.trim()).filter(c => c.length > 0).join(";");
       if (locationParam) params.set("location", locationParam);
     }
     if (aggFilters.work_type.length > 0) params.set("work_type", aggFilters.work_type.join(","));
@@ -406,9 +409,9 @@ export default function Jobs() {
 
                 {/* Details Grid */}
                 <div className="job-details-grid">
-                  <div className="job-detail-item">
+                  <div className="job-detail-item" title={job.location || undefined}>
                     <MapPin size={15} weight="duotone" />
-                    <span>{job.location || "Remote"}</span>
+                    <span>{displayLocation(job) || "Remote"}</span>
                   </div>
                   <div className="job-detail-item">
                     <Briefcase size={15} weight="duotone" />

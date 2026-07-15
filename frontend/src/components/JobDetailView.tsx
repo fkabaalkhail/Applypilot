@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import CompanyLogo from "./CompanyLogo";
+import { displayLocation } from "../lib/jobLocation";
 import {
   X,
   MapPin,
@@ -70,6 +71,7 @@ interface Job {
   country?: string;
   experience_level?: string;
   posted_date?: string | null;
+  locations_json?: { city?: string; region?: string; region_name?: string; country?: string }[] | null;
 }
 
 function getMatchColor(score: number): string {
@@ -381,8 +383,11 @@ export default function JobDetailView({ job, onClose }: Props) {
         {/* Tags row */}
         <div className="job-detail-tags">
           {job.location && (
-            <span className="detail-tag">
-              <MapPin size={14} weight="duotone" /> {job.location}
+            <span
+              className="detail-tag"
+              title={(job.locations_json?.length ?? 0) > 1 ? job.location : undefined}
+            >
+              <MapPin size={14} weight="duotone" /> {displayLocation(job) || job.location}
             </span>
           )}
           {job.work_type && (

@@ -36,7 +36,8 @@ function handleBackspaceOnEmpty(tags: string[]): string[] {
 }
 
 /**
- * Serializes a location array for the API as a comma-separated string.
+ * Serializes a location array for the API as a ";"-separated string
+ * (a single tag may itself contain a comma, e.g. "Ottawa, ON").
  * Filters out empty and whitespace-only values, trims each value.
  * Returns the serialized string, or empty string if no valid values.
  */
@@ -44,7 +45,7 @@ function serializeLocationForApi(locations: string[]): string {
   return locations
     .map((c) => c.trim())
     .filter((c) => c.length > 0)
-    .join(",");
+    .join(";");
 }
 
 /**
@@ -274,8 +275,8 @@ describe("Feature: city-multi-tag-filter, Property 5: Serialization produces val
           // No valid values → empty string (no parameter)
           expect(result).toBe("");
         } else {
-          // Result is comma-separated valid values
-          expect(result).toBe(validValues.join(","));
+          // Result is ";"-separated valid values
+          expect(result).toBe(validValues.join(";"));
           // Result is non-empty
           expect(result.length).toBeGreaterThan(0);
         }
