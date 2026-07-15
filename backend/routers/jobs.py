@@ -32,6 +32,8 @@ from backend.services.description_extractor import (
     extract_description_from_html,
     extract_description_from_url,
 )
+from backend.services.location_parser import location_fields
+from backend.services.logo_resolver import resolve_logo
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -185,9 +187,7 @@ def create_job(
     if existing:
         return {"status": "duplicate", "id": existing.id}
 
-    import re
-    cleaned_company = re.sub(r'[^a-z0-9]', '', company.lower())
-
+    resolved_logo, resolved_domain = resolve_logo(company)
     job = ScrapedJob(
         title=title,
         company=company,
@@ -200,7 +200,9 @@ def create_job(
         role_category="",
         country=country,
         experience_level=experience_level,
-        company_logo=f"https://icon.horse/icon/{cleaned_company}.com",
+        company_logo=resolved_logo,
+        company_domain=resolved_domain,
+        **location_fields(location),
     )
     db.add(job)
     db.commit()
@@ -257,7 +259,7 @@ def ingest_batch(
             except (ValueError, TypeError):
                 posted_date = None
 
-        cleaned_company = re.sub(r"[^a-z0-9]", "", job.company.lower())
+        resolved_logo, resolved_domain = resolve_logo(job.company)
         to_insert.append(
             ScrapedJob(
                 title=job.title,
@@ -272,7 +274,9 @@ def ingest_batch(
                 role_category=classify_role(job.title),
                 country=job.country,
                 experience_level=job.experience_level,
-                company_logo=f"https://icon.horse/icon/{cleaned_company}.com",
+                company_logo=resolved_logo,
+                company_domain=resolved_domain,
+                **location_fields(job.location),
             )
         )
 
@@ -820,9 +824,7 @@ async def fix_empty_companies(
 
         if company_name:
             job.company = company_name
-            # Also set company logo
-            cleaned = company_name.lower().replace(" ", "").replace(".", "")
-            job.company_logo = f"https://icon.horse/icon/{cleaned}.com"
+            job.company_logo, job.company_domain = resolve_logo(company_name)
             db.commit()
             fixed += 1
 

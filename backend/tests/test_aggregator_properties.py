@@ -43,18 +43,19 @@ def test_seed_idempotence(num_calls):
                 aggregator.seed_sources()
             )
 
+            expected_total = len(AggregatorService.REPOS)
             if i == 0:
-                # First call should create all 9
-                assert result["created"] == 9, f"First call created {result['created']}, expected 9"
+                # First call should create every configured repo
+                assert result["created"] == expected_total, f"First call created {result['created']}, expected {expected_total}"
                 assert result["existing"] == 0
             else:
-                # Subsequent calls should find all 9 existing
+                # Subsequent calls should find them all existing
                 assert result["created"] == 0, f"Call {i+1} created {result['created']}, expected 0"
-                assert result["existing"] == 9
+                assert result["existing"] == expected_total
 
-        # Verify exactly 9 records exist
+        # Verify exactly one record per configured repo exists
         sources = session.query(GitHubSource).all()
-        assert len(sources) == 9, f"Expected 9 sources, got {len(sources)}"
+        assert len(sources) == len(AggregatorService.REPOS), f"Expected {len(AggregatorService.REPOS)} sources, got {len(sources)}"
 
         # Verify no duplicate URLs
         urls = [s.repo_url for s in sources]

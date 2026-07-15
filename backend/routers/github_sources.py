@@ -23,6 +23,7 @@ from backend.db.models import GitHubSource
 from backend.schemas.github_source import GitHubSourceOut, GitHubSourceCreate
 from backend.services.github_scraper import GitHubScraper, validate_github_repo_url
 from backend.services.role_classifier import classify as classify_role
+from backend.services.location_parser import location_fields
 from backend.auth.dependencies import get_admin_user_id, verify_cron_secret
 
 logger = logging.getLogger(__name__)
@@ -220,6 +221,7 @@ async def cron_ats(
                 url=job.url,
                 description="",
                 source_platform="ats",
+                **location_fields(job.location),
                 posted_date=job.posted_date,
                 easy_apply=0,
                 work_type=work_type,
@@ -329,9 +331,9 @@ async def scrape_linkedin_jobs(
             else:
                 experience_level = "new_grad"
 
-            # Generate company logo URL
-            cleaned_company = re.sub(r'[^a-z0-9]', '', job.company.lower())
-            company_logo = f"https://icon.horse/icon/{cleaned_company}.com"
+            # Resolve logo from the company domain — never guess "<name>.com".
+            from backend.services.logo_resolver import resolve_logo as _resolve_logo
+            company_logo, company_domain = _resolve_logo(job.company)
 
             # Parse the card's posted date (ISO "YYYY-MM-DD") when present.
             posted_date = None
@@ -355,6 +357,8 @@ async def scrape_linkedin_jobs(
                 country=country,
                 experience_level=experience_level,
                 company_logo=company_logo,
+                company_domain=company_domain,
+                **location_fields(job.location),
             )
             db.add(scraped_job)
             try:
