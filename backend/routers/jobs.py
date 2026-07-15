@@ -338,6 +338,70 @@ def ingest_batch(
     }
 
 
+@router.post("/cron-backfill")
+async def cron_backfill(
+    batch_size: int = Query(40, ge=1, le=80),
+    _cron: None = Depends(verify_cron_secret),
+    db: Session = Depends(get_db),
+):
+    """Bounded repair pass: fetch missing descriptions (<=3 attempts/job),
+    and fill structured location + company_domain for the rows it visits."""
+    import httpx
+
+    needs_description = or_(
+        ScrapedJob.description.is_(None),
+        func.length(func.trim(ScrapedJob.description)) < 50,
+    )
+    jobs = (
+        db.query(ScrapedJob)
+        .filter(needs_description, func.coalesce(ScrapedJob.desc_fetch_attempts, 0) < 3)
+        .order_by(ScrapedJob.id.desc())
+        .limit(batch_size)
+        .all()
+    )
+
+    descriptions_fixed = locations_fixed = domains_fixed = 0
+    async with httpx.AsyncClient(
+        follow_redirects=True, timeout=12, headers=BROWSER_HEADERS
+    ) as client:
+        for job in jobs:
+            job.desc_fetch_attempts = (job.desc_fetch_attempts or 0) + 1
+            if job.url:
+                try:
+                    text = await extract_description_from_url(client, job.url)
+                except Exception:
+                    text = ""
+                if text:
+                    job.description = _sanitize_description(text)
+                    job.description_sections = None
+                    descriptions_fixed += 1
+            if not (job.location_search or "") and (job.location or ""):
+                for key, value in location_fields(job.location).items():
+                    setattr(job, key, value)
+                locations_fixed += 1
+            if not (job.company_domain or ""):
+                logo, domain = resolve_logo(job.company, job.company_url)
+                if domain:
+                    job.company_domain = domain
+                    if not (job.company_logo or "") or "icon.horse" in (job.company_logo or ""):
+                        job.company_logo = logo
+                    domains_fixed += 1
+            db.commit()
+
+    remaining = (
+        db.query(ScrapedJob)
+        .filter(needs_description, func.coalesce(ScrapedJob.desc_fetch_attempts, 0) < 3)
+        .count()
+    )
+    return {
+        "processed": len(jobs),
+        "descriptions_fixed": descriptions_fixed,
+        "locations_fixed": locations_fixed,
+        "domains_fixed": domains_fixed,
+        "remaining": remaining,
+    }
+
+
 @router.get("/stats")
 def job_stats(
     user_id: Optional[int] = Depends(get_optional_user_id),
@@ -562,6 +626,11 @@ async def fetch_job_details(
         job.description = ""
         db.commit()
 
+    # Count this as a fetch attempt so the backfill cron stops retrying URLs
+    # that fail here too.
+    job.desc_fetch_attempts = (job.desc_fetch_attempts or 0) + 1
+    db.commit()
+
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
             response = await client.get(job.url)
@@ -652,6 +721,7 @@ async def fetch_job_details(
 
             if description:
                 job.description = _sanitize_description(description)
+                job.description_sections = None  # re-structure the new text
 
             db.commit()
 
@@ -937,6 +1007,7 @@ async def batch_fix_descriptions(
                 description = await extract_description_from_url(client, job.url or "")
                 if description:
                     job.description = _sanitize_description(description)
+                    job.description_sections = None
                     db.commit()
                     fixed += 1
                     results.append({"id": job.id, "company": job.company, "status": "fixed"})
