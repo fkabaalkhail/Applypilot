@@ -47,6 +47,26 @@ def effective_source(source: str, url: str) -> str:
         return "indeed"
     return source or ""
 
+
+def canonical_url(url: str) -> str:
+    """Strip tracking params so 'jobs/86588?utm_source=vansh' and 'jobs/86588'
+    dedupe as one posting. ONLY utm_* is stripped — ATS URLs carry functional
+    params (gh_jid, jobid, token) that must survive."""
+    raw = (url or "").strip()
+    if not raw or "?" not in raw:
+        return raw.rstrip("/") if raw else ""
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return raw
+    kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if not k.lower().startswith("utm_")]
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(kept), "")
+    ).rstrip("/")
+
 _SEASON_WORDS = re.compile(r"\b(summer|fall|autumn|winter|spring)\b")
 _YEARS = re.compile(r"\b20\d{2}\b")
 _PARENTHETICAL = re.compile(r"\([^)]*\)")
@@ -227,9 +247,43 @@ def dedup_sweep(db: Session) -> dict:
         .all()
     )
 
+    stats = {"groups": 0, "marked": 0, "winners_enriched": 0,
+             "descriptions_copied": 0, "url_twins_marked": 0}
+
+    # Phase A: identical canonical URL = the same posting, whatever the tier.
+    # (GitHub lists append utm_* params, so the URL-unique constraint lets the
+    # same job in twice.) Keep the best copy; hide the rest.
+    by_canonical: dict[str, list] = {}
+    for row in raw:
+        canon = canonical_url(row[2] or "")
+        if canon:
+            by_canonical.setdefault(canon, []).append(row)
+    url_hidden: set[int] = set()
+    for canon, rows in by_canonical.items():
+        if len(rows) < 2:
+            continue
+        rows = sorted(
+            rows,
+            key=lambda r: (
+                _SOURCE_TIER.get(effective_source(r[1] or "", r[2] or ""), 3),
+                -(r[10] or 0),  # desc_len
+                r[0],
+            ),
+        )
+        keeper = rows[0]
+        for extra in rows[1:]:
+            db.query(ScrapedJob).filter(ScrapedJob.id == extra[0]).update(
+                {"duplicate_of": keeper[0]}
+            )
+            url_hidden.add(extra[0])
+            stats["url_twins_marked"] += 1
+
+    # Phase B: aggregator copies of direct postings (employer+title+location).
     groups: dict[tuple[str, str], list[_Row]] = {}
     for (rid, source, url, company, domain, title, title_norm, city, country,
          location_search, desc_len, applicant_count, salary_range) in raw:
+        if rid in url_hidden:
+            continue
         norm = title_norm or normalize_title(title or "")
         employer = normalize_company(company or "")
         if not norm or norm == "\x01" or not employer:
@@ -243,8 +297,6 @@ def dedup_sweep(db: Session) -> dict:
             desc_len=desc_len or 0, applicant_count=applicant_count,
             salary_range=salary_range or "",
         ))
-
-    stats = {"groups": 0, "marked": 0, "winners_enriched": 0, "descriptions_copied": 0}
 
     for rows in groups.values():
         if len(rows) < 2:

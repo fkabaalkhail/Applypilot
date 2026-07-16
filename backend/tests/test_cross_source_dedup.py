@@ -2,6 +2,7 @@
 
 from backend.db.models import ScrapedJob
 from backend.services.cross_source_dedup import (
+    canonical_url,
     dedup_sweep,
     has_direct_twin,
     mark_inferior_twins,
@@ -217,6 +218,43 @@ def test_sweep_linkedin_reposts_collapse_together(db_session):
     db_session.refresh(second)
     assert second.duplicate_of == first.id
     assert first.duplicate_of is None
+
+
+def test_canonical_url_strips_only_tracking_params():
+    assert canonical_url("https://www.workatastartup.com/jobs/86588?utm_source=vansh") == \
+        "https://www.workatastartup.com/jobs/86588"
+    assert canonical_url("https://x.test/jobs/1") == "https://x.test/jobs/1"
+    # Functional query params survive.
+    assert "gh_jid=123" in canonical_url("https://acme.com/careers?gh_jid=123&utm_source=list")
+    assert "utm_source" not in canonical_url("https://acme.com/careers?gh_jid=123&utm_source=list")
+    assert canonical_url("") == ""
+
+
+def test_sweep_collapses_identical_canonical_urls_across_direct_rows(db_session):
+    # Two GitHub-list rows for the SAME posting, differing only by utm junk.
+    keeper = _mk(db_session, "https://www.tesla.com/careers/search/job/253464",
+                 source="github", description="Real description " * 20)
+    tracked = _mk(db_session,
+                  "https://www.tesla.com/careers/search/job/253464?utm_source=vansh",
+                  source="github", description="")
+    stats = dedup_sweep(db_session)
+    db_session.refresh(keeper)
+    db_session.refresh(tracked)
+    assert tracked.duplicate_of == keeper.id
+    assert keeper.duplicate_of is None
+    assert stats["url_twins_marked"] == 1
+
+
+def test_sweep_different_requisitions_same_host_not_url_twins(db_session):
+    a = _mk(db_session, "https://www.workatastartup.com/jobs/86588",
+            source="github", title="Founding Engineer", description="A " * 60)
+    b = _mk(db_session, "https://www.workatastartup.com/jobs/84154",
+            source="github", title="Founding Engineer", description="B " * 60)
+    dedup_sweep(db_session)
+    db_session.refresh(a)
+    db_session.refresh(b)
+    assert a.duplicate_of is None
+    assert b.duplicate_of is None
 
 
 def test_sweep_remote_rows_require_same_country(db_session):

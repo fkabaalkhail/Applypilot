@@ -483,6 +483,11 @@ class AggregatorService:
         if "jobright.ai" in job.url:
             return False
 
+        # Same posting, different utm_* decorations must collide on the URL
+        # unique constraint instead of slipping in twice.
+        from backend.services.cross_source_dedup import canonical_url
+        job.url = canonical_url(job.url)
+
         # Classify country
         country = self.country_filter.classify(job.location)
         if country is None:

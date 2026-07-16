@@ -34,7 +34,11 @@ from backend.services.description_extractor import (
 )
 from backend.services.location_parser import location_fields
 from backend.services.logo_resolver import resolve_logo
-from backend.services.cross_source_dedup import has_direct_twin, normalize_title
+from backend.services.cross_source_dedup import (
+    canonical_url,
+    has_direct_twin,
+    normalize_title,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -269,7 +273,7 @@ def ingest_batch(
     duplicates = 0
     unique = {}
     for job in batch.jobs:
-        url = (job.url or "").strip()
+        url = canonical_url((job.url or "").strip())
         if not url:
             skipped += 1
             continue
