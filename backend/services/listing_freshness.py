@@ -541,8 +541,14 @@ _SOFT_404_HOSTS = (
 
 # Phrases that appear only on a dead posting, kept specific so a live page's
 # boilerplate (footers, "similar jobs") never trips them.
+# ``expired_jd_redirect`` is LinkedIn's own marker: an expired job redirects the
+# guest page to a jobs search and stamps that trk token into the nav links — a
+# live posting never carries it. LinkedIn serves the "no longer accepting
+# applications" banner on some hits and the expired-redirect on others, so we
+# match both to catch a dead row on whichever variant a given probe lands on.
 _DEAD_BODY_RE = re.compile(
     r"no longer accepting applications"
+    r"|expired_jd_redirect"
     r"|this (?:job|position|posting|role) is no longer (?:available|active|open)"
     r"|(?:job|position|posting) (?:has been|has|is) (?:filled|closed)"
     r"|position has been filled"

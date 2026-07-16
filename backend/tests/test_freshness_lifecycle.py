@@ -510,14 +510,19 @@ class TestUrlLiveness:
         body carrying it would be a false match)."""
         from backend.services.listing_freshness import probe_url_liveness
         closed = "<h1>Sorry, this job is no longer accepting applications.</h1>"
+        # LinkedIn's other closed variant: the expired JD redirects to a search
+        # page whose nav links carry this trk token (a live page never has it).
+        expired = '<a href="/login?trk=expired_jd_redirect">Sign in</a>'
         live = "<h1>Software Intern — Apply now</h1>"
         async with _body_client({
             "linkedin.com/jobs/view/1": (200, closed),
             "linkedin.com/jobs/view/2": (200, live),
+            "linkedin.com/jobs/view/3": (200, expired),
             "spa-careers.example/1": (200, closed),
         }) as client:
             assert await probe_url_liveness(client, "https://www.linkedin.com/jobs/view/1") == "dead"
             assert await probe_url_liveness(client, "https://www.linkedin.com/jobs/view/2") == "alive"
+            assert await probe_url_liveness(client, "https://www.linkedin.com/jobs/view/3") == "dead"
             assert await probe_url_liveness(client, "https://spa-careers.example/1") == "alive"
 
     @pytest.mark.asyncio
