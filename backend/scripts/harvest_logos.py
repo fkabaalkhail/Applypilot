@@ -27,12 +27,17 @@ UNPROBED_SQL = (
     "OR company_logo LIKE '%icon.horse%' OR company_logo LIKE '%apistemic%'"
 )
 
+# --sentinels mode: re-probe domains previously marked favicon-only (sz=256).
+# Useful after transient Wikidata/Commons rate limiting marked real-logo
+# companies as favicon-only.
+SENTINEL_SQL = "company_logo LIKE '%google.com/s2/favicons%sz=256%'"
 
-async def main(limit: int) -> None:
+
+async def main(limit: int, target_sql: str = UNPROBED_SQL) -> None:
     with engine.connect() as conn:
         domains = conn.execute(text(
             f"SELECT company_domain, count(*) AS n, max(company) AS company "
-            f"FROM scraped_jobs WHERE ({UNPROBED_SQL}) "
+            f"FROM scraped_jobs WHERE ({target_sql}) "
             f"AND company_domain IS NOT NULL AND company_domain <> '' "
             f"GROUP BY company_domain ORDER BY n DESC LIMIT :lim"
         ), {"lim": limit}).fetchall()
@@ -50,7 +55,7 @@ async def main(limit: int) -> None:
             with engine.begin() as conn:
                 conn.execute(text(
                     f"UPDATE scraped_jobs SET company_logo = :logo "
-                    f"WHERE company_domain = :domain AND ({UNPROBED_SQL})"
+                    f"WHERE company_domain = :domain AND ({target_sql})"
                 ), {"logo": new_logo, "domain": domain})
             probed += 1
             if logo:
@@ -65,7 +70,8 @@ async def main(limit: int) -> None:
 if __name__ == "__main__":
     if not os.environ.get("DATABASE_URL", ""):
         sys.exit("DATABASE_URL is required")
-    lim = 2000
+    lim = 4000
     if "--limit" in sys.argv:
         lim = int(sys.argv[sys.argv.index("--limit") + 1])
-    asyncio.run(main(lim))
+    sql = SENTINEL_SQL if "--sentinels" in sys.argv else UNPROBED_SQL
+    asyncio.run(main(lim, sql))
