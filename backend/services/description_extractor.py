@@ -37,6 +37,8 @@ def sanitize_description(text: str) -> str:
 
 def workday_cxs_url(public_url: str) -> str:
     """Convert a public Workday job URL into its CXS detail-API endpoint."""
+    # Tracking params (?utm_source=…) break the CXS API — strip query/fragment.
+    public_url = public_url.split("#")[0].split("?")[0]
     m = re.match(r"(https://([^.]+)\.[^/]*myworkdayjobs\.com)(/.*)", public_url)
     if not m:
         return ""
@@ -354,7 +356,36 @@ async def _extract_workable(client: httpx.AsyncClient, blob: str) -> str:
     return ""
 
 
-def _extract_linkedin_html(html: str) -> str:
+def _extract_taleo_html(html: str) -> str:
+    """Oracle Taleo careersection pages ship the description percent-encoded
+    inside a '!|!'-delimited JS data island (verified against live
+    agnicoeagle.taleo.net pages: description + qualifications are interior
+    fields; the first/last fragments are the surrounding page). Decode, clean
+    every prose-like interior field, join them."""
+    from urllib.parse import unquote
+
+    decoded = unquote(html)
+    fields = decoded.split("!|!")
+    if len(fields) < 3:
+        return ""
+    parts: list[str] = []
+    seen: set[str] = set()
+    for field in fields[1:-1]:
+        if "<" not in field or len(field) < 300:
+            continue
+        text = _clean_html(field.replace("!*!", " ")).strip()
+        # Real description fields are long prose, not JS/CSS soup.
+        if len(text) < 200 or text.count(" ") < 40:
+            continue
+        if "<script" in field or "function(" in field:
+            continue
+        key = text[:120]
+        if key in seen:
+            continue  # Taleo duplicates each block (print/screen variants)
+        seen.add(key)
+        parts.append(text)
+    combined = "\n\n".join(parts)
+    return _cap(combined) if len(combined) > 200 else ""
     m = re.search(r"show-more-less-html__markup[^>]*>(.*?)</div>", html, re.DOTALL)
     if m:
         text = _clean_html(m.group(1))
@@ -438,6 +469,11 @@ async def extract_description_from_html(
 
     if "linkedin.com/jobs" in blob:
         text = _extract_linkedin_html(html)
+        if text:
+            return text
+
+    if ".taleo.net" in blob:
+        text = _extract_taleo_html(html)
         if text:
             return text
 

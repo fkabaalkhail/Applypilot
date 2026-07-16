@@ -372,17 +372,27 @@ def ingest_batch(
 
 @router.post("/cron-backfill")
 async def cron_backfill(
-    batch_size: int = Query(40, ge=1, le=80),
+    batch_size: int = Query(100, ge=1, le=150),
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
 ):
-    """Bounded repair pass: fetch missing descriptions (<=3 attempts/job),
-    and fill structured location + company_domain for the rows it visits."""
+    """Bounded repair pass: fetch missing descriptions (<=3 attempts/job,
+    direct-URL rows before login-walled LinkedIn/Indeed ones), fill structured
+    location + company_domain, and harvest real logos for companies stuck on
+    tiny favicons."""
+    import asyncio
     import httpx
+    from backend.services.logo_harvester import harvest_logo
 
     needs_description = or_(
         ScrapedJob.description.is_(None),
         func.length(func.trim(ScrapedJob.description)) < 50,
+    )
+    # LinkedIn/Indeed pages are login-walled og-snippets at best; spend the
+    # batch on direct URLs first. false < true in both SQLite and Postgres.
+    is_aggregator = or_(
+        ScrapedJob.url.ilike("%linkedin.com%"),
+        ScrapedJob.url.ilike("%indeed.com%"),
     )
     jobs = (
         db.query(ScrapedJob)
@@ -391,7 +401,7 @@ async def cron_backfill(
             func.coalesce(ScrapedJob.desc_fetch_attempts, 0) < 3,
             ScrapedJob.duplicate_of.is_(None),  # hidden twins aren't worth fetches
         )
-        .order_by(ScrapedJob.id.desc())
+        .order_by(is_aggregator.asc(), ScrapedJob.id.desc())
         .limit(batch_size)
         .all()
     )
@@ -400,17 +410,29 @@ async def cron_backfill(
     async with httpx.AsyncClient(
         follow_redirects=True, timeout=12, headers=BROWSER_HEADERS
     ) as client:
+        # Phase 1: concurrent HTTP only — the Session is not thread/task safe,
+        # so every DB mutation happens sequentially in phase 2.
+        semaphore = asyncio.Semaphore(6)
+
+        async def fetch(job_id: int, url: str) -> tuple[int, str]:
+            async with semaphore:
+                try:
+                    return job_id, await extract_description_from_url(client, url)
+                except Exception:
+                    return job_id, ""
+
+        results = await asyncio.gather(
+            *[fetch(job.id, job.url) for job in jobs if job.url]
+        )
+        fetched = dict(results)
+
         for job in jobs:
             job.desc_fetch_attempts = (job.desc_fetch_attempts or 0) + 1
-            if job.url:
-                try:
-                    text = await extract_description_from_url(client, job.url)
-                except Exception:
-                    text = ""
-                if text:
-                    job.description = _sanitize_description(text)
-                    job.description_sections = None
-                    descriptions_fixed += 1
+            text = fetched.get(job.id, "")
+            if text:
+                job.description = _sanitize_description(text)
+                job.description_sections = None
+                descriptions_fixed += 1
             if not (job.location_search or "") and (job.location or ""):
                 for key, value in location_fields(job.location).items():
                     setattr(job, key, value)
@@ -422,7 +444,56 @@ async def cron_backfill(
                     if not (job.company_logo or "") or "icon.horse" in (job.company_logo or ""):
                         job.company_logo = logo
                     domains_fixed += 1
+        db.commit()
+
+        # Phase 3: real-logo harvest for companies still on tiny favicons.
+        # sz=128 marks "never probed"; success stores the real logo URL,
+        # failure stores the sz=256 favicon as a "probed, favicon-only"
+        # sentinel so no domain is fetched twice.
+        unprobed = or_(
+            ScrapedJob.company_logo.is_(None),
+            ScrapedJob.company_logo == "",
+            ScrapedJob.company_logo.like("%google.com/s2/favicons%sz=128%"),
+            ScrapedJob.company_logo.like("%icon.horse%"),
+            ScrapedJob.company_logo.like("%apistemic%"),
+        )
+        domains = [
+            row[0] for row in (
+                db.query(ScrapedJob.company_domain)
+                .filter(
+                    unprobed,
+                    ScrapedJob.company_domain.isnot(None),
+                    ScrapedJob.company_domain != "",
+                    ScrapedJob.duplicate_of.is_(None),
+                )
+                .group_by(ScrapedJob.company_domain)
+                .order_by(func.count(ScrapedJob.id).desc())
+                .limit(8)
+                .all()
+            )
+        ]
+        logos_harvested = 0
+        for domain in domains:
+            company = (
+                db.query(ScrapedJob.company)
+                .filter(ScrapedJob.company_domain == domain)
+                .order_by(ScrapedJob.id.desc())
+                .limit(1)
+                .scalar()
+            ) or ""
+            try:
+                harvested = await harvest_logo(client, domain, company)
+            except Exception:
+                harvested = ""
+            new_logo = harvested or (
+                f"https://www.google.com/s2/favicons?domain={domain}&sz=256"
+            )
+            db.query(ScrapedJob).filter(
+                ScrapedJob.company_domain == domain, unprobed
+            ).update({"company_logo": new_logo}, synchronize_session=False)
             db.commit()
+            if harvested:
+                logos_harvested += 1
 
     remaining = (
         db.query(ScrapedJob)
@@ -438,6 +509,8 @@ async def cron_backfill(
         "descriptions_fixed": descriptions_fixed,
         "locations_fixed": locations_fixed,
         "domains_fixed": domains_fixed,
+        "logo_domains_probed": len(domains),
+        "logos_harvested": logos_harvested,
         "remaining": remaining,
     }
 
