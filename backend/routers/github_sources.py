@@ -23,6 +23,7 @@ from backend.db.models import GitHubSource
 from backend.schemas.github_source import GitHubSourceOut, GitHubSourceCreate
 from backend.services.github_scraper import GitHubScraper, validate_github_repo_url
 from backend.services.role_classifier import classify as classify_role
+from backend.services.location_parser import location_fields
 from backend.auth.dependencies import get_admin_user_id, verify_cron_secret
 
 logger = logging.getLogger(__name__)
@@ -183,59 +184,77 @@ async def cron_ats(
 
         jobs = await scraper.scrape_all(companies=companies)
 
+        import httpx
+        from backend.services.description_extractor import (
+            extract_smartrecruiters_from_url,
+            sanitize_description,
+        )
+
         new_count = 0
         skipped_dupe = 0
-        for job in jobs:
-            # Dedup by URL. Query the column, not the entity: loading the row
-            # would pull its ~1.9 KB description across the wire for a boolean.
-            existing = db.query(ScrapedJob.url).filter(ScrapedJob.url == job.url).first()
-            if existing:
-                skipped_dupe += 1
-                continue
+        async with httpx.AsyncClient(timeout=15) as sr_client:
+            for job in jobs:
+                # Dedup by URL. Query the column, not the entity: loading the row
+                # would pull its ~1.9 KB description across the wire for a boolean.
+                existing = db.query(ScrapedJob.url).filter(ScrapedJob.url == job.url).first()
+                if existing:
+                    skipped_dupe += 1
+                    continue
 
-            # Classify country
-            country = country_filter.classify(job.location)
-            if not country:
-                country = "US"  # ATS scraper already filtered to NA
+                # Board APIs carry descriptions for GH/Lever/Ashby; SmartRecruiters
+                # needs one extra call per NEW job only.
+                description = (job.description or "").strip()
+                if not description and "smartrecruiters" in (job.url or ""):
+                    try:
+                        description = await extract_smartrecruiters_from_url(sr_client, job.url)
+                    except Exception:
+                        description = ""
+                description = sanitize_description(description) if description else ""
 
-            # Classify work type
-            work_type = job.work_type or work_type_classifier.classify(job.location)
+                # Classify country
+                country = country_filter.classify(job.location)
+                if not country:
+                    country = "US"  # ATS scraper already filtered to NA
 
-            # Determine experience level from title
-            title_lower = job.title.lower()
-            if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
-                experience_level = "internship"
-            else:
-                experience_level = "new_grad"
+                # Classify work type
+                work_type = job.work_type or work_type_classifier.classify(job.location)
 
-            # Resolve an accurate logo: prefer the curated registry logo,
-            # otherwise derive one from the company domain.
-            resolved_logo, resolved_domain = resolve_logo(job.company)
-            company_logo = logo_map.get(job.company.strip().lower()) or resolved_logo
+                # Determine experience level from title
+                title_lower = job.title.lower()
+                if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
+                    experience_level = "internship"
+                else:
+                    experience_level = "new_grad"
 
-            scraped_job = ScrapedJob(
-                title=job.title,
-                company=job.company,
-                location=job.location,
-                url=job.url,
-                description="",
-                source_platform="ats",
-                posted_date=job.posted_date,
-                easy_apply=0,
-                work_type=work_type,
-                role_category=classify_role(job.title, job.department or ""),
-                country=country,
-                experience_level=experience_level,
-                company_logo=company_logo,
-                company_domain=resolved_domain,
-            )
-            db.add(scraped_job)
-            try:
-                db.commit()
-                new_count += 1
-            except Exception:
-                db.rollback()
-                skipped_dupe += 1
+                # Resolve an accurate logo: prefer the curated registry logo,
+                # otherwise derive one from the company domain.
+                resolved_logo, resolved_domain = resolve_logo(job.company)
+                company_logo = logo_map.get(job.company.strip().lower()) or resolved_logo
+
+                scraped_job = ScrapedJob(
+                    title=job.title,
+                    company=job.company,
+                    location=job.location,
+                    url=job.url,
+                    description=description,
+                    source_platform="ats",
+                    **location_fields(job.location),
+                    posted_date=job.posted_date,
+                    easy_apply=0,
+                    work_type=work_type,
+                    role_category=classify_role(job.title, job.department or ""),
+                    country=country,
+                    experience_level=experience_level,
+                    company_logo=company_logo,
+                    company_domain=resolved_domain,
+                )
+                db.add(scraped_job)
+                try:
+                    db.commit()
+                    new_count += 1
+                except Exception:
+                    db.rollback()
+                    skipped_dupe += 1
 
         return {
             "status": "completed",
@@ -329,9 +348,9 @@ async def scrape_linkedin_jobs(
             else:
                 experience_level = "new_grad"
 
-            # Generate company logo URL
-            cleaned_company = re.sub(r'[^a-z0-9]', '', job.company.lower())
-            company_logo = f"https://icon.horse/icon/{cleaned_company}.com"
+            # Resolve logo from the company domain — never guess "<name>.com".
+            from backend.services.logo_resolver import resolve_logo as _resolve_logo
+            company_logo, company_domain = _resolve_logo(job.company)
 
             # Parse the card's posted date (ISO "YYYY-MM-DD") when present.
             posted_date = None
@@ -355,6 +374,8 @@ async def scrape_linkedin_jobs(
                 country=country,
                 experience_level=experience_level,
                 company_logo=company_logo,
+                company_domain=company_domain,
+                **location_fields(job.location),
             )
             db.add(scraped_job)
             try:

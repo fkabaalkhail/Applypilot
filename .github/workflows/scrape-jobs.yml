@@ -57,3 +57,10 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             --max-time 300 || true
+
+      - name: Backfill descriptions + locations
+        run: |
+          curl -X POST "https://www.tailrd.ca/jobs/cron-backfill" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            --max-time 300 || true

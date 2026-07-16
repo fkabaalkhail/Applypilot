@@ -31,6 +31,10 @@ class ScrapedJobOut(BaseModel):
     company_logo: str = ""
     company_domain: str = ""
     company_url: str = ""
+    city: str = ""
+    region: str = ""
+    # None until the one-time backfill touches pre-existing rows.
+    locations_json: Optional[list] = None
     ats_type: str = ""
 
     # Multi-source and match breakdown fields

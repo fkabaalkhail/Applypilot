@@ -5,7 +5,8 @@ import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
 import api from "../auth/api";
 import { useApplyTracking } from "../context/ApplyTracking";
-import { resolveLogoUrl, avatarColor } from "../lib/companyLogo";
+import CompanyLogo from "../components/CompanyLogo";
+import { displayLocation } from "../lib/jobLocation";
 import {
   MagnifyingGlass,
   Sliders,
@@ -57,6 +58,7 @@ interface Job {
   country: string;
   experience_level: string;
   posted_date: string | null;
+  locations_json?: { city?: string; region?: string; region_name?: string; country?: string }[] | null;
 }
 
 interface Stats {
@@ -71,17 +73,6 @@ interface Filters {
   source: string;
   min_match_score: number;
   experience_level: string;
-}
-
-// Logo + letter-avatar resolution is centralized in lib/companyLogo.
-function getLogoColor(company: string): string {
-  return avatarColor(company);
-}
-
-// On error: fall back to the letter avatar (no broken-image flashes, no
-// cascade of third-party providers). The placeholder sits behind the <img>.
-function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>) {
-  (e.target as HTMLImageElement).style.display = "none";
 }
 
 function timeAgo(dateStr: string): string {
@@ -229,7 +220,8 @@ export default function Jobs() {
 
     if (aggFilters.country) params.set("country", aggFilters.country);
     if (aggFilters.location.length > 0) {
-      const locationParam = aggFilters.location.map(c => c.trim()).filter(c => c.length > 0).join(",");
+      // ";" join: a single tag may itself contain a comma ("Ottawa, ON").
+      const locationParam = aggFilters.location.map(c => c.trim()).filter(c => c.length > 0).join(";");
       if (locationParam) params.set("location", locationParam);
     }
     if (aggFilters.work_type.length > 0) params.set("work_type", aggFilters.work_type.join(","));
@@ -387,26 +379,13 @@ export default function Jobs() {
               <div className="job-card-body">
                 {/* Header: Logo + Info + Bookmark */}
                 <div className="job-card-header">
-                  <div className="company-logo-wrapper">
-                    <div
-                      className="company-logo"
-                      style={{ backgroundColor: getLogoColor(job.company) }}
-                    >
-                      {job.company.charAt(0).toUpperCase()}
-                    </div>
-                    {(() => {
-                      const logoUrl = resolveLogoUrl(job);
-                      return logoUrl ? (
-                        <img
-                          src={logoUrl}
-                          alt=""
-                          className="company-logo-img-overlay"
-                          loading="lazy"
-                          onError={handleLogoError}
-                        />
-                      ) : null;
-                    })()}
-                  </div>
+                  <CompanyLogo
+                    company={job.company}
+                    company_logo={job.company_logo}
+                    company_domain={job.company_domain}
+                    company_url={job.company_url}
+                    size={44}
+                  />
                   <div className="job-card-info">
                     <div className="job-card-badges">
                       <span className="badge-time">
@@ -430,9 +409,9 @@ export default function Jobs() {
 
                 {/* Details Grid */}
                 <div className="job-details-grid">
-                  <div className="job-detail-item">
+                  <div className="job-detail-item" title={job.location || undefined}>
                     <MapPin size={15} weight="duotone" />
-                    <span>{job.location || "Remote"}</span>
+                    <span>{displayLocation(job) || "Remote"}</span>
                   </div>
                   <div className="job-detail-item">
                     <Briefcase size={15} weight="duotone" />

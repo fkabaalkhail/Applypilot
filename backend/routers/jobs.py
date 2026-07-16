@@ -15,7 +15,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 
 from backend.db.database import get_db
 from backend.db.models import ScrapedJob, JobStatus, ApplicationRecord, UserSavedJob
@@ -32,6 +32,8 @@ from backend.services.description_extractor import (
     extract_description_from_html,
     extract_description_from_url,
 )
+from backend.services.location_parser import location_fields
+from backend.services.logo_resolver import resolve_logo
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -120,12 +122,43 @@ def list_jobs(
                 )
             )
     if location:
-        city_values = [c.strip() for c in location.split(",") if c.strip()]
-        if city_values:
-            location_conditions = [
-                ScrapedJob.location.ilike(f"%{city}%") for city in city_values
-            ]
-            q = q.filter(or_(*location_conditions))
+        from backend.services.location_parser import fold, location_tag_tokens
+
+        # Tags arrive ";"-joined (a single tag may contain a comma, e.g.
+        # "Ottawa, ON"); legacy clients joined plain city names with ",".
+        tags = location.split(";") if ";" in location else location.split(",")
+        tag_conditions = []
+        for tag in tags:
+            tag = tag.strip()
+            if not tag:
+                continue
+            if fold(tag) == "remote":
+                tag_conditions.append(
+                    or_(
+                        ScrapedJob.work_type == "remote",
+                        ScrapedJob.location_search.like("%|remote|%"),
+                        ScrapedJob.location.ilike("%remote%"),
+                    )
+                )
+                continue
+            tokens = location_tag_tokens(tag)
+            if not tokens:
+                continue
+            # Exact token-boundary match ("|ottawa|" can't hit Toronto), with
+            # a substring fallback for rows the backfill hasn't parsed yet.
+            token_match = and_(
+                *[ScrapedJob.location_search.like(f"%|{t}|%") for t in tokens]
+            )
+            legacy_fallback = and_(
+                or_(
+                    ScrapedJob.location_search.is_(None),
+                    ScrapedJob.location_search == "",
+                ),
+                ScrapedJob.location.ilike(f"%{_escape_like(tokens[0])}%"),
+            )
+            tag_conditions.append(or_(token_match, legacy_fallback))
+        if tag_conditions:
+            q = q.filter(or_(*tag_conditions))
 
     if country:
         country_values = [c.strip().upper() for c in country.split(",") if c.strip()]
@@ -185,9 +218,7 @@ def create_job(
     if existing:
         return {"status": "duplicate", "id": existing.id}
 
-    import re
-    cleaned_company = re.sub(r'[^a-z0-9]', '', company.lower())
-
+    resolved_logo, resolved_domain = resolve_logo(company)
     job = ScrapedJob(
         title=title,
         company=company,
@@ -200,7 +231,9 @@ def create_job(
         role_category="",
         country=country,
         experience_level=experience_level,
-        company_logo=f"https://icon.horse/icon/{cleaned_company}.com",
+        company_logo=resolved_logo,
+        company_domain=resolved_domain,
+        **location_fields(location),
     )
     db.add(job)
     db.commit()
@@ -257,7 +290,7 @@ def ingest_batch(
             except (ValueError, TypeError):
                 posted_date = None
 
-        cleaned_company = re.sub(r"[^a-z0-9]", "", job.company.lower())
+        resolved_logo, resolved_domain = resolve_logo(job.company)
         to_insert.append(
             ScrapedJob(
                 title=job.title,
@@ -272,7 +305,9 @@ def ingest_batch(
                 role_category=classify_role(job.title),
                 country=job.country,
                 experience_level=job.experience_level,
-                company_logo=f"https://icon.horse/icon/{cleaned_company}.com",
+                company_logo=resolved_logo,
+                company_domain=resolved_domain,
+                **location_fields(job.location),
             )
         )
 
@@ -300,6 +335,70 @@ def ingest_batch(
         "created": created,
         "duplicates": duplicates,
         "skipped": skipped,
+    }
+
+
+@router.post("/cron-backfill")
+async def cron_backfill(
+    batch_size: int = Query(40, ge=1, le=80),
+    _cron: None = Depends(verify_cron_secret),
+    db: Session = Depends(get_db),
+):
+    """Bounded repair pass: fetch missing descriptions (<=3 attempts/job),
+    and fill structured location + company_domain for the rows it visits."""
+    import httpx
+
+    needs_description = or_(
+        ScrapedJob.description.is_(None),
+        func.length(func.trim(ScrapedJob.description)) < 50,
+    )
+    jobs = (
+        db.query(ScrapedJob)
+        .filter(needs_description, func.coalesce(ScrapedJob.desc_fetch_attempts, 0) < 3)
+        .order_by(ScrapedJob.id.desc())
+        .limit(batch_size)
+        .all()
+    )
+
+    descriptions_fixed = locations_fixed = domains_fixed = 0
+    async with httpx.AsyncClient(
+        follow_redirects=True, timeout=12, headers=BROWSER_HEADERS
+    ) as client:
+        for job in jobs:
+            job.desc_fetch_attempts = (job.desc_fetch_attempts or 0) + 1
+            if job.url:
+                try:
+                    text = await extract_description_from_url(client, job.url)
+                except Exception:
+                    text = ""
+                if text:
+                    job.description = _sanitize_description(text)
+                    job.description_sections = None
+                    descriptions_fixed += 1
+            if not (job.location_search or "") and (job.location or ""):
+                for key, value in location_fields(job.location).items():
+                    setattr(job, key, value)
+                locations_fixed += 1
+            if not (job.company_domain or ""):
+                logo, domain = resolve_logo(job.company, job.company_url)
+                if domain:
+                    job.company_domain = domain
+                    if not (job.company_logo or "") or "icon.horse" in (job.company_logo or ""):
+                        job.company_logo = logo
+                    domains_fixed += 1
+            db.commit()
+
+    remaining = (
+        db.query(ScrapedJob)
+        .filter(needs_description, func.coalesce(ScrapedJob.desc_fetch_attempts, 0) < 3)
+        .count()
+    )
+    return {
+        "processed": len(jobs),
+        "descriptions_fixed": descriptions_fixed,
+        "locations_fixed": locations_fixed,
+        "domains_fixed": domains_fixed,
+        "remaining": remaining,
     }
 
 
@@ -415,6 +514,36 @@ def list_applications(
     return results
 
 
+@router.get("/cities")
+def list_cities(
+    country: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = Query(12, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """Distinct parsed cities (with counts) for filter autocomplete."""
+    from backend.services.location_parser import fold
+
+    query = (
+        db.query(ScrapedJob.city, func.count(ScrapedJob.id))
+        .filter(ScrapedJob.city.isnot(None), ScrapedJob.city != "")
+    )
+    if country:
+        query = query.filter(ScrapedJob.country == country.strip().upper())
+    if q and q.strip():
+        query = query.filter(ScrapedJob.city.like(f"{fold(q)}%"))
+    rows = (
+        query.group_by(ScrapedJob.city)
+        .order_by(func.count(ScrapedJob.id).desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {"city": " ".join(w.capitalize() for w in city.split(" ")), "count": count}
+        for city, count in rows
+    ]
+
+
 @router.get("/{job_id}", response_model=ScrapedJobOut)
 def get_job(
     job_id: int,
@@ -496,6 +625,11 @@ async def fetch_job_details(
             }
         job.description = ""
         db.commit()
+
+    # Count this as a fetch attempt so the backfill cron stops retrying URLs
+    # that fail here too.
+    job.desc_fetch_attempts = (job.desc_fetch_attempts or 0) + 1
+    db.commit()
 
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
@@ -587,6 +721,7 @@ async def fetch_job_details(
 
             if description:
                 job.description = _sanitize_description(description)
+                job.description_sections = None  # re-structure the new text
 
             db.commit()
 
@@ -628,68 +763,53 @@ async def structure_description(
     if not job.description or len(job.description) < 50:
         return {"sections": [], "skills": [], "error": "No description available"}
 
-    # Check cache (stored in company_description field as JSON)
+    # Cache: proper column first, then the legacy company_description JSON hack
+    # (rows structured before description_sections existed).
+    if isinstance(job.description_sections, dict) and job.description_sections.get("sections"):
+        return job.description_sections
     if job.company_description and job.company_description.startswith("{"):
         try:
             cached = json.loads(job.company_description)
             if cached.get("sections"):
+                job.description_sections = cached
+                db.commit()
                 return cached
         except (json.JSONDecodeError, TypeError):
             pass
 
     llm = get_llm_service()
 
-    prompt = f"""Parse this job description into structured sections. Return a JSON object with:
+    prompt = f"""Parse this job description into structured JSON sections. Return ONLY a JSON object:
 {{
   "sections": [
-    {{"title": "Responsibilities", "icon": "clipboard-list", "items": ["item 1", "item 2", ...]}},
+    {{"title": "Responsibilities", "icon": "clipboard-list", "items": ["..."]}},
     {{"title": "Qualifications", "icon": "graduation-cap", "subsections": [
-      {{"title": "Required", "items": ["item 1", ...]}},
-      {{"title": "Preferred", "items": ["item 1", ...]}}
+      {{"title": "Required", "items": ["..."]}},
+      {{"title": "Preferred", "items": ["..."]}}
     ]}},
-    {{"title": "Benefits", "icon": "gift", "items": ["item 1", ...]}}
+    {{"title": "Benefits", "icon": "gift", "items": ["..."]}},
+    {{"title": "About the Company", "icon": "building", "items": ["..."]}}
   ],
-  "skills": ["Python", "Java", "AWS", "SQL", ...],
+  "skills": ["Python", "SQL", "Stakeholder engagement"],
   "experience_years": "2-4",
-  "education": "BS/MS in Computer Science"
+  "education": "BS in Computer Science"
 }}
 
 Rules:
-- Extract ALL bullet points into the appropriate section
-- Skills should be specific technologies, tools, languages, frameworks
-- If a section doesn't exist in the description, omit it
-- Keep items concise (one sentence each)
-- Include 5-15 skills maximum
+- Preserve every bullet from the posting in the matching section; do not invent content.
+- Qualifications MUST use Required/Preferred subsections when the posting distinguishes them; otherwise put everything under Required.
+- "skills" are 5-18 concrete skill tags from the posting: technologies, tools, languages, certifications, and named competencies (e.g. "Bilingualism English/French").
+- Omit sections the posting does not contain. Keep items to one sentence.
 
 Job Description:
-{job.description[:4000]}"""
+{job.description[:6000]}"""
 
     try:
-        response = await llm._generate(prompt)
-        # Parse JSON from response
-        json_str = response.strip()
-        if "```" in json_str:
-            parts = json_str.split("```")
-            for part in parts:
-                part = part.strip()
-                if part.startswith("json"):
-                    part = part[4:].strip()
-                if part.startswith("{"):
-                    json_str = part
-                    break
-        if not json_str.startswith("{"):
-            start = json_str.find("{")
-            end = json_str.rfind("}")
-            if start >= 0 and end > start:
-                json_str = json_str[start:end + 1]
-
-        data = json.loads(json_str)
-
-        # Cache the result in DB
+        response = await llm._generate(prompt, model="gpt-4o-mini", json_mode=True)
+        data = json.loads(response)
         if data.get("sections"):
-            job.company_description = json.dumps(data)
+            job.description_sections = data
             db.commit()
-
         return data
     except Exception as e:
         return {"sections": [], "skills": [], "error": str(e)}
@@ -820,9 +940,7 @@ async def fix_empty_companies(
 
         if company_name:
             job.company = company_name
-            # Also set company logo
-            cleaned = company_name.lower().replace(" ", "").replace(".", "")
-            job.company_logo = f"https://icon.horse/icon/{cleaned}.com"
+            job.company_logo, job.company_domain = resolve_logo(company_name)
             db.commit()
             fixed += 1
 
@@ -874,6 +992,7 @@ async def batch_fix_descriptions(
                 description = await extract_description_from_url(client, job.url or "")
                 if description:
                     job.description = _sanitize_description(description)
+                    job.description_sections = None
                     db.commit()
                     fixed += 1
                     results.append({"id": job.id, "company": job.company, "status": "fixed"})

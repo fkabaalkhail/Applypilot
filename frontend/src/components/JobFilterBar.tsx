@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { CaretDown, CaretUp } from "@phosphor-icons/react";
+import api from "../auth/api";
 
 export interface JobFilters {
   country: string;           // "US" | "CA" | ""
@@ -273,14 +274,37 @@ export default function JobFilterBar({ filters, onChange }: JobFilterBarProps) {
     setTempDatePosted(filters.date_posted);
   }, [filters]);
 
+  // --- City suggestions (canonical parsed cities from the catalogue) ---
+
+  const [citySuggestions, setCitySuggestions] = useState<{ city: string; count: number }[]>([]);
+  useEffect(() => {
+    const q = locationInput.trim();
+    if (q.length < 2) {
+      setCitySuggestions([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const { data } = await api.get("/jobs/cities", {
+          params: { q, country: tempCountry || undefined },
+        });
+        setCitySuggestions(Array.isArray(data) ? data : []);
+      } catch {
+        setCitySuggestions([]);
+      }
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [locationInput, tempCountry]);
+
   // --- City tag management ---
 
   function addCityTag(city: string) {
     const trimmed = city.trim();
     if (!trimmed) return;
+    setLocationInput("");
+    setCitySuggestions([]);
     if (tempLocationTags.includes(trimmed)) return;
     setTempLocationTags((prev) => [...prev, trimmed]);
-    setLocationInput("");
   }
 
   function removeCityTag(city: string) {
@@ -482,6 +506,26 @@ export default function JobFilterBar({ filters, onChange }: JobFilterBarProps) {
                 }}
               />
             </div>
+            {citySuggestions.length > 0 && (
+              <div
+                style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}
+                role="listbox"
+                aria-label="City suggestions"
+              >
+                {citySuggestions.map((s) => (
+                  <button
+                    key={s.city}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    style={{ ...styles.pillButton, padding: "4px 10px", fontSize: "12px" }}
+                    onClick={() => addCityTag(s.city)}
+                  >
+                    {s.city} <span style={{ color: "#64748d" }}>({s.count})</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <DropdownFooter onReset={resetCountry} onConfirm={confirmCountry} />
           </DropdownPanel>
         )}

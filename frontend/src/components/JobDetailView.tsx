@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
-import { resolveLogoUrl } from "../lib/companyLogo";
+import CompanyLogo from "./CompanyLogo";
+import { displayLocation } from "../lib/jobLocation";
+import { getPrimaryResumeText, skillCovered } from "../lib/resumeCoverage";
 import {
   X,
   MapPin,
@@ -12,6 +14,7 @@ import {
   PaperPlaneTilt,
   ArrowSquareOut,
   Users,
+  ThumbsUp,
   ClipboardText,
   Star,
   Gift,
@@ -70,6 +73,7 @@ interface Job {
   country?: string;
   experience_level?: string;
   posted_date?: string | null;
+  locations_json?: { city?: string; region?: string; region_name?: string; country?: string }[] | null;
 }
 
 function getMatchColor(score: number): string {
@@ -254,7 +258,20 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [companyLogo, setCompanyLogo] = useState(job.company_logo || "");
   const [fetchingDetails, setFetchingDetails] = useState(false);
   const [structured, setStructured] = useState<any>(null);
+  const [resumeText, setResumeText] = useState("");
   const { registerApplyClick } = useApplyTracking();
+
+  // Primary resume text (session-cached) powers the qualification-tag
+  // coverage highlighting; no resume just means neutral tags.
+  useEffect(() => {
+    let cancelled = false;
+    getPrimaryResumeText().then((text) => {
+      if (!cancelled) setResumeText(text);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -281,6 +298,19 @@ export default function JobDetailView({ job, onClose }: Props) {
       });
     }
 
+    async function fetchStructured(effectiveDescription: string) {
+      if (effectiveDescription.length <= 50) return;
+      try {
+        const { data } = await api.post(`/jobs/${job.id}/structure-description`);
+        if (cancelled) return;
+        if (data && Array.isArray(data.sections) && data.sections.length > 0) {
+          setStructured(data);
+        }
+      } catch {
+        // keep the instant client-side parse
+      }
+    }
+
     (async () => {
       const fetchedDescription = await fetchJobDetails();
       if (cancelled) return;
@@ -290,6 +320,10 @@ export default function JobDetailView({ job, onClose }: Props) {
         const parsed = parseDescriptionClientSide(effectiveDescription);
         if (parsed) setStructured(parsed);
       }
+
+      // Upgrade to the cached server-side structured parse (Responsibilities /
+      // Required / Preferred / skills) once it's available.
+      fetchStructured(effectiveDescription);
 
       if (job.match_score === 0 && effectiveDescription.length > 50) {
         triggerAnalysis();
@@ -363,30 +397,13 @@ export default function JobDetailView({ job, onClose }: Props) {
       {/* Header section */}
       <div className="job-detail-header-section">
         <div className="job-detail-company-row">
-          {(() => {
-            const logoUrl = resolveLogoUrl({
-              company: job.company,
-              company_logo: companyLogo || job.company_logo,
-              company_domain: job.company_domain,
-              company_url: job.company_url,
-            });
-            return logoUrl ? (
-              <img
-                src={logoUrl}
-                alt={`${job.company} logo`}
-                className="detail-company-logo"
-                loading="lazy"
-                onError={(e) => {
-                  const img = e.target as HTMLImageElement;
-                  img.style.display = "none";
-                  (img.nextElementSibling as HTMLElement)?.classList.remove("hidden-logo");
-                }}
-              />
-            ) : null;
-          })()}
-          <div className={`detail-company-logo-placeholder ${(job.company_logo || job.company.length >= 2) ? "hidden-logo" : ""}`} aria-label={`${job.company} logo`}>
-            {job.company.charAt(0).toUpperCase()}
-          </div>
+          <CompanyLogo
+            company={job.company}
+            company_logo={companyLogo || job.company_logo}
+            company_domain={job.company_domain}
+            company_url={job.company_url}
+            size={52}
+          />
           <div className="detail-company-info">
             <span className="job-detail-company">{job.company}</span>
             <span className="job-detail-posted">{job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}</span>
@@ -398,8 +415,11 @@ export default function JobDetailView({ job, onClose }: Props) {
         {/* Tags row */}
         <div className="job-detail-tags">
           {job.location && (
-            <span className="detail-tag">
-              <MapPin size={14} weight="duotone" /> {job.location}
+            <span
+              className="detail-tag"
+              title={(job.locations_json?.length ?? 0) > 1 ? job.location : undefined}
+            >
+              <MapPin size={14} weight="duotone" /> {displayLocation(job) || job.location}
             </span>
           )}
           {job.work_type && (
@@ -474,12 +494,28 @@ export default function JobDetailView({ job, onClose }: Props) {
               </div>
             ) : structured ? (
               <div className="structured-description">
-                {/* Skill tags */}
+                {/* Qualification skill tags, highlighted by resume coverage */}
                 {structured.skills && structured.skills.length > 0 && (
-                  <div className="skill-tags">
-                    {structured.skills.map((skill: string, i: number) => (
-                      <span key={i} className="skill-tag">{skill}</span>
-                    ))}
+                  <div className="qual-tags-block">
+                    {resumeText && (
+                      <div className="qual-tags-caption">
+                        <ThumbsUp size={12} weight="fill" /> marks skills your resume already covers
+                      </div>
+                    )}
+                    <div className="skill-tags">
+                      {structured.skills.map((skill: string, i: number) => {
+                        const matched = resumeText ? skillCovered(resumeText, skill) : false;
+                        return (
+                          <span
+                            key={i}
+                            className={`skill-tag${matched ? " skill-tag-matched" : ""}`}
+                          >
+                            {matched && <ThumbsUp size={12} weight="fill" />}
+                            {skill}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
                 {/* Sections */}
@@ -530,8 +566,18 @@ export default function JobDetailView({ job, onClose }: Props) {
                 </div>
                 <p className="description-empty-title">No description available</p>
                 <p className="description-empty-subtitle">
-                  This job was sourced from a GitHub repository listing. Visit the original post for full details.
+                  We couldn't pull this posting's text automatically. The original post has the full details.
                 </p>
+                <a
+                  href={applyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-outline-detail"
+                  style={{ marginTop: 12 }}
+                  onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
+                >
+                  <ArrowSquareOut size={16} weight="bold" /> View Original Post
+                </a>
               </div>
             )}
           </div>

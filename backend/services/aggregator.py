@@ -19,6 +19,7 @@ from backend.services.markdown_parser import MarkdownParser, ParsedJob
 from backend.services.country_filter import CountryFilter
 from backend.services.work_type_classifier import WorkTypeClassifier
 from backend.services.logo_resolver import resolve_logo
+from backend.services.location_parser import location_fields
 
 logger = logging.getLogger(__name__)
 
@@ -544,6 +545,7 @@ class AggregatorService:
             company_logo=company_logo,
             company_domain=company_domain,
             company_url=job.company_url or "",
+            **location_fields(job.location),
         )
         self.db.add(scraped_job)
         try:

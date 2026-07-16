@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import * as fc from "fast-check";
 import React from "react";
 import { ApplyTrackingProvider } from "../context/ApplyTracking";
+import { displayLocation } from "../lib/jobLocation";
 
 /**
  * Feature: job-detail-inline-panel
@@ -351,10 +352,14 @@ describe("Feature: job-detail-inline-panel, Property 2: Detail panel content com
         expect(companyEl).not.toBeNull();
         expect(companyEl!.textContent).toBe(job.company);
 
-        // Location tag should be present
+        // Location tag should be present (rendered via displayLocation, which
+        // falls back to the first raw ";"-segment for rows without
+        // locations_json)
         const tags = container.querySelectorAll(".detail-tag");
         const tagTexts = Array.from(tags).map((t) => t.textContent || "");
-        const hasLocation = tagTexts.some((t) => t.includes(job.location));
+        const expectedLocation =
+          displayLocation(job as { location?: string | null }) || job.location;
+        const hasLocation = tagTexts.some((t) => t.includes(expectedLocation));
         expect(hasLocation).toBe(true);
 
         // Work type badge should be present
