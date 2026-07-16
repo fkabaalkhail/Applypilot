@@ -36,6 +36,13 @@ _HARVEST_HEADERS = {
     "Accept-Language": "en",
 }
 
+# Wikimedia 403s spoofed browser UAs from script traffic and requires a
+# descriptive one (api.wikimedia.org/wiki/Special:MyLanguage/User-Agent_policy).
+# Corporate homepages want the opposite — keep both header sets.
+_WIKIMEDIA_HEADERS = {
+    "User-Agent": "TailrdJobBoard/1.0 (https://www.tailrd.ca; logo resolution)",
+}
+
 _ICON_LINK = re.compile(
     r'<link[^>]+rel=["\'](?P<rel>[^"\']*(?:apple-touch-icon|icon)[^"\']*)["\'][^>]*>',
     re.IGNORECASE,
@@ -76,10 +83,10 @@ def image_width(data: bytes) -> int:
     return 0
 
 
-async def _probe(client: httpx.AsyncClient, url: str) -> int:
+async def _probe(client: httpx.AsyncClient, url: str, headers: dict | None = None) -> int:
     """Download an image candidate and return its width (0 on any failure)."""
     try:
-        resp = await client.get(url, headers=_HARVEST_HEADERS)
+        resp = await client.get(url, headers=headers or _HARVEST_HEADERS)
         if resp.status_code != 200 or len(resp.content) > _MAX_IMAGE_BYTES:
             return 0
         return image_width(resp.content)
@@ -145,7 +152,7 @@ async def harvest_from_wikidata(client: httpx.AsyncClient, company: str) -> str:
                 "action": "wbsearchentities", "search": company,
                 "language": "en", "type": "item", "limit": 5, "format": "json",
             },
-            headers=_HARVEST_HEADERS,
+            headers=_WIKIMEDIA_HEADERS,
         )
         hits = search.json().get("search", [])
     except Exception:
@@ -161,7 +168,7 @@ async def harvest_from_wikidata(client: httpx.AsyncClient, company: str) -> str:
                     "action": "wbgetclaims", "entity": hit["id"],
                     "property": "P154", "format": "json",
                 },
-                headers=_HARVEST_HEADERS,
+                headers=_WIKIMEDIA_HEADERS,
             )
             claims = claims_resp.json().get("claims", {}).get("P154", [])
         except Exception:
@@ -176,7 +183,7 @@ async def harvest_from_wikidata(client: httpx.AsyncClient, company: str) -> str:
             "https://commons.wikimedia.org/wiki/Special:FilePath/"
             + quote(filename) + "?width=256"
         )
-        if await _probe(client, url) >= MIN_WIDTH:
+        if await _probe(client, url, headers=_WIKIMEDIA_HEADERS) >= MIN_WIDTH:
             return url
     return ""
 
