@@ -606,52 +606,69 @@ async def verify_recent_aggregator_listings(db: Session, client, limit: int = 12
 
 # ─── Stale-row URL verification ──────────────────────────────────────────────
 
-# Hosts whose job URLs return honest status codes for dead postings. Ashby is
-# a SPA that 200s everything, so its rows rely on board reconciliation alone.
-_VERIFIABLE_HOSTS = ("greenhouse.io", "jobs.lever.co", "smartrecruiters.com",
-                     "myworkdayjobs.com")
+# Hosts whose job URLs return honest status codes BOTH ways — a 200 here
+# really means the posting is live, so it may revive a stale row. SPAs
+# (Ashby, most company career sites) 200 on everything, so a 200 from them
+# proves nothing; only the honest 404/410 verdict applies everywhere.
+_REVIVABLE_HOSTS = ("greenhouse.io", "jobs.lever.co", "smartrecruiters.com",
+                    "myworkdayjobs.com")
+
+# Login-walled aggregators: probing them proves nothing in either direction.
+_UNPROBEABLE_HOSTS = ("linkedin.com", "indeed.com")
 
 
-async def verify_stale_listings(db: Session, client, limit: int = 30,
+async def verify_stale_listings(db: Session, client, limit: int = 150,
                                 now: datetime.datetime | None = None) -> dict:
-    """Spot-check stale rows with a real request: 404/410 → removed now;
-    200 → re-confirmed active. Bounded by ``limit`` per run."""
+    """Work through the stale backlog with real requests, newest-first (the
+    rows a search can still surface). An honest 404/410 removes the row on
+    ANY host; a 200 revives it only on hosts that 404 honestly for dead
+    postings. Everything else stamps ``last_seen_at`` so the next run moves
+    on to unchecked rows instead of re-probing the same bot walls."""
     now = now or _utcnow()
     stats = {"checked": 0, "removed": 0, "revived": 0}
+    recheck_cutoff = now - datetime.timedelta(hours=20)
+    effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
 
     rows = (
         db.query(ScrapedJob.id, ScrapedJob.url)
-        .filter(ScrapedJob.listing_status == LISTING_STALE)
-        .order_by(ScrapedJob.last_seen_at.asc())
-        .limit(limit * 3)
+        .filter(
+            ScrapedJob.listing_status == LISTING_STALE,
+            or_(ScrapedJob.last_seen_at.is_(None),
+                ScrapedJob.last_seen_at < recheck_cutoff),
+        )
+        .order_by(effective_date.desc(), ScrapedJob.id.desc())
+        .limit(limit * 2)
         .all()
     )
-    checked = 0
-    for row_id, url in rows:
-        if checked >= limit:
-            break
-        if not url or not any(host in url for host in _VERIFIABLE_HOSTS):
+    probeable = [
+        (row_id, url) for row_id, url in rows
+        if url and not any(host in url for host in _UNPROBEABLE_HOSTS)
+    ][:limit]
+    if not probeable:
+        return stats
+
+    verdicts = await probe_urls_liveness(client, [u for _i, u in probeable],
+                                         budget=limit)
+    for row_id, url in probeable:
+        verdict = verdicts.get(url)
+        if verdict is None:
             continue
-        checked += 1
-        try:
-            response = await client.get(url, follow_redirects=True)
-        except Exception:
-            continue  # network noise is not evidence either way
-        if response.status_code in (404, 410):
-            db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
-                {"listing_status": LISTING_REMOVED, "listing_status_changed_at": now},
-                synchronize_session=False,
-            )
+        stats["checked"] += 1
+        if verdict == "dead":
+            mark_listing_removed(db, row_id, now)
             stats["removed"] += 1
-        elif response.status_code == 200:
+        elif verdict == "alive" and any(h in url for h in _REVIVABLE_HOSTS):
             db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
                 {"listing_status": LISTING_ACTIVE, "listing_status_changed_at": now,
                  "last_seen_at": now},
                 synchronize_session=False,
             )
             stats["revived"] += 1
+        else:
+            db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
+                {"last_seen_at": now}, synchronize_session=False,
+            )
 
-    stats["checked"] = checked
-    if checked:
+    if stats["checked"]:
         db.commit()
     return stats

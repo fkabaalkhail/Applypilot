@@ -595,7 +595,7 @@ async def cron_freshness(
     async with httpx.AsyncClient(
         follow_redirects=True, timeout=10, headers=BROWSER_HEADERS
     ) as client:
-        verified = await listing_freshness.verify_stale_listings(db, client, limit=30)
+        verified = await listing_freshness.verify_stale_listings(db, client)
         # The GitHub lists re-publish closed postings; probe the newest rows —
         # the ones users actually click — so dead apply links leave the
         # catalogue within the hour instead of collecting 404 complaints.

@@ -508,6 +508,38 @@ class TestUrlLiveness:
         assert stats["checked"] == 0
 
 
+class TestVerifyStaleListings:
+    @pytest.mark.asyncio
+    async def test_dead_removes_anywhere_alive_revives_only_honest_hosts(self, db_session):
+        from backend.services.listing_freshness import verify_stale_listings
+
+        dead_site = _row(db_session, url="https://careers.example.com/jobs/1",
+                         listing_status=LISTING_STALE, last_seen_at=None)
+        live_gh = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/2",
+                       listing_status=LISTING_STALE, last_seen_at=None)
+        spa_site = _row(db_session, url="https://careers.spa-co.com/jobs/3",
+                        listing_status=LISTING_STALE, last_seen_at=None)
+        walled_li = _row(db_session, url="https://linkedin.com/jobs/view/4",
+                         source_platform="linkedin", board_key="",
+                         listing_status=LISTING_STALE, last_seen_at=None)
+
+        async with _status_client({"careers.example.com": 404}) as client:
+            stats = await verify_stale_listings(db_session, client, now=NOW)
+
+        db_session.expire_all()
+        # Honest 404 on a plain company site → removed.
+        assert db_session.get(ScrapedJob, dead_site.id).listing_status == LISTING_REMOVED
+        # 200 on greenhouse (honest host) → revived.
+        assert db_session.get(ScrapedJob, live_gh.id).listing_status == LISTING_ACTIVE
+        # 200 on an arbitrary site proves nothing — stays stale, probe stamped.
+        spa = db_session.get(ScrapedJob, spa_site.id)
+        assert spa.listing_status == LISTING_STALE
+        assert spa.last_seen_at == NOW
+        # LinkedIn rows are never probed.
+        assert db_session.get(ScrapedJob, walled_li.id).last_seen_at is None
+        assert stats["removed"] == 1 and stats["revived"] == 1
+
+
 class TestAggregatorIngestProbe:
     def test_dead_url_stored_as_removed(self, db_session):
         """A list row whose apply URL already 404s must never surface."""
