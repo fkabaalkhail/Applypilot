@@ -142,6 +142,11 @@ class ScrapedJob(Base):
     desc_fetch_attempts = Column(Integer, default=0)
     description_sections = Column(JSON, nullable=True)
 
+    # Cross-source dedup: folded title for twin lookups; when this row is a
+    # hidden duplicate, the id of the surviving (direct/ATS) row.
+    title_norm = Column(String, default="", index=True)
+    duplicate_of = Column(Integer, nullable=True)
+
 
 class PendingQuestion(Base):
     """A question the bot got stuck on during an application. User must answer."""

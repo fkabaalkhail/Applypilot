@@ -9,4 +9,5 @@ def test_migration_adds_columns_idempotently():
     run_migration()  # second run must be a no-op
     cols = {c["name"] for c in inspect(engine).get_columns("scraped_jobs")}
     assert {"city", "region", "locations_json", "location_search",
-            "desc_fetch_attempts", "description_sections"} <= cols
+            "desc_fetch_attempts", "description_sections",
+            "title_norm", "duplicate_of"} <= cols

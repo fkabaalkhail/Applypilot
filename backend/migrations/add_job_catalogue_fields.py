@@ -24,6 +24,10 @@ _COLUMNS = {
     "location_search": "TEXT DEFAULT ''",
     "desc_fetch_attempts": "INTEGER DEFAULT 0",
     "description_sections": "JSON",
+    # Cross-source dedup (services/cross_source_dedup.py): normalized title
+    # for twin lookups, and the id of the surviving row for hidden duplicates.
+    "title_norm": "VARCHAR DEFAULT ''",
+    "duplicate_of": "INTEGER",
 }
 
 
@@ -40,3 +44,7 @@ def run_migration() -> None:
                 continue
             conn.execute(text(f"ALTER TABLE scraped_jobs ADD COLUMN {name} {ddl}"))
             logger.info("Added scraped_jobs.%s", name)
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_scraped_jobs_title_norm "
+            "ON scraped_jobs (title_norm)"
+        ))

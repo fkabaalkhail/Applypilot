@@ -34,6 +34,7 @@ from backend.services.description_extractor import (
 )
 from backend.services.location_parser import location_fields
 from backend.services.logo_resolver import resolve_logo
+from backend.services.cross_source_dedup import has_direct_twin, normalize_title
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -107,11 +108,15 @@ def list_jobs(
         q = q.filter(ScrapedJob.source_platform == source)
     if saved:
         # "Liked" jobs are per-user (UserSavedJob), not a global flag on the job.
+        # Hidden cross-source duplicates STAY visible here — a bookmark the
+        # user made must not vanish because its twin arrived later.
         if user_id is None:
             return []
         q = q.join(UserSavedJob, UserSavedJob.job_id == ScrapedJob.id).filter(
             UserSavedJob.user_id == user_id
         )
+    else:
+        q = q.filter(ScrapedJob.duplicate_of.is_(None))
     if search:
         search_term = _escape_like(search.strip())
         if search_term:
@@ -233,6 +238,7 @@ def create_job(
         experience_level=experience_level,
         company_logo=resolved_logo,
         company_domain=resolved_domain,
+        title_norm=normalize_title(title),
         **location_fields(location),
     )
     db.add(job)
@@ -278,6 +284,7 @@ def ingest_batch(
         existing = {row[0] for row in rows}
 
     to_insert = []
+    twins_skipped = 0
     for url, job in unique.items():
         if url in existing:
             duplicates += 1
@@ -291,6 +298,21 @@ def ingest_batch(
                 posted_date = None
 
         resolved_logo, resolved_domain = resolve_logo(job.company)
+        fields = location_fields(job.location)
+
+        # A direct (ats/github) row for this employer+title+city already in
+        # the catalogue makes this aggregator copy redundant — skip it.
+        if job.source_platform in ("linkedin", "indeed") and has_direct_twin(
+            db,
+            company=job.company,
+            company_domain=resolved_domain,
+            title=job.title,
+            city=fields["city"],
+        ):
+            twins_skipped += 1
+            duplicates += 1
+            continue
+
         to_insert.append(
             ScrapedJob(
                 title=job.title,
@@ -307,7 +329,8 @@ def ingest_batch(
                 experience_level=job.experience_level,
                 company_logo=resolved_logo,
                 company_domain=resolved_domain,
-                **location_fields(job.location),
+                title_norm=normalize_title(job.title),
+                **fields,
             )
         )
 
@@ -334,6 +357,7 @@ def ingest_batch(
         "received": received,
         "created": created,
         "duplicates": duplicates,
+        "cross_source_twins_skipped": twins_skipped,
         "skipped": skipped,
     }
 
@@ -354,7 +378,11 @@ async def cron_backfill(
     )
     jobs = (
         db.query(ScrapedJob)
-        .filter(needs_description, func.coalesce(ScrapedJob.desc_fetch_attempts, 0) < 3)
+        .filter(
+            needs_description,
+            func.coalesce(ScrapedJob.desc_fetch_attempts, 0) < 3,
+            ScrapedJob.duplicate_of.is_(None),  # hidden twins aren't worth fetches
+        )
         .order_by(ScrapedJob.id.desc())
         .limit(batch_size)
         .all()
@@ -390,7 +418,11 @@ async def cron_backfill(
 
     remaining = (
         db.query(ScrapedJob)
-        .filter(needs_description, func.coalesce(ScrapedJob.desc_fetch_attempts, 0) < 3)
+        .filter(
+            needs_description,
+            func.coalesce(ScrapedJob.desc_fetch_attempts, 0) < 3,
+            ScrapedJob.duplicate_of.is_(None),
+        )
         .count()
     )
     return {
@@ -408,11 +440,12 @@ def job_stats(
     db: Session = Depends(get_db),
 ):
     """Return aggregate job stats with breakdowns by country, work_type, role_category, experience_level."""
-    # Exclude blank-company jobs to match the listing query.
+    # Exclude blank-company jobs and hidden duplicates to match the listing query.
     _has_company = (
         ScrapedJob.company.isnot(None)
         & (func.trim(ScrapedJob.company) != "")
         & (ScrapedJob.company != "Unknown")
+        & ScrapedJob.duplicate_of.is_(None)
     )
     total = db.query(ScrapedJob).filter(_has_company).count()
     applied = db.query(ScrapedJob).filter(_has_company, ScrapedJob.status == JobStatus.APPLIED).count()
@@ -526,7 +559,11 @@ def list_cities(
 
     query = (
         db.query(ScrapedJob.city, func.count(ScrapedJob.id))
-        .filter(ScrapedJob.city.isnot(None), ScrapedJob.city != "")
+        .filter(
+            ScrapedJob.city.isnot(None),
+            ScrapedJob.city != "",
+            ScrapedJob.duplicate_of.is_(None),
+        )
     )
     if country:
         query = query.filter(ScrapedJob.country == country.strip().upper())

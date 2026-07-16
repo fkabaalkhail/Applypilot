@@ -24,6 +24,7 @@ from backend.schemas.github_source import GitHubSourceOut, GitHubSourceCreate
 from backend.services.github_scraper import GitHubScraper, validate_github_repo_url
 from backend.services.role_classifier import classify as classify_role
 from backend.services.location_parser import location_fields
+from backend.services.cross_source_dedup import mark_inferior_twins, normalize_title
 from backend.auth.dependencies import get_admin_user_id, verify_cron_secret
 
 logger = logging.getLogger(__name__)
@@ -192,6 +193,7 @@ async def cron_ats(
 
         new_count = 0
         skipped_dupe = 0
+        twins_hidden = 0
         async with httpx.AsyncClient(timeout=15) as sr_client:
             for job in jobs:
                 # Dedup by URL. Query the column, not the entity: loading the row
@@ -238,6 +240,7 @@ async def cron_ats(
                     url=job.url,
                     description=description,
                     source_platform="ats",
+                    title_norm=normalize_title(job.title),
                     **location_fields(job.location),
                     posted_date=job.posted_date,
                     easy_apply=0,
@@ -255,12 +258,21 @@ async def cron_ats(
                 except Exception:
                     db.rollback()
                     skipped_dupe += 1
+                    continue
+
+                # This direct row supersedes any LinkedIn/Indeed copies of the
+                # same posting that arrived first.
+                try:
+                    twins_hidden += mark_inferior_twins(db, scraped_job)
+                except Exception:
+                    db.rollback()
 
         return {
             "status": "completed",
             "total_found": len(jobs),
             "new_jobs": new_count,
             "duplicates_skipped": skipped_dupe,
+            "cross_source_twins_hidden": twins_hidden,
             "shard": {
                 "index": shard_index,
                 "count": shard_count,
