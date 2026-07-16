@@ -143,3 +143,64 @@ def test_location_fields_shape():
 def test_location_fields_empty():
     fields = location_fields("")
     assert fields == {"city": "", "region": "", "locations_json": [], "location_search": ""}
+
+
+# --- Real prod strings that misparsed on 2026-07-16 --------------------------
+
+def test_lowercase_or_is_a_separator_not_oregon():
+    locs = parse_locations("Ottawa or Calgary ON")
+    cities = {l.city for l in locs}
+    assert "Ottawa" in cities
+    assert "Calgary" in cities
+    assert all(l.region != "OR" for l in locs), "lowercase 'or' must never be Oregon"
+
+
+def test_city_token_with_trailing_country_word():
+    loc = first("Toronto Canada, San Francisco, Remote in US, Remote in Canada")
+    assert loc.city == "Toronto"
+    assert loc.country == "Canada"
+
+
+def test_comma_separated_city_list_yields_multiple_cities():
+    locs = parse_locations("Toronto Canada, San Francisco, Remote in US, Remote in Canada")
+    cities = {l.city for l in locs}
+    assert "Toronto" in cities
+    assert "San Francisco" in cities
+    # "San Francisco" must NOT be swallowed as a country.
+    assert all(l.country != "San Francisco" for l in locs)
+
+
+def test_remote_colon_country():
+    loc = first("Remote: United States")
+    assert loc.city == "Remote"
+    assert loc.country == "United States"
+
+
+def test_street_address_junk_stripped():
+    loc = first("Calgary   8th Ave SW (4 Locations)")
+    assert loc.city == "Calgary"
+
+
+def test_slash_separated_countries():
+    locs = parse_locations("US / Canada")
+    countries = {l.country for l in locs}
+    assert countries == {"United States", "Canada"}
+    assert all(not l.city or l.city == "Remote" for l in locs)
+
+
+def test_word_path_recognizes_full_state_names():
+    loc = first("Remote   Michigan United States (4 Locations)")
+    assert loc.city == "Remote"
+    assert loc.region == "MI"
+    assert loc.country == "United States"
+
+
+def test_word_path_city_before_state_name():
+    loc = first("Holland Michigan United States (4 Locations)")
+    assert loc.city == "Holland"
+    assert loc.region == "MI"
+
+
+def test_uppercase_or_with_comma_still_oregon():
+    loc = first("Portland, OR")
+    assert (loc.city, loc.region) == ("Portland", "OR")

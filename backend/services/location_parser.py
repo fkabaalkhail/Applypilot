@@ -80,10 +80,29 @@ _METRO = re.compile(
     r"^(?:greater\s+)?(.+?)\s+(?:metropolitan\s+area|metro\s+area|area)$",
     re.IGNORECASE,
 )
+# "Calgary   8th Ave SW" — a numbered street after the city is address junk.
+# The number requirement keeps "St. Louis" (no digits) intact.
+_STREET_SUFFIX = re.compile(
+    r"\s+\d+\w*\s+(?:ave|avenue|street|st|blvd|boulevard|rd|road|dr|drive|way|hwy|highway)\b.*$",
+    re.IGNORECASE,
+)
 _NOISE_TOKENS = {
     "downtown", "hybrid", "onsite", "on-site", "flexible", "multiple locations",
     "various", "n/a", "tbd", "hq", "headquarters", "office", "locations",
 }
+# Countries with multi-word names that legitimately trail a "City, Country"
+# token; anything else multi-word ("San Francisco") is a city, not a country.
+_MULTIWORD_COUNTRIES = {
+    "czech republic", "united kingdom", "new zealand", "south korea",
+    "south africa", "costa rica", "puerto rico", "hong kong", "saudi arabia",
+    "united arab emirates",
+}
+# Multi-word country aliases, longest first, for stripping segment tails.
+_ALIAS_TAILS = sorted(
+    (alias.split(" ") for alias in _COUNTRY_ALIASES if " " in alias),
+    key=len,
+    reverse=True,
+)
 
 
 @dataclass
@@ -146,20 +165,34 @@ def _classify_token(token: str, loc: ParsedLocation) -> None:
         loc.region_name = CA_PROVINCES.get(code) or US_STATES.get(code, "")
         return
 
-    if folded == "remote":
+    folded_words = folded.split(" ")
+    if "remote" in folded_words:
+        # "Remote", "Remote in US", "Remote in Canada"
         if not loc.city:
             loc.city = "Remote"
+        for extra in folded_words:
+            if extra in _COUNTRY_ALIASES and not loc.country:
+                loc.country = _COUNTRY_ALIASES[extra]
         return
 
     if loc.city and folded == fold(loc.city):
         return  # "Kraków, Kraków, Poland" — duplicated city token
 
     if not loc.city:
+        # "Toronto Canada" as ONE comma token: peel a trailing country word.
+        words = stripped.split(" ")
+        if len(words) >= 2 and fold(words[-1]) in _COUNTRY_ALIASES:
+            loc.city = _titleize(" ".join(words[:-1]))
+            if not loc.country:
+                loc.country = _COUNTRY_ALIASES[fold(words[-1])]
+            return
         loc.city = _titleize(stripped)
     elif not loc.country and not is_region_code and len(stripped) > 3:
-        # An unclassified trailing word after city+region is usually a country
-        # ("Kraków, Kraków, Poland" leaves "Poland" here).
-        loc.country = _titleize(stripped)
+        # Trailing-token country guess ("Kraków, Kraków, Poland"). Only a
+        # single proper word or a known multi-word country qualifies —
+        # "San Francisco" in a comma city-list must not become a country.
+        if (" " not in stripped and folded not in KNOWN_CITIES) or folded in _MULTIWORD_COUNTRIES:
+            loc.country = _titleize(stripped)
 
 
 def _finish(loc: ParsedLocation) -> ParsedLocation:
@@ -168,62 +201,93 @@ def _finish(loc: ParsedLocation) -> ParsedLocation:
     return loc
 
 
-def _parse_segment(segment: str) -> ParsedLocation | None:
+def _parse_segment(segment: str) -> list[ParsedLocation]:
     segment = _PLUS_MORE.sub(" ", segment)
     segment = _PARENTHETICAL.sub(" ", segment)
+    segment = _STREET_SUFFIX.sub(" ", segment)
+    # A colon after a mode word is a separator: "Remote: United States".
+    segment = segment.replace(":", ", ")
     segment = segment.replace(" - ", ", ").replace(" – ", ", ")
     segment = re.sub(r"\s+", " ", segment).strip(" ,;-")
     if not segment:
-        return None
+        return []
 
     metro = _METRO.match(segment)
     if metro:
-        return _finish(ParsedLocation(city=_titleize(metro.group(1))))
+        return [_finish(ParsedLocation(city=_titleize(metro.group(1))))]
 
     if "," in segment:
-        loc = ParsedLocation()
+        # Usually "City, Region, Country" — but aggregators also emit comma
+        # city-LISTS ("Toronto Canada, San Francisco, …"): a known city token
+        # arriving after the city slot is filled starts a new location.
+        locs: list[ParsedLocation] = []
+        current = ParsedLocation()
         for token in segment.split(","):
-            _classify_token(token, loc)
-        if not loc.city and not loc.region and not loc.country:
-            return None
-        return _finish(loc)
+            folded_tok = fold(token.strip(" ."))
+            if (current.city and folded_tok in KNOWN_CITIES
+                    and folded_tok != fold(current.city)):
+                locs.append(_finish(current))
+                current = ParsedLocation()
+            _classify_token(token, current)
+        if current.city or current.region or current.country:
+            locs.append(_finish(current))
+        return locs
 
     words = [w for w in segment.split(" ") if w.strip()]
+
+    # Peel a trailing multi-word country name ("… United States") so the
+    # word-wise pass doesn't scatter it ("United" city, "States" dropped).
+    tail_country = ""
+    for alias_words in _ALIAS_TAILS:
+        n = len(alias_words)
+        if len(words) > n and [fold(w) for w in words[-n:]] == alias_words:
+            tail_country = _COUNTRY_ALIASES[" ".join(alias_words)]
+            words = words[:-n]
+            break
+
     if len(words) > 4:
         # Likely contaminated (a title leaked into the field). Rescue a
         # known city + any region code; drop the rest.
-        loc = ParsedLocation()
-        folded_seg = fold(segment)
+        loc = ParsedLocation(country=tail_country)
+        folded_seg = fold(" ".join(words))
         for city in sorted(KNOWN_CITIES, key=len, reverse=True):
             if re.search(rf"(?:^|[^a-z]){re.escape(city)}(?:[^a-z]|$)", folded_seg):
                 loc.city = _titleize(city)
                 break
         for word in words:
-            upper = word.strip(" .").upper()
-            if (upper in CA_PROVINCES or upper in US_STATES) and not loc.region:
-                loc.region = upper
-                loc.region_name = CA_PROVINCES.get(upper) or US_STATES.get(upper, "")
+            cleaned = word.strip(" .")
+            if (cleaned.isupper() and not loc.region
+                    and (cleaned in CA_PROVINCES or cleaned in US_STATES)):
+                loc.region = cleaned
+                loc.region_name = CA_PROVINCES.get(cleaned) or US_STATES.get(cleaned, "")
         if not loc.city and not loc.region:
-            return None
-        return _finish(loc)
+            return []
+        return [_finish(loc)]
 
     # Short comma-less segment ("CA ON Ottawa", "New York", "Remote"):
-    # classify word-wise. A bare "CA" with a real province elsewhere in the
-    # segment is the country (Canada), not California.
-    loc = ParsedLocation()
+    # classify word-wise. Two-letter region codes must be UPPERCASE in the
+    # source — lowercase "or"/"on"/"in" are English words, not Oregon/Ontario/
+    # Indiana. A bare "CA" with a real province elsewhere is Canada.
+    loc = ParsedLocation(country=tail_country)
     rest: list[str] = []
     for word in words:
-        upper = word.strip(" .").upper()
-        folded_word = fold(word)
-        if folded_word in _NOISE_TOKENS or _CA_POSTAL.match(word) or _US_ZIP.match(word):
+        cleaned = word.strip(" .")
+        folded_word = fold(cleaned)
+        if folded_word in _NOISE_TOKENS or _CA_POSTAL.match(cleaned) or _US_ZIP.match(cleaned):
             continue
-        if upper == "CA" and any(
-            w.strip(" .").upper() in CA_PROVINCES for w in words if w is not word
+        if cleaned == "CA" and any(
+            w.strip(" .").upper() in CA_PROVINCES and w.strip(" .").isupper()
+            for w in words if w is not word
         ):
-            loc.country = "Canada"
-        elif (upper in CA_PROVINCES or upper in US_STATES) and not loc.region:
-            loc.region = upper
-            loc.region_name = CA_PROVINCES.get(upper) or US_STATES.get(upper, "")
+            loc.country = loc.country or "Canada"
+        elif (cleaned.isupper() and not loc.region
+                and (cleaned in CA_PROVINCES or cleaned in US_STATES)):
+            loc.region = cleaned
+            loc.region_name = CA_PROVINCES.get(cleaned) or US_STATES.get(cleaned, "")
+        elif folded_word in _REGION_BY_NAME and not loc.region:
+            code = _REGION_BY_NAME[folded_word]
+            loc.region = code
+            loc.region_name = CA_PROVINCES.get(code) or US_STATES.get(code, "")
         elif folded_word in _COUNTRY_ALIASES and not loc.country:
             loc.country = _COUNTRY_ALIASES[folded_word]
         elif folded_word == "remote" and not rest:
@@ -233,26 +297,28 @@ def _parse_segment(segment: str) -> ParsedLocation | None:
     if rest:
         loc.city = _titleize(" ".join(rest))
     if not loc.city and not loc.region and not loc.country:
-        return None
-    return _finish(loc)
+        return []
+    return [_finish(loc)]
 
 
 def parse_locations(raw: str) -> list[ParsedLocation]:
     """Parse a raw scraped location string into structured locations."""
     if not raw or not raw.strip():
         return []
-    segments = re.split(r"[;\n•]+", raw)
+    # " / " and lowercase " or " separate alternatives ("US / Canada",
+    # "Ottawa or Calgary ON"). Lowercase-only: uppercase "OR" is Oregon.
+    # (Yes, this would split "Truth or Consequences, NM"; the catalogue is
+    # intern/new-grad tech jobs — the trade is worth it.)
+    segments = re.split(r"[;\n•]+|\s+/\s+|\s+or\s+", raw)
     out: list[ParsedLocation] = []
     seen: set[tuple[str, str, str]] = set()
     for segment in segments:
-        loc = _parse_segment(segment)
-        if not loc:
-            continue
-        key = (fold(loc.city), loc.region, fold(loc.country))
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(loc)
+        for loc in _parse_segment(segment):
+            key = (fold(loc.city), loc.region, fold(loc.country))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(loc)
     return out
 
 
