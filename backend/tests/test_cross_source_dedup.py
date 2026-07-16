@@ -1,0 +1,239 @@
+"""Cross-source dedup: LinkedIn/Indeed twins collapse into direct ATS rows."""
+
+from backend.db.models import ScrapedJob
+from backend.services.cross_source_dedup import (
+    dedup_sweep,
+    has_direct_twin,
+    mark_inferior_twins,
+    normalize_title,
+)
+from backend.services.location_parser import location_fields
+
+
+def _mk(db_session, url, *, source="linkedin", title="Software Engineer Intern",
+        company="Kinaxis", domain="kinaxis.com", location="Ottawa, ON, CA",
+        description="", applicant_count=None, salary_range=""):
+    row = ScrapedJob(
+        title=title, company=company, url=url, location=location,
+        description=description, country="CA", work_type="onsite",
+        source_platform=source, experience_level="internship", easy_apply=0,
+        match_score=0, company_domain=domain, salary_range=salary_range,
+        applicant_count=applicant_count, title_norm=normalize_title(title),
+        **location_fields(location),
+    )
+    db_session.add(row)
+    db_session.commit()
+    return row
+
+
+# --- normalize_title -------------------------------------------------------
+
+def test_normalize_title_strips_season_year_and_parentheticals():
+    assert normalize_title("Software Engineer Intern (Summer 2026)") == "software engineer intern"
+    assert normalize_title("Software Engineer Intern - Summer 2026") == "software engineer intern"
+    assert normalize_title("Software Engineer Intern") == "software engineer intern"
+
+
+def test_normalize_title_keeps_role_level_words():
+    assert normalize_title("Software Engineer Intern") != normalize_title("Software Engineer, New Grad")
+    assert normalize_title("Software Engineer Intern, Infrastructure") != normalize_title(
+        "Software Engineer Intern"
+    )
+
+
+# --- has_direct_twin (ingest-batch guard) ----------------------------------
+
+def test_has_direct_twin_finds_ats_row(db_session):
+    _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/1", source="ats",
+        description="Long real description " * 10)
+    assert has_direct_twin(
+        db_session, company="Kinaxis", company_domain="kinaxis.com",
+        title="Software Engineer Intern (Summer 2026)", city="ottawa",
+    )
+
+
+def test_has_direct_twin_respects_city(db_session):
+    _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/2", source="ats",
+        location="Toronto, ON, CA")
+    assert not has_direct_twin(
+        db_session, company="Kinaxis", company_domain="kinaxis.com",
+        title="Software Engineer Intern", city="ottawa",
+    )
+
+
+def test_has_direct_twin_multi_city_ats_absorbs(db_session):
+    _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/3", source="ats",
+        location="Ottawa,Ontario,Canada; Toronto,Ontario,Canada")
+    assert has_direct_twin(
+        db_session, company="Kinaxis", company_domain="kinaxis.com",
+        title="Software Engineer Intern", city="toronto",
+    )
+
+
+def test_has_direct_twin_different_title_no_match(db_session):
+    _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/4", source="ats")
+    assert not has_direct_twin(
+        db_session, company="Kinaxis", company_domain="kinaxis.com",
+        title="Data Analyst Intern", city="ottawa",
+    )
+
+
+# --- mark_inferior_twins (cron-ats / aggregator hook) -----------------------
+
+def test_mark_inferior_twins_hides_linkedin_and_enriches_winner(db_session):
+    twin = _mk(db_session, "https://linkedin.com/jobs/view/1", source="linkedin",
+               applicant_count=57, salary_range="$40-50/hr")
+    winner = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/5",
+                 source="ats", description="Full description " * 20)
+    marked = mark_inferior_twins(db_session, winner)
+    assert marked == 1
+    db_session.refresh(twin)
+    db_session.refresh(winner)
+    assert twin.duplicate_of == winner.id
+    assert winner.applicant_count == 57
+    assert winner.salary_range == "$40-50/hr"
+
+
+def test_mark_inferior_twins_ignores_other_cities_and_titles(db_session):
+    other_city = _mk(db_session, "https://linkedin.com/jobs/view/2",
+                     source="linkedin", location="Calgary, AB, CA")
+    other_title = _mk(db_session, "https://linkedin.com/jobs/view/3",
+                      source="linkedin", title="Data Analyst Intern")
+    winner = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/6",
+                 source="ats")
+    assert mark_inferior_twins(db_session, winner) == 0
+    db_session.refresh(other_city)
+    db_session.refresh(other_title)
+    assert other_city.duplicate_of is None
+    assert other_title.duplicate_of is None
+
+
+# --- dedup_sweep (one-time script core) -------------------------------------
+
+def test_sweep_collapses_pairs_and_copies_description(db_session):
+    loser = _mk(db_session, "https://linkedin.com/jobs/view/4", source="linkedin",
+                description="A LinkedIn description long enough to be real content " * 10,
+                applicant_count=12)
+    winner = _mk(db_session, "https://github.example/direct/1", source="github",
+                 description="")
+    stats = dedup_sweep(db_session)
+    db_session.refresh(loser)
+    db_session.refresh(winner)
+    assert loser.duplicate_of == winner.id
+    assert winner.duplicate_of is None
+    assert len(winner.description or "") > 50  # copied from the loser
+    assert winner.applicant_count == 12
+    assert stats["marked"] == 1
+
+
+def test_sweep_multi_city_ats_absorbs_two_city_twins(db_session):
+    ott = _mk(db_session, "https://linkedin.com/jobs/view/5", source="linkedin",
+              location="Ottawa, ON, CA")
+    tor = _mk(db_session, "https://linkedin.com/jobs/view/6", source="linkedin",
+              location="Toronto, ON, CA")
+    winner = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/7",
+                 source="ats", description="Real description " * 10,
+                 location="Ottawa,Ontario,Canada; Toronto,Ontario,Canada")
+    stats = dedup_sweep(db_session)
+    db_session.refresh(ott)
+    db_session.refresh(tor)
+    assert ott.duplicate_of == winner.id
+    assert tor.duplicate_of == winner.id
+    assert stats["marked"] == 2
+
+
+def test_sweep_never_merges_across_cities_or_titles(db_session):
+    a = _mk(db_session, "https://linkedin.com/jobs/view/7", source="linkedin",
+            location="Ottawa, ON, CA")
+    b = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/8",
+            source="ats", location="Calgary, AB, CA")
+    c = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/9",
+            source="ats", title="Data Analyst Intern")
+    dedup_sweep(db_session)
+    for row in (a, b, c):
+        db_session.refresh(row)
+        assert row.duplicate_of is None
+
+
+def test_sweep_is_idempotent(db_session):
+    _mk(db_session, "https://linkedin.com/jobs/view/8", source="linkedin")
+    _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/10", source="ats",
+        description="Real description " * 10)
+    first = dedup_sweep(db_session)
+    second = dedup_sweep(db_session)
+    assert first["marked"] == 1
+    assert second["marked"] == 0
+
+
+def test_sweep_falls_back_to_company_name_without_domains(db_session):
+    loser = _mk(db_session, "https://linkedin.com/jobs/view/9", source="linkedin",
+                company="Acme Widgets Inc.", domain="")
+    winner = _mk(db_session, "https://boards.greenhouse.io/acme/jobs/1",
+                 source="ats", company="Acme Widgets", domain="",
+                 description="Real description " * 10)
+    dedup_sweep(db_session)
+    db_session.refresh(loser)
+    assert loser.duplicate_of == winner.id
+
+
+def test_sweep_never_merges_two_direct_rows(db_session):
+    # Same employer, identical title, same city, DIFFERENT requisition ids:
+    # distinct postings (per-team/per-country reqs). Both must survive.
+    a = _mk(db_session, "https://boards.greenhouse.io/affirm/jobs/7724915003",
+            source="ats", company="Affirm", domain="affirm.com",
+            description="Req A " * 20)
+    b = _mk(db_session, "https://boards.greenhouse.io/affirm/jobs/7724917003",
+            source="ats", company="Affirm", domain="affirm.com",
+            description="Req B " * 20)
+    dedup_sweep(db_session)
+    db_session.refresh(a)
+    db_session.refresh(b)
+    assert a.duplicate_of is None
+    assert b.duplicate_of is None
+
+
+def test_sweep_uses_url_not_label_for_rogue_rows(db_session):
+    # Rogue-scraper rows are labeled source='ats' but carry LinkedIn URLs —
+    # they are aggregator copies and must be absorbed by the real direct row.
+    rogue = _mk(db_session, "https://www.linkedin.com/jobs/view/4414123646",
+                source="ats", description="")
+    winner = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/11",
+                 source="ats", description="Real description " * 10)
+    dedup_sweep(db_session)
+    db_session.refresh(rogue)
+    db_session.refresh(winner)
+    assert rogue.duplicate_of == winner.id
+    assert winner.duplicate_of is None
+
+
+def test_sweep_linkedin_reposts_collapse_together(db_session):
+    # The same posting spammed under many LinkedIn view ids collapses to one.
+    first = _mk(db_session, "https://linkedin.com/jobs/view/201", source="linkedin",
+                description="Snippet " * 60)
+    second = _mk(db_session, "https://linkedin.com/jobs/view/202", source="linkedin",
+                 description="")
+    dedup_sweep(db_session)
+    db_session.refresh(first)
+    db_session.refresh(second)
+    assert second.duplicate_of == first.id
+    assert first.duplicate_of is None
+
+
+def test_sweep_remote_rows_require_same_country(db_session):
+    us = _mk(db_session, "https://linkedin.com/jobs/view/203", source="linkedin",
+             location="Remote")
+    ca_direct = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/12",
+                    source="ats", location="Remote",
+                    description="Real description " * 10)
+    # Force differing countries with empty cities ("Remote" parses city=Remote,
+    # so blank the parsed fields to simulate truly unlocated rows).
+    us.city = ""
+    us.location_search = ""
+    us.country = "US"
+    ca_direct.city = ""
+    ca_direct.location_search = ""
+    ca_direct.country = "CA"
+    db_session.commit()
+    dedup_sweep(db_session)
+    db_session.refresh(us)
+    assert us.duplicate_of is None

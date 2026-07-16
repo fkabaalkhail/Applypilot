@@ -528,6 +528,8 @@ class AggregatorService:
             return False
 
         # Store the job
+        from backend.services.cross_source_dedup import mark_inferior_twins, normalize_title
+
         scraped_job = ScrapedJob(
             title=job.title,
             company=job.company,
@@ -545,6 +547,7 @@ class AggregatorService:
             company_logo=company_logo,
             company_domain=company_domain,
             company_url=job.company_url or "",
+            title_norm=normalize_title(job.title),
             **location_fields(job.location),
         )
         self.db.add(scraped_job)
@@ -554,6 +557,12 @@ class AggregatorService:
             # Duplicate URL or other constraint violation — rollback and skip
             self.db.rollback()
             return False
+
+        # This direct row supersedes LinkedIn/Indeed copies that arrived first.
+        try:
+            mark_inferior_twins(self.db, scraped_job)
+        except Exception:
+            self.db.rollback()
         return True
 
     async def _enrich_missing_descriptions(
