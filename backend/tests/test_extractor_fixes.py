@@ -64,6 +64,40 @@ def test_taleo_ignores_pages_without_island():
     assert _extract_taleo_html("<html><body>No island here</body></html>") == ""
 
 
+def test_all_named_extractors_exist():
+    # Regression guard: an Edit once consumed a def line and orphaned a
+    # function body — every URL-routed extractor must resolve by name.
+    from backend.services import description_extractor as de
+    for name in ("_extract_linkedin_html", "_extract_indeed_html", "_extract_taleo_html"):
+        assert callable(getattr(de, name)), name
+
+
+def test_indeed_description_div():
+    from backend.services.description_extractor import _extract_indeed_html
+    html = (
+        '<div id="jobDescriptionText"><p>'
+        + "Arcadis is the world leading company delivering sustainable design. " * 8
+        + '</p></div><div id="belowFullJobDescription">footer</div>'
+    )
+    text = _extract_indeed_html(html)
+    assert "Arcadis" in text
+    assert "footer" not in text
+
+
+@pytest.mark.asyncio
+async def test_extractor_routes_indeed_urls():
+    html = (
+        '<div id="jobDescriptionText"><p>'
+        + "A long Indeed description sentence about the role and team. " * 8
+        + "</p></div>"
+    )
+    text = await extract_description_from_html(
+        None, "https://ca.indeed.com/viewjob?jk=abc", html,
+        "https://ca.indeed.com/viewjob?jk=abc",
+    )
+    assert len(text) > 200
+
+
 @pytest.mark.asyncio
 async def test_extractor_routes_taleo_urls():
     html = _taleo_page(REAL_ISH_DESC)

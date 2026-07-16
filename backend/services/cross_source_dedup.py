@@ -208,6 +208,92 @@ def mark_inferior_twins(db: Session, winner: ScrapedJob) -> int:
     return marked
 
 
+def absorb_new_aggregator_rows(db: Session, limit: int = 300) -> int:
+    """Incremental dedup for rows the one-time sweep never saw: the newest
+    unmarked LinkedIn/Indeed rows get absorbed by any better existing twin
+    (direct row, or a higher/equal-tier aggregator row that has a description
+    when this one doesn't). Called from the hourly backfill cron. Commits."""
+    candidates = (
+        db.query(ScrapedJob)
+        .filter(
+            ScrapedJob.duplicate_of.is_(None),
+            or_(
+                ScrapedJob.source_platform.in_(INFERIOR_SOURCES),
+                ScrapedJob.url.ilike("%linkedin.com%"),
+                ScrapedJob.url.ilike("%indeed.com%"),
+            ),
+        )
+        .order_by(ScrapedJob.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+    marked = 0
+    for row in candidates:
+        row_source = effective_source(row.source_platform, row.url)
+        if row_source not in INFERIOR_SOURCES:
+            continue
+        title_norm = row.title_norm or normalize_title(row.title)
+        if not title_norm or title_norm == "\x01":
+            continue
+        row_tier = _SOURCE_TIER.get(row_source, 3)
+        twins = (
+            db.query(ScrapedJob)
+            .filter(
+                ScrapedJob.duplicate_of.is_(None),
+                ScrapedJob.title_norm == title_norm,
+                ScrapedJob.id != row.id,
+                _employer_filter(row.company, row.company_domain or ""),
+            )
+            .limit(20)
+            .all()
+        )
+        best = None
+        for twin in twins:
+            twin_tier = _SOURCE_TIER.get(
+                effective_source(twin.source_platform, twin.url), 3
+            )
+            better = twin_tier < row_tier or (
+                twin_tier == row_tier
+                and len(twin.description or "") >= 50
+                and (len(row.description or "") < 50 or twin.id < row.id)
+            )
+            if not better:
+                continue
+            if not _cities_compatible(row.city or "", twin.city or "",
+                                      twin.location_search or "",
+                                      row.country or "", twin.country or ""):
+                continue
+            best = twin
+            break
+        if best is None:
+            continue
+        row.duplicate_of = best.id
+        if best.applicant_count is None and row.applicant_count is not None:
+            best.applicant_count = row.applicant_count
+        if not (best.salary_range or "") and (row.salary_range or ""):
+            best.salary_range = row.salary_range
+        if (len(best.description or "") < 50
+                and len(row.description or "") >= _MIN_COPY_DESC_LEN):
+            best.description = row.description
+            best.description_sections = None
+        marked += 1
+
+    # A row absorbed early in the pass may itself absorb later (A→B, B→C):
+    # flatten so every duplicate points at a visible survivor.
+    if marked:
+        for row in candidates:
+            hops = 0
+            while row.duplicate_of is not None and hops < 5:
+                target = db.get(ScrapedJob, row.duplicate_of)
+                if target is None or target.duplicate_of is None:
+                    break
+                row.duplicate_of = target.duplicate_of
+                hops += 1
+        db.commit()
+    return marked
+
+
 @dataclass
 class _Row:
     id: int

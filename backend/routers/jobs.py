@@ -481,8 +481,20 @@ async def cron_backfill(
                 .limit(1)
                 .scalar()
             ) or ""
+            # A LinkedIn job page for this company carries its logo when the
+            # homepage and Wikidata have nothing.
+            linkedin_url = (
+                db.query(ScrapedJob.url)
+                .filter(
+                    ScrapedJob.company_domain == domain,
+                    ScrapedJob.url.ilike("%linkedin.com/jobs%"),
+                )
+                .order_by(ScrapedJob.id.desc())
+                .limit(1)
+                .scalar()
+            ) or ""
             try:
-                harvested = await harvest_logo(client, domain, company)
+                harvested = await harvest_logo(client, domain, company, linkedin_url)
             except Exception:
                 harvested = ""
             new_logo = harvested or (
@@ -494,6 +506,15 @@ async def cron_backfill(
             db.commit()
             if harvested:
                 logos_harvested += 1
+
+    # New LinkedIn/Indeed rows that duplicate an existing better posting keep
+    # arriving between sweeps; absorb them incrementally.
+    from backend.services.cross_source_dedup import absorb_new_aggregator_rows
+    try:
+        twins_absorbed = absorb_new_aggregator_rows(db)
+    except Exception:
+        db.rollback()
+        twins_absorbed = 0
 
     remaining = (
         db.query(ScrapedJob)
@@ -511,6 +532,7 @@ async def cron_backfill(
         "domains_fixed": domains_fixed,
         "logo_domains_probed": len(domains),
         "logos_harvested": logos_harvested,
+        "twins_absorbed": twins_absorbed,
         "remaining": remaining,
     }
 

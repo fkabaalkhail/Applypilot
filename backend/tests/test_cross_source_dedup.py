@@ -2,6 +2,7 @@
 
 from backend.db.models import ScrapedJob
 from backend.services.cross_source_dedup import (
+    absorb_new_aggregator_rows,
     canonical_url,
     dedup_sweep,
     has_direct_twin,
@@ -255,6 +256,57 @@ def test_sweep_different_requisitions_same_host_not_url_twins(db_session):
     db_session.refresh(b)
     assert a.duplicate_of is None
     assert b.duplicate_of is None
+
+
+def test_absorb_new_indeed_row_into_described_linkedin_twin(db_session):
+    # The Arcadis case: an Indeed row with no description arrives after the
+    # sweep; a LinkedIn twin with a full description already exists.
+    linkedin = _mk(db_session, "https://ca.linkedin.com/jobs/view/arc-1",
+                   source="linkedin", company="Arcadis", domain="arcadis.com",
+                   title="Disaster and Climate Resilience Co-op",
+                   location="Vancouver, BC, CA",
+                   description="Arcadis is the world leading company " * 20)
+    indeed = _mk(db_session, "https://ca.indeed.com/viewjob?jk=arc1",
+                 source="indeed", company="Arcadis", domain="arcadis.com",
+                 title="Disaster and Climate Resilience Co-op",
+                 location="Vancouver, BC, CA", description="")
+    marked = absorb_new_aggregator_rows(db_session)
+    assert marked == 1
+    db_session.refresh(indeed)
+    db_session.refresh(linkedin)
+    assert indeed.duplicate_of == linkedin.id
+    assert linkedin.duplicate_of is None
+
+
+def test_absorb_never_marks_direct_rows_or_unrelated(db_session):
+    direct = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/absorb-1",
+                 source="ats", description="")
+    other_city = _mk(db_session, "https://ca.indeed.com/viewjob?jk=absorb2",
+                     source="indeed", location="Calgary, AB, CA", description="")
+    _mk(db_session, "https://ca.linkedin.com/jobs/view/absorb-3",
+        source="linkedin", location="Ottawa, ON, CA",
+        description="Full description " * 30)
+    absorb_new_aggregator_rows(db_session)
+    db_session.refresh(direct)
+    db_session.refresh(other_city)
+    assert direct.duplicate_of is None
+    assert other_city.duplicate_of is None
+
+
+def test_absorb_flattens_chains(db_session):
+    oldest = _mk(db_session, "https://ca.linkedin.com/jobs/view/chain-1",
+                 source="linkedin", description="Desc " * 100)
+    middle = _mk(db_session, "https://ca.linkedin.com/jobs/view/chain-2",
+                 source="linkedin", description="Desc " * 100)
+    newest = _mk(db_session, "https://ca.indeed.com/viewjob?jk=chain3",
+                 source="indeed", description="")
+    absorb_new_aggregator_rows(db_session)
+    db_session.refresh(oldest)
+    db_session.refresh(middle)
+    db_session.refresh(newest)
+    assert oldest.duplicate_of is None
+    for row in (middle, newest):
+        assert row.duplicate_of == oldest.id, "chains must be flattened"
 
 
 def test_sweep_remote_rows_require_same_country(db_session):

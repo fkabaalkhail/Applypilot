@@ -51,8 +51,13 @@ async def main(limit: int, target_sql: str = UNPROBED_SQL) -> None:
     async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
         for row in domains:
             domain, company = row.company_domain, row.company or ""
+            with engine.connect() as conn:
+                linkedin_url = conn.execute(text(
+                    "SELECT url FROM scraped_jobs WHERE company_domain = :d "
+                    "AND url ILIKE '%linkedin.com/jobs%' ORDER BY id DESC LIMIT 1"
+                ), {"d": domain}).scalar() or ""
             try:
-                logo = await harvest_logo(client, domain, company)
+                logo = await harvest_logo(client, domain, company, linkedin_url)
             except Exception:
                 logo = ""
             new_logo = logo or f"https://www.google.com/s2/favicons?domain={domain}&sz=256"

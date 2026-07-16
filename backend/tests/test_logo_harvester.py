@@ -100,6 +100,43 @@ async def test_wikidata_harvest_requires_label_match():
         assert await harvest_from_wikidata(client, "Agnico Eagle") == ""
 
 
+LINKEDIN_PAGE = (
+    "<html><body>"
+    "<section class='top-card'><h4>Mobii Systems</h4>"
+    "<img src='https://media.licdn.com/dms/image/v2/AAA/company-logo_100_100/0/1/mobii'/></section>"
+    + "x" * 6000 +
+    "<aside><img src='https://media.licdn.com/dms/image/v2/BBB/company-logo_100_100/0/2/other'/></aside>"
+    "</body></html>"
+).encode()
+
+
+@pytest.mark.asyncio
+async def test_linkedin_harvest_anchors_on_company_name():
+    from backend.services.logo_harvester import harvest_from_linkedin
+    transport = MockTransport({
+        "linkedin.com/jobs/view/1": (200, LINKEDIN_PAGE, "text/html"),
+        "media.licdn.com": (200, _png(100), "image/png"),
+    })
+    async with httpx.AsyncClient(transport=transport) as client:
+        url = await harvest_from_linkedin(
+            client, "https://www.linkedin.com/jobs/view/1", "Mobii Systems"
+        )
+    assert "AAA" in url  # the top-card logo, not the sidebar one
+    assert "BBB" not in url
+
+
+@pytest.mark.asyncio
+async def test_linkedin_harvest_misses_without_name_anchor():
+    from backend.services.logo_harvester import harvest_from_linkedin
+    transport = MockTransport({
+        "linkedin.com/jobs/view/1": (200, LINKEDIN_PAGE, "text/html"),
+    })
+    async with httpx.AsyncClient(transport=transport) as client:
+        assert await harvest_from_linkedin(
+            client, "https://www.linkedin.com/jobs/view/1", "Unrelated Corp"
+        ) == ""
+
+
 @pytest.mark.asyncio
 async def test_harvest_logo_falls_back_homepage_then_wikidata():
     transport = MockTransport({

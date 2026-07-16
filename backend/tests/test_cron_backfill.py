@@ -12,7 +12,7 @@ SECRET = "test-cron-secret"
 @pytest.fixture(autouse=True)
 def _no_network_harvest(monkeypatch):
     """The logo-harvest phase must never hit real homepages/Wikidata in tests."""
-    async def fake_harvest(client, domain, company):
+    async def fake_harvest(client, domain, company, linkedin_job_url=""):
         return ""
     monkeypatch.setattr(logo_harvester, "harvest_logo", fake_harvest)
 
@@ -118,7 +118,7 @@ def test_backfill_harvests_real_logo_and_marks_probed(client, db_session, monkey
     async def fake_extract(client_, url):
         return ""
 
-    async def fake_harvest(client_, domain, company):
+    async def fake_harvest(client_, domain, company, linkedin_job_url=""):
         return "https://cdn.example.com/real-logo.png" if domain == "kinaxis.com" else ""
 
     monkeypatch.setattr(

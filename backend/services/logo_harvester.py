@@ -188,9 +188,53 @@ async def harvest_from_wikidata(client: httpx.AsyncClient, company: str) -> str:
     return ""
 
 
-async def harvest_logo(client: httpx.AsyncClient, domain: str, company: str) -> str:
+_LICDN_COMPANY_LOGO = re.compile(
+    r'https://media\.licdn\.com/dms/image/[^"\s&]*company-logo[^"\s&]*'
+)
+
+
+async def harvest_from_linkedin(
+    client: httpx.AsyncClient, linkedin_job_url: str, company: str
+) -> str:
+    """The posting company's logo from a LinkedIn job page.
+
+    Guest pages carry dozens of company-logo images (the similar-jobs
+    sidebar), so anchor on the company NAME's first occurrence and take the
+    nearest logo URL — a far-away logo is someone else's."""
+    company_fold = (company or "").strip().lower()
+    if not linkedin_job_url or len(company_fold) < 3:
+        return ""
+    try:
+        resp = await client.get(linkedin_job_url, headers=_HARVEST_HEADERS)
+    except Exception:
+        return ""
+    if resp.status_code != 200:
+        return ""
+    html = resp.text
+    name_at = html.lower().find(company_fold)
+    if name_at < 0:
+        return ""
+    best_url, best_distance = "", 5000
+    for m in _LICDN_COMPANY_LOGO.finditer(html):
+        distance = abs(m.start() - name_at)
+        if distance < best_distance:
+            best_distance = distance
+            best_url = m.group(0)
+    if best_url and await _probe(client, best_url) >= MIN_WIDTH:
+        return best_url
+    return ""
+
+
+async def harvest_logo(
+    client: httpx.AsyncClient,
+    domain: str,
+    company: str,
+    linkedin_job_url: str = "",
+) -> str:
     """Best real logo URL for a company, or '' when none can be verified."""
     logo = await harvest_from_homepage(client, domain) if domain else ""
     if not logo:
         logo = await harvest_from_wikidata(client, company)
+    if not logo and linkedin_job_url:
+        logo = await harvest_from_linkedin(client, linkedin_job_url, company)
     return logo

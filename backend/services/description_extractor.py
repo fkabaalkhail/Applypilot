@@ -386,6 +386,24 @@ def _extract_taleo_html(html: str) -> str:
         parts.append(text)
     combined = "\n\n".join(parts)
     return _cap(combined) if len(combined) > 200 else ""
+
+
+def _extract_indeed_html(html: str) -> str:
+    """Indeed serves the full posting in <div id="jobDescriptionText"> — but
+    only to residential IPs; datacenter fetches get walled, which the attempt
+    cap absorbs. Nested divs end a naive closing-tag regex early, so cut at
+    the next top-level marker instead."""
+    m = re.search(r'<div[^>]*id="jobDescriptionText"[^>]*>', html)
+    if not m:
+        return ""
+    tail = html[m.end():]
+    end = re.search(r'<div[^>]*id="(?:belowFullJobDescription|mosaic-|jobDetailsSection)', tail)
+    chunk = tail[: end.start()] if end else tail[:60000]
+    text = _clean_html(chunk)
+    return _cap(text) if len(text) > 200 else ""
+
+
+def _extract_linkedin_html(html: str) -> str:
     m = re.search(r"show-more-less-html__markup[^>]*>(.*?)</div>", html, re.DOTALL)
     if m:
         text = _clean_html(m.group(1))
@@ -474,6 +492,11 @@ async def extract_description_from_html(
 
     if ".taleo.net" in blob:
         text = _extract_taleo_html(html)
+        if text:
+            return text
+
+    if "indeed.com" in blob:
+        text = _extract_indeed_html(html)
         if text:
             return text
 

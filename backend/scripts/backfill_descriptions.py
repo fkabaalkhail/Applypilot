@@ -28,16 +28,21 @@ from backend.services.description_extractor import (  # noqa: E402
 BATCH = 150
 CONCURRENCY = 6
 
-SELECT_SQL = text(
-    "SELECT id, url FROM scraped_jobs "
-    "WHERE (description IS NULL OR length(btrim(description)) < 50) "
-    "AND coalesce(desc_fetch_attempts, 0) < 3 AND duplicate_of IS NULL "
-    "AND url NOT ILIKE '%linkedin.com%' AND url NOT ILIKE '%indeed.com%' "
-    "ORDER BY id DESC LIMIT :batch"
-)
+def select_sql(include_indeed: bool):
+    # --include-indeed: Indeed walls datacenter IPs but serves residential
+    # ones — meaningful only when running this script from a home machine.
+    indeed_clause = "" if include_indeed else "AND url NOT ILIKE '%indeed.com%' "
+    return text(
+        "SELECT id, url FROM scraped_jobs "
+        "WHERE (description IS NULL OR length(btrim(description)) < 50) "
+        "AND coalesce(desc_fetch_attempts, 0) < 3 AND duplicate_of IS NULL "
+        "AND url NOT ILIKE '%linkedin.com%' "
+        + indeed_clause +
+        "ORDER BY id DESC LIMIT :batch"
+    )
 
 
-async def main() -> None:
+async def main(include_indeed: bool = False) -> None:
     total_fixed = total_tried = 0
     semaphore = asyncio.Semaphore(CONCURRENCY)
     async with httpx.AsyncClient(
@@ -51,9 +56,10 @@ async def main() -> None:
                 except Exception:
                     return job_id, ""
 
+        query = select_sql(include_indeed)
         while True:
             with engine.connect() as conn:
-                rows = conn.execute(SELECT_SQL, {"batch": BATCH}).fetchall()
+                rows = conn.execute(query, {"batch": BATCH}).fetchall()
             if not rows:
                 break
             results = await asyncio.gather(*[fetch(r.id, r.url) for r in rows])
@@ -94,4 +100,4 @@ async def main() -> None:
 if __name__ == "__main__":
     if not os.environ.get("DATABASE_URL", ""):
         sys.exit("DATABASE_URL is required")
-    asyncio.run(main())
+    asyncio.run(main(include_indeed="--include-indeed" in sys.argv))
