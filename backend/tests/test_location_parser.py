@@ -204,3 +204,17 @@ def test_word_path_city_before_state_name():
 def test_uppercase_or_with_comma_still_oregon():
     loc = first("Portland, OR")
     assert (loc.city, loc.region) == ("Portland", "OR")
+
+
+def test_taleo_hyphen_hierarchy():
+    # Taleo careersection format: Region-District-Site, no spaces around dashes.
+    locs = parse_locations("Ontario-Cochrane-Detour Lake")
+    cities = {l.city for l in locs}
+    assert "Cochrane" in cities
+    assert "Detour Lake" in cities
+    assert all(l.region == "ON" for l in locs)
+
+
+def test_hyphenated_city_names_survive():
+    loc = first("Winston-Salem, NC")
+    assert (loc.city, loc.region) == ("Winston-Salem", "NC")

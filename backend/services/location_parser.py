@@ -216,6 +216,21 @@ def _parse_segment(segment: str) -> list[ParsedLocation]:
     if metro:
         return [_finish(ParsedLocation(city=_titleize(metro.group(1))))]
 
+    # Taleo hierarchy format "Ontario-Cochrane-Detour Lake" (Region-District-
+    # Site, no spaces around dashes). Only when the FIRST dash part is a known
+    # region — hyphenated city names (Winston-Salem) must survive.
+    if "," not in segment and "-" in segment and " - " not in segment:
+        dash_parts = [p.strip() for p in segment.split("-") if p.strip()]
+        if len(dash_parts) >= 2 and fold(dash_parts[0]) in _REGION_BY_NAME:
+            code = _REGION_BY_NAME[fold(dash_parts[0])]
+            region_name = CA_PROVINCES.get(code) or US_STATES.get(code, "")
+            return [
+                _finish(ParsedLocation(
+                    city=_titleize(part), region=code, region_name=region_name,
+                ))
+                for part in dash_parts[1:]
+            ]
+
     if "," in segment:
         # Usually "City, Region, Country" — but aggregators also emit comma
         # city-LISTS ("Toronto Canada, San Francisco, …"): a known city token
