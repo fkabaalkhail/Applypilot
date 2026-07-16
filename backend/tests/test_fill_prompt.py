@@ -35,3 +35,24 @@ def test_prompt_teaches_derivation_not_guessing():
     assert "years of experience" in text  # derived from date ranges, not guessed
     assert "prefer not to say" in text  # the decline-to-answer exception survives
     assert "meaning" in text  # options matched by meaning, not wording
+
+
+COMPOSE = Path(__file__).resolve().parent.parent.parent / "prompts" / "compose_answer.txt"
+
+
+def test_compose_prompt_composes_open_ended():
+    text = COMPOSE.read_text(encoding="utf-8").lower()
+    assert "open-ended" in text          # it is the generative contract, not extraction
+    assert "first person" in text
+
+
+def test_compose_prompt_keeps_hard_fact_guardrails():
+    text = COMPOSE.read_text(encoding="utf-8").lower()
+    assert "may not invent" in text                              # no fabricated credentials
+    assert "do not invent specific claims about the company" in text  # no fabricated company facts
+    assert "job posting" in text
+
+
+def test_compose_prompt_keeps_floor_sentinel():
+    text = COMPOSE.read_text(encoding="utf-8")
+    assert "__NO_ANSWER__" in text       # blank floor survives when nothing can be grounded

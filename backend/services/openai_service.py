@@ -320,6 +320,20 @@ class OpenAIService:
         )
         return await self._generate(prompt, system=system)
 
+    async def compose_answer(self, question: str, context: str) -> str:
+        """Compose a grounded answer to an open-ended essay question (why-us,
+        behavioral, self-intro, company-knowledge). Unlike answer_question, this
+        is allowed to write prose that is not stated verbatim in the context —
+        but it still may not invent hard facts (see prompts/compose_answer.txt)."""
+        template = _load_prompt("compose_answer.txt")
+        prompt = template.replace("{{QUESTION}}", question).replace("{{CONTEXT}}", context)
+        system = (
+            "You are a job applicant writing a short, genuine answer to an "
+            "open-ended application question in first person. Ground it in the "
+            "applicant's real experience and the job posting. Output only the answer."
+        )
+        return await self._generate(prompt, system=system)
+
     async def suggest_job_titles(self, profile: ResumeProfile) -> list[str]:
         template = _load_prompt("suggest_titles.txt")
         prompt = template.replace("{{RESUME_JSON}}", profile.model_dump_json(indent=2))
