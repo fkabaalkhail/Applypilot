@@ -501,6 +501,109 @@ def backfill_board_keys(db: Session, limit: int = 500) -> int:
     return adopted
 
 
+# ─── URL liveness probing ────────────────────────────────────────────────────
+
+# Only these statuses are evidence of death. Bot walls answer 401/403/405/406/
+# 429/999 and some employers 5xx under load — none of that means the job is
+# gone, and a real user's browser usually gets through where our probe can't.
+DEAD_HTTP_STATUSES = (404, 410)
+
+
+async def probe_url_liveness(client, url: str) -> str:
+    """One GET, three verdicts: 'dead' (honest 404/410), 'alive' (200),
+    'unknown' (everything else, including network noise)."""
+    if not url:
+        return "unknown"
+    try:
+        response = await client.get(url, follow_redirects=True)
+    except Exception:
+        return "unknown"
+    if response.status_code in DEAD_HTTP_STATUSES:
+        return "dead"
+    if response.status_code == 200:
+        return "alive"
+    return "unknown"
+
+
+async def probe_urls_liveness(client, urls: list[str], *, concurrency: int = 6,
+                              budget: int = 80) -> dict[str, str]:
+    """Probe up to ``budget`` URLs concurrently. Returns {url: verdict};
+    URLs past the budget are simply absent (treated as unverified)."""
+    import asyncio
+
+    urls = [u for u in urls if u][:budget]
+    if not urls:
+        return {}
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def one(u: str) -> tuple[str, str]:
+        async with semaphore:
+            return u, await probe_url_liveness(client, u)
+
+    return dict(await asyncio.gather(*[one(u) for u in urls]))
+
+
+def mark_listing_removed(db: Session, row_id: int,
+                         now: datetime.datetime | None = None) -> None:
+    """Soft-remove one listing (dead apply URL). Commit is the caller's."""
+    now = now or _utcnow()
+    db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
+        {"listing_status": LISTING_REMOVED, "listing_status_changed_at": now},
+        synchronize_session=False,
+    )
+
+
+async def verify_recent_aggregator_listings(db: Session, client, limit: int = 120,
+                                            now: datetime.datetime | None = None) -> dict:
+    """Probe the NEWEST visible GitHub-list rows — the ones users actually
+    click. The curated lists routinely re-publish postings the employer has
+    already closed, and no board reconciliation ever covers these rows.
+
+    An honest 404/410 → removed. Anything else stamps ``last_seen_at`` (for
+    these rows it means "probed", not board-confirmed — nothing else reads it
+    for aggregator rows) so each row is re-checked ~daily instead of every
+    run. LinkedIn/Indeed rows are excluded: login walls make probing them
+    meaningless. Commits. Returns counts.
+    """
+    now = now or _utcnow()
+    recheck_cutoff = now - datetime.timedelta(hours=20)
+    effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
+
+    rows = (
+        db.query(ScrapedJob.id, ScrapedJob.url)
+        .filter(
+            ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
+            ScrapedJob.source_platform == "github",
+            ScrapedJob.duplicate_of.is_(None),
+            or_(ScrapedJob.last_seen_at.is_(None),
+                ScrapedJob.last_seen_at < recheck_cutoff),
+        )
+        .order_by(effective_date.desc(), ScrapedJob.id.desc())
+        .limit(limit)
+        .all()
+    )
+    stats = {"checked": 0, "removed": 0}
+    if not rows:
+        return stats
+
+    verdicts = await probe_urls_liveness(client, [url for _id, url in rows],
+                                         budget=limit)
+    for row_id, url in rows:
+        verdict = verdicts.get(url)
+        if verdict is None:
+            continue
+        stats["checked"] += 1
+        if verdict == "dead":
+            mark_listing_removed(db, row_id, now)
+            stats["removed"] += 1
+        else:
+            db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
+                {"last_seen_at": now}, synchronize_session=False,
+            )
+    db.commit()
+    return stats
+
+
 # ─── Stale-row URL verification ──────────────────────────────────────────────
 
 # Hosts whose job URLs return honest status codes for dead postings. Ashby is

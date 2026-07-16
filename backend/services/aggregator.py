@@ -365,8 +365,13 @@ class AggregatorService:
                 is_mega_repo = "Internship" in source.repo_name
                 parsed_jobs = self.parser.parse(content, is_mega_repo=is_mega_repo)
 
+                # The lists re-publish postings employers already closed —
+                # verify genuinely-new URLs before they become catalogue rows
+                # a user can click into a 404.
+                dead_urls = await self._probe_new_urls(parsed_jobs)
+
                 for job in parsed_jobs:
-                    stored = self._classify_and_store(job, source)
+                    stored = self._classify_and_store(job, source, dead_urls=dead_urls)
                     if stored:
                         new_count += 1
 
@@ -474,10 +479,53 @@ class AggregatorService:
             return "internship"
         return "new_grad"
 
-    def _classify_and_store(self, job: ParsedJob, source: GitHubSource) -> bool:
+    async def _probe_new_urls(self, parsed_jobs: list[ParsedJob]) -> set[str]:
+        """Liveness-check the parsed URLs that aren't in the catalogue yet.
+
+        Returns the set of canonical URLs that answered an honest 404/410.
+        Bounded (probe budget + timeouts); URLs past the budget pass through
+        unverified and the hourly verify sweep catches them later.
+        """
+        from backend.services.cross_source_dedup import canonical_url
+        from backend.services.description_extractor import BROWSER_HEADERS
+        from backend.services.listing_freshness import probe_urls_liveness
+
+        candidates: list[str] = []
+        seen: set[str] = set()
+        for job in parsed_jobs:
+            url = canonical_url(job.url or "")
+            if url and url not in seen and "jobright.ai" not in url:
+                seen.add(url)
+                candidates.append(url)
+        if not candidates:
+            return set()
+
+        known: set[str] = set()
+        for i in range(0, len(candidates), 400):
+            chunk = candidates[i:i + 400]
+            known.update(
+                row[0] for row in
+                self.db.query(ScrapedJob.url).filter(ScrapedJob.url.in_(chunk)).all()
+            )
+        fresh = [u for u in candidates if u not in known]
+        if not fresh:
+            return set()
+
+        try:
+            async with httpx.AsyncClient(timeout=10, headers=BROWSER_HEADERS) as client:
+                verdicts = await probe_urls_liveness(client, fresh, budget=80)
+        except Exception:
+            return set()
+        return {url for url, verdict in verdicts.items() if verdict == "dead"}
+
+    def _classify_and_store(self, job: ParsedJob, source: GitHubSource,
+                            dead_urls: frozenset | set = frozenset()) -> bool:
         """Classify a parsed job and store it if it passes filters.
 
-        Returns True if the job was stored, False if skipped (duplicate or excluded).
+        Returns True if the job was stored, False if skipped (duplicate or
+        excluded). URLs in ``dead_urls`` are stored as already-removed: the
+        catalogue never shows them, and remembering the URL stops the next
+        poll from re-discovering and re-probing the same dead posting.
         """
         # Reject jobright redirect URLs — we only want direct company links
         if "jobright.ai" in job.url:
@@ -534,6 +582,10 @@ class AggregatorService:
 
         # Store the job
         from backend.services.cross_source_dedup import mark_inferior_twins, normalize_title
+        from backend.services.listing_freshness import LISTING_ACTIVE, LISTING_REMOVED
+
+        now = datetime.datetime.utcnow()
+        is_dead = job.url in dead_urls
 
         scraped_job = ScrapedJob(
             title=job.title,
@@ -553,6 +605,11 @@ class AggregatorService:
             company_domain=company_domain,
             company_url=job.company_url or "",
             title_norm=normalize_title(job.title),
+            listing_status=LISTING_REMOVED if is_dead else LISTING_ACTIVE,
+            listing_status_changed_at=now if is_dead else None,
+            first_seen_at=now,
+            last_seen_at=now,
+            source_trust="medium",
             **location_fields(job.location),
         )
         self.db.add(scraped_job)
@@ -562,6 +619,9 @@ class AggregatorService:
             # Duplicate URL or other constraint violation — rollback and skip
             self.db.rollback()
             return False
+
+        if is_dead:
+            return False  # remembered, hidden — not a new catalogue job
 
         # This direct row supersedes LinkedIn/Indeed copies that arrived first.
         try:
@@ -581,8 +641,12 @@ class AggregatorService:
             sanitize_description,
         )
 
+        from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES
+
         query = self.db.query(ScrapedJob).filter(
-            or_(ScrapedJob.description == "", ScrapedJob.description.is_(None))
+            or_(ScrapedJob.description == "", ScrapedJob.description.is_(None)),
+            or_(ScrapedJob.listing_status.is_(None),
+                ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES)),
         )
         if source_id is not None:
             query = query.filter(ScrapedJob.github_source_id == source_id)

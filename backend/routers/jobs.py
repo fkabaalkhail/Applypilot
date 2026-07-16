@@ -596,6 +596,12 @@ async def cron_freshness(
         follow_redirects=True, timeout=10, headers=BROWSER_HEADERS
     ) as client:
         verified = await listing_freshness.verify_stale_listings(db, client, limit=30)
+        # The GitHub lists re-publish closed postings; probe the newest rows —
+        # the ones users actually click — so dead apply links leave the
+        # catalogue within the hour instead of collecting 404 complaints.
+        recent = await listing_freshness.verify_recent_aggregator_listings(
+            db, client, limit=120
+        )
 
     ghost = listing_freshness.score_ghost_risk(db)
 
@@ -604,6 +610,7 @@ async def cron_freshness(
         "marked_stale": stale,
         "expired": expired,
         "stale_verified": verified,
+        "recent_verified": recent,
         "ghost_scoring": ghost,
     }
 

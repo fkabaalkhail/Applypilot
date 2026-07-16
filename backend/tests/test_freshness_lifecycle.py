@@ -433,6 +433,130 @@ class TestCronAtsFreshness:
         assert "board renamed" in health.last_error
 
 
+# ─── URL liveness verification (dead list links) ─────────────────────────────
+
+class _StatusTransport:
+    """httpx transport answering a fixed status per URL fragment."""
+
+    def __init__(self, statuses: dict):
+        self.statuses = statuses
+
+    async def handle(self, request):
+        import httpx
+        for fragment, status in self.statuses.items():
+            if fragment in str(request.url):
+                return httpx.Response(status, text="page")
+        return httpx.Response(200, text="page")
+
+
+def _status_client(statuses: dict):
+    import httpx
+
+    class T(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            return await _StatusTransport(statuses).handle(request)
+
+    return httpx.AsyncClient(transport=T())
+
+
+class TestUrlLiveness:
+    @pytest.mark.asyncio
+    async def test_probe_verdicts(self):
+        from backend.services.listing_freshness import probe_url_liveness
+        async with _status_client({"/dead": 404, "/gone": 410, "/wall": 403,
+                                   "/live": 200}) as client:
+            assert await probe_url_liveness(client, "https://x.test/dead") == "dead"
+            assert await probe_url_liveness(client, "https://x.test/gone") == "dead"
+            # Bot walls are not evidence of death — a real browser gets through.
+            assert await probe_url_liveness(client, "https://x.test/wall") == "unknown"
+            assert await probe_url_liveness(client, "https://x.test/live") == "alive"
+
+    @pytest.mark.asyncio
+    async def test_verify_recent_removes_dead_github_rows(self, db_session):
+        from backend.services.listing_freshness import verify_recent_aggregator_listings
+
+        dead = _row(db_session, url="https://careers.example.com/jobs/dead",
+                    source_platform="github", board_key="", last_seen_at=None)
+        alive = _row(db_session, url="https://careers.example.com/jobs/alive",
+                     source_platform="github", board_key="", last_seen_at=None)
+        walled = _row(db_session, url="https://careers.example.com/jobs/wall",
+                      source_platform="github", board_key="", last_seen_at=None)
+        ats = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/dead2",
+                   last_seen_at=None)  # ats rows are the board's job, not this sweep's
+
+        async with _status_client({"/jobs/dead": 404, "/jobs/wall": 403}) as client:
+            stats = await verify_recent_aggregator_listings(db_session, client, now=NOW)
+
+        db_session.expire_all()
+        assert stats["removed"] == 1
+        assert db_session.get(ScrapedJob, dead.id).listing_status == LISTING_REMOVED
+        assert db_session.get(ScrapedJob, alive.id).listing_status == LISTING_ACTIVE
+        assert db_session.get(ScrapedJob, alive.id).last_seen_at == NOW
+        assert db_session.get(ScrapedJob, walled.id).listing_status == LISTING_ACTIVE
+        assert db_session.get(ScrapedJob, ats.id).listing_status == LISTING_ACTIVE
+
+    @pytest.mark.asyncio
+    async def test_verify_recent_skips_recently_probed(self, db_session):
+        from backend.services.listing_freshness import verify_recent_aggregator_listings
+
+        _row(db_session, url="https://careers.example.com/jobs/dead",
+             source_platform="github", board_key="",
+             last_seen_at=NOW - datetime.timedelta(hours=1))
+
+        async with _status_client({"/jobs/dead": 404}) as client:
+            stats = await verify_recent_aggregator_listings(db_session, client, now=NOW)
+        assert stats["checked"] == 0
+
+
+class TestAggregatorIngestProbe:
+    def test_dead_url_stored_as_removed(self, db_session):
+        """A list row whose apply URL already 404s must never surface."""
+        from backend.services.aggregator import AggregatorService
+        from backend.services.markdown_parser import ParsedJob
+        from backend.db.models import GitHubSource
+
+        source = GitHubSource(repo_url="https://github.com/x/newgrad", repo_owner="x",
+                              repo_name="New-Grad-Positions", role_category="software")
+        db_session.add(source)
+        db_session.commit()
+
+        svc = AggregatorService(db_session)
+        job = ParsedJob(title="Software Engineer, New Grad", company="DeadCo",
+                        location="Toronto, ON, Canada",
+                        url="https://careers.deadco.com/jobs/1")
+        stored = svc._classify_and_store(job, source,
+                                         dead_urls={"https://careers.deadco.com/jobs/1"})
+        assert stored is False
+
+        row = db_session.query(ScrapedJob).filter(
+            ScrapedJob.url == "https://careers.deadco.com/jobs/1").one()
+        assert row.listing_status == LISTING_REMOVED
+        assert row.first_seen_at is not None
+        assert row.source_trust == "medium"
+
+    def test_live_url_stored_active_with_freshness_stamps(self, db_session):
+        from backend.services.aggregator import AggregatorService
+        from backend.services.markdown_parser import ParsedJob
+        from backend.db.models import GitHubSource
+
+        source = GitHubSource(repo_url="https://github.com/x/newgrad2", repo_owner="x",
+                              repo_name="New-Grad-Positions", role_category="software")
+        db_session.add(source)
+        db_session.commit()
+
+        svc = AggregatorService(db_session)
+        job = ParsedJob(title="Software Engineer, New Grad", company="LiveCo",
+                        location="Toronto, ON, Canada",
+                        url="https://careers.liveco.com/jobs/1")
+        assert svc._classify_and_store(job, source) is True
+
+        row = db_session.query(ScrapedJob).filter(
+            ScrapedJob.url == "https://careers.liveco.com/jobs/1").one()
+        assert row.listing_status == LISTING_ACTIVE
+        assert row.last_seen_at is not None
+        assert row.source_trust == "medium"
+
+
 # ─── migration ───────────────────────────────────────────────────────────────
 
 def test_ingestion_freshness_migration_idempotent():
