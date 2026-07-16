@@ -25,10 +25,11 @@ from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
-# Platforms the ATS scraper can actually fetch today. Entries on other
-# platforms (e.g. workday, which needs a tenant host) are kept in the registry
-# for reference but skipped by the scraper until support is added.
-SUPPORTED_PLATFORMS = {"greenhouse", "lever", "ashby", "smartrecruiters"}
+# Platforms the ATS scraper can actually fetch today. Workday entries are
+# supported only when they carry a ``workday_url_template`` (the tenant's CxS
+# endpoint base) — the tenant host/site can't be derived from a bare slug, so
+# template-less workday entries stay listed but unscraped.
+SUPPORTED_PLATFORMS = {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"}
 
 # One cron-ats invocation scrapes its whole slice inside a single Vercel
 # request capped at 300 s by the workflow. This is roughly how many boards
@@ -87,6 +88,10 @@ def load_companies(
             continue
         if supported_only and platform not in SUPPORTED_PLATFORMS:
             continue
+        if supported_only and platform == "workday" and not (
+            entry.get("workday_url_template") or ""
+        ).strip():
+            continue
 
         key = (platform, slug)
         if key in seen:
@@ -129,6 +134,20 @@ def shard_for_hour(
         if zlib.crc32(entry[1].lower().encode("utf-8")) % shard_count == shard_index
     ]
     return shard_index, shard_count, subset
+
+
+def load_workday_bases() -> dict[str, str]:
+    """Return {board_slug: CxS endpoint base} for workday entries that carry a
+    ``workday_url_template`` — the connector can't fetch a tenant without it."""
+    out: dict[str, str] = {}
+    for entry in _load_raw():
+        if (entry.get("ats_platform") or "").strip().lower() != "workday":
+            continue
+        slug = (entry.get("board_slug") or "").strip()
+        template = (entry.get("workday_url_template") or "").strip()
+        if slug and template:
+            out[slug] = template.rstrip("/")
+    return out
 
 
 def load_logo_map() -> dict[str, str]:

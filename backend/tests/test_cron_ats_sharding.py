@@ -81,10 +81,10 @@ class TestShardForHour:
 
 class TestCronAtsUsesShard:
     def test_cron_ats_scrapes_only_this_hours_shard(self, client, monkeypatch):
-        """The endpoint must pass the hour's shard to the scraper, not the
+        """The endpoint must crawl the hour's shard of boards, not the
         whole registry."""
         import backend.auth.dependencies as auth_deps
-        from backend.services.ats_scraper import ATSScraper
+        from backend.services.ats_scraper import ATSScraper, BoardSnapshot
         from backend.data import company_registry
 
         monkeypatch.setattr(auth_deps, "CRON_SECRET", "test-cron-secret")
@@ -94,13 +94,13 @@ class TestCronAtsUsesShard:
             company_registry, "load_companies", lambda **kw: companies
         )
 
-        captured = {}
+        scraped: list[tuple[str, str]] = []
 
-        async def fake_scrape_all(self, companies=None):
-            captured["companies"] = companies
-            return []
+        async def fake_scrape_board(self, client, platform, slug, company_name):
+            scraped.append((platform, slug))
+            return BoardSnapshot(platform=platform, slug=slug, company=company_name)
 
-        monkeypatch.setattr(ATSScraper, "scrape_all", fake_scrape_all)
+        monkeypatch.setattr(ATSScraper, "scrape_board", fake_scrape_board)
 
         resp = client.post(
             "/github-sources/cron-ats",
@@ -109,7 +109,6 @@ class TestCronAtsUsesShard:
         assert resp.status_code == 200
         data = resp.json()
 
-        assert captured["companies"] is not None
-        assert 0 < len(captured["companies"]) < 400
+        assert 0 < len(scraped) < 400
         assert data["shard"]["count"] > 1
-        assert data["shard"]["companies"] == len(captured["companies"])
+        assert data["shard"]["companies"] == len(scraped)

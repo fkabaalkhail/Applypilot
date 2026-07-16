@@ -153,24 +153,33 @@ def cleanup_blank_companies(
     return {"dry_run": False, "deleted_jobs": deleted}
 
 
+# New Workday rows need one detail request each for their description (the
+# list payload has none, and the public page is JS-rendered so cron-backfill
+# can't recover it later). Cap per run; jobs past the cap simply stay
+# un-inserted and surface as "new" again on the board's next shard pass.
+WORKDAY_DETAIL_BUDGET = 40
+
+
 @router.post("/cron-ats")
 async def cron_ats(
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
 ):
-    """Scrape ATS platforms (Greenhouse, Lever) for intern/new-grad jobs.
+    """Crawl this hour's shard of ATS boards: ingest new listings, re-confirm
+    known ones (last_seen_at), and reconcile each board so vanished postings
+    are marked removed the same hour — the freshness edge over aggregators.
 
-    Polls the current hour's shard of the company registry (the whole run
-    must fit one serverless request — see shard_for_hour) and stores jobs
-    with direct apply links. Filters to entry-level + US/Canada only.
-    Designed to be called by Vercel Cron Jobs on a schedule.
+    Per-board failures are isolated and recorded in source_health; a board
+    failing repeatedly is skipped for a cooldown (circuit breaker) instead of
+    burning the run's budget. Filters to entry-level + US/Canada only.
     """
     try:
         from backend.db.models import ScrapedJob
-        from backend.services.ats_scraper import ATSScraper
+        from backend.services.ats_scraper import ATSScraper, fetch_workday_detail
         from backend.services.country_filter import CountryFilter
         from backend.services.work_type_classifier import WorkTypeClassifier
         from backend.services.logo_resolver import resolve_logo
+        from backend.services import listing_freshness, source_health
         from backend.data import company_registry
 
         scraper = ATSScraper(filter_entry_level=True, filter_north_america=True)
@@ -183,96 +192,138 @@ async def cron_ats(
             company_registry.load_companies(), hour
         )
 
-        jobs = await scraper.scrape_all(companies=companies)
-
         import httpx
         from backend.services.description_extractor import (
             extract_smartrecruiters_from_url,
             sanitize_description,
         )
 
-        new_count = 0
-        skipped_dupe = 0
-        twins_hidden = 0
-        async with httpx.AsyncClient(timeout=15) as sr_client:
-            for job in jobs:
-                # Dedup by URL. Query the column, not the entity: loading the row
-                # would pull its ~1.9 KB description across the wire for a boolean.
-                existing = db.query(ScrapedJob.url).filter(ScrapedJob.url == job.url).first()
-                if existing:
-                    skipped_dupe += 1
+        health_map = source_health.get_health_map(
+            db, [f"{p}:{s}" for p, s, _ in companies]
+        )
+
+        totals = {
+            "total_found": 0, "new_jobs": 0, "refreshed": 0, "edited": 0,
+            "removed": 0, "revived": 0, "cross_source_twins_hidden": 0,
+            "boards_failed": 0, "boards_skipped_cooldown": 0,
+        }
+        workday_detail_budget = WORKDAY_DETAIL_BUDGET
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            for platform, slug, company_name in companies:
+                board_key = f"{platform}:{slug}"
+
+                if source_health.in_cooldown(health_map.get(board_key)):
+                    totals["boards_skipped_cooldown"] += 1
                     continue
 
-                # Board APIs carry descriptions for GH/Lever/Ashby; SmartRecruiters
-                # needs one extra call per NEW job only.
-                description = (job.description or "").strip()
-                if not description and "smartrecruiters" in (job.url or ""):
-                    try:
-                        description = await extract_smartrecruiters_from_url(sr_client, job.url)
-                    except Exception:
-                        description = ""
-                description = sanitize_description(description) if description else ""
+                try:
+                    snapshot = await scraper.scrape_board(client, platform, slug, company_name)
+                except Exception as e:
+                    totals["boards_failed"] += 1
+                    source_health.record_failure(db, board_key, platform, slug, repr(e))
+                    continue
 
-                # Classify country
-                country = country_filter.classify(job.location)
-                if not country:
-                    country = "US"  # ATS scraper already filtered to NA
+                totals["total_found"] += len(snapshot.jobs)
 
-                # Classify work type
-                work_type = job.work_type or work_type_classifier.classify(job.location)
-
-                # Determine experience level from title
-                title_lower = job.title.lower()
-                if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
-                    experience_level = "internship"
-                else:
-                    experience_level = "new_grad"
-
-                # Resolve an accurate logo: prefer the curated registry logo,
-                # otherwise derive one from the company domain.
-                resolved_logo, resolved_domain = resolve_logo(job.company)
-                company_logo = logo_map.get(job.company.strip().lower()) or resolved_logo
-
-                scraped_job = ScrapedJob(
-                    title=job.title,
-                    company=job.company,
-                    location=job.location,
-                    url=job.url,
-                    description=description,
-                    source_platform="ats",
-                    title_norm=normalize_title(job.title),
-                    **location_fields(job.location),
-                    posted_date=job.posted_date,
-                    easy_apply=0,
-                    work_type=work_type,
-                    role_category=classify_role(job.title, job.department or ""),
-                    country=country,
-                    experience_level=experience_level,
-                    company_logo=company_logo,
-                    company_domain=resolved_domain,
+                # Re-confirm known listings (and detect edits); get the new ones.
+                new_jobs, refresh_stats = listing_freshness.refresh_known_listings(
+                    db, board_key, snapshot.jobs
                 )
-                db.add(scraped_job)
-                try:
-                    db.commit()
-                    new_count += 1
-                except Exception:
-                    db.rollback()
-                    skipped_dupe += 1
-                    continue
+                totals["refreshed"] += refresh_stats["refreshed"]
+                totals["edited"] += refresh_stats["edited"]
 
-                # This direct row supersedes any LinkedIn/Indeed copies of the
-                # same posting that arrived first.
-                try:
-                    twins_hidden += mark_inferior_twins(db, scraped_job)
-                except Exception:
-                    db.rollback()
+                for job in new_jobs:
+                    # Board APIs carry descriptions for GH/Lever/Ashby;
+                    # SmartRecruiters/Workday need one extra call per NEW job only.
+                    description = (job.description or "").strip()
+                    if not description and platform == "smartrecruiters":
+                        try:
+                            description = await extract_smartrecruiters_from_url(client, job.url)
+                        except Exception:
+                            description = ""
+                    elif not description and platform == "workday":
+                        if workday_detail_budget <= 0:
+                            continue  # re-surfaces as new on the next pass
+                        workday_detail_budget -= 1
+                        try:
+                            detail = await fetch_workday_detail(client, slug, job.detail_ref)
+                            description = detail.get("description", "")
+                            if detail.get("employment_type") and not job.employment_type:
+                                job.employment_type = detail["employment_type"]
+                        except Exception:
+                            description = ""
+                    description = sanitize_description(description) if description else ""
+                    job.description = description
+
+                    # Classify country
+                    country = country_filter.classify(job.location)
+                    if not country:
+                        country = "US"  # ATS scraper already filtered to NA
+
+                    # Classify work type
+                    work_type = job.work_type or work_type_classifier.classify(job.location)
+
+                    # Determine experience level from title
+                    title_lower = job.title.lower()
+                    if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
+                        experience_level = "internship"
+                    else:
+                        experience_level = "new_grad"
+
+                    # Resolve an accurate logo: prefer the curated registry logo,
+                    # otherwise derive one from the company domain.
+                    resolved_logo, resolved_domain = resolve_logo(job.company)
+                    company_logo = logo_map.get(job.company.strip().lower()) or resolved_logo
+
+                    scraped_job = ScrapedJob(
+                        title=job.title,
+                        company=job.company,
+                        location=job.location,
+                        url=job.url,
+                        description=description,
+                        source_platform="ats",
+                        title_norm=normalize_title(job.title),
+                        **location_fields(job.location),
+                        posted_date=job.posted_date,
+                        easy_apply=0,
+                        work_type=work_type,
+                        role_category=classify_role(job.title, job.department or ""),
+                        country=country,
+                        experience_level=experience_level,
+                        company_logo=company_logo,
+                        company_domain=resolved_domain,
+                        **listing_freshness.build_new_row_fields(job, board_key),
+                    )
+                    db.add(scraped_job)
+                    try:
+                        db.commit()
+                        totals["new_jobs"] += 1
+                    except Exception:
+                        db.rollback()
+                        continue
+
+                    # This direct row supersedes any LinkedIn/Indeed copies of the
+                    # same posting that arrived first.
+                    try:
+                        totals["cross_source_twins_hidden"] += mark_inferior_twins(db, scraped_job)
+                    except Exception:
+                        db.rollback()
+
+                # Reconcile the board's stored rows against what it just listed.
+                # Partial crawls (huge Workday boards) must not vote on removals.
+                if snapshot.complete:
+                    rec = listing_freshness.reconcile_board(db, board_key, snapshot.all_urls)
+                    totals["removed"] += rec["removed"]
+                    totals["revived"] += rec["revived"]
+
+                source_health.record_success(db, board_key, platform, slug, len(snapshot.jobs))
 
         return {
             "status": "completed",
-            "total_found": len(jobs),
-            "new_jobs": new_count,
-            "duplicates_skipped": skipped_dupe,
-            "cross_source_twins_hidden": twins_hidden,
+            **totals,
+            # Back-compat alias: known listings are refreshed now, not skipped.
+            "duplicates_skipped": totals["refreshed"],
             "shard": {
                 "index": shard_index,
                 "count": shard_count,

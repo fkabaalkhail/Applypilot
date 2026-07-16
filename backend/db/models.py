@@ -147,6 +147,48 @@ class ScrapedJob(Base):
     title_norm = Column(String, default="", index=True)
     duplicate_of = Column(Integer, nullable=True)
 
+    # --- Freshness lifecycle (services/listing_freshness.py) ---
+    # `status` above is the USER's workflow state (new/applied/…); this is the
+    # LISTING's lifecycle: active | stale | removed | expired. Soft states only —
+    # rows are never deleted (saved-job/application records reference them).
+    listing_status = Column(String, default="active", index=True)
+    listing_status_changed_at = Column(DateTime, nullable=True)
+    first_seen_at = Column(DateTime, nullable=True)
+    last_seen_at = Column(DateTime, nullable=True, index=True)
+    # "{platform}:{slug}" of the board this row was scraped from. Lets a board
+    # re-crawl reconcile exactly its own rows (mark-removed / revive) without
+    # URL-pattern guessing. Empty for aggregator rows and legacy ATS rows until
+    # the freshness cron backfills them from URL shape.
+    board_key = Column(String, default="", index=True)
+    # "{platform}:{slug}:{source's own id}" — stable across URL format changes,
+    # so a re-crawl updates in place even when the apply URL shifts shape.
+    external_id = Column(String, default="", index=True)
+
+    # Change detection: hash of (title|location|description|salary text). A
+    # differing hash on re-crawl appends to change_log (capped) and bumps
+    # edit_count — edit frequency and salary-removal are trust signals.
+    raw_hash = Column(String, default="")
+    edit_count = Column(Integer, default=0)
+    change_log = Column(JSON, nullable=True)
+
+    # Ghost-job heuristic (0-100) + the factors that produced it. Surfaced, not
+    # silently filtered — the product decides whether to hide or badge.
+    ghost_risk_score = Column(Integer, default=0)
+    ghost_risk_factors = Column(JSON, nullable=True)
+
+    # Source trust tier: high (employer's own board), medium (curated lists),
+    # low (aggregators). Aggregator copies never become the canonical row.
+    source_trust = Column(String, default="")
+
+    # --- Structured extraction (services/structured_extraction.py) ---
+    salary_min = Column(Integer, nullable=True)
+    salary_max = Column(Integer, nullable=True)
+    salary_currency = Column(String, default="")
+    salary_period = Column(String, default="")  # year | month | week | day | hour
+    employment_type = Column(String, default="")  # full_time | part_time | contract | internship
+    visa_sponsorship = Column(String, default="unknown")  # yes | no | unknown
+    skills = Column(JSON, nullable=True)  # extracted skill tags, capped list
+
 
 class PendingQuestion(Base):
     """A question the bot got stuck on during an application. User must answer."""
@@ -707,3 +749,30 @@ class AutofillOverride(Base):
     enabled = Column(Boolean, default=True, nullable=False)
     note = Column(String, default="")
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+# ─── Ingestion source health (per-board circuit breaker + dead-letter log) ───
+
+class SourceHealth(Base):
+    """One row per scraped board ("greenhouse:stripe"). Records consecutive
+    failures so cron-ats can skip a broken board for a cooldown instead of
+    burning its request budget every hour, and keeps the last error visible so
+    a source that changed its API shape gets caught instead of failing
+    silently forever.
+    """
+    __tablename__ = "source_health"
+
+    id = Column(Integer, primary_key=True, index=True)
+    board_key = Column(String, unique=True, nullable=False, index=True)
+    platform = Column(String, default="")
+    slug = Column(String, default="")
+    consecutive_failures = Column(Integer, default=0, nullable=False)
+    total_failures = Column(Integer, default=0, nullable=False)
+    last_error = Column(String, default="")
+    last_success_at = Column(DateTime, nullable=True)
+    last_failure_at = Column(DateTime, nullable=True)
+    # Listing count seen on the last successful crawl — a sudden drop to zero
+    # on a board that had jobs is itself an alert-worthy signal.
+    last_job_count = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                        onupdate=datetime.datetime.utcnow)

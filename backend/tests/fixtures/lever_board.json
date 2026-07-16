@@ -1,0 +1,44 @@
+[
+  {
+    "id": "a1b2c3d4-0001",
+    "text": "New Grad Software Engineer",
+    "categories": {
+      "location": "Toronto, Ontario, Canada",
+      "department": "Engineering",
+      "commitment": "Full-time"
+    },
+    "hostedUrl": "https://jobs.lever.co/acme/a1b2c3d4-0001",
+    "createdAt": 1751500000000,
+    "descriptionPlain": "Join the payments team. TypeScript, React, PostgreSQL.",
+    "salaryRange": {"min": 90000, "max": 110000, "currency": "CAD", "interval": "per-year-salary"},
+    "lists": [
+      {"text": "Requirements", "content": "<li>TypeScript</li><li>SQL</li>"}
+    ]
+  },
+  {
+    "id": "a1b2c3d4-0002",
+    "text": "Machine Learning Intern",
+    "categories": {
+      "location": "Remote - Canada",
+      "department": "AI",
+      "commitment": "Intern"
+    },
+    "hostedUrl": "https://jobs.lever.co/acme/a1b2c3d4-0002",
+    "createdAt": 1752000000000,
+    "descriptionPlain": "PyTorch and LLM fine-tuning on real product surfaces.",
+    "lists": []
+  },
+  {
+    "id": "a1b2c3d4-0003",
+    "text": "Engineering Manager, Infrastructure",
+    "categories": {
+      "location": "Toronto, Ontario, Canada",
+      "department": "Engineering",
+      "commitment": "Full-time"
+    },
+    "hostedUrl": "https://jobs.lever.co/acme/a1b2c3d4-0003",
+    "createdAt": 1750000000000,
+    "descriptionPlain": "Lead a team of eight.",
+    "lists": []
+  }
+]

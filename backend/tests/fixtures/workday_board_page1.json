@@ -1,0 +1,19 @@
+{
+  "total": 23,
+  "jobPostings": [
+    {
+      "title": "Software Developer Co-op (Fall 2026)",
+      "externalPath": "/job/Toronto-ON-CAN/Software-Developer-Co-op--Fall-2026-_R-48123",
+      "locationsText": "Toronto, ON, CAN",
+      "postedOn": "Posted Today",
+      "bulletFields": ["R-48123"]
+    },
+    {
+      "title": "Vice President, Risk Management",
+      "externalPath": "/job/Toronto-ON-CAN/Vice-President--Risk-Management_R-48000",
+      "locationsText": "Toronto, ON, CAN",
+      "postedOn": "Posted 12 Days Ago",
+      "bulletFields": ["R-48000"]
+    }
+  ]
+}

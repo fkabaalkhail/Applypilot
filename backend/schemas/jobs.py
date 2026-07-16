@@ -53,6 +53,22 @@ class ScrapedJobOut(BaseModel):
     experience_level: str = ""
     posted_date: Optional[datetime.datetime] = None
 
+    # Freshness lifecycle + trust (None on rows the migration hasn't touched)
+    listing_status: Optional[str] = "active"
+    first_seen_at: Optional[datetime.datetime] = None
+    last_seen_at: Optional[datetime.datetime] = None
+    ghost_risk_score: Optional[int] = 0
+    source_trust: Optional[str] = ""
+
+    # Structured extraction
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    salary_currency: Optional[str] = ""
+    salary_period: Optional[str] = ""
+    employment_type: Optional[str] = ""
+    visa_sponsorship: Optional[str] = "unknown"
+    skills: Optional[list[str]] = None
+
     model_config = {"from_attributes": True}
 
 

@@ -327,3 +327,60 @@ def test_sweep_remote_rows_require_same_country(db_session):
     dedup_sweep(db_session)
     db_session.refresh(us)
     assert us.duplicate_of is None
+
+
+# --- fuzzy title fallback ----------------------------------------------------
+
+def test_titles_fuzzy_match_accepts_punctuation_noise():
+    from backend.services.cross_source_dedup import titles_fuzzy_match
+    assert titles_fuzzy_match(
+        "software engineer intern payments",
+        "software engineer intern payments team",
+    ) is False  # extra qualifier word = different posting, length gap guard
+    assert titles_fuzzy_match(
+        "software engineer intern paymentss",
+        "software engineer intern payments",
+    ) is True  # single-character noise
+
+
+def test_titles_fuzzy_match_rejects_short_and_different():
+    from backend.services.cross_source_dedup import titles_fuzzy_match
+    assert titles_fuzzy_match("intern", "intern") is True
+    assert titles_fuzzy_match("qa intern", "ml intern") is False
+    assert titles_fuzzy_match(
+        "software engineer intern", "data engineer intern",
+    ) is False
+
+
+def test_absorb_fuzzy_falls_back_to_near_identical_direct_title(db_session):
+    winner = _mk(
+        db_session, "https://boards.greenhouse.io/kinaxis/jobs/50", source="ats",
+        title="Software Developer Intern, Analytics",
+        description="Full description " * 20,
+    )
+    # Aggregator copy with one-character title noise -> different title_norm.
+    loser = _mk(
+        db_session, "https://linkedin.com/jobs/view/50", source="linkedin",
+        title="Software Developer Intern, Analytic",
+    )
+    assert loser.title_norm != winner.title_norm
+
+    absorbed = absorb_new_aggregator_rows(db_session)
+    db_session.refresh(loser)
+    assert absorbed == 1
+    assert loser.duplicate_of == winner.id
+
+
+def test_absorb_fuzzy_never_merges_actually_different_jobs(db_session):
+    winner = _mk(
+        db_session, "https://boards.greenhouse.io/kinaxis/jobs/51", source="ats",
+        title="Software Engineer Intern, Infrastructure",
+        description="Full description " * 20,
+    )
+    different = _mk(
+        db_session, "https://linkedin.com/jobs/view/51", source="linkedin",
+        title="Software Engineer Intern",
+    )
+    absorb_new_aggregator_rows(db_session)
+    db_session.refresh(different)
+    assert different.duplicate_of is None

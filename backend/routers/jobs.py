@@ -39,6 +39,7 @@ from backend.services.cross_source_dedup import (
     has_direct_twin,
     normalize_title,
 )
+from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -121,6 +122,14 @@ def list_jobs(
         )
     else:
         q = q.filter(ScrapedJob.duplicate_of.is_(None))
+        # Freshness: listings the source took down (or that aged out) leave
+        # the catalogue. `stale` stays visible — usually crawl lag, not death.
+        q = q.filter(
+            or_(
+                ScrapedJob.listing_status.is_(None),
+                ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES),
+            )
+        )
     if search:
         search_term = _escape_like(search.strip())
         if search_term:
@@ -270,6 +279,7 @@ def ingest_batch(
     """
     from sqlalchemy.exc import IntegrityError
     from backend.services.role_classifier import classify as classify_role
+    from backend.services.structured_extraction import detect_employment_type
 
     received = len(batch.jobs)
     skipped = 0
@@ -321,6 +331,7 @@ def ingest_batch(
             duplicates += 1
             continue
 
+        ingested_at = datetime.datetime.utcnow()
         to_insert.append(
             ScrapedJob(
                 title=job.title,
@@ -338,6 +349,13 @@ def ingest_batch(
                 company_logo=resolved_logo,
                 company_domain=resolved_domain,
                 title_norm=normalize_title(job.title),
+                # Aggregator rows: nobody re-confirms them, so they enter as
+                # low-trust and age out via sweep_aggregator_expiry. Rich
+                # extraction happens in cron-backfill once a description lands.
+                first_seen_at=ingested_at,
+                last_seen_at=ingested_at,
+                source_trust="low" if job.source_platform in ("linkedin", "indeed") else "medium",
+                employment_type=detect_employment_type(job.title),
                 **fields,
             )
         )
@@ -426,6 +444,14 @@ async def cron_backfill(
         )
         fetched = dict(results)
 
+        from backend.services.structured_extraction import (
+            compute_raw_hash,
+            detect_employment_type,
+            detect_visa_sponsorship,
+            extract_skills,
+            parse_salary,
+        )
+
         for job in jobs:
             job.desc_fetch_attempts = (job.desc_fetch_attempts or 0) + 1
             text = fetched.get(job.id, "")
@@ -433,6 +459,19 @@ async def cron_backfill(
                 job.description = _sanitize_description(text)
                 job.description_sections = None
                 descriptions_fixed += 1
+                # A description just landed — the structured fields it feeds
+                # (visa/skills/salary/type) can finally be extracted.
+                job.visa_sponsorship = detect_visa_sponsorship(job.description)
+                job.skills = extract_skills(job.title, job.description) or None
+                if not job.employment_type:
+                    job.employment_type = detect_employment_type(job.title, job.description)
+                if not job.salary_min:
+                    parsed = parse_salary(job.salary_range or "") or parse_salary(job.description)
+                    if parsed:
+                        (job.salary_min, job.salary_max,
+                         job.salary_currency, job.salary_period) = parsed
+                job.raw_hash = compute_raw_hash(job.title, job.location or "",
+                                                job.description, job.salary_range or "")
             if not (job.location_search or "") and (job.location or ""):
                 for key, value in location_fields(job.location).items():
                     setattr(job, key, value)
@@ -537,18 +576,160 @@ async def cron_backfill(
     }
 
 
+@router.post("/cron-freshness")
+async def cron_freshness(
+    _cron: None = Depends(verify_cron_secret),
+    db: Session = Depends(get_db),
+):
+    """Hourly lifecycle sweep — the half of freshness that board crawls can't
+    do: age out rows nothing re-confirms, spot-check stale URLs against
+    reality, keep ghost-risk scores current, and adopt legacy rows into board
+    reconciliation."""
+    import httpx
+    from backend.services import listing_freshness
+
+    adopted = listing_freshness.backfill_board_keys(db)
+    stale = listing_freshness.sweep_stale(db)
+    expired = listing_freshness.sweep_aggregator_expiry(db)
+
+    async with httpx.AsyncClient(
+        follow_redirects=True, timeout=10, headers=BROWSER_HEADERS
+    ) as client:
+        verified = await listing_freshness.verify_stale_listings(db, client, limit=30)
+
+    ghost = listing_freshness.score_ghost_risk(db)
+
+    return {
+        "board_keys_adopted": adopted,
+        "marked_stale": stale,
+        "expired": expired,
+        "stale_verified": verified,
+        "ghost_scoring": ghost,
+    }
+
+
+@router.get("/ingest-metrics")
+def ingest_metrics(
+    _cron: None = Depends(verify_cron_secret),
+    db: Session = Depends(get_db),
+):
+    """Pipeline health snapshot: catalogue freshness, ingest volume, dedup
+    rate, ghost flags, and the currently-broken boards (dead-letter view).
+    Cron-secret auth so the workflow can log it every run."""
+    from backend.db.models import SourceHealth
+    from backend.services.listing_freshness import LISTING_ACTIVE
+    from backend.services.source_health import FAILURE_THRESHOLD
+
+    now = datetime.datetime.utcnow()
+    day_ago = now - datetime.timedelta(days=1)
+    week_ago = now - datetime.timedelta(days=7)
+
+    by_status = dict(
+        db.query(ScrapedJob.listing_status, func.count(ScrapedJob.id))
+        .group_by(ScrapedJob.listing_status)
+        .all()
+    )
+    by_trust = dict(
+        db.query(ScrapedJob.source_trust, func.count(ScrapedJob.id))
+        .filter(ScrapedJob.listing_status == LISTING_ACTIVE)
+        .group_by(ScrapedJob.source_trust)
+        .all()
+    )
+    ingested_24h = (
+        db.query(ScrapedJob).filter(ScrapedJob.first_seen_at >= day_ago).count()
+    )
+    ingested_7d = (
+        db.query(ScrapedJob).filter(ScrapedJob.first_seen_at >= week_ago).count()
+    )
+    removed_24h = (
+        db.query(ScrapedJob)
+        .filter(ScrapedJob.listing_status == "removed",
+                ScrapedJob.listing_status_changed_at >= day_ago)
+        .count()
+    )
+    hidden_duplicates = (
+        db.query(ScrapedJob).filter(ScrapedJob.duplicate_of.isnot(None)).count()
+    )
+    total_rows = db.query(ScrapedJob).count()
+
+    active_q = db.query(ScrapedJob).filter(
+        ScrapedJob.listing_status == LISTING_ACTIVE,
+        ScrapedJob.duplicate_of.is_(None),
+    )
+    active_total = active_q.count()
+    ghost_flagged = active_q.filter(ScrapedJob.ghost_risk_score >= 50).count()
+
+    # Median active listing age without a percentile function (SQLite + PG).
+    median_age_days = None
+    if active_total:
+        midpoint_first_seen = (
+            db.query(ScrapedJob.first_seen_at)
+            .filter(ScrapedJob.listing_status == LISTING_ACTIVE,
+                    ScrapedJob.duplicate_of.is_(None),
+                    ScrapedJob.first_seen_at.isnot(None))
+            .order_by(ScrapedJob.first_seen_at.desc())
+            .offset(active_total // 2)
+            .limit(1)
+            .scalar()
+        )
+        if midpoint_first_seen:
+            median_age_days = (now - midpoint_first_seen).days
+
+    failing_boards = [
+        {
+            "board_key": row.board_key,
+            "consecutive_failures": row.consecutive_failures,
+            "last_error": row.last_error,
+            "last_success_at": row.last_success_at.isoformat() if row.last_success_at else None,
+        }
+        for row in (
+            db.query(SourceHealth)
+            .filter(SourceHealth.consecutive_failures > 0)
+            .order_by(SourceHealth.consecutive_failures.desc())
+            .limit(20)
+            .all()
+        )
+    ]
+    boards_in_cooldown = (
+        db.query(SourceHealth)
+        .filter(SourceHealth.consecutive_failures >= FAILURE_THRESHOLD)
+        .count()
+    )
+
+    return {
+        "by_listing_status": by_status,
+        "active_by_trust": by_trust,
+        "ingested_24h": ingested_24h,
+        "ingested_7d": ingested_7d,
+        "removed_24h": removed_24h,
+        "hidden_duplicates": hidden_duplicates,
+        "dedup_rate": round(hidden_duplicates / total_rows, 4) if total_rows else 0.0,
+        "active_total": active_total,
+        "ghost_flagged": ghost_flagged,
+        "ghost_rate": round(ghost_flagged / active_total, 4) if active_total else 0.0,
+        "median_active_age_days": median_age_days,
+        "failing_boards": failing_boards,
+        "boards_in_cooldown": boards_in_cooldown,
+    }
+
+
 @router.get("/stats")
 def job_stats(
     user_id: Optional[int] = Depends(get_optional_user_id),
     db: Session = Depends(get_db),
 ):
     """Return aggregate job stats with breakdowns by country, work_type, role_category, experience_level."""
-    # Exclude blank-company jobs and hidden duplicates to match the listing query.
+    # Exclude blank-company jobs, hidden duplicates, and dead listings to
+    # match the listing query.
     _has_company = (
         ScrapedJob.company.isnot(None)
         & (func.trim(ScrapedJob.company) != "")
         & (ScrapedJob.company != "Unknown")
         & ScrapedJob.duplicate_of.is_(None)
+        & or_(
+            ScrapedJob.listing_status.is_(None),
+            ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES),
+        )
     )
     total = db.query(ScrapedJob).filter(_has_company).count()
     applied = db.query(ScrapedJob).filter(_has_company, ScrapedJob.status == JobStatus.APPLIED).count()
@@ -666,6 +847,10 @@ def list_cities(
             ScrapedJob.city.isnot(None),
             ScrapedJob.city != "",
             ScrapedJob.duplicate_of.is_(None),
+            or_(
+                ScrapedJob.listing_status.is_(None),
+                ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES),
+            ),
         )
     )
     if country:

@@ -64,3 +64,21 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             --max-time 300 || true
+
+      # Lifecycle sweep: age out unconfirmed/old listings, verify stale URLs,
+      # refresh ghost-risk scores. The removal of jobs that vanished from
+      # their board already happened inside cron-ats reconciliation.
+      - name: Freshness sweep (expiry + ghost scoring)
+        run: |
+          curl -X POST "https://www.tailrd.ca/jobs/cron-freshness" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            --max-time 300 || true
+
+      # Snapshot pipeline health into the workflow log so a broken board or a
+      # feed drop is visible without opening the database.
+      - name: Log ingest metrics
+        run: |
+          curl -s "https://www.tailrd.ca/jobs/ingest-metrics" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            --max-time 60 || true

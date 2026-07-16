@@ -1,0 +1,23 @@
+{
+  "totalFound": 2,
+  "content": [
+    {
+      "id": "744000012345",
+      "name": "Finance Analyst Intern",
+      "location": {"city": "Montreal", "region": "QC", "country": "ca"},
+      "ref_url": "https://jobs.smartrecruiters.com/Acme/744000012345-finance-analyst-intern",
+      "releasedDate": "2026-07-08T10:00:00Z",
+      "department": {"label": "Finance"},
+      "typeOfEmployment": {"label": "Intern"}
+    },
+    {
+      "id": "744000012346",
+      "name": "Director of Operations",
+      "location": {"city": "Chicago", "region": "IL", "country": "us"},
+      "ref_url": "https://jobs.smartrecruiters.com/Acme/744000012346-director-of-operations",
+      "releasedDate": "2026-06-01T10:00:00Z",
+      "department": {"label": "Operations"},
+      "typeOfEmployment": {"label": "Full-time"}
+    }
+  ]
+}

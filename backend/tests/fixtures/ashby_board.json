@@ -1,0 +1,25 @@
+{
+  "jobs": [
+    {
+      "id": "f47ac10b-0001",
+      "title": "Product Engineering Intern",
+      "location": "Vancouver, British Columbia, Canada",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/f47ac10b-0001",
+      "publishedAt": "2026-07-05T00:00:00Z",
+      "departmentName": "Engineering",
+      "employmentType": "Intern",
+      "compensationTierSummary": "CA$40 – CA$48 per hour",
+      "descriptionHtml": "<p>Ship product with mentorship. React, Node.js.</p>"
+    },
+    {
+      "id": "f47ac10b-0002",
+      "title": "Principal Engineer",
+      "location": "San Francisco, CA",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/f47ac10b-0002",
+      "publishedAt": "2026-06-20T00:00:00Z",
+      "departmentName": "Engineering",
+      "employmentType": "FullTime",
+      "descriptionHtml": "<p>Set technical direction.</p>"
+    }
+  ]
+}

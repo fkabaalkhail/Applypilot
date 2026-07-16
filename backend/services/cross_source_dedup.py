@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -35,6 +36,28 @@ _SOURCE_TIER = {"ats": 0, "github": 0, "linkedin": 1, "indeed": 2}
 # same title are distinct requisitions (per-country variants, multiple
 # openings) — their dedup key is the URL, nothing else.
 _MIN_COPY_DESC_LEN = 300  # og:description snippets (~186 chars) must not spread
+
+# Secondary fuzzy matcher for aggregator rows whose normalized title differs
+# from the direct row's by punctuation-scale noise ("Software Engineer Intern
+# Payments" vs "Software Engineer Intern - Payments Team"). Deliberately NOT
+# embeddings: deterministic, free, and conservative — a wrong merge hides a
+# real job. Both titles must be substantial and near-identical.
+FUZZY_TITLE_THRESHOLD = 0.93
+_FUZZY_MIN_TITLE_LEN = 12
+
+
+def titles_fuzzy_match(a: str, b: str) -> bool:
+    """True when two ALREADY-NORMALIZED titles are near-identical."""
+    a, b = (a or "").strip(), (b or "").strip()
+    if not a or not b or a == b:
+        return a == b and len(a) >= 1
+    if len(a) < _FUZZY_MIN_TITLE_LEN or len(b) < _FUZZY_MIN_TITLE_LEN:
+        return False
+    # One title extending the other with a new qualifier ("… infrastructure")
+    # is a DIFFERENT job; require the length gap itself to be small.
+    if abs(len(a) - len(b)) > max(len(a), len(b)) * 0.2:
+        return False
+    return SequenceMatcher(None, a, b).ratio() >= FUZZY_TITLE_THRESHOLD
 
 
 def effective_source(source: str, url: str) -> str:
@@ -237,6 +260,26 @@ def absorb_new_aggregator_rows(db: Session, limit: int = 300) -> int:
         if not title_norm or title_norm == "\x01":
             continue
         row_tier = _SOURCE_TIER.get(row_source, 3)
+
+        def _pick_better_twin(twins: list[ScrapedJob]) -> ScrapedJob | None:
+            for twin in twins:
+                twin_tier = _SOURCE_TIER.get(
+                    effective_source(twin.source_platform, twin.url), 3
+                )
+                better = twin_tier < row_tier or (
+                    twin_tier == row_tier
+                    and len(twin.description or "") >= 50
+                    and (len(row.description or "") < 50 or twin.id < row.id)
+                )
+                if not better:
+                    continue
+                if not _cities_compatible(row.city or "", twin.city or "",
+                                          twin.location_search or "",
+                                          row.country or "", twin.country or ""):
+                    continue
+                return twin
+            return None
+
         twins = (
             db.query(ScrapedJob)
             .filter(
@@ -248,24 +291,29 @@ def absorb_new_aggregator_rows(db: Session, limit: int = 300) -> int:
             .limit(20)
             .all()
         )
-        best = None
-        for twin in twins:
-            twin_tier = _SOURCE_TIER.get(
-                effective_source(twin.source_platform, twin.url), 3
+        best = _pick_better_twin(twins)
+
+        if best is None:
+            # Fuzzy fallback: same employer, near-identical title. Only
+            # DIRECT rows may absorb here — fuzzy-merging two aggregator
+            # copies risks eating a genuinely different posting.
+            near = (
+                db.query(ScrapedJob)
+                .filter(
+                    ScrapedJob.duplicate_of.is_(None),
+                    ScrapedJob.source_platform.in_(DIRECT_SOURCES),
+                    ScrapedJob.title_norm != title_norm,
+                    ScrapedJob.title_norm != "",
+                    ScrapedJob.id != row.id,
+                    _employer_filter(row.company, row.company_domain or ""),
+                )
+                .limit(40)
+                .all()
             )
-            better = twin_tier < row_tier or (
-                twin_tier == row_tier
-                and len(twin.description or "") >= 50
-                and (len(row.description or "") < 50 or twin.id < row.id)
-            )
-            if not better:
-                continue
-            if not _cities_compatible(row.city or "", twin.city or "",
-                                      twin.location_search or "",
-                                      row.country or "", twin.country or ""):
-                continue
-            best = twin
-            break
+            best = _pick_better_twin([
+                twin for twin in near
+                if titles_fuzzy_match(title_norm, twin.title_norm or "")
+            ])
         if best is None:
             continue
         row.duplicate_of = best.id

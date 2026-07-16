@@ -70,24 +70,31 @@ def test_ingest_batch_still_inserts_when_no_twin(client, db_session, monkeypatch
 
 
 def test_cron_ats_hides_preexisting_linkedin_twin(client, db_session, monkeypatch):
-    import backend.data.company_registry as registry
-    from backend.services.ats_scraper import ATSJob, ATSScraper
+    from backend.data import company_registry
+    from backend.services.ats_scraper import ATSJob, ATSScraper, BoardSnapshot
 
     twin = _mk(
         db_session, "https://linkedin.com/jobs/view/102", source="linkedin",
         description="",
     )
 
-    async def fake_scrape_all(self, companies=None):
-        return [ATSJob(
+    monkeypatch.setattr(
+        company_registry, "load_companies",
+        lambda **kw: [("greenhouse", "kinaxis", "Kinaxis")],
+    )
+
+    async def fake_scrape_board(self, client, platform, slug, company_name):
+        job = ATSJob(
             title="Software Engineer Intern (Summer 2026)",
             company="Kinaxis",
             location="Ottawa, Ontario, Canada",
             url="https://boards.greenhouse.io/kinaxis/jobs/101",
             description="Full posting text " * 20,
-        )]
+        )
+        return BoardSnapshot(platform=platform, slug=slug, company=company_name,
+                             jobs=[job], all_urls={job.url})
 
-    monkeypatch.setattr(ATSScraper, "scrape_all", fake_scrape_all)
+    monkeypatch.setattr(ATSScraper, "scrape_board", fake_scrape_board)
     res = client.post("/github-sources/cron-ats", headers=_cron_headers(monkeypatch))
     assert res.status_code == 200, res.text
     body = res.json()
