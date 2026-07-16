@@ -122,6 +122,26 @@ def test_listing_hides_duplicates_but_liked_keeps_them(client, db_session):
     assert client.get(f"/jobs/{hidden.id}").status_code == 200
 
 
+def test_pagination_is_stable_across_timestamp_ties(client, db_session):
+    import datetime
+    stamp = datetime.datetime(2026, 7, 1, 12, 0, 0)
+    for i in range(60):
+        row = ScrapedJob(
+            title=f"Engineer {i}", company="Acme", url=f"https://x.test/page/{i}",
+            location="Ottawa, ON, CA", description="", country="CA",
+            work_type="onsite", source_platform="ats", experience_level="new_grad",
+            easy_apply=0, match_score=0, posted_date=stamp, scraped_at=stamp,
+            title_norm=f"engineer {i}", **location_fields("Ottawa, ON, CA"),
+        )
+        db_session.add(row)
+    db_session.commit()
+
+    page1 = {j["id"] for j in client.get("/jobs", params={"page_size": 30, "page": 1}).json()}
+    page2 = {j["id"] for j in client.get("/jobs", params={"page_size": 30, "page": 2}).json()}
+    assert len(page1) == 30 and len(page2) == 30
+    assert page1.isdisjoint(page2), "same job must never appear on two pages"
+
+
 def test_stats_and_cities_exclude_duplicates(client, db_session):
     winner = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/104", source="ats")
     _mk(db_session, "https://linkedin.com/jobs/view/104", source="linkedin",

@@ -194,13 +194,16 @@ def list_jobs(
     if cutoff is not None:
         q = q.filter(effective_date >= cutoff)
 
+    # id tiebreaker: bulk inserts share timestamps, and ties without a total
+    # order make pagination unstable (the same job shows up on two pages).
     if sort == "match":
         q = q.order_by(
             ScrapedJob.match_score.desc(),
             effective_date.desc().nullslast(),
+            ScrapedJob.id.desc(),
         )
     else:
-        q = q.order_by(effective_date.desc().nullslast())
+        q = q.order_by(effective_date.desc().nullslast(), ScrapedJob.id.desc())
 
     q = q.offset((page - 1) * page_size).limit(page_size)
     return _overlay_saved(db, q.all(), user_id)
