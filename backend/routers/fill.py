@@ -349,7 +349,10 @@ async def fill_form(
                         q += f"\nHelp text: {field.helpText}"
                     if field.options:
                         q += f"\nOptions: {', '.join(field.options)}"
-                    raw = await llm.answer_question(question=q, context=context)
+                    if is_essay_question(field):
+                        raw = await llm.compose_answer(question=q, context=context)
+                    else:
+                        raw = await llm.answer_question(question=q, context=context)
                     answer = raw.strip().strip('"').strip()
 
                     # Grounding sentinel: the model has no supported answer —
