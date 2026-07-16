@@ -307,6 +307,22 @@ export default function JobFilterBar({ filters, onChange }: JobFilterBarProps) {
     setTempLocationTags((prev) => [...prev, trimmed]);
   }
 
+  /**
+   * Text sitting in the city input is a filter the user typed but never
+   * committed with Enter — Confirm must not silently drop it. Returns the
+   * effective tag list so confirm handlers don't race setState.
+   */
+  function commitPendingCityInput(): string[] {
+    const trimmed = locationInput.trim();
+    if (!trimmed) return tempLocationTags;
+    setLocationInput("");
+    setCitySuggestions([]);
+    if (tempLocationTags.includes(trimmed)) return tempLocationTags;
+    const next = [...tempLocationTags, trimmed];
+    setTempLocationTags(next);
+    return next;
+  }
+
   function removeCityTag(city: string) {
     setTempLocationTags((prev) => prev.filter((tag) => tag !== city));
   }
@@ -338,7 +354,7 @@ export default function JobFilterBar({ filters, onChange }: JobFilterBarProps) {
   // --- Confirm handlers ---
 
   function confirmCountry() {
-    onChange({ ...filters, country: tempCountry, location: tempLocationTags });
+    onChange({ ...filters, country: tempCountry, location: commitPendingCityInput() });
     setOpenDropdown(null);
   }
 
@@ -425,8 +441,8 @@ export default function JobFilterBar({ filters, onChange }: JobFilterBarProps) {
               <input
                 type="checkbox"
                 style={styles.checkbox}
-                checked={tempLocationTags.length === 0}
-                onChange={() => { setTempLocationTags([]); setLocationInput(""); }}
+                checked={tempLocationTags.length === 0 && locationInput.trim() === ""}
+                onChange={() => { setTempLocationTags([]); setLocationInput(""); setCitySuggestions([]); }}
               />
               All locations within {tempCountry === "CA" ? "Canada" : "United States"}
             </label>
@@ -745,7 +761,7 @@ export default function JobFilterBar({ filters, onChange }: JobFilterBarProps) {
                 onChange({
                   ...filters,
                   country: tempCountry,
-                  location: tempLocationTags,
+                  location: commitPendingCityInput(),
                   work_type: tempWorkType,
                   role_category: tempRoleCategory,
                   experience_level: tempExperience,
