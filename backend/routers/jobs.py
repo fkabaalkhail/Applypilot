@@ -308,6 +308,7 @@ def ingest_batch(
             company_domain=resolved_domain,
             title=job.title,
             city=fields["city"],
+            country=job.country or "",
         ):
             twins_skipped += 1
             duplicates += 1

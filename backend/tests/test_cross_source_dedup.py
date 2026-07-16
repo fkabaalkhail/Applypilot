@@ -112,7 +112,7 @@ def test_mark_inferior_twins_ignores_other_cities_and_titles(db_session):
 
 def test_sweep_collapses_pairs_and_copies_description(db_session):
     loser = _mk(db_session, "https://linkedin.com/jobs/view/4", source="linkedin",
-                description="LinkedIn snippet that is long enough to count " * 3,
+                description="A LinkedIn description long enough to be real content " * 10,
                 applicant_count=12)
     winner = _mk(db_session, "https://github.example/direct/1", source="github",
                  description="")
@@ -174,3 +174,66 @@ def test_sweep_falls_back_to_company_name_without_domains(db_session):
     dedup_sweep(db_session)
     db_session.refresh(loser)
     assert loser.duplicate_of == winner.id
+
+
+def test_sweep_never_merges_two_direct_rows(db_session):
+    # Same employer, identical title, same city, DIFFERENT requisition ids:
+    # distinct postings (per-team/per-country reqs). Both must survive.
+    a = _mk(db_session, "https://boards.greenhouse.io/affirm/jobs/7724915003",
+            source="ats", company="Affirm", domain="affirm.com",
+            description="Req A " * 20)
+    b = _mk(db_session, "https://boards.greenhouse.io/affirm/jobs/7724917003",
+            source="ats", company="Affirm", domain="affirm.com",
+            description="Req B " * 20)
+    dedup_sweep(db_session)
+    db_session.refresh(a)
+    db_session.refresh(b)
+    assert a.duplicate_of is None
+    assert b.duplicate_of is None
+
+
+def test_sweep_uses_url_not_label_for_rogue_rows(db_session):
+    # Rogue-scraper rows are labeled source='ats' but carry LinkedIn URLs —
+    # they are aggregator copies and must be absorbed by the real direct row.
+    rogue = _mk(db_session, "https://www.linkedin.com/jobs/view/4414123646",
+                source="ats", description="")
+    winner = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/11",
+                 source="ats", description="Real description " * 10)
+    dedup_sweep(db_session)
+    db_session.refresh(rogue)
+    db_session.refresh(winner)
+    assert rogue.duplicate_of == winner.id
+    assert winner.duplicate_of is None
+
+
+def test_sweep_linkedin_reposts_collapse_together(db_session):
+    # The same posting spammed under many LinkedIn view ids collapses to one.
+    first = _mk(db_session, "https://linkedin.com/jobs/view/201", source="linkedin",
+                description="Snippet " * 60)
+    second = _mk(db_session, "https://linkedin.com/jobs/view/202", source="linkedin",
+                 description="")
+    dedup_sweep(db_session)
+    db_session.refresh(first)
+    db_session.refresh(second)
+    assert second.duplicate_of == first.id
+    assert first.duplicate_of is None
+
+
+def test_sweep_remote_rows_require_same_country(db_session):
+    us = _mk(db_session, "https://linkedin.com/jobs/view/203", source="linkedin",
+             location="Remote")
+    ca_direct = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/12",
+                    source="ats", location="Remote",
+                    description="Real description " * 10)
+    # Force differing countries with empty cities ("Remote" parses city=Remote,
+    # so blank the parsed fields to simulate truly unlocated rows).
+    us.city = ""
+    us.location_search = ""
+    us.country = "US"
+    ca_direct.city = ""
+    ca_direct.location_search = ""
+    ca_direct.country = "CA"
+    db_session.commit()
+    dedup_sweep(db_session)
+    db_session.refresh(us)
+    assert us.duplicate_of is None
