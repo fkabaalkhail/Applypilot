@@ -315,6 +315,11 @@ def ingest_batch(
                 posted_date = None
 
         resolved_logo, resolved_domain = resolve_logo(job.company)
+        # Prefer a real logo/domain the scraper captured (e.g. LinkedIn's
+        # media.licdn.com company image) over the name-guessed favicon, which
+        # frequently resolves to a wrong domain and renders as a letter avatar.
+        company_logo = (job.company_logo or "").strip() or resolved_logo
+        company_domain = (job.company_domain or "").strip() or resolved_domain
         fields = location_fields(job.location)
 
         # A direct (ats/github) row for this employer+title+city already in
@@ -322,7 +327,7 @@ def ingest_batch(
         if job.source_platform in ("linkedin", "indeed") and has_direct_twin(
             db,
             company=job.company,
-            company_domain=resolved_domain,
+            company_domain=company_domain,
             title=job.title,
             city=fields["city"],
             country=job.country or "",
@@ -346,8 +351,8 @@ def ingest_batch(
                 role_category=classify_role(job.title),
                 country=job.country,
                 experience_level=job.experience_level,
-                company_logo=resolved_logo,
-                company_domain=resolved_domain,
+                company_logo=company_logo,
+                company_domain=company_domain,
                 title_norm=normalize_title(job.title),
                 # Aggregator rows: nobody re-confirms them, so they enter as
                 # low-trust and age out via sweep_aggregator_expiry. Rich
@@ -596,12 +601,11 @@ async def cron_freshness(
         follow_redirects=True, timeout=10, headers=BROWSER_HEADERS
     ) as client:
         verified = await listing_freshness.verify_stale_listings(db, client)
-        # The GitHub lists re-publish closed postings; probe the newest rows —
-        # the ones users actually click — so dead apply links leave the
+        # GitHub lists re-publish closed postings and aged LinkedIn rows go
+        # soft-dead (200 + "no longer accepting applications"); probe the newest
+        # rows — the ones users actually click — so dead apply links leave the
         # catalogue within the hour instead of collecting 404 complaints.
-        recent = await listing_freshness.verify_recent_aggregator_listings(
-            db, client, limit=120
-        )
+        recent = await listing_freshness.verify_recent_aggregator_listings(db, client)
 
     ghost = listing_freshness.score_ghost_risk(db)
 

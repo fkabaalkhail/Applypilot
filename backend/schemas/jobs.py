@@ -83,6 +83,10 @@ class IngestJobIn(BaseModel):
     work_type: str = "onsite"
     country: str = "CA"
     posted_date: Optional[str] = None  # ISO date; unparseable values are dropped
+    # A real logo the scraper captured from the source (e.g. LinkedIn's
+    # media.licdn.com company image). Preferred over a name-guessed favicon.
+    company_logo: str = ""
+    company_domain: str = ""
 
 
 class IngestBatchIn(BaseModel):

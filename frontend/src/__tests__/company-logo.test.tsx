@@ -4,7 +4,7 @@ import CompanyLogo from "../components/CompanyLogo";
 import { logoProviderChain } from "../lib/companyLogo";
 
 describe("logoProviderChain", () => {
-  it("prefers a stored real CDN logo, then the 256px favicon service", () => {
+  it("prefers a stored real CDN logo, then the favicon service, then unavatar", () => {
     const chain = logoProviderChain({
       company: "Kinaxis",
       company_logo: "https://cdn.jobright.ai/logos/kinaxis.png",
@@ -13,7 +13,9 @@ describe("logoProviderChain", () => {
     expect(chain[0]).toBe("https://cdn.jobright.ai/logos/kinaxis.png");
     expect(chain[1]).toContain("google.com/s2/favicons");
     expect(chain[1]).toContain("sz=256");
-    expect(chain).toHaveLength(2);
+    expect(chain[2]).toContain("unavatar.io/kinaxis.com");
+    expect(chain[2]).toContain("fallback=false");
+    expect(chain).toHaveLength(3);
   });
 
   it("skips generated logo urls and derives the domain from the name", () => {
@@ -40,20 +42,27 @@ describe("CompanyLogo", () => {
       />,
     );
     let img = screen.getByRole("img");
-    fireEvent.error(img); // stored CDN logo 404s
+    fireEvent.error(img); // stored CDN logo 404s -> favicon service
     img = screen.getByRole("img");
-    fireEvent.error(img); // favicon service 404s
+    fireEvent.error(img); // favicon service 404s -> unavatar
+    img = screen.getByRole("img");
+    fireEvent.error(img); // unavatar has nothing -> letter avatar
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.getByLabelText("Acme Widgets logo").textContent).toBe("A");
   });
 
-  it("treats a tiny favicon as a miss", () => {
+  it("treats a tiny favicon as a miss and tries the next provider", () => {
     render(<CompanyLogo company="Acme" company_domain="acme.example" size={40} />);
-    const img = screen.getByRole("img") as HTMLImageElement;
+    let img = screen.getByRole("img") as HTMLImageElement;
     expect(img.src).toContain("google.com/s2");
     Object.defineProperty(img, "naturalWidth", { value: 16, configurable: true });
     fireEvent.load(img);
-    expect(screen.queryByRole("img")).toBeNull(); // fell through to avatar
+    // Advanced past the tiny favicon to the unavatar fallback, not straight to
+    // the avatar — a real logo still has a chance to render.
+    img = screen.getByRole("img") as HTMLImageElement;
+    expect(img.src).toContain("unavatar.io");
+    fireEvent.error(img); // unavatar has nothing -> letter avatar
+    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("keeps a favicon that is large enough to render crisply", () => {

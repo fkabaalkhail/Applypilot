@@ -8,6 +8,7 @@ import pytest
 from backend.db.models import ScrapedJob, User, UserSavedJob
 from backend.services.ats_scraper import ATSJob
 from backend.services.listing_freshness import (
+    AGGREGATOR_FAST_MAX_AGE_DAYS,
     AGGREGATOR_MAX_AGE_DAYS,
     GHOST_DAYS_OPEN,
     LISTING_ACTIVE,
@@ -224,6 +225,21 @@ class TestSweeps:
         assert db_session.get(ScrapedJob, old.id).listing_status == LISTING_EXPIRED
         assert db_session.get(ScrapedJob, recent.id).listing_status == LISTING_ACTIVE
         assert db_session.get(ScrapedJob, direct.id).listing_status == LISTING_ACTIVE
+
+    def test_linkedin_expires_sooner_than_github(self, db_session):
+        """LinkedIn/Indeed churn fast, so they age out at the shorter fast
+        window; curated GitHub lists keep the longer window."""
+        age = datetime.timedelta(days=AGGREGATOR_FAST_MAX_AGE_DAYS + 2)  # 23d
+        assert AGGREGATOR_FAST_MAX_AGE_DAYS + 2 < AGGREGATOR_MAX_AGE_DAYS
+        li = _row(db_session, url="https://www.linkedin.com/jobs/view/50",
+                  source_platform="linkedin", board_key="", posted_date=NOW - age)
+        gh = _row(db_session, url="https://careers.example.com/list-role/50",
+                  source_platform="github", board_key="", posted_date=NOW - age)
+        count = sweep_aggregator_expiry(db_session, now=NOW)
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, li.id).listing_status == LISTING_EXPIRED
+        assert db_session.get(ScrapedJob, gh.id).listing_status == LISTING_ACTIVE
+        assert count == 1
 
 
 # ─── Ghost scoring ───────────────────────────────────────────────────────────
@@ -459,6 +475,21 @@ def _status_client(statuses: dict):
     return httpx.AsyncClient(transport=T())
 
 
+def _body_client(mapping: dict):
+    """httpx client answering (status, body) per URL fragment; default 200 'ok'.
+    Lets a test drive the soft-404 body check, not just the status code."""
+    import httpx
+
+    class T(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            for fragment, (status, body) in mapping.items():
+                if fragment in str(request.url):
+                    return httpx.Response(status, text=body)
+            return httpx.Response(200, text="ok")
+
+    return httpx.AsyncClient(transport=T())
+
+
 class TestUrlLiveness:
     @pytest.mark.asyncio
     async def test_probe_verdicts(self):
@@ -470,6 +501,24 @@ class TestUrlLiveness:
             # Bot walls are not evidence of death — a real browser gets through.
             assert await probe_url_liveness(client, "https://x.test/wall") == "unknown"
             assert await probe_url_liveness(client, "https://x.test/live") == "alive"
+
+    @pytest.mark.asyncio
+    async def test_soft_404_body_only_trusted_hosts(self):
+        """A 200 that says 'no longer accepting applications' is dead on a
+        server-rendered host (LinkedIn); the same phrase on an arbitrary career
+        SPA is ignored (that message renders client-side there, so a real 200
+        body carrying it would be a false match)."""
+        from backend.services.listing_freshness import probe_url_liveness
+        closed = "<h1>Sorry, this job is no longer accepting applications.</h1>"
+        live = "<h1>Software Intern — Apply now</h1>"
+        async with _body_client({
+            "linkedin.com/jobs/view/1": (200, closed),
+            "linkedin.com/jobs/view/2": (200, live),
+            "spa-careers.example/1": (200, closed),
+        }) as client:
+            assert await probe_url_liveness(client, "https://www.linkedin.com/jobs/view/1") == "dead"
+            assert await probe_url_liveness(client, "https://www.linkedin.com/jobs/view/2") == "alive"
+            assert await probe_url_liveness(client, "https://spa-careers.example/1") == "alive"
 
     @pytest.mark.asyncio
     async def test_verify_recent_removes_dead_github_rows(self, db_session):
@@ -507,6 +556,28 @@ class TestUrlLiveness:
             stats = await verify_recent_aggregator_listings(db_session, client, now=NOW)
         assert stats["checked"] == 0
 
+    @pytest.mark.asyncio
+    async def test_verify_recent_covers_soft_dead_linkedin(self, db_session):
+        """Active LinkedIn rows (never covered by the old github-only sweep) get
+        probed; a soft-404 guest page removes them, a live one is stamped."""
+        from backend.services.listing_freshness import verify_recent_aggregator_listings
+
+        dead_li = _row(db_session, url="https://www.linkedin.com/jobs/view/10",
+                       source_platform="linkedin", board_key="", last_seen_at=None)
+        live_li = _row(db_session, url="https://www.linkedin.com/jobs/view/20",
+                       source_platform="linkedin", board_key="", last_seen_at=None)
+        async with _body_client({
+            "/jobs/view/10": (200, "No longer accepting applications"),
+            "/jobs/view/20": (200, "Apply now — role is open"),
+        }) as client:
+            stats = await verify_recent_aggregator_listings(db_session, client, now=NOW)
+
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, dead_li.id).listing_status == LISTING_REMOVED
+        assert db_session.get(ScrapedJob, live_li.id).listing_status == LISTING_ACTIVE
+        assert db_session.get(ScrapedJob, live_li.id).last_seen_at == NOW
+        assert stats["removed"] == 1
+
 
 class TestVerifyStaleListings:
     @pytest.mark.asyncio
@@ -535,9 +606,30 @@ class TestVerifyStaleListings:
         spa = db_session.get(ScrapedJob, spa_site.id)
         assert spa.listing_status == LISTING_STALE
         assert spa.last_seen_at == NOW
-        # LinkedIn rows are never probed.
-        assert db_session.get(ScrapedJob, walled_li.id).last_seen_at is None
+        # LinkedIn IS now probed (guest page), but a live one (no dead banner)
+        # is never revived on a bare 200 — it stays stale with last_seen stamped.
+        li = db_session.get(ScrapedJob, walled_li.id)
+        assert li.listing_status == LISTING_STALE
+        assert li.last_seen_at == NOW
         assert stats["removed"] == 1 and stats["revived"] == 1
+
+    @pytest.mark.asyncio
+    async def test_soft_dead_linkedin_stale_row_removed(self, db_session):
+        """A stale LinkedIn row whose guest page shows the closed banner is
+        removed (the 57%-dead cohort the old probe skipped entirely)."""
+        from backend.services.listing_freshness import verify_stale_listings
+
+        dead_li = _row(db_session, url="https://www.linkedin.com/jobs/view/900",
+                       source_platform="linkedin", board_key="",
+                       listing_status=LISTING_STALE, last_seen_at=None)
+        async with _body_client({
+            "/jobs/view/900": (200, "This job is no longer accepting applications."),
+        }) as client:
+            stats = await verify_stale_listings(db_session, client, now=NOW)
+
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, dead_li.id).listing_status == LISTING_REMOVED
+        assert stats["removed"] == 1
 
 
 class TestAggregatorIngestProbe:

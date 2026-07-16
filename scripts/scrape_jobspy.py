@@ -97,6 +97,11 @@ def to_payload(job_data: dict) -> dict | None:
     posted = job_data.get("date_posted")
     if posted is not None and str(posted) not in ("", "nan", "NaT", "None"):
         payload["posted_date"] = str(posted)
+    # JobSpy returns the employer's real logo for LinkedIn/Indeed rows — keep it
+    # instead of letting the API fall back to a name-guessed favicon.
+    logo = job_data.get("company_logo") or job_data.get("logo_photo_url") or ""
+    if logo and str(logo).startswith("http"):
+        payload["company_logo"] = str(logo)
     return payload
 
 

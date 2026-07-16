@@ -39,6 +39,53 @@ def test_ingest_batch_populates_location_fields(client, db_session, monkeypatch)
     assert row.company_domain == "kinaxis.com"
 
 
+def test_ingest_batch_keeps_scraper_supplied_logo(client, db_session, monkeypatch):
+    """A real logo the scraper captured (e.g. LinkedIn's media.licdn.com image)
+    must be stored instead of the name-guessed favicon that renders as a letter
+    avatar."""
+    real_logo = "https://media.licdn.com/dms/image/v2/abc/company-logo_100_100/x"
+    payload = {"jobs": [{
+        "title": "Software Intern",
+        "company": "Some Startup",
+        "location": "Toronto, ON, CA",
+        "url": "https://example.com/jobs/logo-1",
+        "source_platform": "linkedin",
+        "country": "CA",
+        "experience_level": "internship",
+        "company_logo": real_logo,
+    }]}
+    res = client.post("/jobs/ingest-batch", json=payload, headers=_cron_headers(monkeypatch))
+    assert res.status_code == 200, res.text
+    row = (
+        db_session.query(ScrapedJob)
+        .filter(ScrapedJob.url == "https://example.com/jobs/logo-1")
+        .one()
+    )
+    assert row.company_logo == real_logo
+
+
+def test_ingest_batch_falls_back_to_resolved_logo(client, db_session, monkeypatch):
+    """Without a scraper logo, ingest still resolves a domain-based one."""
+    payload = {"jobs": [{
+        "title": "Software Intern",
+        "company": "Shopify",
+        "location": "Ottawa, ON, CA",
+        "url": "https://example.com/jobs/logo-2",
+        "source_platform": "linkedin",
+        "country": "CA",
+        "experience_level": "internship",
+    }]}
+    res = client.post("/jobs/ingest-batch", json=payload, headers=_cron_headers(monkeypatch))
+    assert res.status_code == 200, res.text
+    row = (
+        db_session.query(ScrapedJob)
+        .filter(ScrapedJob.url == "https://example.com/jobs/logo-2")
+        .one()
+    )
+    assert row.company_domain == "shopify.com"
+    assert row.company_logo  # a resolved favicon URL, not empty
+
+
 def test_ingest_batch_multi_location_blob(client, db_session, monkeypatch):
     payload = {"jobs": [{
         "title": "EPM Consultant",

@@ -63,6 +63,8 @@ class Job:
     company: str
     location: str
     url: str
+    logo: str = ""
+    posted_date: str = ""
 
 
 def parse_job_cards(html: str) -> list[Job]:
@@ -119,12 +121,28 @@ def parse_job_cards(html: str) -> list[Job]:
                         location = re.sub(r'<[^>]+>', '', raw).strip()
                         location = re.sub(r'\s+', ' ', location)
 
+            # Company logo — the card lazy-loads it via data-delayed-url (falls
+            # back to src). Capturing the real media.licdn.com image avoids the
+            # name-guessed favicon that renders as a letter avatar downstream.
+            logo = ""
+            logo_m = re.search(
+                r'(?:data-delayed-url|src)="(https://media\.licdn\.com/[^"]+)"', card)
+            if logo_m:
+                logo = logo_m.group(1).replace("&amp;", "&")
+
+            # Posted date — <time datetime="YYYY-MM-DD">
+            posted_date = ""
+            date_m = re.search(r'datetime="(\d{4}-\d{2}-\d{2})"', card)
+            if date_m:
+                posted_date = date_m.group(1)
+
             # Clean entities
             title = title.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
             company = company.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
 
             if title and company and url and "/jobs/view/" in url:
-                jobs.append(Job(title=title, company=company, location=location, url=url))
+                jobs.append(Job(title=title, company=company, location=location,
+                                url=url, logo=logo, posted_date=posted_date))
         except Exception:
             continue
 
@@ -171,7 +189,7 @@ def to_payload(job: Job) -> dict:
     if any(x in loc_lower for x in ["united states", "usa", ", ca", ", ny", ", tx"]):
         country = "US"
 
-    return {
+    payload = {
         "title": job.title,
         "company": job.company,
         "location": job.location,
@@ -181,6 +199,11 @@ def to_payload(job: Job) -> dict:
         "work_type": work_type,
         "country": country,
     }
+    if job.logo:
+        payload["company_logo"] = job.logo
+    if job.posted_date:
+        payload["posted_date"] = job.posted_date
+    return payload
 
 
 async def push_batches(jobs: list[dict]) -> tuple[int, int, int, int]:
