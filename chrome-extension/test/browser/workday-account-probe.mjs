@@ -100,6 +100,27 @@ async function getSW(ctx) {
   ]);
 }
 
+/** Open the panel the way the toolbar icon does (retry until the content
+ *  script is listening). The fake gate is served from 127.0.0.1, so the
+ *  Workday-host adapter auto-mount doesn't apply here. */
+async function togglePanel(sw, urlPrefix) {
+  for (let i = 0; i < 20; i++) {
+    const ok = await sw.evaluate(async (prefix) => {
+      const tabs = await chrome.tabs.query({ url: `${prefix}/*` });
+      if (!tabs.length) return false;
+      try {
+        await chrome.tabs.sendMessage(tabs[0].id, { type: "TOGGLE_PANEL" });
+        return true;
+      } catch {
+        return false; // content script not listening yet
+      }
+    }, urlPrefix);
+    if (ok) return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error("content script never answered TOGGLE_PANEL");
+}
+
 const results = [];
 const check = (label, ok, extra = "") => {
   results.push(ok);
@@ -129,8 +150,10 @@ async function main() {
 
   const pg = await ctx.newPage();
   await pg.goto(`${origin}/account`, { waitUntil: "load" });
-  // The account page has fields, so the panel auto-mounts (expanded) with the
-  // mock profile — no toggle needed.
+  // A bare email+password gate is no job-application evidence, and 127.0.0.1
+  // is not a Workday host — the panel no longer auto-mounts here (on real
+  // Workday the host-matched adapter mounts it). Open it as the user would.
+  await togglePanel(sw, origin);
   await pg.waitForSelector("#applypilot-overlay-host", { state: "attached", timeout: 10000 });
   await pg.waitForFunction(
     () => {

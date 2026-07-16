@@ -90,6 +90,7 @@ import { getCredential } from "./credentialStore";
 import { bindSubmitTracking, type SubmitTrackerHandle } from "./submitTracker";
 import { buildAutofillTelemetry } from "./telemetry";
 import { setOverrideRules } from "./overrides";
+import { looksLikeJobApplication } from "./jobFormEvidence";
 import { onExtensionContextInvalidated, postToRuntime, sendToRuntime } from "./runtimeMessaging";
 
 // Guard against double injection (manifest match + programmatic inject).
@@ -98,9 +99,6 @@ declare global {
     __apContentScriptLoaded?: boolean;
   }
 }
-
-/** Show the overlay after detecting at least this many recognizable fields. */
-const MIN_FIELDS_FOR_OVERLAY = 1;
 
 /**
  * Attach a downloaded résumé/cover file to `el`. When the site's upload can't be
@@ -293,6 +291,17 @@ function initialize(): void {
   // The top frame has adopted a form that lives in a child frame; its own local
   // scans must then never overwrite the panel with the (formless) top-frame DOM.
   let adoptedRemote = false;
+  // A persisted flow is live for this tab (set async at init). A flow is
+  // user-started, so the panel may always mount for it — mid-flow pages
+  // (account walls, generic page-1 forms on unknown ATSes) carry no
+  // job-application field evidence of their own.
+  let flowActiveHint = false;
+  // The user opened the panel via the toolbar (TOGGLE_PANEL). Keeps scan
+  // updates flowing to a panel that never auto-mounted (no job evidence), so
+  // profile-enriched fields still reach it. Deliberately NOT overlayShown:
+  // a child frame's announced form may still adopt over this panel.
+  let panelOpenedManually = false;
+
   // The adopted child frame's fields + proxy callbacks (top frame only), kept
   // separate from this frame's own scan so local scans never clobber the panel.
   let remoteFields: DetectedField[] = [];
@@ -1308,23 +1317,26 @@ function initialize(): void {
       jobTitle: ident.jobTitle,
       siteLabel,
     };
-    // Mount on recognized fields, on a known ATS's apply-entry page (Workday job
-    // posting), or on any known-ATS host (lastAdapter matched by host) — so the
-    // always-on "Account Creation & Autofill" button is available to start the
-    // flow even before the posting exposes an apply-entry we recognise. Arbitrary
-    // pages still never auto-mount; the toolbar icon opens the panel on demand.
+    // Mount on a detected job-application form, on a known ATS's apply-entry
+    // page (Workday job posting), or on any known-ATS host (lastAdapter matched
+    // by host) — so the always-on "Account Creation & Autofill" button is
+    // available to start the flow even before the posting exposes an apply-entry
+    // we recognise. Generic recognized fields (name/email/phone…) are NOT
+    // evidence on their own: login, checkout and contact forms have those on
+    // every site. The toolbar icon still opens the panel on demand anywhere.
     const shouldMount =
-      recognizedCount(lastFields) >= MIN_FIELDS_FOR_OVERLAY ||
+      looksLikeJobApplication(lastFields) ||
       Boolean(entry?.fromAdapter) ||
-      Boolean(lastAdapter);
+      Boolean(lastAdapter) ||
+      flowActiveHint;
     if (!overlayShown && shouldMount) {
       overlayShown = true;
-      console.log(`[Tailrd overlay] mounting panel (recognized=${recognizedCount(lastFields)} of ${lastFields.length} fields, entry=${entry?.label ?? "none"})`);
+      console.log(`[Tailrd overlay] mounting panel (recognized=${recognizedCount(lastFields)} of ${lastFields.length} fields, entry=${entry?.label ?? "none"}, ats=${siteLabel ?? "none"})`);
       showOverlay(state, overlayCallbacks);
-    } else if (overlayShown) {
+    } else if (overlayShown || panelOpenedManually) {
       updateOverlay(state);
     } else {
-      console.log(`[Tailrd overlay] NOT mounting — only ${recognizedCount(lastFields)} recognized fields in TOP frame`);
+      console.log(`[Tailrd overlay] NOT mounting — no job-application evidence in TOP frame (${recognizedCount(lastFields)} recognized fields, no ATS match)`);
     }
   }
 
@@ -1421,11 +1433,27 @@ function initialize(): void {
     };
   }
 
+  /** If a live flow is persisted for this tab, let the panel mount for it.
+   *  Async — re-runs the mount/announce decision once the hint is known. */
+  async function probeFlowHint(): Promise<void> {
+    try {
+      const resp = await sendToBackground<FlowStateResponse>({ type: "FLOW_STATE_GET" });
+      const st = resp?.state;
+      if (!st?.active || Date.now() - st.startedAt > FLOW_TTL_MS) return;
+      flowActiveHint = true;
+      if (isTopFrame) maybeShowOrUpdateOverlay();
+      else announceIfFormHost();
+    } catch {
+      // Background asleep — no hint; the panel can still be opened manually.
+    }
+  }
+
   function autoInit(): void {
     runScan();
     captureJobDescription();
     ensureObserver();
     void loadOverrides();
+    void probeFlowHint();
     if (isTopFrame) {
       maybeShowOrUpdateOverlay();
       // A mid-flow REAL navigation can land on a field-less entry page (the
@@ -1449,7 +1477,13 @@ function initialize(): void {
   function announceIfFormHost(): void {
     if (isTopFrame) return;
     const recognized = recognizedCount(lastFields);
-    if (recognized < MIN_FIELDS_FOR_OVERLAY) return;
+    if (recognized === 0) return;
+    // Same evidence bar as the top frame's mount: a child frame holding only
+    // generic fields (login / newsletter / checkout iframes) must not make the
+    // top frame pop the panel. An ATS-host iframe (embedded Greenhouse board)
+    // announces on its adapter match even before job-specific fields render,
+    // and a frame that owns a mid-flow form announces on the live flow.
+    if (!lastAdapter && !flowActiveHint && !looksLikeJobApplication(lastFields)) return;
     actingAsRemoteHost = true;
     void chrome.runtime
       .sendMessage({ type: "FORM_HOST_ANNOUNCE", recognized, fields: lastFields })
@@ -1507,6 +1541,9 @@ function initialize(): void {
               applyEntry: findApplyEntry(document, lastAdapter)?.label ?? null,
             };
             toggleOverlay(state, overlayCallbacks);
+            // Keep pushing scan updates to this user-opened panel even though
+            // it never auto-mounted (see panelOpenedManually).
+            panelOpenedManually = true;
             // Nothing fillable yet? Watch briefly for a lazy-mounted form.
             if (recognizedCount(lastFields) === 0) watchForLateMount();
           }
