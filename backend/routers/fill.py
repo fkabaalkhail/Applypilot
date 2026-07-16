@@ -207,6 +207,35 @@ def _profile_context(p: ApplicantProfile) -> str:
     return "\n".join(lines)
 
 
+# Open-ended long-answer cues. A textarea carrying one of these (or a genuine
+# ?-question) is COMPOSED from real experience + the job posting rather than
+# extracted; every other field keeps the strict answer_question.txt grounding.
+_ESSAY_CUES = (
+    "why", "motivat", "interest", "excit", "passion",
+    "tell us about yourself", "about yourself", "describe a",
+    "a time when", "a time you", "challenge", "proud", "accomplish",
+    "strength", "weakness", "goal", "see yourself", "what do you know",
+    "in your own words", "what makes you", "why should we", "drawn to",
+    "fit for this", "cover letter",
+)
+
+
+def is_essay_question(field: FormField) -> bool:
+    """True when a field is an open-ended essay prompt worth AI-composing.
+
+    Only long free-text controls are ever candidates — choice/short controls
+    (select, radio, checkbox, number) keep the strict grounding path, so a
+    factual screening question can never be routed into generative mode.
+    """
+    if field.type != "textarea" or field.options:
+        return False
+    text = f"{field.label} {field.helpText}".lower()
+    if any(cue in text for cue in _ESSAY_CUES):
+        return True
+    label = field.label.strip()
+    return label.endswith("?") and len(label.split()) >= 4
+
+
 @router.post("/fill", response_model=FillResponse)
 async def fill_form(
     request: FillRequest,
