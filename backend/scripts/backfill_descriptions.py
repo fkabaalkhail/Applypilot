@@ -15,15 +15,29 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+import urllib.request  # noqa: E402
+
 import httpx  # noqa: E402
 from sqlalchemy import bindparam, text  # noqa: E402
 
 from backend.db.database import engine  # noqa: E402
 from backend.services.description_extractor import (  # noqa: E402
     BROWSER_HEADERS,
+    extract_description_from_html,
     extract_description_from_url,
     sanitize_description,
 )
+
+
+def _fetch_indeed_urllib(url: str) -> str:
+    """Indeed 403s httpx's TLS fingerprint but serves urllib from residential
+    IPs — fetch the raw page the boring way."""
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": BROWSER_HEADERS["User-Agent"], "Accept-Language": "en"},
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return resp.read().decode("utf-8", "replace")
 
 BATCH = 150
 CONCURRENCY = 6
@@ -52,6 +66,11 @@ async def main(include_indeed: bool = False) -> None:
         async def fetch(job_id: int, url: str) -> tuple[int, str]:
             async with semaphore:
                 try:
+                    if "indeed.com" in url:
+                        html = await asyncio.to_thread(_fetch_indeed_urllib, url)
+                        return job_id, await extract_description_from_html(
+                            client, url, html, url
+                        )
                     return job_id, await extract_description_from_url(client, url)
                 except Exception:
                     return job_id, ""
