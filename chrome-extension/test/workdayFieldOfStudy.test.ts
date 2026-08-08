@@ -69,50 +69,62 @@ describe("Workday education row", () => {
 });
 
 /**
- * Workday marks its multiselects with `data-uxi-multiselect-id` on the INPUT,
- * which `isMultiSelect` only ever looked for on ancestors. But Workday puts that
- * same attribute on SINGLE-value prompts (a degree, a city), where every pick
- * REPLACES the last one — so treating the marker as proof of multi turned
- * "Toronto, Ontario" into a committed "Ontario" and reported success. The marker
- * therefore only counts alongside corroboration a single-value widget cannot
- * produce: two committed values already on screen.
+ * `data-uxi-multiselect-id` on the input is NOT a multi-select signal, however
+ * much it reads like one. Workday puts the same attribute on SINGLE-value
+ * prompts — Country Phone Code carries it in this repo's captured production
+ * DOM (test/fixtures/workdayReal.ts), and so does `education-N--degree`. On
+ * those, every pick REPLACES the last, so splitting "Toronto, Ontario" commits
+ * "Ontario" and reports success: the wrong value, banked green.
+ *
+ * What actually identifies a Workday multiselect is the
+ * `multiselectInputContainer` / `multiSelectContainer` ancestor, which the
+ * engine's pre-existing `closest()` check already matches. These tests fix that
+ * division: the ancestor decides, the marker is ignored.
  */
 describe("Workday searchBox multiselect", () => {
   interface BoxOpts {
-    /** Workday's `data-uxi-multiselect-id` on the input itself. */
+    /** Workday's `data-uxi-multiselect-id` on the input itself — inert. */
     marker: boolean;
+    /** The ancestor that genuinely marks a multiselect, as captured in production. */
+    ancestor?: boolean;
     /** Single-value widgets REPLACE the committed chip; multiselects append. */
     single?: boolean;
-    /** Values already committed when the fill starts. */
-    seedChips?: string[];
     options?: string[];
+    /** Committed chips on OTHER widgets in the same section — the state a
+     *  sequential fill pass leaves behind as it works down a section. */
+    siblingChips?: string[];
   }
 
   /** A Workday typeahead: no aria-autocomplete, and an EMPTY listbox until a
    *  filter is typed. Committed values show as `selectedItem` chips. */
   function mountSearchBox(opts: BoxOpts): HTMLInputElement {
     const options = opts.options ?? ["React", "TypeScript", "Rust"];
+    const siblings = (opts.siblingChips ?? [])
+      .map(
+        (label, i) => `
+        <div class="wd-widget">
+          <input data-automation-id="searchBox" data-uxi-widget-type="selectinput"
+                 data-uxi-multiselect-id="sib${i}" autocomplete="off">
+          <div data-automation-id="selectedItem">${label}</div>
+        </div>`
+      )
+      .join("");
+    const widget = `
+      <div class="wd-widget">
+        <div id="chips"></div>
+        <input id="sb" data-automation-id="searchBox" placeholder="Search"
+               data-uxi-widget-type="selectinput" aria-controls="lb" autocomplete="off"
+               ${opts.marker ? 'data-uxi-multiselect-id="bbb"' : ""}>
+        <div id="lb" role="listbox"></div>
+      </div>`;
     document.body.innerHTML = `
       <div data-automation-id="educationSection">
-        <div class="wd-widget">
-          <div id="chips"></div>
-          <input id="sb" data-automation-id="searchBox" placeholder="Search"
-                 data-uxi-widget-type="selectinput" aria-controls="lb" autocomplete="off"
-                 ${opts.marker ? 'data-uxi-multiselect-id="bbb"' : ""}>
-          <div id="lb" role="listbox"></div>
-        </div>
+        ${siblings}
+        ${opts.ancestor ? `<div data-automation-id="multiselectInputContainer">${widget}</div>` : widget}
       </div>`;
     const input = document.getElementById("sb") as HTMLInputElement;
     const listbox = document.getElementById("lb")!;
     const chips = document.getElementById("chips")!;
-    const addChip = (label: string): void => {
-      if (opts.single) chips.innerHTML = "";
-      const chip = document.createElement("div");
-      chip.setAttribute("data-automation-id", "selectedItem");
-      chip.textContent = label;
-      chips.append(chip);
-    };
-    for (const seed of opts.seedChips ?? []) addChip(seed);
     const render = (): void => {
       const filter = input.value.trim().toLowerCase();
       listbox.innerHTML = "";
@@ -123,7 +135,11 @@ describe("Workday searchBox multiselect", () => {
         o.setAttribute("role", "option");
         o.textContent = label;
         o.addEventListener("mousedown", () => {
-          addChip(label);
+          if (opts.single) chips.innerHTML = "";
+          const chip = document.createElement("div");
+          chip.setAttribute("data-automation-id", "selectedItem");
+          chip.textContent = label;
+          chips.append(chip);
           input.value = "";
           listbox.innerHTML = "";
         });
@@ -135,14 +151,26 @@ describe("Workday searchBox multiselect", () => {
     return input;
   }
 
+  /** Chips committed on the TARGET widget only (siblings have their own). */
   const chipTexts = (): string[] =>
-    Array.from(document.querySelectorAll('[data-automation-id="selectedItem"]')).map((c) => c.textContent ?? "");
+    Array.from(document.querySelectorAll('#chips [data-automation-id="selectedItem"]')).map(
+      (c) => c.textContent ?? ""
+    );
 
   const fast = { sleep: async (): Promise<void> => {}, openWaitMs: 200, commitWaitMs: 200, pollMs: 10 };
 
+  it("splits a multi-item answer into one chip per item", async () => {
+    // The genuine multiselect: identified by its ancestor, exactly as the
+    // captured Country Phone Code widget is. The marker rides along, inert.
+    const input = mountSearchBox({ marker: true, ancestor: true });
+    const r = await fillAriaCombobox(input, "React, TypeScript", fast);
+    expect(r.filled).toBe(true);
+    expect(chipTexts()).toEqual(["React", "TypeScript"]);
+  });
+
   it("never splits a single-value widget that merely carries the marker", async () => {
-    // The measured regression: splitting selects Toronto, then REPLACES it with
-    // Ontario — the wrong value, banked as a successful fill.
+    // Splitting here selects Toronto and then REPLACES it with Ontario — the
+    // wrong value, banked as a successful fill.
     const input = mountSearchBox({
       marker: true,
       single: true,
@@ -153,14 +181,24 @@ describe("Workday searchBox multiselect", () => {
     expect(chipTexts()).toEqual(["Toronto"]);
   });
 
-  it("splits a multi-item answer when the widget already shows two committed values", async () => {
-    const input = mountSearchBox({ marker: true, seedChips: ["Rust", "Go"] });
-    const r = await fillAriaCombobox(input, "React, TypeScript", fast);
+  it("is not swayed by chips its NEIGHBOURS have already committed", async () => {
+    // A sequential fill pass works down a section, so by the time it reaches
+    // this widget its siblings are already filled. Counting committed values
+    // near the trigger reads those as evidence THIS widget is multi — and
+    // Workday's selectinput has no role=combobox / aria-haspopup, so the
+    // value-container climb never stops at the widget boundary.
+    const input = mountSearchBox({
+      marker: true,
+      single: true,
+      options: ["Toronto", "Ontario", "Ottawa"],
+      siblingChips: ["Canada", "Mobile"],
+    });
+    const r = await fillAriaCombobox(input, "Toronto, Ontario", fast);
     expect(r.filled).toBe(true);
-    expect(chipTexts()).toEqual(["Rust", "Go", "React", "TypeScript"]);
+    expect(chipTexts()).toEqual(["Toronto"]);
   });
 
-  it("leaves a widget without the marker single-select", async () => {
+  it("leaves a widget with no multiselect ancestor single-select", async () => {
     const input = mountSearchBox({ marker: false });
     await fillAriaCombobox(input, "React, TypeScript", fast);
     // A single-select widget commits at most one value — never a second chip.

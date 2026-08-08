@@ -236,8 +236,6 @@ export const SELECTED_ITEM_FRAGMENT = "selecteditem";
 
 /** Workday's typeahead search input inside a prompt/multiselect widget. */
 export const SEARCH_BOX_FRAGMENT = "searchBox";
-/** Attribute Workday puts on the multiselect's own input (not an ancestor). */
-export const MULTISELECT_ID_ATTR = "data-uxi-multiselect-id";
 
 /** Validation-error containers, as a `*=` fragment (stuck-page diagnostics). */
 export const ERROR_FRAGMENT = "error";

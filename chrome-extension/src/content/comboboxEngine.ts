@@ -16,7 +16,6 @@ import { normalize } from "./fieldMatcher";
 import { matchOption } from "./writeEngine";
 import {
   MULTISELECT_CONTAINER_FRAGMENT as WD_MULTISELECT_CONTAINER_FRAGMENT,
-  MULTISELECT_ID_ATTR as WD_MULTISELECT_ID_ATTR,
   SEARCH_BOX_FRAGMENT as WD_SEARCH_BOX_FRAGMENT,
   SELECTED_ITEM_FRAGMENT as WD_SELECTED_ITEM_FRAGMENT,
 } from "./adapters/workdaySelectors";
@@ -74,16 +73,12 @@ function isMultiSelect(trigger: HTMLElement): boolean {
   for (const id of ids.split(/\s+/).filter(Boolean)) {
     if (trigger.ownerDocument.getElementById(id)?.getAttribute("aria-multiselectable") === "true") return true;
   }
-  // Workday puts a multiselect marker on the INPUT itself, not an ancestor
-  // (data-uxi-multiselect-id) — but it carries the SAME attribute on single-value
-  // prompts (a degree, a city). Trusting it alone is worse than missing a
-  // multiselect: on a single-value widget each pick REPLACES the last, so
-  // splitting "Toronto, Ontario" commits Ontario and reports success — the wrong
-  // value banked green. So the marker only counts with corroboration no
-  // single-value widget can produce: two committed values already on screen.
-  // (The other corroboration worth having — a `multiselect` ancestor — is
-  // already the `closest()` check below, so requiring it here would be dead.)
-  if (trigger.hasAttribute(WD_MULTISELECT_ID_ATTR) && valueContainerTexts(trigger).length > 1) return true;
+  // NB Workday's `data-uxi-multiselect-id` on the input is NOT a multi signal and
+  // must not be added here: it sits on single-value prompts too (Country Phone
+  // Code, a degree — see test/fixtures/workdayReal.ts), where every pick REPLACES
+  // the last, so splitting "Toronto, Ontario" commits "Ontario" and reports
+  // success. Real Workday multiselects carry the container below anyway.
+  //
   // Workday's multiselect ("Type to Add Skills") exposes no ARIA multi signal —
   // its container automation-id is the only reliable marker.
   return Boolean(
