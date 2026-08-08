@@ -84,13 +84,26 @@ export function dateContainerOf(el: HTMLElement): HTMLElement | null {
   const dateish = (node: HTMLElement): boolean =>
     DATE_CONTAINER_RE.test(node.getAttribute("data-automation-id") || "");
 
+  /**
+   * One widget holds at most one input per fragment. The caller reads each part
+   * with a `*="month|day|year"` query and takes the FIRST hit, so a node holding
+   * two of any fragment — a section wrapping a start date AND a graduation date
+   * — cannot answer that query for `el`: it answers it for whichever widget
+   * comes first in document order. Such a node is not a container, at any depth.
+   */
+  const unambiguous = (node: HTMLElement): boolean =>
+    Object.values(DATE_PART_FRAGMENTS).every(
+      (frag) => node.querySelectorAll(`input[data-automation-id*="${frag}" i]`).length <= 1
+    );
+  const container = (node: HTMLElement): boolean => dateish(node) && unambiguous(node);
+
   // Not a part: only a wrapper handed to us directly can be the widget.
-  if (!el.matches(DATE_PART_SELECTOR)) return dateish(el) && partCount(el) > 0 ? el : null;
+  if (!el.matches(DATE_PART_SELECTOR)) return container(el) && partCount(el) > 0 ? el : null;
 
   let onlyWrapper: HTMLElement | null = null;
   let node: HTMLElement | null = el.parentElement;
   for (let i = 0; node && i < 6; i++, node = node.parentElement) {
-    if (!dateish(node)) continue;
+    if (!container(node)) continue;
     const count = partCount(node);
     if (count > 1) return node;
     if (count === 1 && !onlyWrapper) onlyWrapper = node;

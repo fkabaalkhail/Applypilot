@@ -158,6 +158,29 @@ describe("Workday split-date container", () => {
     });
   });
 
+  it("fills the one-part widget it was handed, not the full widget next door", async () => {
+    // Two date fields in one section. Preferring a container with a second part
+    // climbed straight past the correct single-part widget into the section,
+    // where q("year") resolves by document order — to the START date's input.
+    document.body.innerHTML = `
+      <div data-automation-id="candidateEducationSection">
+        <div data-automation-id="formField-startDate">
+          <div data-automation-id="dateWidget">
+            ${part("Month", "sm")}${part("Day", "sd")}${part("Year", "sy")}
+          </div>
+        </div>
+        <div data-automation-id="formField-graduationDate">${part("Year", "gradY")}</div>
+      </div>`;
+    const grad = document.getElementById("gradY") as HTMLInputElement;
+    expect(dateContainerOf(grad)!.getAttribute("data-automation-id")).toBe("formField-graduationDate");
+    expect(await workdayAdapter.fillOperation!(fillCtx(grad, "2026-05"))).toEqual({ filled: true });
+    expect(grad.value).toBe("2026");
+    // The neighbouring start date must be untouched — including its month,
+    // which "2026-05" would otherwise have written.
+    expect((document.getElementById("sy") as HTMLInputElement).value).toBe("0");
+    expect((document.getElementById("sm") as HTMLInputElement).value).toBe("0");
+  });
+
   it("declines values that only look like a date", () => {
     mountWorkdayDate();
     const year = document.getElementById("workExperience-10--startDate-dateSectionYear-input") as HTMLInputElement;
