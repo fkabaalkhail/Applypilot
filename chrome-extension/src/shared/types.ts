@@ -146,6 +146,11 @@ export type FieldCategory =
   | "fullName"
   | "email"
   | "phone"
+  // Workday splits a phone number into three controls: the dialing country
+  // ("Canada (+1)"), the number, and the device type ("Mobile"). The two
+  // satellites are dropdowns, NOT text — routing the number into either fails.
+  | "phoneCountryCode"
+  | "phoneDeviceType"
   | "location"
   | "addressStreet"
   | "addressCity"

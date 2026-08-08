@@ -105,4 +105,65 @@ describe("Workday split-date container", () => {
     await workdayAdapter.fillOperation!(fillCtx(year, "2026"));
     expect(year.value).toBe("2026");
   });
+
+  /** One spinbutton part, as Workday renders it. */
+  const part = (name: "Month" | "Day" | "Year", id: string) =>
+    `<input role="spinbutton" aria-label="${name}" aria-valuemin="1" value="0"
+            id="${id}" data-automation-id="dateSection${name}-input">`;
+
+  it("resolves the widget, not the per-part display wrapper that holds one input", async () => {
+    // Workday's "-input" suffix implies a sibling "-display" wrapper. Stopping
+    // at that wrapper wrote `0 0 2025` — month and day were never reachable.
+    document.body.innerHTML = `
+      <div data-automation-id="dateWidget">
+        <div data-automation-id="dateSectionMonth-display">${part("Month", "m")}</div>
+        <div data-automation-id="dateSectionDay-display">${part("Day", "d")}</div>
+        <div data-automation-id="dateSectionYear-display">${part("Year", "y")}</div>
+      </div>`;
+    const year = document.getElementById("y") as HTMLInputElement;
+    expect(dateContainerOf(year)!.getAttribute("data-automation-id")).toBe("dateWidget");
+    expect(await workdayAdapter.fillOperation!(fillCtx(year, "2025-05-14"))).toEqual({ filled: true });
+    expect((document.getElementById("m") as HTMLInputElement).value).toBe("5");
+    expect((document.getElementById("d") as HTMLInputElement).value).toBe("14");
+    expect(year.value).toBe("2025");
+  });
+
+  it("never claims a plain input that merely sits NEXT TO a date widget", () => {
+    // DATE_CONTAINER_RE is /date/i, and "candidateEducationSection" contains
+    // "date" — so this section used to resolve as the graduation field's own
+    // date widget, sending the year into the neighbouring spinbuttons.
+    document.body.innerHTML = `
+      <div data-automation-id="candidateEducationSection">
+        <label for="gradyear">Graduation Year</label>
+        <input type="text" id="gradyear" data-automation-id="formField-graduationYear">
+        <div data-automation-id="dateWidget">${part("Month", "m")}${part("Year", "y")}</div>
+      </div>`;
+    const grad = document.getElementById("gradyear") as HTMLInputElement;
+    expect(dateContainerOf(grad)).toBeNull();
+    expect(workdayAdapter.fillOperation!(fillCtx(grad, "2026"))).toBeUndefined();
+    expect((document.getElementById("y") as HTMLInputElement).value).toBe("0");
+    expect(grad.value).toBe("");
+  });
+
+  it("reports filled:false rather than banking a fill it never made", () => {
+    // A bare year against a month-only widget writes nothing: every guarded
+    // write is skipped, so the outcome must not read as a success.
+    document.body.innerHTML = `<div data-automation-id="dateWidget">${part("Month", "m")}</div>`;
+    const month = document.getElementById("m") as HTMLInputElement;
+    const op = workdayAdapter.fillOperation!(fillCtx(month, "2026"));
+    expect(op, "a date widget — the adapter still claims it").toBeDefined();
+    return op!.then((r) => {
+      expect(r.filled).toBe(false);
+      expect(month.value).toBe("0");
+    });
+  });
+
+  it("declines values that only look like a date", () => {
+    mountWorkdayDate();
+    const year = document.getElementById("workExperience-10--startDate-dateSectionYear-input") as HTMLInputElement;
+    for (const junk of ["2020-2024", "1234-5 King St", "2025-13-45", "2025-05-32", "not a date"]) {
+      expect(workdayAdapter.fillOperation!(fillCtx(year, junk)), junk).toBeUndefined();
+    }
+    expect(year.value).toBe("0");
+  });
 });

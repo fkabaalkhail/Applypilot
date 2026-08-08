@@ -60,22 +60,42 @@ export const DATE_PART_SELECTOR =
   'input[data-automation-id*="dateSection" i], input[role="spinbutton"]';
 
 /**
- * The date WIDGET wrapping a part input — never the part itself.
+ * The date WIDGET a part input belongs to — never the part itself, and never a
+ * widget the element merely sits NEXT TO.
  *
  * `Element.closest()` matches the element it is called on, and a part's own
  * automation-id ("dateSectionYear-input") satisfies DATE_CONTAINER_RE, so
  * `el.closest("[data-automation-id]")` returned the INPUT and every
- * `container.querySelector("input[...]")` searched an empty subtree. Start above
- * any part input, and require the candidate to actually hold a part input.
+ * `container.querySelector("input[...]")` searched an empty subtree.
+ *
+ * Resolution is deliberately narrow, because DATE_CONTAINER_RE also matches
+ * "candi-DATE-EducationSection", and such a section can hold a plain
+ * "Graduation Year" input alongside a real date widget:
+ *
+ *   - a PART resolves to its nearest date-ish ancestor holding a SECOND part.
+ *     A wrapper holding only `el` ("dateSectionYear-display") wraps the part,
+ *     not the widget — climbing stops there and month/day never get written.
+ *     A genuinely single-part widget falls back to that innermost wrapper.
+ *   - anything else resolves only to ITSELF, so an input standing beside a date
+ *     widget can never claim it.
  */
 export function dateContainerOf(el: HTMLElement): HTMLElement | null {
-  // A part is never its own container; a wrapper handed to us already may be.
-  let node: HTMLElement | null = el.matches(DATE_PART_SELECTOR) ? el.parentElement : el;
+  const partCount = (node: HTMLElement): number => node.querySelectorAll(DATE_PART_SELECTOR).length;
+  const dateish = (node: HTMLElement): boolean =>
+    DATE_CONTAINER_RE.test(node.getAttribute("data-automation-id") || "");
+
+  // Not a part: only a wrapper handed to us directly can be the widget.
+  if (!el.matches(DATE_PART_SELECTOR)) return dateish(el) && partCount(el) > 0 ? el : null;
+
+  let onlyWrapper: HTMLElement | null = null;
+  let node: HTMLElement | null = el.parentElement;
   for (let i = 0; node && i < 6; i++, node = node.parentElement) {
-    const id = node.getAttribute("data-automation-id");
-    if (id && DATE_CONTAINER_RE.test(id) && node.querySelector(DATE_PART_SELECTOR)) return node;
+    if (!dateish(node)) continue;
+    const count = partCount(node);
+    if (count > 1) return node;
+    if (count === 1 && !onlyWrapper) onlyWrapper = node;
   }
-  return null;
+  return onlyWrapper;
 }
 
 // ---------------------------------------------------------------------------

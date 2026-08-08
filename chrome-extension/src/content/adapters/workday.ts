@@ -30,15 +30,31 @@ const DEFAULT_PHONE_DEVICE_TYPE = "Mobile";
 /** Parse the date shapes the profile and the page actually use: ISO
  *  (2025-05-14), year-month (2025-05 — how experience start/end dates are
  *  stored), US (5/14/2025), and a bare year (2026 — graduation). Missing parts
- *  come back as "" and are simply not written. */
+ *  come back as "" and are simply not written.
+ *
+ *  Fully anchored and range-checked on purpose: this parse is the only thing
+ *  standing between an arbitrary answer and a set of date spinbuttons, and an
+ *  unanchored match reads "2020-2024" as month 20 and "1234-5 King St" as the
+ *  year 1234. */
 function parseDate(v: string): { month: string; day: string; year: string } | null {
-  const iso = v.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);
+  const inRange = (n: number, max: number): boolean => n >= 1 && n <= max;
+  const s = v.trim();
+
+  const iso = s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/);
   if (iso) {
-    return { year: iso[1], month: String(Number(iso[2])), day: iso[3] ? String(Number(iso[3])) : "" };
+    const month = Number(iso[2]);
+    const day = iso[3] === undefined ? null : Number(iso[3]);
+    if (!inRange(month, 12) || (day !== null && !inRange(day, 31))) return null;
+    return { year: iso[1], month: String(month), day: day === null ? "" : String(day) };
   }
-  const us = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (us) return { month: String(Number(us[1])), day: String(Number(us[2])), year: us[3] };
-  const bare = v.match(/^(\d{4})$/);
+  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (us) {
+    const month = Number(us[1]);
+    const day = Number(us[2]);
+    if (!inRange(month, 12) || !inRange(day, 31)) return null;
+    return { month: String(month), day: String(day), year: us[3] };
+  }
+  const bare = s.match(/^(\d{4})$/);
   if (bare) return { year: bare[1], month: "", day: "" };
   return null;
 }
@@ -103,10 +119,19 @@ export const workdayAdapter: SiteAdapter = {
     return (async () => {
       // A part the value doesn't carry (no day in "2025-05") is left alone
       // rather than zeroed — Workday reads 0 as empty and flags it invalid.
-      if (month && parts.month) setInput(month, parts.month);
-      if (day && parts.day) setInput(day, parts.day);
-      if (year && parts.year) setInput(year, parts.year);
-      return { filled: true };
+      let wrote = 0;
+      const write = (input: HTMLInputElement | null, part: string): void => {
+        if (!input || !part) return;
+        setInput(input, part);
+        wrote++;
+      };
+      write(month, parts.month);
+      write(day, parts.day);
+      write(year, parts.year);
+      // Those guards can skip every part (a bare year against a month-only
+      // widget). Claiming filled:true there banks a green panel tally and a
+      // green autofill_reports row for a widget that is visibly still empty.
+      return wrote > 0 ? { filled: true } : { filled: false, reason: "no date part matched the value" };
     })();
   },
 
