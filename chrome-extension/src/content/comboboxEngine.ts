@@ -74,9 +74,16 @@ function isMultiSelect(trigger: HTMLElement): boolean {
   for (const id of ids.split(/\s+/).filter(Boolean)) {
     if (trigger.ownerDocument.getElementById(id)?.getAttribute("aria-multiselectable") === "true") return true;
   }
-  // Workday puts the multiselect marker on the INPUT itself, not an ancestor
-  // (data-uxi-multiselect-id on education-N--fieldOfStudy).
-  if (trigger.hasAttribute(WD_MULTISELECT_ID_ATTR)) return true;
+  // Workday puts a multiselect marker on the INPUT itself, not an ancestor
+  // (data-uxi-multiselect-id) — but it carries the SAME attribute on single-value
+  // prompts (a degree, a city). Trusting it alone is worse than missing a
+  // multiselect: on a single-value widget each pick REPLACES the last, so
+  // splitting "Toronto, Ontario" commits Ontario and reports success — the wrong
+  // value banked green. So the marker only counts with corroboration no
+  // single-value widget can produce: two committed values already on screen.
+  // (The other corroboration worth having — a `multiselect` ancestor — is
+  // already the `closest()` check below, so requiring it here would be dead.)
+  if (trigger.hasAttribute(WD_MULTISELECT_ID_ATTR) && valueContainerTexts(trigger).length > 1) return true;
   // Workday's multiselect ("Type to Add Skills") exposes no ARIA multi signal —
   // its container automation-id is the only reliable marker.
   return Boolean(

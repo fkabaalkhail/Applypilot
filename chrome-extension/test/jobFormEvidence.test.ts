@@ -111,6 +111,18 @@ describe("looksLikeJobApplication", () => {
     expect(looksLikeJobApplication(fields("degree", "linkedin"))).toBe(true);
   });
 
+  /** Field of Study was split out of the `degree` rule. It is the same kind of
+   *  evidence — a structured education field — so it has to carry the same
+   *  weight, or a page whose only education control is labelled "Major" stops
+   *  mounting the panel it used to mount. */
+  it("accepts Field of Study paired with a weak one (major + LinkedIn)", () => {
+    expect(looksLikeJobApplication(fields("fieldOfStudy", "linkedin"))).toBe(true);
+  });
+
+  it("still rejects a lone Field of Study among generic contact fields", () => {
+    expect(looksLikeJobApplication(fields("fieldOfStudy", "fullName", "email"))).toBe(false);
+  });
+
   // --- Page context upgrades two weak fields ---------------------------------
 
   it("accepts Company + Job title on a careers apply URL", () => {

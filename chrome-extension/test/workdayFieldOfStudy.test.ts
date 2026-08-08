@@ -69,42 +69,61 @@ describe("Workday education row", () => {
 });
 
 /**
- * Workday marks its multiselects with `data-uxi-multiselect-id` on the INPUT.
- * `isMultiSelect` only ever looked at ancestors (`data-automation-id*=multiselect`),
- * so a searchBox in a plain section read as single-select and a multi-item
- * answer was matched as ONE option label — which no listbox offers.
+ * Workday marks its multiselects with `data-uxi-multiselect-id` on the INPUT,
+ * which `isMultiSelect` only ever looked for on ancestors. But Workday puts that
+ * same attribute on SINGLE-value prompts (a degree, a city), where every pick
+ * REPLACES the last one — so treating the marker as proof of multi turned
+ * "Toronto, Ontario" into a committed "Ontario" and reported success. The marker
+ * therefore only counts alongside corroboration a single-value widget cannot
+ * produce: two committed values already on screen.
  */
 describe("Workday searchBox multiselect", () => {
+  interface BoxOpts {
+    /** Workday's `data-uxi-multiselect-id` on the input itself. */
+    marker: boolean;
+    /** Single-value widgets REPLACE the committed chip; multiselects append. */
+    single?: boolean;
+    /** Values already committed when the fill starts. */
+    seedChips?: string[];
+    options?: string[];
+  }
+
   /** A Workday typeahead: no aria-autocomplete, and an EMPTY listbox until a
    *  filter is typed. Committed values show as `selectedItem` chips. */
-  function mountSearchBox(opts: { multiselect: boolean }): HTMLInputElement {
+  function mountSearchBox(opts: BoxOpts): HTMLInputElement {
+    const options = opts.options ?? ["React", "TypeScript", "Rust"];
     document.body.innerHTML = `
       <div data-automation-id="educationSection">
         <div class="wd-widget">
           <div id="chips"></div>
           <input id="sb" data-automation-id="searchBox" placeholder="Search"
                  data-uxi-widget-type="selectinput" aria-controls="lb" autocomplete="off"
-                 ${opts.multiselect ? 'data-uxi-multiselect-id="bbb"' : ""}>
+                 ${opts.marker ? 'data-uxi-multiselect-id="bbb"' : ""}>
           <div id="lb" role="listbox"></div>
         </div>
       </div>`;
     const input = document.getElementById("sb") as HTMLInputElement;
     const listbox = document.getElementById("lb")!;
     const chips = document.getElementById("chips")!;
+    const addChip = (label: string): void => {
+      if (opts.single) chips.innerHTML = "";
+      const chip = document.createElement("div");
+      chip.setAttribute("data-automation-id", "selectedItem");
+      chip.textContent = label;
+      chips.append(chip);
+    };
+    for (const seed of opts.seedChips ?? []) addChip(seed);
     const render = (): void => {
       const filter = input.value.trim().toLowerCase();
       listbox.innerHTML = "";
       if (!filter) return; // Workday shows nothing until you type
-      for (const label of ["React", "TypeScript", "Rust"]) {
+      for (const label of options) {
         if (!label.toLowerCase().includes(filter)) continue;
         const o = document.createElement("div");
         o.setAttribute("role", "option");
         o.textContent = label;
         o.addEventListener("mousedown", () => {
-          const chip = document.createElement("div");
-          chip.setAttribute("data-automation-id", "selectedItem");
-          chip.textContent = label;
-          chips.append(chip);
+          addChip(label);
           input.value = "";
           listbox.innerHTML = "";
         });
@@ -121,15 +140,28 @@ describe("Workday searchBox multiselect", () => {
 
   const fast = { sleep: async (): Promise<void> => {}, openWaitMs: 200, commitWaitMs: 200, pollMs: 10 };
 
-  it("splits a multi-item answer into one chip per item", async () => {
-    const input = mountSearchBox({ multiselect: true });
+  it("never splits a single-value widget that merely carries the marker", async () => {
+    // The measured regression: splitting selects Toronto, then REPLACES it with
+    // Ontario — the wrong value, banked as a successful fill.
+    const input = mountSearchBox({
+      marker: true,
+      single: true,
+      options: ["Toronto", "Ontario", "Ottawa"],
+    });
+    const r = await fillAriaCombobox(input, "Toronto, Ontario", fast);
+    expect(r.filled).toBe(true);
+    expect(chipTexts()).toEqual(["Toronto"]);
+  });
+
+  it("splits a multi-item answer when the widget already shows two committed values", async () => {
+    const input = mountSearchBox({ marker: true, seedChips: ["Rust", "Go"] });
     const r = await fillAriaCombobox(input, "React, TypeScript", fast);
     expect(r.filled).toBe(true);
-    expect(chipTexts()).toEqual(["React", "TypeScript"]);
+    expect(chipTexts()).toEqual(["Rust", "Go", "React", "TypeScript"]);
   });
 
   it("leaves a widget without the marker single-select", async () => {
-    const input = mountSearchBox({ multiselect: false });
+    const input = mountSearchBox({ marker: false });
     await fillAriaCombobox(input, "React, TypeScript", fast);
     // A single-select widget commits at most one value — never a second chip.
     expect(chipTexts().length).toBeLessThan(2);

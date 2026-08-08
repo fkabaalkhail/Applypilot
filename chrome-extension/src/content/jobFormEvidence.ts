@@ -37,6 +37,9 @@ const APPLICATION_ONLY: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
 const STRONG: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "school",
   "degree",
+  // Split out of `degree`, and the same kind of evidence — omitting it would
+  // silently drop the weight of a page whose only education control is "Major".
+  "fieldOfStudy",
   "graduationYear",
   "experienceStartDate",
   "experienceEndDate",
