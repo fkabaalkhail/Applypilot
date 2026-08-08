@@ -90,7 +90,7 @@ import { getCredential } from "./credentialStore";
 import { bindSubmitTracking, type SubmitTrackerHandle } from "./submitTracker";
 import { buildAutofillTelemetry } from "./telemetry";
 import { setOverrideRules } from "./overrides";
-import { looksLikeJobApplication } from "./jobFormEvidence";
+import { looksLikeJobApplication, type PageContext } from "./jobFormEvidence";
 import { onExtensionContextInvalidated, postToRuntime, sendToRuntime } from "./runtimeMessaging";
 
 // Guard against double injection (manifest match + programmatic inject).
@@ -1298,6 +1298,12 @@ function initialize(): void {
     },
   };
 
+  /** Page-context hint for the mount gate — lets two weak job-flavored fields
+   *  count as an application when the URL/title says we're on a job page. */
+  function pageContext(): PageContext {
+    return { url: location.href, title: document.title };
+  }
+
   function maybeShowOrUpdateOverlay(): void {
     if (!isTopFrame || adoptedRemote) return;
     const entry = findApplyEntry(document, lastAdapter);
@@ -1305,10 +1311,8 @@ function initialize(): void {
     // Which ATS are we on? The matched adapter's label is the most reliable
     // signal (broad host match); fall back to the path-gated registry for the
     // company portals that have no fill adapter. Either may be null.
-    const siteLabel =
-      lastAdapter?.label ??
-      detectSite(location.hostname, location.href, { inIframe: self !== top })?.label ??
-      null;
+    const site = detectSite(location.hostname, location.href, { inIframe: self !== top });
+    const siteLabel = lastAdapter?.label ?? site?.label ?? null;
     const state = {
       fields: lastFields,
       tabUrl: location.href,
@@ -1318,16 +1322,26 @@ function initialize(): void {
       siteLabel,
     };
     // Mount on a detected job-application form, on a known ATS's apply-entry
-    // page (Workday job posting), or on any known-ATS host (lastAdapter matched
-    // by host) — so the always-on "Account Creation & Autofill" button is
-    // available to start the flow even before the posting exposes an apply-entry
-    // we recognise. Generic recognized fields (name/email/phone…) are NOT
-    // evidence on their own: login, checkout and contact forms have those on
-    // every site. The toolbar icon still opens the panel on demand anywhere.
+    // page (Workday job posting), or on an ATS application page — so the
+    // always-on "Account Creation & Autofill" button is available to start the
+    // flow even before the posting exposes an apply-entry we recognise.
+    //
+    // "ATS page" is deliberately NOT a bare adapter match: adapters match by
+    // host only (/(^|\.)greenhouse\.io$/ …), so the vendors' own marketing
+    // sites popped the panel on every page. The registry IS path-gated
+    // (Greenhouse only on /{co}/jobs/{id}), so prefer it, and fall back to the
+    // adapter only where the page actually has recognized fields — that keeps
+    // adapter hosts missing from the registry working without re-opening the
+    // marketing-page hole.
+    //
+    // Generic recognized fields (name/email/phone…) are NOT evidence on their
+    // own: login, checkout and contact forms have those on every site. The
+    // toolbar icon still opens the panel on demand anywhere.
+    const atsPage = Boolean(site) || (Boolean(lastAdapter) && recognizedCount(lastFields) > 0);
     const shouldMount =
-      looksLikeJobApplication(lastFields) ||
+      looksLikeJobApplication(lastFields, pageContext()) ||
       Boolean(entry?.fromAdapter) ||
-      Boolean(lastAdapter) ||
+      atsPage ||
       flowActiveHint;
     if (!overlayShown && shouldMount) {
       overlayShown = true;
@@ -1483,7 +1497,8 @@ function initialize(): void {
     // top frame pop the panel. An ATS-host iframe (embedded Greenhouse board)
     // announces on its adapter match even before job-specific fields render,
     // and a frame that owns a mid-flow form announces on the live flow.
-    if (!lastAdapter && !flowActiveHint && !looksLikeJobApplication(lastFields)) return;
+    if (!lastAdapter && !flowActiveHint && !looksLikeJobApplication(lastFields, pageContext()))
+      return;
     actingAsRemoteHost = true;
     void chrome.runtime
       .sendMessage({ type: "FORM_HOST_ANNOUNCE", recognized, fields: lastFields })

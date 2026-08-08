@@ -14,7 +14,7 @@
 import { reattachIfDetached } from "./domUtils";
 import { base64ToFile } from "./fileUpload";
 import { resolveCompanyLogo } from "./companyLogo";
-import { BRAND_LOGO_DATA_URI } from "./brandLogo";
+import { BRAND_LOGO_DATA_URI, BRAND_MARK_DATA_URI } from "./brandLogo";
 import {
   cryptoId,
   emptyExtras,
@@ -264,6 +264,8 @@ const P_PAPERCLIP = '<path d="M209.66,122.34a8,8,0,0,1,0,11.32l-82.05,82a56,56,0
 const P_CHECK = '<path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/>';
 const P_DASH = '<path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128Z"/>';
 const P_INFO = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"/>';
+// Phosphor "key" — the Saved sign-ins section/modal mark.
+const P_KEY = '<path d="M216.57,39.43A80,80,0,0,0,83.91,120.78L28.69,176A15.86,15.86,0,0,0,24,187.31V216a16,16,0,0,0,16,16H72a8,8,0,0,0,8-8V208H96a8,8,0,0,0,8-8V184h16a8,8,0,0,0,5.66-2.34l9.56-9.57A80,80,0,0,0,216.57,39.43ZM180,100a16,16,0,1,1,16-16A16,16,0,0,1,180,100Z"/>';
 
 const I_CLOSE = ph(P_X);
 const I_CHEVRON_RIGHT = ph(P_CARET_RIGHT);
@@ -277,6 +279,7 @@ const I_PAPERCLIP = ph(P_PAPERCLIP);
 const I_CHECK = ph(P_CHECK);
 const I_DASH = ph(P_DASH);
 const I_INFO = ph(P_INFO);
+const I_KEY = ph(P_KEY);
 
 // The header brand mark is the real Tailrd wing logo, rendered as a data-URI
 // <img> (see brandLogo.ts + wireBrandLogo). It is NOT an inline SVG because the
@@ -325,22 +328,39 @@ export const STYLES = `
 }
 .ap-root * { pointer-events: auto; }
 
-/* ---- Edge tab ---- */
+/* ---- Edge tab ----
+   A white tab carrying the circular Tailrd mark. On strict img-src CSP pages
+   the data-URI mark is blocked, and wireBrandLogo() adds .is-fallback — which
+   restores the original purple gradient + white chevron so the tab is never
+   an empty white sliver. */
 .ap-edge-tab {
   position: fixed;
   top: 50%; right: 0;
   transform: translateY(-50%);
-  width: 28px; height: 64px;
-  border-radius: 10px 0 0 10px;
-  border: none; cursor: pointer;
-  background: linear-gradient(180deg, var(--stripe-primary) 0%, var(--stripe-primary-deep) 100%);
-  box-shadow: -2px 0 10px rgba(var(--stripe-primary-rgb),0.3);
+  width: 44px; height: 64px;
+  border-radius: 14px 0 0 14px;
+  border: 1px solid var(--stripe-hairline);
+  border-right: none;
+  cursor: pointer;
+  background: #fff;
+  box-shadow: -2px 0 12px rgba(var(--stripe-shadow-rgb),0.18);
   display: flex; align-items: center; justify-content: center;
   color: #fff; padding: 0;
-  transition: width 0.15s;
+  transition: width 0.15s, box-shadow 0.15s;
 }
-.ap-edge-tab:hover { width: 32px; }
-.ap-edge-tab svg { width: 14px; height: 14px; transform: rotate(180deg); }
+.ap-edge-tab:hover { width: 48px; box-shadow: -3px 0 16px rgba(var(--stripe-shadow-rgb),0.24); }
+.ap-edge-mark { width: 28px; height: 28px; object-fit: contain; display: block; }
+.ap-edge-tab svg { display: none; }
+.ap-edge-tab.is-fallback {
+  width: 28px;
+  border: none;
+  border-radius: 10px 0 0 10px;
+  background: linear-gradient(180deg, var(--stripe-primary) 0%, var(--stripe-primary-deep) 100%);
+  box-shadow: -2px 0 10px rgba(var(--stripe-primary-rgb),0.3);
+}
+.ap-edge-tab.is-fallback:hover { width: 32px; }
+.ap-edge-tab.is-fallback .ap-edge-mark { display: none; }
+.ap-edge-tab.is-fallback svg { display: block; width: 14px; height: 14px; transform: rotate(180deg); }
 .ap-root.ap-expanded .ap-edge-tab { display: none; }
 .ap-root.ap-collapsed .ap-panel { display: none; }
 
@@ -653,9 +673,16 @@ export const STYLES = `
   display: flex; align-items: flex-start; gap: 8px;
 }
 .ap-modal-notice-icon { color: var(--stripe-primary); flex-shrink: 0; margin-top: 1px; }
+/* The Phosphor icons carry only a viewBox, so an unsized inline SVG falls back
+   to the 300x150 replaced-element default and blows out the notice row. */
+.ap-modal-notice-icon svg { width: 16px; height: 16px; display: block; }
 .ap-modal-body {
   flex: 1; display: flex; overflow: hidden; min-height: 0;
 }
+/* Single-column modal (no category sidebar) — sized to its content. */
+.ap-modal-narrow { width: 560px; height: auto; max-height: 78vh; }
+.ap-modal-narrow .ap-modal-body { flex: 0 1 auto; }
+.ap-modal-narrow .ap-signins-body { flex: 1; min-width: 0; }
 .ap-modal-sidebar {
   width: 160px;
   border-right: 1px solid var(--stripe-hairline-soft);
@@ -866,16 +893,46 @@ export const STYLES = `
   font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background 0.15s;
 }
 .ap-flow-next:hover { background: var(--stripe-primary-press); }
-.ap-signins { margin: 6px 16px; font-size: 12px; }
-.ap-signins summary { cursor: pointer; color: var(--stripe-ink-secondary); font-weight: 600; padding: 4px 0; }
-.ap-signins-empty { color: var(--stripe-ink-mute); padding: 4px 0; }
-.ap-signin-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; }
-.ap-signin-meta { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.ap-signin-site { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ap-signin-email { opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ap-signin-pass { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ap-signins button { border: 1px solid var(--stripe-hairline); background: #fff; border-radius: 6px; padding: 3px 7px; font-size: 11px; cursor: pointer; color: var(--stripe-ink-secondary); }
-.ap-signins button:hover { background: var(--stripe-canvas-soft); }
+/* ---- Saved sign-ins (section row badge + modal card list) ---- */
+.ap-section-count {
+  min-width: 20px; padding: 1px 6px; border-radius: 9999px;
+  background: var(--stripe-accent-light); color: var(--stripe-primary);
+  font-size: 11px; font-weight: 700; text-align: center;
+}
+.ap-signins-body { padding: 4px 20px 20px; overflow-y: auto; }
+.ap-signins-empty { text-align: center; padding: 28px 12px; color: var(--stripe-ink-mute); }
+.ap-signins-empty-icon { display: block; color: var(--stripe-accent-soft); margin-bottom: 10px; }
+.ap-signins-empty-icon svg { width: 34px; height: 34px; }
+.ap-signins-empty-title { font-size: 14px; font-weight: 600; color: var(--stripe-ink-secondary); margin-bottom: 4px; }
+.ap-signins-empty-sub { font-size: 12.5px; line-height: 1.5; max-width: 320px; margin: 0 auto; }
+.ap-signin-card {
+  border: 1px solid var(--stripe-hairline); border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 10px; background: #fff;
+}
+.ap-signin-head {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--stripe-hairline-soft);
+}
+.ap-signin-site {
+  flex: 1; min-width: 0;
+  font-size: 13.5px; font-weight: 700; color: var(--stripe-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ap-signin-field { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12.5px; }
+.ap-signin-label { width: 62px; flex-shrink: 0; color: var(--stripe-ink-mute); }
+.ap-signin-value {
+  flex: 1; min-width: 0; color: var(--stripe-ink-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ap-signin-pass { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.5px; }
+.ap-signin-btn {
+  flex-shrink: 0; border: 1px solid var(--stripe-hairline); background: #fff;
+  border-radius: 6px; padding: 4px 9px; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; color: var(--stripe-ink-secondary); font-family: inherit;
+}
+.ap-signin-btn:hover { background: var(--stripe-canvas-soft); color: var(--stripe-ink); }
+.ap-signin-del { border-color: #f3d0d0; color: #b3261e; }
+.ap-signin-del:hover { background: #fdf1f1; color: #8c1d18; }
 .ap-btn-soft { padding: 9px 12px; border: 1px solid var(--stripe-accent-soft); border-radius: 8px;
   background: var(--stripe-accent-light); color: var(--stripe-primary); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .ap-btn-soft:hover:not(:disabled) { background: var(--stripe-accent-light); }
@@ -1006,8 +1063,9 @@ interface Refs {
   flowText: HTMLSpanElement;
   flowNext: HTMLDivElement;
   flowNextBtn: HTMLButtonElement;
-  signins: HTMLDetailsElement;
+  signinsModal: HTMLDivElement;
   signinsBody: HTMLDivElement;
+  signinsCount: HTMLSpanElement;
   checklist: HTMLDivElement;
   resumeName: HTMLDivElement;
   resumeSelect: HTMLSelectElement;
@@ -1069,22 +1127,32 @@ function ensureMounted(): void {
 }
 
 /**
- * The header mark is the real Tailrd logo as a data-URI <img>. Pages with a
- * strict `img-src` CSP (Greenhouse, Workday, many banks) block data-URI images,
- * and inline `onerror=""` handlers are blocked too — so attach the error handler
- * from our own (allowed) content-script JS, and set `src` only AFTER it is live
- * so a synchronous failure can't beat the listener. On failure we hide the mark
- * and let the "Tailrd" wordmark carry the brand.
+ * The header lockup and the edge-tab mark are the real Tailrd logo as data-URI
+ * <img>s. Pages with a strict `img-src` CSP (Greenhouse, Workday, many banks)
+ * block data-URI images, and inline `onerror=""` handlers are blocked too — so
+ * attach the error handlers from our own (allowed) content-script JS, and set
+ * `src` only AFTER they are live so a synchronous failure can't beat the
+ * listener. On failure the header falls back to the "Tailrd" wordmark and the
+ * edge tab to its original purple chevron.
  */
 function wireBrandLogo(root: HTMLElement): void {
   const img = root.querySelector<HTMLImageElement>(".ap-brand-lockup");
-  if (!img) return;
-  img.addEventListener("error", () => {
-    img.style.display = "none";
-    const wordmark = root.querySelector<HTMLElement>(".ap-brand-name");
-    if (wordmark) wordmark.style.display = "";
-  });
-  img.src = BRAND_LOGO_DATA_URI;
+  if (img) {
+    img.addEventListener("error", () => {
+      img.style.display = "none";
+      const wordmark = root.querySelector<HTMLElement>(".ap-brand-name");
+      if (wordmark) wordmark.style.display = "";
+    });
+    img.src = BRAND_LOGO_DATA_URI;
+  }
+
+  const mark = root.querySelector<HTMLImageElement>(".ap-edge-mark");
+  if (mark) {
+    mark.addEventListener("error", () => {
+      root.querySelector(".ap-edge-tab")?.classList.add("is-fallback");
+    });
+    mark.src = BRAND_MARK_DATA_URI;
+  }
 }
 
 /**
@@ -1106,6 +1174,7 @@ function installMountWatchdog(): void {
 export function buildHTML(): string {
   return `
     <button class="ap-edge-tab" type="button" title="Open Tailrd" aria-label="Open Tailrd">
+      <img class="ap-edge-mark" alt="" />
       ${I_CHEVRON_RIGHT}
     </button>
     <div class="ap-panel">
@@ -1145,12 +1214,6 @@ export function buildHTML(): string {
           <span class="ap-flow-text" id="ap-flow-text"></span>
         </div>
 
-        <!-- Saved sign-ins (device-local signup-wall credentials) -->
-        <details class="ap-signins" id="ap-signins">
-          <summary>Saved sign-ins</summary>
-          <div class="ap-signins-body" id="ap-signins-body"></div>
-        </details>
-
         <!-- Per-field detection checklist (name / email / university … → ✓ or –) -->
         <div class="ap-checklist" id="ap-checklist" style="display:none"></div>
 
@@ -1160,6 +1223,18 @@ export function buildHTML(): string {
             <div class="ap-section-left">
               <span class="ap-section-icon">${I_FILE}</span>
               <span class="ap-section-title">Your Autofill Information</span>
+            </div>
+            <span class="ap-section-arrow">${I_CHEVRON_RIGHT}</span>
+          </div>
+        </div>
+
+        <!-- Saved sign-ins (device-local signup-wall credentials) -> modal -->
+        <div class="ap-section">
+          <div class="ap-section-header" id="ap-section-signins">
+            <div class="ap-section-left">
+              <span class="ap-section-icon">${I_KEY}</span>
+              <span class="ap-section-title">Saved sign-ins</span>
+              <span class="ap-section-count" id="ap-signins-count" style="display:none"></span>
             </div>
             <span class="ap-section-arrow">${I_CHEVRON_RIGHT}</span>
           </div>
@@ -1258,6 +1333,23 @@ export function buildHTML(): string {
       </div>
     </div>
 
+    <!-- Saved sign-ins MODAL (page-level, outside the side panel) -->
+    <div class="ap-modal-backdrop" id="ap-signins-modal">
+      <div class="ap-modal ap-modal-narrow">
+        <div class="ap-modal-header">
+          <h2>Saved sign-ins</h2>
+          <button class="ap-modal-close" id="ap-signins-close">${I_CLOSE}</button>
+        </div>
+        <div class="ap-modal-notice">
+          <span class="ap-modal-notice-icon">${I_INFO}</span>
+          <span>When autofill creates an account to get past a signup wall, the sign-in it used is saved <b>on this device only</b>. It never syncs and never leaves this browser.</span>
+        </div>
+        <div class="ap-modal-body">
+          <div class="ap-signins-body" id="ap-signins-body"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Tailored résumé PDF preview (covers the side panel) -->
     <div class="ap-pdf-modal" id="ap-pdf-modal" style="display:none">
       <div class="ap-pdf-head">
@@ -1298,8 +1390,9 @@ function collectRefs(root: HTMLDivElement): Refs {
     flowText: q("#ap-flow-text"),
     flowNext: q(".ap-flow-next-wrap"),
     flowNextBtn: q("#ap-flow-next"),
-    signins: q("#ap-signins"),
+    signinsModal: q("#ap-signins-modal"),
     signinsBody: q("#ap-signins-body"),
+    signinsCount: q("#ap-signins-count"),
     checklist: q("#ap-checklist"),
     resumeName: q("#ap-resume-name"),
     resumeSelect: q("#ap-resume-select"),
@@ -1339,10 +1432,15 @@ function wireEvents(root: HTMLDivElement): void {
     callbacks?.onFlowAdvance();
   });
 
-  // Saved sign-ins -> render device-local credentials when the section opens.
-  const signins = root.querySelector<HTMLDetailsElement>("#ap-signins")!;
-  signins.addEventListener("toggle", () => {
-    if (signins.open) void renderSavedSignins();
+  // "Saved sign-ins" section -> open the credentials modal (rendered on open,
+  // so a credential saved mid-session shows without reloading the panel).
+  root.querySelector("#ap-section-signins")!.addEventListener("click", () => {
+    void openSigninsModal();
+  });
+  root.querySelector("#ap-signins-close")!.addEventListener("click", closeSigninsModal);
+  // Backdrop click closes; clicks inside the modal card must not.
+  root.querySelector("#ap-signins-modal")!.addEventListener("click", (e) => {
+    if (e.target === refs?.signinsModal) closeSigninsModal();
   });
 
   // "Your Autofill Information" section -> open info view
@@ -1418,6 +1516,9 @@ async function initPanel(): Promise<void> {
   // SPA like Greenhouse's candidate portal — leaves the panel stuck on its
   // pristine pre-render state with no feedback.
   refreshMainView();
+  // Device-local, so it needs no session — badge the Saved sign-ins row before
+  // the (possibly slow, possibly failing) status round-trip.
+  void refreshSigninsCount();
 
   const status = await bg<StatusResponse>({ type: "GET_STATUS" }).catch((e) => {
     console.log("[Tailrd overlay] GET_STATUS failed:", (e as Error)?.message);
@@ -1743,6 +1844,29 @@ function renderChecklist(): void {
 // Saved sign-ins (device-local signup-wall credentials)
 // ---------------------------------------------------------------------------
 
+/** Open the Saved sign-ins modal, rendering the current credential list. */
+async function openSigninsModal(): Promise<void> {
+  if (!refs) return;
+  refs.signinsModal.classList.add("visible");
+  await renderSavedSignins();
+}
+
+function closeSigninsModal(): void {
+  refs?.signinsModal.classList.remove("visible");
+}
+
+/**
+ * Keep the panel's "Saved sign-ins" row badge in step with the stored count, so
+ * the section advertises that there is something behind it without the user
+ * having to open the modal to find out.
+ */
+async function refreshSigninsCount(): Promise<void> {
+  if (!refs) return;
+  const n = (await listCredentials()).length;
+  refs.signinsCount.textContent = String(n);
+  refs.signinsCount.style.display = n > 0 ? "" : "none";
+}
+
 /**
  * Render the signup-wall credentials the account flow saved on this device.
  * Passwords stay masked until the user reveals one — and a revealed password is
@@ -1753,22 +1877,35 @@ async function renderSavedSignins(): Promise<void> {
   if (!refs) return;
   const host = refs.signinsBody;
   const creds = await listCredentials();
+  void refreshSigninsCount();
   if (creds.length === 0) {
-    host.innerHTML = `<div class="ap-signins-empty">No saved sign-ins yet. Signup walls passed by autofill appear here.</div>`;
+    host.innerHTML = `
+      <div class="ap-signins-empty">
+        <span class="ap-signins-empty-icon">${I_KEY}</span>
+        <div class="ap-signins-empty-title">No saved sign-ins yet</div>
+        <div class="ap-signins-empty-sub">Nothing to show yet — the first signup wall autofill gets you past will appear here automatically.</div>
+      </div>`;
     return;
   }
   host.innerHTML = creds
     .map(
       (c, i) => `
-    <div class="ap-signin-row" data-origin="${esc(c.origin)}">
-      <div class="ap-signin-meta">
+    <div class="ap-signin-card" data-origin="${esc(c.origin)}">
+      <div class="ap-signin-head">
         <span class="ap-signin-site">${esc(c.origin.replace(/^https?:\/\//, ""))}</span>
-        <span class="ap-signin-email">${esc(c.email)}</span>
+        <button class="ap-signin-btn ap-signin-del" data-i="${i}" type="button">Delete</button>
       </div>
-      <code class="ap-signin-pass" id="ap-pass-${i}" data-hidden="1">••••••••</code>
-      <button class="ap-signin-reveal" data-i="${i}" type="button">Show</button>
-      <button class="ap-signin-copy" data-i="${i}" type="button">Copy</button>
-      <button class="ap-signin-del" data-i="${i}" type="button">Delete</button>
+      <div class="ap-signin-field">
+        <span class="ap-signin-label">Email</span>
+        <span class="ap-signin-value">${esc(c.email)}</span>
+        <button class="ap-signin-btn ap-signin-copy-email" data-i="${i}" type="button">Copy</button>
+      </div>
+      <div class="ap-signin-field">
+        <span class="ap-signin-label">Password</span>
+        <code class="ap-signin-value ap-signin-pass" id="ap-pass-${i}" data-hidden="1">••••••••</code>
+        <button class="ap-signin-btn ap-signin-reveal" data-i="${i}" type="button">Show</button>
+        <button class="ap-signin-btn ap-signin-copy" data-i="${i}" type="button">Copy</button>
+      </div>
     </div>`
     )
     .join("");
@@ -1786,6 +1923,13 @@ async function renderSavedSignins(): Promise<void> {
   host.querySelectorAll<HTMLButtonElement>(".ap-signin-copy").forEach((btn) => {
     btn.addEventListener("click", () => {
       void navigator.clipboard.writeText(creds[Number(btn.dataset.i)].password).catch(() => {});
+      flashCopied(btn);
+    });
+  });
+  host.querySelectorAll<HTMLButtonElement>(".ap-signin-copy-email").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      void navigator.clipboard.writeText(creds[Number(btn.dataset.i)].email).catch(() => {});
+      flashCopied(btn);
     });
   });
   host.querySelectorAll<HTMLButtonElement>(".ap-signin-del").forEach((btn) => {
@@ -1793,6 +1937,16 @@ async function renderSavedSignins(): Promise<void> {
       void deleteCredential(creds[Number(btn.dataset.i)].origin).then(renderSavedSignins);
     });
   });
+}
+
+/** "Copy" → "Copied" for a beat. The row is re-rendered on any list change, so
+ *  a stale timer can only touch a button that is already detached. */
+function flashCopied(btn: HTMLButtonElement): void {
+  const prev = btn.textContent;
+  btn.textContent = "Copied";
+  setTimeout(() => {
+    btn.textContent = prev;
+  }, 1200);
 }
 
 // ---------------------------------------------------------------------------

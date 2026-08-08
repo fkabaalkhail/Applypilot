@@ -73,11 +73,80 @@ describe("looksLikeJobApplication", () => {
     expect(looksLikeJobApplication(fields("salary", "fullName", "email"))).toBe(false);
   });
 
-  it("accepts two distinct job-flavored fields (LinkedIn + current title)", () => {
-    expect(looksLikeJobApplication(fields("linkedin", "currentTitle", "email"))).toBe(true);
-  });
-
   it("does not double-count a repeated job-flavored category (two school rows)", () => {
     expect(looksLikeJobApplication(fields("school", "school"))).toBe(false);
+  });
+
+  // --- Weak-tier tiering: the false positives this gate exists to stop --------
+
+  it("rejects a B2B demo-request form (Company + Job title)", () => {
+    expect(
+      looksLikeJobApplication(fields("fullName", "email", "currentCompany", "currentTitle"))
+    ).toBe(false);
+  });
+
+  it("rejects a developer profile-settings page (LinkedIn + GitHub)", () => {
+    expect(looksLikeJobApplication(fields("linkedin", "github", "email"))).toBe(false);
+  });
+
+  it("rejects two weak fields (LinkedIn + current title)", () => {
+    expect(looksLikeJobApplication(fields("linkedin", "currentTitle", "email"))).toBe(false);
+  });
+
+  it("accepts three distinct weak fields (LinkedIn + GitHub + portfolio)", () => {
+    expect(looksLikeJobApplication(fields("linkedin", "github", "portfolio"))).toBe(true);
+  });
+
+  // --- Strong tier -----------------------------------------------------------
+
+  it("rejects a lone strong field (a university contact form asks for School)", () => {
+    expect(looksLikeJobApplication(fields("school", "fullName", "email"))).toBe(false);
+  });
+
+  it("accepts a strong field paired with any other job field (school + grad year)", () => {
+    expect(looksLikeJobApplication(fields("school", "graduationYear"))).toBe(true);
+  });
+
+  it("accepts a strong field paired with a weak one (degree + LinkedIn)", () => {
+    expect(looksLikeJobApplication(fields("degree", "linkedin"))).toBe(true);
+  });
+
+  // --- Page context upgrades two weak fields ---------------------------------
+
+  it("accepts Company + Job title on a careers apply URL", () => {
+    expect(
+      looksLikeJobApplication(fields("currentCompany", "currentTitle"), {
+        url: "https://acme.com/careers/apply/123",
+      })
+    ).toBe(true);
+  });
+
+  it("accepts two weak fields when the page title names a job application", () => {
+    expect(
+      looksLikeJobApplication(fields("linkedin", "currentTitle"), {
+        title: "Job Application — Software Engineer",
+      })
+    ).toBe(true);
+  });
+
+  it("ignores a job-page hint that only matches inside a longer word", () => {
+    expect(
+      looksLikeJobApplication(fields("currentCompany", "currentTitle"), {
+        url: "https://example.com/careership/enrollment",
+        title: "Careership Enrollment",
+      })
+    ).toBe(false);
+  });
+
+  it("does not mount on a careers landing page with no job fields", () => {
+    expect(
+      looksLikeJobApplication(fields("email"), { url: "https://acme.com/careers" })
+    ).toBe(false);
+  });
+
+  it("does not let a job-page hint rescue a single weak field", () => {
+    expect(
+      looksLikeJobApplication(fields("currentTitle"), { url: "https://acme.com/jobs/apply" })
+    ).toBe(false);
   });
 });
