@@ -12,6 +12,7 @@
  */
 import { flashHighlight } from "./domUtils";
 import { activateElement } from "./comboboxEngine";
+import { FILE_DROP_ZONE_SELECTOR, FILE_INPUT_SELECTOR } from "./adapters/workdaySelectors";
 
 export interface UploadResult {
   ok: boolean;
@@ -39,9 +40,14 @@ export function base64ToFile(b64: string, name: string, type: string): File {
 export function findFileInput(el: HTMLElement): HTMLInputElement | null {
   if (el instanceof HTMLInputElement && el.type === "file") return el;
   let node: HTMLElement | null =
-    el.closest<HTMLElement>("form, [class*='dropzone' i], [class*='upload' i], [class*='attach' i], [class*='field' i]") ??
-    el.parentElement;
+    el.closest<HTMLElement>(
+      `form, ${FILE_DROP_ZONE_SELECTOR}, [class*='dropzone' i], [class*='upload' i], [class*='attach' i], [class*='field' i]`
+    ) ?? el.parentElement;
   for (let i = 0; node && i < 6; i++, node = node.parentElement) {
+    // Workday's input is a SIBLING of the zone, so prefer the attribute match
+    // before the generic one — its classes are hashed and match nothing.
+    const wd = node.querySelector<HTMLInputElement>(`input${FILE_INPUT_SELECTOR}:not([disabled])`);
+    if (wd) return wd;
     const input = node.querySelector<HTMLInputElement>('input[type="file"]:not([disabled])');
     if (input) return input;
     if (node.tagName === "FORM") break;
@@ -131,7 +137,9 @@ export async function injectResumeFile(
   const existing = findFileInput(target);
   if (existing && tryAssign(existing, file)) return { ok: true };
 
-  const dropzone = target.closest("[class*='dropzone' i],[class*='drop' i]") as HTMLElement | null;
+  const dropzone = target.closest(
+    `${FILE_DROP_ZONE_SELECTOR},[class*='dropzone' i],[class*='drop' i]`
+  ) as HTMLElement | null;
   if (dropzone) {
     try {
       simulateDrop(dropzone, file);

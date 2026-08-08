@@ -241,6 +241,51 @@ export const SEARCH_BOX_FRAGMENT = "searchBox";
 export const ERROR_FRAGMENT = "error";
 
 // ---------------------------------------------------------------------------
+// File upload (drop zone)
+// ---------------------------------------------------------------------------
+
+/** Workday's drag-and-drop upload zone. */
+export const FILE_DROP_ZONE_SELECTOR = '[data-automation-id="file-upload-drop-zone"]';
+/** The real (visually hidden) <input type=file> beside that zone. */
+export const FILE_INPUT_SELECTOR = '[data-automation-id="file-upload-input-ref"]';
+/** The zone's "Select files" button — where the document name lives, as an id. */
+export const SELECT_FILES_SELECTOR = '[data-automation-id="select-files"]';
+
+/**
+ * Workday's upload widget carries no automation-id and no visible text naming
+ * the document — its CSS classes are hashed per tenant ("css-1ikudie") and the
+ * zone reads only "Drop files here / or / Select files". The one place the
+ * document IS named is the element **id** on the Select-files button
+ * ("resumeAttachments--attachments"), which neither the automation-id chain nor
+ * the zone text ever sees. These match against that.
+ */
+export const UPLOAD_WIDGET_ID_RE = /resume|curriculum.?vitae|\bcv\b/i;
+export const COVER_WIDGET_ID_RE = /cover.?letter/i;
+
+/**
+ * The ONE upload widget `el` belongs to: the drop zone it sits inside, or —
+ * since Workday renders the real <input type=file> as a SIBLING of the zone,
+ * not a child — the wrapper holding both.
+ *
+ * Deliberately never the zone's parent when `el` is already inside the zone: a
+ * page can render a résumé widget and a cover-letter widget under one wrapper,
+ * and widening past the zone lets the neighbour's id ("coverLetter--…") answer
+ * for this widget — which would classify the résumé upload as a cover letter.
+ */
+function uploadWidgetOf(el: HTMLElement): HTMLElement | null {
+  return el.closest<HTMLElement>(FILE_DROP_ZONE_SELECTOR) ?? el.parentElement;
+}
+
+/** Element ids inside (and on) the upload widget wrapping `el`, space-joined. */
+export function uploadWidgetIds(el: HTMLElement): string {
+  const widget = uploadWidgetOf(el);
+  if (!widget) return el.id;
+  const ids = [widget.id, el.id];
+  for (const node of widget.querySelectorAll<HTMLElement>("[id]")) ids.push(node.id);
+  return ids.filter(Boolean).join(" ");
+}
+
+// ---------------------------------------------------------------------------
 // Readers
 // ---------------------------------------------------------------------------
 

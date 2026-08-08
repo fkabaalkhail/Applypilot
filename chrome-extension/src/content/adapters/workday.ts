@@ -12,17 +12,21 @@ import type { AdapterFillResult, FillContext, SiteAdapter } from "./types";
 import {
   ADVANCE_BUTTON_SELECTOR,
   COVER_LETTER_SECTION_RE,
+  COVER_WIDGET_ID_RE,
   DATE_FRAGMENTS,
   ENTRY_BUTTON_SELECTOR,
   FIELD_RULES,
+  FILE_DROP_ZONE_SELECTOR,
   RESUME_SECTION_RE,
   SECTION_DATE_RULES,
+  UPLOAD_WIDGET_ID_RE,
   WD_HOST,
   automationId,
   automationIdChain,
   dateContainerOf,
   datePartsIn,
   dateWidgetPartsOf,
+  uploadWidgetIds,
 } from "./workdaySelectors";
 
 /** Workday's phone-device-type prompt lists Home / Mobile / Work / Pager / Fax.
@@ -92,6 +96,28 @@ export const workdayAdapter: SiteAdapter = {
     }
     if (COVER_LETTER_SECTION_RE.test(chain)) {
       return { category: "coverLetter", confidence: 0.9, sensitive: false };
+    }
+    // The chain says nothing on the drop-zone layout: the input's own id is
+    // generic ("file-upload-input-ref"), the zone's classes are hashed per
+    // tenant, and its text reads only "Drop files here / or / Select files".
+    // The document IS named — as an element **id** on the Select-files button
+    // ("resumeAttachments--attachments") — which neither the chain nor the zone
+    // text reads. Without this the field classifies `unknown`, so
+    // `resumeFieldNeedingFile` never returns it and auto-attach never runs.
+    const inDropZone = ctx.el.closest(FILE_DROP_ZONE_SELECTOR) !== null;
+    if (inDropZone || (ctx.el instanceof HTMLInputElement && ctx.el.type === "file")) {
+      const ids = uploadWidgetIds(ctx.el);
+      if (COVER_WIDGET_ID_RE.test(ids)) {
+        return { category: "coverLetter", confidence: 0.9, sensitive: false };
+      }
+      // A named résumé widget — or, inside a Workday drop zone, an unnamed one:
+      // the résumé is the only upload that appears before the cover-letter
+      // section, and leaving it `unknown` is exactly today's failure. A bare
+      // file input standing OUTSIDE any drop zone still needs a positive signal
+      // before it may claim to be the résumé.
+      if (UPLOAD_WIDGET_ID_RE.test(ids) || inDropZone) {
+        return { category: "resumeUpload", confidence: 0.9, sensitive: false };
+      }
     }
     const aid = automationId(ctx.el);
     if (!aid) return undefined;
