@@ -7,6 +7,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { stubLayout } from "./helpers/layout";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
+import { workdayAdapter } from "../src/content/adapters/workday";
+import { dateContainerOf } from "../src/content/adapters/workdaySelectors";
 
 let restore: () => void;
 beforeAll(() => { restore = stubLayout(); });
@@ -59,5 +61,48 @@ describe("Workday date spinbuttons", () => {
     const { fields } = scanPage(MOCK_PROFILE, false);
     const n = fields.find((f) => f.label.toLowerCase().includes("years"));
     expect(n!.currentValue).toBe("0");
+  });
+});
+
+describe("Workday split-date container", () => {
+  it("never treats a date PART as its own container", () => {
+    mountWorkdayDate();
+    const year = document.getElementById("workExperience-10--startDate-dateSectionYear-input")!;
+    const container = dateContainerOf(year);
+    expect(container).not.toBe(year);
+    expect(container!.getAttribute("data-automation-id")).toBe("dateWidget");
+  });
+
+  /** FillContext is `{ control, value, el }` — see adapters/types.ts. */
+  const fillCtx = (el: HTMLInputElement, value: string) => ({
+    control: { id: "f1", controlType: "text" as const, el },
+    value,
+    el,
+  });
+
+  it("writes month, day and year from one ISO value", async () => {
+    mountWorkdayDate();
+    const year = document.getElementById("workExperience-10--startDate-dateSectionYear-input") as HTMLInputElement;
+    const op = workdayAdapter.fillOperation!(fillCtx(year, "2025-05-14"));
+    expect(op, "expected the adapter to claim this field").toBeDefined();
+    await op;
+    expect((document.getElementById("workExperience-10--startDate-dateSectionMonth-input") as HTMLInputElement).value).toBe("5");
+    expect((document.getElementById("workExperience-10--startDate-dateSectionDay-input") as HTMLInputElement).value).toBe("14");
+    expect(year.value).toBe("2025");
+  });
+
+  it("accepts a year-month profile value (the shape the profile stores)", async () => {
+    mountWorkdayDate();
+    const year = document.getElementById("workExperience-10--startDate-dateSectionYear-input") as HTMLInputElement;
+    await workdayAdapter.fillOperation!(fillCtx(year, "2025-05"));
+    expect((document.getElementById("workExperience-10--startDate-dateSectionMonth-input") as HTMLInputElement).value).toBe("5");
+    expect(year.value).toBe("2025");
+  });
+
+  it("accepts a bare year (graduation year)", async () => {
+    mountWorkdayDate("education-11--endDate");
+    const year = document.getElementById("education-11--endDate-dateSectionYear-input") as HTMLInputElement;
+    await workdayAdapter.fillOperation!(fillCtx(year, "2026"));
+    expect(year.value).toBe("2026");
   });
 });
