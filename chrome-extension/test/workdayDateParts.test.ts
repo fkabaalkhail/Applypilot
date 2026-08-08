@@ -225,3 +225,41 @@ describe("Workday split-date container", () => {
     expect(year.value).toBe("0");
   });
 });
+
+/**
+ * SECTION_DATE_RULES lives in the Workday adapter's `classify`, so the adapter
+ * has to be handed to scanPage explicitly: under jsdom `location.hostname` is
+ * "localhost", and scanPage's default `getAdapter(location.hostname, …)`
+ * resolves to null — the rules would never be consulted.
+ */
+describe("Workday date-part categories", () => {
+  const categoriesOf = (): Record<string, string> => {
+    const { fields } = scanPage(MOCK_PROFILE, false, workdayAdapter);
+    return Object.fromEntries(
+      ["month", "day", "year"].map((part) => [
+        part,
+        fields.find((f) => f.label.toLowerCase().includes(part))!.category,
+      ])
+    );
+  };
+
+  it("reads the section from the element id", () => {
+    mountWorkdayDate("workExperience-10--startDate");
+    expect(categoriesOf()).toEqual({
+      month: "experienceStartDate",
+      day: "experienceStartDate",
+      year: "experienceStartDate",
+    });
+  });
+
+  it("maps an education end date to the graduation year", () => {
+    // Generically every part reads as `experienceEndDate` — the id says
+    // "endDate" and nothing in a part's own signals says which section it is in.
+    mountWorkdayDate("education-11--endDate");
+    expect(categoriesOf()).toEqual({
+      month: "graduationYear",
+      day: "graduationYear",
+      year: "graduationYear",
+    });
+  });
+});

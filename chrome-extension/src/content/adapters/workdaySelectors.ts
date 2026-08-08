@@ -46,6 +46,20 @@ export const FIELD_RULES: ReadonlyArray<readonly [RegExp, FieldCategory]> = [
   [/company.?name|companyname|employer/i, "currentCompany"],
 ];
 
+/**
+ * Workday namespaces a repeating row in the element **id**
+ * ("workExperience-10--startDate-dateSectionYear-input"), not in the
+ * automation-id — which is section-agnostic ("dateSectionYear-input"). Matched
+ * against the id and consulted BEFORE FIELD_RULES, since the id is the more
+ * specific signal. All three parts of one widget resolve to the same category;
+ * the adapter's fillOperation then writes every part from that one value.
+ */
+export const SECTION_DATE_RULES: ReadonlyArray<readonly [RegExp, FieldCategory]> = [
+  [/workexperience.*startdate/i, "experienceStartDate"],
+  [/workexperience.*enddate/i, "experienceEndDate"],
+  [/education.*(graduation|enddate|completiondate)/i, "graduationYear"],
+];
+
 /** Section automation-ids (on an ANCESTOR, not the input) marking file uploads. */
 export const RESUME_SECTION_RE = /resume|curriculum.?vitae/i;
 export const COVER_LETTER_SECTION_RE = /cover.?letter/i;
@@ -219,6 +233,11 @@ export const PROMPT_OPTION_SELECTOR = '[data-automation-id="promptOption"]';
 export const MULTISELECT_CONTAINER_FRAGMENT = "multiselect";
 /** Committed chips in a multiselect (`selectedItem`), as a `*=` fragment. */
 export const SELECTED_ITEM_FRAGMENT = "selecteditem";
+
+/** Workday's typeahead search input inside a prompt/multiselect widget. */
+export const SEARCH_BOX_FRAGMENT = "searchBox";
+/** Attribute Workday puts on the multiselect's own input (not an ancestor). */
+export const MULTISELECT_ID_ATTR = "data-uxi-multiselect-id";
 
 /** Validation-error containers, as a `*=` fragment (stuck-page diagnostics). */
 export const ERROR_FRAGMENT = "error";

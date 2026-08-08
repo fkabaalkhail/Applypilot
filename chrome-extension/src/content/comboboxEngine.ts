@@ -14,6 +14,12 @@
 import { cleanText, deepQueryAll, dispatchInputEvents, setNativeValue } from "./domUtils";
 import { normalize } from "./fieldMatcher";
 import { matchOption } from "./writeEngine";
+import {
+  MULTISELECT_CONTAINER_FRAGMENT as WD_MULTISELECT_CONTAINER_FRAGMENT,
+  MULTISELECT_ID_ATTR as WD_MULTISELECT_ID_ATTR,
+  SEARCH_BOX_FRAGMENT as WD_SEARCH_BOX_FRAGMENT,
+  SELECTED_ITEM_FRAGMENT as WD_SELECTED_ITEM_FRAGMENT,
+} from "./adapters/workdaySelectors";
 
 export interface ComboboxResult {
   filled: boolean;
@@ -68,11 +74,15 @@ function isMultiSelect(trigger: HTMLElement): boolean {
   for (const id of ids.split(/\s+/).filter(Boolean)) {
     if (trigger.ownerDocument.getElementById(id)?.getAttribute("aria-multiselectable") === "true") return true;
   }
+  // Workday puts the multiselect marker on the INPUT itself, not an ancestor
+  // (data-uxi-multiselect-id on education-N--fieldOfStudy).
+  if (trigger.hasAttribute(WD_MULTISELECT_ID_ATTR)) return true;
   // Workday's multiselect ("Type to Add Skills") exposes no ARIA multi signal —
   // its container automation-id is the only reliable marker.
   return Boolean(
     trigger.closest(
-      '[class*="is-multi" i], [class*="multiselect" i], [data-automation-id*="multiselect" i]'
+      '[class*="is-multi" i], [class*="multiselect" i], ' +
+        `[data-automation-id*="${WD_MULTISELECT_CONTAINER_FRAGMENT}" i]`
     )
   );
 }
@@ -320,6 +330,10 @@ function clickOption(option: HTMLElement): void {
 
 function isTypeahead(trigger: HTMLElement): boolean {
   if (!(trigger instanceof HTMLInputElement)) return false;
+  // Workday's searchBox has NO aria-autocomplete and an empty listbox until
+  // text is typed — opening it and reading options finds nothing.
+  const testId = trigger.getAttribute("data-automation-id") ?? "";
+  if (testId.toLowerCase().includes(WD_SEARCH_BOX_FRAGMENT.toLowerCase())) return true;
   const ac = (trigger.getAttribute("aria-autocomplete") || "").toLowerCase();
   return ac === "list" || ac === "both" || ac === "inline" || trigger.type === "text";
 }
@@ -572,7 +586,8 @@ const VALUE_DISPLAY_SELECTOR =
   // Chip/pill widgets (Workday's selectedItem, generic tag/token multiselects)
   // show committed values outside any *-value class — without these a
   // successful chip add verifies as "didn't stick".
-  '[data-automation-id*="selecteditem" i], [class*="chip" i], [class*="pill" i], [class*="token" i]';
+  `[data-automation-id*="${WD_SELECTED_ITEM_FRAGMENT}" i], ` +
+  '[class*="chip" i], [class*="pill" i], [class*="token" i]';
 
 /** Texts of react-select-style single/multi-value display elements near the trigger.
  *  The committed-value div is a COUSIN of the input (react-select: value-container

@@ -66,6 +66,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   education: "Education",
   school: "School",
   degree: "Degree",
+  fieldOfStudy: "Field of Study",
   graduationYear: "Graduation year",
   experience: "Experience",
   currentCompany: "Current company",

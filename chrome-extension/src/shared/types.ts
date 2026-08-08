@@ -167,6 +167,9 @@ export type FieldCategory =
   | "education"
   | "school"
   | "degree"
+  // Workday renders Degree and Field of Study as two separate typeaheads. The
+  // subject dropdown rejects the degree's own text, so it needs its own category.
+  | "fieldOfStudy"
   | "graduationYear"
   | "experience"
   | "currentCompany"

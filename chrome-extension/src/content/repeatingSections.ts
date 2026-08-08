@@ -31,7 +31,7 @@ const KIND_CATEGORIES: Record<SectionKind, ReadonlySet<FieldCategory>> = {
     "experienceDescription",
     "experienceCurrent",
   ]),
-  education: new Set<FieldCategory>(["school", "degree", "graduationYear"]),
+  education: new Set<FieldCategory>(["school", "degree", "fieldOfStudy", "graduationYear"]),
 };
 
 /** Section-specific "Add …" button text (matched anywhere on the page). */

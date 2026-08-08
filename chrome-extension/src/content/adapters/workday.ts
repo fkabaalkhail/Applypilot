@@ -16,6 +16,7 @@ import {
   ENTRY_BUTTON_SELECTOR,
   FIELD_RULES,
   RESUME_SECTION_RE,
+  SECTION_DATE_RULES,
   WD_HOST,
   automationId,
   automationIdChain,
@@ -74,6 +75,14 @@ export const workdayAdapter: SiteAdapter = {
   match: (host) => WD_HOST.test(host),
 
   classify(ctx) {
+    // Date parts first: their automation-id is section-agnostic
+    // ("dateSectionYear-input"), so only the element id says which date this is.
+    const elId = ctx.el.id || "";
+    if (elId) {
+      for (const [re, category] of SECTION_DATE_RULES) {
+        if (re.test(elId)) return { category, confidence: 0.95, sensitive: false };
+      }
+    }
     // Resume / cover-letter uploads: Workday tags the SECTION, not the input, so
     // scan the ancestor automation-id chain. Best-effort across Workday layouts
     // (resumeSection / quickApplyResume / fileUpload… under a resume section).

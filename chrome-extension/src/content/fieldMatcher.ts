@@ -301,7 +301,16 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\bdegree\b/ },
       { re: /\b(highest )?(level of )?education( level)?\b/, weight: 0.75 },
       { re: /\bqualification\b/, weight: 0.7 },
-      { re: /\bmajor\b|\bfield of study\b|\bdiscipline\b/, weight: 0.85 },
+    ],
+    // Workday shows Degree and Field of Study side by side; a "field of study"
+    // label must never resolve here or the subject dropdown gets "BSc …".
+    negative: /\bfield of study\b|\bmajor\b|\bdiscipline\b|\bconcentration\b/,
+  },
+  {
+    category: "fieldOfStudy",
+    patterns: [
+      { re: /\bfield of study\b|\bmajor\b/ },
+      { re: /\bdiscipline\b|\bconcentration\b|\bcourse of study\b/, weight: 0.85 },
     ],
   },
   {
@@ -540,6 +549,31 @@ function formatEducation(profile: UserApplicationProfile): string | null {
   return parts ? `${parts}${ed.graduationYear ? ` (${ed.graduationYear})` : ""}` : null;
 }
 
+/** Qualification words that PREFIX a degree string, with an optional joining
+ *  "in"/"of". Ordered longest-first so "Bachelor of Science" is consumed whole
+ *  before the bare "Bachelor" alternative can match.
+ *
+ *  The `\b` after the group is load-bearing — without it "Barts" reads as
+ *  "B.A." + "rts". But `\b` cannot hold between a trailing "." and a space, so
+ *  the abbreviation's OWN final period ("B.S. Electrical Engineering") is only
+ *  reachable by the `\.?` that follows the boundary. */
+const DEGREE_PREFIX_RE =
+  /^\s*(bachelor(?:'?s)?(?:\s+of\s+(?:science|arts|engineering|commerce|business))?|master(?:'?s)?(?:\s+of\s+(?:science|arts|engineering|business administration))?|doctor(?:ate)?(?:\s+of\s+philosophy)?|ph\.?\s?d\.?|b\.?\s?(?:sc?|a|eng|comm)\.?|m\.?\s?(?:sc?|a|eng|ba)\.?|associate(?:'?s)?|diploma|certificate)\b\.?[\s,]*(?:degree\b[\s,]*)?(?:in|of)?\b[\s,]*/i;
+
+/**
+ * The subject of a degree string — Workday's "Field of Study" dropdown, which
+ * is a SEPARATE control from "Degree" and rejects the degree's own text.
+ *
+ * "BSc Computer Science" / "Bachelor of Science in Computer Science" →
+ * "Computer Science". A degree naming no subject ("Bachelor's Degree", "PhD")
+ * returns null, which routes the field to the grounded AI pass rather than
+ * writing something invented.
+ */
+export function deriveFieldOfStudy(degree: string): string | null {
+  const rest = (degree || "").replace(DEGREE_PREFIX_RE, "").trim();
+  return rest && rest.toLowerCase() !== (degree || "").trim().toLowerCase() ? rest : null;
+}
+
 export const LONG_TEXT: ControlType[] = ["textarea", "contenteditable"];
 
 /**
@@ -628,6 +662,8 @@ export function resolveProfileValue(
       return orNull(edu?.school);
     case "degree":
       return orNull(edu?.degree);
+    case "fieldOfStudy":
+      return edu?.degree ? deriveFieldOfStudy(edu.degree) : null;
     case "graduationYear":
       return orNull(edu?.graduationYear);
     case "education":
