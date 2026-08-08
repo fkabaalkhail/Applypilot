@@ -665,6 +665,23 @@ export function scanPage(
   return { fields: scoped, registry, adapter, scopeEl };
 }
 
+/**
+ * Workday's segmented date widget renders each EMPTY part as a spinbutton
+ * reading "0" — and its own `aria-valuemin="1"` says 0 is out of range. Read
+ * that as empty, or the part looks already-filled and both fill paths skip it
+ * (aiFillPlanner's `!f.currentValue`, answerGaps' currentValue guard).
+ *
+ * Gated on role=spinbutton + a minimum above zero so an ordinary
+ * <input type=number> where 0 IS the answer ("years of experience: 0") is
+ * untouched.
+ */
+function isEmptySpinbutton(el: HTMLElement, raw: string): boolean {
+  if (el.getAttribute("role") !== "spinbutton") return false;
+  if (raw.trim() !== "0") return false;
+  const min = Number(el.getAttribute("aria-valuemin"));
+  return Number.isFinite(min) && min > 0;
+}
+
 function currentValueOf(el: HTMLElement, controlType: ControlType): string | undefined {
   if (controlType === "select") {
     const sel = el as HTMLSelectElement;
@@ -678,7 +695,8 @@ function currentValueOf(el: HTMLElement, controlType: ControlType): string | und
   }
   if (controlType === "text" || controlType === "textarea") {
     const v = (el as HTMLInputElement | HTMLTextAreaElement).value;
-    return v ? v : undefined;
+    if (!v) return undefined;
+    return isEmptySpinbutton(el, v) ? undefined : v;
   }
   if (controlType === "contenteditable") {
     const v = cleanText(el.textContent);
