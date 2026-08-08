@@ -13,6 +13,22 @@ import {
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
 
+/** A row of the answer bank as the API returns it (GET /api/answers). */
+interface RawAnswer {
+  id: number;
+  question_raw: string;
+  answer: string;
+  times_reused?: number;
+}
+
+/** The same row in this page's shape. */
+interface RememberedAnswer {
+  id: number;
+  question: string;
+  answer: string;
+  timesReused: number;
+}
+
 interface ExperienceItem {
   company: string;
   title: string;
@@ -106,6 +122,7 @@ const SECTIONS = [
   { id: "skills", label: "Skills" },
   { id: "projects", label: "Projects" },
   { id: "screening", label: "Application Answers" },
+  { id: "remembered", label: "Remembered Answers" },
   { id: "eeo", label: "Equal Employment" },
 ] as const;
 
@@ -651,6 +668,9 @@ export default function Profile() {
         )}
       </Section>
 
+      {/* ── Remembered answers (the extension's answer bank — same rows) ── */}
+      <RememberedAnswers onToast={showToast} />
+
       {/* ── Equal Employment (EEO self-identification) ── */}
       <Section id="eeo" title="Equal Employment" onEdit={() => toggleEdit("eeo")}>
         <p className="profile-section-sub">
@@ -706,6 +726,138 @@ function Chip({ kind, text, href }: { kind: "location" | "email" | "phone" | "gi
     );
   }
   return <span className="profile-chip">{inner}</span>;
+}
+
+/**
+ * The answer bank — screening answers given on earlier applications, which
+ * /api/fill recalls on new ones. Exactly the rows the extension shows under
+ * Autofill Information → Remembered answers; both surfaces read and write the
+ * same table, so an edit here is the same edit there.
+ *
+ * No pencil/Section chrome: each row edits in place (commit on blur) because
+ * there is no fixed set of fields to put into an edit mode.
+ *
+ * Device-local sensitive answers are deliberately absent — they never reach the
+ * backend, so this page cannot see them.
+ */
+export function RememberedAnswers({ onToast }: { onToast: (type: "success" | "error", message: string) => void }) {
+  const [answers, setAnswers] = useState<RememberedAnswer[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .get("/api/answers")
+      .then((res) => {
+        if (!live) return;
+        setAnswers(
+          (res.data as RawAnswer[]).map((r) => ({
+            id: r.id,
+            question: r.question_raw,
+            answer: r.answer,
+            timesReused: r.times_reused ?? 0,
+          }))
+        );
+      })
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function save(id: number, answer: string) {
+    try {
+      await api.put(`/api/answers/${id}`, { answer });
+      setAnswers((prev) => prev?.map((a) => (a.id === id ? { ...a, answer } : a)) ?? prev);
+      onToast("success", "Answer updated");
+    } catch {
+      onToast("error", "Could not update that answer");
+    }
+  }
+
+  async function remove(id: number) {
+    try {
+      await api.delete(`/api/answers/${id}`);
+      setAnswers((prev) => prev?.filter((a) => a.id !== id) ?? prev);
+      onToast("success", "Answer forgotten");
+    } catch {
+      onToast("error", "Could not delete that answer");
+    }
+  }
+
+  return (
+    <section id="profile-sec-remembered" className="profile-card">
+      <div className="profile-card-head">
+        <h2 className="profile-section-title">Remembered Answers</h2>
+      </div>
+      <p className="profile-section-sub">
+        Answers you've given to application questions Tailrd couldn't answer from your
+        profile. They're reused automatically on future applications — edit or delete
+        one here and the extension picks up the change too.
+      </p>
+      {failed ? (
+        <p className="profile-empty-text">Could not load your remembered answers.</p>
+      ) : answers === null ? (
+        <p className="profile-empty-text">Loading…</p>
+      ) : answers.length === 0 ? (
+        <p className="profile-empty-text">
+          Nothing remembered yet. When the Tailrd extension hits a question it can't
+          answer, it offers to ask you — those answers land here.
+        </p>
+      ) : (
+        <div className="profile-answers">
+          {answers.map((a) => (
+            <AnswerRow key={a.id} answer={a} onSave={save} onDelete={remove} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AnswerRow({
+  answer,
+  onSave,
+  onDelete,
+}: {
+  answer: RememberedAnswer;
+  onSave: (id: number, answer: string) => void;
+  onDelete: (id: number) => void;
+}) {
+  const [draft, setDraft] = useState(answer.answer);
+
+  return (
+    <div className="profile-answer-row">
+      <div className="profile-answer-q">
+        <span className="profile-answer-question">{answer.question}</span>
+        {answer.timesReused > 0 && (
+          <span className="profile-answer-reuse">used {answer.timesReused}×</span>
+        )}
+      </div>
+      <div className="profile-answer-edit">
+        <input
+          className="profile-answer-input"
+          aria-label={answer.question}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            const next = draft.trim();
+            // An empty answer would silently stop autofilling — restore instead.
+            if (!next) return setDraft(answer.answer);
+            if (next !== answer.answer) onSave(answer.id, next);
+          }}
+        />
+        <button
+          className="profile-answer-del"
+          type="button"
+          onClick={() => onDelete(answer.id)}
+          aria-label={`Forget answer to ${answer.question}`}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {

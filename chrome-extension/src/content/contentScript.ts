@@ -44,6 +44,7 @@ import type {
   ResumeSummary,
   ResumesResponse,
   ScanResponse,
+  ProfileResponse,
   SimpleResponse,
   TailorResumeOpts,
   TailorResumeResponse,
@@ -57,7 +58,8 @@ import { getLastJobContext, saveLastJobContext } from "../shared/storage";
 const MIN_CACHEABLE_DESC = 200;
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
-import { getLocalAnswers } from "./localAnswers";
+import { getLocalAnswers, saveLocalAnswer } from "./localAnswers";
+import { planAnswerSaves } from "./answerGaps";
 import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
@@ -1084,6 +1086,61 @@ function initialize(): void {
         );
       }
       return tally;
+    },
+    /**
+     * The user answered the questions autofill couldn't. Write them into the
+     * page, then remember each one where it belongs (planAnswerSaves decides:
+     * profile / device-local / answer bank).
+     *
+     * The page write comes first and its result is what we report — a save that
+     * "succeeded" while the form stayed empty would be a lie. Remembering is
+     * best-effort per sink: a backend hiccup must not lose the answers the user
+     * can already see filled in.
+     */
+    onAnswerGaps: async (answers) => {
+      const targets = answers
+        .map((a) => ({ fieldId: a.gap.fieldId, value: a.value.trim() }))
+        .filter((t) => t.value);
+      const { outcomes } = await fillItems(targets, true);
+      const filled = outcomes.filter((o) => o.ok).length;
+
+      const plan = planAnswerSaves(answers);
+      const problems: string[] = [];
+
+      // Device-local first: it cannot fail on the network and must never be
+      // skipped because a remote save threw.
+      for (const { question, answer } of plan.local) {
+        await saveLocalAnswer(question, answer).catch(() => {});
+      }
+      if (Object.keys(plan.profilePatch).length > 0) {
+        const resp = await sendToBackground<ProfileResponse>({
+          type: "UPDATE_PROFILE",
+          update: plan.profilePatch,
+        }).catch(() => null);
+        if (!resp?.ok) problems.push("your profile");
+        else lastProfile = resp.profile ?? lastProfile;
+      }
+      for (const item of plan.bank) {
+        const resp = await sendToBackground<SimpleResponse>({
+          type: "SAVE_ANSWER",
+          question: item.question,
+          answer: item.answer,
+          jobContext: extractJobContext(),
+        }).catch(() => null);
+        if (!resp?.ok) {
+          problems.push("your remembered answers");
+          break; // one failure is enough — don't spam the same error per answer
+        }
+      }
+
+      if (problems.length > 0) {
+        return {
+          ok: true,
+          filled,
+          reason: `Filled the form, but couldn't save to ${problems.join(" or ")}. They may not autofill next time.`,
+        };
+      }
+      return { ok: true, filled };
     },
     onFlowStop: () => {
       flowGeneration++; // a Stop during an in-flight initial fill must win the race

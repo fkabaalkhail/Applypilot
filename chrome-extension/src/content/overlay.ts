@@ -24,6 +24,7 @@ import {
   saveExtras,
   type AutofillExtras,
 } from "./autofillExtras";
+import { selectAnswerGaps, type AnswerGap } from "./answerGaps";
 import { buildTailorCardHtml } from "./tailorCard";
 import { buildCoverLetterCardHtml } from "./coverLetterCard";
 import {
@@ -36,6 +37,7 @@ import {
 import { defaultSelectedIds } from "../shared/selection";
 import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
+  AnswersResponse,
   BackgroundRequest,
   CoverLetterGenOpts,
   DetectedField,
@@ -49,6 +51,8 @@ import type {
   RenderResumeResponse,
   ResumeDoc,
   ResumeSummary,
+  SavedAnswerItem,
+  SimpleResponse,
   StatusResponse,
   TailorResult,
   TailorResumeOpts,
@@ -64,6 +68,14 @@ export interface OverlayCallbacks {
     ids: string[],
     uploadResumeId?: number | null
   ) => Promise<{ ok: number; fail: number; total: number }>;
+  /**
+   * Write the user's answers to the unanswered questions into the page, then
+   * remember them (profile / device-local / answer bank — see planAnswerSaves).
+   * Returns the number written so the panel can report honestly.
+   */
+  onAnswerGaps: (
+    answers: { gap: AnswerGap; value: string }[]
+  ) => Promise<{ ok: boolean; filled: number; reason?: string }>;
   /** Stop the running multi-page flow (panel Stop button). */
   onFlowStop: () => void;
   /** Advance the running multi-page flow to the next page (panel Next page button). */
@@ -264,6 +276,8 @@ const P_PAPERCLIP = '<path d="M209.66,122.34a8,8,0,0,1,0,11.32l-82.05,82a56,56,0
 const P_CHECK = '<path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/>';
 const P_DASH = '<path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128Z"/>';
 const P_INFO = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"/>';
+// Phosphor "question" — the unanswered-questions card.
+const P_QUESTION = '<path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>';
 // Phosphor "key" — the Saved sign-ins section/modal mark.
 const P_KEY = '<path d="M216.57,39.43A80,80,0,0,0,83.91,120.78L28.69,176A15.86,15.86,0,0,0,24,187.31V216a16,16,0,0,0,16,16H72a8,8,0,0,0,8-8V208H96a8,8,0,0,0,8-8V184h16a8,8,0,0,0,5.66-2.34l9.56-9.57A80,80,0,0,0,216.57,39.43ZM180,100a16,16,0,1,1,16-16A16,16,0,0,1,180,100Z"/>';
 
@@ -280,6 +294,7 @@ const I_CHECK = ph(P_CHECK);
 const I_DASH = ph(P_DASH);
 const I_INFO = ph(P_INFO);
 const I_KEY = ph(P_KEY);
+const I_QUESTION = ph(P_QUESTION);
 
 // The header brand mark is the real Tailrd wing logo, rendered as a data-URI
 // <img> (see brandLogo.ts + wireBrandLogo). It is NOT an inline SVG because the
@@ -893,6 +908,70 @@ export const STYLES = `
   font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background 0.15s;
 }
 .ap-flow-next:hover { background: var(--stripe-primary-press); }
+/* ---- Unanswered questions (panel card + modal) ---- */
+.ap-gaps-card {
+  display: flex; align-items: center; gap: 10px; width: calc(100% - 32px);
+  margin: 0 16px 12px; padding: 11px 12px; text-align: left;
+  border: 1px solid #f0dcae; border-radius: 10px; background: #fdf8ec;
+  cursor: pointer; font-family: inherit; font-size: 12.5px; color: #7a5b12;
+}
+.ap-gaps-card:hover { background: #fcf3de; }
+.ap-gaps-icon { display: flex; color: #b8860b; flex-shrink: 0; }
+.ap-gaps-icon svg { width: 17px; height: 17px; }
+.ap-gaps-text { flex: 1; font-weight: 600; }
+.ap-gaps-arrow { display: flex; color: #b8860b; flex-shrink: 0; }
+.ap-gaps-arrow svg { width: 15px; height: 15px; }
+.ap-gaps-body { flex: 1; min-width: 0; padding: 4px 20px 8px; overflow-y: auto; }
+.ap-gap-card { border-bottom: 1px solid var(--stripe-hairline-soft); padding: 14px 0; }
+.ap-gap-card:last-child { border-bottom: none; }
+.ap-gap-question { font-size: 13px; font-weight: 600; color: var(--stripe-ink); margin-bottom: 3px; }
+.ap-gap-required { color: #c0392b; margin-left: 3px; }
+.ap-gap-help {
+  font-size: 11.5px; color: var(--stripe-ink-mute); line-height: 1.45; margin-bottom: 8px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ap-gap-private { font-size: 11px; color: var(--stripe-ink-mute); margin-top: 5px; }
+.ap-gap-input {
+  width: 100%; padding: 8px 10px; font-size: 13px; font-family: inherit;
+  border: 1px solid var(--stripe-hairline); border-radius: 8px;
+  background: #fff; color: var(--stripe-ink);
+}
+.ap-gap-input:focus {
+  outline: none; border-color: var(--stripe-primary);
+  box-shadow: 0 0 0 3px rgba(var(--stripe-primary-rgb),0.12);
+}
+.ap-btn-ghost {
+  border: 1px solid var(--stripe-hairline); background: #fff; border-radius: 8px;
+  padding: 9px 14px; font-size: 13px; font-weight: 600; font-family: inherit;
+  cursor: pointer; color: var(--stripe-ink-secondary);
+}
+.ap-btn-ghost:hover { background: var(--stripe-canvas-soft); }
+/* The shared footer stacks its children; a two-button footer needs a row. */
+.ap-modal-actions { display: flex; align-items: center; gap: 10px; }
+.ap-modal-actions .ap-btn-update { padding: 12px 28px; }
+
+/* ---- Remembered answers (Autofill Information tab) ---- */
+.ap-remembered-row { padding: 10px 0; border-bottom: 1px solid var(--stripe-hairline-soft); }
+.ap-remembered-row:last-child { border-bottom: none; }
+.ap-remembered-q {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;
+  font-size: 12.5px; font-weight: 600; color: var(--stripe-ink);
+}
+.ap-remembered-q > span:first-child { flex: 1; min-width: 0; }
+.ap-remembered-reuse {
+  flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--stripe-primary);
+  background: var(--stripe-accent-light); border-radius: 9999px; padding: 1px 8px;
+}
+.ap-remembered-edit { display: flex; gap: 8px; align-items: center; }
+.ap-remembered-input {
+  flex: 1; min-width: 0; padding: 8px 10px; font-size: 13px; font-family: inherit;
+  border: 1px solid var(--stripe-hairline); border-radius: 8px; color: var(--stripe-ink);
+}
+.ap-remembered-input:focus {
+  outline: none; border-color: var(--stripe-primary);
+  box-shadow: 0 0 0 3px rgba(var(--stripe-primary-rgb),0.12);
+}
+
 /* ---- Saved sign-ins (section row badge + modal card list) ---- */
 .ap-section-count {
   min-width: 20px; padding: 1px 6px; border-radius: 9999px;
@@ -1008,6 +1087,12 @@ interface PanelState {
   tailorBusy: boolean;
   coverLetterText: string | null;
   coverLetterBusy: boolean;
+  /** True once a fill has actually run on this page. The unanswered-questions
+   *  card stays hidden until then — before autofill has tried, "3 questions
+   *  need your answer" reads as a failure rather than a follow-up. */
+  fillRan: boolean;
+  /** Questions the last fill left blank that are worth remembering. */
+  gaps: AnswerGap[];
 }
 
 let host: HTMLElement | null = null;
@@ -1045,6 +1130,8 @@ const overlayState: PanelState = {
   tailorBusy: false,
   coverLetterText: null,
   coverLetterBusy: false,
+  fillRan: false,
+  gaps: [],
 };
 
 interface Refs {
@@ -1066,6 +1153,12 @@ interface Refs {
   signinsModal: HTMLDivElement;
   signinsBody: HTMLDivElement;
   signinsCount: HTMLSpanElement;
+  gapsCard: HTMLButtonElement;
+  gapsText: HTMLSpanElement;
+  gapsModal: HTMLDivElement;
+  gapsBody: HTMLDivElement;
+  gapsError: HTMLDivElement;
+  gapsSave: HTMLButtonElement;
   checklist: HTMLDivElement;
   resumeName: HTMLDivElement;
   resumeSelect: HTMLSelectElement;
@@ -1079,6 +1172,7 @@ interface Refs {
   modalBackdrop: HTMLDivElement;
   infoSidebar: HTMLDivElement;
   infoForm: HTMLDivElement;
+  infoFooter: HTMLDivElement;
   loginView: HTMLDivElement;
   loginError: HTMLDivElement;
   btnConnect: HTMLButtonElement;
@@ -1206,6 +1300,13 @@ export function buildHTML(): string {
           <div class="ap-field-count" id="ap-field-count"></div>
         </div>
 
+        <!-- Unanswered reusable questions (shown only after a fill has run) -->
+        <button class="ap-gaps-card" id="ap-gaps-card" type="button" style="display:none">
+          <span class="ap-gaps-icon">${I_QUESTION}</span>
+          <span class="ap-gaps-text" id="ap-gaps-text"></span>
+          <span class="ap-gaps-arrow">${I_CHEVRON_RIGHT}</span>
+        </button>
+
         <!-- Banner -->
         <div class="ap-banner" id="ap-banner" style="display:none"></div>
 
@@ -1323,12 +1424,37 @@ export function buildHTML(): string {
             <button class="ap-modal-sidebar-item" data-cat="preference">Preference</button>
             <button class="ap-modal-sidebar-item" data-cat="eeo">Equal Employment</button>
             <button class="ap-modal-sidebar-item" data-cat="signup">Account creation</button>
+            <button class="ap-modal-sidebar-item" data-cat="remembered">Remembered answers</button>
           </div>
           <div class="ap-modal-form" id="ap-info-form"></div>
         </div>
-        <div class="ap-modal-footer">
+        <div class="ap-modal-footer" id="ap-info-footer">
           <div class="ap-modal-error" id="ap-info-error" style="display:none"></div>
           <button class="ap-btn-update" id="ap-btn-update">Update</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unanswered-questions MODAL (page-level, outside the side panel) -->
+    <div class="ap-modal-backdrop" id="ap-gaps-modal">
+      <div class="ap-modal ap-modal-narrow">
+        <div class="ap-modal-header">
+          <h2>Questions we couldn't answer</h2>
+          <button class="ap-modal-close" id="ap-gaps-close">${I_CLOSE}</button>
+        </div>
+        <div class="ap-modal-notice">
+          <span class="ap-modal-notice-icon">${I_INFO}</span>
+          <span>Tailrd never guesses an answer it can't back up. Answer these once and they'll be filled in automatically on future applications.</span>
+        </div>
+        <div class="ap-modal-body">
+          <div class="ap-gaps-body" id="ap-gaps-body"></div>
+        </div>
+        <div class="ap-modal-footer">
+          <div class="ap-modal-error" id="ap-gaps-error" style="display:none"></div>
+          <div class="ap-modal-actions">
+            <button class="ap-btn-ghost" id="ap-gaps-skip" type="button">Skip for now</button>
+            <button class="ap-btn-update" id="ap-gaps-save" type="button">Save &amp; fill</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1393,6 +1519,12 @@ function collectRefs(root: HTMLDivElement): Refs {
     signinsModal: q("#ap-signins-modal"),
     signinsBody: q("#ap-signins-body"),
     signinsCount: q("#ap-signins-count"),
+    gapsCard: q("#ap-gaps-card"),
+    gapsText: q("#ap-gaps-text"),
+    gapsModal: q("#ap-gaps-modal"),
+    gapsBody: q("#ap-gaps-body"),
+    gapsError: q("#ap-gaps-error"),
+    gapsSave: q("#ap-gaps-save"),
     checklist: q("#ap-checklist"),
     resumeName: q("#ap-resume-name"),
     resumeSelect: q("#ap-resume-select"),
@@ -1406,6 +1538,7 @@ function collectRefs(root: HTMLDivElement): Refs {
     modalBackdrop: q("#ap-modal-backdrop"),
     infoSidebar: q("#ap-info-sidebar"),
     infoForm: q("#ap-info-form"),
+    infoFooter: q("#ap-info-footer"),
     loginView: q("#ap-login-view"),
     loginError: q("#ap-login-error"),
     btnConnect: q("#ap-btn-connect"),
@@ -1430,6 +1563,15 @@ function wireEvents(root: HTMLDivElement): void {
   root.querySelector("#ap-flow-next")!.addEventListener("click", () => {
     if (refs) refs.flowNext.style.display = "none";
     callbacks?.onFlowAdvance();
+  });
+
+  // Unanswered questions -> open the modal; Save writes + remembers, Skip closes.
+  root.querySelector("#ap-gaps-card")!.addEventListener("click", openGapsModal);
+  root.querySelector("#ap-gaps-close")!.addEventListener("click", closeGapsModal);
+  root.querySelector("#ap-gaps-skip")!.addEventListener("click", closeGapsModal);
+  root.querySelector("#ap-gaps-save")!.addEventListener("click", () => void saveGaps());
+  root.querySelector("#ap-gaps-modal")!.addEventListener("click", (e) => {
+    if (e.target === refs?.gapsModal) closeGapsModal();
   });
 
   // "Saved sign-ins" section -> open the credentials modal (rendered on open,
@@ -1708,6 +1850,7 @@ function renderJobCard(): void {
 function refreshMainView(): void {
   if (!refs) return;
   renderJobCard();
+  refreshGaps();
   const { fields, selected } = overlayState;
   const count = selected.size;
   console.log(
@@ -1843,6 +1986,132 @@ function renderChecklist(): void {
 // ---------------------------------------------------------------------------
 // Saved sign-ins (device-local signup-wall credentials)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Unanswered questions ("we couldn't answer these — tell us once")
+// ---------------------------------------------------------------------------
+
+/**
+ * Recompute the questions the last fill left blank and paint the panel card.
+ * Called on every re-render, but the card only shows once a fill has run — see
+ * PanelState.fillRan.
+ */
+function refreshGaps(): void {
+  if (!refs) return;
+  overlayState.gaps = overlayState.fillRan
+    ? selectAnswerGaps(overlayState.fields, {
+        company: overlayState.company,
+        jobTitle: overlayState.jobTitle,
+      })
+    : [];
+  const n = overlayState.gaps.length;
+  refs.gapsCard.style.display = n > 0 ? "" : "none";
+  refs.gapsText.textContent =
+    n === 1 ? "1 question needs your answer" : `${n} questions need your answer`;
+}
+
+function openGapsModal(): void {
+  if (!refs || overlayState.gaps.length === 0) return;
+  renderGaps();
+  refs.gapsError.style.display = "none";
+  refs.gapsModal.classList.add("visible");
+}
+
+function closeGapsModal(): void {
+  refs?.gapsModal.classList.remove("visible");
+}
+
+/** One input per unanswered question, shaped to the page's own control. */
+function renderGaps(): void {
+  if (!refs) return;
+  refs.gapsBody.innerHTML = overlayState.gaps
+    .map((g, i) => {
+      const req = g.required ? `<span class="ap-gap-required" title="Required">*</span>` : "";
+      const help = g.helpText ? `<div class="ap-gap-help">${esc(g.helpText)}</div>` : "";
+      // Sensitive answers never leave the device — say so, next to the input.
+      const priv = g.sensitive
+        ? `<div class="ap-gap-private">Kept on this device only — never uploaded.</div>`
+        : "";
+      return `
+      <div class="ap-gap-card">
+        <div class="ap-gap-question">${esc(g.question)}${req}</div>
+        ${help}
+        ${gapInputHTML(g, i)}
+        ${priv}
+      </div>`;
+    })
+    .join("");
+}
+
+/** The control for one question: the page's real options where it has them, a
+ *  Yes/No pair for a bare checkbox, else a typed text input. */
+function gapInputHTML(gap: AnswerGap, i: number): string {
+  const id = `ap-gap-${i}`;
+  if (gap.options.length > 0) {
+    const opts = gap.options
+      .map((o) => `<option value="${esc(o)}">${esc(o)}</option>`)
+      .join("");
+    return `<select class="ap-gap-input" id="${id}" data-i="${i}">
+      <option value="">Select an answer…</option>${opts}
+    </select>`;
+  }
+  if (gap.controlType === "checkbox") {
+    return `<select class="ap-gap-input" id="${id}" data-i="${i}">
+      <option value="">Select an answer…</option>
+      <option value="Yes">Yes</option>
+      <option value="No">No</option>
+    </select>`;
+  }
+  const type = gap.inputType === "date" || gap.inputType === "number" ? gap.inputType : "text";
+  return `<input class="ap-gap-input" id="${id}" data-i="${i}" type="${esc(type)}" placeholder="Your answer" />`;
+}
+
+/**
+ * Fill the answered questions into the page and remember them. Questions left
+ * blank are simply skipped — closing without answering everything is a normal
+ * outcome, not an error.
+ */
+async function saveGaps(): Promise<void> {
+  if (!refs || !callbacks) return;
+  const answers: { gap: AnswerGap; value: string }[] = [];
+  refs.gapsBody
+    .querySelectorAll<HTMLInputElement | HTMLSelectElement>(".ap-gap-input")
+    .forEach((el) => {
+      const gap = overlayState.gaps[Number(el.dataset.i)];
+      if (gap && el.value.trim()) answers.push({ gap, value: el.value });
+    });
+  if (answers.length === 0) {
+    closeGapsModal();
+    return;
+  }
+
+  refs.gapsSave.disabled = true;
+  refs.gapsSave.textContent = "Saving…";
+  try {
+    const res = await callbacks.onAnswerGaps(answers);
+    if (!res.ok) {
+      refs.gapsError.textContent = res.reason ?? "Could not save your answers.";
+      refs.gapsError.style.display = "block";
+      return;
+    }
+    closeGapsModal();
+    // Re-scan so each answered field's currentValue reflects what was written;
+    // the panel's next render drops those questions from the card.
+    callbacks.onRescan();
+    showBanner(
+      res.filled === answers.length
+        ? `Saved ${answers.length === 1 ? "your answer" : `${answers.length} answers`} — they'll fill automatically next time.`
+        : `Saved, but only filled ${res.filled} of ${answers.length} on this page. Check the form.`,
+      res.filled === answers.length ? "ok" : "warn"
+    );
+  } catch (err) {
+    refs.gapsError.textContent = err instanceof Error ? err.message : "Could not save your answers.";
+    refs.gapsError.style.display = "block";
+  } finally {
+    refs.gapsSave.disabled = false;
+    refs.gapsSave.textContent = "Save & fill";
+  }
+}
 
 /** Open the Saved sign-ins modal, rendering the current credential list. */
 async function openSigninsModal(): Promise<void> {
@@ -2086,6 +2355,9 @@ async function doAutofill(): Promise<void> {
 
   try {
     await callbacks.onAutofill(ids, currentUploadResumeId());
+    // A fill has now run on this page, so any question it couldn't answer is a
+    // real gap worth surfacing (see PanelState.fillRan).
+    overlayState.fillRan = true;
     // No per-click "Filled X of Y — review before submitting" banner: one click
     // now runs the whole multi-page flow, so the flow status line and its final
     // "done" beat own the feedback. (A mid-flow "review before submitting" read
@@ -2278,6 +2550,11 @@ function renderInfoForm(): void {
   const form = refs.infoForm;
   form.innerHTML = "";
 
+  // Remembered answers edit in place (commit on blur) and have no draft to
+  // submit, so the shared "Update" footer would be a button that does nothing
+  // to what's on screen.
+  refs.infoFooter.style.display = cat === "remembered" ? "none" : "";
+
   if (!p || !d) {
     form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Sign in and upload a resume to see your information.</div>';
     return;
@@ -2395,7 +2672,79 @@ function renderInfoForm(): void {
     case "signup":
       renderSignupForm(form, p);
       break;
+    case "remembered":
+      renderRememberedAnswers(form);
+      break;
   }
+}
+
+/**
+ * Render the answer bank — the screening answers the user gave on earlier
+ * applications, which /api/fill recalls semantically on new ones. Same rows the
+ * web app's Profile page shows, so an edit in either surface is the same edit.
+ *
+ * Device-local sensitive answers are deliberately NOT listed here: they never
+ * reach the backend, and putting EEO answers on screen is a separate decision.
+ */
+function renderRememberedAnswers(form: HTMLElement): void {
+  form.innerHTML =
+    '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Loading…</div>';
+  void (async () => {
+    const resp = await bg<AnswersResponse>({ type: "GET_ANSWERS" }).catch(() => null);
+    // The user may have clicked to another category while this was in flight.
+    if (!refs || overlayState.infoCategory !== "remembered") return;
+    if (!resp?.ok) {
+      form.innerHTML = `<div class="ap-form-hint">Could not load your remembered answers.</div>`;
+      return;
+    }
+    const answers: SavedAnswerItem[] = resp.answers;
+    if (answers.length === 0) {
+      form.innerHTML = `<div class="ap-form-hint">Nothing remembered yet. When autofill hits a question it can't answer, the panel offers to ask you — the answers you give appear here and fill automatically from then on.</div>`;
+      return;
+    }
+    form.innerHTML =
+      `<div class="ap-form-hint">Answers Tailrd reuses on future applications. Edit one and it changes everywhere, including your Tailrd profile page.</div>` +
+      answers
+        .map(
+          (a) => `
+        <div class="ap-remembered-row" data-answer-id="${a.id}">
+          <div class="ap-remembered-q">
+            <span>${esc(a.question)}</span>
+            ${a.timesReused > 0 ? `<span class="ap-remembered-reuse">used ${a.timesReused}×</span>` : ""}
+          </div>
+          <div class="ap-remembered-edit">
+            <input class="ap-remembered-input" data-answer-id="${a.id}" value="${esc(a.answer)}" />
+            <button class="ap-mini-btn ap-remembered-del" data-answer-id="${a.id}" type="button">Delete</button>
+          </div>
+        </div>`
+        )
+        .join("");
+
+    // Commit an edit on blur — no Save button, matching how the rest of the
+    // modal's device-local fields behave.
+    form.querySelectorAll<HTMLInputElement>(".ap-remembered-input").forEach((input) => {
+      const original = input.value;
+      input.addEventListener("blur", () => {
+        const answer = input.value.trim();
+        if (!answer || answer === original) {
+          if (!answer) input.value = original; // never store an empty answer
+          return;
+        }
+        void bg<SimpleResponse>({
+          type: "UPDATE_ANSWER",
+          id: Number(input.dataset.answerId),
+          answer,
+        }).catch(() => {});
+      });
+    });
+    form.querySelectorAll<HTMLButtonElement>(".ap-remembered-del").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        void bg<SimpleResponse>({ type: "DELETE_ANSWER", id: Number(btn.dataset.answerId) })
+          .then(() => renderRememberedAnswers(form))
+          .catch(() => {});
+      });
+    });
+  })();
 }
 
 /**
