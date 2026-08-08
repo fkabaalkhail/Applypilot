@@ -12,7 +12,7 @@ import type { AdapterFillResult, FillContext, SiteAdapter } from "./types";
 import {
   ADVANCE_BUTTON_SELECTOR,
   COVER_LETTER_SECTION_RE,
-  DATE_PART_FRAGMENTS,
+  DATE_FRAGMENTS,
   ENTRY_BUTTON_SELECTOR,
   FIELD_RULES,
   RESUME_SECTION_RE,
@@ -20,6 +20,8 @@ import {
   automationId,
   automationIdChain,
   dateContainerOf,
+  datePartsIn,
+  dateWidgetPartsOf,
 } from "./workdaySelectors";
 
 /** Workday's phone-device-type prompt lists Home / Mobile / Work / Pager / Fax.
@@ -109,25 +111,33 @@ export const workdayAdapter: SiteAdapter = {
   fillOperation(ctx: FillContext): Promise<AdapterFillResult> | undefined {
     const container = dateContainerOf(ctx.el);
     if (!container) return undefined;
-    const q = (frag: string) =>
-      container.querySelector<HTMLInputElement>(`input[data-automation-id*="${frag}" i]`);
-    const month = q(DATE_PART_FRAGMENTS.month);
-    const day = q(DATE_PART_FRAGMENTS.day);
-    const year = q(DATE_PART_FRAGMENTS.year);
     const parts = parseDate(ctx.value);
-    if (!parts || (!month && !day && !year)) return undefined;
+    if (!parts) return undefined;
+    const inputs = datePartsIn(container);
+    if (!inputs || !DATE_FRAGMENTS.some((f) => inputs[f])) return undefined;
     return (async () => {
+      // Verify the container before trusting it. Resolving one is a heuristic
+      // over ids that are only mostly reliable, and each time it has been wrong
+      // the symptom was the same: some parts written, the rest left at 0, and a
+      // success reported over the top. So ask the question that actually
+      // matters — is there a part this value needs, that this widget HAS, that
+      // the container did not give us? — and refuse the whole fill if so. An
+      // unanticipated DOM shape then fails loudly here instead of silently on
+      // the page, and the reason reaches autofill_reports.
+      const widget = dateWidgetPartsOf(container);
+      const unreachable = DATE_FRAGMENTS.filter((f) => parts[f] && !inputs[f] && widget[f]);
+      if (unreachable.length) {
+        return { filled: false, reason: `date parts outside the resolved widget: ${unreachable.join(", ")}` };
+      }
       // A part the value doesn't carry (no day in "2025-05") is left alone
       // rather than zeroed — Workday reads 0 as empty and flags it invalid.
       let wrote = 0;
-      const write = (input: HTMLInputElement | null, part: string): void => {
-        if (!input || !part) return;
-        setInput(input, part);
+      for (const frag of DATE_FRAGMENTS) {
+        const input = inputs[frag];
+        if (!input || !parts[frag]) continue;
+        setInput(input, parts[frag]);
         wrote++;
-      };
-      write(month, parts.month);
-      write(day, parts.day);
-      write(year, parts.year);
+      }
       // Those guards can skip every part (a bare year against a month-only
       // widget). Claiming filled:true there banks a green panel tally and a
       // green autofill_reports row for a widget that is visibly still empty.

@@ -181,6 +181,41 @@ describe("Workday split-date container", () => {
     expect((document.getElementById("sm") as HTMLInputElement).value).toBe("0");
   });
 
+  it("refuses to half-fill when the widget holds parts the container cannot reach", async () => {
+    // One stray input whose id carries a fragment word makes dateWidget
+    // ambiguous, so resolution falls back to the year's own -display wrapper.
+    // Writing the year there and reporting success hides an empty month/day.
+    document.body.innerHTML = `
+      <div data-automation-id="dateWidget">
+        <div data-automation-id="dateSectionMonth-display">${part("Month", "m")}</div>
+        <div data-automation-id="dateSectionDay-display">${part("Day", "d")}</div>
+        <div data-automation-id="dateSectionYear-display">${part("Year", "y")}</div>
+        <input type="hidden" data-automation-id="yearHelpText">
+      </div>`;
+    const year = document.getElementById("y") as HTMLInputElement;
+    const r = await workdayAdapter.fillOperation!(fillCtx(year, "2025-05-14"))!;
+    expect(r.filled, "month and day were unreachable — this is not a fill").toBe(false);
+    expect(r.reason).toBeTruthy();
+    // Nothing written at all: a half-filled date is worse than an empty one.
+    expect(year.value).toBe("0");
+    expect((document.getElementById("m") as HTMLInputElement).value).toBe("0");
+    expect((document.getElementById("d") as HTMLInputElement).value).toBe("0");
+  });
+
+  it("reports filled:false when the container answers only some of the fragments", async () => {
+    document.body.innerHTML = `
+      <div data-automation-id="dateWidget">
+        <div data-automation-id="dateGroup-monthAndYear">${part("Month", "m")}${part("Year", "y")}</div>
+        ${part("Day", "d")}
+      </div>`;
+    const month = document.getElementById("m") as HTMLInputElement;
+    const r = await workdayAdapter.fillOperation!(fillCtx(month, "2025-05-14"))!;
+    expect(r.filled, "the day input is in the widget but outside the container").toBe(false);
+    expect(month.value).toBe("0");
+    expect((document.getElementById("y") as HTMLInputElement).value).toBe("0");
+    expect((document.getElementById("d") as HTMLInputElement).value).toBe("0");
+  });
+
   it("declines values that only look like a date", () => {
     mountWorkdayDate();
     const year = document.getElementById("workExperience-10--startDate-dateSectionYear-input") as HTMLInputElement;

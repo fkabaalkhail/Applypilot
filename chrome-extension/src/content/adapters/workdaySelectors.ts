@@ -55,6 +55,13 @@ export const DATE_CONTAINER_RE = /date/i;
 /** Automation-id fragments of the three spinbutton inputs inside that widget. */
 export const DATE_PART_FRAGMENTS = { month: "month", day: "day", year: "year" } as const;
 
+/** The fragments a date widget renders, in the order parts are written. */
+export type DateFragment = keyof typeof DATE_PART_FRAGMENTS;
+export const DATE_FRAGMENTS = Object.keys(DATE_PART_FRAGMENTS) as DateFragment[];
+
+/** A widget's part inputs, keyed by the fragment each one renders. */
+export type DateParts = Partial<Record<DateFragment, HTMLInputElement>>;
+
 /** Any one of the widget's part inputs. */
 export const DATE_PART_SELECTOR =
   'input[data-automation-id*="dateSection" i], input[role="spinbutton"]';
@@ -109,6 +116,50 @@ export function dateContainerOf(el: HTMLElement): HTMLElement | null {
     if (count === 1 && !onlyWrapper) onlyWrapper = node;
   }
   return onlyWrapper;
+}
+
+/**
+ * The date parts under `node`, keyed by fragment — or null when `node` spans
+ * MORE THAN ONE widget (some fragment is claimed by two part inputs).
+ *
+ * Note the direction: this reads the actual part inputs and asks each one which
+ * fragment it renders, rather than querying for "an input whose id contains
+ * year". A page's own `graduationYearField` is not a part, so it can never be
+ * returned here and never be written to — the ambiguity that motivated
+ * `unambiguous` above cannot even arise on this path.
+ */
+export function datePartsIn(node: HTMLElement): DateParts | null {
+  const found: DateParts = {};
+  for (const input of node.querySelectorAll<HTMLInputElement>(DATE_PART_SELECTOR)) {
+    const id = (input.getAttribute("data-automation-id") || "").toLowerCase();
+    const frag = DATE_FRAGMENTS.find((f) => id.includes(DATE_PART_FRAGMENTS[f]));
+    if (!frag) continue;
+    if (found[frag]) return null; // two widgets under one roof
+    found[frag] = input;
+  }
+  return found;
+}
+
+/**
+ * Every part of the ONE widget `container` belongs to — the container's own
+ * parts, plus any the container turned out to exclude.
+ *
+ * Expands outward while each expansion still renders at most one part per
+ * fragment; a repeated fragment means that ancestor holds a second widget, so
+ * expansion stops below it. This is the difference between "the widget has no
+ * month, so filling the year finished the job" and "the widget HAS a month we
+ * failed to reach", which must never be reported as a successful fill.
+ */
+export function dateWidgetPartsOf(container: HTMLElement, depth = 6): DateParts {
+  let widget = datePartsIn(container) ?? {};
+  let node: HTMLElement | null = container.parentElement;
+  for (let i = 0; node && i < depth; i++, node = node.parentElement) {
+    if (!DATE_CONTAINER_RE.test(node.getAttribute("data-automation-id") || "")) continue;
+    const outer = datePartsIn(node);
+    if (!outer) break;
+    widget = outer;
+  }
+  return widget;
 }
 
 // ---------------------------------------------------------------------------
