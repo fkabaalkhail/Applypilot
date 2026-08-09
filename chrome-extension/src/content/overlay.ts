@@ -39,6 +39,7 @@ import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
   AnswersResponse,
   BackgroundRequest,
+  ControlType,
   CoverLetterGenOpts,
   DetectedField,
   EeoAnswers,
@@ -195,11 +196,33 @@ export function formatFlowProgress(p: FlowProgress): string {
   }
 }
 
-/** The manual advance gate's label — mirrors the button the flow will click
- *  ("Create Account →", "Sign In →"), defaulting to Next page. Pure. */
+/**
+ * The bottom gate's label. Default is the plain "Continue To The Next Page".
+ *
+ * A wall the flow is about to CREATE something on names it instead ("Create
+ * Account ▶"): pressing Continue there registers an account, which is not what
+ * "next page" leads a user to expect. Ordinary Next / Save-and-Continue
+ * buttons keep the generic label — echoing the site's own wording adds nothing
+ * and reads as noise. Pure.
+ */
+const GENERIC_NEXT = "Continue To The Next Page";
+const NAMED_ADVANCE_RE = /create (an? )?account|sign ?up|register|sign ?in|log ?in/i;
+
 export function formatNextLabel(p: FlowProgress): string {
   const label = (p.nextLabel ?? "").trim();
-  return `${label || "Next page"} →`;
+  if (label && NAMED_ADVANCE_RE.test(label)) return `${label} ▶`;
+  return `${GENERIC_NEXT} ▶`;
+}
+
+/** Beats where the bottom gate is offered to the user. Pure — unit-tested.
+ *  - ready: the page is filled and waiting to be turned.
+ *  - unfilled-required: same, with a caveat the panel explains.
+ *  - account: the flow could not pass a signup/sign-in wall on its own; the
+ *    button lets the user hand control back once they have dealt with it,
+ *    instead of stranding them on a filled form with no next step. */
+export function showsAdvanceGate(p: FlowProgress): boolean {
+  if (p.phase === "ready") return true;
+  return p.phase === "paused" && (p.pauseReason === "unfilled-required" || p.pauseReason === "account");
 }
 
 /** Render a flow beat: minimal strip (no narration) + the bottom Next page gate. */
@@ -208,21 +231,33 @@ export function updateFlowProgress(p: FlowProgress): void {
   const running =
     p.phase === "filling" || p.phase === "advancing" || p.phase === "paused" || p.phase === "ready";
   refs.flow.style.display = running ? "flex" : "none";
-  // NO status sentences in the panel — "Step 1 · paused — solve the captcha…"
-  // style narration reads as clutter. The strip shows one calm word while the
-  // flow is actively working (plus Stop); parked/paused pages show just the
-  // controls — the page itself displays the captcha/validation, and the bottom
-  // gate shows the next action. Every beat still logs for debugging.
+  // NO step-by-step narration in the panel — "Step 1 · filling…" style chatter
+  // reads as clutter. The strip shows one calm word while the flow is actively
+  // working (plus Stop), and nothing at all on a parked page: the bottom gate
+  // already shows the next action.
+  //
+  // A PAUSE is the exception, and it has to say why. A paused flow shows no
+  // gate and no summary, so an unexplained blank strip is a dead end — the user
+  // cannot tell whether it is still working, finished, or waiting on them, and
+  // the only thing left to try is clicking Autofill again. The reason is
+  // actionable ("add account credentials in Autofill Information → Account
+  // creation, or sign in manually"), so it belongs on screen, not just in the
+  // console. The unfilled-required pause is excluded: it DOES show the gate,
+  // whose label already says what to do.
   const active = p.phase === "filling" || p.phase === "advancing";
-  refs.flowText.textContent = active ? "Autofilling…" : "";
+  const explainPause = p.phase === "paused" && p.pauseReason !== "unfilled-required";
+  refs.flowText.textContent = active
+    ? "Autofilling…"
+    : explainPause
+      ? `Paused — ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`
+      : "";
   console.info(`[Tailrd] ${formatFlowProgress(p)}`);
   // The advance gate is pinned at the panel bottom. The flow parks on every
   // filled page — at a "ready" beat, or a "paused" beat when a required field is
   // still empty — and turns the page only when the user presses this button. Its
   // label mirrors the real button the flow will click (Next / Continue).
   refs.flowNextBtn.textContent = formatNextLabel(p);
-  refs.flowNext.style.display =
-    p.phase === "ready" || (p.phase === "paused" && p.pauseReason === "unfilled-required") ? "flex" : "none";
+  refs.flowNext.style.display = showsAdvanceGate(p) ? "flex" : "none";
   // A terminal beat clears any earlier banner so nothing outlives the run.
   if (p.phase === "done" || p.phase === "stopped") showBanner("", "ok", true);
 }
@@ -273,8 +308,6 @@ const P_ENVELOPE = '<path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a
 const P_REGEN = '<path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/>';
 const P_DOWNLOAD = '<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z"/>';
 const P_PAPERCLIP = '<path d="M209.66,122.34a8,8,0,0,1,0,11.32l-82.05,82a56,56,0,0,1-79.2-79.21L147.67,35.73a40,40,0,1,1,56.61,56.55L105,193A24,24,0,1,1,71,159L154.3,74.38A8,8,0,1,1,165.7,85.6L82.39,170.31a8,8,0,1,0,11.27,11.36L192.93,81A24,24,0,1,0,159,47L59.76,147.68a40,40,0,1,0,56.53,56.62l82.06-82A8,8,0,0,1,209.66,122.34Z"/>';
-const P_CHECK = '<path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/>';
-const P_DASH = '<path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128Z"/>';
 const P_INFO = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"/>';
 // Phosphor "question" — the unanswered-questions card.
 const P_QUESTION = '<path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>';
@@ -290,8 +323,6 @@ const I_ENVELOPE = ph(P_ENVELOPE);
 const I_REGEN = ph(P_REGEN);
 const I_DOWNLOAD = ph(P_DOWNLOAD);
 const I_PAPERCLIP = ph(P_PAPERCLIP);
-const I_CHECK = ph(P_CHECK);
-const I_DASH = ph(P_DASH);
 const I_INFO = ph(P_INFO);
 const I_KEY = ph(P_KEY);
 const I_QUESTION = ph(P_QUESTION);
@@ -451,12 +482,6 @@ export const STYLES = `
   box-shadow: 0 6px 20px rgba(var(--stripe-primary-rgb),0.32);
 }
 .ap-btn-autofill:disabled { opacity: 0.5; cursor: default; transform: none; }
-.ap-field-count {
-  text-align: center;
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--stripe-ink-mute);
-}
 
 /* ---- Job card (company logo + name + title) ---- */
 .ap-jobcard {
@@ -532,22 +557,6 @@ export const STYLES = `
 .ap-banner.warn { background: #fdf3e0; border-color: #f3ddb0; color: #b97d10; }
 .ap-banner.error { background: #fdecea; border-color: #f5c6c0; color: #c0392b; }
 
-/* ---- Detection checklist (field name → ✓ filled / – empty) ---- */
-.ap-checklist { margin: 14px 16px 2px; }
-.ap-chk-head {
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--stripe-ink-mute); margin-bottom: 8px;
-}
-.ap-chk-count { text-transform: none; letter-spacing: 0; font-weight: 600; }
-.ap-chk-row { display: flex; align-items: center; gap: 9px; padding: 4px 0; font-size: 13px; }
-.ap-chk-ic { width: 16px; height: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-.ap-chk-ic svg { width: 16px; height: 16px; }
-.ap-chk-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ap-chk-row.is-filled .ap-chk-ic { color: #16a34a; }
-.ap-chk-row.is-filled .ap-chk-label { color: var(--stripe-ink); }
-.ap-chk-row.is-empty .ap-chk-ic { color: var(--stripe-ink-mute); opacity: 0.55; }
-.ap-chk-row.is-empty .ap-chk-label { color: var(--stripe-ink-mute); }
 
 /* ---- Tailored résumé PDF preview (covers the side panel) ---- */
 .ap-pdf-modal {
@@ -894,20 +903,23 @@ export const STYLES = `
 }
 @keyframes ap-spin { to { transform: rotate(360deg); } }
 .ap-flow { display: flex; align-items: center; gap: 8px; margin: 6px 16px; font-size: 12px; }
-.ap-flow-text { flex: 1; }
+.ap-flow-text { flex: 1; color: var(--stripe-ink-mute); line-height: 1.35; }
 .ap-flow-stop { flex: 0 0 auto; }
-/* Next-page gate — pinned at the panel bottom, shown only in the "ready" phase. */
+/* Next-page gate — pinned at the panel bottom, shown once a page is filled and
+   waiting on the user. The one control they touch after the first Autofill. */
 .ap-flow-next-wrap {
-  display: flex; padding: 10px 16px; flex-shrink: 0;
+  display: flex; padding: 12px 14px; flex-shrink: 0;
   border-top: 1px solid var(--stripe-hairline-soft);
-  background: var(--stripe-canvas-soft);
+  background: var(--stripe-canvas);
 }
 .ap-flow-next {
-  width: 100%; padding: 11px; border: none; border-radius: 9999px;
-  background: var(--stripe-primary); color: #fff;
-  font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+  width: 100%; padding: 13px 14px; border: none; border-radius: 8px;
+  background: #10cf7f; color: #fff;
+  font-family: inherit; font-size: 14px; font-weight: 700; letter-spacing: 0.01em;
+  cursor: pointer; transition: background 0.15s;
 }
-.ap-flow-next:hover { background: var(--stripe-primary-press); }
+.ap-flow-next:hover { background: #0bb96f; }
+.ap-flow-next:active { background: #0aa563; }
 /* ---- Unanswered questions (panel card + modal) ---- */
 .ap-gaps-card {
   display: flex; align-items: center; gap: 10px; width: calc(100% - 32px);
@@ -940,6 +952,14 @@ export const STYLES = `
   outline: none; border-color: var(--stripe-primary);
   box-shadow: 0 0 0 3px rgba(var(--stripe-primary-rgb),0.12);
 }
+.ap-gap-choices { display: flex; flex-direction: column; gap: 6px; }
+.ap-gap-choice {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  border: 1px solid var(--stripe-hairline); border-radius: 8px;
+  font-size: 13px; color: var(--stripe-ink); cursor: pointer; background: #fff;
+}
+.ap-gap-choice:hover { border-color: var(--stripe-primary-soft); }
+.ap-gap-choice input { accent-color: var(--stripe-primary); margin: 0; flex: 0 0 auto; }
 .ap-btn-ghost {
   border: 1px solid var(--stripe-hairline); background: #fff; border-radius: 8px;
   padding: 9px 14px; font-size: 13px; font-weight: 600; font-family: inherit;
@@ -1144,7 +1164,6 @@ interface Refs {
   jobcardCompany: HTMLDivElement;
   jobcardTitle: HTMLDivElement;
   btnAutofill: HTMLButtonElement;
-  fieldCount: HTMLDivElement;
   banner: HTMLDivElement;
   flow: HTMLDivElement;
   flowText: HTMLSpanElement;
@@ -1159,7 +1178,6 @@ interface Refs {
   gapsBody: HTMLDivElement;
   gapsError: HTMLDivElement;
   gapsSave: HTMLButtonElement;
-  checklist: HTMLDivElement;
   resumeName: HTMLDivElement;
   resumeSelect: HTMLSelectElement;
   btnUploadResume: HTMLButtonElement;
@@ -1214,7 +1232,7 @@ function ensureMounted(): void {
   // listeners to refs.infoForm, so refs has to be populated first. (Reversed,
   // wireEvents dereferenced a null refs and threw, aborting overlay mount — the
   // panel then never opened on any form page.)
-  refs = collectRefs(root);
+  installRefs(root);
   wireBrandLogo(root);
   wireEvents(root);
   installMountWatchdog();
@@ -1297,7 +1315,6 @@ export function buildHTML(): string {
         <!-- Account Creation & Autofill button -->
         <div class="ap-autofill-section">
           <button class="ap-btn-autofill" id="ap-btn-autofill" disabled>Account Creation &amp; Autofill</button>
-          <div class="ap-field-count" id="ap-field-count"></div>
         </div>
 
         <!-- Unanswered reusable questions (shown only after a fill has run) -->
@@ -1315,8 +1332,6 @@ export function buildHTML(): string {
           <span class="ap-flow-text" id="ap-flow-text"></span>
         </div>
 
-        <!-- Per-field detection checklist (name / email / university … → ✓ or –) -->
-        <div class="ap-checklist" id="ap-checklist" style="display:none"></div>
 
         <!-- Your Autofill Information -->
         <div class="ap-section">
@@ -1399,7 +1414,7 @@ export function buildHTML(): string {
       <!-- Next-page gate — pinned at the panel bottom, shown only while a
            multi-page flow is parked at "ready" (see updateFlowProgress). -->
       <div class="ap-flow-next-wrap" style="display:none">
-        <button class="ap-flow-next" id="ap-flow-next" type="button">Next page →</button>
+        <button class="ap-flow-next" id="ap-flow-next" type="button">Continue To The Next Page ▶</button>
       </div>
     </div>
 
@@ -1494,6 +1509,14 @@ export function buildHTML(): string {
 }
 
 
+/** Bind the module's element refs to a mounted panel root.
+ *  Exported alongside buildHTML so tests can drive the real render paths
+ *  (updateFlowProgress, showReloadRequired…) without the chrome.* APIs a full
+ *  mount needs. */
+export function installRefs(root: HTMLDivElement): void {
+  refs = collectRefs(root);
+}
+
 function collectRefs(root: HTMLDivElement): Refs {
   function q<T extends HTMLElement>(sel: string): T {
     const el = root.querySelector<T>(sel);
@@ -1510,7 +1533,6 @@ function collectRefs(root: HTMLDivElement): Refs {
     jobcardCompany: q("#ap-jobcard-company"),
     jobcardTitle: q("#ap-jobcard-title"),
     btnAutofill: q("#ap-btn-autofill"),
-    fieldCount: q("#ap-field-count"),
     banner: q("#ap-banner"),
     flow: q("#ap-flow"),
     flowText: q("#ap-flow-text"),
@@ -1525,7 +1547,6 @@ function collectRefs(root: HTMLDivElement): Refs {
     gapsBody: q("#ap-gaps-body"),
     gapsError: q("#ap-gaps-error"),
     gapsSave: q("#ap-gaps-save"),
-    checklist: q("#ap-checklist"),
     resumeName: q("#ap-resume-name"),
     resumeSelect: q("#ap-resume-select"),
     btnUploadResume: q("#ap-btn-upload-resume"),
@@ -1564,6 +1585,7 @@ function wireEvents(root: HTMLDivElement): void {
     if (refs) refs.flowNext.style.display = "none";
     callbacks?.onFlowAdvance();
   });
+
 
   // Unanswered questions -> open the modal; Save writes + remembers, Skip closes.
   root.querySelector("#ap-gaps-card")!.addEventListener("click", openGapsModal);
@@ -1862,29 +1884,17 @@ function refreshMainView(): void {
     "hostInDoc=", Boolean(document.getElementById(HOST_ID))
   );
 
-  // A job posting / apply-method chooser has no (recognized) fields but does
-  // have an apply-entry button \u2014 Autofill starts the flow by clicking it.
-  const entryStart = canStartFromEntry();
   // The primary action always runs the full flow (click Apply, create account,
   // fill, advance), so it stays live whenever a profile is loaded -- even on a
-  // bare job posting with no form fields. entryStart only tunes the hint below.
+  // bare job posting with no form fields.
+  //
+  // Nothing is rendered under the button: no field count, no "will click
+  // Apply" hint, no "No form fields detected". The flow's own beats and the
+  // per-page fill summary above the Continue gate are the feedback surface.
   const canRun = Boolean(overlayState.profile) && !overlayState.busy;
   refs.btnAutofill.disabled = !canRun;
   refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Account Creation & Autofill";
 
-  // Prefix the status line with the recognized ATS ("Workday \u00b7 \u2026") when known.
-  const sitePrefix = overlayState.siteLabel ? `${overlayState.siteLabel} \u00b7 ` : "";
-  if (entryStart) {
-    refs.fieldCount.textContent = `${sitePrefix}Autofill will click \u201c${overlayState.applyEntry}\u201d and continue with the application`;
-  } else if (fields.length > 0) {
-    refs.fieldCount.textContent = `${sitePrefix}${count} of ${fields.length} fields ready to fill`;
-  } else {
-    refs.fieldCount.textContent = overlayState.scanned
-      ? `${sitePrefix}No form fields detected on this page`
-      : "Scanning page\u2026";
-  }
-
-  renderChecklist();
 
   // Keep the r\u00e9sum\u00e9-upload button in sync as the form is (re)scanned.
   updateUploadButtonState();
@@ -1893,95 +1903,8 @@ function refreshMainView(): void {
 }
 
 /** Friendly fallback names when a field's own label is missing/too generic. */
-const CATEGORY_LABEL: Partial<Record<string, string>> = {
-  firstName: "First name",
-  lastName: "Last name",
-  fullName: "Full name",
-  email: "Email",
-  phone: "Phone",
-  location: "Location",
-  addressStreet: "Street address",
-  addressCity: "City",
-  addressState: "Province or state",
-  postalCode: "Postal code",
-  country: "Country",
-  linkedin: "LinkedIn",
-  github: "GitHub",
-  portfolio: "Portfolio / website",
-  school: "University / school",
-  degree: "Degree",
-  workAuthorization: "Work authorization",
-  sponsorship: "Sponsorship",
-  coverLetter: "Cover letter",
-  resumeUpload: "R\u00e9sum\u00e9",
-  eeoGender: "Gender",
-  eeoRace: "Race / ethnicity",
-  eeoVeteran: "Veteran status",
-  eeoDisability: "Disability status",
-};
 
-/** Turn a programmatic id ("surveysResponses", "first_name") into "Surveys responses". */
-function humanize(raw: string): string {
-  const words = raw
-    .replace(/[_\-.]+/g, " ")
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1).toLowerCase() : raw;
-}
 
-function fieldDisplayName(f: DetectedField): string {
-  // Drop programmatic suffixes like "fields[firstname]" or "name (optional)".
-  let label = (f.label || "").trim().replace(/\s+/g, " ").replace(/[\s*:]+$/, "").replace(/\s*[\[(].*$/, "").trim();
-  const cat = CATEGORY_LABEL[f.category];
-  const looksRaw = !!label && (/[_\[\]]/.test(label) || (/[a-z][A-Z]/.test(label) && !label.includes(" ")));
-  if (cat && (looksRaw || !label || label.length > 36)) return cat;
-  if (looksRaw) return humanize(label);
-  if (label && label.length <= 40) return label;
-  return cat ?? (label ? label.slice(0, 38) + "\u2026" : "Field");
-}
-
-/**
- * The "did it fill?" checklist: every meaningful detected field, with a green
- * check when it currently holds a value or a muted dash when it is still empty.
- * Driven purely off the (re-scanned) fields' currentValue, so it reflects reality
- * after Autofill without any extra bookkeeping.
- */
-function renderChecklist(): void {
-  if (!refs) return;
-  const host = refs.checklist;
-  const fields = overlayState.fields.filter(
-    (f) =>
-      (f.fillable || f.category !== "unknown") &&
-      f.category !== "accountPassword" &&
-      // Show sensitive (EEO) rows only when we actually have the user's answer to
-      // fill; a sensitive field with no stored value stays hidden (never guessed).
-      !(f.sensitive && f.proposedValue === null)
-  );
-  if (fields.length === 0) {
-    host.style.display = "none";
-    host.innerHTML = "";
-    return;
-  }
-  const isFilled = (f: DetectedField): boolean => Boolean(f.currentValue && f.currentValue.trim());
-  const filledCount = fields.filter(isFilled).length;
-  const rows = fields
-    .map((f) => {
-      const filled = isFilled(f);
-      const ic = filled ? I_CHECK : I_DASH;
-      return (
-        `<div class="ap-chk-row ${filled ? "is-filled" : "is-empty"}">` +
-        `<span class="ap-chk-ic">${ic}</span>` +
-        `<span class="ap-chk-label">${esc(fieldDisplayName(f))}</span>` +
-        `</div>`
-      );
-    })
-    .join("");
-  host.style.display = "block";
-  host.innerHTML =
-    `<div class="ap-chk-head"><span>Fields detected</span>` +
-    `<span class="ap-chk-count">${filledCount}/${fields.length} filled</span></div>` +
-    rows;
-}
 
 // ---------------------------------------------------------------------------
 // Saved sign-ins (device-local signup-wall credentials)
@@ -2043,27 +1966,75 @@ function renderGaps(): void {
     .join("");
 }
 
-/** The control for one question: the page's real options where it has them, a
- *  Yes/No pair for a bare checkbox, else a typed text input. */
-function gapInputHTML(gap: AnswerGap, i: number): string {
+/** Control types whose answer is one of a fixed set the page already shows. */
+const GAP_CHOICE_TYPES: ReadonlySet<ControlType> = new Set<ControlType>([
+  "radioGroup",
+  "ariaRadioGroup",
+]);
+const GAP_MULTI_TYPES: ReadonlySet<ControlType> = new Set<ControlType>(["checkboxGroup"]);
+
+/**
+ * The control for one question — the SAME shape the page shows.
+ *
+ * A radio group rendered as a dropdown is not the question the form asked, and
+ * a constrained control rendered as a text box produces an answer the widget
+ * will reject. Falls back to a text input only when the page genuinely offers
+ * free text (or a dropdown yielded no options — see harvestGapOptions).
+ */
+export function gapInputHTML(gap: AnswerGap, i: number): string {
   const id = `ap-gap-${i}`;
-  if (gap.options.length > 0) {
-    const opts = gap.options
-      .map((o) => `<option value="${esc(o)}">${esc(o)}</option>`)
-      .join("");
+  const opts = gap.options ?? [];
+
+  if (opts.length > 0 && GAP_CHOICE_TYPES.has(gap.controlType)) {
+    return `<div class="ap-gap-choices" data-i="${i}" data-kind="radio">${opts
+      .map(
+        (o, k) => `<label class="ap-gap-choice">
+          <input type="radio" name="${id}" value="${esc(o)}" id="${id}-${k}" />
+          <span>${esc(o)}</span>
+        </label>`
+      )
+      .join("")}</div>`;
+  }
+
+  if (opts.length > 0 && GAP_MULTI_TYPES.has(gap.controlType)) {
+    return `<div class="ap-gap-choices" data-i="${i}" data-kind="checkbox">${opts
+      .map(
+        (o, k) => `<label class="ap-gap-choice">
+          <input type="checkbox" name="${id}" value="${esc(o)}" id="${id}-${k}" />
+          <span>${esc(o)}</span>
+        </label>`
+      )
+      .join("")}</div>`;
+  }
+
+  if (opts.length > 0) {
+    const options = opts.map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join("");
     return `<select class="ap-gap-input" id="${id}" data-i="${i}">
-      <option value="">Select an answer…</option>${opts}
+      <option value="">Select an answer…</option>${options}
     </select>`;
   }
+
   if (gap.controlType === "checkbox") {
-    return `<select class="ap-gap-input" id="${id}" data-i="${i}">
-      <option value="">Select an answer…</option>
-      <option value="Yes">Yes</option>
-      <option value="No">No</option>
-    </select>`;
+    return `<div class="ap-gap-choices" data-i="${i}" data-kind="radio">
+      <label class="ap-gap-choice"><input type="radio" name="${id}" value="Yes" /><span>Yes</span></label>
+      <label class="ap-gap-choice"><input type="radio" name="${id}" value="No" /><span>No</span></label>
+    </div>`;
   }
+
   const type = gap.inputType === "date" || gap.inputType === "number" ? gap.inputType : "text";
   return `<input class="ap-gap-input" id="${id}" data-i="${i}" type="${esc(type)}" placeholder="Your answer" />`;
+}
+
+/** The answer the user gave for question `i`, whatever control it rendered as.
+ *  "" when unanswered — an unanswered question is skipped, not an error. */
+export function readGapAnswer(root: ParentNode, i: number): string {
+  const group = root.querySelector<HTMLElement>(`.ap-gap-choices[data-i="${i}"]`);
+  if (group) {
+    const picked = [...group.querySelectorAll<HTMLInputElement>("input:checked")].map((el) => el.value);
+    return picked.join(", ");
+  }
+  const single = root.querySelector<HTMLInputElement | HTMLSelectElement>(`.ap-gap-input[data-i="${i}"]`);
+  return (single?.value ?? "").trim();
 }
 
 /**
@@ -2074,12 +2045,10 @@ function gapInputHTML(gap: AnswerGap, i: number): string {
 async function saveGaps(): Promise<void> {
   if (!refs || !callbacks) return;
   const answers: { gap: AnswerGap; value: string }[] = [];
-  refs.gapsBody
-    .querySelectorAll<HTMLInputElement | HTMLSelectElement>(".ap-gap-input")
-    .forEach((el) => {
-      const gap = overlayState.gaps[Number(el.dataset.i)];
-      if (gap && el.value.trim()) answers.push({ gap, value: el.value });
-    });
+  overlayState.gaps.forEach((gap, i) => {
+    const value = readGapAnswer(refs!.gapsBody, i);
+    if (value) answers.push({ gap, value });
+  });
   if (answers.length === 0) {
     closeGapsModal();
     return;
@@ -2371,6 +2340,25 @@ async function doAutofill(): Promise<void> {
     overlayState.busy = false;
     refreshMainView();
   }
+}
+
+/**
+ * This content script has been orphaned — the extension was reloaded, updated
+ * or disabled while the tab stayed open, so `chrome.runtime` is gone and
+ * nothing the panel offers can work any more.
+ *
+ * Without this the panel keeps rendering perfectly: the Autofill button looks
+ * enabled, clicking it silently does nothing, and no flow can ever start
+ * because the background can neither be asked for the profile nor told to
+ * persist flow state. That is indistinguishable from "the extension is
+ * broken". Say what happened and what fixes it.
+ */
+export function showReloadRequired(): void {
+  if (!refs) return;
+  refs.btnAutofill.disabled = true;
+  refs.flow.style.display = "none";
+  refs.flowNext.style.display = "none";
+  showBanner("Tailrd was updated — reload this page to continue.", "warn");
 }
 
 function showBanner(text: string, kind: "ok" | "warn" | "error", hide = false): void {
