@@ -24,6 +24,7 @@ import type {
   ContentRequest,
   CoverLetterGenOpts,
   DetectedField,
+  DroppedAnswer,
   FieldsUpdatedEvent,
   FillResponse,
   FlowProgress,
@@ -98,7 +99,14 @@ import {
 import { detectWall, findSignupToggle, runAccountWall } from "./accountFlow";
 import { getCredential } from "./credentialStore";
 import { bindSubmitTracking, type SubmitTrackerHandle } from "./submitTracker";
-import { buildAutofillTelemetry } from "./telemetry";
+import {
+  buildAutofillTelemetry,
+  finalOutcomes,
+  revertedFields,
+  type DroppedAnswerLike,
+  type FieldProvenance,
+  type ObservedField,
+} from "./telemetry";
 import { setOverrideRules } from "./overrides";
 import { looksLikeJobApplication, type PageContext } from "./jobFormEvidence";
 import { onExtensionContextInvalidated, postToRuntime, sendToRuntime } from "./runtimeMessaging";
@@ -290,6 +298,19 @@ function initialize(): void {
   // supersedes this one), so a running fillOnce stops writing promptly instead
   // of running to completion — Jobright's CANCEL_AUTO_FILL parity.
   let flowAbort: AbortController | null = null;
+  // Fields the terminal re-scan found no longer holding what was written — the
+  // framework reverted them after the write verified. They are asked about
+  // again even though the control is not empty, because "holds SOMETHING" is
+  // not "holds the answer"; see selectAnswerGaps.
+  let lastRevertedIds: ReadonlySet<string> = new Set();
+  /** What the last fill on THIS page wrote, kept so the page can be re-audited
+   *  later — at the page turn, which is the last moment it is observable. */
+  let lastFill: {
+    intended: Map<string, string>;
+    provenance: Map<string, FieldProvenance>;
+    wroteOk: Set<string>;
+    dropped: DroppedAnswerLike[];
+  } | null = null;
   // Remembered so MutationObserver rescans can recompute proposed values.
   let lastProfile: UserApplicationProfile | null = null;
   let lastFillEEO = false;
@@ -323,12 +344,19 @@ function initialize(): void {
 
   /** Push current fields to wherever the panel lives (local overlay, or — when
    *  this frame is a child form-host — the top frame's panel). */
-  function reportFields(): void {
+  function reportFields(carryReverted = false): void {
     if (actingAsRemoteHost) {
-      postToRuntime({ type: "RELAY_TO_TOP", payload: { type: "REMOTE_FIELDS_UPDATED", fields: lastFields } });
+      postToRuntime({
+        type: "RELAY_TO_TOP",
+        payload: {
+          type: "REMOTE_FIELDS_UPDATED",
+          fields: lastFields,
+          ...(carryReverted ? { reverted: [...lastRevertedIds] } : {}),
+        },
+      });
       return;
     }
-    maybeShowOrUpdateOverlay();
+    maybeShowOrUpdateOverlay(carryReverted);
   }
 
   // One reconciliation engine per frame, created on first fill. It keeps a
@@ -707,9 +735,35 @@ function initialize(): void {
         (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
       );
 
+      // What each field was asked to hold, and where that came from. Recorded
+      // as the passes run so the terminal re-scan can diff observed page state
+      // against intent, and so telemetry can name the tier and pass responsible
+      // for a value — the attribution the old failure-only record could not make.
+      const intended = new Map<string, string>();
+      const provenance = new Map<string, FieldProvenance>();
+      const droppedByBackend = new Map<string, DroppedAnswerLike>();
+      type FillTarget = { fieldId: string; value: string };
+      const noteIntent = (
+        targets: FillTarget[],
+        prov: FieldProvenance | ((fieldId: string) => FieldProvenance)
+      ): FillTarget[] => {
+        for (const t of targets) {
+          intended.set(t.fieldId, t.value);
+          provenance.set(t.fieldId, typeof prov === "function" ? prov(t.fieldId) : prov);
+        }
+        return targets;
+      };
+      const noteDrops = (drops: DroppedAnswer[] | undefined): void => {
+        for (const d of drops ?? []) {
+          droppedByBackend.set(d.id, { fieldId: d.id, reason: d.reason, source: d.source });
+        }
+      };
+
       // Phase A — deterministic profile fields fill instantly (local fast-path).
       const route = planFillRoute(selected, AUTOFILL_CONFIDENCE_THRESHOLD);
-      const localFill = await fillItems(route.localTargets, false, signal);
+      const localFill = await fillItems(
+        noteIntent(route.localTargets, { tier: "profile" }), false, signal
+      );
 
       // Phase B — judgment fields answered by the backend (primary), deduped by the
       // session cache; also the eligible EMPTY fields (today's AI candidates). The
@@ -749,13 +803,19 @@ function initialize(): void {
             if (resp?.ok) {
               cacheAnswers(misses, resp.answers);
               answers = [...hits, ...resp.answers];
+              noteDrops(resp.dropped);
             }
           }
         } catch {
           // Backend unavailable — the local fallback below still fills judgment fields.
         }
         const plan = planAiFill(backendFields, answers);
-        aiFill = await fillItems(plan.simpleTargets, true, signal);
+        const passById = new Map(answers.map((a) => [a.id, a.fillPass ?? a.source ?? ""]));
+        aiFill = await fillItems(
+          noteIntent(plan.simpleTargets, (id) => ({ tier: "backend", pass: passById.get(id) ?? "" })),
+          true,
+          signal
+        );
 
         // Local fallback: judgment fields that had a local value but weren't answered
         // by the backend still fill from proposedValue — no regression. A single
@@ -766,7 +826,9 @@ function initialize(): void {
           .filter((f) => !answered.has(f.id) && f.proposedValue !== null)
           .filter((f) => f.controlType !== "checkbox" || isBoolish(f.proposedValue as string))
           .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
-        fallbackFill = await fillItems(fallbackTargets, true, signal);
+        fallbackFill = await fillItems(
+          noteIntent(fallbackTargets, { tier: "profile" }), true, signal
+        );
       }
 
       // One re-ask round: choice controls whose fill missed now carry the
@@ -790,7 +852,11 @@ function initialize(): void {
           const choice = closestDemographicOption(f.category, f.proposedValue ?? "", c.options);
           if (choice) demoTargets.push({ fieldId: c.fieldId, value: choice });
         }
-        if (demoTargets.length > 0) demoFill = await fillItems(demoTargets, true, signal);
+        // Tier 3, on-device: these values never leave the machine, and the
+        // telemetry record says only that the device answered — never what.
+        if (demoTargets.length > 0) {
+          demoFill = await fillItems(noteIntent(demoTargets, { tier: "device" }), true, signal);
+        }
       }
       if (openReask.length > 0 && !signal?.aborted) {
         for (const c of openReask) {
@@ -809,8 +875,14 @@ function initialize(): void {
             if (resp?.ok) {
               const affected = lastFields.filter((f) => reaskFields.some((r) => r.id === f.id));
               cacheAnswers(affected, resp.answers); // overwrite the unconstrained answers
+              noteDrops(resp.dropped);
               const plan = planAiFill(affected, resp.answers);
-              reaskFill = await fillItems(plan.simpleTargets, true, signal);
+              const reaskPass = new Map(resp.answers.map((a) => [a.id, a.fillPass ?? a.source ?? ""]));
+              reaskFill = await fillItems(
+                noteIntent(plan.simpleTargets, (id) => ({ tier: "backend", pass: reaskPass.get(id) ?? "" })),
+                true,
+                signal
+              );
             }
           } catch {
             // Backend unreachable — the manual-select outcomes stand.
@@ -853,17 +925,62 @@ function initialize(): void {
         ...localFill.outcomes, ...aiFill.outcomes, ...fallbackFill.outcomes,
         ...reaskFill.outcomes, ...demoFill.outcomes, ...missingFill.outcomes, ...cascadeFill.outcomes,
       ];
+      // Terminal re-scan: read the page back once the fill has settled, and
+      // diff what it holds against what was written.
+      //
+      // writeEngine verifies each commit AT WRITE TIME, which proves the value
+      // reached the control and no more. A framework can revert it afterwards —
+      // on blur, on its own validation, or on a re-render triggered by a LATER
+      // field — and a per-write check has moved on by then. This is the only
+      // point where "the page actually holds the answer" can be observed.
+      const observed = signal?.aborted ? [] : await observePageState(signal);
+      const okIds = new Set(
+        [...finalOutcomes(allReports, allOutcomes).ok]
+          .filter(([, isOk]) => isOk)
+          .map(([id]) => id)
+      );
+      lastFill = {
+        intended,
+        provenance,
+        wroteOk: okIds,
+        dropped: [...droppedByBackend.values()],
+      };
+      lastRevertedIds = new Set(
+        revertedFields(
+          [...intended].map(([fieldId, value]) => ({ fieldId, value })),
+          observed,
+          okIds
+        ).map((r) => r.fieldId)
+      );
+      if (lastRevertedIds.size > 0) {
+        console.log(
+          `[Tailrd fill] ${lastRevertedIds.size} field(s) no longer hold what was written — re-asking`
+        );
+      }
+      // Push the re-scan's own view of the page (and its reverts) to the panel,
+      // so the gap card is built from what the page holds rather than from what
+      // the planner intended.
+      if (!signal?.aborted) reportFields(true);
+
       // Per-field record of this page for the panel's summary — every detected
       // field, not just the attempted ones, so a skipped required question is
       // visible BEFORE the user turns the page.
-      // Fire-and-forget telemetry (field labels + outcomes only, never values) so
-      // we can see which sites/fields the filler struggles with. Skipped on cancel.
+      // Fire-and-forget telemetry (field labels, categories, provenance and
+      // booleans only — never values) so we can see which sites/fields the
+      // filler struggles with, INCLUDING the ones it reported filling and
+      // didn't. Skipped on cancel.
       if (!signal?.aborted && total > 0) {
         const telemetry = buildAutofillTelemetry(
           lastFields,
           { host: location.host, url: location.href, atsType: lastAdapter?.id ?? "" },
-          allReports,
-          allOutcomes
+          {
+            reports: allReports,
+            outcomes: allOutcomes,
+            provenance,
+            intended: [...intended].map(([fieldId, value]) => ({ fieldId, value })),
+            observed,
+            dropped: [...droppedByBackend.values()],
+          }
         );
         if (telemetry.totalFields > 0) {
           void sendToBackground<SimpleResponse>({ type: "RECORD_TELEMETRY", telemetry }).catch(() => {});
@@ -871,6 +988,65 @@ function initialize(): void {
       }
 
       return { ok, fail, total };
+  }
+
+  /**
+   * A fresh read of every tracked control's committed value.
+   *
+   * Deliberately a re-SCAN rather than a read of the cached fields: a control
+   * that was replaced mid-fill has a new element behind the same id, and the
+   * stale reference would report the old element's value forever.
+   *
+   * Values stay in this frame — only presence and equality are ever reported.
+   */
+  async function observePageState(signal?: AbortSignal): Promise<ObservedField[]> {
+    await waitForDomSettle(signal);
+    if (signal?.aborted) return [];
+    runScan();
+    return lastFields.map((f) => ({ fieldId: f.id, value: f.currentValue ?? "" }));
+  }
+
+  /**
+   * Re-audit the current page against the last fill, and record what changed.
+   *
+   * Called before every page turn and once when the flow finishes — a page turn
+   * is the last moment the page can be observed at all, and the final page
+   * never gets one. Time has passed since the fill: the user may have typed,
+   * the site may have validated, and a framework may have reset a control the
+   * write engine watched land. All of that is invisible from the next page.
+   *
+   * A record is emitted only when this pass finds reverts the fill's own
+   * re-scan did not. The fill already reported the page; re-reporting an
+   * unchanged page would inflate every host's pass count and say nothing new.
+   */
+  async function auditPageState(): Promise<void> {
+    if (!lastFill || lastFill.intended.size === 0) return;
+    const observed = await observePageState();
+    if (observed.length === 0) return;
+    const intended = [...lastFill.intended].map(([fieldId, value]) => ({ fieldId, value }));
+    const reverted = revertedFields(intended, observed, lastFill.wroteOk);
+    const fresh = reverted.filter((r) => !lastRevertedIds.has(r.fieldId));
+    lastRevertedIds = new Set(reverted.map((r) => r.fieldId));
+    reportFields(true);
+    if (fresh.length === 0) return;
+    console.log(
+      `[Tailrd flow] page-turn audit: ${fresh.length} field(s) reverted since the fill`
+    );
+    const telemetry = buildAutofillTelemetry(
+      lastFields,
+      { host: location.host, url: location.href, atsType: lastAdapter?.id ?? "" },
+      {
+        reports: [],
+        outcomes: [...lastFill.wroteOk].map((fieldId) => ({ fieldId, ok: true })),
+        provenance: lastFill.provenance,
+        intended,
+        observed,
+        dropped: lastFill.dropped,
+      }
+    );
+    if (telemetry.totalFields > 0) {
+      void sendToBackground<SimpleResponse>({ type: "RECORD_TELEMETRY", telemetry }).catch(() => {});
+    }
   }
 
   /** Route a flow progress beat to wherever the panel lives (mirrors reportFields). */
@@ -1067,6 +1243,7 @@ function initialize(): void {
       },
       onProgress: emitFlowProgress,
       diagnoseStuck: logStuckDiagnostics,
+      auditPageState,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       now: () => Date.now(),
     };
@@ -1433,7 +1610,7 @@ function initialize(): void {
     return { url: location.href, title: document.title };
   }
 
-  function maybeShowOrUpdateOverlay(): void {
+  function maybeShowOrUpdateOverlay(carryReverted = false): void {
     if (!isTopFrame || adoptedRemote) return;
     const entry = findApplyEntry(document, lastAdapter);
     const ident = extractJobIdentity();
@@ -1449,6 +1626,11 @@ function initialize(): void {
       company: ident.company,
       jobTitle: ident.jobTitle,
       siteLabel,
+      // Only the post-fill push carries this. An ordinary observer rescan must
+      // leave the panel's copy alone: sending an empty set from every scan
+      // would clear what the fill's re-scan observed before the gap card is
+      // even rendered.
+      ...(carryReverted ? { reverted: lastRevertedIds } : {}),
     };
     // Mount on a detected job-application form, on a known ATS's apply-entry
     // page (Workday job posting), or on an ATS application page — so the
@@ -1783,7 +1965,13 @@ function initialize(): void {
           // The child host re-scanned (profile / rescan / mutation) — refresh.
           if (isTopFrame && adoptedRemote) {
             remoteFields = message.fields;
-            updateOverlay({ fields: remoteFields, tabUrl: location.href });
+            updateOverlay({
+              fields: remoteFields,
+              tabUrl: location.href,
+              // Only the child's post-fill push carries a verdict; an ordinary
+              // rescan must not erase the one already on the panel.
+              ...(message.reverted ? { reverted: new Set(message.reverted) } : {}),
+            });
           }
           sendResponse({ ok: true });
           return false;

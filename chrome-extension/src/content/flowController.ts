@@ -88,6 +88,18 @@ export interface FlowDeps {
   /** Best-effort log of why the page didn't advance (visible validation errors,
    *  empty required fields) — surfaces the real blocker on live ATS. No-op in tests. */
   diagnoseStuck?(): void;
+  /**
+   * Re-read this page and record how it differs from what was written, just
+   * before it goes away.
+   *
+   * A page turn is the last moment this page is observable. Anything a
+   * framework reverted after the fill — on blur, on its own validation, on a
+   * re-render some later field triggered — is invisible from the next page, and
+   * per-write verification cannot see it either, because it happened after the
+   * write was verified. Called before every advance click and once when the
+   * flow finishes; failures are the caller's to swallow.
+   */
+  auditPageState?(): Promise<void>;
   sleep(ms: number): Promise<void>;
   now(): number;
 }
@@ -284,6 +296,8 @@ export class FlowController {
    * for the page to change. False → the page never changed (or we stopped).
    */
   private async advanceStep(snap: FlowSnapshot, el: HTMLElement, detail?: string): Promise<boolean> {
+    // Last look at this page before it is replaced. See FlowDeps.auditPageState.
+    await this.deps.auditPageState?.().catch(() => {});
     const before = stepSignature(snap);
     const state: FlowState = { active: true, step: this.step + 1, startedAt: this.startedAt, lastSignature: before };
     this.step = state.step;
@@ -310,6 +324,9 @@ export class FlowController {
   }
 
   private async finish(phase: "done" | "stopped", detail?: string): Promise<void> {
+    // The final page never gets an advance click, so this is its only audit —
+    // and it is the page the user is about to submit.
+    await this.deps.auditPageState?.().catch(() => {});
     await this.deps.setState(null);
     this.emit(phase, { detail });
   }

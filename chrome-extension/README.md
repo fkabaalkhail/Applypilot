@@ -73,6 +73,10 @@ chrome-extension/
       fieldMatcher.ts         classification patterns + confidence + values
       autofill.ts             fill engine (native setters + real input events)
       domUtils.ts             labels, nearby text, visibility, event helpers
+      flowController.ts       one-click multi-page flow (fill → gate → advance)
+      adapters/
+        workdaySelectors.ts   ALL Workday data-automation-ids (data, no logic)
+        workday.ts            Workday behaviour, built on those selectors
     popup/                    popup.html / popup.css / popup.ts (vanilla TS)
     api/
       client.ts               backend client (login, refresh, profile, fallbacks)
@@ -82,8 +86,28 @@ chrome-extension/
       types.ts                profile, field & message types
       constants.ts            thresholds, endpoints, ATS list
       storage.ts              chrome.storage.local wrappers (config/auth/cache)
+  schema/
+    applicant-profile.schema.json   published contract for the profile data
   test/sample-form.html       local form covering every field category
 ```
+
+### Updating Workday selectors
+
+Workday's `data-automation-id` attributes are the only stable handle on its
+DOM (labels are generic, CSS classes are hashed per tenant). Every one the
+extension relies on lives in **`src/content/adapters/workdaySelectors.ts`** —
+field-classification rules, Next/Apply buttons, the segmented date widget, the
+create-account markers, prompt/multiselect widgets, error containers. That file
+is pure data; when a tenant renames an id it should be the only edit needed.
+`FIELD_RULES` is order-sensitive: narrow widgets (`countryPhoneCode`,
+`phoneType`) must stay above the broad `country` / `phone` rules.
+
+### Profile schema
+
+`schema/applicant-profile.schema.json` documents the profile the filler reads
+(personal details, address, work history, education, skills, standard question
+answers, optional on-device EEO answers). `test/profileSchema.test.ts` fails the
+build if it drifts from `UserApplicationProfile` in `src/shared/types.ts`.
 
 ### How the pieces talk
 

@@ -147,9 +147,18 @@ def test_embeddings_failure_degrades_to_ai(client, db_session):
     assert ans["answer"] == "Generated."
 
 
-def test_ai_answer_kept_when_no_option_matches(client):
-    # No saved answers -> straight to the AI pass. The field HAS options but the
-    # AI answer matches none; it must NOT be snapped to options[0] ("Select…").
+def test_ai_answer_dropped_when_no_option_matches(client):
+    """A constrained widget takes one of ITS options or nothing.
+
+    This used to return the unmatched answer and let the client fuzzy-match it.
+    The client's matcher is a mirror of the backend's (writeEngine.matchOption),
+    so an answer the backend cannot place is one the page could not have taken
+    either — it only ever became a "No option matches" write failure. Dropping
+    it here says so once, with a reason, and routes the field to the gap modal.
+
+    The original point of this test still holds and is asserted: the answer is
+    NOT snapped to options[0] ("Select…").
+    """
     body = {
         "fields": [{
             "id": "f1",
@@ -162,9 +171,11 @@ def test_ai_answer_kept_when_no_option_matches(client):
          patch(_ANSWER, AsyncMock(return_value="Gold")):
         resp = client.post("/api/fill", json=body)
     assert resp.status_code == 200
-    ans = resp.json()["answers"][0]
-    assert ans["answer"] == "Gold"  # not "Select…"
-    assert ans["source"] == "ai"
+    payload = resp.json()
+    assert payload["answers"] == []
+    assert payload["dropped"] == [
+        {"id": "f1", "label": "Favourite metal?", "reason": "not_an_offered_option", "source": "ai"}
+    ]
 
 
 def test_ai_answer_snaps_to_a_matching_option(client):

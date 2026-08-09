@@ -21,10 +21,20 @@ interface SavedAnswerRow {
   answer: string;
   category: string;
   times_reused: number;
+  times_matched?: number;
+  source?: string;
+  created_at?: string;
+  suspect?: boolean;
+  suspect_reason?: string;
 }
 
 /** List the user's remembered answers (Question Memory) for the Autofill
- *  Information → Remembered answers list. */
+ *  Information → Remembered answers list.
+ *
+ *  Carries the backend's key-health verdict as well as the answer. A bad key is
+ *  invisible from the answer alone — "Yes Required" → "Yes" reads as a sensible
+ *  row until you notice it will answer every yes/no question on a Workday form
+ *  — so eviction needs somewhere to aim. */
 export async function listAnswers(): Promise<SavedAnswerItem[]> {
   const rows = await authedRequest<SavedAnswerRow[]>("/api/answers", { method: "GET" });
   return rows.map((r) => ({
@@ -33,6 +43,11 @@ export async function listAnswers(): Promise<SavedAnswerItem[]> {
     answer: r.answer,
     category: r.category,
     timesReused: r.times_reused ?? 0,
+    timesMatched: r.times_matched ?? 0,
+    source: r.source ?? "",
+    createdAt: r.created_at ?? "",
+    suspect: Boolean(r.suspect),
+    suspectReason: r.suspect_reason ?? "",
   }));
 }
 

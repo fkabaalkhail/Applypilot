@@ -7,6 +7,7 @@
  *
  * Every automation-id lives in ./workdaySelectors — this file holds only logic.
  */
+import { isVisible } from "../domUtils";
 import { ADAPTERS } from "./registry";
 import type { AdapterFillResult, FillContext, SiteAdapter } from "./types";
 import {
@@ -71,6 +72,22 @@ function setInput(el: HTMLInputElement, value: string): void {
   if (setter) setter.call(el, value); else el.value = value;
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/**
+ * The first step-footer button under `root` a user could actually press.
+ *
+ * Mirrors advance.ts's own `isClickable`: rendered, enabled, not aria-disabled.
+ * Kept local so this module stays free of a runtime import of advance.ts.
+ */
+function firstClickable(root: ParentNode): HTMLElement | null {
+  for (const el of root.querySelectorAll<HTMLElement>(ADVANCE_BUTTON_SELECTOR)) {
+    if ((el as HTMLButtonElement).disabled) continue;
+    if (el.getAttribute("aria-disabled") === "true") continue;
+    if (!isVisible(el)) continue;
+    return el;
+  }
+  return null;
 }
 
 export const workdayAdapter: SiteAdapter = {
@@ -183,10 +200,15 @@ export const workdayAdapter: SiteAdapter = {
   advanceButton(scope) {
     // Workday's step footer often sits OUTSIDE the fields' container — fall
     // back to the whole document when the scope doesn't hold it.
-    return (
-      (scope.querySelector(ADVANCE_BUTTON_SELECTOR) as HTMLElement | null) ??
-      (scope.ownerDocument.querySelector(ADVANCE_BUTTON_SELECTOR) as HTMLElement | null)
-    );
+    //
+    // First CLICKABLE match, not first match. Workday's SPA leaves an earlier
+    // step's footer in the DOM (hidden, or disabled until its step validates),
+    // and it comes first in document order — so `querySelector` handed back a
+    // button `findAdvanceButton` then rejected, abandoning the adapter path
+    // entirely and leaving the live footer unfound. That ended the flow with no
+    // advance gate, and only ever on a later step, which is exactly how it
+    // presented on BMO's "My Experience".
+    return firstClickable(scope) ?? firstClickable(scope.ownerDocument);
   },
 
   entryButton(doc) {

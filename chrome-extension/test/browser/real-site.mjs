@@ -96,8 +96,7 @@ async function main() {
   let enabled = false;
   for (let i = 0; i < 20; i++) {
     enabled = await autofill.isEnabled().catch(() => false);
-    const count = await page.locator('#applypilot-overlay-host >> #ap-field-count').textContent().catch(() => "");
-    if (enabled) { console.log(`Autofill enabled (field count: "${(count || "").trim()}")`); break; }
+    if (enabled) { console.log("Autofill enabled"); break; }
     await sleep(500);
   }
   if (!enabled) console.log("⚠ Autofill button never enabled — capturing state anyway.");

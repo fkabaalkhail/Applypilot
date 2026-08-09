@@ -63,6 +63,7 @@ function makeDeps(
     hasUnfilledRequired: () => false,
     setState: async (s) => { log.push(`state:${s ? s.step : "null"}`); },
     onProgress: (p) => progress.push(p),
+    auditPageState: async () => { log.push(`audit:${pageIx}`); },
     sleep: async () => { clock += 100; },
     now: () => clock,
   };
@@ -500,5 +501,57 @@ describe("manual override of a pause", () => {
       const beat = { phase: "paused", step: 1, filledOk: 0, filledFail: 0, pauseReason } as FlowProgress;
       expect(showsAdvanceGate(beat), pauseReason).toBe(USER_CLEARABLE_PAUSES.has(pauseReason));
     }
+  });
+});
+
+describe("terminal re-scan before a page turn", () => {
+  it("audits every page just before it is replaced", async () => {
+    // A page turn is the last moment this page can be observed at all. A value
+    // a framework reverted after the fill verified is invisible from the next
+    // page — and per-write verification never sees it either, because it
+    // happened after the write was checked.
+    const { deps, log, progress } = makeDeps(
+      [[field("a", "One")], [field("b", "Two")], []],
+      [advanceBtn(), advanceBtn(), null]
+    );
+    const controller = new FlowController(deps);
+    await drive(controller, progress);
+    expect(log.filter((l) => l.startsWith("audit:"))).toEqual(["audit:0", "audit:1", "audit:2"]);
+  });
+
+  it("audits the final page, which never gets an advance click", async () => {
+    const { deps, log, progress } = makeDeps([[field("a", "One")]], [terminalBtn()]);
+    const controller = new FlowController(deps);
+    await drive(controller, progress);
+    // The submit page is the one the user is about to send.
+    expect(log).toContain("audit:0");
+  });
+
+  it("audits before the click, not after — the page is gone afterwards", async () => {
+    const { deps, log, progress } = makeDeps(
+      [[field("a", "One")], []],
+      [advanceBtn(), null]
+    );
+    const controller = new FlowController(deps);
+    await drive(controller, progress);
+    expect(log.indexOf("audit:0")).toBeLessThan(log.indexOf("click:0"));
+  });
+
+  it("an audit that throws never stops the flow", async () => {
+    const { deps, progress } = makeDeps(
+      [[field("a", "One")], [field("b", "Two")]],
+      [advanceBtn(), terminalBtn()]
+    );
+    deps.auditPageState = async () => { throw new Error("scan blew up"); };
+    const controller = new FlowController(deps);
+    await drive(controller, progress);
+    expect(progress.at(-1)?.phase).toBe("done");
+  });
+
+  it("still never clicks a terminal button", async () => {
+    const { deps, log, progress } = makeDeps([[field("a", "One")]], [terminalBtn()]);
+    const controller = new FlowController(deps);
+    await drive(controller, progress);
+    expect(log.some((l) => l.startsWith("click:"))).toBe(false);
   });
 });

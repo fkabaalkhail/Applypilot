@@ -99,6 +99,11 @@ export interface PlannedAnswer {
   needsReview?: boolean;
   /** "memory" | "ai" | "rule" | "profile" — backend provenance (unused now). */
   source?: string;
+  /** Which backend pass produced it: "derived" | "rule" | "memory" | "ai".
+   *  Not used to decide anything — recorded so telemetry can name the pass
+   *  responsible for a value, which is what a wrong-but-successful fill needs
+   *  in order to be attributable at all. */
+  fillPass?: string;
   category?: string;
 }
 
@@ -134,6 +139,9 @@ export function tallyOutcomes(
 /** Profile-lookup categories answered locally when confident — instant, offline, free. */
 export const LOCAL_FAST_PATH: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "firstName", "lastName", "fullName", "email", "phone",
+  // Workday's phone satellites: both resolve from the profile alone (dialing
+  // country, "Mobile"), so an AI round-trip would only add latency and cost.
+  "phoneCountryCode", "phoneDeviceType",
   "linkedin", "github", "portfolio", "location", "currentCompany", "currentTitle",
   "addressStreet", "addressCity", "addressState", "postalCode", "country",
 ]);

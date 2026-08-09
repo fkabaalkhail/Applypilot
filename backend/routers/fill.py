@@ -5,8 +5,8 @@ Takes form fields + resume context, returns AI-generated answers.
 Used by both the Plasmo extension and the React frontend.
 """
 
+import datetime as dt
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -20,6 +20,14 @@ from backend.auth.dependencies import get_verified_user_id
 from backend.services.usage_limiter import llm_guard
 from backend.services.llm import get_llm_service
 from backend.services.embeddings import EmbeddingsService
+from backend.services.answer_gate import GateResult, validate_answer
+from backend.services.derived_facts import resolve_derived_fact
+from backend.services.option_match import (
+    first_number as _first_number,
+    match_option as _match_option,
+    parse_range as _parse_range,
+    shared_prefix_len as _shared_prefix_len,
+)
 from backend.services.answer_memory import (
     canonicalize_question,
     categorize_question,
@@ -32,6 +40,8 @@ router = APIRouter()
 
 NO_ANSWER = "__NO_ANSWER__"
 
+__all__ = ["router", "_first_number", "_match_option", "_parse_range", "_shared_prefix_len"]
+
 
 class FormField(BaseModel):
     """A single form field to fill."""
@@ -42,6 +52,21 @@ class FormField(BaseModel):
     required: bool = False
     helpText: str = ""   # surrounding help/section text harvested by the extension
     inputType: str = ""  # native input type hint ("date", "number", "email"…)
+
+
+class WorkPeriod(BaseModel):
+    """Structured dates for one role — what the derived-fact resolvers measure a
+    career from. The flattened ``experience`` lines stay as they are: they are
+    prose for the LLM's context, and parsing prose is not arithmetic."""
+    startDate: str = ""
+    endDate: str = ""
+
+
+class EducationRecord(BaseModel):
+    """Structured education, for graduation-year and degree-level questions."""
+    degree: str = ""
+    school: str = ""
+    graduationYear: str = ""
 
 
 class ApplicantProfile(BaseModel):
@@ -67,6 +92,13 @@ class ApplicantProfile(BaseModel):
     skills: list[str] = []
     experience: list[str] = []   # pre-flattened "Title at Company (dates)" lines
     education: list[str] = []     # pre-flattened "Degree, School (year)" lines
+    # Facts the profile can COMPUTE an answer from, kept structured so no
+    # resolver has to parse the display strings above. All optional: a client
+    # that sends none of them makes every derived resolver abstain, which is
+    # the correct behaviour, not a degraded one.
+    dateOfBirth: str = ""              # ISO "YYYY-MM-DD" (or "YYYY-MM" / "YYYY")
+    workHistory: list[WorkPeriod] = []
+    educationHistory: list[EducationRecord] = []
 
 
 class FillRequest(BaseModel):
@@ -89,12 +121,27 @@ class FieldAnswer(BaseModel):
     needsReview: bool = False  # AI suggestions + company-specific matches
     category: str = "general"
     canonicalQuestion: str = ""
+    # Which pass produced this, for telemetry: "derived" | "rule" | "memory" |
+    # "ai". `source` is the older, coarser field the client already reads;
+    # keeping both means nothing that consumes `source` has to change.
+    fillPass: str = "rule"
+
+
+class DroppedAnswer(BaseModel):
+    """A value the gate refused. Carries no answer text — only why."""
+    id: str
+    label: str
+    reason: str
+    source: str
 
 
 class FillResponse(BaseModel):
     """Response from /api/fill."""
     answers: list[FieldAnswer]
     errors: list[str] = []
+    # Fields whose candidate answer was dropped by the gate. The client leaves
+    # them blank and the post-fill re-scan offers them in the gap modal.
+    dropped: list[DroppedAnswer] = []
 
 
 def _rule_based_answer(label: str, options: list[str], settings, profile=None, company: str = "") -> str | None:
@@ -264,16 +311,72 @@ async def fill_form(
     answers: list[FieldAnswer] = []
     remaining: list[FormField] = []
     errors: list[str] = []
+    dropped: list[DroppedAnswer] = []
+    today = datetime.now(timezone.utc).date()
 
-    # Pass 1: rule-based / profile answers — filled silently.
+    def gated(field: FormField, value: str, source: str) -> Optional[GateResult]:
+        """Run one candidate answer through the gate, recording a drop.
+
+        Every pass calls this — that is the whole point of the gate. Returns
+        None when the value was refused, in which case the field is left for
+        the next pass (or, after pass 3, left blank for the gap modal).
+        """
+        verdict = validate_answer(
+            value,
+            label=field.label,
+            options=field.options,
+            profile=request.profile,
+            today=today,
+            company=request.company,
+            help_text=field.helpText,
+        )
+        if verdict.value is None:
+            dropped.append(DroppedAnswer(
+                id=field.id, label=field.label, reason=verdict.reason, source=source
+            ))
+            logger.info(
+                "fill: dropped %s answer for %r — %s",
+                source, field.label[:80], verdict.reason,
+            )
+            return None
+        return verdict
+
+    # Pass 1: facts computed from the profile, then rule-based / profile
+    # shortcuts. Both fill silently, and both are gated.
+    #
+    # The derived resolvers run FIRST and short-circuit: a question whose answer
+    # the profile already contains ("are you 18 or older?") must never reach a
+    # vector index, where it would be answered by whatever question happened to
+    # canonicalize alongside it.
     for field in request.fields:
+        derived = resolve_derived_fact(
+            label=field.label,
+            options=field.options,
+            profile=request.profile,
+            today=today,
+            company=request.company,
+            help_text=field.helpText,
+        )
+        if derived is not None:
+            verdict = gated(field, derived.value, "derived")
+            if verdict is not None:
+                answers.append(FieldAnswer(
+                    id=field.id, label=field.label, answer=verdict.value,
+                    source="profile", fillPass="derived",
+                    category=categorize_question(field.label),
+                ))
+                continue
+
         rule_answer = _rule_based_answer(field.label, field.options, settings, request.profile, request.company)
         if rule_answer:
-            answers.append(FieldAnswer(
-                id=field.id, label=field.label, answer=rule_answer, source="rule"
-            ))
-        else:
-            remaining.append(field)
+            verdict = gated(field, rule_answer, "rule")
+            if verdict is not None:
+                answers.append(FieldAnswer(
+                    id=field.id, label=field.label, answer=verdict.value,
+                    source="rule", fillPass="rule",
+                ))
+                continue
+        remaining.append(field)
 
     # Pass 2: Question Memory — reuse previously approved answers by meaning.
     # Generic matches fill silently; company-specific matches are flagged for
@@ -293,7 +396,7 @@ async def fill_form(
                 logger.warning("Memory search unavailable: %s", e)
                 vectors = None
 
-        reused = False
+        touched = False
         for idx, field in enumerate(remaining):
             canonical = canonicals[idx]
             matched = None
@@ -301,19 +404,35 @@ async def fill_form(
                 cand, score = best_match(vectors[idx], saved_rows)
                 if cand is not None and score >= MATCH_THRESHOLD:
                     matched = cand
-            if matched is not None:
-                needs_review = matched.category == "company_specific"
-                if not needs_review:
-                    matched.times_reused = (matched.times_reused or 0) + 1
-                    reused = True
-                answers.append(FieldAnswer(
-                    id=field.id, label=field.label, answer=matched.answer,
-                    confidence="high", source="memory", needsReview=needs_review,
-                    category=matched.category, canonicalQuestion=canonical,
-                ))
-            else:
+            if matched is None:
                 ai_fields.append((field, canonical))
-        if reused:
+                continue
+
+            # Count the MATCH, whatever happens to the answer next. This is the
+            # signal the audit reads: a key matching far more questions than a
+            # person is ever asked is a key that is matching the wrong ones, and
+            # `times_reused` cannot show that — it is also incremented on save.
+            matched.times_matched = (matched.times_matched or 0) + 1
+            matched.last_matched_at = dt.datetime.utcnow()
+            touched = True
+
+            verdict = gated(field, matched.answer, "memory")
+            if verdict is None:
+                # A remembered answer the profile refutes is not a candidate for
+                # a later pass either — but the AI may still answer honestly.
+                ai_fields.append((field, canonical))
+                continue
+
+            needs_review = matched.category == "company_specific"
+            if not needs_review:
+                matched.times_reused = (matched.times_reused or 0) + 1
+            answers.append(FieldAnswer(
+                id=field.id, label=field.label, answer=verdict.value,
+                confidence="high", source="memory", needsReview=needs_review,
+                category=matched.category, canonicalQuestion=canonical,
+                fillPass="memory",
+            ))
+        if touched:
             db.commit()
 
     # Pass 3: AI generation for anything still unanswered. Suggestions are
@@ -353,32 +472,21 @@ async def fill_form(
                         raw = await llm.compose_answer(question=q, context=context)
                     else:
                         raw = await llm.answer_question(question=q, context=context)
-                    answer = raw.strip().strip('"').strip()
 
-                    # Grounding sentinel: the model has no supported answer —
-                    # leave the field blank (emit nothing). The client skips
-                    # fields with no answer, so a skipped field stays empty.
-                    if not answer or answer.upper() == NO_ANSWER:
+                    # The gate owns every outcome here, including the grounding
+                    # sentinel (__NO_ANSWER__ → dropped as "no_answer") and the
+                    # option check. An essay is exempt from the option check
+                    # only in the sense that a textarea has no options.
+                    verdict = gated(field, raw, "ai")
+                    if verdict is None:
                         continue
 
-                    # Match to options if applicable. Keep the AI's raw answer
-                    # when nothing matches — the client fuzzy-matches (writeSelect
-                    # / fillAriaCombobox); snapping to options[0] used to silently
-                    # select a "Select…" placeholder. A LONG unmatched answer is
-                    # the exception: a conversational sentence can never land in
-                    # a choice control, so leave the field for the user instead.
-                    if field.options:
-                        matched_opt = _match_option(answer, field.options)
-                        if matched_opt:
-                            answer = matched_opt
-                        elif len(answer) > 80:
-                            continue
-
                     answers.append(FieldAnswer(
-                        id=field.id, label=field.label, answer=answer,
+                        id=field.id, label=field.label, answer=verdict.value,
                         confidence="medium", source="ai", needsReview=True,
                         category=categorize_question(field.label),
                         canonicalQuestion=canonical,
+                        fillPass="ai",
                     ))
                 except Exception as e:
                     logger.warning("AI failed for field '%s': %s", field.label, e)
@@ -387,93 +495,4 @@ async def fill_form(
             logger.error("AI connection failed: %s", e)
             errors.append(f"AI unavailable: {e}")
 
-    return FillResponse(answers=answers, errors=errors)
-
-
-def _first_number(text: str) -> Optional[float]:
-    """The first number (comma thousands-separators tolerated) in text, or None."""
-    m = re.search(r"\d+(?:\.\d+)?", text.replace(",", ""))
-    return float(m.group()) if m else None
-
-
-def _parse_range(text: str) -> Optional[tuple[float, float]]:
-    """Parse a bucketed-range option ("2-3 years", "$90,000-$110,000", "6+
-    years", "Under 1 year") into an inclusive (min, max) — Infinity for an
-    open end — or None when the text isn't a recognizable numeric range."""
-    cleaned = re.sub(r"[,$€£¥]", "", text)
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to|–|—)\s*(\d+(?:\.\d+)?)", cleaned, re.IGNORECASE)
-    if m:
-        return float(m.group(1)), float(m.group(2))
-    m = re.search(r"(\d+(?:\.\d+)?)\s*\+", cleaned)
-    if m:
-        return float(m.group(1)), float("inf")
-    m = re.search(r"(?:under|less than|<)\s*(\d+(?:\.\d+)?)", cleaned, re.IGNORECASE)
-    if m:
-        return float("-inf"), float(m.group(1))
-    return None
-
-
-def _match_option(answer: str, options: list[str]) -> str | None:
-    """Match AI answer text to one of the available options."""
-    a = answer.lower().strip()
-    for opt in options:
-        if opt.lower().strip() == a:
-            return opt
-    a_words = [w for w in re.split(r"[^a-z0-9]+", a) if w]
-    for opt in options:
-        o = opt.lower().strip()
-        if len(a_words) <= 1:
-            # Single-word answers must match a whole word of the option —
-            # "cat" must never fuzzy-match "category" (mirrors the extension's
-            # matchOption in writeEngine.ts).
-            if a_words and a_words[0] in re.split(r"[^a-z0-9]+", o):
-                return opt
-        elif o in a or a in o:
-            return opt
-    # Bucketed numeric options ("2-3 years", "$90,000-$110,000") share no
-    # literal substring with a conversational answer ("about 3 years") even
-    # though the AI is told to answer with exact option text — check whether
-    # the answer's number actually falls inside an option's range.
-    target_num = _first_number(answer)
-    if target_num is not None:
-        for opt in options:
-            rng = _parse_range(opt)
-            if rng and rng[0] <= target_num <= rng[1]:
-                return opt
-    # A bucketed-range option set the range tier couldn't place the answer in
-    # must fail here: the buckets normalize to the same tokens ("years", "000"),
-    # so token overlap would just pick the first bucket — confidently wrong.
-    if sum(1 for opt in options if _parse_range(opt) is not None) >= 2:
-        return None
-    # Morphological near-miss: a >=5-char shared token prefix ("canada" ↔
-    # "canadian"). Mirrors the extension's matchOption tier (writeEngine.ts).
-    answer_tokens = [w for w in re.split(r"[^a-z0-9]+", a) if len(w) > 2]
-    best: tuple[str, float] | None = None
-    for opt in options:
-        tokens = [w for w in re.split(r"[^a-z0-9]+", opt.lower()) if len(w) > 2]
-        if not tokens:
-            continue
-        overlap = sum(
-            1 for w in tokens
-            if any(_shared_prefix_len(w, t) >= 5 or w == t for t in answer_tokens)
-        )
-        # Incidental overlap must not select: one shared generic token scores
-        # 0.5 on a two-token option ("University of Ottawa" → "University of
-        # Oklahoma"). Require two shared tokens, or a fully-covered
-        # single-token option ("Canadian") — writeEngine/pickOption parity.
-        score = overlap / len(tokens)
-        if score < 0.5 or (overlap < 2 and score != 1):
-            continue
-        if best is None or score > best[1]:
-            best = (opt, score)
-    if best:
-        return best[0]
-    return None
-
-
-def _shared_prefix_len(a: str, b: str) -> int:
-    n = min(len(a), len(b))
-    i = 0
-    while i < n and a[i] == b[i]:
-        i += 1
-    return i
+    return FillResponse(answers=answers, errors=errors, dropped=dropped)

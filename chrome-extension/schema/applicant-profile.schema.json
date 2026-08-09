@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tailrd.ca/schema/applicant-profile.schema.json",
+  "title": "Tailrd applicant profile",
+  "description": "The canonical user profile the extension autofills job applications from. Mirrors the TypeScript UserApplicationProfile in src/shared/types.ts and the payload of GET /api/user/application-profile. Every string field is REQUIRED but may be the empty string — the filler treats \"\" as \"no answer on file\" and skips the field rather than writing a blank, so a partially-complete profile is always valid.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "firstName",
+    "lastName",
+    "email",
+    "phone",
+    "location",
+    "addressStreet",
+    "addressCity",
+    "addressState",
+    "postalCode",
+    "country",
+    "linkedin",
+    "github",
+    "portfolio",
+    "currentCompany",
+    "currentTitle",
+    "workAuthorization",
+    "requiresSponsorship",
+    "dateOfBirth",
+    "education",
+    "experience",
+    "skills",
+    "coverLetter"
+  ],
+  "properties": {
+    "firstName": { "type": "string", "description": "Given name. Fills firstName and, joined with lastName, fullName." },
+    "lastName": { "type": "string", "description": "Family name." },
+    "email": { "type": "string", "description": "Contact email. Also the default username on ATS account-creation walls." },
+    "phone": {
+      "type": "string",
+      "description": "Phone number as the user writes it. Workday splits a number into three controls; only this one takes the digits — the dialing prompt takes the country name and the device type answers \"Mobile\" (see adapters/workdaySelectors.ts).",
+      "examples": ["+1 555 555 5555"]
+    },
+    "location": {
+      "type": "string",
+      "description": "Free-text \"City, Region, Country\". The fallback source for addressCity and country when those are blank — the last comma segment is read as the country.",
+      "examples": ["Ottawa, ON, Canada"]
+    },
+    "addressStreet": { "type": "string", "description": "Street line of the mailing address." },
+    "addressCity": { "type": "string", "description": "City. Falls back to the first segment of `location` when blank." },
+    "addressState": { "type": "string", "description": "State / province, as the ATS spells it (\"ON\", \"Ontario\")." },
+    "postalCode": { "type": "string", "description": "Postal / ZIP code." },
+    "country": {
+      "type": "string",
+      "description": "Country name, NOT an ISO code — ATS dropdowns list names (\"Canada\", and \"Canada (+1)\" for dialing prompts), and the option matcher resolves both from the name.",
+      "examples": ["Canada", "United States"]
+    },
+    "linkedin": { "type": "string", "description": "Full LinkedIn profile URL." },
+    "github": { "type": "string", "description": "Full GitHub profile URL." },
+    "portfolio": { "type": "string", "description": "Personal site / portfolio URL." },
+    "currentCompany": { "type": "string", "description": "Present employer. Also fills the first row of a Workday work-experience section." },
+    "currentTitle": { "type": "string", "description": "Present job title." },
+    "workAuthorization": {
+      "type": "string",
+      "description": "Free text answering \"Are you legally authorized to work in X?\". Kept as prose, not a boolean, because ATSs word the question and its options very differently.",
+      "examples": ["Authorized to work in Canada"]
+    },
+    "requiresSponsorship": {
+      "type": "string",
+      "description": "Answer to \"Will you now or in the future require sponsorship?\". Yes/No wording is matched against whatever options the site offers.",
+      "examples": ["No", "Yes"]
+    },
+    "dateOfBirth": {
+      "type": "string",
+      "description": "ISO date. The one field here that exists so an age gate (\"Are you 18 or older?\") is computed from a fact rather than recalled from a previously-answered question. Blank is normal and makes every age resolver abstain, leaving those questions for the user. A partial date (\"1998-04\", \"1998\") is answered only when the whole window agrees.",
+      "examples": ["1999-03-14", "1999-03", "1999", ""]
+    },
+    "education": {
+      "type": "array",
+      "description": "Most recent first. A repeating ATS education section is expanded to fit this list (see repeatingSections.ts).",
+      "items": { "$ref": "#/$defs/educationEntry" }
+    },
+    "experience": {
+      "type": "array",
+      "description": "Most recent first. A repeating ATS work-experience section is expanded to fit this list.",
+      "items": { "$ref": "#/$defs/experienceEntry" }
+    },
+    "skills": {
+      "type": "array",
+      "description": "Skill names. Multi-select widgets add these one chip at a time, capped at 12 per field.",
+      "items": { "type": "string" }
+    },
+    "coverLetter": { "type": "string", "description": "Default cover-letter text used when no job-specific letter has been generated." },
+    "salaryExpectation": {
+      "type": "string",
+      "description": "Optional. Free text or a range; bucketed option sets (\"$90,000-$110,000\") are resolved by numeric containment.",
+      "examples": ["$85,000"]
+    },
+    "eeo": { "$ref": "#/$defs/eeoAnswers" }
+  },
+  "$defs": {
+    "educationEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["school", "degree", "graduationYear"],
+      "properties": {
+        "school": { "type": "string", "description": "Institution name as it should appear on the application." },
+        "degree": { "type": "string", "description": "Degree and field, e.g. \"BSc Computer Science\"." },
+        "graduationYear": { "type": "string", "description": "Four-digit year, as a string.", "examples": ["2026"] }
+      }
+    },
+    "experienceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["company", "title", "startDate", "endDate", "description"],
+      "properties": {
+        "company": { "type": "string" },
+        "title": { "type": "string" },
+        "startDate": {
+          "type": "string",
+          "description": "ISO-ish YYYY-MM or YYYY-MM-DD. Workday's segmented month/day/year widget is driven from these parts; other formats are written verbatim.",
+          "examples": ["2025-05"]
+        },
+        "endDate": {
+          "type": "string",
+          "description": "Same format as startDate. Empty string means the role is current.",
+          "examples": ["2025-08", ""]
+        },
+        "description": { "type": "string", "description": "Role summary for a free-text description box." }
+      }
+    },
+    "eeoAnswers": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional demographic answers. These NEVER leave the device: they are excluded from every backend request, and a question with no answer here is left blank rather than guessed. Values are free text matched on-device against the site's own options.",
+      "properties": {
+        "gender": { "type": "string", "examples": ["Male", "Female", "Prefer not to say"] },
+        "genderIdentity": { "type": "string" },
+        "race": { "type": "string", "examples": ["White", "Asian", "Prefer not to say"] },
+        "hispanicLatino": { "type": "string", "examples": ["No", "Yes"] },
+        "veteranStatus": { "type": "string", "examples": ["I am not a veteran"] },
+        "disabilityStatus": { "type": "string", "examples": ["No, I do not have a disability"] },
+        "sexualOrientation": { "type": "string" }
+      }
+    }
+  }
+}

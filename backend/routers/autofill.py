@@ -33,6 +33,28 @@ class FailedField(BaseModel):
     reason: str = ""
 
 
+class FieldOutcome(BaseModel):
+    """What happened to ONE field, whether or not it worked.
+
+    Labels, categories, provenance and booleans only. `observedValuePresent` is
+    a boolean precisely so the answer itself never has to be transmitted to say
+    whether the page ended up holding one.
+    """
+    label: str = ""
+    category: str = ""
+    # "profile" | "backend" | "device" | "user"
+    tier: str = ""
+    # "derived" | "rule" | "memory" | "ai" | ""  ("pass" is a Python keyword)
+    pass_: str = Field(default="", alias="pass")
+    expected_value_present: bool = False
+    observed_value_present: bool = False
+    # filled | failed | reverted | dropped | skipped
+    outcome: str = ""
+    reason: str = ""
+
+    model_config = {"populate_by_name": True}
+
+
 class TelemetryReport(BaseModel):
     host: str
     ats_type: str = ""
@@ -42,6 +64,9 @@ class TelemetryReport(BaseModel):
     failed: int = 0
     skipped: int = 0
     failed_fields: list[FailedField] = Field(default_factory=list)
+    # Optional so an older extension build keeps reporting successfully.
+    field_outcomes: list[FieldOutcome] = Field(default_factory=list)
+    reverted: int = 0
 
 
 @router.post("/telemetry")
@@ -64,6 +89,10 @@ def record_telemetry(
         failed=max(0, report.failed),
         skipped=max(0, report.skipped),
         failed_fields=[f.model_dump() for f in report.failed_fields[:50]],
+        field_outcomes=[
+            f.model_dump(by_alias=True) for f in report.field_outcomes[:100]
+        ],
+        reverted=max(0, report.reverted),
     )
     db.add(row)
     db.commit()

@@ -26,6 +26,7 @@ export const MOCK_PROFILE: UserApplicationProfile = {
   currentTitle: "Software Engineer",
   workAuthorization: "Authorized to work in Canada",
   requiresSponsorship: "No",
+  dateOfBirth: "1999-03-14",
   education: [
     {
       school: "University of Ottawa",

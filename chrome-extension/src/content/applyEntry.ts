@@ -50,19 +50,22 @@ function entryText(el: HTMLElement): string {
 }
 
 /**
- * The best apply-entry control on the page, or null. The adapter hook wins
- * (reliable automation-ids); the generic tiers match anchored button text so
- * body copy like "apply by June 1" can never produce a click target.
+ * The best apply-entry control on the page, or null.
+ *
+ * "Apply Manually" is checked FIRST — ahead of even the adapter hook — because
+ * Workday's chooser opens as an in-page overlay: the URL never changes and the
+ * posting's own `adventureButton` ("Apply") stays in the DOM, visible, behind
+ * it. An adapter-first order therefore keeps answering "Apply" forever, which
+ * (a) re-clicks the button that opened the chooser instead of picking a path
+ * and (b) leaves stepSignature() identical across the transition, so the flow
+ * concludes the page never changed and gives up. The manual path is also simply
+ * the right answer whenever it is on screen — our filler drives that form.
+ *
+ * After that the adapter hook wins (reliable automation-ids), then the generic
+ * tiers, which match anchored button text so body copy like "apply by June 1"
+ * can never produce a click target.
  */
 export function findApplyEntry(doc: Document, adapter: SiteAdapter | null): EntryButton | null {
-  try {
-    const fromAdapter = adapter?.entryButton?.(doc);
-    if (fromAdapter && isClickable(fromAdapter)) {
-      return { el: fromAdapter, label: entryText(fromAdapter) || "Apply", fromAdapter: true };
-    }
-  } catch {
-    // Adapter hooks refine, never break — fall through to the generic tiers.
-  }
   let apply: HTMLElement | null = null;
   let cont: HTMLElement | null = null;
   for (const el of deepQueryAll(doc, ENTRY_SELECTOR)) {
@@ -72,6 +75,14 @@ export function findApplyEntry(doc: Document, adapter: SiteAdapter | null): Entr
     if (ENTRY_MANUAL_RE.test(text)) return { el, label: text, fromAdapter: false }; // best — stop
     if (!apply && ENTRY_APPLY_RE.test(text)) apply = el;
     if (!cont && ENTRY_CONTINUE_RE.test(text)) cont = el;
+  }
+  try {
+    const fromAdapter = adapter?.entryButton?.(doc);
+    if (fromAdapter && isClickable(fromAdapter)) {
+      return { el: fromAdapter, label: entryText(fromAdapter) || "Apply", fromAdapter: true };
+    }
+  } catch {
+    // Adapter hooks refine, never break — fall through to the generic tiers.
   }
   const el = apply ?? cont;
   return el ? { el, label: entryText(el), fromAdapter: false } : null;

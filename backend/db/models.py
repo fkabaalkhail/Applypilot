@@ -223,6 +223,13 @@ class SavedAnswer(Base):
     embedding_model = Column(String, default="")
     source = Column(String, default="ai")
     times_reused = Column(Integer, default=0)
+    # How often this row was the nearest neighbour at fill time. Distinct from
+    # times_reused, which POST /api/answers also bumps on every re-save — so a
+    # row saved ten times looks "popular" without ever having been recalled.
+    # Only a true match count can show a key that is attracting questions it
+    # has nothing to do with, which is what the answer-bank audit looks for.
+    times_matched = Column(Integer, default=0)
+    last_matched_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow,
                         onupdate=datetime.datetime.utcnow)
@@ -724,6 +731,21 @@ class AutofillReport(Base):
     skipped = Column(Integer, default=0)
     # [{ "label": str, "category": str, "reason": str }] — no user values.
     failed_fields = Column(JSON, default=list)
+    # Every attempted field, SUCCESSES INCLUDED:
+    #   [{label, category, tier, pass, expected_value_present,
+    #     observed_value_present, outcome, reason}]
+    #
+    # Recording only failures made one bug class unobservable by construction:
+    # a field answered wrongly but written successfully produced a `filled`
+    # count and nothing else, so the record of the page said everything went
+    # well. That is the class we keep hitting, and it was the one thing this
+    # table could never show. Still labels, categories and booleans only —
+    # never the user's answers.
+    field_outcomes = Column(JSON, default=list)
+    # Fields written successfully whose value the page no longer held at the
+    # terminal re-scan. Counted separately from `failed` so a framework that
+    # reverts values is visible as itself rather than as a write failure.
+    reverted = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
 

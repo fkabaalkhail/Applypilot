@@ -62,6 +62,36 @@ describe("validationMessages / invalidFieldCount", () => {
     expect(validationMessages(scope)).toEqual(["Email is required"]);
     expect(invalidFieldCount(scope)).toBe(2);
   });
+
+  /**
+   * REGRESSION: the flow parked on "fix the highlighted errors to continue" on
+   * every Workday job posting and never clicked Apply.
+   *
+   * `role="alert"` is also the standard marker for a screen-reader-only live
+   * region, and Workday announces routine navigation through one:
+   *   <div role="alert" class="css-ttaaxj">… page is loaded</div>
+   * (captured live from cibc.wd3.myworkdayjobs.com — visually hidden, and not
+   * an error at all). Counting it parks the flow on a pause the user cannot
+   * clear, because they cannot see the thing they are told to fix.
+   */
+  it("ignores screen-reader-only live regions", () => {
+    document.body.innerHTML = `
+      <div id="scope">
+        <div role="alert" style="clip: rect(0px, 0px, 0px, 0px)">Private Banking Associate page is loaded</div>
+        <div role="alert" style="display: none">Hidden toast</div>
+        <div role="alert" style="visibility: hidden">Invisible toast</div>
+      </div>`;
+    expect(validationMessages(document.getElementById("scope")!)).toEqual([]);
+  });
+
+  it("still reports a real, visible error", () => {
+    document.body.innerHTML = `
+      <div id="scope">
+        <div role="alert" style="clip: rect(0px, 0px, 0px, 0px)">page is loaded</div>
+        <div role="alert">Enter your email address</div>
+      </div>`;
+    expect(validationMessages(document.getElementById("scope")!)).toEqual(["Enter your email address"]);
+  });
 });
 
 describe("resumeFieldNeedingFile", () => {

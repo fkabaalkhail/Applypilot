@@ -41,5 +41,19 @@ export function toApplicantProfile(p: UserApplicationProfile): ApplicantProfile 
           .filter(Boolean)
           .join(" ")
       ),
+    // Structured duplicates of the two lists above, for the backend's
+    // deterministic resolvers. The prose forms are context for the model and
+    // are the wrong input for arithmetic — "BSc, uOttawa (2025)" has to be
+    // parsed back apart before a graduation year can be read out of it, and a
+    // parser that is wrong about a date is worse than no answer at all.
+    dateOfBirth: p.dateOfBirth ?? "",
+    workHistory: (p.experience ?? [])
+      .slice(0, 8)
+      .map((e) => ({ startDate: e.startDate ?? "", endDate: e.endDate ?? "" })),
+    educationHistory: (p.education ?? []).slice(0, 5).map((e) => ({
+      degree: e.degree ?? "",
+      school: e.school ?? "",
+      graduationYear: e.graduationYear ?? "",
+    })),
   };
 }

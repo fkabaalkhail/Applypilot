@@ -18,6 +18,7 @@ import type {
   UserApplicationProfile,
 } from "../shared/types";
 import { buildProfilePatch, isProfileCategory } from "../shared/profileCategories";
+import { isNamedQuestion } from "../shared/questionText";
 import { normalize } from "./fieldMatcher";
 
 /** Never ask about more than this in one sitting — the modal is a follow-up,
@@ -39,6 +40,9 @@ export interface AnswerGap {
   helpText?: string;
   /** Native input type hint ("date", "number") — picks the modal's input type. */
   inputType?: string;
+  /** Names this employer or role, so the answer cannot transfer to another
+   *  application: still asked, never banked. */
+  oneOff?: boolean;
 }
 
 export interface GapJobContext {
@@ -101,24 +105,46 @@ function isReusable(f: DetectedField): boolean {
 }
 
 /**
- * The questions this page left unanswered that are worth remembering. Ordered
- * as scanned (so the modal reads top-to-bottom like the form), deduped by
- * normalized label, capped at MAX_GAPS.
+ * The questions this page still has blank. Ordered as scanned (so the modal
+ * reads top-to-bottom like the form), deduped by normalized label, capped at
+ * MAX_GAPS.
+ *
+ * The test is what the PAGE holds, not what the planner produced. Gating on
+ * "we had no answer for it" instead meant a field we DID answer was never
+ * offered again — even when the write missed and the control was left empty,
+ * which is precisely when the user needs to be asked. On the BMO questionnaire
+ * that hid "What is your gender identity?" (we proposed "Male") and "Have you
+ * ever had any Canadian military service?" (we proposed "I am not a protected
+ * veteran", a value its Yes/No widget cannot take): both stayed on "Select One"
+ * with no way to answer them.
+ *
+ * This is only ever called after a fill has run (PanelState.fillRan) and over a
+ * re-scan of the page, so `currentValue` is the post-fill truth. It follows that
+ * a control whose committed value we cannot read is asked about again — the
+ * honest failure direction, and why `readComboboxValue` must see a button-style
+ * trigger's own text.
+ *
+ * `reverted` closes the remaining hole. "Has a value" is not "has the right
+ * value": a framework that resets a control to its own default after the write
+ * verified leaves a non-empty field holding something nobody chose, and the
+ * emptiness test alone would skip it forever. Those ids come from the terminal
+ * re-scan diff (telemetry.revertedFields), so the modal asks about what the
+ * page actually holds rather than about what the planner meant to do.
  */
 export function selectAnswerGaps(
   fields: readonly DetectedField[],
-  job: GapJobContext
+  job: GapJobContext,
+  reverted: ReadonlySet<string> = new Set()
 ): AnswerGap[] {
   const gaps: AnswerGap[] = [];
   const seen = new Set<string>();
   for (const f of fields) {
     if (gaps.length >= MAX_GAPS) break;
-    if (!f.fillable || f.proposedValue !== null) continue;
-    if ((f.currentValue ?? "").trim()) continue;
+    if (!f.fillable) continue;
+    if ((f.currentValue ?? "").trim() && !reverted.has(f.id)) continue;
     const question = f.label.trim();
     if (!question) continue;
     if (!isReusable(f)) continue;
-    if (isOneOff(`${question} ${f.helpText ?? ""}`, job)) continue;
     const key = normalize(question);
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -132,6 +158,10 @@ export function selectAnswerGaps(
       sensitive: f.sensitive,
       helpText: f.helpText,
       inputType: f.inputType,
+      // Asked, because the form needs it filled now; not remembered, because the
+      // answer is about THIS employer. Dropping it from the modal instead left a
+      // required question with no way to answer it.
+      oneOff: isOneOff(`${question} ${f.helpText ?? ""}`, job),
     });
   }
   return gaps;
@@ -226,6 +256,13 @@ export function planAnswerSaves(answers: readonly AnsweredGap[]): AnswerSavePlan
   for (const { gap, value } of answers) {
     const answer = value.trim();
     if (!answer) continue;
+    // An answer is remembered UNDER ITS QUESTION, and recalled by matching that
+    // text against a future form's question. A key that names no question —
+    // "Unlabeled field", or a raw widget id — can never match the question it
+    // came from, and can match unrelated ones. Filling the page already happened;
+    // this only declines to remember it. A profile slot is exempt: its key is the
+    // category, not the label, so it stays correct however the field was named.
+    if (!isProfileCategory(gap.category) && (gap.oneOff || !isNamedQuestion(gap.question))) continue;
     if (isProfileCategory(gap.category)) {
       profileEntries.push({ category: gap.category, value: answer });
     } else if (gap.sensitive) {

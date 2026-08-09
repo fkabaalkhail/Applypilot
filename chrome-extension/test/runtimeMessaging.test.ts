@@ -108,3 +108,36 @@ describe("sendToRuntime", () => {
     await expect(sendToRuntime({ type: "GET_STATUS" })).resolves.toBeUndefined();
   });
 });
+
+/**
+ * REGRESSION: after the extension is reloaded/updated, a content script already
+ * injected in an open tab is ORPHANED. The teardown used to only disconnect
+ * observers, leaving the panel fully rendered — Autofill enabled, clicking it
+ * silently doing nothing, no flow able to start (the background is
+ * unreachable). Indistinguishable from "the extension is broken".
+ */
+describe("orphaned panel tells the user to reload", () => {
+  it("disables Autofill, hides the flow controls and shows the reason", async () => {
+    const { buildHTML, installRefs, showReloadRequired, updateFlowProgress } = await import(
+      "../src/content/overlay"
+    );
+    const host = document.createElement("div");
+    host.className = "ap-root";
+    host.innerHTML = buildHTML();
+    document.body.append(host);
+    installRefs(host as HTMLDivElement);
+
+    // A parked flow is on screen: gate visible, Autofill live.
+    updateFlowProgress({ phase: "ready", step: 1, filledOk: 4, filledFail: 0, nextLabel: "Next" });
+    expect((host.querySelector(".ap-flow-next-wrap") as HTMLElement).style.display).toBe("flex");
+
+    showReloadRequired();
+
+    expect((host.querySelector("#ap-btn-autofill") as HTMLButtonElement).disabled).toBe(true);
+    expect((host.querySelector(".ap-flow-next-wrap") as HTMLElement).style.display).toBe("none");
+    expect((host.querySelector("#ap-flow") as HTMLElement).style.display).toBe("none");
+    const banner = host.querySelector("#ap-banner") as HTMLElement;
+    expect(banner.style.display).toBe("block");
+    expect(banner.textContent).toMatch(/reload this page/i);
+  });
+});

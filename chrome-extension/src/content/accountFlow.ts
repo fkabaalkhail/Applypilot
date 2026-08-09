@@ -10,6 +10,12 @@ import { cleanText, deepQueryAll, isHiddenButLabeled, isVisible } from "./domUti
 import { generatePassword } from "./passwordGen";
 import { getCredential, getDefaultCredential, saveCredential } from "./credentialStore";
 import type { WriteResult } from "./writeEngine";
+import {
+  CONSENT_MARKER_RE as WD_CONSENT_MARKER_RE,
+  CREATE_ACCOUNT_LINK_SELECTOR as WD_CREATE_ACCOUNT_LINK_SELECTOR,
+  SIGNUP_MARKER_RE as WD_SIGNUP_MARKER_RE,
+  automationIdChain,
+} from "./adapters/workdaySelectors";
 
 export type WallKind = "signup" | "login";
 
@@ -45,7 +51,7 @@ const SIGNUP_TOGGLE_RE = /^(create( an| my)? account|sign ?up|register|new user\
  * move that can succeed, so the flow clicks this first.
  */
 export function findSignupToggle(scope: HTMLElement): HTMLElement | null {
-  const byId = deepQueryAll(scope, '[data-automation-id="createAccountLink"]').find((el) => isVisible(el));
+  const byId = deepQueryAll(scope, WD_CREATE_ACCOUNT_LINK_SELECTOR).find((el) => isVisible(el));
   if (byId) return byId;
   for (const el of deepQueryAll(scope, 'a[href], button, [role="button"], [role="link"]')) {
     if ((el as HTMLButtonElement).disabled || !isVisible(el)) continue;
@@ -58,31 +64,22 @@ export function findSignupToggle(scope: HTMLElement): HTMLElement | null {
 /** Consent/agreement checkbox labels a signup gate requires ticked. */
 const AGREE_RE = /agree|consent|i have read|read and|\bterms\b|privacy|policy|acknowledge|gdpr/i;
 
-/** data-automation-id patterns that mark a consent gate (Workday et al.).
- *  Workday's create-account consent is `createAccountCheckbox` — a native
- *  checkbox it renders visually hidden behind a styled control, with no
- *  `required` attribute and no agreement-worded label, so the generic filter
- *  misses it entirely. */
-const CONSENT_AUTOMATION_RE = /createaccountcheckbox|agree|consent|privacy|terms|acknowledg|gdpr/i;
-/** Automation-ids that mark a Workday create-account (signup) form. */
-const SIGNUP_AUTOMATION_RE = /createaccount|verifypassword|verifynewpassword|confirmpassword/i;
+/** Generic test-id wording that marks a consent gate on any ATS. The
+ *  Workday-specific marker (`createAccountCheckbox` — a native checkbox
+ *  rendered visually hidden, with no `required` and no agreement-worded label)
+ *  comes from workdaySelectors, since only its automation-id identifies it. */
+const CONSENT_WORDS_RE = /agree|consent|privacy|terms|acknowledg|gdpr/i;
 
-/** All data-automation-ids from `el` up through its wrappers, lower-cased and
- *  joined — Workday's real markers often sit on an ancestor, not the input. */
-function automationChain(el: HTMLElement): string {
-  const ids: string[] = [];
-  let node: HTMLElement | null = el;
-  for (let i = 0; node && i < 5; i++, node = node.parentElement) {
-    const id = node.getAttribute("data-automation-id");
-    if (id) ids.push(id);
-  }
-  return ids.join(" ").toLowerCase();
+/** True when the automation-id chain above `el` marks a consent checkbox. */
+function isConsentMarked(el: HTMLElement): boolean {
+  const chain = automationIdChain(el, 5);
+  return WD_CONSENT_MARKER_RE.test(chain) || CONSENT_WORDS_RE.test(chain);
 }
 
 /** True when any control in `scope` carries a Workday create-account marker. */
 function hasSignupMarker(scope: HTMLElement): boolean {
   return (deepQueryAll(scope, "[data-automation-id]") as HTMLElement[]).some((el) =>
-    SIGNUP_AUTOMATION_RE.test(el.getAttribute("data-automation-id") ?? "")
+    WD_SIGNUP_MARKER_RE.test(el.getAttribute("data-automation-id") ?? "")
   );
 }
 
@@ -111,7 +108,7 @@ function agreementCheckboxes(scope: HTMLElement): HTMLElement[] {
     if ((el as HTMLInputElement).disabled) return false;
     const checked = el instanceof HTMLInputElement ? el.checked : el.getAttribute("aria-checked") === "true";
     if (checked) return false;
-    const consentId = CONSENT_AUTOMATION_RE.test(automationChain(el));
+    const consentId = isConsentMarked(el);
     // Workday hides the native checkbox behind a styled control (no rendered
     // box, no label), so visibility can't gate an automation-id-marked consent.
     if (!consentId && !(isVisible(el) || isHiddenButLabeled(el))) return false;

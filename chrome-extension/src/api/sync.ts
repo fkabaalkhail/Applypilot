@@ -52,6 +52,7 @@ function normalizeProfile(raw: Partial<UserApplicationProfile>): UserApplication
     currentTitle: str(raw.currentTitle),
     workAuthorization: str(raw.workAuthorization),
     requiresSponsorship: str(raw.requiresSponsorship),
+    dateOfBirth: str(raw.dateOfBirth),
     education: Array.isArray(raw.education) ? raw.education : [],
     experience: Array.isArray(raw.experience) ? raw.experience : [],
     skills: Array.isArray(raw.skills) ? raw.skills.filter((s): s is string => typeof s === "string") : [],

@@ -11,7 +11,13 @@
  * mutation is exactly the focus-stealing churn the reconciler avoids, so these
  * controls are filled once during the autofill pass and never drift-tracked.
  */
-import { cleanText, deepQueryAll, dispatchInputEvents, setNativeValue } from "./domUtils";
+import {
+  cleanText,
+  deepQueryAll,
+  dispatchInputEvents,
+  isPlaceholderFiller,
+  setNativeValue,
+} from "./domUtils";
 import { normalize } from "./fieldMatcher";
 import { matchOption } from "./writeEngine";
 import {
@@ -559,20 +565,41 @@ function findMountedListbox(trigger: HTMLElement): HTMLElement | null {
 
 /**
  * The combobox's currently-displayed value, if one is committed — best-effort,
- * for scan-time "already answered?" detection. Deliberately ignores raw <button>
- * text (often a "Select…" placeholder) and reads only strong selection signals.
+ * for scan-time "already answered?" detection.
+ *
+ * A button-style trigger (Workday's prompt) displays its selection AS its own
+ * text and carries none of the stronger signals, so reading only those reported
+ * every such widget as empty however it had been answered. Three things believe
+ * this: the gap modal re-asked questions the page had already answered, the
+ * flow's `hasUnfilledRequired` gate could never clear on Workday, and a later
+ * pass would overwrite an answer the user had picked by hand.
+ *
+ * It is read LAST and only from a button-like trigger, so an input-based widget
+ * (react-select) is unaffected; and "Select One" is placeholder filler, so an
+ * unset prompt still reads as empty — which is what keeps this from silently
+ * suppressing the fill of a field nobody has answered.
  */
 export function readComboboxValue(trigger: HTMLElement): string | undefined {
+  const ownText = isButtonLikeTrigger(trigger) ? cleanText(trigger.textContent) : "";
   const candidates = [
     trigger instanceof HTMLInputElement ? trigger.value : "",
     activeDescendantText(trigger),
     ...valueContainerTexts(trigger),
+    ownText && !isPlaceholderFiller(ownText) ? ownText : "",
   ];
   for (const c of candidates) {
     const v = cleanText(c);
     if (v) return v;
   }
   return undefined;
+}
+
+/** A trigger whose own text is its displayed value rather than a caption. */
+function isButtonLikeTrigger(trigger: HTMLElement): boolean {
+  return (
+    trigger.tagName === "BUTTON" ||
+    (trigger.getAttribute("aria-haspopup") || "").toLowerCase() === "listbox"
+  );
 }
 
 /** Text of the option referenced by aria-activedescendant, if any. */

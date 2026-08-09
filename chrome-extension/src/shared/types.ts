@@ -58,6 +58,13 @@ export interface UserApplicationProfile {
   currentTitle: string;
   workAuthorization: string;
   requiresSponsorship: string;
+  /**
+   * ISO "YYYY-MM-DD". The one profile fact that exists purely so an age gate
+   * ("Are you 18 or older?") is COMPUTED rather than recalled — see
+   * backend/services/derived_facts.py. Blank is normal and means every age
+   * resolver abstains, which is the honest default, not a degraded one.
+   */
+  dateOfBirth: string;
   education: EducationEntry[];
   experience: ExperienceEntry[];
   skills: string[];
@@ -298,6 +305,15 @@ export interface ApplicantProfile {
   skills: string[];
   experience: string[];
   education: string[];
+  /**
+   * Facts the backend can COMPUTE an answer from, kept structured so no
+   * resolver has to re-parse the display strings above. `experience` and
+   * `education` stay as prose because that is what the model reads; arithmetic
+   * reads these.
+   */
+  dateOfBirth: string;
+  workHistory: { startDate: string; endDate: string }[];
+  educationHistory: { degree: string; school: string; graduationYear: string }[];
 }
 
 /** One remembered answer (Question Memory), shown in Autofill Information. */
@@ -307,6 +323,18 @@ export interface SavedAnswerItem {
   answer: string;
   category: string;
   timesReused: number;
+  /** How often this row won recall at fill time. Distinct from timesReused,
+   *  which a re-save also bumps — only a true match count can show a key that
+   *  is attracting questions it has nothing to do with. */
+  timesMatched?: number;
+  /** "user_edited" (the gap modal) | "ai" (accepted as-is). */
+  source?: string;
+  createdAt?: string;
+  /** The backend judged this row's KEY unusable — widget boilerplate, an
+   *  opaque id, or a key sitting close enough to others to win their recall.
+   *  Such a row answers questions it was never about. */
+  suspect?: boolean;
+  suspectReason?: string;
 }
 
 /** Scraped page context that improves AI answers. Empty strings are fine. */
@@ -328,6 +356,26 @@ export interface AiFillAnswer {
   needsReview?: boolean;
   category?: string;
   canonicalQuestion?: string;
+  /** Which backend pass produced it: "derived" | "rule" | "memory" | "ai".
+   *  Absent from older backends. */
+  fillPass?: string;
+}
+
+/**
+ * A candidate value the backend's grounding gate refused.
+ *
+ * The field is left blank on purpose: a value the profile contradicts, or one
+ * the widget does not offer, is worse than an empty field, because an empty
+ * field is one the post-fill re-scan can still ask the user about. Carries the
+ * reason and never the value.
+ */
+export interface DroppedAnswer {
+  id: string;
+  label: string;
+  /** "no_answer" | "not_an_offered_option" | "contradicts_profile:<what>". */
+  reason: string;
+  /** Which backend pass proposed it: "derived" | "rule" | "memory" | "ai". */
+  source: string;
 }
 
 /** Background-worker reply for an AI_FILL request. */
@@ -337,6 +385,7 @@ export interface AiFillResponse {
   needsLogin?: boolean;
   answers: AiFillAnswer[];
   errors: string[];
+  dropped?: DroppedAnswer[];
 }
 
 // ---------------------------------------------------------------------------
@@ -576,6 +625,10 @@ export interface RemoteFormAvailable {
 export interface RemoteFieldsUpdated {
   type: "REMOTE_FIELDS_UPDATED";
   fields: DetectedField[];
+  /** Field ids the child's terminal re-scan found no longer holding what was
+   *  written. An array rather than a Set — this crosses a structured-clone
+   *  boundary. Omitted on an ordinary rescan, which carries no new verdict. */
+  reverted?: string[];
 }
 
 /** Child → background: "I own a form." Background forwards as REMOTE_FORM_AVAILABLE. */
@@ -699,6 +752,45 @@ export interface OverridesResponse {
  * and fields the filler struggles with (the signal for authoring server-side
  * override rules). Field labels + outcomes only — never the user's values.
  */
+/**
+ * What happened to one field, whether or not it worked.
+ *
+ * Recording only FAILURES made the one bug class we keep hitting — reported
+ * filled, actually wasn't — unobservable by construction. A field that the
+ * pipeline answered wrongly but wrote successfully produced a `filled` count
+ * and nothing else, so the record of the page said everything went well.
+ *
+ * Labels, categories, provenance and booleans only. Never the answer: the
+ * privacy posture is that a user's answers do not leave the device except to
+ * be typed into the employer's own form.
+ */
+export interface FieldOutcomeRecord {
+  label: string;
+  category: string;
+  /** Which layer produced the value: "profile" | "backend" | "device" | "user". */
+  tier: string;
+  /** Which backend pass, when the value came from one: "derived" | "rule" |
+   *  "memory" | "ai"; "" for anything resolved without the backend. */
+  pass: string;
+  /** Did we intend to write anything here? */
+  expectedValuePresent: boolean;
+  /** Did the control hold a value when the page was re-scanned afterwards? */
+  observedValuePresent: boolean;
+  /**
+   * "filled"    — written, and still holding a value at the terminal re-scan
+   * "failed"    — the write itself did not land
+   * "reverted"  — the write landed, and the value was gone (or changed) by the
+   *               re-scan. This is the case per-write verification cannot see:
+   *               a framework can reset a control on blur, on validation, or on
+   *               a re-render some LATER field triggered.
+   * "dropped"   — the backend gate refused the candidate value
+   * "skipped"   — nothing was proposed for this field
+   */
+  outcome: "filled" | "failed" | "reverted" | "dropped" | "skipped";
+  /** Failure/drop reason when there is one. Never contains an answer. */
+  reason?: string;
+}
+
 export interface AutofillTelemetry {
   host: string;
   atsType: string;
@@ -708,6 +800,10 @@ export interface AutofillTelemetry {
   failed: number;
   skipped: number;
   failedFields: { label: string; category: string; reason: string }[];
+  /** Every attempted field, successes included. See FieldOutcomeRecord. */
+  fieldOutcomes?: FieldOutcomeRecord[];
+  /** Fields whose observed page state disagreed with what was written. */
+  reverted?: number;
 }
 
 /**

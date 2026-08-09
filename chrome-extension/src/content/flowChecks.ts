@@ -22,10 +22,22 @@ export function hasUnsolvedCaptcha(doc: Document): boolean {
   return !tokens.some((t) => Boolean(t.value));
 }
 
-/** Populated alert texts inside the scope (the page is telling the user off). */
+/**
+ * Populated alert texts inside the scope (the page is telling the user off).
+ *
+ * VISIBLE ones only, like invalidFieldCount below. `role="alert"` is also the
+ * standard marker for a screen-reader-only live region, and SPAs use those to
+ * announce routine navigation — Workday puts
+ * `<div role="alert">…page is loaded</div>` on every job posting. Counting an
+ * sr-only announcement as a validation failure parks the flow on "fix the
+ * highlighted errors" forever: the user cannot fix an error they cannot see,
+ * so the pause never clears. If the user is expected to act on it, it has to
+ * be on screen.
+ */
 export function validationMessages(scope: HTMLElement): string[] {
   const msgs: string[] = [];
   for (const el of deepQueryAll(scope, '[role="alert"], [aria-live="assertive"]')) {
+    if (!isVisible(el)) continue;
     const t = cleanText(el.textContent);
     if (t) msgs.push(t);
   }

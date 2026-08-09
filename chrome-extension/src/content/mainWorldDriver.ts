@@ -12,6 +12,10 @@ import {
   type MwFillDetail,
   type MwResultDetail,
 } from "./mainWorldBridge";
+import {
+  PROMPT_BUTTON_SELECTOR as WD_PROMPT_BUTTON_SELECTOR,
+  PROMPT_OPTION_SELECTOR as WD_PROMPT_OPTION_SELECTOR,
+} from "./adapters/workdaySelectors";
 
 const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").trim();
 
@@ -265,12 +269,15 @@ async function fillWorkday(el: HTMLElement, value: string): Promise<string | nul
   }
 
   // DOM fallback: open the prompt, wait for options, click the match.
-  const opener = widget.querySelector<HTMLElement>('[data-automation-id="promptButton"], button') ?? (widget as HTMLElement);
+  const opener =
+    widget.querySelector<HTMLElement>(`${WD_PROMPT_BUTTON_SELECTOR}, button`) ?? (widget as HTMLElement);
   fireMouse(opener, "mousedown");
   fireMouse(opener, "click");
   await sleep(80);
   const options = Array.from(
-    (widget.ownerDocument ?? document).querySelectorAll<HTMLElement>('[data-automation-id="promptOption"], [role="option"]')
+    (widget.ownerDocument ?? document).querySelectorAll<HTMLElement>(
+      `${WD_PROMPT_OPTION_SELECTOR}, [role="option"]`
+    )
   );
   const idx = pickOption(options.map((o) => norm(o.textContent ?? "")), value);
   if (idx < 0) return null;

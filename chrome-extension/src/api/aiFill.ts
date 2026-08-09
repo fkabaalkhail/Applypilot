@@ -4,12 +4,21 @@
  * resume from the DB — so we send an empty resumeText. Runs in the service
  * worker, where authedRequest handles auth + silent token refresh.
  */
-import type { AiFillAnswer, AiFillField, ApplicantProfile, JobContext } from "../shared/types";
+import type {
+  AiFillAnswer,
+  AiFillField,
+  ApplicantProfile,
+  DroppedAnswer,
+  JobContext,
+} from "../shared/types";
 import { authedRequest } from "./client";
 
 interface FillApiResponse {
   answers: AiFillAnswer[];
   errors: string[];
+  /** Candidate values the backend's grounding gate refused, with a reason.
+   *  Absent from older backends — callers must treat it as optional. */
+  dropped?: DroppedAnswer[];
 }
 
 export function buildFillRequestBody(

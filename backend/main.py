@@ -28,6 +28,8 @@ from backend.migrations.add_resume_sections import run_migration as run_resume_s
 from backend.migrations.add_resume_content_updated import run_migration as run_resume_content_updated_migration
 from backend.migrations.add_job_catalogue_fields import run_migration as run_job_catalogue_migration
 from backend.migrations.add_ingestion_freshness import run_migration as run_ingestion_freshness_migration
+from backend.migrations.add_answer_match_stats import run_migration as run_answer_match_stats_migration
+from backend.migrations.add_autofill_field_outcomes import run_migration as run_autofill_field_outcomes_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile, answers, autofill
 from backend.routers import auth, auth_extension, extension, tailor, cover_letter, auth_linkedin
 from backend.routers.feedback import router as feedback_router
@@ -51,6 +53,8 @@ async def lifespan(app: FastAPI):
     run_resume_content_updated_migration()
     run_job_catalogue_migration()
     run_ingestion_freshness_migration()
+    run_answer_match_stats_migration()
+    run_autofill_field_outcomes_migration()
     yield
 
 

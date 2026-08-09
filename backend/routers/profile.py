@@ -78,6 +78,11 @@ class ApplicationProfileOut(BaseModel):
     workAuthorization: str = ""
     requiresSponsorship: str = ""
     salaryExpectation: str = ""
+    # ISO "YYYY-MM-DD". The only fact on this profile that exists purely so an
+    # age gate can be COMPUTED rather than recalled — see
+    # backend/services/derived_facts.py. Blank means every age resolver
+    # abstains, which is the honest default.
+    dateOfBirth: str = ""
     education: list[EducationEntry] = []
     experience: list[ExperienceEntry] = []
     skills: list[str] = []
@@ -124,6 +129,7 @@ class ApplicationProfileIn(BaseModel):
     workAuthorization: str | None = None
     requiresSponsorship: str | None = None
     salaryExpectation: str | None = None
+    dateOfBirth: str | None = None
     eeo: EeoIn | None = None
 
 
@@ -157,6 +163,10 @@ def _split_name(full_name: str) -> tuple[str, str]:
 _WORK_AUTH_KEY = "Are you authorized to work in this country?"
 _SPONSOR_KEY = "Do you now or in the future require sponsorship?"
 _SALARY_KEY = "Salary expectation"
+# Not a screening ANSWER — a stored fact, kept in the same free-form map so it
+# needs no column of its own. Never mined by substring: a date of birth is
+# either the value under this exact key or absent.
+_DOB_KEY = "Date of birth"
 
 # SetupWizard (frontend/src/setup/SetupWizard.tsx) dumps its own internal filter
 # state into the same map. These are enum tokens ("needs_sponsorship",
@@ -165,6 +175,19 @@ _SALARY_KEY = "Salary expectation"
 # to serve it back as the user's work-authorization answer and shadow their
 # real one.
 _SETUP_KEYS = frozenset({"job_types", "work_authorization", "target_titles"})
+
+
+def _stored_dob(prefilled: dict | None) -> str:
+    """The stored date of birth, exact-key only.
+
+    Substring mining is deliberately not used here. "Date of birth" is close
+    enough to a dozen other question texts a form might harvest ("Date of birth
+    of dependent", "Earliest start date") that a fuzzy read could hand an age
+    resolver the wrong date — and an age gate answered from the wrong date is
+    exactly the class of bug this whole path exists to remove.
+    """
+    value = (prefilled or {}).get(_DOB_KEY)
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _mine_screening(prefilled: dict | None) -> tuple[str, str, str]:
@@ -365,6 +388,7 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
         workAuthorization=work_authorization,
         requiresSponsorship=requires_sponsorship,
         salaryExpectation=salary_expectation,
+        dateOfBirth=_stored_dob(settings.prefilled_answers if settings else None),
         education=education,
         experience=experience,
         skills=skills,
@@ -463,6 +487,8 @@ def update_application_profile(
         answers[_SPONSOR_KEY] = body.requiresSponsorship
     if body.salaryExpectation is not None:
         answers[_SALARY_KEY] = body.salaryExpectation
+    if body.dateOfBirth is not None:
+        answers[_DOB_KEY] = body.dateOfBirth.strip()
     settings.prefilled_answers = answers
 
     db.commit()

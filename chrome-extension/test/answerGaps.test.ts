@@ -32,8 +32,19 @@ describe("selectAnswerGaps — candidacy", () => {
     expect(selectAnswerGaps([field()], NO_JOB)).toHaveLength(1);
   });
 
-  it("skips a field autofill already answered", () => {
-    expect(selectAnswerGaps([field({ proposedValue: "Yes" })], NO_JOB)).toEqual([]);
+  // Was: "skips a field autofill already answered". A proposed value is a plan,
+  // not an outcome — gating on it hid every field whose write missed, which is
+  // exactly when the user needs to be asked (BMO gender identity / military
+  // service, 2026-08-09). What proves a field is answered is the PAGE holding a
+  // value, which the next test pins.
+  it("asks again when the proposed answer never landed on the page", () => {
+    expect(selectAnswerGaps([field({ proposedValue: "Yes" })], NO_JOB)).toHaveLength(1);
+  });
+
+  it("skips a field autofill answered and actually wrote", () => {
+    expect(
+      selectAnswerGaps([field({ proposedValue: "Yes", currentValue: "Yes" })], NO_JOB)
+    ).toEqual([]);
   });
 
   it("skips a field the page already has a value in", () => {
@@ -111,26 +122,35 @@ describe("selectAnswerGaps — reusable-looking only", () => {
   });
 });
 
+// A one-off question is asked like any other — the form still needs it filled —
+// and marked so its answer is never banked. Dropping it from the modal outright
+// (the previous behavior) left a required question with no way to answer it:
+// BMO's "…that would continue after obtaining employment with BMO Financial
+// Group?" was silently absent from the modal on 2026-08-09.
 describe("selectAnswerGaps — one-off questions", () => {
   const job = { company: "Acme Corp", jobTitle: "Software Engineer" };
 
-  it("skips a question naming this company", () => {
+  it("asks a question naming this company, marked one-off", () => {
     const f = field({ label: "Have you applied to Acme Corp before?" });
-    expect(selectAnswerGaps([f], job)).toEqual([]);
+    const [gap] = selectAnswerGaps([f], job);
+    expect(gap.question).toBe("Have you applied to Acme Corp before?");
+    expect(gap.oneOff).toBe(true);
   });
 
-  it("skips a question naming this job title", () => {
+  it("marks a question naming this job title one-off", () => {
     const f = field({ label: "Why this Software Engineer role?" });
-    expect(selectAnswerGaps([f], job)).toEqual([]);
+    expect(selectAnswerGaps([f], job)[0].oneOff).toBe(true);
   });
 
-  it("skips when the help text — not the label — names the company", () => {
+  it("marks it one-off when the help text — not the label — names the company", () => {
     const f = field({ label: "How did you hear about us?", helpText: "Acme Corp uses this to..." });
-    expect(selectAnswerGaps([f], job)).toEqual([]);
+    expect(selectAnswerGaps([f], job)[0].oneOff).toBe(true);
   });
 
-  it("keeps a generic question on a page that has a company", () => {
-    expect(selectAnswerGaps([field()], job)).toHaveLength(1);
+  it("keeps a generic question on a page that has a company, and does not mark it", () => {
+    const gaps = selectAnswerGaps([field()], job);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].oneOff).toBe(false);
   });
 
   it("ignores a company name too short to match safely", () => {
@@ -319,5 +339,28 @@ describe("answersWorthRemembering", () => {
     const answers = [{ gap: gap({ fieldId: "a", controlType: "combobox", options: [] }), value: "Yes" }];
     answersWorthRemembering(answers, ok());
     expect(answers.length).toBe(1);
+  });
+});
+
+describe("selectAnswerGaps — fields the page reverted", () => {
+  it("asks again about a field the framework reset after the write verified", () => {
+    // "Has a value" is not "has the right value". A control the site reset to
+    // its own default holds something nobody chose, and the emptiness test
+    // alone would skip it forever — which is exactly the case a per-write
+    // verification cannot see, because the reset happened after it passed.
+    const f = field({ currentValue: "Select One" });
+    expect(selectAnswerGaps([f], NO_JOB)).toHaveLength(0);
+    expect(selectAnswerGaps([f], NO_JOB, new Set([f.id]))).toHaveLength(1);
+  });
+
+  it("leaves a field alone when the page holds what was written", () => {
+    const f = field({ currentValue: "Yes" });
+    expect(selectAnswerGaps([f], NO_JOB, new Set(["some-other-field"]))).toHaveLength(0);
+  });
+
+  it("still respects everything else about candidacy", () => {
+    // A reverted field that is not reusable is still not worth asking about.
+    const f = field({ currentValue: "x", controlType: "file" as ControlType });
+    expect(selectAnswerGaps([f], NO_JOB, new Set([f.id]))).toHaveLength(0);
   });
 });

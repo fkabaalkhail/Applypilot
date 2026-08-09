@@ -109,3 +109,87 @@ def best_match(query_embedding: list[float], rows):
             best_score = score
             best_row = row
     return best_row, best_score
+
+
+# ── Key health ───────────────────────────────────────────────────────────────
+#
+# A stored answer is keyed by its question text and recalled by matching that
+# text. So a key that names no question is not merely a cosmetic problem: it can
+# never match the question it came from, and it matches VERBATIM — at cosine
+# 1.0 — every future field whose label harvests to the same boilerplate.
+#
+# Production, 2026-08-09, bmo.wd3.myworkdayjobs.com: Workday writes
+# `aria-label="<question> <displayed value> Required"`, and for a yes/no radio
+# group with no question in the attribute that collapses to "Yes Required".
+# Every such group on the page canonicalized to one key, so they all shared a
+# single row and the last answer saved became the answer to all of them.
+#
+# Mirrors chrome-extension/src/shared/questionText.ts, which stops such keys
+# being minted. This is the other half: finding the ones already banked.
+
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+_HEX_BLOB_RE = re.compile(r"^[0-9a-f]{12,}$", re.I)
+
+# What a widget says about ITSELF: the value it currently displays, plus the
+# required marker. A key made only of these words carries no question.
+_WIDGET_WORDS = (
+    r"yes|no|select|selected|one|an?|the|option|choose|pick|please|"
+    r"required|optional|value|click|here|none|other|n/a"
+)
+_BOILERPLATE_RE = re.compile(rf"^(?:(?:{_WIDGET_WORDS})[\s\-–—,:*.…?()]*)+$", re.IGNORECASE)
+
+UNLABELED_FIELD = "Unlabeled field"
+
+
+def is_machine_id(text: str) -> bool:
+    """An opaque widget id rather than a name (mirrors questionText.isMachineId)."""
+    t = (text or "").strip()
+    if not t or re.search(r"\s", t):
+        return False
+    if _UUID_RE.match(t):
+        return True
+    parts = re.split(r"[-_:.]", t)
+    return bool(parts) and all(_HEX_BLOB_RE.match(p) for p in parts)
+
+
+def key_health(question: str) -> str:
+    """"" when the key names a question; otherwise a reason slug.
+
+    Terseness is NOT a fault — "Ethnicity" is a perfectly good key. What is
+    flagged is a key that says nothing about the question at all.
+    """
+    t = (question or "").strip()
+    if not t:
+        return "empty_key"
+    if t.casefold() == UNLABELED_FIELD.casefold():
+        return "unlabeled"
+    if is_machine_id(t):
+        return "machine_id"
+    if _BOILERPLATE_RE.match(t):
+        return "widget_boilerplate"
+    return ""
+
+
+def attractor_neighbours(rows, threshold: float = MATCH_THRESHOLD):
+    """``{row_id: [(other_id, score), …]}`` for keys that sit within the reuse
+    threshold of OTHER stored keys.
+
+    A stored question should be the nearest neighbour of itself and of nothing
+    else in the bank. A row that is this close to several unrelated rows will
+    win recall for their questions too — which is what "attracts unrelated
+    questions" means, measured on data we actually hold rather than inferred
+    from a hit counter.
+    """
+    out: dict[int, list[tuple[int, float]]] = {}
+    scored = [(r, getattr(r, "embedding", None)) for r in rows]
+    for row, emb in scored:
+        if not emb:
+            continue
+        near = [
+            (other.id, cosine(emb, other_emb))
+            for other, other_emb in scored
+            if other_emb and other.id != row.id and cosine(emb, other_emb) >= threshold
+        ]
+        if near:
+            out[row.id] = sorted(near, key=lambda t: -t[1])
+    return out

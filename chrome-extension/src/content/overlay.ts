@@ -139,6 +139,13 @@ export interface OverlayViewState {
   jobTitle?: string;
   /** Detected ATS label ("Workday", "iCIMS"…), or null on a generic form. */
   siteLabel?: string | null;
+  /**
+   * Field ids the last fill's terminal re-scan found no longer holding what was
+   * written. Omitted means "no new information", NOT "nothing reverted" — an
+   * ordinary scan (a MutationObserver beat) must not erase what the fill
+   * observed, or the gap modal would forget the reverts before it renders.
+   */
+  reverted?: ReadonlySet<string>;
 }
 
 export function showOverlay(state: OverlayViewState, cb: OverlayCallbacks): void {
@@ -163,6 +170,7 @@ export function updateOverlay(state: OverlayViewState): void {
   overlayState.company = state.company ?? "";
   overlayState.jobTitle = state.jobTitle ?? "";
   overlayState.siteLabel = state.siteLabel ?? null;
+  if (state.reverted) overlayState.reverted = state.reverted;
   // Re-derive the default selection so the Autofill button reflects the latest
   // scan. Selection is purely computed from the fields (there is no per-field
   // toggle UI), so recomputing it on every update is safe — and necessary, since
@@ -1006,6 +1014,16 @@ export const STYLES = `
   flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--stripe-primary);
   background: var(--stripe-accent-light); border-radius: 9999px; padding: 1px 8px;
 }
+.ap-remembered-flag {
+  flex-shrink: 0; font-size: 11px; font-weight: 600; color: #92400e;
+  background: #fef3c7; border-radius: 9999px; padding: 1px 8px; cursor: help;
+}
+.ap-remembered-why {
+  margin-top: 6px; font-size: 11.5px; line-height: 1.45; color: #92400e;
+}
+.ap-remembered-warn {
+  border-left: 3px solid #f59e0b; padding-left: 10px; color: #92400e;
+}
 .ap-remembered-edit { display: flex; gap: 8px; align-items: center; }
 .ap-remembered-input {
   flex: 1; min-width: 0; padding: 8px 10px; font-size: 13px; font-family: inherit;
@@ -1137,6 +1155,10 @@ interface PanelState {
   fillRan: boolean;
   /** Questions the last fill left blank that are worth remembering. */
   gaps: AnswerGap[];
+  /** Field ids the terminal re-scan found no longer holding what was written.
+   *  Asked about again even though the control is not empty — see
+   *  selectAnswerGaps. */
+  reverted: ReadonlySet<string>;
 }
 
 let host: HTMLElement | null = null;
@@ -1176,6 +1198,7 @@ const overlayState: PanelState = {
   coverLetterBusy: false,
   fillRan: false,
   gaps: [],
+  reverted: new Set(),
 };
 
 interface Refs {
@@ -1946,10 +1969,11 @@ function refreshMainView(): void {
 function refreshGaps(): void {
   if (!refs) return;
   overlayState.gaps = overlayState.fillRan
-    ? selectAnswerGaps(overlayState.fields, {
-        company: overlayState.company,
-        jobTitle: overlayState.jobTitle,
-      })
+    ? selectAnswerGaps(
+        overlayState.fields,
+        { company: overlayState.company, jobTitle: overlayState.jobTitle },
+        overlayState.reverted
+      )
     : [];
   const n = overlayState.gaps.length;
   refs.gapsCard.style.display = n > 0 ? "" : "none";
@@ -2592,6 +2616,7 @@ interface EditableProfileDraft {
   workAuthorization: string;
   requiresSponsorship: string;
   salaryExpectation: string;
+  dateOfBirth: string;
   eeo: {
     gender: string;
     race: string;
@@ -2646,6 +2671,7 @@ function draftFromProfile(p: UserApplicationProfile): EditableProfileDraft {
     workAuthorization: p.workAuthorization ?? "",
     requiresSponsorship: p.requiresSponsorship ?? "",
     salaryExpectation: p.salaryExpectation ?? "",
+    dateOfBirth: p.dateOfBirth ?? "",
     eeo: {
       gender: p.eeo?.gender ?? "",
       race: p.eeo?.race ?? "",
@@ -2768,6 +2794,8 @@ function renderInfoForm(): void {
         ${apField("email", "Email Address", d.email, { required: true, type: "email" })}
         ${apField("phone", "Phone", d.phone, { required: true, type: "tel" })}
         ${apField("location", "Location", d.location)}
+        ${apField("dateOfBirth", "Date of Birth", d.dateOfBirth, { type: "date" })}
+        <div class="ap-form-hint">Used only to answer age questions ("Are you 18 or older?") from a fact instead of a guess. Leave it blank and those questions are left for you.</div>
         ${links.join("")}
         ${renderSectionCustom("personal")}
       `;
@@ -2873,6 +2901,23 @@ function renderInfoForm(): void {
  * Device-local sensitive answers are deliberately NOT listed here: they never
  * reach the backend, and putting EEO answers on screen is a separate decision.
  */
+/**
+ * Why a stored key is unusable, in the user's terms.
+ *
+ * These are not cosmetic complaints. An answer is stored under its question and
+ * recalled by matching that text, so a key that names no question can never
+ * match the question it came from — and matches unrelated ones verbatim.
+ */
+const SUSPECT_TEXT: Record<string, string> = {
+  widget_boilerplate:
+    "Saved under a dropdown's own wording rather than a question, so every similar dropdown on a form can pick it up.",
+  machine_id: "Saved under the form's internal id for the field, which names no question.",
+  unlabeled: "Saved under a field Tailrd couldn't name, so it can't be matched back to anything.",
+  empty_key: "Saved with no question at all.",
+  attracts_other_questions:
+    "Worded closely enough to another saved question that it can be used to answer that one instead.",
+};
+
 function renderRememberedAnswers(form: HTMLElement): void {
   form.innerHTML =
     '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Loading…</div>';
@@ -2889,20 +2934,28 @@ function renderRememberedAnswers(form: HTMLElement): void {
       form.innerHTML = `<div class="ap-form-hint">Nothing remembered yet. When autofill hits a question it can't answer, the panel offers to ask you — the answers you give appear here and fill automatically from then on.</div>`;
       return;
     }
+    const suspects = answers.filter((a) => a.suspect).length;
     form.innerHTML =
       `<div class="ap-form-hint">Answers Tailrd reuses on future applications. Edit one and it changes everywhere, including your Tailrd profile page.</div>` +
+      (suspects > 0
+        ? `<div class="ap-form-hint ap-remembered-warn">${
+            suspects === 1 ? "1 answer is" : `${suspects} answers are`
+          } saved under a question Tailrd can't recognise. An answer is looked up by its question, so one of these can be handed to questions it was never about — deleting it is safe, and Tailrd will ask you again next time.</div>`
+        : "") +
       answers
         .map(
           (a) => `
         <div class="ap-remembered-row" data-answer-id="${a.id}">
           <div class="ap-remembered-q">
             <span>${esc(a.question)}</span>
-            ${a.timesReused > 0 ? `<span class="ap-remembered-reuse">used ${a.timesReused}×</span>` : ""}
+            ${a.suspect ? `<span class="ap-remembered-flag" title="${esc(SUSPECT_TEXT[a.suspectReason ?? ""] ?? "This key names no question")}">check this</span>` : ""}
+            ${(a.timesMatched ?? 0) > 0 ? `<span class="ap-remembered-reuse">matched ${a.timesMatched}×</span>` : ""}
           </div>
           <div class="ap-remembered-edit">
             <input class="ap-remembered-input" data-answer-id="${a.id}" value="${esc(a.answer)}" />
             <button class="ap-mini-btn ap-remembered-del" data-answer-id="${a.id}" type="button">Delete</button>
           </div>
+          ${a.suspect ? `<div class="ap-remembered-why">${esc(SUSPECT_TEXT[a.suspectReason ?? ""] ?? "This key names no question.")}</div>` : ""}
         </div>`
         )
         .join("");
@@ -3134,7 +3187,7 @@ async function saveInfoEdits(): Promise<void> {
   const scalarKeys: (keyof EditableProfileDraft)[] = [
     "firstName", "lastName", "email", "phone", "location", "linkedin", "portfolio",
     "addressStreet", "addressCity", "addressState", "postalCode", "country",
-    "workAuthorization", "requiresSponsorship", "salaryExpectation",
+    "workAuthorization", "requiresSponsorship", "salaryExpectation", "dateOfBirth",
   ];
   for (const k of scalarKeys) {
     const next = (d as unknown as Record<string, string>)[k];

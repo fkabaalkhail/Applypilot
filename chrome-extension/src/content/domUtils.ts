@@ -2,6 +2,7 @@
  * DOM helpers used by the scanner, matcher and autofill engine.
  * No Chrome APIs in here — pure DOM, easy to unit test later.
  */
+import { UNLABELED_FIELD, isMachineId } from "../shared/questionText";
 
 /** Collapse whitespace and trim. */
 export function cleanText(text: string | null | undefined): string {
@@ -201,6 +202,155 @@ export function nearbyText(el: HTMLElement): string {
 }
 
 /**
+ * A "form field block": the wrapper an ATS emits around ONE field — its
+ * question and its control together.
+ *
+ * Deliberately restricted to markers that are proven to wrap exactly one field.
+ * `data-automation-id="formField-*"` and `data-fkit-id` are Workday's, and
+ * `test/fixtures/workdayReal.ts` (captured verbatim from a live tenant) shows
+ * one per field: `formField-countryPhoneCode`, `formField-phoneType`,
+ * `formField-source`. That same capture is why `[role="group"]` is NOT here —
+ * there it wraps a whole SECTION, and a section's heading is not this field's
+ * question.
+ */
+const FIELD_BLOCK_SELECTOR =
+  '[data-automation-id^="formField" i], [data-fkit-id], fieldset';
+
+/**
+ * A control that could own a question of its own — as opposed to the widget
+ * plumbing an ATS renders beside its real control. Workday's prompt ships a bare
+ * `<input type="text">` mirror carrying no name, id, or ARIA: it is machinery,
+ * not a field, and must not stop the climb below.
+ */
+const CONTROL_SELECTOR = "input, select, textarea, button, [role='combobox'], [contenteditable='true']";
+
+function isRealControl(node: Element): boolean {
+  return Boolean(
+    node.getAttribute("name") ||
+      node.id ||
+      node.getAttribute("aria-label") ||
+      node.getAttribute("aria-labelledby") ||
+      node.getAttribute("data-automation-id")
+  );
+}
+
+/**
+ * The block around `el` when the page marks up no wrapper we recognise: the
+ * nearest ancestor that actually contributes question text, climbing only while
+ * no OTHER real control appears.
+ *
+ * The stop condition is what keeps this honest. Climbing blind would eventually
+ * reach a section — or the page — and hand this field its neighbour's question.
+ * Stopping at the first ancestor that adds text of its own means the widget's
+ * empty nesting divs are climbed through and nothing beyond the field is.
+ */
+function implicitBlockOf(el: HTMLElement): HTMLElement | null {
+  const own = cleanText(el.textContent);
+  let node = el.parentElement;
+  for (let hops = 0; node && hops < 5; hops++, node = node.parentElement) {
+    const others = [...node.querySelectorAll(CONTROL_SELECTOR)].filter(
+      (c) => c !== el && !el.contains(c) && isRealControl(c)
+    );
+    if (others.length > 0) return null; // a neighbour's block, not ours
+    let text = cleanText(node.textContent);
+    if (own && text.endsWith(own)) text = cleanText(text.slice(0, -own.length));
+    if (text) return node;
+  }
+  return null;
+}
+
+/** The field block `el` sits in — nearest wins, so a block nested in a section
+ *  resolves to the block. Falls back to a structural block when the page marks
+ *  up none; null when even that cannot be decided. */
+function fieldBlockOf(el: HTMLElement): HTMLElement | null {
+  return el.parentElement?.closest<HTMLElement>(FIELD_BLOCK_SELECTOR) ?? implicitBlockOf(el);
+}
+
+/**
+ * The question text inside a field block, ignoring the control itself.
+ *
+ * This is the signal that reaches what `nearbyText` structurally cannot. A
+ * Workday prompt nests its button three `<div>`s below the block (verbatim in
+ * the capture), and `nearbyText` climbs three ancestors looking at PREVIOUS
+ * SIBLINGS — so it runs out of climb exactly one level short of the block whose
+ * first child is the `<label>`. That is how a self-identification question fell
+ * through to the widget's own aria-label and then to its raw id.
+ *
+ * `aria-hidden` subtrees are skipped because they are not part of any accessible
+ * name — which also drops Workday's `<abbr aria-hidden="true">*</abbr>` required
+ * marker, so the question is remembered as "Gender Identity", not
+ * "Gender Identity*".
+ */
+function blockQuestionText(block: HTMLElement, el: HTMLElement): string {
+  const visibleText = (node: Element): string => {
+    if (node.closest('[aria-hidden="true"]')) return "";
+    let out = "";
+    for (const child of node.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) out += child.textContent ?? "";
+      else if (child.nodeType === Node.ELEMENT_NODE) out += visibleText(child as Element);
+    }
+    return out;
+  };
+
+  // A <label>/<legend> that isn't wrapping the control is the question outright.
+  for (const node of block.querySelectorAll("label, legend")) {
+    if (node.contains(el)) continue;
+    const text = cleanText(visibleText(node));
+    if (text && !isPlaceholderFiller(text)) return text;
+  }
+
+  // No labelling element: the block's own text, minus the widget's. Workday's
+  // hidden mirror <input> and menu glyph contribute nothing, so what is left is
+  // the question the user reads.
+  const own = cleanText(el.textContent);
+  let text = cleanText(visibleText(block));
+  if (own && text.endsWith(own)) text = cleanText(text.slice(0, -own.length));
+  if (text && text.length <= 300 && !isPlaceholderFiller(text)) return text;
+
+  // The question sits OUTSIDE the block (a heading above it). nearbyText from
+  // the block — not from the control — is the one that can see it.
+  return nearbyText(block);
+}
+
+/**
+ * The question carried by an `aria-label`, with the widget's own boilerplate
+ * removed.
+ *
+ * Workday writes `aria-label="<question> <displayed value> Required"`. The
+ * verbatim capture has both halves of the proof: with a question
+ * ("How Did You Hear About Us? Select One Required") and, from production,
+ * without one ("Select One Required", "Yes Required"). Stripping the trailing
+ * value and "Required" therefore both RECOVERS a real question when one is
+ * there and yields "" when the attribute is pure boilerplate — which is the
+ * honest answer, and stops "Yes Required" from being asked as a question.
+ */
+function ariaLabelQuestion(el: HTMLElement, ariaLabel: string): string {
+  let text = ariaLabel;
+  if (!text) return "";
+  // Trailing required marker, however the tenant words it.
+  text = cleanText(text.replace(/[\s*]*\(?\brequired\b\)?[\s*.]*$/i, ""));
+  // Trailing copy of what the widget itself displays ("Select One", "Yes").
+  //
+  // Only for a CHOICE widget, and that restriction is load-bearing: what such a
+  // widget displays is its ANSWER, so an aria-label that adds nothing to it
+  // carries no question. On an ordinary control the visible text may well BE the
+  // name of the thing, and stripping it would throw away a good label.
+  const own = cleanText(el.textContent);
+  if (isChoiceWidget(el) && own && text.toLowerCase().endsWith(own.toLowerCase())) {
+    text = cleanText(text.slice(0, -own.length));
+  }
+  return isPlaceholderFiller(text) ? "" : text;
+}
+
+/** A control whose displayed text is a selected value rather than a name. */
+function isChoiceWidget(el: HTMLElement): boolean {
+  if (el instanceof HTMLSelectElement) return true;
+  const role = (el.getAttribute("role") || "").toLowerCase();
+  const haspopup = (el.getAttribute("aria-haspopup") || "").toLowerCase();
+  return haspopup === "listbox" || role === "combobox" || role === "listbox";
+}
+
+/**
  * Custom dropdowns (react-select, Headless UI, Workday button-listboxes…) nest
  * the operable control — a tiny `role="combobox"` input or an
  * `aria-haspopup="listbox"` button — several layers inside a widget wrapper, and
@@ -321,7 +471,7 @@ export function collectSignals(el: HTMLElement): FieldSignals {
     ? [nearbyText(el), uploadZoneText(el)].filter(Boolean).join(" ").slice(0, 220)
     : nearbyText(host);
   const assocLabel = associatedLabelText(el);
-  const ariaLabel = cleanText(el.getAttribute("aria-label"));
+  const ariaLabel = ariaLabelQuestion(el, cleanText(el.getAttribute("aria-label")));
   // For a custom dropdown that carries NO programmatic label of any kind, the
   // text sitting right before the widget IS its question (that's how the form
   // reads visually) — promote it to the reliable `label` signal. Without this it
@@ -332,8 +482,20 @@ export function collectSignals(el: HTMLElement): FieldSignals {
   // neighbouring label.
   const hasRealLabel = Boolean(assocLabel || hostLabel || labelledBy || hostLabelledBy || ariaLabel);
   const promotedLabel = isDropdown && !hasRealLabel ? nearby : "";
+  // Last resort before the weak signals: the question printed inside the field's
+  // own block. Computed only when nothing programmatic named the field, so a
+  // field that IS labelled keeps the label it already had — and `nearby` is left
+  // exactly as it was, since it feeds the classifier at its own weight.
+  const blockLabel =
+    hasRealLabel || promotedLabel
+      ? ""
+      : (() => {
+          const block = fieldBlockOf(el);
+          return block ? blockQuestionText(block, el) : "";
+        })();
   return {
-    label: assocLabel || hostLabel || labelledBy || hostLabelledBy || promotedLabel,
+    label:
+      assocLabel || hostLabel || labelledBy || hostLabelledBy || promotedLabel || blockLabel,
     ariaLabel: ariaLabel || labelledBy || hostLabelledBy,
     placeholder: cleanText(el.getAttribute("placeholder")),
     nearby,
@@ -345,10 +507,18 @@ export function collectSignals(el: HTMLElement): FieldSignals {
   };
 }
 
-/** Pick the most human-readable label for display in the popup. Placeholder
- *  filler ("Select…", "Choose an option") is never a usable question text — a
- *  dropdown whose only signal is its own placeholder must fall through to the
- *  name/id attributes rather than present "Select" as the question. */
+/**
+ * Pick the most human-readable label for display in the popup. Placeholder
+ * filler ("Select…", "Choose an option") is never a usable question text — a
+ * dropdown whose only signal is its own placeholder must fall through to the
+ * name/id attributes rather than present "Select" as the question.
+ *
+ * The name/id fallback stops at machine ids. An attribute name like
+ * `candidate_country` is a poor label but still says what the field is; Workday's
+ * `56370316e58a1001d8aa4cd7b1d70000-b0531cc2ff371001d8a9b9c2eef00002` says
+ * nothing, and reaching it means we genuinely could not name the field — which
+ * the sentinel states plainly instead of dressing an id up as a question.
+ */
 export function bestDisplayLabel(signals: FieldSignals): string {
   const candidates = [
     signals.label,
@@ -359,9 +529,9 @@ export function bestDisplayLabel(signals: FieldSignals): string {
     signals.idAttr,
   ];
   for (const c of candidates) {
-    if (c && !isPlaceholderFiller(c)) return c;
+    if (c && !isPlaceholderFiller(c) && !isMachineId(c)) return c;
   }
-  return "Unlabeled field";
+  return UNLABELED_FIELD;
 }
 
 export function isRequiredField(el: HTMLElement, signals: FieldSignals): boolean {

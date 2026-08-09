@@ -5,6 +5,7 @@
  */
 import { cleanText, deepQueryAll, isVisible } from "./domUtils";
 import { activateElement } from "./comboboxEngine";
+import { isConsentField } from "./consent";
 import type { SiteAdapter } from "./adapters/types";
 
 export type AdvanceKind = "advance" | "terminal";
@@ -79,7 +80,57 @@ export function findAdvanceButton(
     if (!advance && ADVANCE_RE.test(text)) advance = el;
   }
   if (terminal) return { el: terminal, kind: "terminal" }; // terminal wins over a plain Next
+  if (advance) return { el: advance, kind: "advance" };
+  return findInPageFooter(scope);
+}
+
+/** Landmarks whose buttons are site navigation, never a step's advance.
+ *  `footer` is deliberately absent: a step footer IS where Back /
+ *  Save-and-Continue lives, and excluding it is what caused this bug. */
+const NAV_LANDMARK_TAGS = new Set(["NAV", "HEADER", "ASIDE"]);
+const NAV_LANDMARK_ROLES = new Set(["navigation", "banner", "search", "complementary"]);
+
+/**
+ * Last resort: the step's advance button rendered OUTSIDE the form scope.
+ *
+ * `resolveFormScope` returns the deepest container holding the fields, and a
+ * multi-step form commonly pins Back / Save-and-Continue in a page-level footer
+ * that is a SIBLING of that container. The scoped search then finds nothing,
+ * and a filled page ends the flow at `finish("done")` — no gate, no
+ * explanation, nothing for the user to press (Workday "My Experience",
+ * 2026-08-09).
+ *
+ * Scoping existed so a nav link could never be clicked, and that still holds:
+ * only real buttons are considered (an `<a>` is not in BUTTON_SELECTOR), only
+ * an advance VERB matches, and anything under a nav/header/aside landmark is
+ * skipped. A terminal verb found out here is reported as terminal, never
+ * clicked, exactly as in scope.
+ */
+function findInPageFooter(scope: HTMLElement): AdvanceButton | null {
+  const doc = scope.ownerDocument;
+  if (!doc?.body) return null;
+  let advance: HTMLElement | null = null;
+  for (const el of deepQueryAll(doc.body, BUTTON_SELECTOR)) {
+    if (scope.contains(el) || inNavLandmark(el)) continue;
+    // A cookie banner's "Continue" is an advance verb sitting outside every
+    // form scope. The gate would then offer to dismiss a cookie notice as if it
+    // were the page turn — in scope this could not happen, so guard it here.
+    if (isConsentField(el)) continue;
+    if (!isClickable(el)) continue;
+    const text = buttonText(el);
+    if (!text) continue;
+    if (TERMINAL_RE.test(text)) return { el, kind: "terminal" };
+    if (!advance && ADVANCE_RE.test(text)) advance = el;
+  }
   return advance ? { el: advance, kind: "advance" } : null;
+}
+
+function inNavLandmark(el: HTMLElement): boolean {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    if (NAV_LANDMARK_TAGS.has(node.tagName)) return true;
+    if (NAV_LANDMARK_ROLES.has((node.getAttribute("role") || "").toLowerCase())) return true;
+  }
+  return false;
 }
 
 /** Click an advance button the way a user would (pointer + mouse + click). */
