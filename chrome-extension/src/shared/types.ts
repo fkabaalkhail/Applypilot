@@ -546,7 +546,9 @@ export type FormOpName =
   | "onCopyCoverLetter"
   | "onProfileResolved"
   | "onFlowStop"
-  | "onFlowAdvance";
+  | "onFlowAdvance"
+  | "onAnswerGaps"
+  | "onHarvestGapOptions";
 
 /** One overlay operation, marshaled for execution in the form-owning frame. */
 export interface FormOpRequest {

@@ -32,6 +32,29 @@ describe("makeProxyCallbacks", () => {
     const cb = makeProxyCallbacks(send);
     await expect(cb.onInsertCoverLetter("x")).rejects.toThrow(/frame gone/);
   });
+
+  it("marshals the gap-option harvest and returns its value", async () => {
+    const seen: { op: string; args: unknown[] }[] = [];
+    const proxy = makeProxyCallbacks(async (op, args) => {
+      seen.push({ op, args });
+      return { ok: true, value: { f1: ["Yes", "No"] } };
+    });
+    await expect(proxy.onHarvestGapOptions(["f1"])).resolves.toEqual({ f1: ["Yes", "No"] });
+    expect(seen[0].op).toBe("onHarvestGapOptions");
+    expect(seen[0].args).toEqual([["f1"]]);
+  });
+
+  // Was missing from ALL_OPS: in a cross-origin form frame the modal's Save &
+  // fill called an undefined method and threw before writing anything.
+  it("marshals the gap answers back to the form frame", async () => {
+    const send = vi.fn(async () => ({ ok: true, value: { ok: true, filled: 1 } }));
+    const proxy = makeProxyCallbacks(send);
+    const answers = [{ gap: { fieldId: "f1" }, value: "Yes" }] as Parameters<
+      OverlayCallbacks["onAnswerGaps"]
+    >[0];
+    await expect(proxy.onAnswerGaps(answers)).resolves.toEqual({ ok: true, filled: 1 });
+    expect(send).toHaveBeenCalledWith("onAnswerGaps", [answers]);
+  });
 });
 
 describe("dispatchFormOp", () => {

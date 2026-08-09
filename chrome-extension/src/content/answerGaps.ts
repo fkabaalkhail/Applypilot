@@ -147,6 +147,53 @@ export interface AnsweredGap {
   value: string;
 }
 
+/**
+ * A constrained control the modal could only offer as a bare text box.
+ *
+ * A combobox mounts its listbox lazily, so a scan often sees no options at all.
+ * The modal harvests them (overlay.harvestGapOptions) and, when that yields
+ * nothing, honestly falls back to a text input — the user then TYPES an answer
+ * for a widget whose vocabulary nobody knows.
+ *
+ * A bare `checkbox` is excluded on purpose: with no options it still renders a
+ * real Yes/No pair, so its answer is one the widget understands.
+ *
+ * gapInputHTML is the renderer of record; answerGapsModal.test.ts pins this
+ * predicate to what it actually paints so the two cannot drift.
+ */
+export function isBlindConstrainedGap(gap: AnswerGap): boolean {
+  if (!CONSTRAINED.has(gap.controlType)) return false; // genuinely free text
+  if (gap.controlType === "checkbox") return false; // renders Yes/No, not a text box
+  return (gap.options?.length ?? 0) === 0;
+}
+
+/**
+ * The answers still worth remembering after the page write.
+ *
+ * Persistence must not outlive a failed write — but only where the failure
+ * proves the ANSWER is unusable, not merely that this moment was bad.
+ * selectAnswerGaps skips any field that already has a proposedValue, so an
+ * answer we remember permanently retires its question: store a value the widget
+ * rejects and the user is never asked again, never sees why, and the extension
+ * replays the rejected value on every future application.
+ *
+ * So exactly one case is dropped: a blind constrained gap (above) whose write
+ * failed — text typed into a box that stood in for a dropdown nobody could read.
+ *
+ * Everything else is kept, deliberately. A genuinely free-text question that
+ * failed to write for an unrelated reason — a disabled input, a re-render
+ * mid-fill, a field that scrolled out of the DOM — is still a correct answer,
+ * and discarding it would silently throw away the user's work.
+ */
+export function answersWorthRemembering(
+  answers: readonly AnsweredGap[],
+  filledFieldIds: ReadonlySet<string>
+): AnsweredGap[] {
+  return answers.filter(
+    ({ gap }) => filledFieldIds.has(gap.fieldId) || !isBlindConstrainedGap(gap)
+  );
+}
+
 /** Where a batch of answers should be written. Each answer lands in exactly one
  *  bucket — the caller executes all three. */
 export interface AnswerSavePlan {

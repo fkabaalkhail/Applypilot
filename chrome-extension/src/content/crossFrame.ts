@@ -33,6 +33,12 @@ const ALL_OPS: FormOpName[] = [
   "onProfileResolved",
   "onFlowStop",
   "onFlowAdvance",
+  // The unanswered-questions modal. onAnswerGaps was missing here, so in a
+  // cross-origin form frame `callbacks.onAnswerGaps` was undefined and Save &
+  // fill threw before it wrote anything — the modal simply did not work off the
+  // top frame. Both return a value, so neither belongs in VOID_OPS.
+  "onAnswerGaps",
+  "onHarvestGapOptions",
 ];
 
 /** The top frame defers to a child host only when it has no form of its own. */

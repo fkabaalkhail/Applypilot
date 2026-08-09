@@ -77,6 +77,12 @@ export interface OverlayCallbacks {
   onAnswerGaps: (
     answers: { gap: AnswerGap; value: string }[]
   ) => Promise<{ ok: boolean; filled: number; reason?: string }>;
+  /**
+   * Read the REAL options of the given fields' controls, by opening each
+   * dropdown on the page and closing it again. Keyed by field id; a widget that
+   * yields nothing is simply absent from the result.
+   */
+  onHarvestGapOptions: (fieldIds: string[]) => Promise<Record<string, string[]>>;
   /** Stop the running multi-page flow (panel Stop button). */
   onFlowStop: () => void;
   /** Advance the running multi-page flow to the next page (panel Next page button). */
@@ -960,6 +966,8 @@ export const STYLES = `
 }
 .ap-gap-choice:hover { border-color: var(--stripe-primary-soft); }
 .ap-gap-choice input { accent-color: var(--stripe-primary); margin: 0; flex: 0 0 auto; }
+.ap-gap-choice-none { color: var(--stripe-ink-mute); border-style: dashed; }
+.ap-gap-loading { font-size: 12.5px; color: var(--stripe-ink-mute); padding: 8px 0; }
 .ap-btn-ghost {
   border: 1px solid var(--stripe-hairline); background: #fff; border-radius: 8px;
   padding: 9px 14px; font-size: 13px; font-weight: 600; font-family: inherit;
@@ -1933,11 +1941,32 @@ function refreshGaps(): void {
     n === 1 ? "1 question needs your answer" : `${n} questions need your answer`;
 }
 
+/** True while a harvest pass is in flight — the only time "Loading choices…"
+ *  may stand in for a control. Reset unconditionally when the pass settles, so
+ *  a widget that yielded nothing can never be stuck un-answerable. */
+let gapHarvestPending = false;
+
 function openGapsModal(): void {
   if (!refs || overlayState.gaps.length === 0) return;
+  gapHarvestPending = true;
   renderGaps();
   refs.gapsError.style.display = "none";
   refs.gapsModal.classList.add("visible");
+  // Harvest AFTER showing the modal so it never delays opening; each dropdown
+  // that yields options is re-rendered in place when the pass completes.
+  // Re-rendering replaces innerHTML wholesale and would wipe anything already
+  // typed, which is why this runs the instant the modal appears rather than
+  // later — before the user can have answered anything.
+  if (!callbacks) {
+    gapHarvestPending = false;
+    renderGaps();
+    return;
+  }
+  const harvest = callbacks.onHarvestGapOptions;
+  void harvestGapOptions(overlayState.gaps, harvest).then(() => {
+    gapHarvestPending = false;
+    if (refs?.gapsModal.classList.contains("visible")) renderGaps();
+  });
 }
 
 function closeGapsModal(): void {
@@ -1959,11 +1988,63 @@ function renderGaps(): void {
       <div class="ap-gap-card">
         <div class="ap-gap-question">${esc(g.question)}${req}</div>
         ${help}
-        ${gapInputHTML(g, i)}
+        ${gapControlHTML(g, i, gapHarvestPending)}
         ${priv}
       </div>`;
     })
     .join("");
+}
+
+/** Constrained controls whose options may not be in the DOM until opened. */
+const GAP_HARVEST_TYPES: ReadonlySet<ControlType> = new Set<ControlType>([
+  "combobox",
+  "customDropdown",
+  "select",
+]);
+
+/**
+ * Fill in the real options for any dropdown the scan could not read.
+ *
+ * A combobox's listbox is mounted lazily, so `gap.options` is empty and the
+ * modal would offer a text box — whose answer the widget then rejects. Opening
+ * each dropdown briefly is a visible side effect on the page; it is the price
+ * of the modal offering the page's own choices, and it was chosen deliberately
+ * over a silent free-text box. Mutates `gaps` in place. Never throws: a frame
+ * that has gone away just leaves the questions as free text.
+ */
+export async function harvestGapOptions(
+  gaps: AnswerGap[],
+  harvest: (fieldIds: string[]) => Promise<Record<string, string[]>>
+): Promise<void> {
+  const wanted = gaps.filter(
+    (g) => GAP_HARVEST_TYPES.has(g.controlType) && (g.options?.length ?? 0) === 0
+  );
+  if (wanted.length === 0) return;
+  try {
+    const found = await harvest(wanted.map((g) => g.fieldId));
+    for (const g of wanted) {
+      const opts = found[g.fieldId];
+      if (opts && opts.length > 0) g.options = opts;
+    }
+  } catch {
+    // Leave them as free text — an honest fallback, and the pre-existing shape.
+  }
+}
+
+/**
+ * The control for one question, plus the only state gapInputHTML cannot see:
+ * whether a harvest is still running.
+ *
+ * The placeholder MUST be keyed on that and not merely on "constrained with no
+ * options" — otherwise a widget whose harvest came back empty would show
+ * "Loading choices…" forever and the question could never be answered, which is
+ * the opposite of the free-text fallback harvestGapOptions promises.
+ */
+export function gapControlHTML(gap: AnswerGap, i: number, harvestPending: boolean): string {
+  if (harvestPending && GAP_HARVEST_TYPES.has(gap.controlType) && (gap.options?.length ?? 0) === 0) {
+    return `<div class="ap-gap-loading">Loading choices…</div>`;
+  }
+  return gapInputHTML(gap, i);
 }
 
 /** Control types whose answer is one of a fixed set the page already shows. */
@@ -1972,6 +2053,21 @@ const GAP_CHOICE_TYPES: ReadonlySet<ControlType> = new Set<ControlType>([
   "ariaRadioGroup",
 ]);
 const GAP_MULTI_TYPES: ReadonlySet<ControlType> = new Set<ControlType>(["checkboxGroup"]);
+
+/**
+ * The way out of a radio group.
+ *
+ * An HTML radio cannot be deselected, and the modal's only other exit is "Skip
+ * for now", which discards EVERY answer. Without this, one mis-click on a
+ * sponsorship question was unrecoverable — and, once written, remembered
+ * forever (answersWorthRemembering). Its value is "" so readGapAnswer reports
+ * the question as unanswered, exactly like the <select> placeholder it replaced.
+ * Checked by default: the modal opens with nothing asserted on the user's behalf.
+ */
+const noAnswerChoice = (id: string): string =>
+  `<label class="ap-gap-choice ap-gap-choice-none">
+      <input type="radio" name="${id}" value="" checked /><span>No answer</span>
+    </label>`;
 
 /**
  * The control for one question — the SAME shape the page shows.
@@ -1986,7 +2082,7 @@ export function gapInputHTML(gap: AnswerGap, i: number): string {
   const opts = gap.options ?? [];
 
   if (opts.length > 0 && GAP_CHOICE_TYPES.has(gap.controlType)) {
-    return `<div class="ap-gap-choices" data-i="${i}" data-kind="radio">${opts
+    return `<div class="ap-gap-choices" data-i="${i}" data-kind="radio">${noAnswerChoice(id)}${opts
       .map(
         (o, k) => `<label class="ap-gap-choice">
           <input type="radio" name="${id}" value="${esc(o)}" id="${id}-${k}" />
@@ -2015,7 +2111,7 @@ export function gapInputHTML(gap: AnswerGap, i: number): string {
   }
 
   if (gap.controlType === "checkbox") {
-    return `<div class="ap-gap-choices" data-i="${i}" data-kind="radio">
+    return `<div class="ap-gap-choices" data-i="${i}" data-kind="radio">${noAnswerChoice(id)}
       <label class="ap-gap-choice"><input type="radio" name="${id}" value="Yes" /><span>Yes</span></label>
       <label class="ap-gap-choice"><input type="radio" name="${id}" value="No" /><span>No</span></label>
     </div>`;

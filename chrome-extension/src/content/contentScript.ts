@@ -59,7 +59,7 @@ const MIN_CACHEABLE_DESC = 200;
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
 import { getLocalAnswers, saveLocalAnswer } from "./localAnswers";
-import { planAnswerSaves } from "./answerGaps";
+import { answersWorthRemembering, planAnswerSaves } from "./answerGaps";
 import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
@@ -79,9 +79,11 @@ import {
   updateOverlay,
   toggleOverlay,
   updateFlowProgress,
+  showReloadRequired,
   type OverlayCallbacks,
 } from "./overlay";
 import { runAdapterOperations, type SiteAdapter } from "./adapters";
+import { ERROR_FRAGMENT as WD_ERROR_FRAGMENT } from "./adapters/workdaySelectors";
 import { detectSite } from "./siteRegistry";
 import { FlowController, FLOW_TTL_MS, type FlowDeps, type FlowSnapshot, type StepTally } from "./flowController";
 import { clickAdvance, findAdvanceButton } from "./advance";
@@ -230,7 +232,8 @@ function logStuckDiagnostics(): void {
   try {
     const errors = deepQueryAll(
       document.body,
-      '[role="alert"], [aria-live="assertive"], [aria-invalid="true"], [class*="error" i], [data-automation-id*="error" i]'
+      '[role="alert"], [aria-live="assertive"], [aria-invalid="true"], [class*="error" i], ' +
+        `[data-automation-id*="${WD_ERROR_FRAGMENT}" i]`
     )
       .filter((el) => isVisible(el))
       .map((el) => cleanText(el.textContent))
@@ -356,6 +359,21 @@ function initialize(): void {
       submitTracker?.dispose();
     } catch {
       // tracker already disposed
+    }
+    // Stop any parked flow: it can no longer persist state or reach the
+    // background, so leaving it "running" only strands the user at a gate that
+    // will never do anything.
+    try {
+      flowController?.stop();
+    } catch {
+      // controller already unwound
+    }
+    flowController = null;
+    // The panel is still on screen and still looks usable — tell the truth.
+    try {
+      if (isTopFrame) showReloadRequired();
+    } catch {
+      // overlay never mounted on this page
     }
   });
 
@@ -827,17 +845,20 @@ function initialize(): void {
         cascadeFill.outcomes
       );
 
+      const allReports = [
+        ...localFill.reports, ...aiFill.reports, ...fallbackFill.reports,
+        ...reaskFill.reports, ...demoFill.reports, ...missingFill.reports, ...cascadeFill.reports,
+      ];
+      const allOutcomes = [
+        ...localFill.outcomes, ...aiFill.outcomes, ...fallbackFill.outcomes,
+        ...reaskFill.outcomes, ...demoFill.outcomes, ...missingFill.outcomes, ...cascadeFill.outcomes,
+      ];
+      // Per-field record of this page for the panel's summary — every detected
+      // field, not just the attempted ones, so a skipped required question is
+      // visible BEFORE the user turns the page.
       // Fire-and-forget telemetry (field labels + outcomes only, never values) so
       // we can see which sites/fields the filler struggles with. Skipped on cancel.
       if (!signal?.aborted && total > 0) {
-        const allReports = [
-          ...localFill.reports, ...aiFill.reports, ...fallbackFill.reports,
-          ...reaskFill.reports, ...demoFill.reports, ...missingFill.reports, ...cascadeFill.reports,
-        ];
-        const allOutcomes = [
-          ...localFill.outcomes, ...aiFill.outcomes, ...fallbackFill.outcomes,
-          ...reaskFill.outcomes, ...demoFill.outcomes, ...missingFill.outcomes, ...cascadeFill.outcomes,
-        ];
         const telemetry = buildAutofillTelemetry(
           lastFields,
           { host: location.host, url: location.href, atsType: lastAdapter?.id ?? "" },
@@ -1016,6 +1037,13 @@ function initialize(): void {
         if (hasUnsolvedCaptcha(document)) return "captcha";
         const scope = snap.scopeEl ?? document.body;
         if (isVerificationWall(scope)) return "verification";
+        // Form-shaped blockers only apply where there IS a form. On an entry
+        // page (job posting, apply-method chooser) the scan finds no fields and
+        // no scope, so `scope` degrades to the whole document — and a
+        // page-level alert anywhere on a Workday posting would then read as a
+        // rejected form and park the flow before it ever clicks Apply. Nothing
+        // has been submitted on such a page, so neither check can be meaningful.
+        if (snap.fields.length === 0) return null;
         if (validationMessages(scope).length > 0) return "validation";
         // PAUSING stays required-gated: an optional upload that could not be
         // attached must never park the flow behind a wall the user cannot clear.
@@ -1115,9 +1143,14 @@ function initialize(): void {
         .map((a) => ({ fieldId: a.gap.fieldId, value: a.value.trim() }))
         .filter((t) => t.value);
       const { outcomes } = await fillItems(targets, true);
-      const filled = outcomes.filter((o) => o.ok).length;
+      const filledIds = new Set(outcomes.filter((o) => o.ok).map((o) => o.fieldId));
+      const filled = filledIds.size;
 
-      const plan = planAnswerSaves(answers);
+      // Persistence must not outlive a failed write where the failure proves the
+      // answer unusable — remembering it retires the question forever (see
+      // answersWorthRemembering). An ordinary free-text answer that missed is
+      // still kept: the write failed, the answer did not.
+      const plan = planAnswerSaves(answersWorthRemembering(answers, filledIds));
       const problems: string[] = [];
 
       // Device-local first: it cannot fail on the network and must never be
@@ -1154,6 +1187,28 @@ function initialize(): void {
         };
       }
       return { ok: true, filled };
+    },
+    /**
+     * Read the real options of each field's control for the gaps modal.
+     * Sequential and budgeted: each harvest opens and closes a dropdown on the
+     * page, and doing several at once would leave two listboxes open at the
+     * same time — which several ATS treat as a click-away and close both.
+     */
+    onHarvestGapOptions: async (fieldIds) => {
+      const HARVEST_BUDGET_MS = 4000;
+      const PER_WIDGET_MS = 600;
+      const out: Record<string, string[]> = {};
+      const deadline = Date.now() + HARVEST_BUDGET_MS;
+      for (const id of fieldIds) {
+        if (Date.now() >= deadline) break;
+        const el = registry.get(id)?.el;
+        if (!el) continue;
+        const options = await harvestComboboxOptions(el, { openWaitMs: PER_WIDGET_MS }).catch(
+          () => undefined
+        );
+        if (options && options.length > 0) out[id] = options;
+      }
+      return out;
     },
     onFlowStop: () => {
       flowGeneration++; // a Stop during an in-flight initial fill must win the race

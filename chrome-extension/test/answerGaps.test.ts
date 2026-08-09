@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { selectAnswerGaps, planAnswerSaves, MAX_GAPS } from "../src/content/answerGaps";
+import {
+  answersWorthRemembering,
+  planAnswerSaves,
+  selectAnswerGaps,
+  MAX_GAPS,
+} from "../src/content/answerGaps";
 import type { AnswerGap } from "../src/content/answerGaps";
 import type { ControlType, DetectedField, FieldCategory } from "../src/shared/types";
 
@@ -256,5 +261,63 @@ describe("planAnswerSaves — where each answer is remembered", () => {
   it("trims the stored answer", () => {
     const plan = planAnswerSaves([{ gap: gap(), value: "  Yes  " }]);
     expect(plan.bank[0].answer).toBe("Yes");
+  });
+});
+
+/**
+ * Persistence must not outlive a failed write — but only where the failure
+ * proves the answer itself is unusable.
+ *
+ * selectAnswerGaps skips any field that already has a proposedValue, so a
+ * remembered answer permanently retires its question. Store a value the widget
+ * rejects and the user is never asked again, and never sees why.
+ */
+describe("answersWorthRemembering", () => {
+  const ok = (...ids: string[]) => new Set(ids);
+
+  it("keeps everything the page accepted", () => {
+    const answers = [
+      { gap: gap({ fieldId: "a", controlType: "combobox", options: [] }), value: "Canada" },
+      { gap: gap({ fieldId: "b", controlType: "text", options: [] }), value: "Ottawa" },
+    ];
+    expect(answersWorthRemembering(answers, ok("a", "b"))).toEqual(answers);
+  });
+
+  it("drops a failed answer typed blind into an option-less dropdown", () => {
+    const answers = [{ gap: gap({ fieldId: "a", controlType: "combobox", options: [] }), value: "Yes" }];
+    expect(answersWorthRemembering(answers, ok())).toEqual([]);
+  });
+
+  it("KEEPS a failed free-text answer — the write failed, the answer did not", () => {
+    const answers = [{ gap: gap({ fieldId: "a", controlType: "text", options: [] }), value: "Ottawa" }];
+    expect(answersWorthRemembering(answers, ok())).toEqual(answers);
+  });
+
+  it("keeps a failed answer picked from options the page itself listed", () => {
+    const answers = [{ gap: gap({ fieldId: "a", controlType: "select", options: ["Yes", "No"] }), value: "Yes" }];
+    expect(answersWorthRemembering(answers, ok())).toEqual(answers);
+  });
+
+  it("keeps a failed bare-checkbox answer — Yes/No is a value the widget knows", () => {
+    const answers = [{ gap: gap({ fieldId: "a", controlType: "checkbox", options: [] }), value: "Yes" }];
+    expect(answersWorthRemembering(answers, ok())).toEqual(answers);
+  });
+
+  it("treats a field missing from the outcomes as a failure", () => {
+    const answers = [{ gap: gap({ fieldId: "ghost", controlType: "combobox", options: [] }), value: "Yes" }];
+    expect(answersWorthRemembering(answers, ok("someone-else"))).toEqual([]);
+  });
+
+  it("judges each answer on its own", () => {
+    const good = { gap: gap({ fieldId: "a", controlType: "combobox", options: [] }), value: "Canada" };
+    const bad = { gap: gap({ fieldId: "b", controlType: "customDropdown", options: [] }), value: "Nope" };
+    const free = { gap: gap({ fieldId: "c", controlType: "text", options: [] }), value: "Ottawa" };
+    expect(answersWorthRemembering([good, bad, free], ok("a"))).toEqual([good, free]);
+  });
+
+  it("does not mutate the answers it was given", () => {
+    const answers = [{ gap: gap({ fieldId: "a", controlType: "combobox", options: [] }), value: "Yes" }];
+    answersWorthRemembering(answers, ok());
+    expect(answers.length).toBe(1);
   });
 });
