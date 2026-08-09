@@ -76,9 +76,19 @@ export const DATE_FRAGMENTS = Object.keys(DATE_PART_FRAGMENTS) as DateFragment[]
 /** A widget's part inputs, keyed by the fragment each one renders. */
 export type DateParts = Partial<Record<DateFragment, HTMLInputElement>>;
 
+/**
+ * A part input Workday tags by automation-id ("dateSectionYear-input").
+ *
+ * Split out of DATE_PART_SELECTOR because this half alone is proof that a "0"
+ * in the box is an EMPTY month/day/year rather than a legitimate zero — 0 is
+ * not a valid value for any of the three. `role="spinbutton"` carries no such
+ * guarantee (an ordinary number input can be one), so formScanner reads THIS,
+ * not the compound selector below.
+ */
+export const DATE_PART_ID_SELECTOR = 'input[data-automation-id*="dateSection" i]';
+
 /** Any one of the widget's part inputs. */
-export const DATE_PART_SELECTOR =
-  'input[data-automation-id*="dateSection" i], input[role="spinbutton"]';
+export const DATE_PART_SELECTOR = `${DATE_PART_ID_SELECTOR}, input[role="spinbutton"]`;
 
 /**
  * The date WIDGET a part input belongs to — never the part itself, and never a

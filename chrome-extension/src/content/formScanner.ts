@@ -33,6 +33,7 @@ import { getAdapter } from "./adapters/registry";
 import { detectGroupIndex } from "./groupIndex";
 import type { SiteAdapter } from "./adapters/types";
 import { detectFillDriver } from "./driverDetect";
+import { DATE_PART_ID_SELECTOR } from "./adapters/workdaySelectors";
 import type { FillDriver } from "./mainWorldBridge";
 
 /** Live handle for a detected field — never leaves the content script. */
@@ -667,17 +668,30 @@ export function scanPage(
 
 /**
  * Workday's segmented date widget renders each EMPTY part as a spinbutton
- * reading "0" — and its own `aria-valuemin="1"` says 0 is out of range. Read
- * that as empty, or the part looks already-filled and both fill paths skip it
- * (aiFillPlanner's `!f.currentValue`, answerGaps' currentValue guard).
+ * reading "0". Read that as empty, or the part looks already-filled and every
+ * path that acts on a blank field skips it: aiFillPlanner's `!f.currentValue`,
+ * answerGaps' currentValue guard, and shared/selection's default selection.
  *
- * Gated on role=spinbutton + a minimum above zero so an ordinary
- * <input type=number> where 0 IS the answer ("years of experience: 0") is
- * untouched.
+ * TWO independent signals, because neither covers the other's ground:
+ *
+ *  - a `dateSection*` automation-id (DATE_PART_ID_SELECTOR). 0 is never a
+ *    month, a day or a year, so this is sound BY CONSTRUCTION — it rests on no
+ *    attribute a tenant may or may not emit.
+ *  - `aria-valuemin` above zero on a role=spinbutton, for a part whose
+ *    automation-id a tenant has renamed out from under us.
+ *
+ * `aria-valuemin` alone was one unverified attribute away from being a no-op:
+ * it was inferred from a bug report, never captured from a live tenant, and a
+ * part rendered with no `aria-valuemin` — or with `aria-valuemin="0"` — fell
+ * straight back through as "already filled" (see workdayDateParts.test.ts).
+ *
+ * An ordinary <input type="number"> where 0 IS the answer ("years of
+ * experience: 0") carries neither signal and is untouched.
  */
-function isEmptySpinbutton(el: HTMLElement, raw: string): boolean {
-  if (el.getAttribute("role") !== "spinbutton") return false;
+function readsEmptyAsZero(el: HTMLElement, raw: string): boolean {
   if (raw.trim() !== "0") return false;
+  if (el.matches(DATE_PART_ID_SELECTOR)) return true;
+  if (el.getAttribute("role") !== "spinbutton") return false;
   const min = Number(el.getAttribute("aria-valuemin"));
   return Number.isFinite(min) && min > 0;
 }
@@ -696,7 +710,7 @@ function currentValueOf(el: HTMLElement, controlType: ControlType): string | und
   if (controlType === "text" || controlType === "textarea") {
     const v = (el as HTMLInputElement | HTMLTextAreaElement).value;
     if (!v) return undefined;
-    return isEmptySpinbutton(el, v) ? undefined : v;
+    return readsEmptyAsZero(el, v) ? undefined : v;
   }
   if (controlType === "contenteditable") {
     const v = cleanText(el.textContent);

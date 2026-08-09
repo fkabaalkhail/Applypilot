@@ -6,11 +6,14 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  __openGapsModalForTests,
+  buildHTML,
   gapControlHTML,
   gapInputHTML,
   gapsBodyHTML,
   gapsSaveBanner,
   harvestGapOptions,
+  installRefs,
   readGapAnswer,
   resolveGapPlaceholders,
 } from "../src/content/overlay";
@@ -347,6 +350,81 @@ describe("resolveGapPlaceholders", () => {
     g[0].options = ["Canada"];
     body.innerHTML = gapsBodyHTML(g, false); // what the settle handler used to do
     expect(readGapAnswer(body, 1)).toBe("");
+  });
+});
+
+/**
+ * The tests above pin resolveGapPlaceholders; these pin the CALL SITE that uses
+ * it. openGapsModal shows the modal immediately and settles the harvest seconds
+ * later, and swapping that settle back to a wholesale renderGaps() re-render —
+ * the answer-erasing bug a fix round already closed — left the whole suite
+ * green. So drive the real function: a mounted panel, a slow harvest, an answer
+ * typed while it is in flight.
+ */
+describe("openGapsModal — the harvest settle", () => {
+  const gaps = (): AnswerGap[] => [
+    gap({ fieldId: "a", question: "Country", controlType: "combobox", options: [] }),
+    gap({ fieldId: "b", question: "City", controlType: "text", options: [] }),
+    gap({ fieldId: "c", question: "Relocate?", controlType: "radioGroup", options: ["Yes", "No"] }),
+  ];
+
+  /** The panel's real markup, with the module's refs bound to it. */
+  function mountPanel(): HTMLElement {
+    const root = document.createElement("div");
+    root.innerHTML = buildHTML();
+    document.body.append(root);
+    installRefs(root as HTMLDivElement);
+    return root;
+  }
+
+  it("keeps an answer typed while the harvest was still in flight", async () => {
+    const root = mountPanel();
+    const body = root.querySelector<HTMLElement>("#ap-gaps-body")!;
+    const g = gaps();
+
+    // A harvest that settles a tick later — the modal is live in the meantime.
+    const settled = __openGapsModalForTests(g, async () => {
+      await Promise.resolve();
+      return { a: ["Canada", "United States"] };
+    });
+
+    // The modal must be painted and answerable BEFORE the harvest returns.
+    expect(root.querySelector("#ap-gaps-modal")!.classList.contains("visible")).toBe(true);
+    expect(body.querySelectorAll(".ap-gap-loading").length).toBe(1);
+    body.querySelector<HTMLInputElement>('.ap-gap-input[data-i="1"]')!.value = "Ottawa";
+    body.querySelectorAll<HTMLInputElement>('.ap-gap-choices[data-i="2"] input')[1].checked = true;
+
+    await settled;
+
+    // The user's work survived…
+    expect(readGapAnswer(body, 1)).toBe("Ottawa");
+    expect(readGapAnswer(body, 2)).toBe("Yes");
+    // …and the placeholder became the real dropdown the harvest paid for.
+    const select = body.querySelector<HTMLSelectElement>('select[data-i="0"]');
+    expect(select, "the harvested options should have replaced the placeholder").not.toBeNull();
+    expect([...select!.options].map((o) => o.value)).toEqual(["", "Canada", "United States"]);
+    expect(body.querySelector(".ap-gap-loading")).toBeNull();
+  });
+
+  it("frees the placeholder even when the harvest comes back empty-handed", async () => {
+    const root = mountPanel();
+    const body = root.querySelector<HTMLElement>("#ap-gaps-body")!;
+    await __openGapsModalForTests(gaps(), async () => ({}));
+    expect(body.querySelector(".ap-gap-loading")).toBeNull();
+    expect(body.querySelector<HTMLInputElement>('.ap-gap-input[data-i="0"]')!.type).toBe("text");
+  });
+
+  it("touches nothing once the user has closed the modal", async () => {
+    const root = mountPanel();
+    const body = root.querySelector<HTMLElement>("#ap-gaps-body")!;
+    const settled = __openGapsModalForTests(gaps(), async () => {
+      await Promise.resolve();
+      return { a: ["Canada"] };
+    });
+    root.querySelector("#ap-gaps-modal")!.classList.remove("visible"); // user closes it
+    const before = body.innerHTML;
+    await settled;
+    expect(body.innerHTML).toBe(before);
   });
 });
 

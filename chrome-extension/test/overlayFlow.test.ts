@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { STYLES, formatFlowProgress, formatNextLabel, showsAdvanceGate } from "../src/content/overlay";
+import type { FlowPhase, FlowProgress } from "../src/shared/types";
 
 describe("formatFlowProgress", () => {
   it("describes each phase in user language", () => {
@@ -67,7 +68,13 @@ describe("formatNextLabel", () => {
 });
 
 describe("showsAdvanceGate", () => {
-  const beat = (extra) => ({ phase: "paused", step: 1, filledOk: 0, filledFail: 0, ...extra });
+  const beat = (extra: Partial<FlowProgress> = {}): FlowProgress => ({
+    phase: "paused",
+    step: 1,
+    filledOk: 0,
+    filledFail: 0,
+    ...extra,
+  });
 
   it("offers the gate on a filled page waiting to be turned", () => {
     expect(showsAdvanceGate({ phase: "ready", step: 0, filledOk: 3, filledFail: 0 })).toBe(true);
@@ -94,13 +101,13 @@ describe("showsAdvanceGate", () => {
   });
 
   it("hides the gate on pauses a press could not clear", () => {
-    for (const pauseReason of ["captcha", "verification", "resume-upload"]) {
+    for (const pauseReason of ["captcha", "verification", "resume-upload"] as const) {
       expect(showsAdvanceGate(beat({ pauseReason })), pauseReason).toBe(false);
     }
   });
 
   it("hides the gate while working and once the flow is over", () => {
-    for (const phase of ["filling", "advancing", "done", "stopped"]) {
+    for (const phase of ["filling", "advancing", "done", "stopped"] as FlowPhase[]) {
       expect(showsAdvanceGate({ phase, step: 0, filledOk: 0, filledFail: 0 }), phase).toBe(false);
     }
   });

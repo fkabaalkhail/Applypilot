@@ -568,10 +568,26 @@ const DEGREE_PREFIX_RE =
  * "Computer Science". A degree naming no subject ("Bachelor's Degree", "PhD")
  * returns null, which routes the field to the grounded AI pass rather than
  * writing something invented.
+ *
+ * ONLY the first comma segment is returned, so a double major ("BSc Computer
+ * Science, Mathematics") proposes "Computer Science" and never "Computer
+ * Science, Mathematics". That truncation is a safety property, not a cosmetic
+ * one: comboboxEngine treats any widget under a `multiselectInputContainer` as
+ * multi-select and SPLITS a comma-bearing value into one pick per item — but
+ * that container also wraps Workday prompts that are single-value in fact,
+ * where each pick REPLACES the last (see test/fixtures/workdayReal.ts). Handing
+ * such a widget "Computer Science, Mathematics" commits "Mathematics" and
+ * reports a successful fill: the wrong value, banked green, invisible to the
+ * user. Keeping a comma out of this path makes that unreachable from here, and
+ * on a single-value Field of Study the first subject is the honest answer
+ * anyway.
  */
 export function deriveFieldOfStudy(degree: string): string | null {
   const rest = (degree || "").replace(DEGREE_PREFIX_RE, "").trim();
-  return rest && rest.toLowerCase() !== (degree || "").trim().toLowerCase() ? rest : null;
+  // Compared BEFORE truncating: a bare "Computer Science, Mathematics" with no
+  // degree prefix names no degree at all, and must still return null.
+  if (!rest || rest.toLowerCase() === (degree || "").trim().toLowerCase()) return null;
+  return rest.split(",")[0].trim() || null;
 }
 
 export const LONG_TEXT: ControlType[] = ["textarea", "contenteditable"];

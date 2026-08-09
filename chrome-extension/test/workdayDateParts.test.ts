@@ -64,6 +64,70 @@ describe("Workday date spinbuttons", () => {
   });
 });
 
+/**
+ * REGRESSION: the read-fix above was gated on `aria-valuemin > 0` alone — an
+ * attribute inferred from a bug report and never captured from a live tenant.
+ * A part rendered with NO `aria-valuemin`, or with `aria-valuemin="0"`, read as
+ * already-filled, so shared/selection dropped it from the default selection and
+ * answerGaps dropped it from the gaps modal: the original symptom, silently.
+ *
+ * The `dateSection*` automation-id decides instead, and needs no attribute
+ * evidence — 0 is never a month, a day or a year.
+ */
+describe("empty date parts, whatever the tenant emits for aria-valuemin", () => {
+  /** The live widget shape, with the year part's range attributes swapped out. */
+  function mountYear(range: string): void {
+    document.body.innerHTML = `
+      <div data-automation-id="formField-startDate">
+        <div data-automation-id="dateWidget">
+          <label for="y-month">Month</label>
+          <input role="spinbutton" aria-label="Month" value="0"
+                 id="y-month" data-automation-id="dateSectionMonth-input">
+          <label for="y-year">Year</label>
+          <input role="spinbutton" aria-label="Year" ${range} value="0"
+                 id="y-year" data-automation-id="dateSectionYear-input">
+        </div>
+      </div>`;
+  }
+
+  const scannedYear = (): { currentValue?: string } | undefined =>
+    scanPage(MOCK_PROFILE, false).fields.find((f) => f.label.toLowerCase().includes("year"));
+
+  const rows: ReadonlyArray<readonly [string, string]> = [
+    ['aria-valuemin="1" (the only shape a fixture ever captured)', 'aria-valuemin="1" aria-valuemax="9999"'],
+    ["no aria-valuemin at all", ""],
+    ['aria-valuemin="0"', 'aria-valuemin="0" aria-valuemax="9999"'],
+  ];
+
+  for (const [name, range] of rows) {
+    it(`reads value="0" as empty with ${name}`, () => {
+      mountYear(range);
+      const year = scannedYear();
+      expect(year, "expected the Year spinbutton to be scanned").toBeDefined();
+      expect(year!.currentValue).toBeUndefined();
+    });
+  }
+
+  it("still leaves a real spinbutton value alone", () => {
+    mountYear("");
+    (document.getElementById("y-year") as HTMLInputElement).value = "2025";
+    expect(scannedYear()!.currentValue).toBe("2025");
+  });
+
+  /**
+   * The date-part signal must key off the automation-id and NOTHING weaker. A
+   * bare role=spinbutton with no minimum is an ordinary number input as far as
+   * the page is concerned, and 0 there is the user's actual answer.
+   */
+  it("leaves a role=spinbutton that is not a date part alone", () => {
+    document.body.innerHTML = `
+      <label for="yoe">Years of experience</label>
+      <input id="yoe" type="number" role="spinbutton" value="0">`;
+    const { fields } = scanPage(MOCK_PROFILE, false);
+    expect(fields.find((f) => f.label.toLowerCase().includes("years"))!.currentValue).toBe("0");
+  });
+});
+
 describe("Workday split-date container", () => {
   it("never treats a date PART as its own container", () => {
     mountWorkdayDate();

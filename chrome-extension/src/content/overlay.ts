@@ -1962,7 +1962,12 @@ function refreshGaps(): void {
  *  a widget that yielded nothing can never be stuck un-answerable. */
 let gapHarvestPending = false;
 
-function openGapsModal(): void {
+/**
+ * Returns once the harvest has settled, so the settle path is awaitable. The
+ * modal itself is painted synchronously before the first await, exactly as the
+ * click handler needs — nothing about opening the modal became asynchronous.
+ */
+async function openGapsModal(): Promise<void> {
   if (!refs || overlayState.gaps.length === 0) return;
   const harvest = callbacks?.onHarvestGapOptions;
   gapHarvestPending = Boolean(harvest);
@@ -1974,13 +1979,35 @@ function openGapsModal(): void {
   // sits dead for four seconds after the user clicks the card is worse than a
   // late-arriving dropdown. The consequence is that the user can be typing
   // while the pass runs, so the settle handler resolves ONLY the placeholders
-  // (see resolveGapPlaceholders) instead of rebuilding the body.
-  void harvestGapOptions(overlayState.gaps, harvest).then(() => {
-    gapHarvestPending = false;
-    if (refs?.gapsModal.classList.contains("visible")) {
-      resolveGapPlaceholders(refs.gapsBody, overlayState.gaps);
-    }
-  });
+  // (see resolveGapPlaceholders) instead of rebuilding the body. Calling
+  // renderGaps() here instead would erase every answer typed in the meantime;
+  // answerGapsModal.test.ts pins this call site against exactly that.
+  await harvestGapOptions(overlayState.gaps, harvest);
+  gapHarvestPending = false;
+  if (refs?.gapsModal.classList.contains("visible")) {
+    resolveGapPlaceholders(refs.gapsBody, overlayState.gaps);
+  }
+}
+
+/**
+ * Test seam for the open→harvest→settle path above.
+ *
+ * That path is reachable only by clicking a card on a panel that a real mount
+ * builds (chrome.* and all), and it is the one place a wholesale re-render
+ * silently destroys the user's typed answers — so it needs a regression test
+ * that runs the REAL function, not a stand-in. Seeds the only two module-level
+ * pieces openGapsModal reads and hands back its promise. Pair with
+ * `installRefs`. (Same shape as runtimeMessaging's
+ * `__resetInvalidationHandlerForTests`.)
+ */
+export function __openGapsModalForTests(
+  gaps: AnswerGap[],
+  onHarvestGapOptions: OverlayCallbacks["onHarvestGapOptions"]
+): Promise<void> {
+  overlayState.gaps = gaps;
+  // Only the harvest callback is read on this path; a partial object is honest.
+  callbacks = { ...callbacks, onHarvestGapOptions } as OverlayCallbacks;
+  return openGapsModal();
 }
 
 function closeGapsModal(): void {

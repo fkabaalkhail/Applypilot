@@ -41,6 +41,32 @@ describe("deriveFieldOfStudy", () => {
     expect(deriveFieldOfStudy("PhD")).toBeNull();
     expect(deriveFieldOfStudy("")).toBeNull();
   });
+
+  /**
+   * REGRESSION: a comma in the proposed value is not cosmetic. comboboxEngine
+   * splits a comma-bearing value on any widget under a
+   * `multiselectInputContainer` — including the Workday prompts that are
+   * single-value in fact, where each pick REPLACES the last. A double major
+   * would have proposed "Computer Science, Mathematics" and committed
+   * "Mathematics", reported as a successful fill. No comma may leave here.
+   */
+  it("names one subject for a double major — never a comma-joined list", () => {
+    expect(deriveFieldOfStudy("BSc Computer Science, Mathematics")).toBe("Computer Science");
+    expect(deriveFieldOfStudy("Bachelor of Arts in Economics, Political Science")).toBe("Economics");
+    for (const degree of [
+      "BSc Computer Science, Mathematics",
+      "Bachelor of Science in Computer Science",
+      "Master's Degree in Mechanical Engineering",
+    ]) {
+      expect(deriveFieldOfStudy(degree), degree).not.toContain(",");
+    }
+  });
+
+  it("still returns null for a bare subject list that names no degree", () => {
+    // No degree prefix to strip — the string is not a degree, so proposing the
+    // first half of it would be inventing an answer.
+    expect(deriveFieldOfStudy("Computer Science, Mathematics")).toBeNull();
+  });
 });
 
 describe("Workday education row", () => {

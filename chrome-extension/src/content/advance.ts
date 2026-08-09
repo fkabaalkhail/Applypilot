@@ -57,14 +57,23 @@ export function findAdvanceButton(
     // still in the DOM behind the gate — matches TERMINAL_RE and ends the flow
     // on a page the user has not passed yet.
     //
-    // FINAL_SUBMIT_RE is the guard, and it is load-bearing: on a wall page the
-    // controller clicks an "advance" WITHOUT parking for the user (see
-    // flowController `if (account.wall)`). Both regexes are \b-anchored
-    // alternations, so one button can carry a wall verb AND a submit verb —
-    // "Register and Submit" on a one-page form with an inline password field.
-    // Calling that an advance would send the application unreviewed. `apply` is
-    // deliberately NOT a disqualifier: it is the entry verb this carve-out
-    // exists to beat, and a wall's "Sign in to apply" must stay an advance.
+    // FINAL_SUBMIT_RE is the guard, and it is load-bearing. Both regexes are
+    // \b-anchored alternations, so ONE button can carry a wall verb AND a
+    // submit verb — "Register and Submit" on a one-page form with an inline
+    // password field.
+    //
+    // What the guard buys is the KIND, and the kind decides what happens to the
+    // button. "terminal" ends the flow at "Ready to review and submit" and is
+    // handed to onTerminal for submit tracking; "advance" is a page turn, so
+    // the flow parks and the panel offers that very button behind a gate
+    // labelled from the wall verb ("Create Account ▶"). Without the guard, the
+    // one press the user is invited to make sends the application unreviewed,
+    // with no submit beat and nothing tracked. (The click itself is always the
+    // user's — flowController waits on waitForAdvanceRequest before every
+    // advance click, walls included; the danger here is the label, not an
+    // automatic click.) `apply` is deliberately NOT a disqualifier: it is the
+    // entry verb this carve-out exists to beat, and a wall's "Sign in to apply"
+    // must stay an advance.
     if (opts.extraAdvance?.test(text) && !FINAL_SUBMIT_RE.test(text)) return { el, kind: "advance" };
     if (!terminal && TERMINAL_RE.test(text)) terminal = el;
     if (!advance && ADVANCE_RE.test(text)) advance = el;
