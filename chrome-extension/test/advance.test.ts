@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { findAdvanceButton } from "../src/content/advance";
+import { SIGNUP_ADVANCE_RE } from "../src/content/accountFlow";
 import type { SiteAdapter } from "../src/content/adapters/types";
 import { stubLayout } from "./helpers/layout";
 
@@ -76,5 +77,46 @@ describe("findAdvanceButton", () => {
     const hit = findAdvanceButton(scope, adapter);
     expect(hit?.el.id).toBe("wd");
     expect(hit?.kind).toBe("terminal");
+  });
+});
+
+/**
+ * REGRESSION: on Workday the create-account gate shares a scope with the job
+ * posting, whose "Apply" button matches TERMINAL_RE. The flow read that as the
+ * final submit, finished "done", and the user was left on the account page with
+ * no Continue button.
+ */
+describe("account wall advance", () => {
+  function mountWall(): HTMLElement {
+    document.body.innerHTML = `
+      <div id="scope">
+        <button data-automation-id="adventureButton">Apply</button>
+        <input type="password" />
+        <button data-automation-id="createAccountSubmitButton">Create Account</button>
+      </div>`;
+    return document.getElementById("scope")!;
+  }
+
+  it("prefers the wall's own button over the posting's Apply", () => {
+    const found = findAdvanceButton(mountWall(), null, { extraAdvance: SIGNUP_ADVANCE_RE });
+    expect(found).not.toBeNull();
+    expect(found!.kind).toBe("advance");
+    expect(found!.el.textContent).toBe("Create Account");
+  });
+
+  it("still reports a terminal submit on an ordinary form page", () => {
+    document.body.innerHTML = `
+      <div id="scope">
+        <button>Back</button>
+        <button>Submit Application</button>
+      </div>`;
+    const found = findAdvanceButton(document.getElementById("scope")!, null, {});
+    expect(found!.kind).toBe("terminal");
+  });
+
+  it("does not let a wall regex smuggle past a real submit when no wall is present", () => {
+    document.body.innerHTML = `<div id="scope"><button>Submit</button></div>`;
+    const found = findAdvanceButton(document.getElementById("scope")!, null, {});
+    expect(found!.kind).toBe("terminal");
   });
 });

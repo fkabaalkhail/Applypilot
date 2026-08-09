@@ -39,13 +39,21 @@ export function findAdvanceButton(
     return { el: fromAdapter, kind: TERMINAL_RE.test(buttonText(fromAdapter)) ? "terminal" : "advance" };
   }
   let advance: HTMLElement | null = null;
+  let terminal: HTMLElement | null = null;
   for (const el of deepQueryAll(scope, BUTTON_SELECTOR)) {
     if (!isClickable(el)) continue;
     const text = buttonText(el);
     if (!text) continue;
-    if (TERMINAL_RE.test(text)) return { el, kind: "terminal" }; // terminal wins
-    if (!advance && (ADVANCE_RE.test(text) || opts.extraAdvance?.test(text))) advance = el;
+    // A wall's own verb wins outright. `extraAdvance` is set ONLY while an
+    // account wall is on the page, and there the posting's "Apply" button —
+    // still in the DOM behind the gate — matches TERMINAL_RE and ends the flow
+    // on a page the user has not passed yet. A create-account submit is never
+    // the application's final submit, so this cannot submit an application.
+    if (opts.extraAdvance?.test(text)) return { el, kind: "advance" };
+    if (!terminal && TERMINAL_RE.test(text)) terminal = el;
+    if (!advance && ADVANCE_RE.test(text)) advance = el;
   }
+  if (terminal) return { el: terminal, kind: "terminal" }; // terminal wins over a plain Next
   return advance ? { el: advance, kind: "advance" } : null;
 }
 
