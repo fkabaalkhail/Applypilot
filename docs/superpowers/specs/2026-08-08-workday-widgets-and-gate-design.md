@@ -136,6 +136,10 @@ the Field of Study list, and the fill fails.
 
 ### 1e. The searchBox widget
 
+> **Correction — 2026-08-09 (added after implementation).** The **multiselect half of this section was implemented and then deliberately reverted** in commit `3fbc19a` (*revert(extension): data-uxi-multiselect-id is not a multi-select signal*). Its premise — that `data-uxi-multiselect-id` on the input marks a multi-select — is refuted by the DOM that motivated it: `education-11--fieldOfStudy` carries the marker but is a **single-value** control, and so does Country Phone Code in the repo's only captured production Workday DOM (`chrome-extension/test/fixtures/workdayReal.ts:19-23`). With the branch in place, `"Toronto, Ontario"` committed `"Ontario"` and still reported `filled: true` — a wrong value banked as a success, which is worse than not filling. It bought nothing in exchange: genuine Workday multiselects nest inside `multiselectInputContainer` / `multiSelectContainer`, already matched by the pre-existing ancestor probe. `MULTISELECT_ID_ATTR` was deleted and is not in the shipped code. **The typeahead half below did ship** — `SEARCH_BOX_FRAGMENT` exists in `workdaySelectors.ts` and `isTypeahead` recognises `searchBox`. Evidence: `.superpowers/sdd/2026-08-08-workday-widgets-and-gate/task-3-report.md` § *"Fix round 2 — the marker branch reverted"*, and the `Task 3: ADJUDICATION` entry in that directory's `progress.md`. The original wording is kept below unchanged, so the record shows what was specified as well as what measurement did to it.
+>
+> Known, unfixed, and *pre-existing* (not introduced here): the ancestor probe is itself unsound on real Workday. On `workdayReal.ts` the single-value Country Phone Code control matches `multiselectInputContainer`, so `"Canada, United States"` commits `"United States"` with `filled: true`. Reverting the marker branch did not create this and does not cure it.
+
 `formScanner.ts:189` already routes `data-uxi-widget-type="selectinput"` to
 `"combobox"`, so the control type is right. What is missing is the widget's
 identity in the combobox engine:
