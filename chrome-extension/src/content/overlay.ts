@@ -922,12 +922,14 @@ export const STYLES = `
 }
 .ap-flow-next {
   width: 100%; padding: 13px 14px; border: none; border-radius: 8px;
-  background: #10cf7f; color: #fff;
+  background: linear-gradient(135deg, var(--stripe-primary) 0%, var(--stripe-primary-deep) 100%);
+  color: #fff;
   font-family: inherit; font-size: 14px; font-weight: 700; letter-spacing: 0.01em;
-  cursor: pointer; transition: background 0.15s;
+  cursor: pointer; transition: box-shadow 0.15s;
+  box-shadow: 0 4px 12px rgba(var(--stripe-primary-rgb), 0.25);
 }
-.ap-flow-next:hover { background: #0bb96f; }
-.ap-flow-next:active { background: #0aa563; }
+.ap-flow-next:hover { box-shadow: 0 6px 16px rgba(var(--stripe-primary-rgb), 0.35); }
+.ap-flow-next:active { background: var(--stripe-primary-press); box-shadow: none; }
 /* ---- Unanswered questions (panel card + modal) ---- */
 .ap-gaps-card {
   display: flex; align-items: center; gap: 10px; width: calc(100% - 32px);

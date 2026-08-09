@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatFlowProgress, formatNextLabel } from "../src/content/overlay";
+import { STYLES, formatFlowProgress, formatNextLabel, showsAdvanceGate } from "../src/content/overlay";
 
 describe("formatFlowProgress", () => {
   it("describes each phase in user language", () => {
@@ -49,11 +49,63 @@ describe("formatFlowProgress", () => {
 });
 
 describe("formatNextLabel", () => {
-  it("mirrors the real button the flow will click, defaulting to Next page", () => {
-    const beat = { phase: "paused" as const, step: 0, filledOk: 0, filledFail: 0 };
-    expect(formatNextLabel(beat)).toBe("Next page →");
-    expect(formatNextLabel({ ...beat, nextLabel: "Create Account" })).toBe("Create Account →");
-    expect(formatNextLabel({ ...beat, nextLabel: "Sign In" })).toBe("Sign In →");
-    expect(formatNextLabel({ ...beat, nextLabel: "  " })).toBe("Next page →");
+  const beat = (extra: Record<string, unknown> = {}) =>
+    ({ phase: "ready", step: 1, filledOk: 0, filledFail: 0, ...extra }) as never;
+
+  it("uses one plain label for ordinary page turns", () => {
+    expect(formatNextLabel(beat())).toBe("Continue To The Next Page ▶");
+    // Echoing the site's own "Next" / "Save and Continue" adds nothing.
+    expect(formatNextLabel(beat({ nextLabel: "Next" }))).toBe("Continue To The Next Page ▶");
+    expect(formatNextLabel(beat({ nextLabel: "Save and Continue" }))).toBe("Continue To The Next Page ▶");
+  });
+
+  it("names an advance that creates or enters an account", () => {
+    // Pressing Continue here registers an account — say so.
+    expect(formatNextLabel(beat({ nextLabel: "Create Account" }))).toBe("Create Account ▶");
+    expect(formatNextLabel(beat({ nextLabel: "Sign In" }))).toBe("Sign In ▶");
+  });
+});
+
+describe("showsAdvanceGate", () => {
+  const beat = (extra) => ({ phase: "paused", step: 1, filledOk: 0, filledFail: 0, ...extra });
+
+  it("offers the gate on a filled page waiting to be turned", () => {
+    expect(showsAdvanceGate({ phase: "ready", step: 0, filledOk: 3, filledFail: 0 })).toBe(true);
+    expect(showsAdvanceGate(beat({ pauseReason: "unfilled-required" }))).toBe(true);
+  });
+
+  /**
+   * REGRESSION: an account wall the flow could not pass (site rejected the
+   * password) left the user staring at a filled create-account form with no
+   * gate, no summary and — before this — no message either. The only thing
+   * left to try was clicking Autofill again.
+   */
+  it("offers the gate on an account wall the flow could not pass", () => {
+    expect(showsAdvanceGate(beat({ pauseReason: "account" }))).toBe(true);
+  });
+
+  it("hides the gate on pauses only the page can clear", () => {
+    for (const pauseReason of ["captcha", "validation", "verification", "resume-upload"]) {
+      expect(showsAdvanceGate(beat({ pauseReason })), pauseReason).toBe(false);
+    }
+  });
+
+  it("hides the gate while working and once the flow is over", () => {
+    for (const phase of ["filling", "advancing", "done", "stopped"]) {
+      expect(showsAdvanceGate({ phase, step: 0, filledOk: 0, filledFail: 0 }), phase).toBe(false);
+    }
+  });
+});
+
+describe("advance gate styling", () => {
+  it("uses the app primary, not the old green", () => {
+    const rule = STYLES.slice(
+      STYLES.indexOf(".ap-flow-next {"),
+      STYLES.indexOf(".ap-flow-next:hover")
+    );
+    expect(rule).toContain("var(--stripe-primary)");
+    for (const green of ["#10cf7f", "#0bb96f", "#0aa563"]) {
+      expect(STYLES, green).not.toContain(green);
+    }
   });
 });
