@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { findAdvanceButton } from "../src/content/advance";
-import { SIGNUP_ADVANCE_RE } from "../src/content/accountFlow";
+import { LOGIN_ADVANCE_RE, SIGNUP_ADVANCE_RE } from "../src/content/accountFlow";
 import type { SiteAdapter } from "../src/content/adapters/types";
 import { stubLayout } from "./helpers/layout";
 
@@ -118,5 +118,39 @@ describe("account wall advance", () => {
     document.body.innerHTML = `<div id="scope"><button>Submit</button></div>`;
     const found = findAdvanceButton(document.getElementById("scope")!, null, {});
     expect(found!.kind).toBe("terminal");
+  });
+
+  it("a real submit still wins when a wall regex is live but no wall button matches", () => {
+    document.body.innerHTML = `<div id="scope"><input type="password" /><button>Submit</button></div>`;
+    const found = findAdvanceButton(document.getElementById("scope")!, null, { extraAdvance: SIGNUP_ADVANCE_RE });
+    expect(found!.kind).toBe("terminal");
+  });
+
+  /**
+   * SAFETY: on a wall page the controller clicks an "advance" WITHOUT parking
+   * for the user (flowController: `if (account.wall)` skips the advance gate).
+   * Both regexes are \b-anchored alternations, so one button can carry a wall
+   * verb AND a submit verb — classifying that as "advance" would submit the
+   * application unreviewed, breaking the never-click-a-terminal invariant.
+   */
+  it("never returns advance for a button that also reads as a final submit", () => {
+    const composites: Array<[string, RegExp]> = [
+      ["Register and Submit", SIGNUP_ADVANCE_RE],
+      ["Sign up & Submit", SIGNUP_ADVANCE_RE],
+      ["Create account and finish", SIGNUP_ADVANCE_RE],
+      ["Sign in and submit application", LOGIN_ADVANCE_RE],
+      ["S'inscrire et soumettre", SIGNUP_ADVANCE_RE],
+    ];
+    for (const [label, extraAdvance] of composites) {
+      document.body.innerHTML = `<div id="scope"><input type="password" /><button>${label}</button></div>`;
+      const found = findAdvanceButton(document.getElementById("scope")!, null, { extraAdvance });
+      expect(found!.kind, label).toBe("terminal");
+    }
+  });
+
+  it("keeps a wall's 'Sign in to apply' an advance — apply is an entry verb, not a final submit", () => {
+    document.body.innerHTML = `<div id="scope"><input type="password" /><button>Sign in to apply</button></div>`;
+    const found = findAdvanceButton(document.getElementById("scope")!, null, { extraAdvance: LOGIN_ADVANCE_RE });
+    expect(found!.kind).toBe("advance");
   });
 });

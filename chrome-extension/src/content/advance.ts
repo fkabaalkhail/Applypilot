@@ -16,8 +16,16 @@ export interface AdvanceButton {
 
 const ADVANCE_RE =
   /\b(next( step)?|continue|save (and|&) continue|proceed|review|suivant|continuer|poursuivre|réviser)\b/i;
-const TERMINAL_RE =
-  /\b(submit|send application|apply now|apply|finish|complete application|soumettre|envoyer|postuler|terminer)\b/i;
+/** Verbs that send the application. Reaching one always ends the flow. */
+const FINAL_SUBMIT_RE =
+  /\b(submit|send application|complete application|finish|soumettre|envoyer|terminer)\b/i;
+/** Entry verbs — the job posting's own "Apply". Terminal on their own, but they
+ *  do not send an application, so they never disqualify a wall's advance. */
+const APPLY_ENTRY_RE = /\b(apply now|apply|postuler)\b/i;
+// Composed, not re-listed: the wall carve-out below keys off FINAL_SUBMIT_RE, so
+// a terminal verb added to one flat list would silently escape it. Filing every
+// verb under exactly one of the two makes that impossible.
+const TERMINAL_RE = new RegExp(`${FINAL_SUBMIT_RE.source}|${APPLY_ENTRY_RE.source}`, "i");
 
 const BUTTON_SELECTOR = 'button, input[type="submit"], [role="button"]';
 
@@ -47,9 +55,17 @@ export function findAdvanceButton(
     // A wall's own verb wins outright. `extraAdvance` is set ONLY while an
     // account wall is on the page, and there the posting's "Apply" button —
     // still in the DOM behind the gate — matches TERMINAL_RE and ends the flow
-    // on a page the user has not passed yet. A create-account submit is never
-    // the application's final submit, so this cannot submit an application.
-    if (opts.extraAdvance?.test(text)) return { el, kind: "advance" };
+    // on a page the user has not passed yet.
+    //
+    // FINAL_SUBMIT_RE is the guard, and it is load-bearing: on a wall page the
+    // controller clicks an "advance" WITHOUT parking for the user (see
+    // flowController `if (account.wall)`). Both regexes are \b-anchored
+    // alternations, so one button can carry a wall verb AND a submit verb —
+    // "Register and Submit" on a one-page form with an inline password field.
+    // Calling that an advance would send the application unreviewed. `apply` is
+    // deliberately NOT a disqualifier: it is the entry verb this carve-out
+    // exists to beat, and a wall's "Sign in to apply" must stay an advance.
+    if (opts.extraAdvance?.test(text) && !FINAL_SUBMIT_RE.test(text)) return { el, kind: "advance" };
     if (!terminal && TERMINAL_RE.test(text)) terminal = el;
     if (!advance && ADVANCE_RE.test(text)) advance = el;
   }
