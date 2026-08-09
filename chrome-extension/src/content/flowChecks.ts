@@ -38,17 +38,51 @@ export function invalidFieldCount(scope: HTMLElement): number {
   return deepQueryAll(scope, '[aria-invalid="true"]').filter((el) => isVisible(el)).length;
 }
 
-/** The required résumé file field that still has no file, if any. */
-export function resumeFieldNeedingFile(
+function firstEmptyResumeField(
   fields: DetectedField[],
-  getControl: (id: string) => RuntimeControl | undefined
+  getControl: (id: string) => RuntimeControl | undefined,
+  requiredOnly: boolean
 ): DetectedField | null {
   for (const f of fields) {
-    if (f.category !== "resumeUpload" || f.controlType !== "file" || !f.required) continue;
+    if (f.category !== "resumeUpload" || f.controlType !== "file") continue;
+    if (requiredOnly && !f.required) continue;
     const el = getControl(f.id)?.el as HTMLInputElement | undefined;
     if (el && (el.files?.length ?? 0) === 0) return f;
   }
   return null;
+}
+
+/**
+ * The résumé file field to ATTACH to — empty, required or not.
+ *
+ * Attaching and blocking are different questions and must not share a
+ * predicate. Workday's drop zone carries no `required` attribute, no
+ * `aria-required` and no trailing "*", so gating attach on `required` meant
+ * every entry point read null and the résumé was silently never attached —
+ * which is the whole defect this helper exists to close.
+ */
+export function resumeFieldForAttach(
+  fields: DetectedField[],
+  getControl: (id: string) => RuntimeControl | undefined
+): DetectedField | null {
+  return firstEmptyResumeField(fields, getControl, false);
+}
+
+/**
+ * The REQUIRED résumé file field that still has no file, if any — the only kind
+ * that may PARK the flow.
+ *
+ * Deliberately narrower than `resumeFieldForAttach`: pausing on any empty
+ * upload would leave a user with no résumé on file stuck behind "attach your
+ * résumé to continue" on every optional file input on every ATS, with nothing
+ * they can do to clear it. An optional upload attaches silently and, failing
+ * that, is simply skipped.
+ */
+export function resumeFieldNeedingFile(
+  fields: DetectedField[],
+  getControl: (id: string) => RuntimeControl | undefined
+): DetectedField | null {
+  return firstEmptyResumeField(fields, getControl, true);
 }
 
 const VERIFICATION_RE =

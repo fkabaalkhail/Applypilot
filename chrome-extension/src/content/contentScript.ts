@@ -86,7 +86,13 @@ import { detectSite } from "./siteRegistry";
 import { FlowController, FLOW_TTL_MS, type FlowDeps, type FlowSnapshot, type StepTally } from "./flowController";
 import { clickAdvance, findAdvanceButton } from "./advance";
 import { findApplyEntry } from "./applyEntry";
-import { hasUnsolvedCaptcha, isVerificationWall, resumeFieldNeedingFile, validationMessages } from "./flowChecks";
+import {
+  hasUnsolvedCaptcha,
+  isVerificationWall,
+  resumeFieldForAttach,
+  resumeFieldNeedingFile,
+  validationMessages,
+} from "./flowChecks";
 import { detectWall, findSignupToggle, runAccountWall } from "./accountFlow";
 import { getCredential } from "./credentialStore";
 import { bindSubmitTracking, type SubmitTrackerHandle } from "./submitTracker";
@@ -859,9 +865,12 @@ function initialize(): void {
     }
   }
 
-  /** Attach the flow's picked résumé (or the best default) to the pending file field. */
+  /** Attach the flow's picked résumé (or the best default) to the pending file
+   *  field. Uses the attach-side helper, not the pause-side one: the upload the
+   *  user most wants filled (Workday's drop zone) is not marked required, and
+   *  gating here on `required` made this a success-reporting no-op. */
   async function attachPickedResume(): Promise<boolean> {
-    const field = resumeFieldNeedingFile(lastFields, (id) => registry.get(id));
+    const field = resumeFieldForAttach(lastFields, (id) => registry.get(id));
     if (!field) return true;
     const control = registry.get(field.id);
     if (!control?.el) return false;
@@ -1008,10 +1017,14 @@ function initialize(): void {
         const scope = snap.scopeEl ?? document.body;
         if (isVerificationWall(scope)) return "verification";
         if (validationMessages(scope).length > 0) return "validation";
+        // PAUSING stays required-gated: an optional upload that could not be
+        // attached must never park the flow behind a wall the user cannot clear.
         if (resumeFieldNeedingFile(snap.fields, (id) => registry.get(id))) return "resume-upload";
         return null;
       },
-      needsResume: (snap) => resumeFieldNeedingFile(snap.fields, (id) => registry.get(id)) !== null,
+      // ATTACHING is not: the drop zone carries no `required` marker, so this
+      // is what makes the flow attach the résumé without the user clicking.
+      needsResume: (snap) => resumeFieldForAttach(snap.fields, (id) => registry.get(id)) !== null,
       hasUnfilledRequired: (snap) =>
         snap.fields.some(
           (f) => f.required && f.fillable && f.controlType !== "file" && controlIsEmpty(f.id)

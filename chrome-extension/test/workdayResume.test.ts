@@ -10,6 +10,9 @@ import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
 import { workdayAdapter } from "../src/content/adapters/workday";
 import { findFileInput } from "../src/content/fileUpload";
+import { resumeFieldForAttach, resumeFieldNeedingFile } from "../src/content/flowChecks";
+import type { RuntimeControl } from "../src/content/formScanner";
+import type { DetectedField } from "../src/shared/types";
 
 let restore: () => void;
 beforeAll(() => { restore = stubLayout(); });
@@ -109,5 +112,82 @@ describe("Workday drop zone with no document heading", () => {
     const { fields } = scanPage(MOCK_PROFILE, false, workdayAdapter);
     expect(fields.some((f) => f.category === "coverLetter")).toBe(true);
     expect(fields.some((f) => f.category === "resumeUpload")).toBe(false);
+  });
+
+  it("keeps two widgets apart when each has its own wrapper", () => {
+    document.body.innerHTML = `
+      <div data-automation-id="applyFlowPage">
+        <div class="css-wtpnzt">
+          <div data-automation-id="file-upload-drop-zone">
+            <button data-automation-id="select-files" id="resumeAttachments--attachments">Select files</button>
+          </div>
+          <input data-automation-id="file-upload-input-ref" type="file" class="css-a">
+        </div>
+        <div class="css-wtpnzt">
+          <div data-automation-id="file-upload-drop-zone">
+            <button data-automation-id="select-files" id="coverLetter--attachments">Select files</button>
+          </div>
+          <input data-automation-id="file-upload-input-ref" type="file" class="css-b">
+        </div>
+      </div>`;
+    const { fields } = scanPage(MOCK_PROFILE, false, workdayAdapter);
+    expect(fields.map((f) => f.category)).toEqual(["resumeUpload", "coverLetter"]);
+  });
+
+  /**
+   * Both widgets FLAT under one wrapper — no per-widget wrapper to scope to.
+   * Scooping the wrapper's ids would hand the résumé input
+   * "coverLetter--attachments", and the cover-letter rule is tested first, so
+   * the résumé upload would classify as a cover letter and the résumé would be
+   * attached to the wrong control (or, since coverLetter has no attach path, to
+   * nothing). Abstaining is the deliberate outcome: a wrapper holding TWO drop
+   * zones can answer for neither, so both fall through to `unknown` — the old
+   * do-nothing failure, never a confidently wrong answer.
+   */
+  it("refuses to guess when two widgets share one flat wrapper", () => {
+    document.body.innerHTML = `
+      <div data-automation-id="applyFlowPage">
+        <div class="css-wtpnzt">
+          <div data-automation-id="file-upload-drop-zone">
+            <button data-automation-id="select-files" id="resumeAttachments--attachments">Select files</button>
+          </div>
+          <input data-automation-id="file-upload-input-ref" type="file" class="css-a">
+          <div data-automation-id="file-upload-drop-zone">
+            <button data-automation-id="select-files" id="coverLetter--attachments">Select files</button>
+          </div>
+          <input data-automation-id="file-upload-input-ref" type="file" class="css-b">
+        </div>
+      </div>`;
+    const { fields } = scanPage(MOCK_PROFILE, false, workdayAdapter);
+    expect(fields.map((f) => f.category)).toEqual(["unknown", "unknown"]);
+  });
+});
+
+/**
+ * Classification alone never attached anything: `resumeFieldNeedingFile` also
+ * demands `required`, and Workday's drop zone carries no `required`, no
+ * `aria-required` and no trailing "*" — so every auto-attach entry point read
+ * NULL and did nothing. These pin the split that fixed it.
+ */
+describe("the reported drop zone reaches auto-attach", () => {
+  function scanBareDropzone(): { field: DetectedField | undefined; get: (id: string) => RuntimeControl | undefined } {
+    mountBareDropzone();
+    const { fields, registry } = scanPage(MOCK_PROFILE, false, workdayAdapter);
+    return {
+      field: fields.find((f) => f.category === "resumeUpload"),
+      get: (id) => registry.get(id),
+    };
+  }
+
+  it("attaches without a click even though the zone is not marked required", () => {
+    const { field, get } = scanBareDropzone();
+    expect(field, "expected a resumeUpload field").toBeDefined();
+    expect(field!.required, "the reported zone carries no required marker").toBe(false);
+    expect(resumeFieldForAttach([field!], get)?.id).toBe(field!.id);
+  });
+
+  it("but never parks the flow behind it — an optional upload must not block advance", () => {
+    const { field, get } = scanBareDropzone();
+    expect(resumeFieldNeedingFile([field!], get)).toBeNull();
   });
 });

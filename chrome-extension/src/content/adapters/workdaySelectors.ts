@@ -248,8 +248,6 @@ export const ERROR_FRAGMENT = "error";
 export const FILE_DROP_ZONE_SELECTOR = '[data-automation-id="file-upload-drop-zone"]';
 /** The real (visually hidden) <input type=file> beside that zone. */
 export const FILE_INPUT_SELECTOR = '[data-automation-id="file-upload-input-ref"]';
-/** The zone's "Select files" button — where the document name lives, as an id. */
-export const SELECT_FILES_SELECTOR = '[data-automation-id="select-files"]';
 
 /**
  * Workday's upload widget carries no automation-id and no visible text naming
@@ -263,17 +261,32 @@ export const UPLOAD_WIDGET_ID_RE = /resume|curriculum.?vitae|\bcv\b/i;
 export const COVER_WIDGET_ID_RE = /cover.?letter/i;
 
 /**
- * The ONE upload widget `el` belongs to: the drop zone it sits inside, or —
- * since Workday renders the real <input type=file> as a SIBLING of the zone,
- * not a child — the wrapper holding both.
+ * The ONE upload widget `el` belongs to, or null when that cannot be decided.
  *
- * Deliberately never the zone's parent when `el` is already inside the zone: a
- * page can render a résumé widget and a cover-letter widget under one wrapper,
- * and widening past the zone lets the neighbour's id ("coverLetter--…") answer
- * for this widget — which would classify the résumé upload as a cover letter.
+ * Inside a drop zone the zone itself is the widget. Otherwise `el` is Workday's
+ * real <input type=file>, which renders as a SIBLING of the zone rather than a
+ * child, so the widget is the nearest wrapper holding a zone.
+ *
+ * "Nearest wrapper holding EXACTLY ONE zone" is the load-bearing part. The
+ * element `classify` receives is that sibling input, whose `closest(zone)` is
+ * null — so a plain `parentElement` reads every id under the parent, and a
+ * parent wrapping a résumé widget AND a cover-letter widget hands the résumé
+ * input "coverLetter--attachments". `COVER_WIDGET_ID_RE` is tested first, so
+ * the résumé upload would classify as a cover letter and never be attached.
+ * A wrapper holding two zones can speak for neither: climbing stops and the
+ * caller gets nothing, which degrades to `unknown` — the old do-nothing
+ * failure, never a confidently wrong answer.
  */
 function uploadWidgetOf(el: HTMLElement): HTMLElement | null {
-  return el.closest<HTMLElement>(FILE_DROP_ZONE_SELECTOR) ?? el.parentElement;
+  const zone = el.closest<HTMLElement>(FILE_DROP_ZONE_SELECTOR);
+  if (zone) return zone;
+  let node: HTMLElement | null = el.parentElement;
+  for (let i = 0; node && i < 4; i++, node = node.parentElement) {
+    const zones = node.querySelectorAll(FILE_DROP_ZONE_SELECTOR).length;
+    if (zones === 1) return node;
+    if (zones > 1) return null;
+  }
+  return null;
 }
 
 /** Element ids inside (and on) the upload widget wrapping `el`, space-joined. */

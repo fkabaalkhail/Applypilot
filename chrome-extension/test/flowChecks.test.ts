@@ -3,6 +3,7 @@ import {
   hasUnsolvedCaptcha,
   invalidFieldCount,
   isVerificationWall,
+  resumeFieldForAttach,
   resumeFieldNeedingFile,
   validationMessages,
 } from "../src/content/flowChecks";
@@ -82,6 +83,62 @@ describe("resumeFieldNeedingFile", () => {
     document.body.innerHTML = `<input type="file" id="f" />`;
     const control: RuntimeControl = { id: "1", controlType: "file", el: document.getElementById("f") as HTMLInputElement };
     expect(resumeFieldNeedingFile([fileField("1", false)], () => control)).toBeNull();
+  });
+});
+
+/**
+ * Attaching and BLOCKING are different questions, and conflating them breaks
+ * one way or the other: gate attach on `required` and an optional upload is
+ * never attached (Workday's drop zone carries no `required`), gate the pause on
+ * anything less and every optional file input on every ATS parks the flow
+ * behind "attach your résumé to continue" for a user with no résumé on file.
+ */
+describe("resumeFieldForAttach vs resumeFieldNeedingFile", () => {
+  function fileField(id: string, required: boolean): DetectedField {
+    return {
+      id, category: "resumeUpload", confidence: 0.9, label: "Resume", controlType: "file",
+      required, proposedValue: null, fillable: false, sensitive: false,
+    };
+  }
+  function control(): RuntimeControl {
+    document.body.innerHTML = `<input type="file" id="f" />`;
+    return { id: "1", controlType: "file", el: document.getElementById("f") as HTMLInputElement };
+  }
+
+  it("attaches to an OPTIONAL empty résumé upload", () => {
+    const c = control();
+    expect(resumeFieldForAttach([fileField("1", false)], () => c)?.id).toBe("1");
+  });
+
+  it("attaches to a required empty résumé upload too", () => {
+    const c = control();
+    expect(resumeFieldForAttach([fileField("1", true)], () => c)?.id).toBe("1");
+  });
+
+  it("does not pause the flow for that same optional upload", () => {
+    const c = control();
+    expect(resumeFieldNeedingFile([fileField("1", false)], () => c)).toBeNull();
+  });
+
+  it("skips a résumé upload that already holds a file", () => {
+    document.body.innerHTML = `<input type="file" id="f" />`;
+    const el = document.getElementById("f") as HTMLInputElement;
+    // jsdom implements neither DataTransfer nor a settable FileList, and the
+    // check only ever reads `.length`.
+    Object.defineProperty(el, "files", { value: { length: 1 }, configurable: true });
+    const c: RuntimeControl = { id: "1", controlType: "file", el };
+    expect(resumeFieldForAttach([fileField("1", false)], () => c)).toBeNull();
+  });
+
+  it("still returns the required one when an optional upload precedes it", () => {
+    document.body.innerHTML = `<input type="file" id="a" /><input type="file" id="b" />`;
+    const els: Record<string, RuntimeControl> = {
+      "1": { id: "1", controlType: "file", el: document.getElementById("a") as HTMLInputElement },
+      "2": { id: "2", controlType: "file", el: document.getElementById("b") as HTMLInputElement },
+    };
+    const fields = [fileField("1", false), fileField("2", true)];
+    expect(resumeFieldNeedingFile(fields, (id) => els[id])?.id).toBe("2");
+    expect(resumeFieldForAttach(fields, (id) => els[id])?.id).toBe("1");
   });
 });
 
