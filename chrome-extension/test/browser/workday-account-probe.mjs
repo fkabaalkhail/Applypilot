@@ -167,6 +167,22 @@ async function main() {
 
   await pg.locator("#ap-btn-autofill").click();
 
+  // The flow fills the wall and then parks at the panel's advance gate — it
+  // never presses Create Account by itself; the USER turns every page, the
+  // account wall included. Press the gate as the user would.
+  await pg.waitForFunction(
+    () => {
+      const sr = document.getElementById("applypilot-overlay-host")?.shadowRoot;
+      const btn = sr?.querySelector("#ap-flow-next");
+      const wrap = btn?.closest(".ap-flow-next-wrap");
+      return Boolean(wrap && wrap.style.display !== "none");
+    },
+    null,
+    { timeout: 45000 }
+  );
+  check("create-account wall parked at the user's advance gate", true);
+  await pg.locator("#ap-flow-next").click({ timeout: 10000 });
+
   // The whole point: the flow ticks the hidden consent box, the page-side gate
   // passes, and Create Account navigates to the form. Before the fix this timed
   // out on /account.

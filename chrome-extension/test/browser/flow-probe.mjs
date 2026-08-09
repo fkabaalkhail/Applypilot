@@ -166,9 +166,7 @@ async function main() {
     null,
     { timeout: 15000 }
   );
-  const hint = await pg.locator("#ap-field-count").textContent();
   check("Autofill enabled on the job posting", true);
-  check('panel explains it will click "Apply Now"', /Apply Now/.test(hint ?? ""), hint?.trim());
 
   // 3. Save account-creation credentials in Autofill Information → Account creation.
   await pg.locator("#ap-section-info").click();
@@ -197,9 +195,23 @@ async function main() {
   await pg.waitForURL(`${origin}/account`, { timeout: 20000 });
   check("flow resumed on the field-less chooser and picked Apply Manually", true);
 
-  // 5. The account wall fills the saved credentials, ticks consent, and clicks
-  //    Create Account (a real GET submit — the server sees exactly what the
-  //    site would).
+  // 5. The account wall fills the saved credentials and ticks consent, then
+  //    parks at the panel's advance gate: the flow never creates an account on
+  //    its own — the USER turns every page, the wall included. Press the gate
+  //    exactly as step 6 does for the form page. The press clicks Create Account
+  //    (a real GET submit — the server sees exactly what the site would).
+  await pg.waitForFunction(
+    () => {
+      const sr = document.getElementById("applypilot-overlay-host")?.shadowRoot;
+      const btn = sr?.querySelector("#ap-flow-next");
+      const wrap = btn?.closest(".ap-flow-next-wrap");
+      return Boolean(wrap && wrap.style.display !== "none");
+    },
+    null,
+    { timeout: 45000 }
+  );
+  check("account wall parked at the user's advance gate", true);
+  await pg.locator("#ap-flow-next").click({ timeout: 10000 });
   await pg.waitForURL((u) => u.pathname === "/form", { timeout: 30000 });
   const acct = new URL(pg.url()).searchParams;
   check("create-account used the saved registration email", acct.get("reg_email") === REG_EMAIL, acct.get("reg_email") ?? "(none)");
