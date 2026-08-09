@@ -4,11 +4,13 @@ import {
   fieldSignature,
   stepSignature,
   MAX_STEPS,
+  USER_CLEARABLE_PAUSES,
   type FlowDeps,
   type FlowSnapshot,
   type StepTally,
 } from "../src/content/flowController";
-import type { DetectedField, FlowProgress, FlowState } from "../src/shared/types";
+import { showsAdvanceGate } from "../src/content/overlay";
+import type { DetectedField, FlowPauseReason, FlowProgress, FlowState } from "../src/shared/types";
 import type { AdvanceButton } from "../src/content/advance";
 
 function field(id: string, label: string): DetectedField {
@@ -374,21 +376,129 @@ describe("FlowController", () => {
     expect(progress[progress.length - 1].phase).toBe("done"); // resumed, not stopped
   });
 
-  it("self-advances an account wall without parking (creating the account is the flow's job)", async () => {
+  it("parks on an account wall too — the user turns every page, including signup", async () => {
     const pages = [[field("1", "A")], [field("2", "B")]];
     const create = document.createElement("button");
     create.textContent = "Create Account";
     const { deps, log, progress } = makeDeps(pages, [{ el: create, kind: "advance" }, terminalBtn()]);
     deps.accountStep = async () => ({ wall: "signup" as const });
-    deps.hasUnfilledRequired = (snap): boolean => snap.fields[0]?.id === "1"; // page 1 only
     const controller = new FlowController(deps);
-    await controller.run(freshState(), null);
-    // No user gate on a wall: the flow clicks Create Account on its own — the
-    // Autofill click asked it to create the account. (Form pages still park.)
-    expect(progress.some((p) => p.phase === "ready" || p.pauseReason === "unfilled-required")).toBe(false);
+    // drive() clears each gate the way the panel's Continue button does.
+    await drive(controller, progress);
+    // The wall is gated like any other page: creating an account is not
+    // something to do while the user is still reading the form.
+    const gate = progress.find((p) => p.phase === "ready");
+    expect(gate, "the wall parked at a ready gate").toBeTruthy();
+    expect(gate!.nextLabel).toBe("Create Account");
+    // Still narrated as an account step, and still clicked once released.
     expect(progress.some((p) => p.phase === "filling" && p.detail === "creating account…")).toBe(true);
-    expect(progress.some((p) => p.phase === "advancing" && p.detail === "creating account…")).toBe(true);
     expect(log).toContain("click:0");
     expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
+  it("lets the user release an account wall the flow could not pass", async () => {
+    // A signup wall whose Create Account click never advances (the site
+    // rejected it) AND which stays on screen, so the auto-clear poll can never
+    // fire. Only the panel's Continue button can free the flow.
+    const pages = [[field("1", "A")], [field("2", "B")]];
+    const create = document.createElement("button");
+    create.textContent = "Create Account";
+    const { deps, progress } = makeDeps(pages, [{ el: create, kind: "advance" }, terminalBtn()]);
+    deps.accountStep = async () => ({ wall: "signup" as const });
+    deps.clickAdvance = () => {}; // the click is rejected: the page never moves
+    const base = deps.snapshot;
+    deps.snapshot = (): FlowSnapshot => ({ ...base(), accountWall: true }); // wall never clears
+    const controller = new FlowController(deps);
+
+    let releases = 0;
+    const seen = new Set<string>();
+    deps.onProgress = (p): void => {
+      progress.push(p);
+      // Clear BOTH gates as the panel would: the ready gate the wall now parks
+      // at, and the account pause after its click is rejected.
+      const key = `${p.phase}:${p.pauseReason ?? ""}`;
+      if ((p.phase === "ready" || p.pauseReason === "account") && !seen.has(key)) {
+        seen.add(key);
+        releases++;
+        controller.notifyAdvanceRequested();
+      }
+    };
+
+    const run = controller.run(freshState(), null);
+    for (let i = 0; i < 2000; i++) await Promise.resolve();
+    controller.stop();
+    await run;
+
+    expect(progress.some((p) => p.pauseReason === "account")).toBe(true);
+    expect(releases).toBe(2);
+    // Released → the flow re-attempted the step. Parked forever → only one.
+    expect(progress.filter((p) => p.phase === "filling").length).toBeGreaterThan(1);
+  });
+});
+
+describe("manual override of a pause", () => {
+  /** Deps parked on one pause reason forever, so only a press can move them. */
+  function stuckDeps(reason: FlowPauseReason): { deps: FlowDeps; progress: FlowProgress[] } {
+    const { deps, progress } = makeDeps([[field("a", "Name")]], [advanceBtn()]);
+    deps.pauseReason = async () => reason;
+    return { deps, progress };
+  }
+
+  /** Let the controller's awaits drain. Its sleep() resolves immediately, so a
+   *  microtask spin is the whole clock. */
+  const spin = async (n = 200): Promise<void> => {
+    for (let i = 0; i < n; i++) await Promise.resolve();
+  };
+
+  it("lets the user release a validation pause", async () => {
+    const { deps, progress } = stuckDeps("validation");
+    const controller = new FlowController(deps);
+    const run = controller.run(freshState(), tally());
+    // Let the controller reach the pause, then press Continue.
+    await spin();
+    expect(progress.some((p) => p.phase === "paused" && p.pauseReason === "validation")).toBe(true);
+    controller.notifyAdvanceRequested();
+    await spin();
+    // Released: the flow left the pause and parked at the next gate. pauseReason
+    // never clears here, so only the press could have moved it — without the
+    // override the flow polls "validation" forever and never reaches "ready".
+    expect(progress.some((p) => p.phase === "ready")).toBe(true);
+    controller.stop();
+    await run;
+  });
+
+  it("ignores a press on a captcha pause — a click cannot solve it", async () => {
+    const { deps, progress } = stuckDeps("captcha");
+    let polls = 0;
+    deps.pauseReason = async () => { polls++; return "captcha"; };
+    const controller = new FlowController(deps);
+    const run = controller.run(freshState(), tally());
+    await spin();
+    controller.notifyAdvanceRequested();
+    const before = polls;
+    await spin();
+    expect(polls).toBeGreaterThan(before); // still polling — the press did not release it
+    expect(progress.some((p) => p.phase === "ready")).toBe(false);
+    controller.stop();
+    await run;
+  });
+
+  it("only releases pauses a press can actually clear", () => {
+    // Pinned membership: adding captcha/verification/resume-upload here would
+    // let a press skip a blocker the user has not dealt with.
+    expect([...USER_CLEARABLE_PAUSES].sort()).toEqual(["account", "unfilled-required", "validation"]);
+  });
+
+  it("agrees with the panel about which pauses show a gate", () => {
+    // The two halves of the fix must match exactly: a gate the flow ignores
+    // strands the user just as badly as no gate, and honouring a press with no
+    // button to press is dead code.
+    const all: FlowPauseReason[] = [
+      "captcha", "resume-upload", "validation", "account", "verification", "unfilled-required",
+    ];
+    for (const pauseReason of all) {
+      const beat = { phase: "paused", step: 1, filledOk: 0, filledFail: 0, pauseReason } as FlowProgress;
+      expect(showsAdvanceGate(beat), pauseReason).toBe(USER_CLEARABLE_PAUSES.has(pauseReason));
+    }
   });
 });

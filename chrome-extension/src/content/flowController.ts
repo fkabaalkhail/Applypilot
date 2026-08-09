@@ -31,6 +31,18 @@ const ADVANCE_WAIT_MS = 8000;
  *  the fill before falling back to waiting for a manual attach. */
 const RESUME_ATTACH_TRIES = 6;
 
+/** Pauses a user CAN clear by pressing the panel's advance button — they have
+ *  fixed the page (or judged it fine) and want the flow to try again. Captcha,
+ *  verification and resume-upload are absent on purpose: the click cannot
+ *  clear them, so offering a button that does nothing is worse than none.
+ *  Kept in step with showsAdvanceGate() in overlay.ts, which decides whether
+ *  the user is offered that button at all. */
+export const USER_CLEARABLE_PAUSES: ReadonlySet<FlowPauseReason> = new Set<FlowPauseReason>([
+  "validation",
+  "unfilled-required",
+  "account",
+]);
+
 export interface StepTally {
   ok: number;
   fail: number;
@@ -109,6 +121,9 @@ export class FlowController {
   private lastTally = { ok: 0, fail: 0 };
   /** Resolver for the "ready" gate while the flow awaits the user's Next page. */
   private advanceResolver: ((advance: boolean) => void) | null = null;
+  /** Set by notifyAdvanceRequested() when no gate is currently awaiting it —
+   *  polled by waitForWallCleared, which has no resolver to hand out. */
+  private advanceRequested = false;
 
   constructor(private deps: FlowDeps) {}
 
@@ -130,7 +145,12 @@ export class FlowController {
   notifyAdvanceRequested(): void {
     const resolve = this.advanceResolver;
     this.advanceResolver = null;
-    resolve?.(true);
+    if (resolve) {
+      resolve(true);
+      return;
+    }
+    // No gate awaiting a resolver — the account-wall park polls this flag.
+    this.advanceRequested = true;
   }
 
   /**
@@ -148,6 +168,9 @@ export class FlowController {
     while (!this.stopRequested) {
       if (this.step >= MAX_STEPS) return this.finish("stopped", "Step limit reached — review the page");
       if (this.expired()) return this.finish("stopped", "Flow timed out");
+      // A new step invalidates any press that arrived while no gate was open
+      // (a double-click on the last page), so it can never auto-turn this one.
+      this.advanceRequested = false;
 
       const account = await this.deps.accountStep(this.deps.snapshot());
       const wallDetail =
@@ -194,30 +217,23 @@ export class FlowController {
         return this.finish("done", "Ready to review and submit");
       }
 
-      // The page is filled — hand control back to the user. The flow never turns
-      // a FORM page on its own: the panel shows a contextual bottom button
-      // (Continue / Next page, mirroring advText) and the flow advances only
-      // when the user presses it. One Autofill click fills every page; the user
-      // decides each page turn. A page with an unfilled required field surfaces
-      // the same gate as a "paused" beat so the panel can explain why (the
-      // site's own validation would reject an advance otherwise).
-      //
-      // ACCOUNT WALLS are the exception: creating the account is the flow's own
-      // job (the user asked for it with the Autofill click), so Create Account /
-      // Sign In is clicked without parking — and if that click can't get
-      // through, the wall-didn't-advance branch below hands it to the user.
-      if (account.wall) {
-        console.log(`[Tailrd flow] account wall — clicking "${advText || "Create Account"}" without parking`);
+      // The page is filled — hand control back to the user. The flow never
+      // turns a page on its own: the panel shows a contextual bottom button
+      // (Continue / Create Account, mirroring advText) and the flow advances
+      // only when the user presses it. One Autofill click fills every page; the
+      // user decides every page turn, including the account wall — creating an
+      // account is irreversible enough that it should not happen while the user
+      // is still reading the form. A page with an unfilled required field
+      // surfaces the same gate as a "paused" beat so the panel can explain why
+      // (the site's own validation would reject an advance otherwise).
+      if (this.deps.hasUnfilledRequired(snap)) {
+        console.log("[Tailrd flow] parked — required field(s) still empty; press the advance button to continue anyway");
+        this.emit("paused", { pauseReason: "unfilled-required", nextLabel: advText || undefined });
       } else {
-        if (this.deps.hasUnfilledRequired(snap)) {
-          console.log("[Tailrd flow] parked — required field(s) still empty; press the advance button to continue anyway");
-          this.emit("paused", { pauseReason: "unfilled-required", nextLabel: advText || undefined });
-        } else {
-          console.log(`[Tailrd flow] parked at ready — press "${advText || "Next page"}" to advance`);
-          this.emit("ready", { nextLabel: advText || undefined });
-        }
-        if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
+        console.log(`[Tailrd flow] parked at ready — press "${advText || "Next page"}" to advance`);
+        this.emit("ready", { nextLabel: advText || undefined });
       }
+      if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
       // A blocker (e.g. a captcha) may have re-appeared while the flow waited, so
       // re-check before clicking advance.
       if (!(await this.waitWhileBlocked())) return this.finishStopped();
@@ -233,6 +249,11 @@ export class FlowController {
         // instead of killing the whole flow.
         if (account.wall) {
           console.log("[Tailrd flow] account wall didn't advance — pausing for the user to finish");
+          // Drop any stray click from before this pause, THEN announce it —
+          // onProgress runs synchronously, so a user pressing Continue the
+          // instant the gate appears must be honoured, not cleared by the
+          // wait we are about to enter.
+          this.advanceRequested = false;
           this.emit("paused", { pauseReason: "account" });
           if (!(await this.waitForWallCleared())) return this.finishStopped();
           this.step -= 1; // re-attempt the step now that the wall is gone
@@ -297,18 +318,33 @@ export class FlowController {
     return this.finish("stopped", "Autofill flow stopped");
   }
 
-  /** Park at the ready gate until notifyAdvanceRequested() (true) or stop() (false). */
+  /** Park at the ready gate until notifyAdvanceRequested() (true) or stop() (false).
+   *
+   *  onProgress runs SYNCHRONOUSLY inside emit(), so a press that lands while
+   *  the gate beat is still being delivered arrives before this method installs
+   *  its resolver. Honour the flag first or that press is dropped and the flow
+   *  waits forever for a button the user already pushed. */
   private waitForAdvanceRequest(): Promise<boolean> {
     if (this.stopRequested) return Promise.resolve(false);
+    if (this.advanceRequested) {
+      this.advanceRequested = false;
+      return Promise.resolve(true);
+    }
     return new Promise((resolve) => {
       this.advanceResolver = resolve;
     });
   }
 
   /** Park while an account wall the flow couldn't auto-pass is still on screen.
-   *  Resolves true when the user clears it (wall gone, or the page moved on);
-   *  false on stop/expiry. Rescans each poll so a real navigation (or an SPA
-   *  step change) is noticed. */
+   *  Resolves true when the wall clears on its own (the user signed in, or the
+   *  page moved on) OR when the user presses the panel's advance button; false
+   *  on stop/expiry. Rescans each poll so a real navigation (or an SPA step
+   *  change) is noticed.
+   *
+   *  The manual release matters: an account wall the flow could not pass (the
+   *  site rejected the password, an extra field is required) leaves the user
+   *  looking at a filled form with no way to tell the flow to try again. Auto-
+   *  clearing alone cannot cover that — the wall is still on screen. */
   private async waitForWallCleared(): Promise<boolean> {
     for (;;) {
       if (this.stopRequested) return false;
@@ -317,6 +353,10 @@ export class FlowController {
         return false;
       }
       await this.deps.sleep(PAUSE_POLL_MS);
+      if (this.advanceRequested) {
+        this.advanceRequested = false;
+        return true; // the user says this wall is dealt with — re-attempt
+      }
       this.deps.rescan();
       const snap = this.deps.snapshot();
       if (!snap.accountWall) return true;
@@ -335,6 +375,13 @@ export class FlowController {
       }
       const reason = await this.deps.pauseReason(this.deps.snapshot());
       if (!reason) return true;
+      // The user pressed Continue: on a pause they own, that means "I have
+      // dealt with this — go". Checked before the emit so a press that lands
+      // during the synchronous onProgress is not dropped.
+      if (this.advanceRequested && USER_CLEARABLE_PAUSES.has(reason)) {
+        this.advanceRequested = false;
+        return true;
+      }
       // A résumé upload field often lazy-renders after the page fills (Workday and
       // other SPAs), so the one attach attempt at fill time misses it. Auto-attach
       // it here as it appears — the user should never have to click attach. Bounded

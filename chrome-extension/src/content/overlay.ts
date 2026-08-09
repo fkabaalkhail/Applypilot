@@ -225,12 +225,24 @@ export function formatNextLabel(p: FlowProgress): string {
 /** Beats where the bottom gate is offered to the user. Pure — unit-tested.
  *  - ready: the page is filled and waiting to be turned.
  *  - unfilled-required: same, with a caveat the panel explains.
+ *  - validation: the page is showing its own error text. The user fixes it and
+ *    presses Continue; without a button they are stranded — Workday's
+ *    create-account gate renders live password-rule alerts on every keystroke.
  *  - account: the flow could not pass a signup/sign-in wall on its own; the
  *    button lets the user hand control back once they have dealt with it,
- *    instead of stranding them on a filled form with no next step. */
+ *    instead of stranding them on a filled form with no next step.
+ *  Captcha / verification / resume-upload are deliberately absent: a press
+ *  cannot clear them, and a button that does nothing is worse than none.
+ *  Must stay in step with USER_CLEARABLE_PAUSES in flowController — the flow
+ *  only honours a press on the pauses listed there. */
 export function showsAdvanceGate(p: FlowProgress): boolean {
   if (p.phase === "ready") return true;
-  return p.phase === "paused" && (p.pauseReason === "unfilled-required" || p.pauseReason === "account");
+  if (p.phase !== "paused") return false;
+  return (
+    p.pauseReason === "unfilled-required" ||
+    p.pauseReason === "account" ||
+    p.pauseReason === "validation"
+  );
 }
 
 /** Render a flow beat: minimal strip (no narration) + the bottom Next page gate. */

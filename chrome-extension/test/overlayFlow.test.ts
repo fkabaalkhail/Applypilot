@@ -84,8 +84,17 @@ describe("showsAdvanceGate", () => {
     expect(showsAdvanceGate(beat({ pauseReason: "account" }))).toBe(true);
   });
 
-  it("hides the gate on pauses only the page can clear", () => {
-    for (const pauseReason of ["captcha", "validation", "verification", "resume-upload"]) {
+  /**
+   * A validation pause is something the USER fixes on the page — Workday's
+   * create-account form shows live password-rule alerts. Parking there with no
+   * button stranded the user on the account page with nothing to press.
+   */
+  it("offers the gate on a validation pause the user can clear", () => {
+    expect(showsAdvanceGate(beat({ pauseReason: "validation" }))).toBe(true);
+  });
+
+  it("hides the gate on pauses a press could not clear", () => {
+    for (const pauseReason of ["captcha", "verification", "resume-upload"]) {
       expect(showsAdvanceGate(beat({ pauseReason })), pauseReason).toBe(false);
     }
   });
