@@ -5,7 +5,15 @@
  * whose typed answer the widget then rejected.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { gapControlHTML, gapInputHTML, harvestGapOptions, readGapAnswer } from "../src/content/overlay";
+import {
+  gapControlHTML,
+  gapInputHTML,
+  gapsBodyHTML,
+  gapsSaveBanner,
+  harvestGapOptions,
+  readGapAnswer,
+  resolveGapPlaceholders,
+} from "../src/content/overlay";
 import { isBlindConstrainedGap, type AnswerGap } from "../src/content/answerGaps";
 import type { ControlType } from "../src/shared/types";
 
@@ -259,5 +267,125 @@ describe("isBlindConstrainedGap agrees with what the modal renders", () => {
     expect(isBlindConstrainedGap(gap({ controlType: "checkbox", options: [] }))).toBe(false);
     const root = mount(gapControlHTML(gap({ controlType: "checkbox", options: [] }), 0, false));
     expect(root.querySelectorAll('input[type="radio"]').length).toBe(3);
+  });
+});
+
+/**
+ * The modal is interactive the moment it opens; the harvest settles up to four
+ * seconds later. Rebuilding gapsBody wholesale at that point erased every
+ * answer typed in the meantime — the user could then hit Save & fill on a form
+ * they had just filled in and be told "only filled 0 of 2". Only the
+ * "Loading choices…" placeholders may be replaced: they hold no input, so
+ * nothing can be lost, and they are exactly the rows that must change.
+ */
+describe("resolveGapPlaceholders", () => {
+  const gaps = (): AnswerGap[] => [
+    gap({ fieldId: "a", question: "Country", controlType: "combobox", options: [] }),
+    gap({ fieldId: "b", question: "City", controlType: "text", options: [] }),
+    gap({ fieldId: "c", question: "Relocate?", controlType: "radioGroup", options: ["Yes", "No"] }),
+  ];
+
+  it("keeps an answer typed while the harvest was still running", () => {
+    const g = gaps();
+    const body = mount(gapsBodyHTML(g, true));
+    body.querySelector<HTMLInputElement>('.ap-gap-input[data-i="1"]')!.value = "Ottawa";
+    body.querySelectorAll<HTMLInputElement>('.ap-gap-choices[data-i="2"] input')[1].checked = true;
+
+    g[0].options = ["Canada", "United States"]; // harvestGapOptions mutates in place
+    resolveGapPlaceholders(body, g);
+
+    expect(readGapAnswer(body, 1)).toBe("Ottawa");
+    expect(readGapAnswer(body, 2)).toBe("Yes");
+    expect(body.querySelector<HTMLSelectElement>('select[data-i="0"]')).not.toBeNull();
+  });
+
+  it("does not even rebuild the nodes of a row it is not resolving", () => {
+    const g = gaps();
+    const body = mount(gapsBodyHTML(g, true));
+    const text = body.querySelector('.ap-gap-input[data-i="1"]');
+    const radios = body.querySelector('.ap-gap-choices[data-i="2"]');
+
+    g[0].options = ["Canada"];
+    resolveGapPlaceholders(body, g);
+
+    expect(body.querySelector('.ap-gap-input[data-i="1"]')).toBe(text);
+    expect(body.querySelector('.ap-gap-choices[data-i="2"]')).toBe(radios);
+  });
+
+  it("still frees a row whose harvest yielded nothing — placeholder becomes free text", () => {
+    const g = gaps();
+    const body = mount(gapsBodyHTML(g, true));
+    expect(body.querySelectorAll(".ap-gap-loading").length).toBe(1);
+
+    resolveGapPlaceholders(body, g); // nothing arrived for gap 0
+
+    expect(body.querySelector(".ap-gap-loading")).toBeNull();
+    expect(body.querySelector<HTMLInputElement>('.ap-gap-input[data-i="0"]')!.type).toBe("text");
+  });
+
+  it("is a no-op when there was nothing to wait for", () => {
+    const g = [gap({ fieldId: "b", controlType: "text" })];
+    const body = mount(gapsBodyHTML(g, true));
+    const input = body.querySelector('.ap-gap-input[data-i="0"]');
+    (input as HTMLInputElement).value = "Ottawa";
+    resolveGapPlaceholders(body, g);
+    expect(body.querySelector('.ap-gap-input[data-i="0"]')).toBe(input);
+    expect(readGapAnswer(body, 0)).toBe("Ottawa");
+  });
+
+  it("survives a body whose rows no longer match the gaps", () => {
+    const g = gaps();
+    const body = mount(gapsBodyHTML(g, true));
+    expect(() => resolveGapPlaceholders(body, [])).not.toThrow();
+  });
+
+  // Characterisation of the bug this replaces: the wholesale re-render.
+  it("a full re-render would have erased the typed answer", () => {
+    const g = gaps();
+    const body = mount(gapsBodyHTML(g, true));
+    body.querySelector<HTMLInputElement>('.ap-gap-input[data-i="1"]')!.value = "Ottawa";
+    g[0].options = ["Canada"];
+    body.innerHTML = gapsBodyHTML(g, false); // what the settle handler used to do
+    expect(readGapAnswer(body, 1)).toBe("");
+  });
+});
+
+/**
+ * "Saved" must not be said about an answer we deliberately threw away.
+ * answersWorthRemembering discards a value the widget rejected precisely so the
+ * question is asked again — telling the user it was saved is a lie they cannot
+ * see through.
+ */
+describe("gapsSaveBanner", () => {
+  it("celebrates only when everything landed", () => {
+    expect(gapsSaveBanner(2, 2, 0)).toEqual({
+      text: "Saved 2 answers — they'll fill automatically next time.",
+      tone: "ok",
+    });
+    expect(gapsSaveBanner(1, 1, 0).text).toBe(
+      "Saved your answer — they'll fill automatically next time."
+    );
+  });
+
+  it("keeps the old wording when the write missed but the answer was still kept", () => {
+    expect(gapsSaveBanner(2, 1, 0)).toEqual({
+      text: "Saved, but only filled 1 of 2 on this page. Check the form.",
+      tone: "warn",
+    });
+  });
+
+  it("never claims to have saved a discarded answer", () => {
+    const one = gapsSaveBanner(1, 0, 1);
+    expect(one.text).not.toMatch(/\bSaved\b/); // the old wording claimed exactly this
+    expect(one.text).toBe(
+      "Filled 0 of 1. This form rejected an answer, so we didn't save it — we'll ask again next time."
+    );
+    expect(one.tone).toBe("warn");
+  });
+
+  it("pluralises a multi-answer discard", () => {
+    expect(gapsSaveBanner(3, 1, 2).text).toBe(
+      "Filled 1 of 3. This form rejected 2 answers, so we didn't save them — we'll ask again next time."
+    );
   });
 });

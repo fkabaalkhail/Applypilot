@@ -1149,8 +1149,11 @@ function initialize(): void {
       // Persistence must not outlive a failed write where the failure proves the
       // answer unusable — remembering it retires the question forever (see
       // answersWorthRemembering). An ordinary free-text answer that missed is
-      // still kept: the write failed, the answer did not.
-      const plan = planAnswerSaves(answersWorthRemembering(answers, filledIds));
+      // still kept: the write failed, the answer did not. `discarded` goes back
+      // to the panel so the banner never claims to have saved what we dropped.
+      const keep = answersWorthRemembering(answers, filledIds);
+      const discarded = answers.length - keep.length;
+      const plan = planAnswerSaves(keep);
       const problems: string[] = [];
 
       // Device-local first: it cannot fail on the network and must never be
@@ -1183,10 +1186,11 @@ function initialize(): void {
         return {
           ok: true,
           filled,
+          discarded,
           reason: `Filled the form, but couldn't save to ${problems.join(" or ")}. They may not autofill next time.`,
         };
       }
-      return { ok: true, filled };
+      return { ok: true, filled, discarded };
     },
     /**
      * Read the real options of each field's control for the gaps modal.

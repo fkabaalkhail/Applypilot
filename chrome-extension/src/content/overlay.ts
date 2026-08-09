@@ -72,11 +72,13 @@ export interface OverlayCallbacks {
   /**
    * Write the user's answers to the unanswered questions into the page, then
    * remember them (profile / device-local / answer bank — see planAnswerSaves).
-   * Returns the number written so the panel can report honestly.
+   * Returns the number written, and how many answers were deliberately NOT
+   * remembered (answersWorthRemembering), so the panel can report honestly
+   * rather than claiming to have saved something it threw away.
    */
   onAnswerGaps: (
     answers: { gap: AnswerGap; value: string }[]
-  ) => Promise<{ ok: boolean; filled: number; reason?: string }>;
+  ) => Promise<{ ok: boolean; filled: number; discarded?: number; reason?: string }>;
   /**
    * Read the REAL options of the given fields' controls, by opening each
    * dropdown on the page and closing it again. Keyed by field id; a widget that
@@ -1948,24 +1950,22 @@ let gapHarvestPending = false;
 
 function openGapsModal(): void {
   if (!refs || overlayState.gaps.length === 0) return;
-  gapHarvestPending = true;
+  const harvest = callbacks?.onHarvestGapOptions;
+  gapHarvestPending = Boolean(harvest);
   renderGaps();
   refs.gapsError.style.display = "none";
   refs.gapsModal.classList.add("visible");
-  // Harvest AFTER showing the modal so it never delays opening; each dropdown
-  // that yields options is re-rendered in place when the pass completes.
-  // Re-rendering replaces innerHTML wholesale and would wipe anything already
-  // typed, which is why this runs the instant the modal appears rather than
-  // later — before the user can have answered anything.
-  if (!callbacks) {
-    gapHarvestPending = false;
-    renderGaps();
-    return;
-  }
-  const harvest = callbacks.onHarvestGapOptions;
+  if (!harvest) return;
+  // Harvest AFTER showing the modal so it never delays opening — a modal that
+  // sits dead for four seconds after the user clicks the card is worse than a
+  // late-arriving dropdown. The consequence is that the user can be typing
+  // while the pass runs, so the settle handler resolves ONLY the placeholders
+  // (see resolveGapPlaceholders) instead of rebuilding the body.
   void harvestGapOptions(overlayState.gaps, harvest).then(() => {
     gapHarvestPending = false;
-    if (refs?.gapsModal.classList.contains("visible")) renderGaps();
+    if (refs?.gapsModal.classList.contains("visible")) {
+      resolveGapPlaceholders(refs.gapsBody, overlayState.gaps);
+    }
   });
 }
 
@@ -1976,7 +1976,13 @@ function closeGapsModal(): void {
 /** One input per unanswered question, shaped to the page's own control. */
 function renderGaps(): void {
   if (!refs) return;
-  refs.gapsBody.innerHTML = overlayState.gaps
+  refs.gapsBody.innerHTML = gapsBodyHTML(overlayState.gaps, gapHarvestPending);
+}
+
+/** The whole modal body. Exported so the render and the surgical placeholder
+ *  swap can be tested against the same markup the panel really shows. */
+export function gapsBodyHTML(gaps: readonly AnswerGap[], harvestPending: boolean): string {
+  return gaps
     .map((g, i) => {
       const req = g.required ? `<span class="ap-gap-required" title="Required">*</span>` : "";
       const help = g.helpText ? `<div class="ap-gap-help">${esc(g.helpText)}</div>` : "";
@@ -1988,11 +1994,35 @@ function renderGaps(): void {
       <div class="ap-gap-card">
         <div class="ap-gap-question">${esc(g.question)}${req}</div>
         ${help}
-        ${gapControlHTML(g, i, gapHarvestPending)}
+        ${gapControlHTML(g, i, harvestPending)}
         ${priv}
       </div>`;
     })
     .join("");
+}
+
+/**
+ * Swap the "Loading choices…" placeholders for real controls once the harvest
+ * has settled — and touch nothing else.
+ *
+ * The modal is interactive from the moment it opens, and the pass can take
+ * seconds, so a blanket re-render here would replace gapsBody wholesale and
+ * erase every answer typed in the meantime: the user could hit Save & fill on
+ * a form they had just filled in and be told "only filled 0 of 2".
+ *
+ * Only placeholder rows are replaced, and that is sufficient as well as safe.
+ * Safe, because a placeholder holds no input — there is nothing to lose.
+ * Sufficient, because a placeholder is exactly the row that must change: its
+ * options either arrived (a real dropdown) or did not (the free-text fallback,
+ * without which the row would stay un-answerable forever).
+ */
+export function resolveGapPlaceholders(root: ParentNode, gaps: readonly AnswerGap[]): void {
+  for (const node of [...root.querySelectorAll<HTMLElement>(".ap-gap-loading[data-i]")]) {
+    const i = Number(node.dataset.i);
+    const gap = gaps[i];
+    if (!gap) continue; // body no longer matches the gap list — leave it be
+    node.outerHTML = gapControlHTML(gap, i, false);
+  }
 }
 
 /** Constrained controls whose options may not be in the DOM until opened. */
@@ -2042,7 +2072,8 @@ export async function harvestGapOptions(
  */
 export function gapControlHTML(gap: AnswerGap, i: number, harvestPending: boolean): string {
   if (harvestPending && GAP_HARVEST_TYPES.has(gap.controlType) && (gap.options?.length ?? 0) === 0) {
-    return `<div class="ap-gap-loading">Loading choices…</div>`;
+    // data-i so resolveGapPlaceholders can find and replace exactly this row.
+    return `<div class="ap-gap-loading" data-i="${i}">Loading choices…</div>`;
   }
   return gapInputHTML(gap, i);
 }
@@ -2134,6 +2165,41 @@ export function readGapAnswer(root: ParentNode, i: number): string {
 }
 
 /**
+ * What to tell the user after Save & fill.
+ *
+ * "Saved" must not be said about an answer that was deliberately thrown away.
+ * answersWorthRemembering discards a value the widget rejected precisely SO
+ * THAT the question gets asked again; reporting it as saved would be a lie the
+ * user cannot see through — the panel card would still show the question and
+ * nothing would explain why. `discarded` takes precedence, and implies
+ * `filled < total` (an answer can only be discarded when its write failed).
+ */
+export function gapsSaveBanner(
+  total: number,
+  filled: number,
+  discarded: number
+): { text: string; tone: "ok" | "warn" } {
+  if (discarded > 0) {
+    const what = discarded === 1 ? "an answer" : `${discarded} answers`;
+    const it = discarded === 1 ? "it" : "them";
+    return {
+      text: `Filled ${filled} of ${total}. This form rejected ${what}, so we didn't save ${it} — we'll ask again next time.`,
+      tone: "warn",
+    };
+  }
+  if (filled === total) {
+    return {
+      text: `Saved ${total === 1 ? "your answer" : `${total} answers`} — they'll fill automatically next time.`,
+      tone: "ok",
+    };
+  }
+  return {
+    text: `Saved, but only filled ${filled} of ${total} on this page. Check the form.`,
+    tone: "warn",
+  };
+}
+
+/**
  * Fill the answered questions into the page and remember them. Questions left
  * blank are simply skipped — closing without answering everything is a normal
  * outcome, not an error.
@@ -2163,12 +2229,8 @@ async function saveGaps(): Promise<void> {
     // Re-scan so each answered field's currentValue reflects what was written;
     // the panel's next render drops those questions from the card.
     callbacks.onRescan();
-    showBanner(
-      res.filled === answers.length
-        ? `Saved ${answers.length === 1 ? "your answer" : `${answers.length} answers`} — they'll fill automatically next time.`
-        : `Saved, but only filled ${res.filled} of ${answers.length} on this page. Check the form.`,
-      res.filled === answers.length ? "ok" : "warn"
-    );
+    const banner = gapsSaveBanner(answers.length, res.filled, res.discarded ?? 0);
+    showBanner(banner.text, banner.tone);
   } catch (err) {
     refs.gapsError.textContent = err instanceof Error ? err.message : "Could not save your answers.";
     refs.gapsError.style.display = "block";
