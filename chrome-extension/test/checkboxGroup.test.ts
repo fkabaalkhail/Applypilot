@@ -34,7 +34,7 @@ function selectAllThatApply(legend: string, options: string[]): void {
 const checkedValues = () =>
   Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map((c) => (c as HTMLInputElement).value);
 
-describe("checkbox group — detection", () => {
+describe("checkbox group, detection", () => {
   it("scans a 'select all that apply' fieldset as ONE checkboxGroup classified by its question", () => {
     selectAllThatApply("How did you hear about this opportunity? (select all that apply)", [
       "LinkedIn",
@@ -52,7 +52,7 @@ describe("checkbox group — detection", () => {
   });
 });
 
-describe("checkbox group — fill", () => {
+describe("checkbox group, fill", () => {
   it("checks the matching options without 'Ambiguous checkbox value'", () => {
     selectAllThatApply("How did you hear about this opportunity?", ["LinkedIn", "Glassdoor", "Notion Blog"]);
     const { fields, registry } = scanPage(MOCK_PROFILE, false);
@@ -74,7 +74,7 @@ describe("checkbox group — fill", () => {
   });
 });
 
-describe("standalone checkbox — unchanged", () => {
+describe("standalone checkbox, unchanged", () => {
   it("a lone checkbox (no fieldset) stays a single boolean", () => {
     const label = document.createElement("label");
     const cb = document.createElement("input");
@@ -90,7 +90,7 @@ describe("standalone checkbox — unchanged", () => {
   });
 });
 
-describe("EEO checkbox group — gated", () => {
+describe("EEO checkbox group, gated", () => {
   it("is sensitive; fills only when the profile carries the answer", () => {
     selectAllThatApply("Race/Ethnicity (select all that apply)", ["Asian", "White", "Decline to self-identify"]);
     const off = scanPage({ ...MOCK_PROFILE, eeo: undefined }, false).fields[0];
@@ -105,7 +105,7 @@ describe("EEO checkbox group — gated", () => {
 });
 
 // Most real ATS ("select all that apply" on Greenhouse/Lever/custom React forms)
-// render the same pattern with plain <div>s, not a <fieldset>/[role=group] — the
+// render the same pattern with plain <div>s, not a <fieldset>/[role=group], the
 // dominant real-world shape this engine must also catch.
 function divSelectAllThatApply(question: string, options: string[]): void {
   const wrap = document.createElement("div");
@@ -131,7 +131,7 @@ function divSelectAllThatApply(question: string, options: string[]): void {
   document.body.append(wrap);
 }
 
-describe("checkbox group — detection (no fieldset)", () => {
+describe("checkbox group, detection (no fieldset)", () => {
   it("scans a div-wrapped 'select all that apply' group as ONE checkboxGroup classified by its question", () => {
     divSelectAllThatApply("How did you hear about this opportunity? (select all that apply)", [
       "LinkedIn",
@@ -150,7 +150,7 @@ describe("checkbox group — detection (no fieldset)", () => {
   });
 });
 
-describe("checkbox group — fill (no fieldset)", () => {
+describe("checkbox group, fill (no fieldset)", () => {
   it("checks the matching options without 'Ambiguous checkbox value'", () => {
     divSelectAllThatApply("How did you hear about this opportunity?", ["LinkedIn", "Glassdoor", "Notion Blog"]);
     const { fields, registry } = scanPage(MOCK_PROFILE, false);
@@ -164,7 +164,7 @@ describe("checkbox group — fill (no fieldset)", () => {
   });
 });
 
-describe("checkbox group — no false grouping without a shared container", () => {
+describe("checkbox group, no false grouping without a shared container", () => {
   it("keeps unrelated standalone checkboxes separate even when the page has other fields", () => {
     const name = document.createElement("input");
     name.type = "text";

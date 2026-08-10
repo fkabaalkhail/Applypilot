@@ -1,14 +1,14 @@
 """
 Auth endpoints:
-- POST /auth/register — create user, return tokens
-- POST /auth/login — verify credentials, return tokens
-- POST /auth/google — authenticate with Google ID token
-- POST /auth/refresh — exchange refresh token for new token pair
-- POST /auth/logout — revoke refresh token
-- GET /auth/me — return authenticated user profile
-- PUT /auth/me — update user profile fields
-- POST /auth/verify-email — verify email with token
-- POST /auth/resend-verification — resend verification email
+- POST /auth/register, create user, return tokens
+- POST /auth/login, verify credentials, return tokens
+- POST /auth/google, authenticate with Google ID token
+- POST /auth/refresh, exchange refresh token for new token pair
+- POST /auth/logout, revoke refresh token
+- GET /auth/me, return authenticated user profile
+- PUT /auth/me, update user profile fields
+- POST /auth/verify-email, verify email with token
+- POST /auth/resend-verification, resend verification email
 """
 
 import logging
@@ -249,7 +249,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # Successful login — reset failed attempts
+    # Successful login: reset failed attempts
     user.failed_login_attempts = 0
     user.locked_until = None
     user.last_failed_login_at = None
@@ -290,7 +290,7 @@ def google_auth(body: GoogleAuthRequest, request: Request, response: Response, d
         raise HTTPException(status_code=502, detail="Could not verify Google token")
 
     if resp.status_code != 200:
-        # Don't log the raw upstream body — it can carry token fragments / detail
+        # Don't log the raw upstream body. It can carry token fragments / detail
         # we don't want in our logs. The status code is enough to triage.
         logger.warning(f"Google token verification failed: {resp.status_code}")
         raise HTTPException(status_code=401, detail="Invalid Google token")

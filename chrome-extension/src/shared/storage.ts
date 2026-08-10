@@ -17,14 +17,14 @@ const KEYS = {
   authAccess: "ap_auth_access",
   // In-memory only (chrome.storage.session): epoch-seconds expiry of the access token.
   authAccessExp: "ap_auth_access_exp",
-  // Last synced snapshot (profile, resumes, cover letters, …) — offline source.
+  // Last synced snapshot (profile, resumes, cover letters, …), offline source.
   snapshot: "ap_sync",
   // Per-resume original file cache (base64), keyed by resume id.
   resumeFilePrefix: "ap_resume_file_",
   // Persistent: set when a refresh fails on an invalid/revoked/expired refresh
   // token, so the UI can show "session expired" instead of "never connected".
   sessionExpired: "ap_session_expired",
-  // Most-recent job posting whose page had a substantial description — reused as
+  // Most-recent job posting whose page had a substantial description, reused as
   // context on the application form page (which rarely repeats the description).
   lastJobContext: "ap_last_job_context",
 } as const;
@@ -112,7 +112,7 @@ interface PersistentAuth {
 /**
  * Returns the stored auth, or null when there is no refresh token (= signed
  * out). The access token lives in session storage and may be empty after a
- * browser restart — callers refresh-on-401, which re-mints and re-stores it.
+ * browser restart, callers refresh-on-401, which re-mints and re-stores it.
  *
  * Auth is only read in the service-worker context (the popup/content scripts
  * message the worker), so chrome.storage.session is reachable here.
@@ -127,7 +127,7 @@ export async function getAuth(): Promise<StoredAuth | null> {
     const sess = await chrome.storage.session.get(KEYS.authAccess);
     accessToken = (sess[KEYS.authAccess] as string | undefined) ?? "";
   } catch {
-    // session storage unavailable — leave empty; a refresh will populate it
+    // session storage unavailable, leave empty; a refresh will populate it
   }
   return { accessToken, refreshToken: persistent.refreshToken, email: persistent.email };
 }
@@ -165,7 +165,7 @@ export async function saveAuth(auth: StoredAuth): Promise<void> {
       [KEYS.authAccessExp]: readJwtExp(auth.accessToken),
     });
   } catch {
-    // session storage unavailable — the access token just won't persist
+    // session storage unavailable, the access token just won't persist
   }
 }
 
@@ -201,13 +201,13 @@ export interface SnapshotEntry {
   fetchedAt: number;
 }
 
-/** Cached snapshot regardless of age — the offline fallback. */
+/** Cached snapshot regardless of age, the offline fallback. */
 export async function getSnapshot(): Promise<SnapshotEntry | null> {
   const data = await chrome.storage.local.get(KEYS.snapshot);
   return (data[KEYS.snapshot] as SnapshotEntry | undefined) ?? null;
 }
 
-/** Cached snapshot only if still fresh (within TTL) — the fast path. */
+/** Cached snapshot only if still fresh (within TTL), the fast path. */
 export async function getFreshSnapshot(): Promise<SnapshotEntry | null> {
   const entry = await getSnapshot();
   if (!entry) return null;
@@ -236,7 +236,7 @@ export async function clearSnapshot(): Promise<void> {
 
 export interface ResumeFileEntry {
   resumeId: number;
-  /** Snapshot version when cached — lets us invalidate when the resume changes. */
+  /** Snapshot version when cached: lets us invalidate when the resume changes. */
   version: number;
   dataBase64: string;
   name: string;

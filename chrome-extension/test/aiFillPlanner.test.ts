@@ -102,10 +102,10 @@ describe("toAiFillField", () => {
 describe("planAiFill", () => {
   it("fills every non-empty answer silently, ignoring needsReview (no review gate)", () => {
     const candidates = [
-      // needsReview AI suggestion — used to be drafted; now fills inline.
+      // needsReview AI suggestion, used to be drafted; now fills inline.
       field({ id: "essay", controlType: "textarea", label: "Why us?" }),
       field({ id: "summary", controlType: "textarea", label: "Professional summary" }),
-      // Short field, needsReview AI suggestion — also fills inline now.
+      // Short field, needsReview AI suggestion, also fills inline now.
       field({ id: "exp", controlType: "text", label: "Years of experience?" }),
       field({ id: "auth", controlType: "radioGroup", label: "Authorized?", options: ["Yes", "No"] }),
       field({ id: "blank", controlType: "text", label: "Years?" }),
@@ -125,7 +125,7 @@ describe("planAiFill", () => {
       { fieldId: "exp", value: "5 years" },
       { fieldId: "auth", value: "Yes" },
     ]);
-    // The review gate is gone — the plan carries no drafts.
+    // The review gate is gone, the plan carries no drafts.
     expect(plan).not.toHaveProperty("drafts");
   });
 });

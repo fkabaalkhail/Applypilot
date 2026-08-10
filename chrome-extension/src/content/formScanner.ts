@@ -1,5 +1,5 @@
 /**
- * Page scanner — finds candidate form controls, groups radios, classifies
+ * Page scanner: finds candidate form controls, groups radios, classifies
  * everything via the field matcher and maintains a registry that maps the
  * serializable field ids (sent to the popup) back to live DOM nodes.
  *
@@ -36,7 +36,7 @@ import { detectFillDriver } from "./driverDetect";
 import { DATE_PART_ID_SELECTOR } from "./adapters/workdaySelectors";
 import type { FillDriver } from "./mainWorldBridge";
 
-/** Live handle for a detected field — never leaves the content script. */
+/** Live handle for a detected field, never leaves the content script. */
 export interface RuntimeControl {
   id: string;
   controlType: ControlType;
@@ -71,13 +71,13 @@ const CANDIDATE_SELECTOR = [
   // Driven by opening the listbox and clicking an option (see comboboxEngine).
   '[role="combobox"]',
   '[aria-haspopup="listbox"]',
-  // ARIA radio groups (react-aria / Radix custom radios — Jobvite, etc.): a
+  // ARIA radio groups (react-aria / Radix custom radios, Jobvite, etc.): a
   // role=radiogroup whose role=radio children are divs, not native inputs.
   '[role="radiogroup"]',
 ].join(", ");
 
 /** Input types that are never application fields. `password` is intentionally
- *  NOT here — it is surfaced as an `accountPassword` field, filled only by the
+ *  NOT here: it is surfaced as an `accountPassword` field, filled only by the
  *  account sub-flow (see controlTypeOf + scanPage below), never generically. */
 const SKIPPED_INPUT_TYPES = new Set([
   "hidden",
@@ -90,7 +90,7 @@ const SKIPPED_INPUT_TYPES = new Set([
   "color",
 ]);
 
-/** Controls whose options are fully known at scan time — a deterministic
+/** Controls whose options are fully known at scan time, a deterministic
  *  profile value that matches none of them can only fail to fill, so it is
  *  dropped and the field routes to the option-aware AI pass. Comboboxes /
  *  custom dropdowns are excluded: they harvest their real options lazily. */
@@ -118,12 +118,12 @@ let idCounter = 0;
 /** Stable per-frame token so field ids are unique across iframes. */
 export const FRAME_TOKEN = Math.random().toString(36).slice(2, 8);
 
-/** Ids assigned in the current scanPage() run — lets ensureFieldId fall back to
+/** Ids assigned in the current scanPage() run, lets ensureFieldId fall back to
  *  a counter when a deterministic id would collide with another live field. */
 const assignedThisScan = new Set<string>();
 
 /** Identifiers that carry a volatile per-render instance counter / uuid
- *  (react-select "react-select-3-input", SAP juic "36:_input", uuids) — a
+ *  (react-select "react-select-3-input", SAP juic "36:_input", uuids), a
  *  "stable" id built from these would NOT survive a re-render, so we skip them. */
 const VOLATILE_ID = /react-select-\d|(^|[^0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-|^\d+:/i;
 
@@ -170,11 +170,11 @@ function ensureFieldId(el: HTMLElement): string {
 }
 
 function controlTypeOf(el: HTMLElement): ControlType | null {
-  // ARIA combobox / listbox dropdown — checked first so a react-select
+  // ARIA combobox / listbox dropdown, checked first so a react-select
   // <input role="combobox"> is driven by the listbox engine, not typed into,
   // and a Workday <button aria-haspopup="listbox"> is now fillable.
   if (isAriaCombobox(el)) return "combobox";
-  // ARIA radio group (role=radio children clicked to select) — checked before the
+  // ARIA radio group (role=radio children clicked to select), checked before the
   // generic element fallbacks so it is driven as a choice control, not skipped.
   if (el.getAttribute("role") === "radiogroup") return "ariaRadioGroup";
   if (el instanceof HTMLInputElement) {
@@ -184,7 +184,7 @@ function controlTypeOf(el: HTMLElement): ControlType | null {
     if (el.type === "radio") return "radioGroup"; // grouped later
     if (el.type === "file") return "file";
     // Workday's multiselect/typeahead trigger (e.g. Country Phone Code) is a bare
-    // <input> with NO role=combobox / aria-haspopup — its widget type lives only
+    // <input> with NO role=combobox / aria-haspopup, its widget type lives only
     // in data-uxi-widget-type="selectinput". Drive it through the listbox engine
     // instead of typing the value into what is actually a search box.
     if (el.getAttribute("data-uxi-widget-type") === "selectinput") return "combobox";
@@ -223,7 +223,7 @@ function radioOptionLabel(radio: HTMLInputElement): string {
 
 /**
  * Signals for a group come from its container (fieldset legend, role=group/
- * radiogroup label, or — for a container with none of those — the heading text
+ * radiogroup label, or (for a container with none of those) the heading text
  * immediately before it) rather than the individual buttons.
  */
 function groupSignals(members: HTMLInputElement[], container: Element | null): FieldSignals {
@@ -258,7 +258,7 @@ function groupSignals(members: HTMLInputElement[], container: Element | null): F
   };
 }
 
-/** Form-field types other than checkboxes — finding one inside a candidate
+/** Form-field types other than checkboxes, finding one inside a candidate
  *  checkbox-group container means we've climbed past the group's natural
  *  boundary into an unrelated section. */
 const OTHER_FIELD_SELECTOR =
@@ -272,7 +272,7 @@ const CONTAINER_CLIMB_BOUNDARY = new Set(["FORM", "BODY", "HTML"]);
  * cluster. Prefers an explicit `fieldset`/`[role=group]`; most real ATS render
  * the same pattern with plain `<div>`s instead, so fall back to the closest
  * ancestor (within a few levels, never the form/body/page itself) that encloses
- * ≥2 checkboxes and no unrelated field — the natural list boundary.
+ * ≥2 checkboxes and no unrelated field, the natural list boundary.
  */
 function checkboxGroupContainer(el: HTMLInputElement): Element | null {
   const explicit = el.closest('fieldset, [role="group"]');
@@ -315,8 +315,8 @@ function accessibleNameOf(el: HTMLElement): string {
 }
 
 /**
- * Custom (non-`<input>`) résumé / cover-letter upload widgets. Some ATS — SAP
- * SuccessFactors most notably — render the upload as a `<div role="button">Upload
+ * Custom (non-`<input>`) résumé / cover-letter upload widgets. Some ATS, SAP
+ * SuccessFactors most notably: render the upload as a `<div role="button">Upload
  * a Resume</div>` that opens a file dialog, with no scannable `<input type=file>`.
  * The generic loop never sees these (a role=button div isn't a form control), so
  * the panel reported "no résumé field" and its Attach button stayed disabled.
@@ -437,20 +437,20 @@ export function scanPage(
   for (const el of candidates) {
     const controlType = controlTypeOf(el);
     if (controlType === null) continue;
-    // Never surface or fill a captcha widget's own controls — fill around it.
+    // Never surface or fill a captcha widget's own controls, fill around it.
     if (isCaptchaField(el)) continue;
-    // Skip cookie-consent / privacy-banner controls — they are real form
+    // Skip cookie-consent / privacy-banner controls. They are real form
     // controls but never application fields; counting them leaves the panel
     // stuck on a consent dialog when the real form is lazy-mounted.
     if (isConsentField(el)) continue;
     // Page chrome (header/nav/footer/aside and landmark roles) is never part
-    // of the application form — an EN/FR switcher is a real <select> we skip.
+    // of the application form, an EN/FR switcher is a real <select> we skip.
     if (isInPageChrome(el)) continue;
     if ((el as HTMLInputElement).disabled) continue;
     if (el instanceof HTMLInputElement && el.readOnly) continue;
 
     // Visibility: checkbox/radio/file are often visually hidden behind styled
-    // replacements but still operable — allow them when labeled. Comboboxes get
+    // replacements but still operable, allow them when labeled. Comboboxes get
     // NO relaxation: an invisible combobox is not user-operable (react-select's
     // real input is small but rendered; what hides fully is other widgets'
     // internals, e.g. intl-tel-input's dial-code search inside a closed dialog).
@@ -492,7 +492,7 @@ export function scanPage(
     const signals = collectSignals(el);
 
     // Passwords: registry-tracked for the account sub-flow, but never listed
-    // as a generic field, never fillable generically, never sent to the AI —
+    // as a generic field, never fillable generically, never sent to the AI,
     // and the value is never echoed into the serializable field.
     if (controlType === "password") {
       registry.set(id, { id, controlType, el });
@@ -607,7 +607,7 @@ export function scanPage(
     });
   }
 
-  // Native checkbox groups ("select all that apply") — one logical multi-select
+  // Native checkbox groups ("select all that apply"), one logical multi-select
   // field each, classified by the group question (not the option text).
   for (const [container, checkboxes] of checkboxGroups.entries()) {
     const first = checkboxes[0];
@@ -675,14 +675,14 @@ export function scanPage(
  * TWO independent signals, because neither covers the other's ground:
  *
  *  - a `dateSection*` automation-id (DATE_PART_ID_SELECTOR). 0 is never a
- *    month, a day or a year, so this is sound BY CONSTRUCTION — it rests on no
+ *    month, a day or a year, so this is sound BY CONSTRUCTION. It rests on no
  *    attribute a tenant may or may not emit.
  *  - `aria-valuemin` above zero on a role=spinbutton, for a part whose
  *    automation-id a tenant has renamed out from under us.
  *
  * `aria-valuemin` alone was one unverified attribute away from being a no-op:
  * it was inferred from a bug report, never captured from a live tenant, and a
- * part rendered with no `aria-valuemin` — or with `aria-valuemin="0"` — fell
+ * part rendered with no `aria-valuemin`: or with `aria-valuemin="0"`: fell
  * straight back through as "already filled" (see workdayDateParts.test.ts).
  *
  * An ordinary <input type="number"> where 0 IS the answer ("years of
@@ -730,11 +730,11 @@ function currentValueOf(el: HTMLElement, controlType: ControlType): string | und
 function noteFor(controlType: ControlType, category: string): string | undefined {
   if (controlType === "file") {
     return category === "resumeUpload"
-      ? "Browser security requires choosing the file manually — click the field and pick your resume."
+      ? "Browser security requires choosing the file manually. Click the field and pick your resume."
       : "File uploads must be selected manually.";
   }
   if (controlType === "customDropdown") {
-    return "Custom dropdown — please select manually.";
+    return "Custom dropdown. Please select manually.";
   }
   return undefined;
 }
@@ -748,7 +748,7 @@ const OBSERVE_OPTS: MutationObserverInit = { childList: true, subtree: true };
 /**
  * Every open shadow root reachable from `root` (nested included). SuccessFactors-
  * style UI5 fields live in open shadow roots, which are the SAME JS realm as the top
- * document — so the scanner already classifies them, but a top-documentElement
+ * document, so the scanner already classifies them, but a top-documentElement
  * MutationObserver never sees mutations inside them. Same-origin iframes are NOT
  * included: their fields are a different realm the top frame can't classify (they
  * run their own content-script instance), so observing them would only cause
@@ -772,7 +772,7 @@ export function openShadowRoots(root: Document | ShadowRoot): ShadowRoot[] {
 /**
  * Watch for DOM changes (SPA navigation, multi-step Workday forms, UI5 shadow-DOM
  * steps) and call back, debounced. Observes the top document AND every open shadow
- * root, re-attaching to roots that appear later. Attribute changes are ignored — we
+ * root, re-attaching to roots that appear later. Attribute changes are ignored, we
  * cause those ourselves when assigning field ids and flashing highlights.
  */
 export function observePage(onChange: () => void): MutationObserver {

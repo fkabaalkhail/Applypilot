@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Tailrd — Job Application Autofill",
+  "name": "Tailrd: Job Application Autofill",
   "version": "0.4.0",
   "description": "Fills job application forms from the profile in your Tailrd account. You always review every answer and submit the form yourself.",
   "minimum_chrome_version": "110",

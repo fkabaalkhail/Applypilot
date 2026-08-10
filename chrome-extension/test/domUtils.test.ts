@@ -27,7 +27,7 @@ describe("reattachIfDetached", () => {
   });
 });
 
-describe("deepQueryAll — traversal", () => {
+describe("deepQueryAll, traversal", () => {
   it("finds controls in the main document", () => {
     document.body.innerHTML = `<input id="top" /><textarea id="ta"></textarea>`;
     const ids = deepQueryAll(document, "input, textarea").map((el) => el.id);
@@ -48,7 +48,7 @@ describe("deepQueryAll — traversal", () => {
     // A genuine page field must still be found.
     document.body.innerHTML = `<input id="page-field" />`;
     // The panel lives in a shadow root on our host and has its own form controls
-    // (e.g. the cover-letter tone <select>) — those must NEVER be scanned as page
+    // (e.g. the cover-letter tone <select>), those must NEVER be scanned as page
     // fields, or a bare job posting reads as a form and the flow won't click Apply.
     for (const id of ["applypilot-overlay-host"]) {
       const host = document.createElement("div");
@@ -84,7 +84,7 @@ describe("deepQueryAll — traversal", () => {
   });
 });
 
-describe("bestDisplayLabel — placeholder filler is never the question", () => {
+describe("bestDisplayLabel, placeholder filler is never the question", () => {
   it("falls past 'Select...' to a usable attribute name", async () => {
     const { bestDisplayLabel } = await import("../src/content/domUtils");
     expect(
@@ -137,10 +137,10 @@ describe("bestDisplayLabel — placeholder filler is never the question", () => 
   });
 });
 
-describe("collectSignals — aria-labelledby pointing INSIDE the control", () => {
+describe("collectSignals, aria-labelledby pointing INSIDE the control", () => {
   it("ignores the widget's own value span (react-aria trigger pattern)", async () => {
     const { collectSignals } = await import("../src/content/domUtils");
-    // <button aria-labelledby="val"> where #val is the button's own value text —
+    // <button aria-labelledby="val"> where #val is the button's own value text,
     // its "Select an option" must not become the label.
     document.body.innerHTML = `
       <div class="field">

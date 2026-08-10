@@ -4,8 +4,8 @@ import { useLayoutEffect, useRef } from "react";
  * Inline editing primitives for the document canvas.
  *
  * The resume must look like a resume, not like a form, so a field renders as
- * plain text until it's hovered or focused. These are real inputs underneath —
- * not contentEditable — so paste, undo, and screen readers all behave.
+ * plain text until it's hovered or focused. These are real inputs underneath,
+ * not contentEditable, so paste, undo, and screen readers all behave.
  */
 
 interface TextProps {

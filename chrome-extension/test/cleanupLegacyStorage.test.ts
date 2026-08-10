@@ -1,12 +1,12 @@
 // chrome-extension/test/cleanupLegacyStorage.test.ts
 /**
  * The removed Remembered Answers feature left `ap_local_answers` on disk in
- * every existing install — and it held exactly the answers we promised would
+ * every existing install, and it held exactly the answers we promised would
  * never leave the machine. Deleting the code without deleting the data would
  * leave that sitting there forever, so the removal ships with a migration.
  *
  * What has to hold: it removes the key, it runs at most once, and it never
- * throws — the service worker calls it from a top-level event listener.
+ * throws, the service worker calls it from a top-level event listener.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
@@ -42,7 +42,7 @@ beforeEach(() => {
   install({ ap_local_answers: { "are you willing to relocate": { answer: "Yes", savedAt: 1 } } });
 });
 
-describe("cleanupLegacyStorage — one-time removal of the answer store", () => {
+describe("cleanupLegacyStorage, one-time removal of the answer store", () => {
   it("removes every legacy remembered-answer key", async () => {
     await cleanupLegacyStorage();
     for (const key of LEGACY_ANSWER_KEYS) {
@@ -50,7 +50,7 @@ describe("cleanupLegacyStorage — one-time removal of the answer store", () => 
     }
   });
 
-  it("names ap_local_answers — the key the device-local store actually used", () => {
+  it("names ap_local_answers, the key the device-local store actually used", () => {
     expect([...LEGACY_ANSWER_KEYS]).toContain("ap_local_answers");
   });
 
@@ -67,7 +67,7 @@ describe("cleanupLegacyStorage — one-time removal of the answer store", () => 
     expect(area._data.ap_local_answers).toBeDefined();
   });
 
-  it("is idempotent across many calls — one removal pass, total", async () => {
+  it("is idempotent across many calls, one removal pass, total", async () => {
     await cleanupLegacyStorage();
     await cleanupLegacyStorage();
     await cleanupLegacyStorage();

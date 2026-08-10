@@ -80,7 +80,7 @@ class CustomSection(BaseModel):
     """Any section that is not experience/education/projects/skills/technologies.
 
     Certifications, awards, volunteering, publications, languages, leadership,
-    interests — resumes carry all of these and each one used to be dropped on
+    interests, resumes carry all of these and each one used to be dropped on
     upload. The user's own heading is kept verbatim in ``title``.
 
     A section carries whichever of ``text`` / ``bullets`` / ``items`` matches how
@@ -128,7 +128,7 @@ class AnalysisIssue(BaseModel):
     description: str = ""
     # Verbatim snippets from the resume that demonstrate the issue.
     evidence: list[str] = []
-    # A concrete fix. Never contains an invented metric — quantification gaps
+    # A concrete fix. Never contains an invented metric, quantification gaps
     # are written with a [placeholder] the candidate fills in.
     suggestion: str = ""
     # Which resume section it lives in ("Work Experience", "Skills", …).

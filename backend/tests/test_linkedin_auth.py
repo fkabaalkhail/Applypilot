@@ -99,7 +99,7 @@ def test_callback_links_existing_local_user_not_duplicated(client, db_session, m
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    # Linked in place — no second row for this email.
+    # Linked in place: no second row for this email.
     assert db_session.query(User).filter_by(email="grad@example.com").count() == 1
     user = db_session.query(User).filter_by(email="grad@example.com").first()
     assert user.auth_provider == "linkedin"

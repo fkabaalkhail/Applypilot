@@ -1,7 +1,7 @@
 /**
  * Conservative widget-kind detection for the MAIN-world drivers. A false positive
  * routes an ordinary field through page-context injection, so each signature
- * requires a strong, specific marker — never a bare role=combobox.
+ * requires a strong, specific marker, never a bare role=combobox.
  */
 import type { FillDriver } from "./mainWorldBridge";
 
@@ -9,8 +9,8 @@ const WORKDAY_HOST = /(^|\.)(myworkdayjobs|myworkday|myworkdayjobs-impl|myworkda
 
 /**
  * react-select stamps `id="react-select-<instanceId>-…"` on its internal nodes:
- * the input (`-input`, default), and — even when the site passes a custom
- * `inputId` (Greenhouse job-boards uses "country"/"605"…) — the placeholder
+ * the input (`-input`, default), and, even when the site passes a custom
+ * `inputId` (Greenhouse job-boards uses "country"/"605"…), the placeholder
  * (`-placeholder`), live region (`-live-region`) and listbox (`-listbox`).
  * Those generated ids are hardcoded in react-select itself, so any of them
  * inside the widget is a strong, library-specific marker with no false-positive

@@ -50,12 +50,12 @@ describe("cascading Country → State dropdown", () => {
       }
     });
 
-    // 1. First scan: State can't resolve — its only option is the placeholder.
+    // 1. First scan: State can't resolve, its only option is the placeholder.
     let scan = scanPage(profile, false);
     const state0 = scan.fields.find((f) => f.label.toLowerCase().includes("state"));
     expect(state0?.proposedValue).toBeNull();
 
-    // 2. Fill the parent (Country) — this repopulates State's options.
+    // 2. Fill the parent (Country). This repopulates State's options.
     const countryField = scan.fields.find((f) => f.label.toLowerCase().includes("country"))!;
     writeControl(scan.registry.get(countryField.id)!, countryField.proposedValue as string);
     expect(country.value).toBe("Canada");

@@ -273,7 +273,7 @@ def test_notify_respects_user_cooldown(db_session, verified_user, capture_email)
 
     assert count == 0
     assert capture_email == []
-    # New job NOT recorded — it rolls into the next eligible run.
+    # New job NOT recorded: it rolls into the next eligible run.
     assert db_session.query(JobMatchNotification).filter_by(job_id=new_job.id).count() == 0
 
 

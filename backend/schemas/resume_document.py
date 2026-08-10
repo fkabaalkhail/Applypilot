@@ -1,5 +1,5 @@
 """
-Structured resume document — the single source of truth for the AI Resume
+Structured resume document, the single source of truth for the AI Resume
 Rewriter.
 
 One schema drives the renderer (live preview), the PDF export, and the DOCX
@@ -63,7 +63,7 @@ class Section(BaseModel):
 class Theme(BaseModel):
     """Visual settings we own (the spec's 'layout schema', reinterpreted).
 
-    The AI never touches this — it is what guarantees a clean, consistent,
+    The AI never touches this. It is what guarantees a clean, consistent,
     ATS-safe layout regardless of what the original file looked like.
     """
 

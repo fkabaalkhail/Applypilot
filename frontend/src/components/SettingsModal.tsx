@@ -27,7 +27,7 @@ import "../settings-modal.css";
  *
  * Contact details moved to /app/profile, which genuinely owns them. The columns
  * this modal used to write all still exist and the extension still reads them
- * (backend/routers/extension.py) — we only stopped offering a second, competing
+ * (backend/routers/extension.py). We only stopped offering a second, competing
  * editor.
  *
  * job_title and the screening answers live on the same application-profile
@@ -90,7 +90,7 @@ const PROVIDERS: Record<string, { label: string; icon: ReactNode }> = {
 
 const EXT_STATUS: Record<Exclude<ExtensionState, "unknown">, string> = {
   "not-installed": "Not installed",
-  installed: "Installed — not signed in",
+  installed: "Installed (not signed in)",
   connected: "Installed and connected",
 };
 
@@ -104,7 +104,7 @@ const TABS: { key: TabKey; label: string; title: string; icon: ReactNode }[] = [
 
 /**
  * Every row in every tab is one of these: muted label | value | right-aligned
- * action, closed by a hairline. That single repeated rhythm is the redesign —
+ * action, closed by a hairline. That single repeated rhythm is the redesign,
  * resist adding bespoke layouts inside a tab.
  */
 function SettingRow({
@@ -337,7 +337,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             </span>
           }
         >
-          {user?.email ?? "—"}
+          {user?.email ?? "-"}
         </SettingRow>
 
         {/* Read-only: there is no account-linking flow. auth_provider is set once,
@@ -369,7 +369,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   }
 
   function renderExtension() {
-    // The /settings fetch gates THIS tab only — it is the only tab that reads it.
+    // The /settings fetch gates THIS tab only. It is the only tab that reads it.
     // Account renders from useAuth() and Security from /auth/sessions, so a failing
     // GET /settings must not cost the user their identity row and their device list
     // with an error about an endpoint neither tab touches.
@@ -589,7 +589,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           <div className="sm-panel-body">{renderTab()}</div>
 
           {/* Mounted on the Extension tab (its editor) *and* on any tab while a
-              toggle is unsaved — otherwise flipping a toggle and switching tabs
+              toggle is unsaved, otherwise flipping a toggle and switching tabs
               strands the change: the Save button and its dirty dot would vanish
               while the edit is still pending, and closing the modal would drop it
               silently. */}

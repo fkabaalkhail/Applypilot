@@ -23,7 +23,7 @@ DIST = Path(__file__).resolve().parent.parent / "dist"
 def main() -> int:
     manifest_path = DIST / "manifest.json"
     if not manifest_path.exists():
-        print("dist/manifest.json missing — run `node build.mjs` first", file=sys.stderr)
+        print("dist/manifest.json missing. Run `node build.mjs` first", file=sys.stderr)
         return 1
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -49,7 +49,7 @@ def main() -> int:
                 z.write(path, rel)
 
     print(
-        f"wrote {out.name} ({out.stat().st_size // 1024} KB) — "
+        f"wrote {out.name} ({out.stat().st_size // 1024} KB), "
         f"key stripped, description {len(desc)} chars"
     )
     return 0

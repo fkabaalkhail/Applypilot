@@ -51,7 +51,7 @@ interface CustomSectionItem {
   bullets: string[];
 }
 
-/** Certifications, awards, volunteering, languages — carried through from the
+/** Certifications, awards, volunteering, languages, carried through from the
  *  uploaded resume. Edited on the resume page; shown here so nothing is hidden. */
 interface CustomSection {
   id: string;
@@ -99,7 +99,7 @@ type EditingSection =
   | "eeo"
   | null;
 
-// Section nav — mirrors the application form categories the extension fills.
+// Section nav: mirrors the application form categories the extension fills.
 const SECTIONS = [
   { id: "personal", label: "Personal" },
   { id: "education", label: "Education" },
@@ -240,7 +240,7 @@ export default function Profile() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      // Resume profile (rich sections + contact) — optional.
+      // Resume profile (rich sections + contact), optional.
       let loadedProfile = emptyProfile();
       let loadedResumeId: number | null = null;
       try {
@@ -253,7 +253,7 @@ export default function Profile() {
           loadedProfile = { ...emptyProfile(), ...(detailRes.data.profile || {}) };
         }
       } catch {
-        // No resume yet — Personal / Address / EEO still work via app-profile.
+        // No resume yet: Personal / Address / EEO still work via app-profile.
       }
 
       // Application-profile extras (address + EEO) + contact fallbacks. These
@@ -307,7 +307,7 @@ export default function Profile() {
           other_link: (d.portfolio ?? "") || loadedProfile.other_link,
         };
       } catch {
-        // No profile row yet — everything stays empty + editable.
+        // No profile row yet: everything stays empty + editable.
       }
 
       setResumeId(loadedResumeId);
@@ -484,7 +484,7 @@ export default function Profile() {
                 <div className="profile-timeline-content">
                   <span className="profile-timeline-date">{edu.start_date} → {edu.end_date || "Present"}</span>
                   <strong>{edu.school}</strong>
-                  <span>{edu.degree}{edu.gpa ? ` — GPA: ${edu.gpa}` : ""}</span>
+                  <span>{edu.degree}{edu.gpa ? `, GPA: ${edu.gpa}` : ""}</span>
                   {edu.achievements.length > 0 && (
                     <ul className="profile-bullets">
                       {edu.achievements.map((a, j) => <li key={j}>{a}</li>)}
@@ -630,7 +630,7 @@ export default function Profile() {
       <Section id="screening" title="Application Answers" onEdit={() => toggleEdit("screening")}>
         <p className="profile-section-sub">
           The answers Tailrd fills into screening questions on job applications. These
-          are the exact words that get submitted — edit them if an employer's form
+          are the exact words that get submitted. Edit them if an employer's form
           needs different wording.
         </p>
         {editingSection === "screening" ? (
@@ -798,7 +798,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="profile-info-row">
       <span className="profile-info-label">{label}</span>
-      <span className="profile-info-value">{value || "—"}</span>
+      <span className="profile-info-value">{value || "-"}</span>
     </div>
   );
 }
@@ -886,7 +886,7 @@ function Field({
 
 /**
  * Same shape as Field, for the answers with a closed vocabulary. Blank is always
- * first and means "not answered" — see the parity contract, section D.
+ * first and means "not answered", see the parity contract, section D.
  */
 function SelectField({
   label,

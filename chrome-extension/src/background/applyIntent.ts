@@ -1,5 +1,5 @@
 /**
- * Apply-intent store — the dashboard → extension job_id handoff.
+ * Apply-intent store: the dashboard → extension job_id handoff.
  *
  * When the user clicks Apply on a job in the Tailrd web app, the web app messages
  * the extension (externally_connectable → onMessageExternal) with {jobId, url}.

@@ -21,7 +21,7 @@ def email_verification_required() -> bool:
     """Whether the email-verification gate is enforced.
 
     Defaults to True (secure). Set ``REQUIRE_EMAIL_VERIFICATION=false`` to let
-    users through without a verified email — used for the beta so testers aren't
+    users through without a verified email, used for the beta so testers aren't
     blocked by email deliverability. Read at call time so it can be toggled from
     the platform dashboard without a redeploy.
     """
@@ -121,7 +121,7 @@ async def get_verified_user(
     if user.email_verified or not email_verification_required():
         return user
 
-    # Unverified local user — check if path is exempt
+    # Unverified local user: check if path is exempt
     if request.url.path in VERIFICATION_EXEMPT_PATHS:
         return user
 
@@ -230,7 +230,7 @@ async def verify_cron_secret(
     Fails closed in production if CRON_SECRET is not configured.
     """
     if not CRON_SECRET:
-        # Fail closed in production — deny if secret is not configured
+        # Fail closed in production: deny if secret is not configured
         if os.getenv("ENVIRONMENT") == "production":
             raise HTTPException(
                 status_code=500,

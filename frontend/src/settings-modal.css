@@ -3,7 +3,7 @@
    Every row is a .sm-row; there are no bespoke per-tab layouts. */
 
 /* .modal-overlay (index.css) centres this with no padding and does not scroll,
-   so the modal has to fit the viewport itself — hence the calc() caps rather
+   so the modal has to fit the viewport itself, hence the calc() caps rather
    than 94vw/90vh. dvh, not vh: on mobile `100vh` is measured against the
    *expanded* viewport, so a 90vh modal is taller than the screen while the URL
    bar is showing, which is exactly how the Save button ends up under the fold.
@@ -110,7 +110,7 @@
 /* ── Right panel ──
    min-height: 0 is load-bearing. Below 768px .settings-modal is a *column* flex
    container, so .sm-panel is a column flex item with the default
-   min-height: auto — it refuses to shrink below its content, grows taller than
+   min-height: auto. It refuses to shrink below its content, grows taller than
    the modal, and pushes .sm-save-bar out through the modal's overflow:hidden.
    That is how "Save Changes" ends up under the fold on a phone. */
 .sm-panel {

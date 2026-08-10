@@ -112,7 +112,7 @@ describe("sendToRuntime", () => {
 /**
  * REGRESSION: after the extension is reloaded/updated, a content script already
  * injected in an open tab is ORPHANED. The teardown used to only disconnect
- * observers, leaving the panel fully rendered — Autofill enabled, clicking it
+ * observers, leaving the panel fully rendered, Autofill enabled, clicking it
  * silently doing nothing, no flow able to start (the background is
  * unreachable). Indistinguishable from "the extension is broken".
  */

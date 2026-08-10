@@ -1,7 +1,7 @@
 /**
  * Applies adapter hooks over the generic pipeline. Each helper falls back to
  * generic behavior when the adapter is null, the hook is absent, the hook
- * declines (undefined), or the hook throws — so an adapter can only ever refine,
+ * declines (undefined), or the hook throws, so an adapter can only ever refine,
  * never break, the pipeline.
  */
 import { classifyField, resolveProfileValue, type Classification } from "../fieldMatcher";
@@ -24,7 +24,7 @@ export function classifyWithAdapter(adapter: SiteAdapter | null, ctx: FieldConte
   const adapted = adapter?.classify
     ? (safe(() => adapter.classify!(ctx, generic), "classify") ?? generic)
     : generic;
-  // Server-side override wins last — it's the hot-fix for when generic/adapter
+  // Server-side override wins last: it's the hot-fix for when generic/adapter
   // are wrong. No-op when no rules are loaded.
   return applyOverride(ctx, adapted);
 }

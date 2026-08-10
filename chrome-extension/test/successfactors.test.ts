@@ -21,7 +21,7 @@ function inner(hostId: string): HTMLInputElement | HTMLSelectElement {
     .shadowRoot!.querySelector("input, select") as HTMLInputElement | HTMLSelectElement;
 }
 
-describe("SuccessFactors UI5 shadow DOM — detection", () => {
+describe("SuccessFactors UI5 shadow DOM, detection", () => {
   it("classifies fields living inside open shadow roots", () => {
     mountSuccessFactorsForm(document);
     const { fields } = scanPage(MOCK_PROFILE, false);
@@ -41,7 +41,7 @@ describe("SuccessFactors UI5 shadow DOM — detection", () => {
   });
 });
 
-describe("SuccessFactors UI5 shadow DOM — autofill", () => {
+describe("SuccessFactors UI5 shadow DOM, autofill", () => {
   it("fills the inner shadow controls; skips resume + EEO (no EEO data)", async () => {
     mountSuccessFactorsForm(document);
     await runAutofill(PROFILE_NO_EEO, false);
@@ -56,7 +56,7 @@ describe("SuccessFactors UI5 shadow DOM — autofill", () => {
   });
 });
 
-describe("SuccessFactors UI5 shadow DOM — rescan after a step change", () => {
+describe("SuccessFactors UI5 shadow DOM, rescan after a step change", () => {
   it("re-detects a field added inside an existing shadow root", () => {
     mountSuccessFactorsForm(document);
     const first = scanPage(MOCK_PROFILE, false);

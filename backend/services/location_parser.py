@@ -80,7 +80,7 @@ _METRO = re.compile(
     r"^(?:greater\s+)?(.+?)\s+(?:metropolitan\s+area|metro\s+area|area)$",
     re.IGNORECASE,
 )
-# "Calgary   8th Ave SW" — a numbered street after the city is address junk.
+# "Calgary   8th Ave SW", a numbered street after the city is address junk.
 # The number requirement keeps "St. Louis" (no digits) intact.
 _STREET_SUFFIX = re.compile(
     r"\s+\d+\w*\s+(?:ave|avenue|street|st|blvd|boulevard|rd|road|dr|drive|way|hwy|highway)\b.*$",
@@ -176,7 +176,7 @@ def _classify_token(token: str, loc: ParsedLocation) -> None:
         return
 
     if loc.city and folded == fold(loc.city):
-        return  # "Kraków, Kraków, Poland" — duplicated city token
+        return  # "Kraków, Kraków, Poland", duplicated city token
 
     if not loc.city:
         # "Toronto Canada" as ONE comma token: peel a trailing country word.
@@ -189,7 +189,7 @@ def _classify_token(token: str, loc: ParsedLocation) -> None:
         loc.city = _titleize(stripped)
     elif not loc.country and not is_region_code and len(stripped) > 3:
         # Trailing-token country guess ("Kraków, Kraków, Poland"). Only a
-        # single proper word or a known multi-word country qualifies —
+        # single proper word or a known multi-word country qualifies,
         # "San Francisco" in a comma city-list must not become a country.
         if (" " not in stripped and folded not in KNOWN_CITIES) or folded in _MULTIWORD_COUNTRIES:
             loc.country = _titleize(stripped)
@@ -218,7 +218,7 @@ def _parse_segment(segment: str) -> list[ParsedLocation]:
 
     # Taleo hierarchy format "Ontario-Cochrane-Detour Lake" (Region-District-
     # Site, no spaces around dashes). Only when the FIRST dash part is a known
-    # region — hyphenated city names (Winston-Salem) must survive.
+    # region, hyphenated city names (Winston-Salem) must survive.
     if "," not in segment and "-" in segment and " - " not in segment:
         dash_parts = [p.strip() for p in segment.split("-") if p.strip()]
         if len(dash_parts) >= 2 and fold(dash_parts[0]) in _REGION_BY_NAME:
@@ -232,7 +232,7 @@ def _parse_segment(segment: str) -> list[ParsedLocation]:
             ]
 
     if "," in segment:
-        # Usually "City, Region, Country" — but aggregators also emit comma
+        # Usually "City, Region, Country", but aggregators also emit comma
         # city-LISTS ("Toronto Canada, San Francisco, …"): a known city token
         # arriving after the city slot is filled starts a new location.
         locs: list[ParsedLocation] = []
@@ -281,7 +281,7 @@ def _parse_segment(segment: str) -> list[ParsedLocation]:
 
     # Short comma-less segment ("CA ON Ottawa", "New York", "Remote"):
     # classify word-wise. Two-letter region codes must be UPPERCASE in the
-    # source — lowercase "or"/"on"/"in" are English words, not Oregon/Ontario/
+    # source, lowercase "or"/"on"/"in" are English words, not Oregon/Ontario/
     # Indiana. A bare "CA" with a real province elsewhere is Canada.
     loc = ParsedLocation(country=tail_country)
     rest: list[str] = []
@@ -323,7 +323,7 @@ def parse_locations(raw: str) -> list[ParsedLocation]:
     # " / " and lowercase " or " separate alternatives ("US / Canada",
     # "Ottawa or Calgary ON"). Lowercase-only: uppercase "OR" is Oregon.
     # (Yes, this would split "Truth or Consequences, NM"; the catalogue is
-    # intern/new-grad tech jobs — the trade is worth it.)
+    # intern/new-grad tech jobs, the trade is worth it.)
     segments = re.split(r"[;\n•]+|\s+/\s+|\s+or\s+", raw)
     out: list[ParsedLocation] = []
     seen: set[tuple[str, str, str]] = set()
@@ -378,7 +378,7 @@ def location_tag_tokens(tag: str) -> list[str]:
 
 
 def location_fields(raw: str) -> dict:
-    """Column values for ScrapedJob(**fields) — shared by every ingest path."""
+    """Column values for ScrapedJob(**fields), shared by every ingest path."""
     locs = parse_locations(raw or "")
     if not locs:
         return {"city": "", "region": "", "locations_json": [], "location_search": ""}

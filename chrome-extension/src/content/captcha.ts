@@ -1,5 +1,5 @@
 /**
- * CAPTCHA / human-verification detection (spec §5 — hard constraint).
+ * CAPTCHA / human-verification detection (spec §5, hard constraint).
  *
  * We NEVER interact with, solve, or bypass verification systems. We only
  * detect their presence so the reconciler can enter a global suspend mode for
@@ -61,7 +61,7 @@ const CAPTCHA_FIELD_NAME =
 const CAPTCHA_CONTAINER = ".g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]";
 
 /**
- * True when a single control IS part of a captcha widget — its response field
+ * True when a single control IS part of a captcha widget, its response field
  * or a control nested in a captcha container. Discovery skips these so we fill
  * every real field around the captcha without ever touching the captcha itself.
  */

@@ -14,7 +14,7 @@ export default function About() {
             Tailrd is an AI-powered job-search assistant built for interns and new
             grads. It tailors your résumé to each role, generates cover letters,
             matches you with jobs that fit your real skills, and auto-fills
-            applications across the web — so you spend your time preparing for
+            applications across the web, so you spend your time preparing for
             interviews instead of retyping the same fields.
           </p>
           <h2 style={{ marginTop: 32 }}>Why we built it</h2>

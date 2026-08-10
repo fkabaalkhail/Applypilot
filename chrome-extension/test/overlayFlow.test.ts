@@ -8,13 +8,13 @@ describe("formatFlowProgress", () => {
     expect(formatFlowProgress({ phase: "advancing", step: 1, filledOk: 3, filledFail: 0 })).toBe("Step 2 · next page…");
     expect(
       formatFlowProgress({ phase: "paused", step: 1, filledOk: 3, filledFail: 0, pauseReason: "captcha" })
-    ).toBe("Step 2 · paused — solve the captcha to continue");
+    ).toBe("Step 2 · paused: solve the captcha to continue");
     expect(
       formatFlowProgress({ phase: "ready", step: 1, filledOk: 3, filledFail: 0 })
-    ).toBe("Step 2 filled — review this page, then Next page");
+    ).toBe("Step 2 filled. Review this page, then Next page");
     expect(
       formatFlowProgress({ phase: "done", step: 3, filledOk: 9, filledFail: 1 })
-    ).toBe("Done — 4 steps filled (9 ok, 1 need attention). Review and submit.");
+    ).toBe("Done. 4 steps filled (9 ok, 1 need attention). Review and submit.");
     expect(
       formatFlowProgress({ phase: "stopped", step: 2, filledOk: 0, filledFail: 0, detail: "Flow timed out" })
     ).toBe("Flow timed out");
@@ -22,7 +22,7 @@ describe("formatFlowProgress", () => {
 
   it("uses singular step wording", () => {
     expect(formatFlowProgress({ phase: "done", step: 0, filledOk: 5, filledFail: 0 })).toBe(
-      "Done — 1 step filled (5 ok). Review and submit."
+      "Done. 1 step filled (5 ok). Review and submit."
     );
   });
 
@@ -61,7 +61,7 @@ describe("formatNextLabel", () => {
   });
 
   it("names an advance that creates or enters an account", () => {
-    // Pressing Continue here registers an account — say so.
+    // Pressing Continue here registers an account, say so.
     expect(formatNextLabel(beat({ nextLabel: "Create Account" }))).toBe("Create Account ▶");
     expect(formatNextLabel(beat({ nextLabel: "Sign In" }))).toBe("Sign In ▶");
   });
@@ -84,7 +84,7 @@ describe("showsAdvanceGate", () => {
   /**
    * REGRESSION: an account wall the flow could not pass (site rejected the
    * password) left the user staring at a filled create-account form with no
-   * gate, no summary and — before this — no message either. The only thing
+   * gate, no summary and (before this) no message either. The only thing
    * left to try was clicking Autofill again.
    */
   it("offers the gate on an account wall the flow could not pass", () => {
@@ -92,7 +92,7 @@ describe("showsAdvanceGate", () => {
   });
 
   /**
-   * A validation pause is something the USER fixes on the page — Workday's
+   * A validation pause is something the USER fixes on the page, Workday's
    * create-account form shows live password-rule alerts. Parking there with no
    * button stranded the user on the account page with nothing to press.
    */

@@ -25,7 +25,7 @@ interface CoverLetterModalProps {
   onClose: () => void;
   /** Override the generate fetch (default: POST /ai/cover-letter/:jobId). */
   generate?: (resumeId: number | null, tone?: string, base?: string) => Promise<{ text: string }>;
-  /** Show the Save button (default true; embed passes false — no DB job_id to save under). */
+  /** Show the Save button (default true; embed passes false, no DB job_id to save under). */
   canSave?: boolean;
   /** When set, the footer shows "Attach to application" instead of "Apply Now". */
   onAttach?: () => Promise<void>;
@@ -126,8 +126,8 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
 
   function download() {
     const slug = job.company.toLowerCase().replace(/\s+/g, "-") || "company";
-    // No title heading — the letter body already opens with the candidate's
-    // own contact header, so a "Cover Letter — …" heading just duplicates it.
+    // No title heading: the letter body already opens with the candidate's
+    // own contact header, so a "Cover Letter, …" heading just duplicates it.
     void downloadDocx(`cover-letter-${slug}.docx`, text);
   }
 

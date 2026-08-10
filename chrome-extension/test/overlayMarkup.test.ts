@@ -1,6 +1,6 @@
 /**
  * Structural guards on the panel's markup. collectRefs() throws on the first
- * missing selector, and that throw aborts the whole overlay mount — the panel
+ * missing selector, and that throw aborts the whole overlay mount, the panel
  * then never opens on any page. These assert that the elements the sign-ins
  * modal and the branded edge tab depend on actually exist in buildHTML().
  */
@@ -102,7 +102,7 @@ describe("edge tab", () => {
     expect(tab.querySelector("svg")).not.toBeNull();
   });
 
-  it("leaves the mark's src unset in markup — wireBrandLogo sets it after the error listener", () => {
+  it("leaves the mark's src unset in markup, wireBrandLogo sets it after the error listener", () => {
     expect(root.querySelector(".ap-edge-mark")!.getAttribute("src")).toBeNull();
   });
 });

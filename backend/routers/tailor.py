@@ -1,12 +1,12 @@
 """
 Extension résumé-tailoring endpoints (mounted at /api).
 
-POST /api/tailor-resume — tailor a résumé to a *scraped* job (no job_id),
+POST /api/tailor-resume, tailor a résumé to a *scraped* job (no job_id),
                           reusing the same services as the web Custom Resume
                           flow. Returns the structured document + before/after
                           scores + the candidate keyword set (from `before`,
                           so the overlay's chips stay stable across regenerates).
-POST /api/render-resume — render a structured document to a PDF (base64 JSON).
+POST /api/render-resume, render a structured document to a PDF (base64 JSON).
 
 Used by the Chrome extension on live application pages, where there is no
 ScrapedJob row to key off (unlike the web /ai/custom-resume/{job_id} flow).
@@ -104,7 +104,7 @@ async def custom_resume_analysis_endpoint(
 ):
     """Step 1 'See Your Difference' for a scraped job (no job_id).
 
-    Extension analog of the web ``/ai/custom-resume-analysis/{job_id}`` — accepts
+    Extension analog of the web ``/ai/custom-resume-analysis/{job_id}``, accepts
     raw job context since there is no ScrapedJob row on a live application page.
     """
     resume = _resolve_resume(db, user_id, body.resume_id)  # 400 if none on file

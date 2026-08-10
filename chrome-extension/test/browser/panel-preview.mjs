@@ -1,7 +1,7 @@
 /**
  * Visual preview of the redesigned side panel. Bundles the real overlay STYLES +
  * buildHTML, renders them in a Shadow DOM in real Chromium, populates the job
- * card / résumé name / primary button, and screenshots the panel — so the
+ * card / résumé name / primary button, and screenshots the panel, so the
  * redesign can be eyeballed without loading the whole extension + chrome APIs.
  *
  * Usage: node test/browser/panel-preview.mjs

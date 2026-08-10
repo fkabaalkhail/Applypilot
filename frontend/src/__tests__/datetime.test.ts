@@ -42,6 +42,6 @@ describe("timeAgo", () => {
   });
 
   it("renders an em dash for a missing timestamp", () => {
-    expect(timeAgo(null)).toBe("—");
+    expect(timeAgo(null)).toBe("-");
   });
 });

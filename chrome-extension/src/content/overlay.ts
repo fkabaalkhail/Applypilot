@@ -1,5 +1,5 @@
 /**
- * In-page overlay — Tailrd side panel UI embedded in a Shadow DOM.
+ * In-page overlay: Tailrd side panel UI embedded in a Shadow DOM.
  *
  * The panel docks to the right edge of the viewport at full height.
  * When collapsed, a small branded tab sits on the right edge to reopen.
@@ -69,7 +69,7 @@ export interface OverlayCallbacks {
   /**
    * Write the user's answers to the unanswered questions into the page, and
    * save the ones with a real profile slot to their Tailrd profile (see
-   * planAnswerSaves — nothing else is persisted). Returns the number written,
+   * planAnswerSaves, nothing else is persisted). Returns the number written,
    * and how many answers were deliberately dropped (answersWorthRemembering),
    * so the panel can report honestly rather than claiming to have done
    * something it threw away.
@@ -120,7 +120,7 @@ export interface OverlayCallbacks {
   onProfileResolved: (profile: UserApplicationProfile | null) => void;
   /**
    * Open the real Tailrd app AI modal (résumé rewrite / cover letter) in an
-   * iframe overlay — the extension parity path for "exactly like the app".
+   * iframe overlay, the extension parity path for "exactly like the app".
    * Runs locally in the panel's frame (not proxied cross-frame).
    */
   onOpenAiModal: (kind: "resume" | "cover") => void;
@@ -130,7 +130,7 @@ export interface OverlayViewState {
   fields: DetectedField[];
   tabUrl: string;
   /** Label of the page's apply-entry button ("Apply", "Apply Manually"…) when
-   *  one exists — lets Autofill start a flow from a field-less job posting. */
+   *  one exists, lets Autofill start a flow from a field-less job posting. */
   applyEntry?: string | null;
   /** Company + job title scraped from the page, for the job-card header. */
   company?: string;
@@ -139,7 +139,7 @@ export interface OverlayViewState {
   siteLabel?: string | null;
   /**
    * Field ids the last fill's terminal re-scan found no longer holding what was
-   * written. Omitted means "no new information", NOT "nothing reverted" — an
+   * written. Omitted means "no new information", NOT "nothing reverted", an
    * ordinary scan (a MutationObserver beat) must not erase what the fill
    * observed, or the gap modal would forget the reverts before it renders.
    */
@@ -171,7 +171,7 @@ export function updateOverlay(state: OverlayViewState): void {
   if (state.reverted) overlayState.reverted = state.reverted;
   // Re-derive the default selection so the Autofill button reflects the latest
   // scan. Selection is purely computed from the fields (there is no per-field
-  // toggle UI), so recomputing it on every update is safe — and necessary, since
+  // toggle UI), so recomputing it on every update is safe, and necessary, since
   // proposed values only appear after the profile reaches the scanner.
   applyDefaultSelection();
   if (panelExpanded) refreshMainView();
@@ -186,7 +186,7 @@ const PAUSE_TEXT: Record<FlowPauseReason, string> = {
   "unfilled-required": "fill the required fields, or Next page to continue",
 };
 
-/** One-line, user-facing description of a flow beat. Pure — unit-tested. */
+/** One-line, user-facing description of a flow beat. Pure, unit-tested. */
 export function formatFlowProgress(p: FlowProgress): string {
   const step = `Step ${p.step + 1}`;
   switch (p.phase) {
@@ -197,13 +197,13 @@ export function formatFlowProgress(p: FlowProgress): string {
       // Entry/wall clicks narrate their target ('opening "Apply"…').
       return `${step} · ${p.detail ?? "next page…"}`;
     case "paused":
-      return `${step} · paused — ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`;
+      return `${step} · paused: ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`;
     case "ready":
-      return `${step} filled — review this page, then Next page`;
+      return `${step} filled. Review this page, then Next page`;
     case "done": {
       const steps = p.step + 1;
       const attention = p.filledFail > 0 ? `, ${p.filledFail} need attention` : "";
-      return `Done — ${steps} step${steps === 1 ? "" : "s"} filled (${p.filledOk} ok${attention}). Review and submit.`;
+      return `Done. ${steps} step${steps === 1 ? "" : "s"} filled (${p.filledOk} ok${attention}). Review and submit.`;
     }
     case "stopped":
       return p.detail ?? "Autofill flow stopped.";
@@ -216,7 +216,7 @@ export function formatFlowProgress(p: FlowProgress): string {
  * A wall the flow is about to CREATE something on names it instead ("Create
  * Account ▶"): pressing Continue there registers an account, which is not what
  * "next page" leads a user to expect. Ordinary Next / Save-and-Continue
- * buttons keep the generic label — echoing the site's own wording adds nothing
+ * buttons keep the generic label, echoing the site's own wording adds nothing
  * and reads as noise. Pure.
  */
 const GENERIC_NEXT = "Continue To The Next Page";
@@ -228,18 +228,18 @@ export function formatNextLabel(p: FlowProgress): string {
   return `${GENERIC_NEXT} ▶`;
 }
 
-/** Beats where the bottom gate is offered to the user. Pure — unit-tested.
+/** Beats where the bottom gate is offered to the user. Pure, unit-tested.
  *  - ready: the page is filled and waiting to be turned.
  *  - unfilled-required: same, with a caveat the panel explains.
  *  - validation: the page is showing its own error text. The user fixes it and
- *    presses Continue; without a button they are stranded — Workday's
+ *    presses Continue; without a button they are stranded, Workday's
  *    create-account gate renders live password-rule alerts on every keystroke.
  *  - account: the flow could not pass a signup/sign-in wall on its own; the
  *    button lets the user hand control back once they have dealt with it,
  *    instead of stranding them on a filled form with no next step.
  *  Captcha / verification / resume-upload are deliberately absent: a press
  *  cannot clear them, and a button that does nothing is worse than none.
- *  Must stay in step with USER_CLEARABLE_PAUSES in flowController — the flow
+ *  Must stay in step with USER_CLEARABLE_PAUSES in flowController, the flow
  *  only honours a press on the pauses listed there. */
 export function showsAdvanceGate(p: FlowProgress): boolean {
   if (p.phase === "ready") return true;
@@ -257,13 +257,13 @@ export function updateFlowProgress(p: FlowProgress): void {
   const running =
     p.phase === "filling" || p.phase === "advancing" || p.phase === "paused" || p.phase === "ready";
   refs.flow.style.display = running ? "flex" : "none";
-  // NO step-by-step narration in the panel — "Step 1 · filling…" style chatter
+  // NO step-by-step narration in the panel, "Step 1 · filling…" style chatter
   // reads as clutter. The strip shows one calm word while the flow is actively
   // working (plus Stop), and nothing at all on a parked page: the bottom gate
   // already shows the next action.
   //
   // A PAUSE is the exception, and it has to say why. A paused flow shows no
-  // gate and no summary, so an unexplained blank strip is a dead end — the user
+  // gate and no summary, so an unexplained blank strip is a dead end, the user
   // cannot tell whether it is still working, finished, or waiting on them, and
   // the only thing left to try is clicking Autofill again. The reason is
   // actionable ("add account credentials in Autofill Information → Account
@@ -275,12 +275,12 @@ export function updateFlowProgress(p: FlowProgress): void {
   refs.flowText.textContent = active
     ? "Autofilling…"
     : explainPause
-      ? `Paused — ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`
+      ? `Paused: ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`
       : "";
   console.info(`[Tailrd] ${formatFlowProgress(p)}`);
   // The advance gate is pinned at the panel bottom. The flow parks on every
-  // filled page — at a "ready" beat, or a "paused" beat when a required field is
-  // still empty — and turns the page only when the user presses this button. Its
+  // filled page, at a "ready" beat, or a "paused" beat when a required field is
+  // still empty, and turns the page only when the user presses this button. Its
   // label mirrors the real button the flow will click (Next / Continue).
   refs.flowNextBtn.textContent = formatNextLabel(p);
   refs.flowNext.style.display = showsAdvanceGate(p) ? "flex" : "none";
@@ -335,9 +335,9 @@ const P_REGEN = '<path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.
 const P_DOWNLOAD = '<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z"/>';
 const P_PAPERCLIP = '<path d="M209.66,122.34a8,8,0,0,1,0,11.32l-82.05,82a56,56,0,0,1-79.2-79.21L147.67,35.73a40,40,0,1,1,56.61,56.55L105,193A24,24,0,1,1,71,159L154.3,74.38A8,8,0,1,1,165.7,85.6L82.39,170.31a8,8,0,1,0,11.27,11.36L192.93,81A24,24,0,1,0,159,47L59.76,147.68a40,40,0,1,0,56.53,56.62l82.06-82A8,8,0,0,1,209.66,122.34Z"/>';
 const P_INFO = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"/>';
-// Phosphor "question" — the unanswered-questions card.
+// Phosphor "question": the unanswered-questions card.
 const P_QUESTION = '<path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>';
-// Phosphor "key" — the Saved sign-ins section/modal mark.
+// Phosphor "key": the Saved sign-ins section/modal mark.
 const P_KEY = '<path d="M216.57,39.43A80,80,0,0,0,83.91,120.78L28.69,176A15.86,15.86,0,0,0,24,187.31V216a16,16,0,0,0,16,16H72a8,8,0,0,0,8-8V208H96a8,8,0,0,0,8-8V184h16a8,8,0,0,0,5.66-2.34l9.56-9.57A80,80,0,0,0,216.57,39.43ZM180,100a16,16,0,1,1,16-16A16,16,0,0,1,180,100Z"/>';
 
 const I_CLOSE = ph(P_X);
@@ -370,7 +370,7 @@ export const STYLES = `
 *, *::before, *::after { box-sizing: border-box; }
 
 .ap-root {
-  /* ===== Stripe design system tokens — mirrors the web app's index.css ===== */
+  /* ===== Stripe design system tokens, mirrors the web app's index.css ===== */
   --stripe-primary: #533afd;
   --stripe-primary-deep: #4434d4;
   --stripe-primary-press: #2e2b8c;
@@ -402,7 +402,7 @@ export const STYLES = `
 
 /* ---- Edge tab ----
    A white tab carrying the circular Tailrd mark. On strict img-src CSP pages
-   the data-URI mark is blocked, and wireBrandLogo() adds .is-fallback — which
+   the data-URI mark is blocked, and wireBrandLogo() adds .is-fallback, which
    restores the original purple gradient + white chevron so the tab is never
    an empty white sliver. */
 .ap-edge-tab {
@@ -667,7 +667,7 @@ export const STYLES = `
 }
 .ap-btn-upload:hover:not(:disabled) { background: var(--stripe-primary-press); box-shadow: 0 4px 14px rgba(var(--stripe-primary-rgb),0.3); }
 .ap-btn-upload:disabled { opacity: 0.5; cursor: default; }
-/* Constrain the inline SVG icons inside the pill buttons — without this the
+/* Constrain the inline SVG icons inside the pill buttons, without this the
    256-viewBox Phosphor icons expand to fill the button. */
 .ap-btn-upload > svg, .ap-btn-tailor > svg { width: 16px; height: 16px; flex-shrink: 0; }
 .ap-upload-status { margin-top: 8px; font-size: 12px; min-height: 16px; }
@@ -729,7 +729,7 @@ export const STYLES = `
 .ap-modal-body {
   flex: 1; display: flex; overflow: hidden; min-height: 0;
 }
-/* Single-column modal (no category sidebar) — sized to its content. */
+/* Single-column modal (no category sidebar), sized to its content. */
 .ap-modal-narrow { width: 560px; height: auto; max-height: 78vh; }
 .ap-modal-narrow .ap-modal-body { flex: 0 1 auto; }
 .ap-modal-narrow .ap-signins-body { flex: 1; min-width: 0; }
@@ -931,7 +931,7 @@ export const STYLES = `
 .ap-flow { display: flex; align-items: center; gap: 8px; margin: 6px 16px; font-size: 12px; }
 .ap-flow-text { flex: 1; color: var(--stripe-ink-mute); line-height: 1.35; }
 .ap-flow-stop { flex: 0 0 auto; }
-/* Next-page gate — pinned at the panel bottom, shown once a page is filled and
+/* Next-page gate: pinned at the panel bottom, shown once a page is filled and
    waiting on the user. The one control they touch after the first Autofill. */
 .ap-flow-next-wrap {
   display: flex; padding: 12px 14px; flex-shrink: 0;
@@ -1103,7 +1103,7 @@ interface PanelState {
   /** Working copy of the editable profile fields while the info modal is open. */
   profileDraft: EditableProfileDraft | null;
   /** Device-local autofill extras (work-experience overrides + custom fields)
-   *  merged over the synced profile — loaded once, edited via extrasDraft. */
+   *  merged over the synced profile, loaded once, edited via extrasDraft. */
   extras: AutofillExtras;
   /** Working copy of `extras` while the info modal is open. */
   extrasDraft: AutofillExtras | null;
@@ -1116,13 +1116,13 @@ interface PanelState {
   coverLetterText: string | null;
   coverLetterBusy: boolean;
   /** True once a fill has actually run on this page. The unanswered-questions
-   *  card stays hidden until then — before autofill has tried, "3 questions
+   *  card stays hidden until then, before autofill has tried, "3 questions
    *  need your answer" reads as a failure rather than a follow-up. */
   fillRan: boolean;
   /** Questions the last fill left blank that are worth remembering. */
   gaps: AnswerGap[];
   /** Field ids the terminal re-scan found no longer holding what was written.
-   *  Asked about again even though the control is not empty — see
+   *  Asked about again even though the control is not empty, see
    *  selectAnswerGaps. */
   reverted: ReadonlySet<string>;
 }
@@ -1242,7 +1242,7 @@ function ensureMounted(): void {
 
   // collectRefs MUST run before wireEvents: wireEvents attaches delegated
   // listeners to refs.infoForm, so refs has to be populated first. (Reversed,
-  // wireEvents dereferenced a null refs and threw, aborting overlay mount — the
+  // wireEvents dereferenced a null refs and threw, aborting overlay mount, the
   // panel then never opened on any form page.)
   installRefs(root);
   wireBrandLogo(root);
@@ -1253,7 +1253,7 @@ function ensureMounted(): void {
 /**
  * The header lockup and the edge-tab mark are the real Tailrd logo as data-URI
  * <img>s. Pages with a strict `img-src` CSP (Greenhouse, Workday, many banks)
- * block data-URI images, and inline `onerror=""` handlers are blocked too — so
+ * block data-URI images, and inline `onerror=""` handlers are blocked too, so
  * attach the error handlers from our own (allowed) content-script JS, and set
  * `src` only AFTER they are live so a synchronous failure can't beat the
  * listener. On failure the header falls back to the "Tailrd" wordmark and the
@@ -1282,7 +1282,7 @@ function wireBrandLogo(root: HTMLElement): void {
 /**
  * SPA frameworks (React/Angular on Greenhouse, Workday…) rebuild the DOM and
  * tear our host out of it. The shadow root, rendered views and refs all survive
- * inside the detached host, so we just re-append it — instantly restoring the
+ * inside the detached host, so we just re-append it, instantly restoring the
  * panel without re-rendering. Without this the overlay silently dies after the
  * first client-side render: a frozen/blank panel updating elements no longer on
  * the page.
@@ -1415,7 +1415,7 @@ export function buildHTML(): string {
         <div class="ap-login-view" id="ap-login-view">
           <div class="ap-login-card">
             <h2 class="ap-login-title">Connect your Tailrd account</h2>
-            <p class="ap-muted ap-login-sub">Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters — kept in sync automatically.</p>
+            <p class="ap-muted ap-login-sub">Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters, kept in sync automatically.</p>
             <div id="ap-login-error" class="ap-error" style="display:none"></div>
             <button id="ap-btn-connect" class="ap-btn-login" type="button">Connect your Tailrd account</button>
             <button id="ap-btn-use-mock" class="ap-btn-mock" type="button">Try with sample data</button>
@@ -1423,7 +1423,7 @@ export function buildHTML(): string {
         </div>
       </div>
 
-      <!-- Next-page gate — pinned at the panel bottom, shown only while a
+      <!-- Next-page gate: pinned at the panel bottom, shown only while a
            multi-page flow is parked at "ready" (see updateFlowProgress). -->
       <div class="ap-flow-next-wrap" style="display:none">
         <button class="ap-flow-next" id="ap-flow-next" type="button">Continue To The Next Page ▶</button>
@@ -1470,7 +1470,7 @@ export function buildHTML(): string {
         </div>
         <div class="ap-modal-notice">
           <span class="ap-modal-notice-icon">${I_INFO}</span>
-          <span>Tailrd never guesses an answer it can't back up. Answer these and they'll be filled into this application — the ones your Tailrd profile has a place for are saved there too.</span>
+          <span>Tailrd never guesses an answer it can't back up. Answer these and they'll be filled into this application. The ones your Tailrd profile has a place for are saved there too.</span>
         </div>
         <div class="ap-modal-body">
           <div class="ap-gaps-body" id="ap-gaps-body"></div>
@@ -1660,7 +1660,7 @@ function wireEvents(root: HTMLDivElement): void {
   refs!.infoForm.addEventListener("change", onInfoInput);
   refs!.infoForm.addEventListener("click", onInfoFormClick);
 
-  // Update button — persist the draft to the shared profile, then re-sync.
+  // Update button: persist the draft to the shared profile, then re-sync.
   root.querySelector("#ap-btn-update")!.addEventListener("click", () => void saveInfoEdits());
 
   // Connect (web handshake) + sample-data fallback
@@ -1686,11 +1686,11 @@ async function initPanel(): Promise<void> {
 
   // Paint the current scan immediately so the panel always shows a real status
   // (field count / "No form fields detected") instead of a blank, greyed shell.
-  // Without this, a slow or unanswered background call — e.g. on a login-gated
-  // SPA like Greenhouse's candidate portal — leaves the panel stuck on its
+  // Without this, a slow or unanswered background call, e.g. on a login-gated
+  // SPA like Greenhouse's candidate portal, leaves the panel stuck on its
   // pristine pre-render state with no feedback.
   refreshMainView();
-  // Device-local, so it needs no session — badge the Saved sign-ins row before
+  // Device-local, so it needs no session, badge the Saved sign-ins row before
   // the (possibly slow, possibly failing) status round-trip.
   void refreshSigninsCount();
 
@@ -1767,7 +1767,7 @@ function setExpanded(val: boolean): void {
 
 function showLoginView(expired = false): void {
   if (!refs) {
-    console.log("[Tailrd overlay] showLoginView: refs is NULL — cannot render");
+    console.log("[Tailrd overlay] showLoginView: refs is NULL, cannot render");
     return;
   }
   console.log(
@@ -1783,7 +1783,7 @@ function showLoginView(expired = false): void {
   if (sub) {
     sub.textContent = expired
       ? "Reconnect to keep syncing your profile and résumés. Your data is still here."
-      : "Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters — kept in sync automatically.";
+      : "Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters, kept in sync automatically.";
   }
 }
 
@@ -1810,7 +1810,7 @@ async function showInfoView(): Promise<void> {
 
   // Then pull the latest profile from the server (a cheap sync-version check;
   // re-downloads only if the web app changed something) so this panel always
-  // reflects the current web-app profile — the two stay in sync, and demographic
+  // reflects the current web-app profile, the two stay in sync, and demographic
   // / address / other answers edited on the web app show up here without a
   // reload. Skip the rebuild if the user already started editing (draft changed)
   // or closed the modal in the meantime, so we never clobber their input.
@@ -1921,12 +1921,12 @@ function refreshMainView(): void {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Unanswered questions ("we couldn't answer these — tell us once")
+// Unanswered questions ("we couldn't answer these, tell us once")
 // ---------------------------------------------------------------------------
 
 /**
  * Recompute the questions the last fill left blank and paint the panel card.
- * Called on every re-render, but the card only shows once a fill has run — see
+ * Called on every re-render, but the card only shows once a fill has run, see
  * PanelState.fillRan.
  */
 function refreshGaps(): void {
@@ -1944,7 +1944,7 @@ function refreshGaps(): void {
     n === 1 ? "1 question needs your answer" : `${n} questions need your answer`;
 }
 
-/** True while a harvest pass is in flight — the only time "Loading choices…"
+/** True while a harvest pass is in flight, the only time "Loading choices…"
  *  may stand in for a control. Reset unconditionally when the pass settles, so
  *  a widget that yielded nothing can never be stuck un-answerable. */
 let gapHarvestPending = false;
@@ -1952,7 +1952,7 @@ let gapHarvestPending = false;
 /**
  * Returns once the harvest has settled, so the settle path is awaitable. The
  * modal itself is painted synchronously before the first await, exactly as the
- * click handler needs — nothing about opening the modal became asynchronous.
+ * click handler needs, nothing about opening the modal became asynchronous.
  */
 async function openGapsModal(): Promise<void> {
   if (!refs || overlayState.gaps.length === 0) return;
@@ -1962,7 +1962,7 @@ async function openGapsModal(): Promise<void> {
   refs.gapsError.style.display = "none";
   refs.gapsModal.classList.add("visible");
   if (!harvest) return;
-  // Harvest AFTER showing the modal so it never delays opening — a modal that
+  // Harvest AFTER showing the modal so it never delays opening, a modal that
   // sits dead for four seconds after the user clicks the card is worse than a
   // late-arriving dropdown. The consequence is that the user can be typing
   // while the pass runs, so the settle handler resolves ONLY the placeholders
@@ -1981,7 +1981,7 @@ async function openGapsModal(): Promise<void> {
  *
  * That path is reachable only by clicking a card on a panel that a real mount
  * builds (chrome.* and all), and it is the one place a wholesale re-render
- * silently destroys the user's typed answers — so it needs a regression test
+ * silently destroys the user's typed answers, so it needs a regression test
  * that runs the REAL function, not a stand-in. Seeds the only two module-level
  * pieces openGapsModal reads and hands back its promise. Pair with
  * `installRefs`. (Same shape as runtimeMessaging's
@@ -2014,9 +2014,9 @@ export function gapsBodyHTML(gaps: readonly AnswerGap[], harvestPending: boolean
     .map((g, i) => {
       const req = g.required ? `<span class="ap-gap-required" title="Required">*</span>` : "";
       const help = g.helpText ? `<div class="ap-gap-help">${esc(g.helpText)}</div>` : "";
-      // Sensitive answers never leave the device — say so, next to the input.
+      // Sensitive answers never leave the device, say so, next to the input.
       const priv = g.sensitive
-        ? `<div class="ap-gap-private">Kept on this device only — never uploaded.</div>`
+        ? `<div class="ap-gap-private">Kept on this device only, never uploaded.</div>`
         : "";
       return `
       <div class="ap-gap-card">
@@ -2031,7 +2031,7 @@ export function gapsBodyHTML(gaps: readonly AnswerGap[], harvestPending: boolean
 
 /**
  * Swap the "Loading choices…" placeholders for real controls once the harvest
- * has settled — and touch nothing else.
+ * has settled, and touch nothing else.
  *
  * The modal is interactive from the moment it opens, and the pass can take
  * seconds, so a blanket re-render here would replace gapsBody wholesale and
@@ -2039,7 +2039,7 @@ export function gapsBodyHTML(gaps: readonly AnswerGap[], harvestPending: boolean
  * a form they had just filled in and be told "only filled 0 of 2".
  *
  * Only placeholder rows are replaced, and that is sufficient as well as safe.
- * Safe, because a placeholder holds no input — there is nothing to lose.
+ * Safe, because a placeholder holds no input. There is nothing to lose.
  * Sufficient, because a placeholder is exactly the row that must change: its
  * options either arrived (a real dropdown) or did not (the free-text fallback,
  * without which the row would stay un-answerable forever).
@@ -2048,7 +2048,7 @@ export function resolveGapPlaceholders(root: ParentNode, gaps: readonly AnswerGa
   for (const node of [...root.querySelectorAll<HTMLElement>(".ap-gap-loading[data-i]")]) {
     const i = Number(node.dataset.i);
     const gap = gaps[i];
-    if (!gap) continue; // body no longer matches the gap list — leave it be
+    if (!gap) continue; // body no longer matches the gap list, leave it be
     node.outerHTML = gapControlHTML(gap, i, false);
   }
 }
@@ -2064,7 +2064,7 @@ const GAP_HARVEST_TYPES: ReadonlySet<ControlType> = new Set<ControlType>([
  * Fill in the real options for any dropdown the scan could not read.
  *
  * A combobox's listbox is mounted lazily, so `gap.options` is empty and the
- * modal would offer a text box — whose answer the widget then rejects. Opening
+ * modal would offer a text box, whose answer the widget then rejects. Opening
  * each dropdown briefly is a visible side effect on the page; it is the price
  * of the modal offering the page's own choices, and it was chosen deliberately
  * over a silent free-text box. Mutates `gaps` in place. Never throws: a frame
@@ -2085,7 +2085,7 @@ export async function harvestGapOptions(
       if (opts && opts.length > 0) g.options = opts;
     }
   } catch {
-    // Leave them as free text — an honest fallback, and the pre-existing shape.
+    // Leave them as free text, an honest fallback, and the pre-existing shape.
   }
 }
 
@@ -2094,7 +2094,7 @@ export async function harvestGapOptions(
  * whether a harvest is still running.
  *
  * The placeholder MUST be keyed on that and not merely on "constrained with no
- * options" — otherwise a widget whose harvest came back empty would show
+ * options", otherwise a widget whose harvest came back empty would show
  * "Loading choices…" forever and the question could never be answered, which is
  * the opposite of the free-text fallback harvestGapOptions promises.
  */
@@ -2118,7 +2118,7 @@ const GAP_MULTI_TYPES: ReadonlySet<ControlType> = new Set<ControlType>(["checkbo
  *
  * An HTML radio cannot be deselected, and the modal's only other exit is "Skip
  * for now", which discards EVERY answer. Without this, one mis-click on a
- * sponsorship question was unrecoverable — and went straight into the form the
+ * sponsorship question was unrecoverable, and went straight into the form the
  * employer reads. Its value is "" so readGapAnswer reports the question as
  * unanswered, exactly like the <select> placeholder it replaced.
  * Checked by default: the modal opens with nothing asserted on the user's behalf.
@@ -2129,12 +2129,12 @@ const noAnswerChoice = (id: string): string =>
     </label>`;
 
 /**
- * The control for one question — the SAME shape the page shows.
+ * The control for one question, the SAME shape the page shows.
  *
  * A radio group rendered as a dropdown is not the question the form asked, and
  * a constrained control rendered as a text box produces an answer the widget
  * will reject. Falls back to a text input only when the page genuinely offers
- * free text (or a dropdown yielded no options — see harvestGapOptions).
+ * free text (or a dropdown yielded no options, see harvestGapOptions).
  */
 export function gapInputHTML(gap: AnswerGap, i: number): string {
   const id = `ap-gap-${i}`;
@@ -2181,7 +2181,7 @@ export function gapInputHTML(gap: AnswerGap, i: number): string {
 }
 
 /** The answer the user gave for question `i`, whatever control it rendered as.
- *  "" when unanswered — an unanswered question is skipped, not an error. */
+ *  "" when unanswered, an unanswered question is skipped, not an error. */
 export function readGapAnswer(root: ParentNode, i: number): string {
   const group = root.querySelector<HTMLElement>(`.ap-gap-choices[data-i="${i}"]`);
   if (group) {
@@ -2203,7 +2203,7 @@ export function readGapAnswer(root: ParentNode, i: number): string {
  * "Filled" must not be said about an answer the widget rejected.
  * answersWorthRemembering discards such a value precisely SO THAT the question
  * gets asked again; reporting it as done would be a lie the user cannot see
- * through — the panel card would still show the question and nothing would
+ * through, the panel card would still show the question and nothing would
  * explain why. `discarded` takes precedence, and implies `filled < total` (an
  * answer can only be discarded when its write failed).
  */
@@ -2216,7 +2216,7 @@ export function gapsSaveBanner(
     const what = discarded === 1 ? "an answer" : `${discarded} answers`;
     const it = discarded === 1 ? "it" : "them";
     return {
-      text: `Filled ${filled} of ${total}. This form rejected ${what}, so we didn't keep ${it} — we'll ask again next time.`,
+      text: `Filled ${filled} of ${total}. This form rejected ${what}, so we didn't keep ${it}. We'll ask again next time.`,
       tone: "warn",
     };
   }
@@ -2234,7 +2234,7 @@ export function gapsSaveBanner(
 
 /**
  * Fill the answered questions into the page and remember them. Questions left
- * blank are simply skipped — closing without answering everything is a normal
+ * blank are simply skipped, closing without answering everything is a normal
  * outcome, not an error.
  */
 async function saveGaps(): Promise<void> {
@@ -2298,7 +2298,7 @@ async function refreshSigninsCount(): Promise<void> {
 
 /**
  * Render the signup-wall credentials the account flow saved on this device.
- * Passwords stay masked until the user reveals one — and a revealed password is
+ * Passwords stay masked until the user reveals one, and a revealed password is
  * only ever written into `textContent` (never innerHTML, never logged). Reveal /
  * copy / delete are wired per row; a delete re-renders the shortened list.
  */
@@ -2312,7 +2312,7 @@ async function renderSavedSignins(): Promise<void> {
       <div class="ap-signins-empty">
         <span class="ap-signins-empty-icon">${I_KEY}</span>
         <div class="ap-signins-empty-title">No saved sign-ins yet</div>
-        <div class="ap-signins-empty-sub">Nothing to show yet — the first signup wall autofill gets you past will appear here automatically.</div>
+        <div class="ap-signins-empty-sub">Nothing to show yet. The first signup wall autofill gets you past will appear here automatically.</div>
       </div>`;
     return;
   }
@@ -2481,7 +2481,7 @@ function applyDefaultSelection(): void {
   overlayState.selected = defaultSelectedIds(overlayState.fields);
 }
 
-/** True when Autofill should start by clicking the page's apply-entry button —
+/** True when Autofill should start by clicking the page's apply-entry button,
  *  mirrors the flow controller's gate (no recognized fields + an entry). */
 function canStartFromEntry(): boolean {
   const recognized = overlayState.fields.filter((f) => f.category !== "unknown").length;
@@ -2495,7 +2495,7 @@ function canStartFromEntry(): boolean {
 /** The résumé currently picked in the upload section, if the user picked one. */
 function currentUploadResumeId(): number | null {
   // Mirror the résumé-picker read the upload handler uses (see doUploadResume):
-  // only an explicitly chosen, visible selection counts — otherwise null, so the
+  // only an explicitly chosen, visible selection counts, otherwise null, so the
   // flow keeps its own auto-attach default instead of us forcing a résumé here.
   const sel = refs?.resumeSelect;
   if (!sel || sel.style.display === "none" || !sel.value) return null;
@@ -2518,11 +2518,11 @@ async function doAutofill(): Promise<void> {
     // A fill has now run on this page, so any question it couldn't answer is a
     // real gap worth surfacing (see PanelState.fillRan).
     overlayState.fillRan = true;
-    // No per-click "Filled X of Y — review before submitting" banner: one click
+    // No per-click "Filled X of Y, review before submitting" banner: one click
     // now runs the whole multi-page flow, so the flow status line and its final
     // "done" beat own the feedback. (A mid-flow "review before submitting" read
     // as if the application were already finished, which was confusing.)
-    // Re-scan so each field's currentValue reflects what just got written —
+    // Re-scan so each field's currentValue reflects what just got written,
     // this drives the ✓ / – checklist to its post-fill state.
     callbacks.onRescan();
   } catch (err) {
@@ -2534,7 +2534,7 @@ async function doAutofill(): Promise<void> {
 }
 
 /**
- * This content script has been orphaned — the extension was reloaded, updated
+ * This content script has been orphaned, the extension was reloaded, updated
  * or disabled while the tab stayed open, so `chrome.runtime` is gone and
  * nothing the panel offers can work any more.
  *
@@ -2549,7 +2549,7 @@ export function showReloadRequired(): void {
   refs.btnAutofill.disabled = true;
   refs.flow.style.display = "none";
   refs.flowNext.style.display = "none";
-  showBanner("Tailrd was updated — reload this page to continue.", "warn");
+  showBanner("Tailrd was updated. Reload this page to continue.", "warn");
 }
 
 function showBanner(text: string, kind: "ok" | "warn" | "error", hide = false): void {
@@ -2564,7 +2564,7 @@ function showBanner(text: string, kind: "ok" | "warn" | "error", hide = false): 
 // Autofill Information form
 // ---------------------------------------------------------------------------
 
-// Editable profile draft — the working copy the info modal binds to so edits
+// Editable profile draft: the working copy the info modal binds to so edits
 // survive switching categories. Every key here round-trips through
 // PUT /api/user/application-profile; a field that renders but is missing from
 // this type (or from draftFromProfile / saveInfoEdits below) silently never
@@ -2621,7 +2621,7 @@ export interface EditableProfileDraft {
 }
 
 /**
- * TWIN COPY — must stay byte-identical to `EEO_OPTIONS` in
+ * TWIN COPY: must stay byte-identical to `EEO_OPTIONS` in
  * frontend/src/lib/profileExtras.ts. The web app and the extension write the
  * same `eeo` object through the same endpoint, so an option added on one side
  * only and picked there renders as an EMPTY select on the other. Both files
@@ -2794,10 +2794,10 @@ function apEeoSelect(field: keyof EditableProfileDraft["eeo"], label: string, va
   return `<div class="ap-form-row"><label>${label}</label><select data-eeo="${field}">${opts}</select></div>`;
 }
 
-const RESUME_HINT = '<div class="ap-form-hint">Synced from your résumé — edit it on your Tailrd profile.</div>';
+const RESUME_HINT = '<div class="ap-form-hint">Synced from your résumé. Edit it on your Tailrd profile.</div>';
 
 /**
- * The markup for one category of the Autofill Information modal — pure, so the
+ * The markup for one category of the Autofill Information modal, pure, so the
  * label/round-trip guards can assert on it without mounting the panel.
  *
  * EVERY `data-field` / `data-eeo` control rendered here must also appear in
@@ -2867,11 +2867,11 @@ export function infoSectionHTML(
     case "experience": {
       // Editable: work off the user's edited copy if there is one, else the
       // synced résumé entries. Edits + added roles persist to device-local
-      // extras — the profile API has no write path for résumé-derived
+      // extras, the profile API has no write path for résumé-derived
       // sections, so the hint below says so rather than implying they sync.
       const entries = ed.experience ?? p.experience ?? [];
       let html =
-        '<div class="ap-form-hint">Edit any role, add ones your résumé missed, or add your own fields. <strong>These edits stay on this device</strong> — they autofill applications from this browser but do not change your Tailrd profile or show up on the web app. Edit your résumé there to change it everywhere.</div>';
+        '<div class="ap-form-hint">Edit any role, add ones your résumé missed, or add your own fields. <strong>These edits stay on this device</strong>: they autofill applications from this browser but do not change your Tailrd profile or show up on the web app. Edit your résumé there to change it everywhere.</div>';
       entries.forEach((e, i) => {
         html += `
           <div class="ap-exp-entry">
@@ -2952,7 +2952,7 @@ function renderInfoForm(): void {
 /**
  * Render the "Account creation" section: the email + password autofill uses on
  * signup/sign-in walls (Workday-style ATSs that gate the application behind an
- * account). Device-local only — saved to chrome.storage.local, never sent to
+ * account). Device-local only, saved to chrome.storage.local, never sent to
  * the Tailrd backend or the AI. The password input stays type="password"; a
  * Show/Hide toggle flips it (never rendered into markup).
  */
@@ -2965,7 +2965,7 @@ function renderSignupForm(form: HTMLElement, p: UserApplicationProfile): void {
   }
   const s = overlayState.signupDraft ?? { email: "", password: "" };
   form.innerHTML = `
-    <div class="ap-form-hint">Some sites (Workday and similar) require an account before you can apply. Autofill creates or signs in to those accounts with the details below, then continues filling. Stored only on this device — never sent to Tailrd or the AI.</div>
+    <div class="ap-form-hint">Some sites (Workday and similar) require an account before you can apply. Autofill creates or signs in to those accounts with the details below, then continues filling. Stored only on this device, never sent to Tailrd or the AI.</div>
     <div class="ap-form-row">
       <label>Account email</label>
       <input data-signup="email" type="email" value="${esc(s.email)}" placeholder="${esc(p.email || "you@example.com")}" />
@@ -3008,7 +3008,7 @@ function onInfoInput(e: Event): void {
     return;
   }
   const ed = overlayState.extrasDraft;
-  // Work-experience entry edit — lazily fork the synced entries into the draft
+  // Work-experience entry edit: lazily fork the synced entries into the draft
   // the first time one is touched, so "no override" holds until the user edits.
   const expIdx = t.dataset.expIdx;
   const expKey = t.dataset.expKey;
@@ -3112,7 +3112,7 @@ function setInfoError(msg: string): void {
  *
  * The scalar key list is DERIVED from the draft rather than hand-written. A
  * hand-written list is exactly how a field ends up rendering, accepting typing,
- * and silently discarding it on Update — the failure has no error and no
+ * and silently discarding it on Update, the failure has no error and no
  * symptom until the user notices the value never reached the web app. Every
  * key of EditableProfileDraft except the nested `eeo` object is a scalar the
  * endpoint accepts under the same name.
@@ -3146,7 +3146,7 @@ async function saveInfoEdits(): Promise<void> {
   setInfoError("");
 
   // Account-creation credentials save device-locally, independent of the
-  // profile round-trip below — they must never reach the backend.
+  // profile round-trip below. They must never reach the backend.
   const s = overlayState.signupDraft;
   if (s && signupOriginal && (s.email !== signupOriginal.email || s.password !== signupOriginal.password)) {
     const next = { email: s.email.trim(), password: s.password };
@@ -3154,12 +3154,12 @@ async function saveInfoEdits(): Promise<void> {
       await saveDefaultCredential(next);
       signupOriginal = { ...next };
     } catch {
-      // Storage unavailable — leave the draft in place so a retry can save it.
+      // Storage unavailable: leave the draft in place so a retry can save it.
     }
   }
 
   // Device-local autofill extras (work-experience edits + custom fields), also
-  // independent of the backend profile — they never leave the machine. Saved
+  // independent of the backend profile. They never leave the machine. Saved
   // regardless of whether any synced field changed.
   if (overlayState.extrasDraft) {
     const pruned = pruneExtras(overlayState.extrasDraft);
@@ -3172,7 +3172,7 @@ async function saveInfoEdits(): Promise<void> {
   const update = profileUpdateDiff(d, overlayState.profile ?? ({} as UserApplicationProfile));
 
   if (Object.keys(update).length === 0) {
-    // Nothing to sync — but device-local extras may have changed, so re-feed the
+    // Nothing to sync: but device-local extras may have changed, so re-feed the
     // scanner with the merged profile before closing.
     callbacks?.onProfileResolved(fillProfile());
     refreshMainView();
@@ -3335,7 +3335,7 @@ function setTailorStatus(text: string, kind: "ok" | "warn" | "error" | ""): void
     el.textContent = text;
     el.className = "ap-upload-status" + (kind ? ` ${kind}` : "");
   } else if (refs) {
-    // No card yet (e.g. not signed in) — fall back to the résumé status line.
+    // No card yet (e.g. not signed in), fall back to the résumé status line.
     setUploadStatus(text, kind);
   }
 }
@@ -3377,7 +3377,7 @@ async function openTailorPreview(): Promise<void> {
   const attach = refs.root.querySelector<HTMLButtonElement>("#ap-pdf-attach");
   if (attach) {
     attach.disabled = !hasResumeField();
-    attach.title = hasResumeField() ? "" : "No résumé upload field on this page — use Download instead.";
+    attach.title = hasResumeField() ? "" : "No résumé upload field on this page. Use Download instead.";
   }
 }
 
@@ -3502,7 +3502,7 @@ function renderCoverLetterResult(): void {
   const insertBtn = refs.coverResult.querySelector<HTMLButtonElement>("#ap-cover-insert");
   if (insertBtn && !enabled) {
     insertBtn.disabled = true;
-    insertBtn.title = "No cover-letter field on this page — use Copy or Download instead.";
+    insertBtn.title = "No cover-letter field on this page. Use Copy or Download instead.";
   }
 }
 
@@ -3535,7 +3535,7 @@ function setCoverStatus(text: string, kind: "ok" | "warn" | "error" | ""): void 
     el.textContent = text;
     el.className = "ap-upload-status" + (kind ? ` ${kind}` : "");
   } else if (refs) {
-    // No card yet (e.g. a first-generation failure) — fall back to the résumé status line.
+    // No card yet (e.g. a first-generation failure), fall back to the résumé status line.
     setUploadStatus(text, kind);
   }
 }

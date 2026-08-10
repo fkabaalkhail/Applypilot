@@ -95,7 +95,7 @@ export default function ResumePreview({ profile, originalProfile }: ResumePrevie
                 </div>
                 <p className={!orig || edu.degree !== orig.degree ? "preview-changed" : ""}>
                   {edu.degree}
-                  {edu.gpa ? ` — GPA: ${edu.gpa}` : ""}
+                  {edu.gpa ? `, GPA: ${edu.gpa}` : ""}
                 </p>
               </div>
             );

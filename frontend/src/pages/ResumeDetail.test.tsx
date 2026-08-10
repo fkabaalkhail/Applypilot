@@ -32,7 +32,7 @@ function renderPage() {
   );
 }
 
-describe("ResumeDetail — two-pane workspace", () => {
+describe("ResumeDetail: two-pane workspace", () => {
   beforeEach(() => get.mockReset());
 
   it("shows the form and the live preview side by side", async () => {

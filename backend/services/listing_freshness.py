@@ -1,25 +1,25 @@
 """
 Listing freshness: the lifecycle layer that keeps the catalogue honest.
 
-Aggregator competitors' known weakness is ghost/expired listings — jobs that
+Aggregator competitors' known weakness is ghost/expired listings, jobs that
 died on the employer's board weeks ago but keep ranking. This module makes the
 catalogue self-correcting:
 
   - every board crawl RECONCILES its own rows: still-listed rows get
     ``last_seen_at`` bumped (and revived if previously removed), vanished rows
-    are marked ``removed`` the same hour — not on some future full sweep
+    are marked ``removed`` the same hour, not on some future full sweep
   - rows a board stopped vouching for (partial crawls, broken boards) go
     ``stale`` after STALE_AFTER_HOURS, and a small per-run budget of stale
     rows gets URL-verified (an honest 404 → removed immediately)
   - aggregator rows (LinkedIn/Indeed/GitHub lists), which no board will ever
     re-confirm, EXPIRE by age
-  - active rows carry a ``ghost_risk_score`` heuristic — surfaced as data,
+  - active rows carry a ``ghost_risk_score`` heuristic, surfaced as data,
     never silently filtered, so the product decides hide vs badge
 
 All states are soft: rows are never deleted (saved-job and application records
 reference them), and the row's user-facing ``status`` workflow is untouched.
-Everything here is column-query based — descriptions are only read for the
-one-time evergreen check — because a whole-row sweep over the catalogue is
+Everything here is column-query based, descriptions are only read for the
+one-time evergreen check, because a whole-row sweep over the catalogue is
 exactly the egress mistake that melted the Neon budget once already.
 """
 
@@ -123,7 +123,7 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
       rows come back to ``active`` (reposted or crawl recovered)
     - rows whose URL vanished: ``removed``, effective immediately
 
-    Only call with a COMPLETE snapshot — a partial crawl's absence is not
+    Only call with a COMPLETE snapshot, a partial crawl's absence is not
     evidence of removal. Commits. Returns counts.
     """
     now = now or _utcnow()
@@ -152,7 +152,7 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
     # often an API hiccup than a real mass takedown; degrade to the stale
     # sweep instead of declaring everything removed.
     if not live_urls and len(gone_ids) > 10:
-        logger.warning("reconcile %s: empty board with %d active rows — leaving to stale sweep",
+        logger.warning("reconcile %s: empty board with %d active rows, leaving to stale sweep",
                        board_key, len(gone_ids))
         return stats
 
@@ -183,7 +183,7 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     ``change_log``, update the structured fields, adopt legacy rows into
     ``board_key``. ``jobs`` are ats_scraper.ATSJob. Commits.
 
-    Change detection is explicit column compares plus a description hash —
+    Change detection is explicit column compares plus a description hash,
     a re-crawl that didn't carry the description (SmartRecruiters/Workday
     list payloads) must not read "description became empty" as an edit.
     """
@@ -241,7 +241,7 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
                                salary_currency=currency, salary_period=period)
             elif old_salary_min and job.salary_text == "" and job.description:
                 # The source used to state pay and the fresh full content no
-                # longer does — the bait-and-switch edit worth flagging.
+                # longer does, the bait-and-switch edit worth flagging.
                 changes.append("salary_removed")
                 stats["salary_removed"] += 1
 
@@ -359,9 +359,9 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
     """Score/rescore ghost risk for active rows.
 
     Two passes per run:
-      1. never-scored rows (factors NULL) — the only pass that reads
+      1. never-scored rows (factors NULL), the only pass that reads
          descriptions, to cache the evergreen flag into the factors JSON
-      2. previously scored rows old enough that age-driven factors move —
+      2. previously scored rows old enough that age-driven factors move,
          column-only, evergreen reused from the cached factors
 
     Commits. Returns counts.
@@ -410,7 +410,7 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
                 counts[(company or "", norm or "")] = int(n or 0)
         return counts
 
-    # Pass 1 — never scored. Reads the description once to cache `evergreen`.
+    # Pass 1: never scored. Reads the description once to cache `evergreen`.
     fresh = (
         db.query(ScrapedJob.id, ScrapedJob.company, ScrapedJob.title_norm,
                  ScrapedJob.first_seen_at, ScrapedJob.description)
@@ -439,7 +439,7 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
         )
         stats["scored_new"] += 1
 
-    # Pass 2 — aging rows whose age factor may have moved. Column-only.
+    # Pass 2: aging rows whose age factor may have moved. Column-only.
     aging_cutoff = now - datetime.timedelta(days=GHOST_DAYS_OPEN - 5)
     aging = (
         db.query(ScrapedJob.id, ScrapedJob.company, ScrapedJob.title_norm,
@@ -524,7 +524,7 @@ def backfill_board_keys(db: Session, limit: int = 500) -> int:
 # ─── URL liveness probing ────────────────────────────────────────────────────
 
 # Only these statuses are evidence of death. Bot walls answer 401/403/405/406/
-# 429/999 and some employers 5xx under load — none of that means the job is
+# 429/999 and some employers 5xx under load, none of that means the job is
 # gone, and a real user's browser usually gets through where our probe can't.
 DEAD_HTTP_STATUSES = (404, 410)
 
@@ -532,7 +532,7 @@ DEAD_HTTP_STATUSES = (404, 410)
 # "gone" message baked into the HTML (a soft 404). Only these hosts get a body
 # verdict: SPA hosts (Workday/Ashby/most career sites) render that message
 # client-side, so their 200 body never carries the signal and can't false-match.
-# The biggest payoff is LinkedIn — 57% of aged rows answer 200 + the banner
+# The biggest payoff is LinkedIn, 57% of aged rows answer 200 + the banner
 # below while never returning an honest 404.
 _SOFT_404_HOSTS = (
     "linkedin.com", "greenhouse.io", "lever.co",
@@ -542,7 +542,7 @@ _SOFT_404_HOSTS = (
 # Phrases that appear only on a dead posting, kept specific so a live page's
 # boilerplate (footers, "similar jobs") never trips them.
 # ``expired_jd_redirect`` is LinkedIn's own marker: an expired job redirects the
-# guest page to a jobs search and stamps that trk token into the nav links — a
+# guest page to a jobs search and stamps that trk token into the nav links, a
 # live posting never carries it. LinkedIn serves the "no longer accepting
 # applications" banner on some hits and the expired-redirect on others, so we
 # match both to catch a dead row on whichever variant a given probe lands on.
@@ -621,14 +621,14 @@ def mark_listing_removed(db: Session, row_id: int,
 
 async def verify_recent_aggregator_listings(db: Session, client, limit: int = 150,
                                             now: datetime.datetime | None = None) -> dict:
-    """Probe the NEWEST visible aggregator rows — the ones users actually click.
+    """Probe the NEWEST visible aggregator rows, the ones users actually click.
     Covers GitHub-list rows (the curated lists re-publish already-closed roles)
     AND LinkedIn rows (no board reconciliation ever covers either, and a huge
-    share of aged LinkedIn actives are soft-dead — 200 + "no longer accepting
+    share of aged LinkedIn actives are soft-dead, 200 + "no longer accepting
     applications"). Indeed is excluded: Cloudflare 403s the probe.
 
     An honest 404/410 or a soft-404 body → removed. Anything else stamps
-    ``last_seen_at`` (here it means "probed", not board-confirmed — nothing
+    ``last_seen_at`` (here it means "probed", not board-confirmed, nothing
     else reads it for aggregator rows) so each row is re-checked ~daily instead
     of every run. Commits. Returns counts.
     """
@@ -673,14 +673,14 @@ async def verify_recent_aggregator_listings(db: Session, client, limit: int = 15
 
 # ─── Stale-row URL verification ──────────────────────────────────────────────
 
-# Hosts whose job URLs return honest status codes BOTH ways — a 200 here
+# Hosts whose job URLs return honest status codes BOTH ways, a 200 here
 # really means the posting is live, so it may revive a stale row. SPAs
 # (Ashby, most company career sites) 200 on everything, so a 200 from them
 # proves nothing; only the honest 404/410 verdict applies everywhere.
 _REVIVABLE_HOSTS = ("greenhouse.io", "jobs.lever.co", "smartrecruiters.com",
                     "myworkdayjobs.com")
 
-# Indeed sits behind Cloudflare and answers our probe with 403 — indeterminate
+# Indeed sits behind Cloudflare and answers our probe with 403, indeterminate
 # in either direction, so we never probe it. LinkedIn is NOT here: its public
 # guest job page returns 200 with an explicit "no longer accepting applications"
 # banner for closed roles, which the soft-404 body check reads as dead.
@@ -690,8 +690,8 @@ _UNPROBEABLE_HOSTS = ("indeed.com",)
 async def verify_stale_listings(db: Session, client, limit: int = 200,
                                 now: datetime.datetime | None = None) -> dict:
     """Work through the stale backlog with real requests, newest-first (the
-    rows a search can still surface). An honest 404/410 — or a soft-404 body on
-    a trusted host (incl. LinkedIn's "no longer accepting applications") —
+    rows a search can still surface). An honest 404/410, or a soft-404 body on
+    a trusted host (incl. LinkedIn's "no longer accepting applications"),
     removes the row on ANY host; a 200 revives it only on hosts that 404
     honestly for dead postings. Everything else stamps ``last_seen_at`` so the
     next run moves on to unchecked rows instead of re-probing the same bot

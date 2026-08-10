@@ -7,7 +7,7 @@ const CANONICAL = EXPERIENCE_OPTIONS.map((o) => o.value);
 /**
  * Saved filters outlive the options that produced them. A user who picked "Senior"
  * under the old taxonomy still has it in localStorage; if it survived rehydration it
- * would be an invisible filter — no checkbox renders for it, so it cannot be cleared,
+ * would be an invisible filter, no checkbox renders for it, so it cannot be cleared,
  * and it silently returns zero jobs.
  */
 describe("normalizeExperienceLevels", () => {

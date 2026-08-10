@@ -1,7 +1,7 @@
 import type { StepProps } from "../types";
 import { EXPERIENCE_OPTIONS } from "../../components/JobFilterBar";
 
-// "Internship" is deliberately absent — the experience question above owns that
+// "Internship" is deliberately absent, the experience question above owns that
 // concept, and offering it in both places is what made the page ambiguous.
 const JOB_TYPES = [
   { value: "full_time", label: "Full-time" },

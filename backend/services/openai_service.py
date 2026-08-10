@@ -1,5 +1,5 @@
 """
-OpenAIService — OpenAI Chat Completions client for AI-powered features.
+OpenAIService, OpenAI Chat Completions client for AI-powered features.
 
 Drop-in replacement for the former AnthropicService: same public interface
 (analyze_resume, generate_cover_letter, answer_question, suggest_job_titles,
@@ -22,39 +22,66 @@ import httpx
 from backend.schemas.resume import AnalysisReport, ResumeProfile
 from backend.schemas.resume_document import ResumeDocument
 from backend.schemas.application import JobPosting
+from backend.services.llm_cost import record as record_cost
 from backend.services.resume_extraction import build_analysis_report, build_profile
 
 logger = logging.getLogger(__name__)
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 
+# Answering an application field is extraction from a context we supply, not
+# open-ended reasoning, so it does not need the flagship. Essays still do,
+# they are the only autofill output a human reads as prose.
+DEFAULT_FIELD_MODEL = "gpt-4o-mini"
+
+
+def _field_model() -> str:
+    return os.getenv("OPENAI_FIELD_MODEL", DEFAULT_FIELD_MODEL).strip().strip("﻿") or DEFAULT_FIELD_MODEL
+
 STANDARDS_TOKEN = "{{RESUME_STANDARDS}}"
 STANDARDS_FILE = "_standards.md"
 
+# Shared partials, by the token that pulls them in. Each is a single canonical
+# copy of a contract used by more than one prompt, so a prompt that answers one
+# field and a prompt that answers a whole form cannot drift apart.
+PARTIALS: dict[str, str] = {
+    STANDARDS_TOKEN: STANDARDS_FILE,
+    "{{ANSWER_RULES}}": "_answer_rules.md",
+    "{{COMPOSE_RULES}}": "_compose_rules.md",
+}
 
-def _load_standards() -> str:
-    """The shared resume-standards partial, minus its developer header comment.
+
+def _load_partial(filename: str) -> str:
+    """A shared prompt partial, minus its developer header comment.
 
     Everything before the partial's first ``##`` heading is a note to us, not to the
     model, so it is stripped before the block reaches a prompt.
     """
-    text = (PROMPTS_DIR / STANDARDS_FILE).read_text(encoding="utf-8")
+    text = (PROMPTS_DIR / filename).read_text(encoding="utf-8")
     _, sep, body = text.partition("\n## ")
     return f"## {body}".strip() if sep else text.strip()
 
 
-def _load_prompt(name: str) -> str:
-    """Read a prompt template, inlining the shared standards block if it asks for one.
+def _load_standards() -> str:
+    """Back-compat alias for the résumé-standards partial."""
+    return _load_partial(STANDARDS_FILE)
 
-    One canonical copy of the standards means the prompt that grades a resume and the
-    prompts that rewrite it cannot drift apart.
+
+def _load_prompt(name: str) -> str:
+    """Read a prompt template, inlining any shared partials it asks for.
+
+    Partials are placed ahead of the per-request content in every template that
+    uses one. That is not cosmetic: OpenAI's automatic prompt caching keys on the
+    identical *leading* prefix, so static-first ordering is what makes the
+    discount reachable at all.
     """
     path = PROMPTS_DIR / name
     if not path.exists():
         raise FileNotFoundError(f"Prompt file not found: {path}")
     template = path.read_text(encoding="utf-8")
-    if STANDARDS_TOKEN in template:
-        template = template.replace(STANDARDS_TOKEN, _load_standards())
+    for token, filename in PARTIALS.items():
+        if token in template:
+            template = template.replace(token, _load_partial(filename))
     return template
 
 
@@ -102,7 +129,7 @@ def _render_emphasis(sections: list[str] | None, keywords: list[str] | None) -> 
     """The per-request focus block shared by both tailoring prompts.
 
     ``sections`` is what the user asked us to work on; ``keywords`` are the job's missing
-    terms. Both are advisory — the honesty rule in the standards block still overrules them,
+    terms. Both are advisory, the honesty rule in the standards block still overrules them,
     which is why an unsupported term is dropped rather than inserted.
     """
     lines: list[str] = []
@@ -121,7 +148,7 @@ def _render_findings(report: AnalysisReport | None) -> str:
     """Flatten an analysis report into the instruction block for improve_resume."""
     if report is None or not report.categories:
         return (
-            "(no analysis available — apply general best practice: achievement-led "
+            "(no analysis available, apply general best practice: achievement-led "
             "bullets, strong verbs, no filler, consistent tense)"
         )
 
@@ -160,13 +187,16 @@ class OpenAIService:
         system: str = None,
         model: str = None,
         json_mode: bool = False,
+        op: str = "unknown",
     ) -> str:
         """Run one chat completion.
 
         ``model`` overrides the account-wide default for calls that don't need
         the flagship (e.g. high-volume match scoring). ``json_mode`` turns on
         OpenAI's JSON response format for callers that parse the output as
-        JSON — the prompt must still mention JSON, per the API contract.
+        JSON, the prompt must still mention JSON, per the API contract.
+        ``op`` labels the call in the cost log so spend can be attributed to a
+        user-facing action rather than to "OpenAI" in aggregate.
         """
         import asyncio
 
@@ -218,6 +248,8 @@ class OpenAIService:
                 "OpenAI API rate limited after retries. Please try again in a minute."
             )
 
+        record_cost(op, body["model"], data.get("usage"))
+
         try:
             # OpenAI response: { "choices": [{ "message": { "content": "..." } }] }
             return data["choices"][0]["message"]["content"]
@@ -228,7 +260,7 @@ class OpenAIService:
     async def analyze_resume(self, raw_text: str) -> ResumeProfile:
         template = _load_prompt("analyze_resume.txt")
         prompt = template.replace("{{RESUME_TEXT}}", raw_text)
-        response = await self._generate(prompt)
+        response = await self._generate(prompt, op="resume.analyze")
         data = json.loads(_extract_json(response))
         return build_profile(data)
 
@@ -241,7 +273,7 @@ class OpenAIService:
             .replace("{{METRICS}}", metrics_digest or "(not available)")
             .replace("{{RESUME_TEXT}}", raw_text)
         )
-        response = await self._generate(prompt)
+        response = await self._generate(prompt, op="resume.quality")
         data = json.loads(_extract_json(response))
         return build_analysis_report(data)
 
@@ -263,7 +295,7 @@ class OpenAIService:
         )
 
         try:
-            response = await self._generate(prompt)
+            response = await self._generate(prompt, op="resume.improve")
             data = json.loads(_extract_json(response))
         except Exception as e:  # noqa: BLE001
             logger.warning("Resume improve failed to parse (%s); returning original", e)
@@ -307,39 +339,131 @@ class OpenAIService:
             .replace("{{JOB_COMPANY}}", job.company)
             .replace("{{JOB_DESCRIPTION}}", job.description)
         )
-        return await self._generate(prompt)
+        return await self._generate(prompt, op="cover_letter")
+
+    ANSWER_SYSTEM = (
+        "You are a job applicant filling out an application form. "
+        "You write in first person. You give direct answers only. "
+        "Reason over the profile you are given rather than leaving a question "
+        "blank, but never state a fact the profile does not support. "
+        "Never start with conversational phrases. Never explain yourself. "
+        "Just answer the question."
+    )
+
+    COMPOSE_SYSTEM = (
+        "You are a job applicant writing a short, genuine answer to an "
+        "open-ended application question in first person. Ground it in the "
+        "applicant's real experience and the job posting. Output only the answer."
+    )
 
     async def answer_question(self, question: str, context: str) -> str:
         template = _load_prompt("answer_question.txt")
         prompt = template.replace("{{QUESTION}}", question).replace("{{CONTEXT}}", context)
-        system = (
-            "You are a job applicant filling out an application form. "
-            "You write in first person. You give direct answers only. "
-            "Reason over the profile you are given rather than leaving a question "
-            "blank, but never state a fact the profile does not support. "
-            "Never start with conversational phrases. Never explain yourself. "
-            "Just answer the question."
+        return await self._generate(prompt, system=self.ANSWER_SYSTEM, op="fill.answer")
+
+    @staticmethod
+    def _render_questions(questions: dict[str, str]) -> str:
+        """The numbered question block shared by both batch prompts."""
+        return "\n\n".join(f"[{qid}]\n{text}" for qid, text in questions.items())
+
+    def _parse_batch(self, response: str, questions: dict[str, str]) -> dict[str, str]:
+        """Map the model's JSON object back onto the ids we asked about.
+
+        Anything the model omitted, nested, or invented is dropped rather than
+        guessed at, a missing id simply leaves that field for the caller to
+        treat as unanswered, which is the same outcome a failed single call had.
+        """
+        try:
+            data = json.loads(_extract_json(response))
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning("Batch answer failed to parse (%s): %s", e, response[:300])
+            return {}
+        if not isinstance(data, dict):
+            logger.warning("Batch answer was not a JSON object: %s", response[:200])
+            return {}
+        out: dict[str, str] = {}
+        for qid in questions:
+            value = data.get(qid)
+            if isinstance(value, (int, float)):
+                value = str(value)
+            if isinstance(value, str) and value.strip():
+                out[qid] = value.strip()
+        missing = set(questions) - set(out)
+        if missing:
+            logger.info("Batch answer omitted %d/%d ids: %s",
+                        len(missing), len(questions), sorted(missing)[:10])
+        return out
+
+    async def answer_questions_batch(
+        self, questions: dict[str, str], context: str, model: str | None = None
+    ) -> dict[str, str]:
+        """Answer every factual field on one form in a single call.
+
+        The per-field loop this replaces re-sent the whole applicant context,
+        profile, résumé, job description, once per field, so a 22-field Workday
+        form paid for that context 22 times to produce ~20 tokens of answer each.
+        Sending the form as one request drops that to once, and lets the model
+        see the form as a coherent whole rather than 22 blind questions.
+
+        Returns ``{question_id: answer}``; ids the model did not answer are
+        absent, and the caller decides what an unanswered field means.
+        """
+        if not questions:
+            return {}
+        prompt = (
+            _load_prompt("answer_questions_batch.txt")
+            .replace("{{CONTEXT}}", context)
+            .replace("{{QUESTIONS}}", self._render_questions(questions))
         )
-        return await self._generate(prompt, system=system)
+        response = await self._generate(
+            prompt,
+            system=self.ANSWER_SYSTEM,
+            model=model or _field_model(),
+            json_mode=True,
+            op="fill.batch.short",
+        )
+        return self._parse_batch(response, questions)
+
+    async def compose_answers_batch(
+        self, questions: dict[str, str], context: str, model: str | None = None
+    ) -> dict[str, str]:
+        """Compose every open-ended essay field on one form in a single call.
+
+        Kept separate from ``answer_questions_batch`` because the two obey
+        different contracts (an essay may compose prose that is not stated
+        verbatim; a factual field may not) and run on different models, essays
+        are the only autofill output a human reads as prose, so they stay on the
+        flagship while factual extraction does not.
+        """
+        if not questions:
+            return {}
+        prompt = (
+            _load_prompt("compose_answers_batch.txt")
+            .replace("{{CONTEXT}}", context)
+            .replace("{{QUESTIONS}}", self._render_questions(questions))
+        )
+        response = await self._generate(
+            prompt,
+            system=self.COMPOSE_SYSTEM,
+            model=model,
+            json_mode=True,
+            op="fill.batch.essay",
+        )
+        return self._parse_batch(response, questions)
 
     async def compose_answer(self, question: str, context: str) -> str:
         """Compose a grounded answer to an open-ended essay question (why-us,
         behavioral, self-intro, company-knowledge). Unlike answer_question, this
-        is allowed to write prose that is not stated verbatim in the context —
+        is allowed to write prose that is not stated verbatim in the context,
         but it still may not invent hard facts (see prompts/compose_answer.txt)."""
         template = _load_prompt("compose_answer.txt")
         prompt = template.replace("{{QUESTION}}", question).replace("{{CONTEXT}}", context)
-        system = (
-            "You are a job applicant writing a short, genuine answer to an "
-            "open-ended application question in first person. Ground it in the "
-            "applicant's real experience and the job posting. Output only the answer."
-        )
-        return await self._generate(prompt, system=system)
+        return await self._generate(prompt, system=self.COMPOSE_SYSTEM, op="fill.compose")
 
     async def suggest_job_titles(self, profile: ResumeProfile) -> list[str]:
         template = _load_prompt("suggest_titles.txt")
         prompt = template.replace("{{RESUME_JSON}}", profile.model_dump_json(indent=2))
-        response = await self._generate(prompt)
+        response = await self._generate(prompt, op="suggest_titles")
         return json.loads(_extract_json(response))
 
     async def tailor_resume(self, resume_text: str, job_description: str) -> str:
@@ -349,7 +473,7 @@ class OpenAIService:
             .replace("{{RESUME_TEXT}}", resume_text[:4000])
             .replace("{{JOB_DESCRIPTION}}", job_description[:3000])
         )
-        return await self._generate(prompt)
+        return await self._generate(prompt, op="resume.tailor")
 
     async def tailor_resume_guided(
         self,
@@ -365,7 +489,7 @@ class OpenAIService:
             .replace("{{RESUME_TEXT}}", resume_text[:6000])
             .replace("{{JOB_DESCRIPTION}}", job_description[:3000])
         )
-        return await self._generate(prompt)
+        return await self._generate(prompt, op="resume.tailor_guided")
 
     async def tailor_resume_structured(
         self,
@@ -392,7 +516,7 @@ class OpenAIService:
         )
 
         try:
-            response = await self._generate(prompt)
+            response = await self._generate(prompt, op="resume.tailor_structured")
             data = json.loads(_extract_json(response))
         except Exception as e:  # noqa: BLE001
             logger.warning("Structured tailor failed to parse (%s); returning original", e)
@@ -444,17 +568,17 @@ class OpenAIService:
         prompt = (
             "You are editing a snippet of a resume. "
             f"{instruction} "
-            "Return ONLY the edited text — no preamble, quotes, labels, or explanation. "
+            "Return ONLY the edited text, no preamble, quotes, labels, or explanation. "
             "Do not invent employers, job titles, dates, or metrics that are not already implied."
             f"{ctx}\n\nText:\n{text}"
         )
-        result = await self._generate(prompt)
+        result = await self._generate(prompt, op="edit_snippet")
         return result.strip().strip('"').strip()
 
     async def extract_experience_years(self, description: str) -> int | None:
         template = _load_prompt("extract_experience.txt")
         prompt = template.replace("{{JOB_DESCRIPTION}}", description[:3000])
-        response = await self._generate(prompt)
+        response = await self._generate(prompt, op="extract_experience")
         text = response.strip().lower()
         if text == "none" or not text:
             return None
@@ -472,7 +596,7 @@ class OpenAIService:
             .replace("{{JOB_TITLE}}", job_title)
             .replace("{{COMPANY}}", company)
         )
-        message = await self._generate(prompt)
+        message = await self._generate(prompt, op="connection_message")
         return message.strip()[:300]
 
     async def match_job(
@@ -486,7 +610,7 @@ class OpenAIService:
             .replace("{{JOB_COMPANY}}", company)
             .replace("{{JOB_DESCRIPTION}}", description[:3000])
         )
-        response = await self._generate(prompt)
+        response = await self._generate(prompt, op="match.job")
         try:
             return json.loads(_extract_json(response))
         except json.JSONDecodeError:

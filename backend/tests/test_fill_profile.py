@@ -12,7 +12,7 @@ def test_profile_context_includes_work_auth_and_salary_excludes_eeo():
     assert "Canadian citizen" in ctx
     assert "120000" in ctx
     assert "Python" in ctx
-    # EEO is never a field on ApplicantProfile — nothing demographic leaks in.
+    # EEO is never a field on ApplicantProfile, nothing demographic leaks in.
     assert "race" not in ctx.lower()
 
 
@@ -55,7 +55,7 @@ def test_kept_universal_rules_still_answer():
 
 
 def test_assumption_rules_are_dropped():
-    """Assumption-based questions no longer auto-fill a hardcoded Yes — they
+    """Assumption-based questions no longer auto-fill a hardcoded Yes, they
     defer to the AI pass, which leaves them blank unless the profile supports it."""
     assert _rule_based_answer("Are you willing to relocate?", ["Yes", "No"], settings=None) is None
     assert _rule_based_answer("Do you have a valid driver's license?", ["Yes", "No"], settings=None) is None
@@ -66,7 +66,7 @@ def test_assumption_rules_are_dropped():
 # ── Stated screening answers (2026-08-09 profile-parity contract) ─────────────
 #
 # These are the same questions test_assumption_rules_are_dropped proves we must
-# NOT guess at. The difference is not the question — it is that the applicant
+# NOT guess at. The difference is not the question. It is that the applicant
 # has now answered it once on their profile, so filling it is recall, not
 # invention. Every rule below must abstain when the profile is silent.
 
@@ -97,7 +97,7 @@ def test_profile_context_includes_the_screening_answers_when_set():
 
 
 def test_profile_context_omits_blank_screening_answers():
-    """A blank must be absent, not rendered as "unknown" — an empty line is a
+    """A blank must be absent, not rendered as "unknown", an empty line is a
     fact the model would otherwise be invited to reason from."""
     ctx = _profile_context(ApplicantProfile(firstName="Ada", workPreference="Hybrid"))
     assert "Work preference: Hybrid" in ctx

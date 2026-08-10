@@ -1,7 +1,7 @@
 /**
  * Background service worker (MV3).
  *
- * Owns everything that talks to the Tailrd backend — the popup and content
+ * Owns everything that talks to the Tailrd backend, the popup and content
  * scripts never fetch directly. Authentication is obtained through the web
  * handshake (api/handshake.ts); data is kept in a single synced snapshot
  * (api/sync.ts) that the UI reads from, online or offline.
@@ -57,7 +57,7 @@ export async function injectMainWorldDriver(tabId: number, frameId: number): Pro
   }
 }
 
-/** Periodic sync alarm — keeps the cached snapshot fresh while active. */
+/** Periodic sync alarm: keeps the cached snapshot fresh while active. */
 const SYNC_ALARM = "tailrd-sync";
 
 function ensureSyncAlarm(): void {
@@ -66,7 +66,7 @@ function ensureSyncAlarm(): void {
 
 /**
  * Send users to the Tailrd site when they uninstall (Jobright `setUninstallURL`
- * parity — a hook for feedback / win-back). Best-effort; a bad config URL is
+ * parity, a hook for feedback / win-back). Best-effort; a bad config URL is
  * simply skipped.
  */
 function setUninstallFeedbackUrl(): void {
@@ -119,7 +119,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // We deal with the top frame *specifically* (frameId 0) rather than broadcasting:
 //  - A broadcast PING can be answered by a sub-frame (an embedded ATS form, or a
 //    reCAPTCHA iframe), which would make us think the page is injected when the
-//    top frame — the only place the overlay can mount — actually isn't. The panel
+//    top frame (the only place the overlay can mount) actually isn't. The panel
 //    would then silently fail to open.
 //  - A single all-frames injection can reject when a page has cross-origin or
 //    sandboxed frames (very common on pages that use reCAPTCHA). The old code let
@@ -139,7 +139,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 
   if (!topFrameReady) {
-    // Inject the top frame first — this is what the overlay needs. The content
+    // Inject the top frame first. This is what the overlay needs. The content
     // script self-guards against double injection, so this is harmless if a
     // race already added it.
     try {
@@ -148,12 +148,12 @@ chrome.action.onClicked.addListener(async (tab) => {
         files: ["contentScript.js"],
       });
     } catch {
-      return; // Restricted page (chrome://, Web Store, PDF viewer, …) — can't open.
+      return; // Restricted page (chrome://, Web Store, PDF viewer, …), can't open.
     }
 
     // Best-effort: also inject sub-frames so embedded application forms get
     // scanned/filled. This can reject on cross-origin / sandboxed frames (e.g.
-    // reCAPTCHA), which must NOT prevent the panel from opening — hence its own
+    // reCAPTCHA), which must NOT prevent the panel from opening, hence its own
     // detached catch.
     chrome.scripting
       .executeScript({ target: { tabId, allFrames: true }, files: ["contentScript.js"] })
@@ -166,7 +166,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   try {
     await toggleTop();
   } catch {
-    // Content script may not be ready yet — retry once after a brief delay.
+    // Content script may not be ready yet, retry once after a brief delay.
     setTimeout(() => void toggleTop().catch(() => {}), 300);
   }
 });
@@ -229,7 +229,7 @@ chrome.runtime.onMessage.addListener(
     // so they're handled here (not in handle()).
     const tabId = _sender.tab?.id;
     if (message.type === "FORM_HOST_ANNOUNCE") {
-      // A child frame owns a form — tell the top frame which frame, plus fields.
+      // A child frame owns a form, tell the top frame which frame, plus fields.
       if (tabId !== undefined && _sender.frameId !== undefined && _sender.frameId !== 0) {
         void chrome.tabs
           .sendMessage(
@@ -575,7 +575,7 @@ export async function handle(
     }
 
     case "GET_OVERRIDES": {
-      // Cached hot-fix rules for the content script's classifier. Never throws —
+      // Cached hot-fix rules for the content script's classifier. Never throws,
       // an empty list just means the generic pipeline runs unmodified.
       const rules = await getCachedOverrideRules().catch(() => []);
       return { ok: true, rules };
@@ -586,7 +586,7 @@ export async function handle(
         await reportAutofillTelemetry(message.telemetry);
         return { ok: true };
       } catch (err) {
-        // Best-effort — signed-out users just don't report.
+        // Best-effort: signed-out users just don't report.
         if (err instanceof AuthRequiredError) return { ok: false, needsLogin: true };
         return { ok: false, error: err instanceof Error ? err.message : "Telemetry failed" };
       }

@@ -1,5 +1,5 @@
 """
-GitHubScraper — fetches and parses job listings from GitHub repository markdown files.
+GitHubScraper, fetches and parses job listings from GitHub repository markdown files.
 
 Handles repositories like jobright-ai/2026-Software-Engineer-New-Grad that use
 pipe-delimited markdown tables for job listings.

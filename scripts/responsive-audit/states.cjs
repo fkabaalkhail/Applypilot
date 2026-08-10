@@ -1,6 +1,6 @@
 /**
  * Every screen the audit visits. A "state" is a route plus the interactions
- * needed to reach a view that a user actually sees — an open modal counts as a
+ * needed to reach a view that a user actually sees, an open modal counts as a
  * screen, so it gets audited like one.
  */
 
@@ -8,7 +8,7 @@ const AUTHED = { authed: true };
 const ANON = { authed: false };
 
 /* Setup wizard: each step gates on its own validate(), so reaching a later step
- * means genuinely satisfying the earlier ones — the path a new user walks. */
+ * means genuinely satisfying the earlier ones, the path a new user walks. */
 const NEXT = "button.setup-btn";
 const SETUP_NAME = [
   { fill: ".setup-input", nth: 0, value: "Wissam" },
@@ -43,10 +43,10 @@ const STATES = [
   { id: "jobs-list-public", url: "/list", ...ANON },
   { id: "demo-apply", url: "/demo-apply", ...ANON },
 
-  /* ---------------- setup wizard — ALL FOUR steps ----------------
+  /* ---------------- setup wizard, ALL FOUR steps ----------------
      Only the first two were covered before, which is how a broken `role` step
      shipped. Each step gates on its own validate(), so reaching step N means
-     satisfying steps 1..N-1 for real — the same path a new user walks. */
+     satisfying steps 1..N-1 for real, the same path a new user walks. */
   {
     id: "setup-1-welcome",
     url: "/setup",
@@ -98,7 +98,7 @@ const STATES = [
     ...AUTHED,
     wait: ".jobs-page",
     // 768–1023 is already a permanent icon rail, so the collapse toggle is
-    // hidden there too — it only exists on the full 240px sidebar at ≥1024.
+    // hidden there too. It only exists on the full 240px sidebar at ≥1024.
     minWidth: 1024,
     steps: [{ click: ".sidebar-collapse-btn" }],
   },
@@ -125,7 +125,7 @@ const STATES = [
     steps: [{ click: ".job-card-body" }, { waitFor: ".job-detail-view, .job-detail-inline" }],
   },
   // Both of these live behind a sidebar nav item. Under 768px the sidebar is an
-  // off-canvas drawer, so the drawer has to be opened first — otherwise the
+  // off-canvas drawer, so the drawer has to be opened first, otherwise the
   // click misses, the modal never opens, and the audit measures the dashboard
   // underneath and calls it clean. `clickIfVisible` is a no-op on desktop,
   // where the hamburger does not exist.
@@ -153,10 +153,10 @@ const STATES = [
   },
   // ?extState= is ExtensionBanner's dev-only override. The extension's
   // externally_connectable covers tailrd.ca only, so the real ping can never
-  // answer from localhost — and the audit runs against `npm run dev`, where
+  // answer from localhost, and the audit runs against `npm run dev`, where
   // import.meta.env.DEV is true and the override is compiled in.
   // `wait` is swallowed on timeout, so a banner that never renders would leave the
-  // audit measuring the bare dashboard and reporting it clean — a false all-clear,
+  // audit measuring the bare dashboard and reporting it clean, a false all-clear,
   // and the banner has three independent ways to silently stop rendering (the
   // override, the ping, the snooze). `steps[].waitFor` is the loud form: it emits a
   // high-severity `state-not-reached` finding instead.
@@ -213,7 +213,7 @@ const STATES = [
     url: "/app/resume/1",
     ...AUTHED,
     wait: ".rd-workspace",
-    // From 1024px up both panes fit side by side and the toggle is hidden — the
+    // From 1024px up both panes fit side by side and the toggle is hidden, the
     // preview is on screen either way, so the click is a no-op there by design.
     steps: [{ clickIfVisible: ".rd-pane-toggle button:has-text('Preview')" }],
   },

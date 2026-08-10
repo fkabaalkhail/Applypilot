@@ -2,12 +2,12 @@
 Migration: Add full-fidelity section columns to resume_profiles.
 
 Adds:
-  - summary (TEXT)          — the candidate's professional summary / objective
-  - summary_title (VARCHAR) — their own heading for it ("PROFILE", "OBJECTIVE"…)
-  - custom_sections (JSON)  — certifications, awards, volunteering, publications,
+  - summary (TEXT), the candidate's professional summary / objective
+  - summary_title (VARCHAR), their own heading for it ("PROFILE", "OBJECTIVE"…)
+  - custom_sections (JSON), certifications, awards, volunteering, publications,
                               languages, leadership… every section that isn't one
                               of the five we model explicitly
-  - section_order (JSON)    — the order the sections appeared in the uploaded file
+  - section_order (JSON), the order the sections appeared in the uploaded file
 
 Before this, anything outside {experience, education, projects, skills,
 technologies} was discarded at upload time.

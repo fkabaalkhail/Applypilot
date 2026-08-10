@@ -4,7 +4,7 @@ const NEEDS_INPUT = "Needs your input: ";
  * The rewrite, reviewed before it lands.
  *
  * Two kinds of line come back: what the AI changed, and what it refused to guess.
- * The second kind is the honest one — a metric it left as a placeholder because
+ * The second kind is the honest one, a metric it left as a placeholder because
  * inventing it would get the candidate caught in an interview.
  */
 export default function ImproveModal({
@@ -26,7 +26,7 @@ export default function ImproveModal({
   return (
     <div className="rd-modal-overlay" onClick={onDiscard} role="dialog" aria-modal="true" aria-label="Review improvements">
       <div className="rd-modal" onClick={(e) => e.stopPropagation()}>
-        {/* The list of changes is unbounded, so it — not the modal — is what
+        {/* The list of changes is unbounded, so it (not the modal) is what
             scrolls. Apply/Discard stay pinned to the bottom of the sheet. */}
         <div className="rd-modal-body">
           <h2>{applied.length > 0 ? "Review the rewrite" : "No changes needed"}</h2>

@@ -56,7 +56,9 @@ Set both for **Production**, then redeploy (env changes need a redeploy to apply
 - **Language:** English
 - **Privacy policy URL:** `https://www.tailrd.ca/privacy` (live, returns 200)
 - **Screenshots:** `store-previews/tailrd-1-autofill.png … tailrd-4-dashboard.png`
-  (4 × 1280×800 — already the right size)
+  (4 × 1280×800, already the right size). Screenshots 1-3 regenerate with
+  `node scripts/gen-store-screenshots.mjs`; `tailrd-4-dashboard.png` predates that
+  script and is kept as shipped.
 - **Small promo tile (440×280):** `store-previews/tailrd-promo-small-440x280.png`
 - **Marquee promo tile (1400×560):** `store-previews/tailrd-promo-marquee-1400x560.png`
   (both 24-bit PNG, no alpha; regenerate with `node scripts/gen-promo-tiles.mjs`)

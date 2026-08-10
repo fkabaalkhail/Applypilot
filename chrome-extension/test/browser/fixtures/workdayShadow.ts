@@ -78,7 +78,7 @@ function buttonListbox(
       });
       lb.append(o);
     }
-    // Portal into the SAME shadow root, not document.body — the boundary the
+    // Portal into the SAME shadow root, not document.body, the boundary the
     // combobox engine must cross to find this listbox.
     sr.append(lb);
   });

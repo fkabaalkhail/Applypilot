@@ -8,7 +8,7 @@ import {
 
 /**
  * Property-based tests for the Onboarding Wizard.
- * Tests pure logic extracted from the component — no DOM rendering.
+ * Tests pure logic extracted from the component, no DOM rendering.
  */
 
 // ─── Helper functions replicating wizard logic ───────────────────────────────

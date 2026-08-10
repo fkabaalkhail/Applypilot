@@ -8,7 +8,7 @@
  */
 
 const LONG_TITLE =
-  "Senior Software Development Engineer II — Distributed Systems & Platform Infrastructure";
+  "Senior Software Development Engineer II, Distributed Systems & Platform Infrastructure";
 const LONG_COMPANY = "Hoffman-Rutherford Global Technology Solutions International";
 const LONG_EMAIL = "wissam.elmasry.developer.candidate@averylongcorporatedomainname.example.com";
 const LONG_URL =
@@ -30,7 +30,7 @@ function job(i, overrides = {}) {
     id: i,
     title: i === 1 ? LONG_TITLE : `Software Engineer ${i}`,
     company: i === 1 ? LONG_COMPANY : `Acme Corp ${i}`,
-    location: i === 1 ? "Greater Toronto Area, Ontario, Canada (Hybrid — 3 days onsite)" : "Toronto, ON",
+    location: i === 1 ? "Greater Toronto Area, Ontario, Canada (Hybrid, 3 days onsite)" : "Toronto, ON",
     url: LONG_URL,
     description:
       "About the role\n\nWe are looking for a talented engineer to join our platform team. " +
@@ -118,7 +118,7 @@ const profile = {
   ],
   education: [
     {
-      school: "University of Toronto — Faculty of Applied Science & Engineering",
+      school: "University of Toronto, Faculty of Applied Science & Engineering",
       degree: "Bachelor of Applied Science, Computer Engineering (Co-op)",
       location: "Toronto, ON",
       start_date: "Sep 2017",
@@ -130,7 +130,7 @@ const profile = {
   ],
   projects: [
     {
-      name: "Tailrd — AI job-application copilot",
+      name: "Tailrd, AI job-application copilot",
       link: "https://github.com/wissam/tailrd-a-very-long-repository-name-for-testing",
       organization: "Personal",
       location: "",
@@ -155,7 +155,7 @@ const profile = {
       bullets: [],
       items: [
         {
-          title: "AWS Certified Solutions Architect — Professional",
+          title: "AWS Certified Solutions Architect, Professional",
           subtitle: "Amazon Web Services",
           location: "",
           start_date: "2024",
@@ -266,12 +266,12 @@ const resumeListItem = (id, name, primary) => ({
 });
 
 // Two, not three. Resume.tsx caps uploads at MAX_RESUME_SLOTS = 3, so a full
-// list renders "Add Resume" *disabled* — the upload-modal audit state would then
+// list renders "Add Resume" *disabled*, the upload-modal audit state would then
 // click a dead button, never open the modal, and silently re-measure the list
 // underneath it. Leaving a free slot keeps that screen reachable.
 const resumes = [
   resumeListItem(1, "Wissam_Elmasry_Resume_Senior_Platform_Engineer_v7_FINAL.pdf", true),
-  resumeListItem(2, "Resume — Backend.pdf", false),
+  resumeListItem(2, "Resume, Backend.pdf", false),
 ];
 
 const resumeDetail = {
@@ -297,7 +297,7 @@ const applications = Array.from({ length: 8 }, (_, i) => ({
   status: ["applied", "interviewing", "rejected", "offer"][i % 4],
   applied_at: "2026-07-0" + ((i % 9) + 1) + "T14:00:00Z",
   notes: i === 0 ? "Referred by a former colleague on the platform team; follow up in one week." : null,
-  resume_version: "v7 — Senior Platform Engineer",
+  resume_version: "v7, Senior Platform Engineer",
   company_logo: null,
   company_domain: "example.com",
   company_url: "https://example.com",
@@ -350,18 +350,18 @@ const sessions = [
 ];
 
 // GET /api/user/application-profile. Mirror `ApplicationProfileOut`
-// (backend/routers/profile.py) exactly — camelCase, nested `eeo`.
+// (backend/routers/profile.py) exactly, camelCase, nested `eeo`.
 //
 // This fixture was snake_case until 2026-07-14, which meant /app/profile
 // audited an essentially EMPTY page: Profile.tsx reads `addressStreet`,
 // `currentTitle`, `eeo.gender` and friends, found none of them, and rendered
-// placeholder dashes. The audit dutifully reported 0/0 — on nothing. If you
+// placeholder dashes. The audit dutifully reported 0/0, on nothing. If you
 // change the endpoint's shape, change this too, or the audit quietly stops
 // measuring the page.
 //
 // Values are worst-case on purpose. The extension writes back the *literal
 // option text* it harvested from a real form, so `workAuthorization` is a full
-// sentence — the widest string on the page and the real 320px overflow risk.
+// sentence, the widest string on the page and the real 320px overflow risk.
 const applicationProfile = {
   firstName: "Wissam",
   lastName: "Elmasry",
@@ -423,7 +423,7 @@ const customResumeAnalysis = {
   ],
   weaknesses: ["No explicit service-mesh experience", "Observability tooling is not named"],
   suggestions: [
-    "Name OpenTelemetry explicitly in the Northbound Analytics bullet — you built the tracing.",
+    "Name OpenTelemetry explicitly in the Northbound Analytics bullet. You built the tracing.",
     "Add gRPC to the technologies list; the posting mentions it three times.",
   ],
 };

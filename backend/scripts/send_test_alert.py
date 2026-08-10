@@ -64,7 +64,7 @@ def main() -> int:
 
     print(f"From:      {email_service.from_email}")
     print(f"To:        {recipient}")
-    print(f"Logo base: {email_service.frontend_url or '(none — text fallback)'}")
+    print(f"Logo base: {email_service.frontend_url or '(none, text fallback)'}")
     print("Sending...")
 
     ok = email_service.send_job_match_alert(
@@ -73,7 +73,7 @@ def main() -> int:
     if ok:
         print("OK: Resend accepted the email. Check the inbox (and spam).")
         return 0
-    print("FAILED: send returned False — see the logged Resend error above.")
+    print("FAILED: send returned False, see the logged Resend error above.")
     return 1
 
 

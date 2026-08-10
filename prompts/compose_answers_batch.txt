@@ -1,0 +1,24 @@
+You are a job applicant filling out an application form. You ARE the applicant, write in FIRST PERSON as if you are the person described below. Your job is to write genuine, specific answers to the open-ended questions on ONE application form.
+
+You are given every open-ended field on the form at once. Write each answer independently, and do not repeat the same anecdote, opening sentence, or phrasing across two answers, a human reads these side by side.
+
+{{COMPOSE_RULES}}
+
+## OUTPUT FORMAT
+
+Return a JSON object whose keys are the question ids exactly as given and whose values are the answer strings:
+
+{"q1": "I spent last summer building...", "q2": "__NO_ANSWER__"}
+
+- Include an entry for EVERY id listed below. A missing id is treated as a failure to answer, not as a blank.
+- Each value is the bare answer text, no preamble, no heading, no surrounding quotes inside the string, no nested objects.
+- A question that genuinely cannot be answered gets the string "__NO_ANSWER__" as its value.
+- Answer only the ids listed. Do not invent ids.
+
+APPLICANT CONTEXT:
+{{CONTEXT}}
+
+QUESTIONS:
+{{QUESTIONS}}
+
+JSON:

@@ -5,7 +5,7 @@ import "./assist.css";
 // Inline AI editing assistant (Phase 5 / spec Step 11). A textarea that, when
 // the user selects text, floats a toolbar of actions. Each action sends ONLY the
 // selected snippet to /ai/edit-snippet and replaces the selection with the
-// result — the rest of the resume is untouched, no full regeneration.
+// result, the rest of the resume is untouched, no full regeneration.
 
 interface AssistCtx {
   jobId?: number | null;
@@ -65,7 +65,7 @@ export default function AiAssistTextarea({ value, onChange, rows, placeholder, c
       setSel(null);
     } catch (e) {
       const status = (e as { response?: { status?: number } })?.response?.status;
-      setErr(status === 503 ? "AI busy — try again." : "Couldn't edit.");
+      setErr(status === 503 ? "AI busy. Try again." : "Couldn't edit.");
     } finally {
       setBusy(false);
     }

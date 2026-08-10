@@ -3,7 +3,7 @@
  * INTERACTIVE DOM (dropdowns mount their listbox on click and commit on option
  * click) so the real combobox engine can drive it under jsdom.
  *
- * Structure mirrors the Workday candidate experience as of 2026-06-30 —
+ * Structure mirrors the Workday candidate experience as of 2026-06-30,
  * reconstructed from known Workday DOM patterns (data-automation-id anchors,
  * label/aria-labelledby associations, button[aria-haspopup=listbox] dropdowns with
  * a portaled role=listbox of role=option items). NOT copied markup.
@@ -142,7 +142,7 @@ export function mountWorkdayMyInfo(doc: Document): WorkdayFixture {
   // Contact
   form.append(textField(doc, { automationId: "email", label: "Email", id: "wd-email", type: "email" }));
   form.append(textField(doc, { automationId: "phoneNumber", label: "Phone Number", id: "wd-phone", type: "tel" }));
-  // Address (Country dropdown + City text — structured address is out of scope)
+  // Address (Country dropdown + City text, structured address is out of scope)
   form.append(
     buttonListbox(doc, {
       automationId: "countryDropdown",
@@ -152,7 +152,7 @@ export function mountWorkdayMyInfo(doc: Document): WorkdayFixture {
     })
   );
   form.append(textField(doc, { automationId: "addressSection_city", label: "City", id: "wd-city" }));
-  // Source (no profile mapping — should stay `unknown`)
+  // Source (no profile mapping: should stay `unknown`)
   form.append(
     buttonListbox(doc, {
       automationId: "source",
@@ -180,7 +180,7 @@ export function mountWorkdayMyInfo(doc: Document): WorkdayFixture {
       automationId: "sponsorshipQuestion",
     })
   );
-  // Resume (labelled file input — detected, never scripted)
+  // Resume (labelled file input: detected, never scripted)
   const resumeWrap = doc.createElement("div");
   resumeWrap.setAttribute("data-automation-id", "resumeSection");
   const resumeLabel = doc.createElement("label");

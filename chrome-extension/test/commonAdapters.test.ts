@@ -28,7 +28,7 @@ function ctx(el: HTMLElement): FieldContext {
 }
 
 // ---------------------------------------------------------------------------
-// Host detection — every registered ATS resolves from a real careers hostname,
+// Host detection: every registered ATS resolves from a real careers hostname,
 // and look-alike domains never match (anchored `(^|\.)…$`).
 // ---------------------------------------------------------------------------
 
@@ -84,7 +84,7 @@ describe("getAdapter resolves each ATS by host", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Classification — social URLs by machine name, namespaced first/last names,
+// Classification: social URLs by machine name, namespaced first/last names,
 // and the safety vetoes.
 // ---------------------------------------------------------------------------
 

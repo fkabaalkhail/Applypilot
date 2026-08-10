@@ -6,11 +6,11 @@ ApplyPilot account.
 
 **Hard guarantees baked into the code:**
 
-- Never submits an application — it only fills fields and highlights them for review.
+- Never submits an application. It only fills fields and highlights them for review.
 - Never auto-clicks buttons, never bypasses CAPTCHAs or anti-bot systems.
 - EEO / demographic fields are detected but **never filled** unless you enable
   the explicit settings toggle *and* your profile contains those answers.
-- File inputs (resume upload) are detected but never scripted — browser
+- File inputs (resume upload) are detected but never scripted, browser
   security requires picking the file manually, and the popup says so.
 - Low-confidence matches are shown in the review panel, not filled.
 
@@ -44,11 +44,11 @@ Other scripts: `npm run typecheck` (strict TS check), `npm run icons`
 1. Click the ApplyPilot icon on a job application page.
 2. On the known ATS domains the content script is already there; on any other
    site it is injected on demand when the popup opens (that's the
-   `activeTab` + `scripting` permission — no broad host access).
+   `activeTab` + `scripting` permission, no broad host access).
 3. The popup scans automatically and shows every detected field with its
    category, a confidence score and the value it intends to fill:
-   - **Will fill** — confident matches with profile data, pre-checked.
-   - **Review** — low confidence, missing profile data, EEO fields, file
+   - **Will fill**: confident matches with profile data, pre-checked.
+   - **Review**: low confidence, missing profile data, EEO fields, file
      uploads, fields that already have a value. Check any of them to include.
 4. Click **Autofill N fields**. Filled controls flash a lavender outline on the
    page; failures show the reason inline (e.g. "No option matches…").
@@ -95,7 +95,7 @@ chrome-extension/
 
 Workday's `data-automation-id` attributes are the only stable handle on its
 DOM (labels are generic, CSS classes are hashed per tenant). Every one the
-extension relies on lives in **`src/content/adapters/workdaySelectors.ts`** —
+extension relies on lives in **`src/content/adapters/workdaySelectors.ts`**,
 field-classification rules, Next/Apply buttons, the segmented date widget, the
 create-account markers, prompt/multiselect widgets, error containers. That file
 is pure data; when a tenant renames an id it should be the only edit needed.
@@ -160,7 +160,7 @@ Steps:
    GitHub, cover letter etc. flow through:
 
 ```python
-# backend/routers/profile.py — mount with prefix="/api" like fill.py
+# backend/routers/profile.py, mount with prefix="/api" like fill.py
 @router.get("/user/application-profile")
 def application_profile(user_id: int = Depends(get_verified_user_id),
                         db: Session = Depends(get_db)):
@@ -180,7 +180,7 @@ def application_profile(user_id: int = Depends(get_verified_user_id),
 ```
 
 The full expected shape is `UserApplicationProfile` in `src/shared/types.ts`.
-No CORS changes are needed — extension requests with granted host permissions
+No CORS changes are needed, extension requests with granted host permissions
 bypass CORS.
 
 ---
@@ -200,7 +200,7 @@ bypass CORS.
    title, school, degree, graduation year and salary ready to fill; the
    resume upload flagged "choose manually"; and the four EEO selects detected
    but excluded.
-5. Click **Autofill** — fields flash lavender; the country select resolves
+5. Click **Autofill**: fields flash lavender; the country select resolves
    "Ottawa, ON, Canada" → "Canada"; the sponsorship radio picks "No".
 6. Verify the submit button was *not* pressed, then test on a real posting
    (e.g. any `boards.greenhouse.io` or `jobs.lever.co` listing).

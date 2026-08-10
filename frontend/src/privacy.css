@@ -1,4 +1,4 @@
-/* ─── Public legal document — flat "notice" layout (Termly/Jobright style) ── */
+/* ─── Public legal document, flat "notice" layout (Termly/Jobright style) ── */
 
 .legal-page {
   min-height: 100vh;
@@ -82,7 +82,7 @@
   color: #222 !important;
 }
 
-/* Lists — small square bullets like the reference */
+/* Lists: small square bullets like the reference */
 .legal-doc ul {
   list-style: square;
   margin: 0 0 1rem 1.4rem;
@@ -114,7 +114,7 @@ ol.legal-toc li {
   color: #4a4a4a;
 }
 
-/* Links — indigo, underlined */
+/* Links: indigo, underlined */
 .legal-doc a {
   color: #4f46e5;
   text-decoration: underline;

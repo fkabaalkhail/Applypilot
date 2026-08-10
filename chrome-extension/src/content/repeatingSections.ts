@@ -40,7 +40,7 @@ const ADD_SPECIFIC: Record<SectionKind, RegExp> = {
   education: /\badd\b[\s\S]{0,24}(education|school|degree|university|college|qualification)\b/i,
 };
 
-/** A generic add-row button ("Add", "+ Add another") — only trusted when it
+/** A generic add-row button ("Add", "+ Add another"), only trusted when it
  *  sits inside or adjacent to the section's own container. */
 const ADD_GENERIC = /^\s*\+?\s*add(\s+(another|more|new|row|\+))?\s*\+?\s*$/i;
 
@@ -158,7 +158,7 @@ export function planExpansion(
     const clicks = needed - rowsPresent(fields, kind);
     if (clicks <= 0) continue;
     // findAddButton needs a section-specific button when there are no rows to
-    // scope a generic "Add" — so an empty section only expands on unambiguous text.
+    // scope a generic "Add", so an empty section only expands on unambiguous text.
     const addButton = findAddButton(fields, kind, getEl, doc);
     if (addButton) steps.push({ kind, addButton, clicks });
   }

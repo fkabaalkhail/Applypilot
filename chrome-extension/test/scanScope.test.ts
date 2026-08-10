@@ -12,7 +12,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("scanPage — chrome exclusion + form scoping", () => {
+describe("scanPage, chrome exclusion + form scoping", () => {
   it("never surfaces a header language switcher", () => {
     document.body.innerHTML = `
       <header>
@@ -31,7 +31,7 @@ describe("scanPage — chrome exclusion + form scoping", () => {
 
   it("drops an out-of-form newsletter email once a scope is found", () => {
     // 4 recognized fields in the form; the newsletter email is a 5th
-    // recognized control outside it — 4/5 = 80%, so the form qualifies as the
+    // recognized control outside it, 4/5 = 80%, so the form qualifies as the
     // scope and the newsletter is dropped despite its known category.
     document.body.innerHTML = `
       <form>

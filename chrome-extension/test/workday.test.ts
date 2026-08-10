@@ -16,7 +16,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("Workday My Information — detection", () => {
+describe("Workday My Information, detection", () => {
   it("classifies the core profile fields", () => {
     mountWorkdayMyInfo(document);
     const { fields } = scanPage(MOCK_PROFILE, false);
@@ -54,7 +54,7 @@ describe("Workday My Information — detection", () => {
   });
 });
 
-describe("Workday My Information — autofill", () => {
+describe("Workday My Information, autofill", () => {
   it("fills text fields, the country & work-auth dropdowns, and the sponsorship radio", async () => {
     mountWorkdayMyInfo(document);
     await runAutofill(MOCK_PROFILE, false);
@@ -85,7 +85,7 @@ describe("Workday My Information — autofill", () => {
   });
 });
 
-describe("Workday — EEO only when explicitly enabled", () => {
+describe("Workday, EEO only when explicitly enabled", () => {
   it("fills an EEO select when the toggle is on AND the profile has the answer", async () => {
     mountWorkdayMyInfo(document);
     const withEeo: UserApplicationProfile = {
@@ -104,7 +104,7 @@ describe("Workday — EEO only when explicitly enabled", () => {
   });
 });
 
-describe("Workday — resume/cover upload via section automation-id", () => {
+describe("Workday, resume/cover upload via section automation-id", () => {
   it("classifies a generic-labelled file input under a resume section as resumeUpload", () => {
     document.body.innerHTML = `
       <div data-automation-id="resumeSection">
@@ -130,7 +130,7 @@ describe("Workday — resume/cover upload via section automation-id", () => {
   });
 });
 
-describe("Workday — multi-step rescan", () => {
+describe("Workday, multi-step rescan", () => {
   it("re-detects fields after a step transition replaces the form", () => {
     mountWorkdayMyInfo(document);
     const first = scanPage(MOCK_PROFILE, false);

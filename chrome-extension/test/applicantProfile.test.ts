@@ -33,8 +33,8 @@ describe("toApplicantProfile", () => {
   });
 
   it("carries the structured dates the derived resolvers compute from", () => {
-    // The flattened lines above are prose for the model. Arithmetic — an age
-    // gate, a career total, a graduation year — reads these instead, because a
+    // The flattened lines above are prose for the model. Arithmetic, an age
+    // gate, a career total, a graduation year, reads these instead, because a
     // parser that is wrong about a date is worse than no answer at all.
     const a = toApplicantProfile(base);
     expect(a.dateOfBirth).toBe("1999-03-14");

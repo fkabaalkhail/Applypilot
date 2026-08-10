@@ -5,17 +5,17 @@ Creates the ``extension_auth_codes`` table backing the credential-free
 extension↔web authentication handshake:
 
   - id (PK)
-  - code (unique, indexed)        — the one-time authorization code
-  - user_id (FK users.id)         — who authorized
-  - code_challenge                — base64url SHA-256 of the PKCE verifier
-  - redirect_uri                  — the extension chromiumapp.org URL it was issued for
-  - used (bool)                   — flipped true on redemption (single use)
-  - expires_at (TIMESTAMP)        — ~60s after issue
+  - code (unique, indexed), the one-time authorization code
+  - user_id (FK users.id), who authorized
+  - code_challenge, base64url SHA-256 of the PKCE verifier
+  - redirect_uri, the extension chromiumapp.org URL it was issued for
+  - used (bool), flipped true on redemption (single use)
+  - expires_at (TIMESTAMP), ~60s after issue
   - created_at (TIMESTAMP)
 
 Idempotent: only creates the table when truly absent. The raw Postgres DDL
 (SERIAL, NOW()) must never reach SQLite, so we guard on the inspector rather
-than CREATE TABLE IF NOT EXISTS — in tests create_all() has already built the
+than CREATE TABLE IF NOT EXISTS, in tests create_all() has already built the
 table from the model, so this branch is skipped there. Additive only.
 """
 

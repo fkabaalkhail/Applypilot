@@ -69,7 +69,7 @@ function populateSettingsFields(doc, settings) {
   });
 }
 
-// ── saveConfig logic (from popup.js) — collects pill selections ──────
+// ── saveConfig logic (from popup.js), collects pill selections ──────
 
 function collectPillSelections(doc) {
   var settings = {};

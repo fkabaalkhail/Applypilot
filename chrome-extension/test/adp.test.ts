@@ -14,7 +14,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("ADP div-layout markup — detection", () => {
+describe("ADP div-layout markup, detection", () => {
   it("classifies fields across mixed label sources + non-semantic names", () => {
     mountAdpForm(document);
     const { fields } = scanPage(MOCK_PROFILE, false);
@@ -34,7 +34,7 @@ describe("ADP div-layout markup — detection", () => {
   });
 });
 
-describe("ADP div-layout markup — autofill", () => {
+describe("ADP div-layout markup, autofill", () => {
   it("fills text fields and the country select; skips resume + EEO (no EEO data)", async () => {
     mountAdpForm(document);
     await runAutofill(PROFILE_NO_EEO, false);

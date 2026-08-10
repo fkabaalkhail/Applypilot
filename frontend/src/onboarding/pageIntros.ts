@@ -17,13 +17,13 @@ export const PAGE_INTROS: Record<PageIntroId, PageIntroContent> = {
     eyebrow: "Applications",
     title: "Every application, tracked automatically",
     description:
-      "When you apply, Tailrd logs it here with its status, company, and date — so you always know where you stand and never lose track of a follow-up.",
+      "When you apply, Tailrd logs it here with its status, company, and date, so you always know where you stand and never lose track of a follow-up.",
   },
   resume: {
     eyebrow: "Resume",
     title: "Tailor your resume for every role",
     description:
-      "Store your base resume and let Tailrd generate a version tuned to each job in seconds — matching the keywords that get you past the ATS.",
+      "Store your base resume and let Tailrd generate a version tuned to each job in seconds, matching the keywords that get you past the ATS.",
   },
   interview: {
     eyebrow: "Interview prep",

@@ -5,7 +5,7 @@
 
 You are an expert resume writer. Rewrite the candidate's COMPLETE resume, tailored to the
 target job below. Output the FULL resume, preserving every section the candidate actually has
-— contact information, summary, skills, work experience, projects, education, and any others.
+contact information, summary, skills, work experience, projects, education, and any others.
 
 {{RESUME_STANDARDS}}
 
@@ -25,4 +25,4 @@ Candidate resume:
 Target job description:
 {{JOB_DESCRIPTION}}
 
-Return ONLY the rewritten resume text — no preamble, notes, or commentary.
+Return ONLY the rewritten resume text, no preamble, notes, or commentary.

@@ -22,7 +22,7 @@ vi.mock("react-router-dom", async () => ({
 }));
 
 // `auth_provider` is optional on UserProfile, so the mock user has to be settable
-// per test — the undefined case falls back to "Email & password".
+// per test, the undefined case falls back to "Email & password".
 interface MockUser {
   id: number;
   email: string;
@@ -42,7 +42,7 @@ const BASE_USER: MockUser = {
 let currentUser: MockUser = { ...BASE_USER };
 
 // The factories below are hoisted above the imports, so they must only *close
-// over* these bindings — never read them at factory time.
+// over* these bindings, never read them at factory time.
 vi.mock("../auth/useAuth", () => ({
   useAuth: () => ({ user: currentUser, logout: vi.fn() }),
 }));
@@ -156,7 +156,7 @@ describe("SettingsModal", () => {
     expect(navigate).toHaveBeenCalledWith("/app/profile");
   });
 
-  it("saves ONLY the extension toggles — never the removed profile fields", async () => {
+  it("saves ONLY the extension toggles, never the removed profile fields", async () => {
     put.mockResolvedValue({ data: { ...SETTINGS, smooth_scrolling: true } });
     renderModal();
     fireEvent.click(await screen.findByRole("button", { name: "Extension" }));
@@ -200,7 +200,7 @@ describe("SettingsModal", () => {
     renderModal();
     fireEvent.click(await screen.findByRole("button", { name: "Extension" }));
 
-    expect(await screen.findByText("Installed — not signed in")).toBeInTheDocument();
+    expect(await screen.findByText("Installed (not signed in)")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /finish setup/i }));
     expect(navigate).toHaveBeenCalledWith("/extension/connect");
   });

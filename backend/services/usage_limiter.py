@@ -5,12 +5,12 @@ The legacy ``rate_limiter`` keeps counters in process memory, which is
 unreliable on Vercel serverless: each function instance has its own dict, so a
 per-IP limit is really "per-IP, per-instance" and barely holds. This limiter
 stores counters in Postgres instead, so a limit is enforced consistently no
-matter which instance serves the request — and a daily quota actually survives
+matter which instance serves the request, and a daily quota actually survives
 cold starts.
 
 Two things are enforced on the expensive LLM endpoints:
   * a short per-minute burst limit (cheap DoS guard), and
-  * a per-user daily quota (the real cost-abuse protection — one beta user, or
+  * a per-user daily quota (the real cost-abuse protection, one beta user, or
     a leaked token, cannot drain the OpenAI budget).
 
 Design notes:
@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import RateCounter
 from backend.auth.dependencies import get_verified_user_id
+from backend.services.llm_cost import set_cost_user
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ def _hit(db: Session, name: str, identity: str, max_requests: int, window_second
             try:
                 db.flush()
             except IntegrityError:
-                # Another instance created the same bucket concurrently — reload it.
+                # Another instance created the same bucket concurrently, reload it.
                 db.rollback()
                 row = (
                     db.query(RateCounter)
@@ -167,6 +168,11 @@ async def llm_guard(
     Authenticates + verifies the user (same as before), then enforces the
     per-minute and daily AI limits before the handler runs. Returns the user id
     so handlers that did ``Depends(get_verified_user_id)`` keep working verbatim.
+
+    Also stamps the user onto the cost-logging context, so every LLM call this
+    request makes is attributed without threading a user id through the service
+    layer.
     """
     enforce_llm_limits(db, request, user_id)
+    set_cost_user(user_id)
     return user_id

@@ -97,7 +97,7 @@ export default function Terms() {
 
         <h2>10. Governing law</h2>
         <p>
-          {/* OWNER TO CONFIRM province — Privacy references Quebec (Law 25). */}
+          {/* OWNER TO CONFIRM province, Privacy references Quebec (Law 25). */}
           These Terms are governed by the laws of the Province of Quebec and the
           federal laws of Canada applicable therein, without regard to conflict
           of laws principles.

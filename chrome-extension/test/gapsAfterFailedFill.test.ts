@@ -2,7 +2,7 @@
 /**
  * Regression: the gap modal asked about what the PLANNER had no answer for,
  * not about what the PAGE still has blank. A field we proposed a value for was
- * never offered again — even when the write missed and the control stayed empty.
+ * never offered again, even when the write missed and the control stayed empty.
  *
  * Reproduced from the BMO Workday questionnaire (screenshot 14:21 UTC
  * 2026-08-09, `saved_answers` 41-45 from the 14:14:32 modal save). Of eleven
@@ -13,8 +13,8 @@
  *   "Have you ever had any Canadian military service?"
  *                                              → proposed "I am not a protected veteran"
  *
- * Both writes missed — the second cannot even be written, since the widget
- * offers only Yes/No — and both dropdowns were still on "Select One" in the
+ * Both writes missed: the second cannot even be written, since the widget
+ * offers only Yes/No, and both dropdowns were still on "Select One" in the
  * screenshot. Neither was ever offered, so there was no way to answer them.
  *
  * The third case is the long "…with BMO Financial Group…" question: naming the
@@ -44,7 +44,7 @@ const PROFILE = {
 } as unknown as UserApplicationProfile;
 
 /** A Workday prompt, as the questionnaire renders it. `display` is what the
- *  button shows — "Select One" when nothing is committed. */
+ *  button shows, "Select One" when nothing is committed. */
 function prompt(question: string, display = "Select One"): string {
   const wid = `w${question.length}`;
   return `
@@ -64,7 +64,7 @@ const questionsOffered = (job: Parameters<typeof selectAnswerGaps>[1] = {}): str
 
 describe("gap modal asks about what the page still has blank", () => {
   it("offers a field whose proposed answer never made it onto the page", () => {
-    // "Male" IS proposed for this one — and the widget still shows "Select One".
+    // "Male" IS proposed for this one, and the widget still shows "Select One".
     document.body.innerHTML = prompt("What is your gender identity?");
     expect(questionsOffered()).toContain("What is your gender identity?");
   });
@@ -96,7 +96,7 @@ describe("one-off questions are asked, and persist nowhere", () => {
     expect(questionsOffered({ company: "BMO Financial Group" })).toContain(LONG_Q);
   });
 
-  it("and persists nothing — the answer is about this application only", () => {
+  it("and persists nothing, the answer is about this application only", () => {
     document.body.innerHTML = prompt(LONG_Q);
     const { fields } = scanPage(PROFILE, true);
     const gaps = selectAnswerGaps(fields, { company: "BMO Financial Group" });

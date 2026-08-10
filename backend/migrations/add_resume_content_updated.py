@@ -4,7 +4,7 @@ Migration: Add resume_profiles.content_updated_at.
 Set whenever the structured content (profile fields, sections) is edited after
 upload. The file-download endpoint uses it to decide between streaming the
 original uploaded blob (never edited) and rendering the CURRENT document to PDF
-(edited) — so the Chrome extension always attaches what the user last saw in
+(edited), so the Chrome extension always attaches what the user last saw in
 the web app.
 
 Idempotent: skips when the column already exists. Runs on app startup so the

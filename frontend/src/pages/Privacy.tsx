@@ -8,7 +8,7 @@ import "../privacy.css";
  * centered reading column, uppercase headings, "Summary of Key Points",
  * table of contents, and numbered sections.
  *
- * Written for a worldwide audience — Quebec (Law 25), Canada (PIPEDA),
+ * Written for a worldwide audience, Quebec (Law 25), Canada (PIPEDA),
  * EU/EEA + UK (GDPR / UK GDPR), California (CCPA/CPRA), and other regions.
  * Placeholder-free: contact/jurisdiction details are filled in for publication.
  */
@@ -128,7 +128,7 @@ export default function Privacy() {
           </p>
           <p>
             We designed this policy for a worldwide audience. Depending on where you live,
-            additional rights and protections may apply — including under Quebec’s <em>Act
+            additional rights and protections may apply, including under Quebec’s <em>Act
             respecting the protection of personal information in the private sector</em> (as
             amended by Law 25), Canada’s PIPEDA, the EU/EEA and UK General Data Protection
             Regulation (GDPR / UK GDPR), and the California Consumer Privacy Act as amended by
@@ -165,14 +165,14 @@ export default function Privacy() {
           <h2>3. Personal information we collect</h2>
           <p>We collect the following categories of personal information:</p>
           <ul>
-            <li><strong>Identity &amp; contact data</strong> — name, email address, phone number, links you provide (e.g., LinkedIn, personal website).</li>
-            <li><strong>Profile &amp; job-search data</strong> — résumé/CV content, work history, education, skills, job titles, preferred locations, work authorization, remote preferences, and answers you save to reuse on applications.</li>
-            <li><strong>Account &amp; authentication data</strong> — credentials, session tokens, and connected-device records.</li>
-            <li><strong>Application &amp; activity data</strong> — jobs you view, applications you submit or track, and how you interact with the Service.</li>
-            <li><strong>Device, usage &amp; log data</strong> — see Section 9.</li>
-            <li><strong>Payment &amp; subscription data</strong> — where applicable (see Section 12).</li>
-            <li><strong>Communications</strong> — messages, feedback, and support requests you send us.</li>
-            <li><strong>Location data</strong> — where applicable (see Section 10).</li>
+            <li><strong>Identity &amp; contact data</strong>: name, email address, phone number, links you provide (e.g., LinkedIn, personal website).</li>
+            <li><strong>Profile &amp; job-search data</strong>: résumé/CV content, work history, education, skills, job titles, preferred locations, work authorization, remote preferences, and answers you save to reuse on applications.</li>
+            <li><strong>Account &amp; authentication data</strong>: credentials, session tokens, and connected-device records.</li>
+            <li><strong>Application &amp; activity data</strong>: jobs you view, applications you submit or track, and how you interact with the Service.</li>
+            <li><strong>Device, usage &amp; log data</strong>: see Section 9.</li>
+            <li><strong>Payment &amp; subscription data</strong>: where applicable (see Section 12).</li>
+            <li><strong>Communications</strong>: messages, feedback, and support requests you send us.</li>
+            <li><strong>Location data</strong>: where applicable (see Section 10).</li>
           </ul>
           <p>
             We do not intentionally collect special-category or sensitive information (such
@@ -188,9 +188,9 @@ export default function Privacy() {
           <h2>4. How we collect it</h2>
           <p>We obtain personal information in three main ways:</p>
           <ul>
-            <li><strong>Directly from you</strong> — when you create an account, upload a résumé, complete your profile, save application answers, contact support, or otherwise use the Service.</li>
-            <li><strong>Automatically through the app</strong> — through cookies, similar technologies, and server logs when you use our website, app, or browser extension (see Sections 7 and 9).</li>
-            <li><strong>From third-party services</strong> — such as authentication providers, payment processors, analytics providers, and job-board or application-tracking systems you interact with through the Service ([Third-Party Services]).</li>
+            <li><strong>Directly from you</strong>: when you create an account, upload a résumé, complete your profile, save application answers, contact support, or otherwise use the Service.</li>
+            <li><strong>Automatically through the app</strong>: through cookies, similar technologies, and server logs when you use our website, app, or browser extension (see Sections 7 and 9).</li>
+            <li><strong>From third-party services</strong>: such as authentication providers, payment processors, analytics providers, and job-board or application-tracking systems you interact with through the Service ([Third-Party Services]).</li>
           </ul>
         </section>
 
@@ -217,11 +217,11 @@ export default function Privacy() {
             or more of the following legal bases:
           </p>
           <ul>
-            <li><strong>Consent</strong> — e.g., for optional analytics, marketing communications, and processing you specifically authorize. You may withdraw consent at any time.</li>
-            <li><strong>Performance of a contract</strong> — to deliver the Service you sign up for.</li>
-            <li><strong>Legitimate interests</strong> — to secure, improve, and operate the Service, provided these interests are not overridden by your rights.</li>
-            <li><strong>Legal obligation</strong> — to comply with applicable laws, regulations, and lawful requests.</li>
-            <li><strong>Other applicable bases</strong> — such as protecting vital interests or establishing, exercising, or defending legal claims, where relevant.</li>
+            <li><strong>Consent</strong>: e.g., for optional analytics, marketing communications, and processing you specifically authorize. You may withdraw consent at any time.</li>
+            <li><strong>Performance of a contract</strong>: to deliver the Service you sign up for.</li>
+            <li><strong>Legitimate interests</strong>: to secure, improve, and operate the Service, provided these interests are not overridden by your rights.</li>
+            <li><strong>Legal obligation</strong>: to comply with applicable laws, regulations, and lawful requests.</li>
+            <li><strong>Other applicable bases</strong>: such as protecting vital interests or establishing, exercising, or defending legal claims, where relevant.</li>
           </ul>
         </section>
 
@@ -233,9 +233,9 @@ export default function Privacy() {
             measure usage, and improve the Service. These may include:
           </p>
           <ul>
-            <li><strong>Strictly necessary</strong> — required for authentication, security, and core functionality.</li>
-            <li><strong>Analytics &amp; performance</strong> — to understand how the Service is used ([Third-Party Services]).</li>
-            <li><strong>Advertising</strong> — only where applicable; we do not sell your personal information for advertising except as described in Section 21.</li>
+            <li><strong>Strictly necessary</strong>: required for authentication, security, and core functionality.</li>
+            <li><strong>Analytics &amp; performance</strong>: to understand how the Service is used ([Third-Party Services]).</li>
+            <li><strong>Advertising</strong>: only where applicable; we do not sell your personal information for advertising except as described in Section 21.</li>
           </ul>
           <p>
             Where required by law, we request your consent before setting non-essential
@@ -277,7 +277,7 @@ export default function Privacy() {
         <section id="comms">
           <h2>11. Push notifications, email &amp; in-app communications</h2>
           <p>
-            With your permission, we send push notifications, emails, and in-app messages —
+            With your permission, we send push notifications, emails, and in-app messages,
             for example, job alerts, application updates, and account notices. You can opt out
             of non-essential communications at any time via your account settings, the
             unsubscribe link in emails, or your device settings. We may still send essential
@@ -314,11 +314,11 @@ export default function Privacy() {
           <h2>14. How we share personal information</h2>
           <p>We share personal information only as described below:</p>
           <ul>
-            <li><strong>Service providers / processors</strong> — hosting, database, analytics, email, payment, and AI providers who process data on our behalf under contract ([Third-Party Services]).</li>
-            <li><strong>Affiliates and partners</strong> — where relevant to operate the Service, under appropriate safeguards.</li>
-            <li><strong>At your direction</strong> — such as job boards and employers when you submit or auto-fill an application.</li>
-            <li><strong>Legal &amp; safety</strong> — to comply with law, respond to lawful requests, enforce our terms, or protect rights, property, and safety.</li>
-            <li><strong>Business transfers</strong> — in connection with a merger, acquisition, or sale of assets, subject to this policy.</li>
+            <li><strong>Service providers / processors</strong>: hosting, database, analytics, email, payment, and AI providers who process data on our behalf under contract ([Third-Party Services]).</li>
+            <li><strong>Affiliates and partners</strong>: where relevant to operate the Service, under appropriate safeguards.</li>
+            <li><strong>At your direction</strong>: such as job boards and employers when you submit or auto-fill an application.</li>
+            <li><strong>Legal &amp; safety</strong>: to comply with law, respond to lawful requests, enforce our terms, or protect rights, property, and safety.</li>
+            <li><strong>Business transfers</strong>: in connection with a merger, acquisition, or sale of assets, subject to this policy.</li>
           </ul>
           <p>We do not sell your personal information except as described in Section 21.</p>
         </section>
@@ -330,7 +330,7 @@ export default function Privacy() {
             countries where we or our providers operate (the United States). This means
             your information may be transferred outside Quebec, the rest of Canada, the EEA, the
             UK, or your home region. When we transfer personal information across borders, we
-            use appropriate safeguards required by applicable law — such as the European
+            use appropriate safeguards required by applicable law, such as the European
             Commission’s Standard Contractual Clauses, the UK International Data Transfer
             Agreement/Addendum, adequacy decisions, or, for Quebec, a privacy impact assessment
             confirming adequate protection. Contact us for more information about these
@@ -353,7 +353,7 @@ export default function Privacy() {
           <h2>17. Security measures</h2>
           <p>
             We use administrative, technical, and physical safeguards designed to protect
-            personal information — including encryption in transit, access controls, and secure
+            personal information, including encryption in transit, access controls, and secure
             authentication. No method of transmission or storage is completely secure, so we
             cannot guarantee absolute security, but we work to protect your information and to
             respond promptly to any incident.
@@ -367,14 +367,14 @@ export default function Privacy() {
             regarding your personal information:
           </p>
           <ul>
-            <li><strong>Access</strong> — obtain a copy of the information we hold about you.</li>
-            <li><strong>Correction / rectification</strong> — fix inaccurate or incomplete information.</li>
-            <li><strong>Deletion / erasure</strong> — ask us to delete your information.</li>
-            <li><strong>Portability</strong> — receive your information in a structured, machine-readable format.</li>
-            <li><strong>Restriction</strong> — limit how we process your information.</li>
-            <li><strong>Objection</strong> — object to certain processing, including direct marketing.</li>
-            <li><strong>Withdraw consent</strong> — where processing is based on consent, at any time.</li>
-            <li><strong>Complaint</strong> — lodge a complaint with your local data protection authority.</li>
+            <li><strong>Access</strong>: obtain a copy of the information we hold about you.</li>
+            <li><strong>Correction / rectification</strong>: fix inaccurate or incomplete information.</li>
+            <li><strong>Deletion / erasure</strong>: ask us to delete your information.</li>
+            <li><strong>Portability</strong>: receive your information in a structured, machine-readable format.</li>
+            <li><strong>Restriction</strong>: limit how we process your information.</li>
+            <li><strong>Objection</strong>: object to certain processing, including direct marketing.</li>
+            <li><strong>Withdraw consent</strong>: where processing is based on consent, at any time.</li>
+            <li><strong>Complaint</strong>: lodge a complaint with your local data protection authority.</li>
           </ul>
           <p>
             To exercise any right, contact us at <a href="mailto:support@tailrd.ca">support@tailrd.ca</a>. We
@@ -389,7 +389,7 @@ export default function Privacy() {
           <ul>
             <li>Our Privacy Officer (the person in charge of protecting personal information) is Wissam Elmasry, reachable at support@tailrd.ca.</li>
             <li>You have the right to access, correct, and request the deletion of your personal information, and to withdraw consent.</li>
-            <li>You have the right to <strong>data portability</strong> — to receive computerized personal information you provided us in a structured, commonly used technological format.</li>
+            <li>You have the right to <strong>data portability</strong>, meaning you can receive computerized personal information you provided us in a structured, commonly used technological format.</li>
             <li>Where we use technology to identify, locate, or profile you, we inform you and offer available means to activate or deactivate those functions.</li>
             <li>We conduct privacy impact assessments before transferring personal information outside Quebec (the United States) and before certain new uses.</li>
             <li>You may file a complaint with the <em>Commission d’accès à l’information du Québec</em>.</li>
@@ -438,7 +438,7 @@ export default function Privacy() {
             We maintain procedures to detect, investigate, and respond to security incidents.
             If a breach affecting your personal information occurs and poses a risk of serious
             harm, we will notify affected individuals and the relevant authorities as required
-            by applicable law — including Quebec’s confidentiality-incident rules, the
+            by applicable law, including Quebec’s confidentiality-incident rules, the
             GDPR/UK GDPR’s 72-hour notification requirement, and applicable Canadian and U.S.
             breach-notification laws.
           </p>

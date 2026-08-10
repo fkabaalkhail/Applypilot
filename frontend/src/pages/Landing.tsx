@@ -200,7 +200,7 @@ const SUCCESS_STORIES = [
     alt: "Interview invitation letter",
     badge: "Interview Secured ✓",
     initials: "FA",
-    name: "Ahmed A. — Applied for Software Engineer role in Ottawa",
+    name: "Ahmed A., applied for a Software Engineer role in Ottawa",
     quote: '"Tailrd helped me land this interview in under a week."',
   },
   {
@@ -208,7 +208,7 @@ const SUCCESS_STORIES = [
     alt: "Second interview offer letter",
     badge: "Offer Received ✓",
     initials: "TR",
-    name: "Tristan R. — Applied for Software Developer role in Ottawa",
+    name: "Tristan R., applied for a Software Developer role in Ottawa",
     quote: '"Got two offers in 10 days. The AI tailoring made all the difference."',
   },
   {
@@ -216,7 +216,7 @@ const SUCCESS_STORIES = [
     alt: "Third interview offer letter",
     badge: "Interview Secured ✓",
     initials: "MK",
-    name: "Mohamed K. — Applied for Data Analyst role in Toronto",
+    name: "Mohamed K., applied for a Data Analyst role in Toronto",
     quote: '"Tailrd matched me perfectly. Got the call within days."',
   },
 ];
@@ -309,10 +309,10 @@ export default function Landing() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const faqs = [
-    { q: "How is Tailrd different from other job platforms like LinkedIn?", a: "Tailrd uses AI to automatically fill out applications for you, match you with jobs based on your real skills, and tailor your resume for each role — all running locally on your machine for maximum privacy." },
+    { q: "How is Tailrd different from other job platforms like LinkedIn?", a: "Tailrd uses AI to automatically fill out applications for you, match you with jobs based on your real skills, and tailor your resume for each role, all running locally on your machine for maximum privacy." },
     { q: "Will Tailrd share my personal information?", a: "Never. Your data stays on your machine. We don't upload your resume, credentials, or personal info to any cloud server. Everything runs locally." },
     { q: "Is Tailrd free to use?", a: "Yes! You can start with our free tier which includes 10 auto-applies per day. Upgrade to Pro for unlimited applications and advanced AI features." },
-    { q: "How does the auto-apply feature work?", a: "Tailrd uses your Chrome browser with AI to fill out LinkedIn Easy Apply forms automatically — answering screening questions, uploading your resume, and submitting applications while you focus on other things." },
+    { q: "How does the auto-apply feature work?", a: "Tailrd uses your Chrome browser with AI to fill out LinkedIn Easy Apply forms automatically, answering screening questions, uploading your resume, and submitting applications while you focus on other things." },
     { q: "What job platforms does Tailrd support?", a: "Currently we support LinkedIn Easy Apply jobs. Support for Greenhouse, Lever, and other ATS platforms is coming soon." },
     { q: "I have more questions!", a: "Reach out to us at support@tailrd.app and we'll get back to you within 24 hours." },
   ];
@@ -322,7 +322,7 @@ export default function Landing() {
       {/* Nav */}
       <SiteHeader />
 
-      {/* Hero — Full viewport height */}
+      {/* Hero: Full viewport height */}
       <section className="hero">
         <div className="hero-bg"></div>
         {/* Floating decorative orbs */}
@@ -469,7 +469,7 @@ export default function Landing() {
               transition={{ delay: 2.2, duration: 0.6 }}
             >
               Get matched jobs, autofill applications, tailored resume, and
-              AI-powered answers to screening questions — in less than 1 min!
+              AI-powered answers to screening questions, in less than 1 min!
             </motion.p>
             <motion.div
               className="hero-actions"
@@ -485,7 +485,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Live Auto-Apply Demo — Top Showcase */}
+      {/* Live Auto-Apply Demo: Top Showcase */}
       <section className="showcase-section showcase-demo-section">
         <div className="showcase-demo-wrapper">
           <motion.div
@@ -498,7 +498,7 @@ export default function Landing() {
             <h2 className="showcase-title">Watch Tailrd Work For You</h2>
             <p className="showcase-desc">
               While you relax, our AI scans job postings, extracts keywords,
-              tailors your resume, and fills applications — all in seconds.
+              tailors your resume, and fills applications, all in seconds.
             </p>
           </motion.div>
           <motion.div
@@ -599,7 +599,7 @@ export default function Landing() {
               </h2>
               <p className="showcase-desc">
                 Our AI reads the job description and your resume side by side,
-                then scores how well you fit — so you only spend time on roles
+                then scores how well you fit, so you only spend time on roles
                 where you actually have a shot.
               </p>
               <button className="btn-dark" onClick={() => navigate("/app")}>See My Fit Score</button>
@@ -665,7 +665,7 @@ export default function Landing() {
               </h2>
               <p className="showcase-desc">
                 Point it at a job posting and walk away. Tailrd fills every field,
-                answers screening questions, and submits — you just review the
+                answers screening questions, and submits. You just review the
                 confirmation email.
               </p>
               <button className="btn-dark" onClick={() => navigate("/app")}>Let It Apply For Me</button>
@@ -703,8 +703,8 @@ export default function Landing() {
                   <div className="autofill-field"><span className="field-check">✓</span> Phone</div>
                   <div className="autofill-field"><span className="field-check">✓</span> Email</div>
                   <div className="autofill-field"><span className="field-check">✓</span> LinkedIn URL</div>
-                  <div className="autofill-field"><span className="field-dash">—</span> Experience</div>
-                  <div className="autofill-field"><span className="field-dash">—</span> Cover Letter</div>
+                  <div className="autofill-field"><span className="field-dash">-</span> Experience</div>
+                  <div className="autofill-field"><span className="field-dash">-</span> Cover Letter</div>
                 </div>
               </div>
             </AnimatedSection>
@@ -727,7 +727,7 @@ export default function Landing() {
                 />
               </h2>
               <p className="showcase-desc">
-                Each application gets its own version of your resume — rewritten
+                Each application gets its own version of your resume, rewritten
                 to mirror the job's language, highlight relevant wins, and sail
                 through ATS filters.
               </p>
@@ -814,7 +814,7 @@ export default function Landing() {
         </section>
       </AnimatedSection>
 
-      {/* Trusted By Companies — Continuous Carousel */}
+      {/* Trusted By Companies: Continuous Carousel */}
       <AnimatedSection animation="fadeUp">
         <section className="companies-section">
           <p className="companies-label">Trusted by job seekers applying to</p>
@@ -982,7 +982,7 @@ export default function Landing() {
             <div className="success-story-headline">
               <span className="success-story-eyebrow">PROOF, NOT PROMISES</span>
               <h2 className="success-story-title">Real Results from Real Users</h2>
-              <p className="success-story-sub">Our users don't just apply — they get invited to interview.</p>
+              <p className="success-story-sub">Our users don't just apply. They get invited to interview.</p>
             </div>
 
             <SuccessStoryCarousel />

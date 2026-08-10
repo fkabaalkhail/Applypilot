@@ -1,4 +1,4 @@
-/* ===== Settings — shared primitives =====
+/* ===== Settings, shared primitives =====
    What is left after pages/Settings.tsx was deleted and the modal dropped its
    profile / job-preference / autofill tabs. SettingsModal.tsx still imports this
    file for the toggle switch, the toasts, the save button, the loading/error

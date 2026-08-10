@@ -48,20 +48,20 @@ describe("buildAutofillTelemetry", () => {
   });
 
   it("threads a combobox/driver outcome's reason into failedFields", () => {
-    // Previously outcome failures were logged with an empty reason ("") — the
+    // Previously outcome failures were logged with an empty reason (""), the
     // exact SF/Workday dropdown blind spot. The reason must now survive.
     const fields = [f("g", "Please state your gender:", "eeoGender")];
-    const outcomes = [{ fieldId: "g", ok: false, reason: "Selection didn't stick — select it manually" }];
+    const outcomes = [{ fieldId: "g", ok: false, reason: "Selection didn't stick. Select it manually" }];
     const t = buildAutofillTelemetry(
       fields,
       { host: "career2.successfactors.eu", url: "u", atsType: "successfactors" },
       { reports: [], outcomes }
     );
     expect(t.failed).toBe(1);
-    expect(t.failedFields[0].reason).toBe("Selection didn't stick — select it manually");
+    expect(t.failedFields[0].reason).toBe("Selection didn't stick. Select it manually");
   });
 
-  it("emits only label/category/reason — never user values", () => {
+  it("emits only label/category/reason, never user values", () => {
     const fields = [f("a", "Some Question")];
     const t = buildAutofillTelemetry(
       fields,
@@ -175,7 +175,7 @@ describe("revertedFields", () => {
   });
 
   it("does not report a field whose write already failed", () => {
-    // That is a failure, not a revert — conflating them hides the interesting
+    // That is a failure, not a revert, conflating them hides the interesting
     // case behind the ordinary one.
     const out = revertedFields(
       [{ fieldId: "a", value: "Yes" }],

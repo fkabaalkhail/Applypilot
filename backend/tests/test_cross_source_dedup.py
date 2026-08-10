@@ -195,7 +195,7 @@ def test_sweep_never_merges_two_direct_rows(db_session):
 
 
 def test_sweep_uses_url_not_label_for_rogue_rows(db_session):
-    # Rogue-scraper rows are labeled source='ats' but carry LinkedIn URLs —
+    # Rogue-scraper rows are labeled source='ats' but carry LinkedIn URLs,
     # they are aggregator copies and must be absorbed by the real direct row.
     rogue = _mk(db_session, "https://www.linkedin.com/jobs/view/4414123646",
                 source="ats", description="")

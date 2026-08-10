@@ -45,12 +45,12 @@ describe("deriveFieldOfStudy", () => {
   /**
    * REGRESSION: a comma in the proposed value is not cosmetic. comboboxEngine
    * splits a comma-bearing value on any widget under a
-   * `multiselectInputContainer` — including the Workday prompts that are
+   * `multiselectInputContainer`: including the Workday prompts that are
    * single-value in fact, where each pick REPLACES the last. A double major
    * would have proposed "Computer Science, Mathematics" and committed
    * "Mathematics", reported as a successful fill. No comma may leave here.
    */
-  it("names one subject for a double major — never a comma-joined list", () => {
+  it("names one subject for a double major, never a comma-joined list", () => {
     expect(deriveFieldOfStudy("BSc Computer Science, Mathematics")).toBe("Computer Science");
     expect(deriveFieldOfStudy("Bachelor of Arts in Economics, Political Science")).toBe("Economics");
     for (const degree of [
@@ -63,7 +63,7 @@ describe("deriveFieldOfStudy", () => {
   });
 
   it("still returns null for a bare subject list that names no degree", () => {
-    // No degree prefix to strip — the string is not a degree, so proposing the
+    // No degree prefix to strip, the string is not a degree, so proposing the
     // first half of it would be inventing an answer.
     expect(deriveFieldOfStudy("Computer Science, Mathematics")).toBeNull();
   });
@@ -97,7 +97,7 @@ describe("Workday education row", () => {
 /**
  * `data-uxi-multiselect-id` on the input is NOT a multi-select signal, however
  * much it reads like one. Workday puts the same attribute on SINGLE-value
- * prompts — Country Phone Code carries it in this repo's captured production
+ * prompts, Country Phone Code carries it in this repo's captured production
  * DOM (test/fixtures/workdayReal.ts), and so does `education-N--degree`. On
  * those, every pick REPLACES the last, so splitting "Toronto, Ontario" commits
  * "Ontario" and reports success: the wrong value, banked green.
@@ -109,14 +109,14 @@ describe("Workday education row", () => {
  */
 describe("Workday searchBox multiselect", () => {
   interface BoxOpts {
-    /** Workday's `data-uxi-multiselect-id` on the input itself — inert. */
+    /** Workday's `data-uxi-multiselect-id` on the input itself, inert. */
     marker: boolean;
     /** The ancestor that genuinely marks a multiselect, as captured in production. */
     ancestor?: boolean;
     /** Single-value widgets REPLACE the committed chip; multiselects append. */
     single?: boolean;
     options?: string[];
-    /** Committed chips on OTHER widgets in the same section — the state a
+    /** Committed chips on OTHER widgets in the same section, the state a
      *  sequential fill pass leaves behind as it works down a section. */
     siblingChips?: string[];
   }
@@ -195,7 +195,7 @@ describe("Workday searchBox multiselect", () => {
   });
 
   it("never splits a single-value widget that merely carries the marker", async () => {
-    // Splitting here selects Toronto and then REPLACES it with Ontario — the
+    // Splitting here selects Toronto and then REPLACES it with Ontario, the
     // wrong value, banked as a successful fill.
     const input = mountSearchBox({
       marker: true,
@@ -210,7 +210,7 @@ describe("Workday searchBox multiselect", () => {
   it("is not swayed by chips its NEIGHBOURS have already committed", async () => {
     // A sequential fill pass works down a section, so by the time it reaches
     // this widget its siblings are already filled. Counting committed values
-    // near the trigger reads those as evidence THIS widget is multi — and
+    // near the trigger reads those as evidence THIS widget is multi, and
     // Workday's selectinput has no role=combobox / aria-haspopup, so the
     // value-container climb never stops at the widget boundary.
     const input = mountSearchBox({
@@ -227,7 +227,7 @@ describe("Workday searchBox multiselect", () => {
   it("leaves a widget with no multiselect ancestor single-select", async () => {
     const input = mountSearchBox({ marker: false });
     await fillAriaCombobox(input, "React, TypeScript", fast);
-    // A single-select widget commits at most one value — never a second chip.
+    // A single-select widget commits at most one value, never a second chip.
     expect(chipTexts().length).toBeLessThan(2);
   });
 });

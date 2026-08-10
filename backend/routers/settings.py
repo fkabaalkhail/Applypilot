@@ -1,10 +1,10 @@
 """
-Settings endpoints — clients configure everything from the UI.
+Settings endpoints, clients configure everything from the UI.
 
-GET   /settings         — return current user's settings (password masked)
-PUT   /settings         — update settings
-POST  /settings/resume  — upload resume file
-POST  /settings/cookies — upload LinkedIn session cookies (skip password login)
+GET   /settings, return current user's settings (password masked)
+PUT   /settings, update settings
+POST  /settings/resume, upload resume file
+POST  /settings/cookies, upload LinkedIn session cookies (skip password login)
 """
 
 import os
@@ -91,7 +91,7 @@ def get_settings(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Return current user's settings. Password is never sent — only whether it's set."""
+    """Return current user's settings. Password is never sent, only whether it's set."""
     return _settings_to_out(_get_or_create_settings(db, user_id))
 
 
@@ -139,7 +139,7 @@ def update_settings(
     if update.regions is not None:
         s.regions = ",".join(update.regions)
     if update.prefilled_answers is not None:
-        # Merge, never replace. This map is user-owned data — the Profile card
+        # Merge, never replace. This map is user-owned data, the Profile card
         # stores the work-authorization/sponsorship/salary answers the extension
         # autofills into real applications. A wholesale overwrite by any client
         # sending only its own keys (SetupWizard sends job_types/work_authorization)
@@ -190,7 +190,7 @@ def update_settings(
     db.commit()
     db.refresh(s)
 
-    # Settings are a sync target — bump so the extension picks up the change.
+    # Settings are a sync target, bump so the extension picks up the change.
     bump_profile_version(db, user_id)
     return _settings_to_out(s)
 

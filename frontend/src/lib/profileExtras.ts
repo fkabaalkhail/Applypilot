@@ -1,5 +1,5 @@
 /**
- * Shared model for the "application profile extras" — the structured mailing
+ * Shared model for the "application profile extras", the structured mailing
  * address, the saved screening answers and the EEO self-identification that live
  * on the application-profile endpoint (camelCase, nested `eeo`) rather than on
  * /settings or the resume.
@@ -11,7 +11,7 @@
  * truth. addressCity shares the same DB column as the contact "city".
  *
  * Field names, labels and option strings are fixed by
- * docs/superpowers/specs/2026-08-09-profile-parity-contract.md — the web, the
+ * docs/superpowers/specs/2026-08-09-profile-parity-contract.md, the web, the
  * API and the extension must agree byte-for-byte.
  */
 
@@ -73,7 +73,7 @@ export interface ProfileExtras {
   eeo: EeoData;
 }
 
-// PATCH body for PUT /api/user/application-profile — only changed keys are sent;
+// PATCH body for PUT /api/user/application-profile, only changed keys are sent;
 // omitted keys are left untouched by the backend.
 export interface ProfileUpdatePayload {
   firstName?: string;
@@ -84,7 +84,7 @@ export interface ProfileUpdatePayload {
   linkedin?: string;
   /**
    * Lives on the resume row as `github_url` and is edited in the Personal card,
-   * exactly like `linkedin` / `portfolio` — so it is NOT part of ProfileExtras
+   * exactly like `linkedin` / `portfolio`: so it is NOT part of ProfileExtras
    * and is diffed in Profile.tsx's buildProfilePayload, not computeProfileDiff.
    * Before the parity contract the profile API would not accept it at all, so
    * GitHub never round-tripped to the extension.
@@ -149,7 +149,7 @@ export const EMPTY_PROFILE_EXTRAS: ProfileExtras = {
  * Option lists for the EEO selects.
  *
  * TWIN COPY: `EEO_CHOICES` in `chrome-extension/src/content/overlay.ts` holds the
- * same vocabularies. The two MUST stay byte-identical — the extension writes the
+ * same vocabularies. The two MUST stay byte-identical, the extension writes the
  * literal string into employer forms and the backend matches saved answers
  * against it, so a one-word drift here silently breaks autofill on the other
  * surface. Both files are pinned by a test (this one:

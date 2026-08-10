@@ -3,7 +3,7 @@ Migration: Drop the saved_answers table.
 
 The Remembered Answers feature (Question Memory) has been removed. It recalled
 previously approved answers by embedding proximity and replayed them into new
-applications — which meant a badly-keyed row became a permanent attractor,
+applications, which meant a badly-keyed row became a permanent attractor,
 answering questions it had nothing to do with. The whole pass is gone: /api/fill
 now derives every answer from the profile, the rules, or the LLM, and persists
 nothing.
@@ -15,7 +15,7 @@ indefinitely with no feature able to read, show, or delete them. There is no
 down-migration and no backup taken here.
 
 Idempotent: no-ops when the table is already absent. Runs on app startup, and is
-safe on both PostgreSQL and SQLite (plain DROP TABLE, no CASCADE — nothing
+safe on both PostgreSQL and SQLite (plain DROP TABLE, no CASCADE, nothing
 references saved_answers).
 """
 

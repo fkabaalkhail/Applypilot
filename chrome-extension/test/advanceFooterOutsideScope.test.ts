@@ -4,17 +4,17 @@
  * the flow silently, with no advance gate for the user to press.
  *
  * Workday's "My Experience" step (BMO, 2026-08-09 15:06 UTC). The fill
- * succeeded — `autofill_reports` #156, 11 fields, 11 filled, 0 failed — and the
+ * succeeded (`autofill_reports` #156, 11 fields, 11 filled, 0 failed) and the
  * panel still offered no "Continue To The Next Page". `findAdvanceButton`
  * searches only the FORM SCOPE, and `resolveFormScope` picks the deepest
  * container holding the fields, which on that step excludes the fixed
  * Back / Save-and-Continue footer. With no advance found, flowController takes
- * `finish("done")` — a beat that hides the flow strip AND the gate, so the page
+ * `finish("done")`: a beat that hides the flow strip AND the gate, so the page
  * looks finished when it is not.
  *
  * Two independent ways that happens, both covered here:
  *   1. the tenant's footer button is not one of the automation-ids we know, so
- *      only the generic text search can find it — and it is out of scope;
+ *      only the generic text search can find it, and it is out of scope;
  *   2. an earlier step's next-button is still in the DOM, hidden. The adapter
  *      returned that first match, `isClickable` rejected it, and the whole
  *      adapter path was abandoned. This is why the failure shows up on a later
@@ -34,7 +34,7 @@ beforeEach(() => {
 
 const scopeEl = (): HTMLElement => document.querySelector("#content") as HTMLElement;
 
-/** The step's fields and its footer are siblings — the footer is NOT in scope. */
+/** The step's fields and its footer are siblings, the footer is NOT in scope. */
 function page(footer: string, opts: { staleNext?: boolean } = {}): void {
   document.body.innerHTML = `
     ${opts.staleNext ? `<div style="display:none"><button disabled data-automation-id="bottom-navigation-next-button">Save and Continue</button></div>` : ""}
@@ -60,7 +60,7 @@ describe("advance button in a page-level footer, outside the form scope", () => 
     expect(findAdvanceButton(scopeEl(), null)?.el.textContent).toBe("Continue");
   });
 
-  it("never reaches out to a nav link — the reason the search was scoped", () => {
+  it("never reaches out to a nav link, the reason the search was scoped", () => {
     page(`<nav><button>Continue shopping</button></nav>`);
     expect(findAdvanceButton(scopeEl(), null)).toBeNull();
   });

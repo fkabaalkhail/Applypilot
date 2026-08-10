@@ -43,7 +43,7 @@ const CATEGORIES = [
 ];
 
 function timeAgo(dateStr: string | null): string {
-  if (!dateStr) return "—";
+  if (!dateStr) return "-";
   const date = new Date(dateStr);
   const diff = Date.now() - date.getTime();
   const minutes = Math.floor(diff / 60000);
@@ -72,7 +72,7 @@ function updatedAgo(dateStr: string | null): string {
 
 function WorkTypeBadge({ type }: { type: string }) {
   const normalized = type?.toLowerCase() || "";
-  let label = type || "—";
+  let label = type || "-";
   let className = "wt-badge";
 
   if (normalized.includes("remote")) {
@@ -358,9 +358,9 @@ export default function JobsList() {
                   <td className="jl-td-workmodel">
                     <WorkTypeBadge type={job.work_type} />
                   </td>
-                  <td className="jl-td-location">{job.location || "—"}</td>
+                  <td className="jl-td-location">{job.location || "-"}</td>
                   <td className="jl-td-company">{job.company.replace(/\*\*/g, "")}</td>
-                  <td className="jl-td-salary">{job.salary_range || "—"}</td>
+                  <td className="jl-td-salary">{job.salary_range || "-"}</td>
                 </tr>
               ))}
             </tbody>

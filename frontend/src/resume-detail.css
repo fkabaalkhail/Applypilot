@@ -1,11 +1,11 @@
 /* ============================================================================
-   Resume workspace — the document canvas and the analysis report.
+   Resume workspace, the document canvas and the analysis report.
 
    Two ideas hold this together:
 
    1. THE SEVERITY RAIL. A resume's problems are a composition, not three
-      numbers. Everywhere severity appears — the header, a category, a section
-      of the document — it is drawn as one proportional rail, so the eye reads
+      numbers. Everywhere severity appears, the header, a category, a section
+      of the document. It is drawn as one proportional rail, so the eye reads
       "mostly urgent" or "mostly polish" before it reads any digit.
 
    2. THE SHEET. The resume renders as a page, not a stack of form cards, so
@@ -677,7 +677,7 @@
 }
 .rd-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
 
-/* Inputs fill their field — the fix for the cut-off degree. */
+/* Inputs fill their field: the fix for the cut-off degree. */
 .rd-form .rd-edit {
   width: 100%;
   border: 1px solid var(--rd-rule);
@@ -728,7 +728,7 @@
   .rd-cta-actions .rd-btn { flex: 1; justify-content: center; }
   .rd-topbar { padding: 0.6rem 0.75rem; gap: 0.4rem; overflow-x: auto; }
 
-  /* Touch targets. Only on touch widths — a 36px-tall reorder chevron would be
+  /* Touch targets. Only on touch widths, a 36px-tall reorder chevron would be
      absurd next to a desktop pointer, but a 20×13px one is unhittable by thumb. */
   .rd-btn, .rd-legend-item, .rd-add, .rd-entry-del, .rd-flag { min-height: 36px; }
   .rd-legend-item, .rd-entry-del { padding: 0.35rem 0; }

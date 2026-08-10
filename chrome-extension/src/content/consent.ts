@@ -3,7 +3,7 @@
  *
  * Consent managers (OneTrust, Cookiebot, Usercentrics, …) inject their own
  * checkboxes, search boxes and toggles into every page. They are never
- * application fields, but they ARE real, visible form controls — so without
+ * application fields, but they ARE real, visible form controls, so without
  * this guard the scanner counts them as "fields". On a page whose real form is
  * lazy-mounted (e.g. Databricks' embedded Greenhouse form), that leaves the
  * panel stuck reporting the cookie widgets ("0 of 8 fields", button disabled).

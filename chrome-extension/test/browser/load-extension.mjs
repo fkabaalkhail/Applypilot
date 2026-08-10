@@ -19,7 +19,7 @@ import os from "node:os";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXT = path.resolve(here, "..", "..", "dist");
 
-const FORM_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Careers — Apply</title></head>
+const FORM_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Careers, Apply</title></head>
 <body>
   <h1>Apply for Software Engineer</h1>
   <form id="application">
@@ -97,7 +97,7 @@ async function main() {
   // The content script runs at document_idle in its own ISOLATED world, so its
   // window globals are invisible to page.evaluate (the page's main world). Its
   // observable, cross-world output is the overlay host it injects into the shared
-  // DOM — that element's presence proves the content script ran AND detected the
+  // DOM: that element's presence proves the content script ran AND detected the
   // form (the overlay only mounts when >=1 field is recognized).
   const overlayMounted = await page
     .waitForFunction(() => Boolean(document.getElementById("applypilot-overlay-host")), null, { timeout: 10000 })

@@ -4,8 +4,8 @@
  * The web app is the source of truth. The extension keeps a single cached
  * snapshot (GET /api/extension/sync) and only re-downloads it when the cheap
  * version probe (GET /api/extension/sync/version) reports a change. Everything
- * the UI reads — profile, resumes, cover letters, custom resumes, settings,
- * subscription, usage — comes from this snapshot, so the extension keeps working
+ * the UI reads, profile, resumes, cover letters, custom resumes, settings,
+ * subscription, usage, comes from this snapshot, so the extension keeps working
  * offline from cache and never silently loses the user's data.
  */
 import { SYNC_ENDPOINT, SYNC_VERSION_ENDPOINT } from "../shared/constants";
@@ -41,7 +41,7 @@ import { MOCK_PROFILE } from "./mockProfile";
  */
 export function normalizeProfile(raw: Partial<UserApplicationProfile>): UserApplicationProfile {
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
-  // Optional fields keep `undefined` for "not answered" rather than "" — same
+  // Optional fields keep `undefined` for "not answered" rather than "", same
   // convention salaryExpectation has always used, so a blank never reads as an
   // answer the user gave.
   const opt = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
@@ -80,7 +80,7 @@ export function normalizeProfile(raw: Partial<UserApplicationProfile>): UserAppl
     skills: Array.isArray(raw.skills) ? raw.skills.filter((s): s is string => typeof s === "string") : [],
     coverLetter: str(raw.coverLetter),
     salaryExpectation: raw.salaryExpectation ? str(raw.salaryExpectation) : undefined,
-    // Passed through whole — the nested demographics (incl. genderIdentity /
+    // Passed through whole: the nested demographics (incl. genderIdentity /
     // pronouns / sexualOrientation) carry with it.
     eeo: raw.eeo,
   };
@@ -139,7 +139,7 @@ export async function fetchSnapshotFromApi(): Promise<ExtensionSyncSnapshot> {
 /**
  * Write user-edited autofill fields back to the profile the extension syncs
  * from (PUT /api/user/application-profile), then re-download the snapshot so the
- * cached profile immediately reflects the change (and the web app sees it too —
+ * cached profile immediately reflects the change (and the web app sees it too,
  * the endpoint bumps the shared sync version). Returns the fresh profile.
  *
  * `update` is a partial UserApplicationProfile-shaped patch (camelCase); only
@@ -158,7 +158,7 @@ export async function updateApplicationProfile(
 
 /**
  * If the server's version differs from the cached snapshot's, re-download.
- * Returns true when a refresh happened. Best-effort — offline/missing-endpoint
+ * Returns true when a refresh happened. Best-effort, offline/missing-endpoint
  * errors are swallowed so the extension keeps working from cache. Re-auth
  * failures clear the snapshot so the UI can prompt a reconnect.
  */
@@ -169,7 +169,7 @@ export async function syncIfStale(): Promise<boolean> {
   const cachedVersion = await getSnapshotVersion();
   try {
     if (cachedVersion === null) {
-      // Nothing cached yet — pull the first snapshot.
+      // Nothing cached yet: pull the first snapshot.
       await fetchSnapshotFromApi();
       return true;
     }
@@ -183,7 +183,7 @@ export async function syncIfStale(): Promise<boolean> {
       await clearSnapshot();
       throw err;
     }
-    // offline or transient — keep using the cache
+    // offline or transient, keep using the cache
   }
   return false;
 }
@@ -211,7 +211,7 @@ export async function getSnapshotForUi(
     return { snapshot, source: "api" };
   } catch (err) {
     if (err instanceof AuthRequiredError) throw err;
-    // Network/server error — serve the last cached snapshot so the extension
+    // Network/server error: serve the last cached snapshot so the extension
     // keeps working while the API is unavailable.
     const stale = await getSnapshot();
     if (stale) return { snapshot: stale.snapshot, source: "cache" };
@@ -266,7 +266,7 @@ export async function downloadResumeFile(
     return { dataBase64, name, contentType };
   } catch (err) {
     if (err instanceof AuthRequiredError) throw err;
-    // Offline / transient — fall back to any cached copy regardless of version.
+    // Offline / transient: fall back to any cached copy regardless of version.
     if (cached) {
       return { dataBase64: cached.dataBase64, name: cached.name, contentType: cached.contentType };
     }

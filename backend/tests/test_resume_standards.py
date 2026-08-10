@@ -39,7 +39,7 @@ def test_every_writing_prompt_inlines_the_standards(filename):
 def test_the_transcription_prompt_is_never_given_the_standards():
     """analyze_resume.txt reads a resume; it must not be tempted to improve one.
 
-    Its "copy every line verbatim" contract is what protects upload fidelity — handing it
+    Its "copy every line verbatim" contract is what protects upload fidelity, handing it
     writing rules is how Projects sections start disappearing again.
     """
     assert "THE WHO METHOD" not in _load_prompt("analyze_resume.txt")
@@ -78,7 +78,7 @@ def test_the_analyzer_never_asks_the_rewriter_to_manufacture_evidence():
     """A live run caught this: told to "provide experience demonstrating" an unevidenced
     skill, the rewriter invented "Utilized React for the frontend" about a project that
     never used React. The remedy for an unevidenced skill is to cut it or for the candidate
-    to supply the bullet — never for the model to write one."""
+    to supply the bullet, never for the model to write one."""
     template = _load_prompt("analyze_resume_quality.txt")
     assert "Do NOT write that bullet for them" in template
     assert "cut it from the Skills list" in template

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Sample Job Application — ApplyPilot test page</title>
+  <title>Sample Job Application, ApplyPilot test page</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 720px; margin: 32px auto; padding: 0 16px; color: #222; }
     h1 { font-size: 22px; }
@@ -24,15 +24,15 @@
   </style>
 </head>
 <body>
-  <h1>Software Engineer — Sample Application Form</h1>
+  <h1>Software Engineer, Sample Application Form</h1>
   <p class="note">
     Test page for the ApplyPilot extension. Serve it over HTTP (e.g.
     <code>python -m http.server 8080</code> in this folder), open the extension
     popup and click <strong>Scan page</strong>. The submit button only shows an
-    alert — nothing is sent anywhere.
+    alert, nothing is sent anywhere.
   </p>
 
-  <form id="application" onsubmit="event.preventDefault(); alert('Form would submit now — the extension must never do this for you.');">
+  <form id="application" onsubmit="event.preventDefault(); alert('Form would submit now, the extension must never do this for you.');">
     <h2>Your information</h2>
     <div class="inline">
       <div class="row">
@@ -123,7 +123,7 @@
         <input type="text" id="title" name="title" autocomplete="organization-title" />
       </div>
     </div>
-    <!-- Div-based "labels" on purpose — exercises the nearby-text matcher -->
+    <!-- Div-based "labels" on purpose: exercises the nearby-text matcher -->
     <div class="nolabel-section">
       <div class="row">
         <div class="q">School / University</div>

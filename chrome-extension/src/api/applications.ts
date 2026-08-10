@@ -1,5 +1,5 @@
 /**
- * Application tracking — records a job application the user submitted on an ATS
+ * Application tracking: records a job application the user submitted on an ATS
  * page to their Tailrd account (the web app's Applications page), matching
  * Jobright's submit tracking. The extension never submits a form; it observes
  * the user's real submit click (see content/submitTracker.ts) and calls this.
@@ -18,7 +18,7 @@ interface LoggedApplication {
   created: boolean;
 }
 
-/** POST /apply/log — deduped by (user, url) on the backend. */
+/** POST /apply/log: deduped by (user, url) on the backend. */
 export async function recordApplication(app: ApplicationLog): Promise<{ created: boolean }> {
   const res = await authedRequest<LoggedApplication>("/apply/log", {
     method: "POST",

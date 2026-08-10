@@ -1,6 +1,6 @@
 // chrome-extension/src/shared/questionText.ts
 /**
- * What counts as a NAME for a field — as opposed to an opaque machine id.
+ * What counts as a NAME for a field, as opposed to an opaque machine id.
  *
  * A field's label is what the panel prints, what the gap modal asks the user,
  * and what the backend fill pipeline reads as the question. Workday in
@@ -16,7 +16,7 @@
 export const UNLABELED_FIELD = "Unlabeled field";
 
 /**
- * An opaque machine identifier — Workday's `<32 hex>-<32 hex>` widget id, a
+ * An opaque machine identifier: Workday's `<32 hex>-<32 hex>` widget id, a
  * UUID, or a bare hex blob. Deliberately narrow: it must reject
  * `56370316e58a1001d8aa4cd7b1d70000-b0531cc2ff371001d8a9b9c2eef00002` while
  * keeping ordinary attribute names like `candidate_country`, which are poor

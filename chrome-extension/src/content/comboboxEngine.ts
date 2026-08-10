@@ -4,8 +4,8 @@
  * Custom dropdowns (react-select, Headless UI, Radix, Workday button-listboxes…)
  * cannot be driven by setting `.value`: the chosen value lives in the widget's
  * own state and only commits when the user opens the popup and clicks an option.
- * This module mimics that interaction — open → find the listbox → click the
- * matching option → confirm — following the WAI-ARIA combobox/listbox pattern.
+ * This module mimics that interaction, open → find the listbox → click the
+ * matching option → confirm, following the WAI-ARIA combobox/listbox pattern.
  *
  * It is async and ONE-SHOT on purpose: re-driving a dropdown on every page
  * mutation is exactly the focus-stealing churn the reconciler avoids, so these
@@ -35,7 +35,7 @@ export interface ComboboxResult {
 }
 
 export interface FillComboboxOptions {
-  /** Injectable for tests — defaults to a real setTimeout-based sleep. */
+  /** Injectable for tests: defaults to a real setTimeout-based sleep. */
   sleep?: (ms: number) => Promise<void>;
   /** How long to wait for the menu to mount after opening. */
   openWaitMs?: number;
@@ -52,7 +52,7 @@ const DEFAULTS = { openWaitMs: 1500, commitWaitMs: 2500, pollMs: 50 };
 
 /**
  * True when an element is an ARIA combobox/listbox we can drive by clicking an
- * option — as opposed to a free-text field. We require an explicit listbox
+ * option, as opposed to a free-text field. We require an explicit listbox
  * affordance so plain inputs are never mistaken for dropdowns.
  */
 export function isAriaCombobox(el: HTMLElement): boolean {
@@ -71,7 +71,7 @@ export function isAriaCombobox(el: HTMLElement): boolean {
 }
 
 /** Detect a multi-select combobox (react-select "is-multi", or an
- *  aria-multiselectable trigger/listbox) — its value is a list, added one chip
+ *  aria-multiselectable trigger/listbox), its value is a list, added one chip
  *  at a time rather than matched as one option. */
 function isMultiSelect(trigger: HTMLElement): boolean {
   if (trigger.getAttribute("aria-multiselectable") === "true") return true;
@@ -81,11 +81,11 @@ function isMultiSelect(trigger: HTMLElement): boolean {
   }
   // NB Workday's `data-uxi-multiselect-id` on the input is NOT a multi signal and
   // must not be added here: it sits on single-value prompts too (Country Phone
-  // Code, a degree — see test/fixtures/workdayReal.ts), where every pick REPLACES
+  // Code, a degree, see test/fixtures/workdayReal.ts), where every pick REPLACES
   // the last, so splitting "Toronto, Ontario" commits "Ontario" and reports
   // success. Real Workday multiselects carry the container below anyway.
   //
-  // Workday's multiselect ("Type to Add Skills") exposes no ARIA multi signal —
+  // Workday's multiselect ("Type to Add Skills") exposes no ARIA multi signal,
   // its container automation-id is the only reliable marker.
   return Boolean(
     trigger.closest(
@@ -96,7 +96,7 @@ function isMultiSelect(trigger: HTMLElement): boolean {
 }
 
 /** Split a multi-value answer into distinct items (never applied to a
- *  single-select — a single answer may legitimately contain a comma). Capped so
+ *  single-select, a single answer may legitimately contain a comma). Capped so
  *  a 30-skill profile can't turn one field into a minutes-long type/select loop. */
 function splitMultiValue(value: string): string[] {
   return [...new Set(value.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean))].slice(0, 12);
@@ -112,7 +112,7 @@ export async function fillAriaCombobox(
   value: string,
   opts: FillComboboxOptions = {}
 ): Promise<ComboboxResult> {
-  if (!trigger.isConnected) return { filled: false, reason: "Field was removed — rescan the page" };
+  if (!trigger.isConnected) return { filled: false, reason: "Field was removed. Rescan the page" };
   const multi = opts.multi || isMultiSelect(trigger);
   const parts = multi ? splitMultiValue(value) : [value];
   if (parts.length <= 1) return selectOne(trigger, parts[0] ?? value, opts);
@@ -145,9 +145,9 @@ async function selectOne(
   const pollMs = opts.pollMs ?? DEFAULTS.pollMs;
 
   if (!trigger.isConnected) {
-    return { filled: false, reason: "Field was removed — rescan the page" };
+    return { filled: false, reason: "Field was removed. Rescan the page" };
   }
-  // Already showing the desired value — idempotent no-op, never opens the menu.
+  // Already showing the desired value, idempotent no-op, never opens the menu.
   if (comboboxShowsValue(trigger, value)) return { filled: true };
 
   // Anything we type into a typeahead is OURS to clean up: on any failure the
@@ -167,7 +167,7 @@ async function selectOne(
   // to surface (and filter, or async-load) the options.
   let listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
   // SF's paginated picklists occasionally swallow the first activation (the
-  // listbox never mounts). Re-open once — open() re-activates only while the
+  // listbox never mounts). Re-open once, open() re-activates only while the
   // widget is still collapsed, so this is a no-op when it did open.
   if (!listbox) {
     open(trigger);
@@ -178,7 +178,7 @@ async function selectOne(
     // Progressively broader filter texts: the full answer, its first word (a
     // literal-substring search finds "TypeScript" but not "TypeScript /
     // JavaScript"), then no filter at all (a long answer can over-filter a
-    // substring-matching widget down to zero options — "I am not a protected
+    // substring-matching widget down to zero options, "I am not a protected
     // veteran" never substring-matches "No, I am not a veteran").
     const firstWord = value.split(/[\s/,;]+/).filter(Boolean)[0] ?? "";
     const attempts = [value];
@@ -202,14 +202,14 @@ async function selectOne(
   if (!listbox) {
     restoreTyped();
     close(trigger);
-    return { filled: false, reason: `Couldn't open the "${truncate(value)}" dropdown — select it manually` };
+    return { filled: false, reason: `Couldn't open the "${truncate(value)}" dropdown. Select it manually` };
   }
 
   if (!option) {
     const options = optionLabels(listbox);
     restoreTyped();
     close(trigger);
-    // Record what the listbox actually offered — distinguishes an async/empty
+    // Record what the listbox actually offered, distinguishes an async/empty
     // read from a contaminated (wrong-field) menu from a genuine match miss.
     const seen =
       options && options.length ? ` (saw: ${options.slice(0, 6).join(" | ")})` : " (listbox had no options)";
@@ -224,13 +224,13 @@ async function selectOne(
   clickOption(option);
 
   // Confirm: the committed value must actually SHOW on the widget. A merely
-  // collapsed popup is not proof — a click that lands nowhere also leaves the
+  // collapsed popup is not proof, a click that lands nowhere also leaves the
   // trigger collapsed, and reporting that as filled hides a real failure from
   // the user (the empty-required-dropdown bug). The widget displays the OPTION's
   // text, which for a fuzzy match ("I am not a protected veteran" → "No, I am
-  // not a veteran") differs from the target — accept either. One more trap: the
+  // not a veteran") differs from the target, accept either. One more trap: the
   // input echoing back exactly what WE typed proves nothing (a click that lands
-  // nowhere leaves our filter text sitting there) — that echo only counts when
+  // nowhere leaves our filter text sitting there), that echo only counts when
   // the menu's dismissal corroborates that the selection landed.
   const committed = await waitFor(
     () => {
@@ -257,7 +257,7 @@ async function selectOne(
   );
   if (!committed) {
     restoreTyped();
-    return { filled: false, reason: "Selection didn't stick — select it manually" };
+    return { filled: false, reason: "Selection didn't stick. Select it manually" };
   }
   return { filled: true };
 }
@@ -272,7 +272,7 @@ export function activateElement(el: HTMLElement): void {
   const rect = el.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
-  // composed: true is essential — many ATS (Workday included) render the app in
+  // composed: true is essential, many ATS (Workday included) render the app in
   // an open shadow root, and frameworks delegate their click handling at the
   // document. A non-composed event bubbles only within the shadow tree, so the
   // button's real handler never runs and the page never advances. Real user
@@ -287,7 +287,7 @@ export function activateElement(el: HTMLElement): void {
   try {
     el.focus({ preventScroll: true }); // some handlers gate on focus first
   } catch {
-    // not focusable — the pointer/mouse sequence below still activates it
+    // not focusable, the pointer/mouse sequence below still activates it
   }
   firePointer(el, "pointerdown", cx, cy);
   el.dispatchEvent(mouse("mousedown", 1));
@@ -307,7 +307,7 @@ function firePointer(el: HTMLElement, type: string, cx = 0, cy = 0): void {
       })
     );
   } catch {
-    // jsdom rejects some PointerEvent inits — ignore; mouse events cover it.
+    // jsdom rejects some PointerEvent inits, ignore; mouse events cover it.
   }
 }
 
@@ -322,7 +322,7 @@ function close(trigger: HTMLElement): void {
     new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true, cancelable: true })
   );
   // Many widgets dismiss the popup on a pointer-down outside it rather than on
-  // Escape — fire one on <body> too. (Never re-activate the trigger: that would
+  // Escape: fire one on <body> too. (Never re-activate the trigger: that would
   // re-open a widget that opens, rather than toggles, on click.)
   const body = trigger.ownerDocument.body;
   if (body && trigger.getAttribute("aria-expanded") === "true") {
@@ -339,14 +339,14 @@ function clickOption(option: HTMLElement): void {
 function isTypeahead(trigger: HTMLElement): boolean {
   if (!(trigger instanceof HTMLInputElement)) return false;
   // Workday's searchBox has NO aria-autocomplete and an empty listbox until
-  // text is typed — opening it and reading options finds nothing.
+  // text is typed, opening it and reading options finds nothing.
   const testId = trigger.getAttribute("data-automation-id") ?? "";
   if (testId.toLowerCase().includes(WD_SEARCH_BOX_FRAGMENT.toLowerCase())) return true;
   const ac = (trigger.getAttribute("aria-autocomplete") || "").toLowerCase();
   return ac === "list" || ac === "both" || ac === "inline" || trigger.type === "text";
 }
 
-/** Cheap identity of a listbox's current options — change/settle detection. */
+/** Cheap identity of a listbox's current options, change/settle detection. */
 function optionsKey(listbox: HTMLElement | null): string {
   if (!listbox) return "";
   return deepQueryAll(listbox, '[role="option"]')
@@ -355,12 +355,12 @@ function optionsKey(listbox: HTMLElement | null): string {
 }
 
 /**
- * After typing a filter, poll for a MATCH — but stop as soon as the widget has
+ * After typing a filter, poll for a MATCH, but stop as soon as the widget has
  * given its final answer for this text. Async widgets (Workday's skills search,
  * SF's paginated picklists) repopulate a beat after the input event, so we keep
  * polling while the option list is still CHANGING; once it has reacted and gone
- * stable — or never reacts within the reaction window (a widget that doesn't
- * filter as you type) — burning the rest of the budget is pure user-visible
+ * stable, or never reacts within the reaction window (a widget that doesn't
+ * filter as you type), burning the rest of the budget is pure user-visible
  * dead time: the field sits there with our filter text looking half-filled.
  */
 async function pollForMatch(
@@ -385,7 +385,7 @@ async function pollForMatch(
       stablePolls = 0;
       lastKey = key;
     } else if (reacted && ++stablePolls >= 3) {
-      return null; // the filter answered and settled — no match in its final list
+      return null; // the filter answered and settled, no match in its final list
     }
     if (!reacted && elapsed >= reactionWindowMs) return null;
     if (elapsed >= budgetMs) return null;
@@ -425,7 +425,7 @@ function getListbox(trigger: HTMLElement): HTMLElement | null {
     if (lb && isVisible(lb) && hasOptions(lb)) return lb;
   }
   // A trigger that NAMES its listbox (aria-owns / aria-controls) must only ever
-  // use THAT listbox — never a neighbour's. SAP SuccessFactors renders each
+  // use THAT listbox, never a neighbour's. SAP SuccessFactors renders each
   // picklist's options into its own aria-owns'd <ul> a beat after opening;
   // falling back to "a visible listbox" here grabbed the previously-opened
   // field's still-open menu (race read gender's options, gender read the city
@@ -433,7 +433,7 @@ function getListbox(trigger: HTMLElement): HTMLElement | null {
   if (declared.length > 0) return null;
   // Fallback for widgets that declare no association. Prefer the menu inside the
   // trigger's OWN widget container (its own popup). Only then trust a document-
-  // wide portaled menu — and ONLY when it is UNAMBIGUOUS (exactly one open):
+  // wide portaled menu, and ONLY when it is UNAMBIGUOUS (exactly one open):
   // grabbing "the first visible listbox" lets a stale or neighbouring dropdown's
   // menu contaminate this field's options (the mixed-up-options bug). A wrong
   // option list is worse than none, so when it's ambiguous we return null.
@@ -449,11 +449,11 @@ function getListbox(trigger: HTMLElement): HTMLElement | null {
 }
 
 /** True when `lb` sits inside a widget wrapper that hosts a combobox trigger
- *  other than `trigger` — i.e. it's some other control's menu. */
+ *  other than `trigger`: i.e. it's some other control's menu. */
 function belongsToOtherWidget(lb: HTMLElement, trigger: HTMLElement): boolean {
   let node: HTMLElement | null = lb.parentElement;
   for (let hops = 0; node && node !== node.ownerDocument.body && hops < 8; hops++, node = node.parentElement) {
-    if (node.contains(trigger)) return false; // shared container — it's ours
+    if (node.contains(trigger)) return false; // shared container, it's ours
     const owner = node.querySelector('[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="dialog"]');
     if (owner && owner !== trigger) return true;
   }
@@ -486,7 +486,7 @@ function optionText(option: HTMLElement): string {
  * Whether the widget already DISPLAYS `value` as its committed selection.
  * Callers use it to skip re-driving an already-filled dropdown: re-driving a
  * react-select types into it, which visually ERASES the committed value and
- * re-picks it — the fill/remove/fill churn users see when a later pass
+ * re-picks it, the fill/remove/fill churn users see when a later pass
  * re-targets a field an earlier pass already filled.
  */
 export function comboboxDisplaysValue(trigger: HTMLElement, value: string): boolean {
@@ -494,7 +494,7 @@ export function comboboxDisplaysValue(trigger: HTMLElement, value: string): bool
 }
 
 /**
- * Read a combobox's option labels WITHOUT opening it — only when the listbox is
+ * Read a combobox's option labels WITHOUT opening it, only when the listbox is
  * already mounted in the DOM. Many widgets keep a hidden listbox; react-select
  * mounts it lazily on open, so this returns undefined there (the AI then answers
  * from the label alone). Visibility is ignored on purpose: a mounted-but-hidden
@@ -508,7 +508,7 @@ export function readComboboxOptions(trigger: HTMLElement): string[] | undefined 
 
 /**
  * Actively harvest a lazy combobox's options by briefly opening its menu and
- * closing it again — for widgets (react-select…) that mount the listbox only
+ * closing it again, for widgets (react-select…) that mount the listbox only
  * while open, where readComboboxOptions has nothing to read. Used to give the
  * missing-info modal the REAL choices for a dropdown nothing could answer.
  * Best-effort: returns undefined when no listbox appears; always closes what
@@ -555,7 +555,7 @@ function findMountedListbox(trigger: HTMLElement): HTMLElement | null {
   }
   // Same-container fallback: a listbox rendered next to the trigger (not a
   // document-wide search, which could grab an unrelated open menu at scan time).
-  // [role="combobox"] is intentionally excluded — the trigger is often that
+  // [role="combobox"] is intentionally excluded, the trigger is often that
   // element itself, and closest() would then return it (no listbox descendant).
   const container =
     trigger.closest('[class*="select" i], [class*="combobox" i]') ?? trigger.parentElement;
@@ -564,7 +564,7 @@ function findMountedListbox(trigger: HTMLElement): HTMLElement | null {
 }
 
 /**
- * The combobox's currently-displayed value, if one is committed — best-effort,
+ * The combobox's currently-displayed value, if one is committed, best-effort,
  * for scan-time "already answered?" detection.
  *
  * A button-style trigger (Workday's prompt) displays its selection AS its own
@@ -576,7 +576,7 @@ function findMountedListbox(trigger: HTMLElement): HTMLElement | null {
  *
  * It is read LAST and only from a button-like trigger, so an input-based widget
  * (react-select) is unaffected; and "Select One" is placeholder filler, so an
- * unset prompt still reads as empty — which is what keeps this from silently
+ * unset prompt still reads as empty, which is what keeps this from silently
  * suppressing the fill of a field nobody has answered.
  */
 export function readComboboxValue(trigger: HTMLElement): string | undefined {
@@ -613,20 +613,20 @@ function activeDescendantText(trigger: HTMLElement): string {
 const VALUE_DISPLAY_SELECTOR =
   '[class*="single-value" i], [class*="singlevalue" i], [class*="multi-value" i], [class*="multivalue" i], ' +
   // Chip/pill widgets (Workday's selectedItem, generic tag/token multiselects)
-  // show committed values outside any *-value class — without these a
+  // show committed values outside any *-value class, without these a
   // successful chip add verifies as "didn't stick".
   `[data-automation-id*="${WD_SELECTED_ITEM_FRAGMENT}" i], ` +
   '[class*="chip" i], [class*="pill" i], [class*="token" i]';
 
 /** Texts of react-select-style single/multi-value display elements near the trigger.
  *  The committed-value div is a COUSIN of the input (react-select: value-container
- *  > single-value + input-container > input), so `closest('[class*=select]')` —
- *  which stops at the innermost `select__input-container` — can never see it.
+ *  > single-value + input-container > input), so `closest('[class*=select]')`,
+ *  which stops at the innermost `select__input-container`: can never see it.
  *  Climb a few ancestors and query at each level until something shows. */
 function valueContainerTexts(trigger: HTMLElement): string[] {
   let node: HTMLElement | null = trigger.parentElement;
   for (let hops = 0; node && node !== node.ownerDocument.body && hops < 6; hops++, node = node.parentElement) {
-    // Climbed past our widget into a container holding other dropdowns — any
+    // Climbed past our widget into a container holding other dropdowns, any
     // value found from here would be a NEIGHBOR field's selection, not ours.
     if (node.querySelectorAll('[role="combobox"], [aria-haspopup="listbox"]').length > 1) break;
     const texts = Array.from(node.querySelectorAll(VALUE_DISPLAY_SELECTOR))
@@ -642,7 +642,7 @@ function valueContainerTexts(trigger: HTMLElement): string[] {
 // ---------------------------------------------------------------------------
 
 /** Whether the combobox's committed/displayed value reflects the target.
- *  `selfTyped` is the filter text WE typed into the input this run — when the
+ *  `selfTyped` is the filter text WE typed into the input this run, when the
  *  input still holds exactly that, it is our own echo, not commit evidence. */
 function comboboxShowsValue(trigger: HTMLElement, value: string, selfTyped?: string | null): boolean {
   const candidates: string[] = [];
@@ -652,7 +652,7 @@ function comboboxShowsValue(trigger: HTMLElement, value: string, selfTyped?: str
   if (trigger.tagName === "BUTTON") candidates.push(cleanText(trigger.textContent));
   // SAP SuccessFactors' rcmpaginatedselect commits the choice into the input's
   // `title` while leaving `value` empty and the placeholder ("No Selection")
-  // in place — so a successful selection read as "didn't stick" without this.
+  // in place, so a successful selection read as "didn't stick" without this.
   const title = cleanText(trigger.getAttribute("title"));
   if (title && !/^no selection$/i.test(title)) candidates.push(title);
   const active = activeDescendantText(trigger);
@@ -676,7 +676,7 @@ function isVisible(el: HTMLElement): boolean {
   if (el.hasAttribute("hidden")) return false;
   const style = el.ownerDocument.defaultView?.getComputedStyle(el);
   if (style && (style.display === "none" || style.visibility === "hidden")) return false;
-  // Computed style is per-element and does NOT reflect a display:none ANCESTOR —
+  // Computed style is per-element and does NOT reflect a display:none ANCESTOR,
   // intl-tel-input keeps its 244-option dial-code listbox mounted inside a hidden
   // dialog, and grabbing it cross-contaminates every dropdown on the page. A
   // rendered listbox always has client rects; a hidden-subtree one has none.

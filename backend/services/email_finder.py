@@ -1,5 +1,5 @@
 """
-EmailFinder — resolves work email addresses from LinkedIn profile URLs.
+EmailFinder, resolves work email addresses from LinkedIn profile URLs.
 
 Uses pattern matching (first.last@company.com) to generate candidate emails.
 """

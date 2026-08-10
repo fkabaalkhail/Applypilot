@@ -38,7 +38,7 @@ const TIERS: Tier[] = [
 ];
 
 /** Free + Pro pricing cards. Single source of truth for the home teaser and the
- *  /pricing page. Display-only — CTAs route to sign-up (billing is not wired). */
+ *  /pricing page. Display-only, CTAs route to sign-up (billing is not wired). */
 export default function PricingTiers({ variant = "full" }: { variant?: "teaser" | "full" }) {
   const navigate = useNavigate();
   return (
@@ -51,7 +51,7 @@ export default function PricingTiers({ variant = "full" }: { variant?: "teaser" 
           <ul className="pricing-features">
             {tier.features.map((f) => <li key={f}>✓ {f}</li>)}
           </ul>
-          {/* Billing is not wired yet — CTA routes to sign-up (display-only pricing). */}
+          {/* Billing is not wired yet, CTA routes to sign-up (display-only pricing). */}
           <button
             className={`${tier.featured ? "btn-cta btn-lg" : "btn-outline-lg"} w-full`}
             onClick={() => navigate("/sign-up")}

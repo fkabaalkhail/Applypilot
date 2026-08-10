@@ -1,6 +1,6 @@
 // REAL SAP SuccessFactors application markup, captured verbatim from
 // career2.successfactors.eu (Ericsson) on 2026-07-04 (scripts/handlers trimmed).
-// This is the actual `rcmpaginatedselect` widget — an input[role=combobox] whose
+// This is the actual `rcmpaginatedselect` widget, an input[role=combobox] whose
 // options render as <ul role=listbox><li role=option><a>…</a></li> and commit via
 // SF's `juic.fire(...,'_selectItem',N)`. It replaces the earlier fixture, which
 // (wrongly) modelled SF as UI5 shadow-DOM native <select> elements.

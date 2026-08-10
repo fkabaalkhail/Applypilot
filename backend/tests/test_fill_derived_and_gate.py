@@ -12,6 +12,8 @@ Isolated SQLite app; the LLM is mocked, so no network/key.
 """
 from unittest.mock import patch, AsyncMock
 
+from backend.tests.conftest import ANSWER_BATCH, COMPOSE_BATCH, batch_returning, questions_asked
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -31,7 +33,7 @@ TEST_USER_ID = 1
 app = FastAPI()
 app.include_router(fill.router, prefix="/api", tags=["fill"])
 
-_ANSWER = "backend.services.openai_service.OpenAIService.answer_question"
+_ANSWER = ANSWER_BATCH
 
 # An applicant who is unambiguously an adult, with a datable career.
 ADULT = {
@@ -92,7 +94,7 @@ def age_field(options=None):
 def test_18_plus_is_answered_from_the_profile_not_the_llm(client):
     """The proof that the path is deterministic: the LLM would say the opposite
     if it were ever consulted, and the derived pass answers before it can be."""
-    with patch(_ANSWER, AsyncMock(return_value="No")):
+    with patch(_ANSWER, batch_returning("No")):
         body = post(client, [age_field()])
     assert len(body["answers"]) == 1
     ans = body["answers"][0]
@@ -102,14 +104,14 @@ def test_18_plus_is_answered_from_the_profile_not_the_llm(client):
 
 def test_a_minor_is_answered_no_not_yes(client):
     minor = {**ADULT, "dateOfBirth": "2012-04-23"}
-    with patch(_ANSWER, AsyncMock(return_value="Yes")):
+    with patch(_ANSWER, batch_returning("Yes")):
         body = post(client, [age_field()], profile=minor)
     assert body["answers"][0]["answer"] == "No"
 
 
 def test_an_age_dropdown_with_prose_options_gets_the_right_option(client):
     options = ["I am 18 years of age or older", "I am under 18 years of age"]
-    with patch(_ANSWER, AsyncMock(return_value="")):
+    with patch(_ANSWER, batch_returning("")):
         body = post(client, [age_field(options)])
     assert body["answers"][0]["answer"] == "I am 18 years of age or older"
 
@@ -118,7 +120,7 @@ def test_without_a_dob_the_question_falls_through(client):
     """No DOB means the resolver abstains; the existing keyword rule still
     answers, and nothing is invented by the derived path."""
     no_dob = {k: v for k, v in ADULT.items() if k != "dateOfBirth"}
-    with patch(_ANSWER, AsyncMock(return_value="")):
+    with patch(_ANSWER, batch_returning("")):
         body = post(client, [age_field()], profile=no_dob)
     assert body["answers"][0]["fillPass"] == "rule"
 
@@ -127,7 +129,7 @@ def test_without_a_dob_the_question_falls_through(client):
 
 # "Please confirm your e-mail" is the vehicle for the AI-pass cases: the hyphen
 # means pass 1's `"email" in question` shortcut does not fire, so the question
-# genuinely reaches the AI pass — while the gate, which matches `e-?mail`, still
+# genuinely reaches the AI pass, while the gate, which matches `e-?mail`, still
 # knows the profile speaks to it.
 EMAIL_FIELD = {
     "id": "f1",
@@ -138,8 +140,8 @@ EMAIL_FIELD = {
 
 
 def test_an_ai_answer_contradicting_the_profile_is_dropped(client):
-    """The AI pass, gated by the same check — not by the prompt."""
-    with patch(_ANSWER, AsyncMock(return_value="someone.else@example.com")):
+    """The AI pass, gated by the same check, not by the prompt."""
+    with patch(_ANSWER, batch_returning("someone.else@example.com")):
         body = post(client, [EMAIL_FIELD])
     assert body["answers"] == []
     assert body["dropped"][0]["reason"] == "contradicts_profile:email"
@@ -148,7 +150,7 @@ def test_an_ai_answer_contradicting_the_profile_is_dropped(client):
 
 def test_the_matching_answer_survives_on_every_pass(client):
     """The gate refuses contradictions, not answers."""
-    with patch(_ANSWER, AsyncMock(return_value="ada@example.com")):
+    with patch(_ANSWER, batch_returning("ada@example.com")):
         body = post(client, [EMAIL_FIELD])
     assert body["answers"][0]["answer"] == "ada@example.com"
 
@@ -158,7 +160,7 @@ def test_a_rule_answer_that_the_widget_cannot_take_is_dropped(client):
     `"city" in question` shortcut matched inside "capaCITY", and the applicant's
     home city was proposed as the answer to a yes/no question. It reached the
     page; only the option match failed, and nothing had checked the value."""
-    with patch(_ANSWER, AsyncMock(return_value="__NO_ANSWER__")):
+    with patch(_ANSWER, batch_returning("__NO_ANSWER__")):
         body = post(
             client,
             [{
@@ -181,7 +183,7 @@ def test_a_rule_answer_that_the_widget_cannot_take_is_dropped(client):
 
 
 def test_every_drop_records_a_reason_and_never_the_value(client):
-    with patch(_ANSWER, AsyncMock(return_value="Gold")):
+    with patch(_ANSWER, batch_returning("Gold")):
         body = post(client, [{
             "id": "f1", "label": "Favourite metal?", "type": "select",
             "options": ["Silver", "Bronze"],

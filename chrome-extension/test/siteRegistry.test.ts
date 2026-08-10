@@ -21,7 +21,7 @@ describe("matchPattern", () => {
     expect(matchPattern("*://*.avature.net/*", "https://evil.com/avature.net")).toBe(false);
   });
 
-  it("a structurally invalid pattern never matches — not even the empty string", () => {
+  it("a structurally invalid pattern never matches, not even the empty string", () => {
     expect(matchPattern("not-a-pattern", "")).toBe(false);
     expect(matchPattern("not-a-pattern", "https://x.com/")).toBe(false);
   });

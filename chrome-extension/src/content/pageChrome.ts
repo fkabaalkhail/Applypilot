@@ -1,5 +1,5 @@
 /**
- * Page-chrome detection — header/nav/footer/aside landmarks are never part of
+ * Page-chrome detection: header/nav/footer/aside landmarks are never part of
  * an application form. Mirrors consent.ts / captcha.ts: the scanner skips these
  * controls entirely, so an EN/FR language switcher in the site header (a real
  * <select>) can never surface as an application field.
@@ -11,7 +11,7 @@ const CHROME_ROLES = new Set(["navigation", "banner", "contentinfo", "search", "
 /**
  * Ancestors of `el` in the composed tree, nearest first: the parentElement
  * chain, crossing open shadow-root boundaries via the host. (domUtils walks use
- * plain parentElement and would stop at a shadow root — SuccessFactors-style
+ * plain parentElement and would stop at a shadow root, SuccessFactors-style
  * UI5 widgets live inside them.)
  */
 export function composedAncestors(el: HTMLElement): HTMLElement[] {

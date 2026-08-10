@@ -1,5 +1,5 @@
 /**
- * Layer B — Write Correctness.
+ * Layer B: Write Correctness.
  *
  * Splits a fill into two primitives the reconciler drives independently:
  *   - writeControl(): one attempt to push a value into a live control, using
@@ -7,7 +7,7 @@
  *     change → blur so React/Vue/Angular register it as real user input.
  *   - verifyControl(): does the live DOM now reflect the intended value?
  *
- * Neither schedules timers or retries — that is Layer C's job. Keeping write
+ * Neither schedules timers or retries, that is Layer C's job. Keeping write
  * and verify separate is what lets the reconciler retry, detect drift and stay
  * idempotent (verify-before-write means an already-correct field is untouched).
  */
@@ -24,12 +24,12 @@ import type { RuntimeControl } from "./formScanner";
 export interface WriteResult {
   /** True when an attempt was actually made (control is writable and live). */
   written: boolean;
-  /** Why no attempt was made — unfillable control type, stale node, no match. */
+  /** Why no attempt was made, unfillable control type, stale node, no match. */
   reason?: string;
 }
 
-const UNFILLABLE = "Control cannot be scripted — handle manually";
-const STALE = "Field was removed — rescan the page";
+const UNFILLABLE = "Control cannot be scripted. Handle manually";
+const STALE = "Field was removed. Rescan the page";
 
 function isStale(el: HTMLElement | undefined): boolean {
   return !el || !el.isConnected;
@@ -135,7 +135,7 @@ function writeCheckbox(el: HTMLInputElement, value: string): WriteResult {
   if (isStale(el)) return { written: false, reason: STALE };
   const desired = parseDesiredBool(value);
   if (desired === null) return { written: false, reason: "Ambiguous checkbox value" };
-  // click() drives the framework's own handlers — safer than setting .checked.
+  // click() drives the framework's own handlers, safer than setting .checked.
   if (el.checked !== desired) el.click();
   return { written: true };
 }
@@ -170,7 +170,7 @@ function writeContentEditable(el: HTMLElement, value: string): WriteResult {
 }
 
 // ---------------------------------------------------------------------------
-// Verify — does the live DOM reflect the intended value?
+// Verify: does the live DOM reflect the intended value?
 // ---------------------------------------------------------------------------
 
 export function verifyControl(control: RuntimeControl, value: string): boolean {
@@ -178,7 +178,7 @@ export function verifyControl(control: RuntimeControl, value: string): boolean {
     case "password": {
       const el = control.el as HTMLInputElement | undefined;
       if (isStale(el)) return false;
-      return el!.value === value; // exact — never fuzzy-match a password
+      return el!.value === value; // exact, never fuzzy-match a password
     }
     case "text":
     case "textarea": {
@@ -234,7 +234,7 @@ export function verifyControl(control: RuntimeControl, value: string): boolean {
  * Whether the live string reflects what we wrote. Tolerant of whitespace and
  * framework reformatting (e.g. a phone field that turns "5551234567" into
  * "(555) 123-4567") so the reconciler does not loop reapplying a value the
- * framework legitimately reshaped — but still catches genuine mismatches.
+ * framework legitimately reshaped, but still catches genuine mismatches.
  */
 function valueReflects(written: string, current: string): boolean {
   const w = written.trim();
@@ -290,7 +290,7 @@ export function matchOption<T>(
 
   // Bucketed numeric options ("2-3 years", "$90,000-$110,000", "6+ years") all
   // reduce to the same handful of tokens ("years" / "000") once normalized, so
-  // generic token overlap can't tell them apart — it would always pick the
+  // generic token overlap can't tell them apart. It would always pick the
   // first bucket. The AI is told to answer with exact option text but often
   // answers conversationally with just the number ("about 3 years"); check
   // whether the target's number actually falls inside an option's range
@@ -305,7 +305,7 @@ export function matchOption<T>(
 
   // A bucketed-range option set that the range tier could not place the answer
   // in must FAIL here: the buckets normalize to the same tokens ("years",
-  // "000"), so token overlap would just select the first bucket — a confidently
+  // "000"), so token overlap would just select the first bucket, a confidently
   // wrong answer. No match lets the re-ask round supply the real options.
   if (items.filter((item) => parseRange(getText(item)) !== null).length >= 2) return null;
 
@@ -318,7 +318,7 @@ export function matchOption<T>(
       .filter((w) => w.length > 2);
     if (tokens.length === 0) continue;
     // A token overlaps on equality OR a >=5-char shared prefix ("canada" ↔
-    // "canadian") — AI answers often use a morphological variant of the option.
+    // "canadian"), AI answers often use a morphological variant of the option.
     const overlap = tokens.filter(
       (w) => targetSet.has(w) || targetTokens.some((tw) => sharedPrefixLen(w, tw) >= 5)
     ).length;
@@ -350,11 +350,11 @@ function firstNumber(text: string): number | null {
 /**
  * Parse a bucketed-range option label ("2-3 years", "$90,000-$110,000",
  * "6+ years", "Under 1 year") into an inclusive [min, max] (Infinity for an
- * open end) — or null when the text isn't a recognizable numeric range.
+ * open end), or null when the text isn't a recognizable numeric range.
  */
 function parseRange(text: string): [number, number] | null {
   // Strip thousands separators and currency symbols so "$50,000-$70,000"
-  // reads as "50000-70000" — a "$" between the dash and the second number
+  // reads as "50000-70000", a "$" between the dash and the second number
   // would otherwise break the separator match below.
   const cleaned = text.replace(/,/g, "").replace(/[$€£¥]/g, "");
   const between = cleaned.match(/(\d+(?:\.\d+)?)\s*(?:-|to|–|—)\s*(\d+(?:\.\d+)?)/i);
@@ -371,7 +371,7 @@ function matchSelectOption(el: HTMLSelectElement, value: string): HTMLOptionElem
   // Split-date pickers render Month / Day / Year as three separate <select>s
   // that often share one visual label ("Date of birth"), so the resolver hands
   // the SAME full date to each. Reduce it to the part this select expects before
-  // matching — a no-op for every non-date select (returns the value unchanged).
+  // matching, a no-op for every non-date select (returns the value unchanged).
   const target =
     reduceDateForOptions(value, options.map((o) => cleanText(o.textContent))) ?? value;
   return matchOption(options, (o) => cleanText(o.textContent), (o) => o.value, target);
@@ -387,7 +387,7 @@ type DatePart = "monthName" | "monthNum" | "day" | "year";
  */
 function reduceDateForOptions(value: string, optionTexts: string[]): string | null {
   const p = parseFlexibleDate(value);
-  if (!p) return null; // not a date answer — leave every other select untouched
+  if (!p) return null; // not a date answer, leave every other select untouched
   switch (classifyDatePartOptions(optionTexts)) {
     case "monthName":
       return MONTHS_FULL[Number(p.m) - 1] ?? null;
@@ -429,7 +429,7 @@ function matchRadio(radios: HTMLInputElement[], value: string): HTMLInputElement
   return matchOption(radios, labelOf, (r) => r.value, value);
 }
 
-// Native checkbox groups ("select all that apply") — a multi-select answer may
+// Native checkbox groups ("select all that apply"), a multi-select answer may
 // name one or more options; check each matching box (additive, never unchecks).
 function answerParts(value: string): string[] {
   const parts = value.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
@@ -456,7 +456,7 @@ function writeCheckboxGroup(checkboxes: HTMLInputElement[], value: string): Writ
   return { written: true };
 }
 
-// ARIA radio groups (role=radiogroup with role=radio divs) — selected by clicking
+// ARIA radio groups (role=radiogroup with role=radio divs), selected by clicking
 // the matching radio; the framework flips its aria-checked.
 function ariaRadiosOf(group: HTMLElement): HTMLElement[] {
   return Array.from(group.querySelectorAll('[role="radio"]')).filter(

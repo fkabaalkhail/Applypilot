@@ -26,7 +26,7 @@
 
 /* `safe center` is load-bearing, not a flourish. A plain `center` on a scrollable
    column pushes overflow out of BOTH ends once the content is taller than the
-   column — and scrollTop cannot go negative, so the top of a long step (the
+   column, and scrollTop cannot go negative, so the top of a long step (the
    first rows of Job Function) becomes permanently unreachable. `safe` falls back
    to start-alignment exactly when that would happen, and still centres the short
    steps. The unprefixed `center` below it is the fallback for old engines. */
@@ -103,11 +103,11 @@
 
 /* --- Stacked wizard (< 1024px) ------------------------------------------------
    The left column used to be `display: none` below 860px, which threw away the
-   headline — the only context a first-time user is given — and left the form
+   headline (the only context a first-time user is given) and left the form
    squeezed into a column that was still padded for a desktop. Below 1024px the
    two columns stack: the assistant becomes a band above the form, and the form
    gets the full width. `.setup-root` is position:fixed, so it (not `.setup-right`)
-   becomes the scroller — otherwise a form taller than the phone would put the
+   becomes the scroller, otherwise a form taller than the phone would put the
    Next button somewhere nothing scrolls to. */
 @media (max-width: 1023.98px) {
   .setup-root {

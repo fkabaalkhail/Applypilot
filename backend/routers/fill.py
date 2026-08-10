@@ -1,10 +1,11 @@
 """
-POST /api/fill — AI form-filling endpoint.
+POST /api/fill, AI form-filling endpoint.
 
 Takes form fields + resume context, returns AI-generated answers.
 Used by both the Plasmo extension and the React frontend.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -47,7 +48,7 @@ class FormField(BaseModel):
 
 
 class WorkPeriod(BaseModel):
-    """Structured dates for one role — what the derived-fact resolvers measure a
+    """Structured dates for one role, what the derived-fact resolvers measure a
     career from. The flattened ``experience`` lines stay as they are: they are
     prose for the LLM's context, and parsing prose is not arithmetic."""
     startDate: str = ""
@@ -84,7 +85,7 @@ class ApplicantProfile(BaseModel):
     # Screening answers the applicant stated once on their profile (2026-08-09
     # profile-parity contract). Every one is a FACT the user supplied, not an
     # assumption, which is what makes it safe to answer from without an LLM.
-    # Blank means "not answered" — every rule below abstains on a blank.
+    # Blank means "not answered": every rule below abstains on a blank.
     willingToRelocate: str = ""
     workPreference: str = ""
     noticePeriod: str = ""
@@ -130,7 +131,7 @@ class FieldAnswer(BaseModel):
 
 
 class DroppedAnswer(BaseModel):
-    """A value the gate refused. Carries no answer text — only why."""
+    """A value the gate refused. Carries no answer text, only why."""
     id: str
     label: str
     reason: str
@@ -156,7 +157,7 @@ def _rule_based_answer(label: str, options: list[str], settings, profile=None, c
     A keyword shortcut (e.g. "relocate" → "yes", "location" → city) is only
     valid when the answer can actually land in the field. For a field with a
     specific options list that is not a Yes/No control, the shortcut answer is
-    almost never one of the options — Lever's "What office(s) would you be
+    almost never one of the options, Lever's "What office(s) would you be
     willing to relocate to? (Select all that apply)" would otherwise get an
     unmatchable "yes". So when options are specific, we return the shortcut only
     if it snaps to an option, and otherwise defer to the option-aware AI pass.
@@ -188,7 +189,7 @@ def _raw_rule_based_answer(label: str, options: list[str], settings, profile=Non
     if any(kw in q for kw in ["18 years", "18 or older"]):
         return "Yes" if yes_no else "yes"
 
-    # "Have you worked here / are you a current or former employee?" — answer from
+    # "Have you worked here / are you a current or former employee?", answer from
     # the applicant's real experience: Yes only when this company is in it.
     if any(kw in q for kw in [
         "worked here", "work for us before", "current or former employee",
@@ -204,7 +205,7 @@ def _raw_rule_based_answer(label: str, options: list[str], settings, profile=Non
     # "earliest start date" both carry that block's keywords, and the city
     # answer would win the race and then be filtered out as unmatchable.
     #
-    # Each fires only when the profile actually holds the answer — a blank falls
+    # Each fires only when the profile actually holds the answer, a blank falls
     # through to the AI pass rather than being invented. That is the same line
     # test_assumption_rules_are_dropped draws: "are you willing to relocate?" is
     # a hardcoded guess when nobody said so, and a stated fact when they did.
@@ -232,7 +233,7 @@ def _raw_rule_based_answer(label: str, options: list[str], settings, profile=Non
         ]):
             return profile.earliestStartDate
         # "years of experience WITH Kubernetes" is a question about one skill,
-        # not a career total — the same narrowing guard derived_facts applies.
+        # not a career total, the same narrowing guard derived_facts applies.
         if (
             profile.yearsOfExperience
             and any(kw in q for kw in ["years of experience", "years experience", "yrs of experience"])
@@ -259,7 +260,7 @@ def _raw_rule_based_answer(label: str, options: list[str], settings, profile=Non
         ):
             return profile.languages
 
-    # Profile-based answers — request profile first, stored settings as fallback.
+    # Profile-based answers: request profile first, stored settings as fallback.
     first = (profile.firstName if profile else "") or (settings.first_name if settings else "")
     last = (profile.lastName if profile else "") or (settings.last_name if settings else "")
     email = (profile.email if profile else "") or (settings.email if settings else "")
@@ -280,6 +281,22 @@ def _raw_rule_based_answer(label: str, options: list[str], settings, profile=Non
         return linkedin or None
 
     return None
+
+
+def _render_question(field: FormField) -> str:
+    """One field as the model sees it: label plus whatever constrains the answer.
+
+    Shared by the batched and single-field paths so a field is described the same
+    way whichever one runs.
+    """
+    q = field.label
+    if field.inputType:
+        q += f"\nField type: {field.inputType}"
+    if field.helpText:
+        q += f"\nHelp text: {field.helpText}"
+    if field.options:
+        q += f"\nOptions: {', '.join(field.options)}"
+    return q
 
 
 def _profile_context(p: ApplicantProfile) -> str:
@@ -307,7 +324,7 @@ def _profile_context(p: ApplicantProfile) -> str:
     # Stated screening answers. Labelled with the same wording the profile
     # stores them under (the contract's prefilled_answers keys), so the prompt,
     # the storage and both UIs all name the same fact the same way. A blank is
-    # omitted entirely — the model is never shown "unknown" as if it were data.
+    # omitted entirely, the model is never shown "unknown" as if it were data.
     for label, value in (
         ("Willing to relocate", p.willingToRelocate),
         ("Work preference", p.workPreference),
@@ -348,7 +365,7 @@ _ESSAY_CUES = (
 def is_essay_question(field: FormField) -> bool:
     """True when a field is an open-ended essay prompt worth AI-composing.
 
-    Only long free-text controls are ever candidates — choice/short controls
+    Only long free-text controls are ever candidates, choice/short controls
     (select, radio, checkbox, number) keep the strict grounding path, so a
     factual screening question can never be routed into generative mode.
     """
@@ -374,7 +391,7 @@ async def fill_form(
     """
     settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
 
-    # Get resume text from DB if not provided — scoped to user
+    # Get resume text from DB if not provided, scoped to user
     resume_text = request.resumeText
     if not resume_text:
         resume = (
@@ -395,7 +412,7 @@ async def fill_form(
     def gated(field: FormField, value: str, source: str) -> Optional[GateResult]:
         """Run one candidate answer through the gate, recording a drop.
 
-        Every pass calls this — that is the whole point of the gate. Returns
+        Every pass calls this, that is the whole point of the gate. Returns
         None when the value was refused, in which case the field is left for
         the next pass (or, after pass 3, left blank for the gap modal).
         """
@@ -413,7 +430,7 @@ async def fill_form(
                 id=field.id, label=field.label, reason=verdict.reason, source=source
             ))
             logger.info(
-                "fill: dropped %s answer for %r — %s",
+                "fill: dropped %s answer for %r, %s",
                 source, field.label[:80], verdict.reason,
             )
             return None
@@ -455,7 +472,7 @@ async def fill_form(
         remaining.append(field)
 
     # Pass 2: AI generation for everything pass 1 left unanswered. Suggestions
-    # are returned for review (needsReview) and are never persisted — each fill
+    # are returned for review (needsReview) and are never persisted, each fill
     # re-derives its answers, so nothing carries over between applications.
     if remaining:
         try:
@@ -478,36 +495,62 @@ async def fill_form(
 
             context = "\n\n".join(context_parts)
 
-            for field in remaining:
-                try:
-                    q = field.label
-                    if field.inputType:
-                        q += f"\nField type: {field.inputType}"
-                    if field.helpText:
-                        q += f"\nHelp text: {field.helpText}"
-                    if field.options:
-                        q += f"\nOptions: {', '.join(field.options)}"
-                    if is_essay_question(field):
-                        raw = await llm.compose_answer(question=q, context=context)
-                    else:
-                        raw = await llm.answer_question(question=q, context=context)
+            # One call per group, not one per field. The context above, profile,
+            # résumé, job posting, is the bulk of each prompt and is identical
+            # for every field on the form, so asking field-by-field paid for it N
+            # times over. Splitting essays out is not just cost: the two groups
+            # obey different grounding contracts and run on different models.
+            short_qs: dict[str, str] = {}
+            essay_qs: dict[str, str] = {}
+            by_key: dict[str, FormField] = {}
+            for i, field in enumerate(remaining):
+                key = f"q{i + 1}"
+                by_key[key] = field
+                (essay_qs if is_essay_question(field) else short_qs)[key] = _render_question(field)
 
-                    # The gate owns every outcome here, including the grounding
-                    # sentinel (__NO_ANSWER__ → dropped as "no_answer") and the
-                    # option check. An essay is exempt from the option check
-                    # only in the sense that a textarea has no options.
-                    verdict = gated(field, raw, "ai")
-                    if verdict is None:
-                        continue
+            results: dict[str, str] = {}
+            failed_keys: set[str] = set()
+            gathered = await asyncio.gather(
+                llm.answer_questions_batch(short_qs, context),
+                llm.compose_answers_batch(essay_qs, context),
+                return_exceptions=True,
+            )
+            for group, group_qs, outcome in zip(
+                ("factual", "open-ended"), (short_qs, essay_qs), gathered
+            ):
+                if isinstance(outcome, BaseException):
+                    logger.warning("AI batch failed for %s fields: %s", group, outcome)
+                    errors.append(f"AI failed for {group} fields")
+                    failed_keys.update(group_qs)
+                else:
+                    results.update(outcome)
 
-                    answers.append(FieldAnswer(
-                        id=field.id, label=field.label, answer=verdict.value,
-                        confidence="medium", source="ai", needsReview=True,
-                        fillPass="ai",
+            # The gate owns every outcome here, including the grounding sentinel
+            # (__NO_ANSWER__ → dropped as "no_answer") and the option check. An
+            # essay is exempt from the option check only in the sense that a
+            # textarea has no options.
+            #
+            # An unanswered field is dropped with a reason that says WHY it is
+            # blank: "ai_error" when the call never returned, "no_answer" when the
+            # model answered the form but skipped this field. Telemetry reads
+            # these to tell a broken request from a grounded refusal, so
+            # collapsing them into one reason would send us after the wrong bug.
+            for key, field in by_key.items():
+                raw = results.get(key)
+                if raw is None:
+                    dropped.append(DroppedAnswer(
+                        id=field.id, label=field.label, source="ai",
+                        reason="ai_error" if key in failed_keys else "no_answer",
                     ))
-                except Exception as e:
-                    logger.warning("AI failed for field '%s': %s", field.label, e)
-                    errors.append(f"Failed: {field.label}")
+                    continue
+                verdict = gated(field, raw, "ai")
+                if verdict is None:
+                    continue
+                answers.append(FieldAnswer(
+                    id=field.id, label=field.label, answer=verdict.value,
+                    confidence="medium", source="ai", needsReview=True,
+                    fillPass="ai",
+                ))
         except Exception as e:
             logger.error("AI connection failed: %s", e)
             errors.append(f"AI unavailable: {e}")

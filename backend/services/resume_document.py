@@ -157,8 +157,8 @@ def db_record_to_document(record: Any) -> ResumeDocument:
     """Build a ``ResumeDocument`` from a ``ResumeProfileDB`` row or ResumeProfile.
 
     Only sections with content are emitted. They follow the record's own
-    ``section_order`` when it has one — that is the order the sections appeared in
-    the file the user uploaded — and a conventional order otherwise. Any section
+    ``section_order`` when it has one, that is the order the sections appeared in
+    the file the user uploaded, and a conventional order otherwise. Any section
     with content that ``section_order`` omits is still appended, so nothing is
     lost to a bad or stale ordering.
     """
@@ -231,7 +231,7 @@ def document_to_profile(doc: ResumeDocument, base: ResumeProfile) -> ResumeProfi
     """Fold a (possibly rewritten) document back into a ResumeProfile.
 
     ``base`` supplies every factual field; the document supplies the *content* the
-    AI is allowed to touch — summary text, skills, technology groups, and bullets —
+    AI is allowed to touch, summary text, skills, technology groups, and bullets,
     plus the new section order. Sections and items are matched by their semantic
     ids, so an item can never land under the wrong employer.
     """
@@ -318,7 +318,7 @@ def merge_rewrite(
 ) -> ResumeDocument:
     """Fold an LLM rewrite into the original document, structurally.
 
-    Only *content* is taken from ``edited`` — section summary text, the skills
+    Only *content* is taken from ``edited``, section summary text, the skills
     list, technology groups, and item bullets. Every factual field
     (header/contact, section type + title, item title/company/dates/detail/link,
     and all ids) is taken from ``original``, so the model can never invent
@@ -329,10 +329,10 @@ def merge_rewrite(
 
     Two structural moves ARE allowed, both safe:
 
-    - ``section_order`` — reorder the (existing) sections by id. Ids not listed
+    - ``section_order``, reorder the (existing) sections by id. Ids not listed
       are appended in their original relative order, so nothing is ever lost;
       unknown ids are ignored.
-    - ``new_summary`` — ``{"title", "text"}`` prepended as a ``summary`` section,
+    - ``new_summary``, ``{"title", "text"}`` prepended as a ``summary`` section,
       but only when the original has no ``summary``/``custom`` section (the one
       place new prose is allowed: a summary of the candidate's real content).
     """
@@ -363,7 +363,7 @@ def merge_rewrite(
                     ed_item = ed_sec.items[j]
                 if ed_item is not None and ed_item.bullets:
                     # Rewording a bullet is allowed; ADDING one is not. A bullet the
-                    # source never had is a claim the candidate never made — asked to
+                    # source never had is a claim the candidate never made, asked to
                     # evidence a listed skill, a model will happily write "Used React
                     # on this project" about a project that never used React. Extra
                     # bullets are dropped here, so an entry that needs more comes back
@@ -408,7 +408,7 @@ def describe_changes(original: ResumeDocument, final: ResumeDocument) -> list[st
 
     Ids are stable across ``merge_rewrite``, so we align sections/items by id and
     report only what actually differs. This is the source of truth for the UI's
-    "See what's changed" list — the model is never asked to self-report.
+    "See what's changed" list, the model is never asked to self-report.
     """
     changes: list[str] = []
     orig_ids = [s.id for s in original.sections]
@@ -492,7 +492,7 @@ def document_to_text(doc: ResumeDocument) -> str:
                 lines.append(f"{category}: {', '.join(items)}")
 
         for item in section.items:
-            heading = " — ".join(v for v in (item.title, item.subtitle) if v)
+            heading = ", ".join(v for v in (item.title, item.subtitle) if v)
             dates = " - ".join(v for v in (item.start_date, item.end_date) if v)
             head_line = "  ".join(v for v in (heading, dates) if v)
             if head_line:

@@ -7,7 +7,7 @@
  * drag-and-drop "dropzone" widgets (Greenhouse, Ashby, Workday) we simulate a
  * real drop with DataTransfer-carrying drag events.
  *
- * This never submits the form — it only attaches the file, exactly as if the
+ * This never submits the form. It only attaches the file, exactly as if the
  * user had picked it. Triggered by an explicit user click in the overlay.
  */
 import { flashHighlight } from "./domUtils";
@@ -34,7 +34,7 @@ export function base64ToFile(b64: string, name: string, type: string): File {
 
 /** Locate the real <input type=file> for a detected resume-upload control.
  *  Climbs from the control outward (nearest first) so it finds an input that is
- *  a sibling/uncle several levels up — SuccessFactors keeps its hidden file
+ *  a sibling/uncle several levels up, SuccessFactors keeps its hidden file
  *  input beside the visible upload button, not inside it. Bounded and stops at
  *  the form so it never reaches an unrelated field. */
 export function findFileInput(el: HTMLElement): HTMLInputElement | null {
@@ -45,7 +45,7 @@ export function findFileInput(el: HTMLElement): HTMLInputElement | null {
     ) ?? el.parentElement;
   for (let i = 0; node && i < 6; i++, node = node.parentElement) {
     // Workday's input is a SIBLING of the zone, so prefer the attribute match
-    // before the generic one — its classes are hashed and match nothing.
+    // before the generic one, its classes are hashed and match nothing.
     const wd = node.querySelector<HTMLInputElement>(`input${FILE_INPUT_SELECTOR}:not([disabled])`);
     if (wd) return wd;
     const input = node.querySelector<HTMLInputElement>('input[type="file"]:not([disabled])');
@@ -87,7 +87,7 @@ function tryAssign(input: HTMLInputElement, file: File): boolean {
       return true;
     }
   } catch {
-    // Some frameworks lock the input — caller falls back.
+    // Some frameworks lock the input, caller falls back.
   }
   return false;
 }
@@ -119,7 +119,7 @@ async function waitForRevealedInput(
  * Order: (1) a scriptable `<input type=file>` already present → assign via
  * DataTransfer; (2) a dropzone → simulate a drop; (3) a custom upload button
  * (SAP SuccessFactors) → click it to REVEAL its "Upload from device" input,
- * then assign to that — never clicking the device option itself, which would
+ * then assign to that, never clicking the device option itself, which would
  * open the OS dialog (this is how Jobright attaches on SF); (4) nothing
  * scriptable turned up → `manual`, so the caller can download the file for a
  * manual pick.
@@ -130,7 +130,7 @@ export async function injectResumeFile(
   opts: { revealWaitMs?: number; sleep?: (ms: number) => Promise<void> } = {}
 ): Promise<UploadResult> {
   if (!target.isConnected) {
-    return { ok: false, reason: "Upload field was removed — rescan the page." };
+    return { ok: false, reason: "Upload field was removed. Rescan the page." };
   }
   const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
 
@@ -146,7 +146,7 @@ export async function injectResumeFile(
       flashHighlight(dropzone);
       return { ok: true };
     } catch (err) {
-      return { ok: false, reason: err instanceof Error ? err.message : "Could not attach the file — upload manually." };
+      return { ok: false, reason: err instanceof Error ? err.message : "Could not attach the file. Upload manually." };
     }
   }
 
@@ -158,18 +158,18 @@ export async function injectResumeFile(
     return {
       ok: false,
       manual: true,
-      reason: "This site needs the résumé attached manually — auto-attach isn't available here.",
+      reason: "This site needs the résumé attached manually. Auto-attach isn't available here.",
     };
   }
 
-  // An upload zone without a recognised drop/attach class — try a drop.
+  // An upload zone without a recognised drop/attach class, try a drop.
   const zone = (target.closest("[class*='upload' i]") as HTMLElement) || target;
   try {
     simulateDrop(zone, file);
     flashHighlight(zone);
     return { ok: true };
   } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : "Could not attach the file — upload manually." };
+    return { ok: false, reason: err instanceof Error ? err.message : "Could not attach the file. Upload manually." };
   }
 }
 

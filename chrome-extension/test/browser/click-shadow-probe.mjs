@@ -35,7 +35,7 @@ const js = built.outputFiles[0].text;
 const results = [];
 const check = (label, ok, extra = "") => {
   results.push(ok);
-  console.log(`   ${ok ? "✅" : "❌"} ${label}${extra ? ` — ${extra}` : ""}`);
+  console.log(`   ${ok ? "✅" : "❌"} ${label}${extra ? `: ${extra}` : ""}`);
 };
 
 const browser = await chromium.launch();

@@ -40,7 +40,7 @@ async function run() {
   await sleep(2500);
 
   const overlay = await page.$("#applypilot-overlay-host");
-  if (!overlay) { console.log("overlay did not mount (no form detected) — stopping."); await ctx.close(); return; }
+  if (!overlay) { console.log("overlay did not mount (no form detected), stopping."); await ctx.close(); return; }
 
   // Drive the real overlay: open → (sample data if needed) → Autofill.
   await page.locator("#applypilot-overlay-host >> .ap-edge-tab").click({ timeout: 6000 }).catch(() => {});
@@ -101,7 +101,7 @@ async function run() {
 
   console.log(`Extension banner: "${banner}"`);
   console.log(`\nFilled (${analysis.filled.length}): ${analysis.filled.join(", ")}`);
-  console.log(`Still empty (${analysis.empty.length}): ${analysis.empty.join(", ") || "—"}`);
+  console.log(`Still empty (${analysis.empty.length}): ${analysis.empty.join(", ") || "-"}`);
   console.log(`>> MISSING required field(s): ${analysis.requiredEmpty.join(", ") || "none 🎉"}`);
   console.log(`Submit button present: ${analysis.submit ? `YES → "${analysis.submit}" (NOT clicked)` : "not found"}`);
   console.log(`\nscreenshot (green=filled, red=missing-required): ${path.join(SHOTS, TAG + ".png")}`);

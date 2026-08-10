@@ -1,4 +1,4 @@
-"""LLM service — uses OpenAIService (OpenAI Chat Completions)."""
+"""LLM service, uses OpenAIService (OpenAI Chat Completions)."""
 
 from backend.services.openai_service import OpenAIService
 

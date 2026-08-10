@@ -1,5 +1,5 @@
 """
-Local LinkedIn scraper — run this from your machine to scrape LinkedIn
+Local LinkedIn scraper, run this from your machine to scrape LinkedIn
 and push jobs to your deployed Tailrd API.
 
 Usage:
@@ -121,7 +121,7 @@ def parse_job_cards(html: str) -> list[Job]:
                         location = re.sub(r'<[^>]+>', '', raw).strip()
                         location = re.sub(r'\s+', ' ', location)
 
-            # Company logo — the card lazy-loads it via data-delayed-url (falls
+            # Company logo: the card lazy-loads it via data-delayed-url (falls
             # back to src). Capturing the real media.licdn.com image avoids the
             # name-guessed favicon that renders as a letter avatar downstream.
             logo = ""
@@ -130,7 +130,7 @@ def parse_job_cards(html: str) -> list[Job]:
             if logo_m:
                 logo = logo_m.group(1).replace("&amp;", "&")
 
-            # Posted date — <time datetime="YYYY-MM-DD">
+            # Posted date: <time datetime="YYYY-MM-DD">
             posted_date = ""
             date_m = re.search(r'datetime="(\d{4}-\d{2}-\d{2})"', card)
             if date_m:
@@ -208,7 +208,7 @@ def to_payload(job: Job) -> dict:
 
 async def push_batches(jobs: list[dict]) -> tuple[int, int, int, int]:
     """POST jobs to /jobs/ingest-batch in chunks. One request dedupes and
-    inserts a whole chunk — the old per-job /jobs/create loop cost one
+    inserts a whole chunk, the old per-job /jobs/create loop cost one
     (unauthenticated, always-401) request per job.
 
     Returns (created, duplicates, skipped, errors).

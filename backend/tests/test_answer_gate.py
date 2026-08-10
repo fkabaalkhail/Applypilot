@@ -106,7 +106,7 @@ def test_sponsorship_contradiction():
 
 def test_a_negated_sponsorship_question_is_left_alone():
     """"…work without sponsorship?" inverts the expected polarity, and reading
-    that off prose is guesswork — the gate declines rather than risk a drop."""
+    that off prose is guesswork, the gate declines rather than risk a drop."""
     p = ApplicantProfile(requiresSponsorship="No")
     assert check("Yes", "Are you able to work without sponsorship?", YES_NO, p).value == "Yes"
 

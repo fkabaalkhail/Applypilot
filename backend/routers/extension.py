@@ -8,7 +8,7 @@ something actually changed. The web app is the source of truth; every synced
 write bumps ``user_settings.data_version`` (see ``services/profile_version.py``),
 which is the ``version`` returned here.
 
-Large binaries (the original resume PDF/DOCX) are NOT inlined — the extension
+Large binaries (the original resume PDF/DOCX) are NOT inlined, the extension
 fetches them on demand from ``GET /resumes/{id}/file`` and caches them locally.
 
 Subscription + usage are returned as forward-compatible stubs (free tier) so the
@@ -196,7 +196,7 @@ def get_sync_version(
     user: User = Depends(get_verified_user),
     db: Session = Depends(get_db),
 ):
-    """Cheap staleness check — the extension polls this and only pulls the full
+    """Cheap staleness check, the extension polls this and only pulls the full
     snapshot when ``version`` changed."""
     version, updated_at = get_profile_version(db, user.id)
     return SyncVersionOut(version=version, updatedAt=_iso(updated_at))

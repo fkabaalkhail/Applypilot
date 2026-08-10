@@ -210,7 +210,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users(email);
 """
 
 # ---------------------------------------------------------------------------
-# Executable migration (optional — can run against the database directly)
+# Executable migration (optional: can run against the database directly)
 # ---------------------------------------------------------------------------
 
 def get_engine():

@@ -35,13 +35,13 @@ export default function Cookies() {
         </p>
         <ul>
           <li>
-            <strong>Essential authentication cookie</strong> — a secure, HttpOnly
+            <strong>Essential authentication cookie</strong>: a secure, HttpOnly
             cookie named <code>refresh_token</code> that keeps your session active
             so you don't have to sign in on every visit. It is scoped to our
             authentication endpoints and cannot be read by JavaScript.
           </li>
           <li>
-            <strong>Local storage</strong> — we store a short-lived access token
+            <strong>Local storage</strong>: we store a short-lived access token
             in your browser's local storage to authorize requests while you use
             the app. It is cleared when you sign out.
           </li>

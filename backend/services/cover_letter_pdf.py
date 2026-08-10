@@ -2,7 +2,7 @@
 Render a plain-text cover letter to PDF bytes with reportlab.
 
 Mirrors services/resume_pdf.py's reportlab/Platypus approach: clean, single
-column, real selectable text (ATS-friendly). Pure function — no DB, no network,
+column, real selectable text (ATS-friendly). Pure function, no DB, no network,
 no file I/O. Used by POST /api/render-cover-letter so the extension can attach a
 cover-letter PDF to a file field or download it.
 """

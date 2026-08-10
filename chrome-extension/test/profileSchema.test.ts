@@ -1,7 +1,7 @@
 /**
  * schema/applicant-profile.schema.json is the published contract for the data
  * the extension autofills from. It is hand-written, so it can silently drift
- * from src/shared/types.ts — these tests make that drift a build failure.
+ * from src/shared/types.ts, these tests make that drift a build failure.
  *
  * The validator here is deliberately tiny (types, required, additionalProperties,
  * $ref) rather than a full JSON Schema engine: enough to prove the sample data
@@ -67,7 +67,7 @@ function validate(value: unknown, node: Node, path = "$"): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// TypeScript interface reader — key names + which ones are optional
+// TypeScript interface reader: key names + which ones are optional
 // ---------------------------------------------------------------------------
 
 function interfaceKeys(name: string): { all: string[]; required: string[] } {

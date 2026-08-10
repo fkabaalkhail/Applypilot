@@ -2,8 +2,8 @@ import { createContext, forwardRef, useContext, useLayoutEffect, useRef, useStat
 import type { CSSProperties, RefObject } from "react";
 import type { ResumeDocument, Section, SectionItem, Theme } from "../lib/resumeDocument";
 
-// The ONE renderer. Everything visible — preview, PDF (printed from this exact
-// node), and the on-screen editor surface — comes from here, so they cannot
+// The ONE renderer. Everything visible, preview, PDF (printed from this exact
+// node), and the on-screen editor surface, comes from here, so they cannot
 // drift apart. All resume styling is inline (theme-driven) so the node is
 // self-contained and prints faithfully without external CSS.
 
@@ -13,7 +13,7 @@ const PAGE_DIMS: Record<Theme["page_size"], { width: string; minHeight: string }
 };
 
 // Print margins. The block (top/bottom) margin is padding on the page; the
-// inline (left/right) one is a margin on the content column inside it — see
+// inline (left/right) one is a margin on the content column inside it, see
 // the note on pageStyle. Together they reproduce the old `padding: 0.5in 0.6in`
 // exactly (verified box-for-box against the previous DOM).
 const PAGE_MARGIN = { block: "0.5in", inline: "0.6in" };
@@ -48,7 +48,7 @@ function markFigures(text: string, figures: string[]) {
     figures.includes(part) ? (
       <mark
         key={i}
-        title="Verify this figure — it was not found in your original resume"
+        title="Verify this figure: it was not found in your original resume"
         style={{ background: "#fed7aa", color: "inherit", borderRadius: "2px", padding: "0 1px" }}
       >
         {part}
@@ -292,7 +292,7 @@ export default ResumeRenderer;
  * A transform is a paint-time trick: the page keeps its 816px *layout* box, so
  * the wrapper has to clip it (`overflow: hidden`), and every ancestor measures a
  * page three times wider than the one on screen. `zoom` shrinks the layout box
- * itself — the wrapper needs no clipping and no hand-computed height, and the
+ * itself, the wrapper needs no clipping and no hand-computed height, and the
  * pane's measured width is finally the truth. Line breaking is identical to the
  * unscaled page at every scale, so the preview still matches the exported PDF.
  *

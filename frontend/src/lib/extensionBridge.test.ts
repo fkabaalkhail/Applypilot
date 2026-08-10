@@ -47,7 +47,7 @@ describe("pingExtension", () => {
 
   it("resolves not-installed when chrome reports lastError, even if a response is passed", async () => {
     // A reply that would otherwise mean "connected". If the implementation stopped
-    // reading lastError, this would resolve "connected" — that is the regression
+    // reading lastError, this would resolve "connected", that is the regression
     // this test exists to catch. (Reading lastError is what suppresses Chrome's
     // "Unchecked runtime.lastError" console warning for users with no extension.)
     setChrome((_id, _msg, cb) => cb({ ok: true, connected: true }), {

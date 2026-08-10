@@ -1,7 +1,7 @@
 /**
  * Application-form scoping. scanPage sweeps the whole document, so beyond page
- * chrome (pageChrome.ts) stray controls — footer newsletter signups, sidebar
- * widgets — still surface. This module finds THE application-form container and
+ * chrome (pageChrome.ts) stray controls, footer newsletter signups, sidebar
+ * widgets, still surface. This module finds THE application-form container and
  * callers drop fields outside it.
  *
  * Candidates: every <form> holding a recognized field, main/[role=main], and
@@ -58,7 +58,7 @@ export function resolveFormScope(entries: ScopeEntry[]): HTMLElement | null {
   return best?.el ?? null;
 }
 
-/** Entries kept under `scope` — outside entries are dropped whatever their
+/** Entries kept under `scope`: outside entries are dropped whatever their
  *  category (a footer newsletter email is noise even though "email" is known). */
 export function filterToScope(entries: ScopeEntry[], scope: HTMLElement): ScopeEntry[] {
   return entries.filter((e) => composedContains(scope, e.el));

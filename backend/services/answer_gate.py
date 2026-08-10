@@ -4,7 +4,7 @@ One gate every answer passes before it is returned to the client.
 The grounding contract used to live entirely in ``prompts/answer_question.txt``.
 A prompt can only constrain the model that reads it, so only the AI pass was
 ever checked: a rule-based shortcut reached the page without anything looking
-at it. That is not a contract that failed — it is a contract that was never
+at it. That is not a contract that failed. It is a contract that was never
 invoked on the non-model paths.
 
 Production evidence, 2026-08:
@@ -27,7 +27,7 @@ Three checks, in order:
   3. anything left                → kept, normalized to the option's own text.
 
 A dropped value leaves the field blank. The client skips a field with no
-answer, and the post-fill re-scan then offers it in the gap modal — the same
+answer, and the post-fill re-scan then offers it in the gap modal, the same
 route ``__NO_ANSWER__`` has always taken.
 """
 
@@ -48,7 +48,7 @@ NO_ANSWER = "__NO_ANSWER__"
 class GateResult:
     """`value` is None when the answer was dropped; `reason` says why.
 
-    `reason` is a short stable slug, never the answer text — it is logged, and
+    `reason` is a short stable slug, never the answer text. It is logged, and
     the privacy posture is that answers are never logged anywhere.
     """
     value: Optional[str]
@@ -118,7 +118,7 @@ _AUTHORIZED_RE = re.compile(
     re.IGNORECASE,
 )
 # A negated form flips the expected polarity, and working that out from prose is
-# guesswork — skip the check rather than risk dropping a correct answer.
+# guesswork, skip the check rather than risk dropping a correct answer.
 _NEGATED_RE = re.compile(r"\bwithout\b|\bnot\s+require\b|\bdo\s+not\b|\bn['’]t\b", re.IGNORECASE)
 
 
@@ -157,8 +157,8 @@ def _agrees(computed: str, answer: str, options: list[str]) -> bool:
 
     Lenient on purpose: this decides whether to DROP a value, so anything that
     could plausibly be the same answer is treated as agreement. Only a clear
-    disagreement — a different option, the opposite polarity, a different
-    number — refutes.
+    disagreement, a different option, the opposite polarity, a different
+    number, refutes.
     """
     if options:
         mapped = match_option(answer, options)
@@ -174,7 +174,7 @@ def _agrees(computed: str, answer: str, options: list[str]) -> bool:
     n_answer = _NUMBER_RE.search(answer)
     if n_computed and n_answer:
         return float(n_computed.group()) == float(n_answer.group())
-    # Nothing comparable — do not claim a contradiction we cannot demonstrate.
+    # Nothing comparable: do not claim a contradiction we cannot demonstrate.
     return True
 
 
@@ -195,7 +195,7 @@ def validate_answer(
 
     `enforce_options` exists for controls whose real choices are mounted lazily
     and were not harvested: `options` is then empty and there is nothing to
-    enforce, which the empty-list check already handles — the flag is for a
+    enforce, which the empty-list check already handles, the flag is for a
     caller that knows the list it holds is only a partial view.
     """
     value = (answer or "").strip().strip('"').strip()

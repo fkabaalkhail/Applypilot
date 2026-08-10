@@ -25,7 +25,7 @@ import type { SiteAdapter } from "./types";
 
 interface AtsSpec {
   id: string;
-  /** Anchored host test — the sole detection signal. */
+  /** Anchored host test: the sole detection signal. */
   host: RegExp;
   /** Optional extra url gate (rarely needed; host is usually enough). */
   url?: RegExp;

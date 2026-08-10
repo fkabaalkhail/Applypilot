@@ -12,7 +12,7 @@
  *  2. RENDERS BUT NEVER SAVES. A field can be added to the markup and left out
  *     of EditableProfileDraft / draftFromProfile / saveInfoEdits's diff, in
  *     which case it displays the value, accepts typing, and throws the edit
- *     away on Update — with no error anywhere. Every contract field is
+ *     away on Update, with no error anywhere. Every contract field is
  *     round-tripped below through the real UPDATE_PROFILE payload.
  */
 import { describe, it, expect } from "vitest";
@@ -63,10 +63,10 @@ const control = (host: HTMLElement, field: string): HTMLElement | null =>
   host.querySelector(`[data-field="${field}"]`);
 
 // ---------------------------------------------------------------------------
-// §C — exact labels
+// §C, exact labels
 // ---------------------------------------------------------------------------
 
-describe("contract §C — Personal tab labels", () => {
+describe("contract §C, Personal tab labels", () => {
   it("renders exactly the contract's Personal fields, in order", () => {
     expect(labels(section("personal"))).toEqual([
       "First Name",
@@ -84,7 +84,7 @@ describe("contract §C — Personal tab labels", () => {
 
   it("always renders LinkedIn / GitHub / Portfolio, even when blank", () => {
     // They used to be rendered only when already non-empty, so a user could
-    // never ADD a link they didn't have — the row simply wasn't there.
+    // never ADD a link they didn't have, the row simply wasn't there.
     const host = section("personal");
     for (const f of ["linkedin", "github", "portfolio"]) {
       expect(control(host, f), f).not.toBeNull();
@@ -99,7 +99,7 @@ describe("contract §C — Personal tab labels", () => {
   });
 });
 
-describe("contract §C — Preference tab labels", () => {
+describe("contract §C, Preference tab labels", () => {
   it("renders the three existing plus all eight screening answers", () => {
     expect(labels(section("preference"))).toEqual([
       "Work Authorization",
@@ -129,7 +129,7 @@ describe("contract §C — Preference tab labels", () => {
   });
 });
 
-describe("contract §C — Equal Employment tab labels", () => {
+describe("contract §C, Equal Employment tab labels", () => {
   it("renders the five original plus the three new demographics", () => {
     expect(labels(section("eeo"))).toEqual([
       "Gender",
@@ -145,10 +145,10 @@ describe("contract §C — Equal Employment tab labels", () => {
 });
 
 // ---------------------------------------------------------------------------
-// §D — exact option vocabularies
+// §D, exact option vocabularies
 // ---------------------------------------------------------------------------
 
-describe("contract §D — option vocabularies", () => {
+describe("contract §D, option vocabularies", () => {
   it("pins EEO_CHOICES byte-for-byte (twin: frontend/src/lib/profileExtras.ts EEO_OPTIONS)", () => {
     expect(EEO_CHOICES).toEqual({
       gender: ["Male", "Female", "Non-binary", "Prefer not to say"],
@@ -227,10 +227,10 @@ describe("contract §D — option vocabularies", () => {
 });
 
 // ---------------------------------------------------------------------------
-// §F — work experience is honest about staying on this device
+// §F, work experience is honest about staying on this device
 // ---------------------------------------------------------------------------
 
-describe("contract §F — device-local work experience says so", () => {
+describe("contract §F, device-local work experience says so", () => {
   it("tells the user those edits never reach the web app", () => {
     const text = section("experience").textContent ?? "";
     expect(text).toContain("stay on this device");
@@ -239,7 +239,7 @@ describe("contract §F — device-local work experience says so", () => {
 });
 
 // ---------------------------------------------------------------------------
-// §E — every rendered field actually saves
+// §E, every rendered field actually saves
 // ---------------------------------------------------------------------------
 
 /** Type into one modal control exactly the way the delegated input handler
@@ -273,12 +273,12 @@ const NEW_DEMOGRAPHICS: Record<string, string> = {
   sexualOrientation: "Bisexual",
 };
 
-describe("contract §E — every new field round-trips to UPDATE_PROFILE", () => {
+describe("contract §E, every new field round-trips to UPDATE_PROFILE", () => {
   it("sends every new scalar, one at a time, so no single field can be missed", () => {
     for (const [key, value] of Object.entries(NEW_SCALARS)) {
       const update = editAndSave({ [key]: value }) as Record<string, unknown>;
       expect(update[key], `${key} renders but never saves`).toBe(value);
-      // Only the edited key travels — a no-op field must not bump sync.
+      // Only the edited key travels, a no-op field must not bump sync.
       expect(Object.keys(update)).toEqual([key]);
     }
   });

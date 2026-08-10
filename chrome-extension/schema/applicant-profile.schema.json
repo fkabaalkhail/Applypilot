@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tailrd.ca/schema/applicant-profile.schema.json",
   "title": "Tailrd applicant profile",
-  "description": "The canonical user profile the extension autofills job applications from. Mirrors the TypeScript UserApplicationProfile in src/shared/types.ts and the payload of GET /api/user/application-profile. Every string field is REQUIRED but may be the empty string — the filler treats \"\" as \"no answer on file\" and skips the field rather than writing a blank, so a partially-complete profile is always valid.",
+  "description": "The canonical user profile the extension autofills job applications from. Mirrors the TypeScript UserApplicationProfile in src/shared/types.ts and the payload of GET /api/user/application-profile. Every string field is REQUIRED but may be the empty string. The filler treats \"\" as \"no answer on file\" and skips the field rather than writing a blank, so a partially-complete profile is always valid.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -35,12 +35,12 @@
     "email": { "type": "string", "description": "Contact email. Also the default username on ATS account-creation walls." },
     "phone": {
       "type": "string",
-      "description": "Phone number as the user writes it. Workday splits a number into three controls; only this one takes the digits — the dialing prompt takes the country name and the device type answers \"Mobile\" (see adapters/workdaySelectors.ts).",
+      "description": "Phone number as the user writes it. Workday splits a number into three controls; only this one takes the digits. The dialing prompt takes the country name and the device type answers \"Mobile\" (see adapters/workdaySelectors.ts).",
       "examples": ["+1 555 555 5555"]
     },
     "location": {
       "type": "string",
-      "description": "Free-text \"City, Region, Country\". The fallback source for addressCity and country when those are blank — the last comma segment is read as the country.",
+      "description": "Free-text \"City, Region, Country\". The fallback source for addressCity and country when those are blank. The last comma segment is read as the country.",
       "examples": ["Ottawa, ON, Canada"]
     },
     "addressStreet": { "type": "string", "description": "Street line of the mailing address." },
@@ -49,7 +49,7 @@
     "postalCode": { "type": "string", "description": "Postal / ZIP code." },
     "country": {
       "type": "string",
-      "description": "Country name, NOT an ISO code — ATS dropdowns list names (\"Canada\", and \"Canada (+1)\" for dialing prompts), and the option matcher resolves both from the name.",
+      "description": "Country name, NOT an ISO code. ATS dropdowns list names (\"Canada\", and \"Canada (+1)\" for dialing prompts), and the option matcher resolves both from the name.",
       "examples": ["Canada", "United States"]
     },
     "linkedin": { "type": "string", "description": "Full LinkedIn profile URL." },
@@ -100,12 +100,12 @@
     },
     "workPreference": {
       "type": "string",
-      "description": "Optional screening answer — the applicant's preferred work arrangement.",
+      "description": "Optional screening answer: the applicant's preferred work arrangement.",
       "examples": ["Remote", "Hybrid", "On-site", "No preference"]
     },
     "noticePeriod": {
       "type": "string",
-      "description": "Optional screening answer. Free text — how much notice the applicant must give their current employer.",
+      "description": "Optional screening answer. Free text: how much notice the applicant must give their current employer.",
       "examples": ["2 weeks", "1 month", "Immediate"]
     },
     "earliestStartDate": {
@@ -130,7 +130,7 @@
     },
     "languages": {
       "type": "string",
-      "description": "Optional screening answer — SPOKEN languages, not programming languages (those are `skills`).",
+      "description": "Optional screening answer: SPOKEN languages, not programming languages (those are `skills`).",
       "examples": ["English (Native), French (Professional)"]
     },
     "eeo": { "$ref": "#/$defs/eeoAnswers" }

@@ -1,7 +1,7 @@
 /**
  * Per-tab multi-page flow state, session-scoped so it dies with the browser.
  * The background owns it because content scripts learn their tab id only from
- * a message sender — they read/write via FLOW_STATE_GET / FLOW_STATE_SET.
+ * a message sender. They read/write via FLOW_STATE_GET / FLOW_STATE_SET.
  */
 import type { FlowState } from "../shared/types";
 

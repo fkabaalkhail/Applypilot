@@ -10,7 +10,7 @@ function elWithTestId(attr: string, value: string): HTMLElement {
   return el;
 }
 
-describe("collectSignals — developer test-ids", () => {
+describe("collectSignals, developer test-ids", () => {
   it("captures data-automation-id as testId", () => {
     expect(collectSignals(elWithTestId("data-automation-id", "legalNameSection_firstName")).testId).toBe(
       "legalNameSection_firstName"
@@ -26,7 +26,7 @@ describe("collectSignals — developer test-ids", () => {
   });
 });
 
-describe("classifyField — test-id drives classification when labels are absent", () => {
+describe("classifyField, test-id drives classification when labels are absent", () => {
   const classifyId = (id: string) => classifyField(collectSignals(elWithTestId("data-automation-id", id)));
 
   it("classifies a Workday first-name field from data-automation-id alone", () => {
@@ -57,7 +57,7 @@ function riProfile(): UserApplicationProfile {
   } as unknown as UserApplicationProfile;
 }
 
-describe("resolveProfileValue — index-aware repeating sections", () => {
+describe("resolveProfileValue, index-aware repeating sections", () => {
   const p = riProfile();
   const sel = { controlType: "text" as const };
   it("resolves an indexed education field to that education entry", () => {
@@ -83,7 +83,7 @@ describe("resolveProfileValue — index-aware repeating sections", () => {
   });
 });
 
-describe("resolveProfileValue — missing education/experience arrays", () => {
+describe("resolveProfileValue, missing education/experience arrays", () => {
   it("does not throw for education/experience categories when the profile lacks those arrays", () => {
     const bare = { firstName: "A", currentCompany: "", currentTitle: "" } as unknown as UserApplicationProfile;
     const sel = { controlType: "text" as const };

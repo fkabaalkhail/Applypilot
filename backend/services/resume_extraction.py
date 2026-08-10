@@ -1,8 +1,8 @@
 """
 Normalize raw LLM JSON into our typed resume schemas.
 
-Kept apart from the LLM transport so the mapping — which is where resume content
-was historically lost — can be tested directly against recorded model output.
+Kept apart from the LLM transport so the mapping, which is where resume content
+was historically lost, can be tested directly against recorded model output.
 
 Two entry points:
   ``build_profile(data)``          → ResumeProfile   (from analyze_resume)

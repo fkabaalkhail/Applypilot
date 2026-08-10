@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import "../privacy.css";
 
 /**
- * Public Support page (route: /support) — the Chrome Web Store listing's
+ * Public Support page (route: /support), the Chrome Web Store listing's
  * support URL points here. Same flat document layout as the Privacy page.
  */
 export default function Support() {
@@ -18,7 +18,7 @@ export default function Support() {
         <h1 className="legal-title">Support</h1>
         <p className="legal-lead">
           Questions, bug reports, or feedback about Tailrd or the Tailrd Chrome
-          extension — we read everything and reply as fast as we can.
+          extension. We read everything and reply as fast as we can.
         </p>
 
         <h2>Contact us</h2>
@@ -53,7 +53,7 @@ export default function Support() {
           </li>
           <li>
             <strong>Anything else acting oddly.</strong> Reload the page, or toggle the
-            extension off and on at <code>chrome://extensions</code> — then tell us about it
+            extension off and on at <code>chrome://extensions</code>, then tell us about it
             so we can fix the root cause.
           </li>
         </ul>

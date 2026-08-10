@@ -24,7 +24,7 @@ beforeEach(() => {
  * genuine DOM is detected + classified correctly (a prerequisite for filling);
  * the live commit is exercised by browser verification.
  */
-describe("SuccessFactors rcmpaginatedselect — real DOM", () => {
+describe("SuccessFactors rcmpaginatedselect, real DOM", () => {
   function fields() {
     document.body.innerHTML = successFactorsEeoHtml();
     return scanPage(MOCK_PROFILE, true).fields; // fillEEO=true: user opted into EEO

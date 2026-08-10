@@ -9,7 +9,7 @@ A configuration-driven, framer-motion-based product tour for first-time users.
   `POST /auth/me/onboarding`; mid-tour progress is kept in `localStorage`
   (`tailrd_tour_progress`) so a refresh resumes at the same step.
 - Steps are pure data in `tourConfig.tsx`. The engine (`engine/*`) renders the
-  spotlight and tooltip and is the ONLY place that imports framer-motion — swap
+  spotlight and tooltip and is the ONLY place that imports framer-motion, swap
   it without touching app code.
 
 ## Add or edit a step
@@ -29,7 +29,7 @@ Edit `tourConfig.tsx` only:
 ```
 
 Then add `data-tour="my-element"` to the target element. `data-tour` attributes
-are the stable contract — restyling/renaming classes won't break the tour.
+are the stable contract, restyling/renaming classes won't break the tour.
 
 ## Resilience
 - Missing target after ~2s → step is skipped (warns in dev only).

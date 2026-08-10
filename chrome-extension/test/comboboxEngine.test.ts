@@ -13,7 +13,7 @@ const instant = async (): Promise<void> => {};
 const fast = { sleep: instant, openWaitMs: 200, commitWaitMs: 200, pollMs: 10 };
 
 // The engine now requires a rendered box (getClientRects) before it trusts a
-// listbox — a hidden-subtree listbox (e.g. a closed dial-code picker) must never
+// listbox, a hidden-subtree listbox (e.g. a closed dial-code picker) must never
 // be driven. jsdom has no layout, so give elements real boxes like a browser.
 let restoreLayout: () => void;
 beforeAll(() => {
@@ -29,7 +29,7 @@ beforeEach(() => {
  * A react-select-style combobox: an <input role="combobox"> whose menu is
  * rendered (optionally in a body portal) on mousedown, commits the choice on
  * option mousedown, then shows it in `.select__single-value` and unmounts the
- * menu — the exact lifecycle that defeats a plain `.value =` write.
+ * menu, the exact lifecycle that defeats a plain `.value =` write.
  */
 function reactSelect(
   options: string[],
@@ -88,7 +88,7 @@ function reactSelect(
 
 /** A SuccessFactors rcmpaginatedselect: an <input role=combobox aria-owns=…>
  *  that opens a <ul role=listbox><li role=option><a> on click and, on select,
- *  commits the label into the input's `title` (NOT its value — SF leaves the
+ *  commits the label into the input's `title` (NOT its value, SF leaves the
  *  "No Selection" placeholder in place). Reproduces the "didn't stick" false
  *  negative. */
 function sfPicklist(options: string[]): HTMLInputElement {
@@ -160,7 +160,7 @@ function buttonListbox(options: string[]): HTMLButtonElement {
 }
 
 /** A combobox whose listbox is ALREADY mounted (optionally hidden), referenced
- *  by aria-controls — what readComboboxOptions reads without opening. */
+ *  by aria-controls, what readComboboxOptions reads without opening. */
 function staticCombobox(
   options: string[],
   opts: { value?: string; hidden?: boolean } = {}
@@ -223,7 +223,7 @@ describe("isAriaCombobox", () => {
   });
 });
 
-describe("fillAriaCombobox — react-select style", () => {
+describe("fillAriaCombobox, react-select style", () => {
   it("opens the menu and selects the matching option", async () => {
     const el = reactSelect(["United States", "Canada", "Mexico"]);
     const res = await fillAriaCombobox(el, "Canada", fast);
@@ -269,7 +269,7 @@ describe("fillAriaCombobox — react-select style", () => {
   });
 });
 
-describe("fillAriaCombobox — button[aria-haspopup=listbox]", () => {
+describe("fillAriaCombobox, button[aria-haspopup=listbox]", () => {
   it("opens and selects via the button trigger", async () => {
     const btn = buttonListbox(["United States", "Canada", "Mexico"]);
     const res = await fillAriaCombobox(btn, "Mexico", fast);
@@ -278,7 +278,7 @@ describe("fillAriaCombobox — button[aria-haspopup=listbox]", () => {
   });
 });
 
-describe("fillAriaCombobox — guards", () => {
+describe("fillAriaCombobox, guards", () => {
   it("reports failure for a disconnected trigger", async () => {
     const el = document.createElement("input");
     el.setAttribute("role", "combobox");
@@ -291,7 +291,7 @@ describe("fillAriaCombobox — guards", () => {
     const el = document.createElement("input");
     el.setAttribute("role", "combobox");
     el.setAttribute("aria-expanded", "false");
-    document.body.append(el); // connected but inert — no listbox ever appears
+    document.body.append(el); // connected but inert, no listbox ever appears
     const res = await fillAriaCombobox(el, "Canada", fast);
     expect(res.filled).toBe(false);
   });
@@ -456,7 +456,7 @@ function citizenshipCombobox(): HTMLElement {
   return input;
 }
 
-describe("fillAriaCombobox — option harvest on miss", () => {
+describe("fillAriaCombobox, option harvest on miss", () => {
   it("returns the real options when no option matches the value", async () => {
     const trigger = citizenshipCombobox();
     const res = await fillAriaCombobox(trigger, "Netherlands", fast);
@@ -472,7 +472,7 @@ describe("fillAriaCombobox — option harvest on miss", () => {
   });
 });
 
-describe("fillAriaCombobox — never drives another widget's listbox (dial-code regression)", () => {
+describe("fillAriaCombobox, never drives another widget's listbox (dial-code regression)", () => {
   /** A decoy dial-code picker à la intl-tel-input: its own trigger + a mounted
    *  listbox full of countries, all inside one widget container. */
   function itiDecoy(opts: { hidden?: boolean } = {}): HTMLElement {
@@ -528,9 +528,9 @@ describe("fillAriaCombobox — never drives another widget's listbox (dial-code 
   });
 });
 
-describe("fillAriaCombobox — commit honesty", () => {
+describe("fillAriaCombobox, commit honesty", () => {
   it("reports failure when the click commits nothing, even though the menu closed", async () => {
-    // A widget whose option click closes the menu but never writes a value —
+    // A widget whose option click closes the menu but never writes a value,
     // previously reported as filled because "collapsed" counted as committed.
     const control = document.createElement("div");
     control.className = "select__control";
@@ -563,7 +563,7 @@ describe("fillAriaCombobox — commit honesty", () => {
   });
 });
 
-describe("fillAriaCombobox — over-filter recovery", () => {
+describe("fillAriaCombobox, over-filter recovery", () => {
   it("clears the typed filter and matches on the full list when filtering yields nothing", async () => {
     // Substring-filtering widget: "I am not a protected veteran" filters the
     // list to zero options; the engine must clear the text and match the full
@@ -671,7 +671,7 @@ describe("SuccessFactors rcmpaginatedselect (commits via title)", () => {
 
   it("reads its OWN aria-owns'd listbox, never a lingering neighbour's", async () => {
     // A previous field's menu is still open (gender: Male/Female) while we fill
-    // race — whose own listbox mounts a beat later. The engine must wait for
+    // race, whose own listbox mounts a beat later. The engine must wait for
     // race's declared listbox, not grab the visible gender one (the SF bug).
     const genderInput = document.createElement("input");
     genderInput.setAttribute("role", "combobox");
@@ -791,7 +791,7 @@ describe("multi-select combobox (skills / tags)", () => {
   });
 });
 
-describe("fillAriaCombobox — async type-to-filter (paginated picklists)", () => {
+describe("fillAriaCombobox, async type-to-filter (paginated picklists)", () => {
   /** An SF-style paginated picklist: mounts page 1 (alphabetical) on open; the
    *  target option only appears after the filter text is typed, and the
    *  filtered options arrive ASYNCHRONOUSLY (server round-trip). Commits the
@@ -854,7 +854,7 @@ describe("fillAriaCombobox — async type-to-filter (paginated picklists)", () =
   });
 
   it("restores the typed filter text when the selection never commits", async () => {
-    // Typing surfaces a clickable option, but the widget never commits a value —
+    // Typing surfaces a clickable option, but the widget never commits a value,
     // the typed filter must not remain in the field, where it reads as an answer.
     const input = document.createElement("input");
     input.type = "text";
@@ -880,7 +880,7 @@ describe("fillAriaCombobox — async type-to-filter (paginated picklists)", () =
         const li = document.createElement("li");
         li.setAttribute("role", "option");
         li.textContent = "Quebec";
-        lb.append(li); // clicking it does nothing — the commit never happens
+        lb.append(li); // clicking it does nothing, the commit never happens
       }
     });
     const res = await fillAriaCombobox(input, "Quebec", { openWaitMs: 300, commitWaitMs: 200, pollMs: 20 });
@@ -889,7 +889,7 @@ describe("fillAriaCombobox — async type-to-filter (paginated picklists)", () =
   });
 });
 
-describe("fillAriaCombobox — Workday multiselect (Type to Add Skills)", () => {
+describe("fillAriaCombobox, Workday multiselect (Type to Add Skills)", () => {
   /** Workday's skills widget: input inside a multiselectInputContainer, server
    *  suggestions arrive async after typing ("No Items." when nothing matches),
    *  each selection becomes a chip and clears the input. */
@@ -960,12 +960,12 @@ describe("fillAriaCombobox — Workday multiselect (Type to Add Skills)", () => 
   });
 });
 
-describe("fillAriaCombobox — no dead-time on settled filters", () => {
+describe("fillAriaCombobox, no dead-time on settled filters", () => {
   it("gives up quickly once a filtering widget settles with no match", async () => {
     // A synchronous keyup filter over options that never contain the target:
     // each typed attempt settles immediately, so the engine must NOT burn the
     // full per-attempt budget re-polling a list that already gave its final
-    // answer — that dead time is what reads as "types text, stares, erases it".
+    // answer, that dead time is what reads as "types text, stares, erases it".
     const input = document.createElement("input");
     input.type = "text";
     input.setAttribute("role", "combobox");

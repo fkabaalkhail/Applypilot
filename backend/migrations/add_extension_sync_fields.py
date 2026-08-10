@@ -20,7 +20,7 @@ Creates / reconciles table:
     prod converge on the same shape.
 
 Idempotent: skips columns/tables/indexes that already exist. Safe to run on
-every boot. Additive only — no data is dropped, so rollback is trivial.
+every boot. Additive only, no data is dropped, so rollback is trivial.
 """
 
 import logging
@@ -77,7 +77,7 @@ def run_migration() -> None:
     # --- cover_letters table ----------------------------------------------------
     # Create it only when truly absent (fresh / prod). The raw Postgres DDL
     # (SERIAL, NOW()) must never reach SQLite, so we guard on the inspector
-    # rather than CREATE TABLE IF NOT EXISTS — in tests create_all() has already
+    # rather than CREATE TABLE IF NOT EXISTS, in tests create_all() has already
     # built the table from the model, so this branch is skipped there.
     if "cover_letters" not in tables:
         with engine.begin() as conn:

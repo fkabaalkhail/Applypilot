@@ -104,7 +104,7 @@ describe("SetupWizard", () => {
       expect.objectContaining({
         job_title: "Software Engineering",
         regions: ["CA"],
-        // Canonical value — the spelling scraped_jobs actually stores.
+        // Canonical value: the spelling scraped_jobs actually stores.
         experience_levels: ["internship"],
         prefilled_answers: expect.objectContaining({ job_types: "full_time" }),
       }),

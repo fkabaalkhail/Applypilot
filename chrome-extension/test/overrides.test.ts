@@ -28,7 +28,7 @@ const base: Classification = { category: "unknown", confidence: 0, sensitive: fa
 
 afterEach(() => clearOverrideRules());
 
-describe("overrides — server hot-fix classification", () => {
+describe("overrides, server hot-fix classification", () => {
   it("forces a category when host + label match", () => {
     setOverrideRules([rule("greenhouse.io", "work authorization", "workAuthorization")], "boards.greenhouse.io");
     const out = applyOverride(ctx({ label: "Work Authorization Status" }), base);

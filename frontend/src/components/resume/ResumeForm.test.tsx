@@ -8,7 +8,7 @@ const make = (over: Partial<ResumeProfile> = {}): ResumeProfile => ({
   ...emptyProfile(), name: "Ada Lovelace", summary: "Engineer.", ...over,
 });
 
-describe("ResumeForm — shell, basics, summary", () => {
+describe("ResumeForm: shell, basics, summary", () => {
   it("shows the name and edits it through onChange", () => {
     const onChange = vi.fn();
     render(<ResumeForm profile={make()} report={null} onChange={onChange} onFlagClick={() => {}} />);
@@ -32,7 +32,7 @@ describe("ResumeForm — shell, basics, summary", () => {
   });
 });
 
-describe("ResumeForm — experience & education", () => {
+describe("ResumeForm: experience & education", () => {
   it("renders a role and edits its title", () => {
     const onChange = vi.fn();
     const profile = make({
@@ -66,7 +66,7 @@ describe("ResumeForm — experience & education", () => {
   });
 });
 
-describe("ResumeForm — projects, skills, technologies, custom", () => {
+describe("ResumeForm: projects, skills, technologies, custom", () => {
   it("edits a skill chip list", () => {
     const onChange = vi.fn();
     render(<ResumeForm profile={make({ skills: ["TypeScript"] })} report={null} onChange={onChange} onFlagClick={() => {}} />);
@@ -98,7 +98,7 @@ describe("ResumeForm — projects, skills, technologies, custom", () => {
   });
 });
 
-describe("ResumeForm — finding flags", () => {
+describe("ResumeForm: finding flags", () => {
   it("shows a section's findings and fires onFlagClick with the severity", () => {
     const onFlagClick = vi.fn();
     const report: AnalysisReport = {

@@ -51,7 +51,7 @@ def test_the_model_cannot_add_a_bullet():
     """The fabrication guard.
 
     A live run caught the rewriter inventing "Utilized React for the frontend" on a project
-    that only ever said Python — it was trying to satisfy a "skills not evidenced" finding.
+    that only ever said Python. It was trying to satisfy a "skills not evidenced" finding.
     A bullet the source never had is a claim the candidate never made, so extra bullets are
     dropped here, exactly as an invented employer would be.
     """

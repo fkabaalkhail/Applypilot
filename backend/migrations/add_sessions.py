@@ -4,12 +4,12 @@ Migration: Sessions registry (Connected Devices).
 Creates the ``sessions`` table backing per-device session tracking + revocation:
 
   - id (PK)
-  - sid (unique, indexed)   — stable session id across refresh rotation
-  - user_id (FK users.id)   — owner
-  - client                  — "web" | "extension"
+  - sid (unique, indexed), stable session id across refresh rotation
+  - user_id (FK users.id), owner
+  - client, "web" | "extension"
   - created_at / last_seen_at (TIMESTAMP)
-  - revoked_at (TIMESTAMP, nullable)  — set on revoke; null = active
-  - last_ip / user_agent    — captured raw at creation, no parsing
+  - revoked_at (TIMESTAMP, nullable), set on revoke; null = active
+  - last_ip / user_agent, captured raw at creation, no parsing
 
 Idempotent + additive: guard on the inspector so raw Postgres DDL never reaches
 SQLite (tests build the table from the model via create_all()).

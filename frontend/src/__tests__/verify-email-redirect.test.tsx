@@ -3,11 +3,11 @@ import { render, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 // --- Mocks ---------------------------------------------------------------
-// api default export — the pending page polls GET /auth/me.
+// api default export, the pending page polls GET /auth/me.
 const apiGet = vi.fn();
 vi.mock("../auth/api", () => ({ default: { get: (...a: unknown[]) => apiGet(...a), post: vi.fn() } }));
 
-// useAuth — pending page only reads user.email + resendVerification.
+// useAuth, pending page only reads user.email + resendVerification.
 vi.mock("../auth/useAuth", () => ({
   useAuth: () => ({ user: { email: "test@example.com" }, resendVerification: vi.fn() }),
 }));

@@ -4,11 +4,13 @@ A select/radio takes one of ITS options or nothing. These pin what the AI pass
 does with an answer the model phrased conversationally: snap it to the real
 option when it genuinely names one (including range buckets, where a plain
 contains-check cannot tell "2-3 years" from "4-5 years"), and drop it with a
-reason when it names none — never silently fall back to options[0].
+reason when it names none, never silently fall back to options[0].
 
 Isolated SQLite app; OpenAIService.answer_question is mocked, so no network/key.
 """
 from unittest.mock import patch, AsyncMock
+
+from backend.tests.conftest import ANSWER_BATCH, COMPOSE_BATCH, batch_returning, questions_asked
 
 import pytest
 from fastapi import FastAPI
@@ -29,7 +31,7 @@ TEST_USER_ID = 1
 app = FastAPI()
 app.include_router(fill.router, prefix="/api", tags=["fill"])
 
-_ANSWER = "backend.services.openai_service.OpenAIService.answer_question"
+_ANSWER = ANSWER_BATCH
 
 
 @pytest.fixture(autouse=True)
@@ -70,7 +72,7 @@ def test_ai_answer_dropped_when_no_option_matches(client):
     This used to return the unmatched answer and let the client fuzzy-match it.
     The client's matcher is a mirror of the backend's (writeEngine.matchOption),
     so an answer the backend cannot place is one the page could not have taken
-    either — it only ever became a "No option matches" write failure. Dropping
+    either. It only ever became a "No option matches" write failure. Dropping
     it here says so once, with a reason, and routes the field to the gap modal.
 
     The original point of this test still holds and is asserted: the answer is
@@ -84,7 +86,7 @@ def test_ai_answer_dropped_when_no_option_matches(client):
             "options": ["Select…", "Silver", "Bronze"],
         }]
     }
-    with patch(_ANSWER, AsyncMock(return_value="Gold")):
+    with patch(_ANSWER, batch_returning("Gold")):
         resp = client.post("/api/fill", json=body)
     assert resp.status_code == 200
     payload = resp.json()
@@ -103,7 +105,7 @@ def test_ai_answer_snaps_to_a_matching_option(client):
             "options": ["Select…", "Silver", "Bronze"],
         }]
     }
-    with patch(_ANSWER, AsyncMock(return_value="silver")):
+    with patch(_ANSWER, batch_returning("silver")):
         resp = client.post("/api/fill", json=body)
     assert resp.status_code == 200
     ans = resp.json()["answers"][0]
@@ -122,7 +124,7 @@ def test_ai_answer_snaps_to_a_numeric_range_bucket(client):
             "options": ["0-1 years", "2-3 years", "4-5 years", "6+ years"],
         }]
     }
-    with patch(_ANSWER, AsyncMock(return_value="I have approximately 3 years of experience")):
+    with patch(_ANSWER, batch_returning("I have approximately 3 years of experience")):
         resp = client.post("/api/fill", json=body)
     assert resp.status_code == 200
     ans = resp.json()["answers"][0]
@@ -138,7 +140,7 @@ def test_ai_answer_snaps_to_a_salary_range_bucket(client):
             "options": ["$50,000-$70,000", "$70,000-$90,000", "$90,000-$110,000", "$110,000+"],
         }]
     }
-    with patch(_ANSWER, AsyncMock(return_value="My expected salary is around $95,000")):
+    with patch(_ANSWER, batch_returning("My expected salary is around $95,000")):
         resp = client.post("/api/fill", json=body)
     assert resp.status_code == 200
     ans = resp.json()["answers"][0]

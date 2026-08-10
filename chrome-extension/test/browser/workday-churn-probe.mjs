@@ -1,6 +1,6 @@
 /**
- * Reproduces the #1 live Workday failure from prod telemetry — "Field no longer
- * found — rescan the page" — where the multi-page flow lands on a form that is
+ * Reproduces the #1 live Workday failure from prod telemetry, "Field no longer
+ * found (rescan the page") where the multi-page flow lands on a form that is
  * still a loading skeleton and swaps in the real labelled fields a beat later.
  * Filling during that churn captures throwaway controls (or nothing), so the
  * real fields end up empty.
@@ -27,7 +27,7 @@ const html = (body) =>
 const PAGES = {
   "/start": html(`<h1>Software Engineer</h1><a href="/form" id="apply">Apply Now</a>`),
   // A form that mounts as a loading skeleton and swaps in the REAL labelled
-  // fields 700ms later — Workday's skeleton→real render, which the fill races.
+  // fields 700ms later, Workday's skeleton→real render, which the fill races.
   "/form": html(`
     <h1>My Information</h1>
     <form action="/done" method="get">
@@ -35,7 +35,7 @@ const PAGES = {
       <button type="submit">Submit application</button>
     </form>
     <script>
-      // Real Workday re-renders the form section repeatedly as it hydrates —
+      // Real Workday re-renders the form section repeatedly as it hydrates,
       // each render REPLACES the input nodes (new elements). A fill in flight
       // during this window is left holding detached controls / stale ids.
       var real =
@@ -105,7 +105,7 @@ async function togglePanel(sw, prefix) {
 const results = [];
 const check = (label, ok, extra = "") => {
   results.push(ok);
-  console.log(`   ${ok ? "✅" : "❌"} ${label}${extra ? ` — ${extra}` : ""}`);
+  console.log(`   ${ok ? "✅" : "❌"} ${label}${extra ? `: ${extra}` : ""}`);
 };
 
 async function main() {

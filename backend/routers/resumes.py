@@ -1,10 +1,10 @@
 """
 Resume upload and parsing endpoints.
 
-POST /resumes/upload — accepts PDF or DOCX, extracts text, analyzes via Claude,
+POST /resumes/upload, accepts PDF or DOCX, extracts text, analyzes via Claude,
 stores profile in DB, returns typed ResumeProfile.
-GET /resumes — list all resumes for the current user.
-GET /resumes/{id} — get full resume detail including profile and analysis report.
+GET /resumes, list all resumes for the current user.
+GET /resumes/{id}, get full resume detail including profile and analysis report.
 """
 
 import datetime
@@ -43,7 +43,7 @@ router = APIRouter()
 def _record_to_profile(record: ResumeProfileDB) -> ResumeProfile:
     """The one place a DB row becomes a ResumeProfile.
 
-    Every section the parser can extract has to be listed here — a field missed
+    Every section the parser can extract has to be listed here, a field missed
     here is a section the user silently loses.
     """
     return ResumeProfile(
@@ -138,7 +138,7 @@ def set_primary_resume(
     db.commit()
     db.refresh(record)
 
-    # The active resume changed — sync it to the extension.
+    # The active resume changed: sync it to the extension.
     bump_profile_version(db, user_id)
 
     return _record_to_detail(record)
@@ -186,7 +186,7 @@ async def improve_resume(
     """Rewrite a resume against its own analysis report.
 
     Returns a *preview*: the improved profile plus a deterministic list of what
-    changed. Nothing is persisted — the client applies it with PUT /resumes/{id}
+    changed. Nothing is persisted, the client applies it with PUT /resumes/{id}
     once the user accepts. Every factual field is re-imposed from the stored
     record by ``merge_rewrite``, so the rewrite can reword but never invent.
     """
@@ -256,7 +256,7 @@ async def download_resume_file(
             )
         except Exception as e:  # noqa: BLE001
             logger.warning(
-                "Fresh render failed for resume %s (%s) — serving the stored original", resume_id, e
+                "Fresh render failed for resume %s (%s), serving the stored original", resume_id, e
             )
 
     if not record.file_blob_url:
@@ -335,7 +335,7 @@ def update_resume(
         if "section_order" in sent:
             record.section_order = profile.section_order
 
-        # The document's content diverged from the uploaded file — from now on
+        # The document's content diverged from the uploaded file, from now on
         # the file download renders the current document (see download_resume_file).
         record.content_updated_at = datetime.datetime.utcnow()
 
@@ -343,7 +343,7 @@ def update_resume(
     db.commit()
     db.refresh(record)
 
-    # Profile fields may have changed — sync to the extension.
+    # Profile fields may have changed, sync to the extension.
     bump_profile_version(db, user_id)
 
     return _record_to_detail(record)
@@ -402,13 +402,13 @@ async def upload_resume(
         profile = await llm.analyze_resume(raw_text)
     except Exception as e:
         logger.warning("AI analysis failed (will save raw text): %s", e)
-        # Don't fail the upload — save with basic info extracted from text
+        # Don't fail the upload: save with basic info extracted from text
         from backend.schemas.resume import ResumeProfile as RP
         profile = RP(name=file.filename.rsplit(".", 1)[0] if file.filename else "")
 
     # Store the original file so the extension can auto-upload it into ATS
     # forms later. Best-effort: a None result (e.g. Blob not configured) just
-    # means this resume has no downloadable file — parsing still succeeds.
+    # means this resume has no downloadable file, parsing still succeeds.
     blob = await blob_storage.upload_resume(content, filename, file.content_type or "", user_id)
 
     # Persist to DB
@@ -473,7 +473,7 @@ async def upload_resume(
             # Share the sweep's score cache: whichever of the two runs first
             # for a (user, job, resume) triple pays the LLM; the other reads
             # the receipt. Without this, every upload re-buys scores the cron
-            # already owns — and the cron re-buys these within the hour.
+            # already owns, and the cron re-buys these within the hour.
             fingerprint = _resume_fingerprint(raw_text)
             cached: dict[int, int] = {}
             if jobs_to_score:

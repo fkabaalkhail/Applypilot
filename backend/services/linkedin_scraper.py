@@ -1,5 +1,5 @@
 """
-LinkedIn Public Job Scraper — uses LinkedIn's guest jobs API to find
+LinkedIn Public Job Scraper, uses LinkedIn's guest jobs API to find
 intern/new-grad/co-op positions in major Canadian cities.
 
 The guest API at /jobs-guest/jobs/api/seeMoreJobPostings/search returns

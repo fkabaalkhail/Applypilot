@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* Sizing rules for every AI modal:
-   · `dvh`, not `vh` — on a phone `vh` measures the viewport with the URL bar
+   · `dvh`, not `vh`: on a phone `vh` measures the viewport with the URL bar
      retracted, so a 90vh modal is taller than the screen you can actually see
      and the footer CTA lands under the fold.
    · the viewport minus a 2rem gutter, never a bare percentage of it, so the
@@ -127,7 +127,7 @@
 /* ---- Footer CTA bar ---- */
 /* Five buttons in a nowrap row need ~630px. On a phone that put the primary CTA
    ("Apply Now" / "Attach to application") off the right edge of a fixed overlay
-   with nothing to scroll to it — the action was simply unreachable. The row
+   with nothing to scroll to it, the action was simply unreachable. The row
    wraps now, and the footer grows while the body (flex:1, min-height:0) gives up
    the space, so the CTA stays pinned above the fold. */
 .ai-modal-foot {
@@ -255,7 +255,7 @@
   gap: 16px;
 }
 /* Grid items default to min-width:auto, and this one holds a <select> whose only
-   option is a 55-character filename — without this the column refuses to shrink. */
+   option is a 55-character filename, without this the column refuses to shrink. */
 .ai-ov-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .ai-ov-eyebrow { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .ai-ov-name { font-size: 0.95rem; font-weight: 700; color: var(--text); }
@@ -625,7 +625,7 @@
   gap: 18px;
   align-items: start;
 }
-/* Holds the scaled résumé page — it must be free to shrink so FittedResume gets
+/* Holds the scaled résumé page. It must be free to shrink so FittedResume gets
    a truthful width to scale into. */
 .ai-doc-wrap {
   background: var(--bg-page);

@@ -1,6 +1,6 @@
 /**
  * DOM helpers used by the scanner, matcher and autofill engine.
- * No Chrome APIs in here — pure DOM, easy to unit test later.
+ * No Chrome APIs in here, pure DOM, easy to unit test later.
  */
 import { UNLABELED_FIELD, isMachineId } from "../shared/questionText";
 
@@ -24,7 +24,7 @@ export function reattachIfDetached(node: HTMLElement, parent: ParentNode): boole
 /**
  * The extension's own in-page UI host (the side panel). Its shadow root holds
  * real form controls (a cover-letter tone <select>, résumé pickers, EEO inputs)
- * that are NOT page fields — deepQueryAll must never descend into it, or the
+ * that are NOT page fields, deepQueryAll must never descend into it, or the
  * scanner counts our own UI as the page's form and a bare job posting reads as a
  * filled form (so the flow never clicks Apply).
  */
@@ -34,7 +34,7 @@ export const EXTENSION_UI_HOST_IDS = new Set(["applypilot-overlay-host"]);
  * querySelectorAll that also descends into open shadow roots AND same-origin
  * iframes. Several ATS embed their form in an iframe (Greenhouse/Lever boards)
  * or render widgets inside shadow DOM. Cross-origin iframes throw on access and
- * are skipped silently — those frames run their own copy of the content script.
+ * are skipped silently, those frames run their own copy of the content script.
  * The extension's own UI hosts are skipped entirely (see EXTENSION_UI_HOST_IDS).
  */
 export function deepQueryAll(root: ParentNode, selector: string): HTMLElement[] {
@@ -43,7 +43,7 @@ export function deepQueryAll(root: ParentNode, selector: string): HTMLElement[] 
   const visit = (node: ParentNode): void => {
     node.querySelectorAll(selector).forEach((el) => out.push(el as HTMLElement));
     node.querySelectorAll("*").forEach((el) => {
-      // Never traverse into our own panel / modal — its controls aren't page
+      // Never traverse into our own panel / modal, its controls aren't page
       // fields and must never be scanned, matched, or clicked by the flow.
       if (el instanceof HTMLElement && EXTENSION_UI_HOST_IDS.has(el.id)) return;
       const shadow = (el as HTMLElement).shadowRoot;
@@ -66,7 +66,7 @@ function sameOriginDocument(iframe: HTMLIFrameElement): Document | null {
   try {
     return iframe.contentDocument;
   } catch {
-    return null; // cross-origin — accessing contentDocument throws
+    return null; // cross-origin, accessing contentDocument throws
   }
 }
 
@@ -81,13 +81,13 @@ export function isVisible(el: HTMLElement): boolean {
   if (isClipHidden(style)) return false;
   // Zero- or sub-pixel-area boxes are invisible companions, not fields: react-select
   // renders a hidden `<input required>` twin (height:0, opacity:0) purely so native
-  // form validation fires, and honeypots use a ~1px clipped box — typing into either
+  // form validation fires, and honeypots use a ~1px clipped box, typing into either
   // churns the widget / trips bot detection. A genuine field has a real rendered box.
   return Array.from(el.getClientRects()).some((r) => r.width > 1 && r.height > 1);
 }
 
 /**
- * The "visually hidden" clip trick — used for sr-only content and, critically,
+ * The "visually hidden" clip trick, used for sr-only content and, critically,
  * for bot-trap honeypot inputs: a `clip: rect(1px,1px,1px,1px)` (or `rect(0,…)`)
  * or a zero-area `clip-path` collapses the box to nothing while leaving it in the
  * layout (so `getClientRects` still reports a ~1px box).
@@ -97,7 +97,7 @@ function isClipHidden(style: CSSStyleDeclaration): boolean {
     style.clipPath || (style as unknown as { webkitClipPath?: string }).webkitClipPath || "";
   if (clipPath && clipPath !== "none") {
     const cp = clipPath.trim();
-    // polygon(0px 0px, 0px 0px, …) — every vertex at the origin ⇒ zero area.
+    // polygon(0px 0px, 0px 0px, …), every vertex at the origin ⇒ zero area.
     if (/^polygon\((?:\s*0(?:px|%)?\s+0(?:px|%)?\s*,?)+\)$/.test(cp)) return true;
     // inset(50%…)/inset(100%…) collapse the box from the edges inward.
     if (/^inset\(\s*(?:100|[5-9]\d)(?:\.\d+)?%/.test(cp)) return true;
@@ -126,7 +126,7 @@ export function isHiddenButLabeled(el: HTMLElement): boolean {
 
 /** Resolve aria-labelledby into text. Nodes INSIDE the control itself are
  *  skipped: widgets (react-aria, Radix) point aria-labelledby at their own
- *  value/placeholder span, whose text is "Select…" — the current selection,
+ *  value/placeholder span, whose text is "Select…", the current selection,
  *  never the question. */
 function ariaLabelledByText(el: HTMLElement): string {
   const ids = el.getAttribute("aria-labelledby");
@@ -157,7 +157,7 @@ export function associatedLabelText(el: HTMLElement): string {
 
 /**
  * Placeholder / "no selection yet" filler that a dropdown shows before the user
- * picks — e.g. react-select's `<div class="select__placeholder">Select…</div>`.
+ * picks, e.g. react-select's `<div class="select__placeholder">Select…</div>`.
  * This is NEVER the field's question, but it commonly sits as a sibling of the
  * inner combobox input, so nearbyText would otherwise grab it as the label (and
  * the classifier would then see "select" instead of "Country"/"Gender"). We
@@ -191,7 +191,7 @@ export function nearbyText(el: HTMLElement): string {
         text = cleanText(sib.textContent);
       }
       // Long blobs are paragraphs/descriptions, not labels; placeholder filler
-      // ("Select…") is not a label either — skip both and keep scanning.
+      // ("Select…") is not a label either, skip both and keep scanning.
       if (text && text.length <= 160 && !isPlaceholderFiller(text)) return text;
       sib = sib.previousSibling;
       hops++;
@@ -202,14 +202,14 @@ export function nearbyText(el: HTMLElement): string {
 }
 
 /**
- * A "form field block": the wrapper an ATS emits around ONE field — its
+ * A "form field block": the wrapper an ATS emits around ONE field, its
  * question and its control together.
  *
  * Deliberately restricted to markers that are proven to wrap exactly one field.
  * `data-automation-id="formField-*"` and `data-fkit-id` are Workday's, and
  * `test/fixtures/workdayReal.ts` (captured verbatim from a live tenant) shows
  * one per field: `formField-countryPhoneCode`, `formField-phoneType`,
- * `formField-source`. That same capture is why `[role="group"]` is NOT here —
+ * `formField-source`. That same capture is why `[role="group"]` is NOT here,
  * there it wraps a whole SECTION, and a section's heading is not this field's
  * question.
  */
@@ -217,7 +217,7 @@ const FIELD_BLOCK_SELECTOR =
   '[data-automation-id^="formField" i], [data-fkit-id], fieldset';
 
 /**
- * A control that could own a question of its own — as opposed to the widget
+ * A control that could own a question of its own, as opposed to the widget
  * plumbing an ATS renders beside its real control. Workday's prompt ships a bare
  * `<input type="text">` mirror carrying no name, id, or ARIA: it is machinery,
  * not a field, and must not stop the climb below.
@@ -240,7 +240,7 @@ function isRealControl(node: Element): boolean {
  * no OTHER real control appears.
  *
  * The stop condition is what keeps this honest. Climbing blind would eventually
- * reach a section — or the page — and hand this field its neighbour's question.
+ * reach a section (or the page) and hand this field its neighbour's question.
  * Stopping at the first ancestor that adds text of its own means the widget's
  * empty nesting divs are climbed through and nothing beyond the field is.
  */
@@ -259,7 +259,7 @@ function implicitBlockOf(el: HTMLElement): HTMLElement | null {
   return null;
 }
 
-/** The field block `el` sits in — nearest wins, so a block nested in a section
+/** The field block `el` sits in, nearest wins, so a block nested in a section
  *  resolves to the block. Falls back to a structural block when the page marks
  *  up none; null when even that cannot be decided. */
 function fieldBlockOf(el: HTMLElement): HTMLElement | null {
@@ -272,12 +272,12 @@ function fieldBlockOf(el: HTMLElement): HTMLElement | null {
  * This is the signal that reaches what `nearbyText` structurally cannot. A
  * Workday prompt nests its button three `<div>`s below the block (verbatim in
  * the capture), and `nearbyText` climbs three ancestors looking at PREVIOUS
- * SIBLINGS — so it runs out of climb exactly one level short of the block whose
+ * SIBLINGS: so it runs out of climb exactly one level short of the block whose
  * first child is the `<label>`. That is how a self-identification question fell
  * through to the widget's own aria-label and then to its raw id.
  *
  * `aria-hidden` subtrees are skipped because they are not part of any accessible
- * name — which also drops Workday's `<abbr aria-hidden="true">*</abbr>` required
+ * name, which also drops Workday's `<abbr aria-hidden="true">*</abbr>` required
  * marker, so the question reads as "Gender Identity", not "Gender Identity*".
  */
 function blockQuestionText(block: HTMLElement, el: HTMLElement): string {
@@ -307,7 +307,7 @@ function blockQuestionText(block: HTMLElement, el: HTMLElement): string {
   if (text && text.length <= 300 && !isPlaceholderFiller(text)) return text;
 
   // The question sits OUTSIDE the block (a heading above it). nearbyText from
-  // the block — not from the control — is the one that can see it.
+  // the block (not from the control) is the one that can see it.
   return nearbyText(block);
 }
 
@@ -320,7 +320,7 @@ function blockQuestionText(block: HTMLElement, el: HTMLElement): string {
  * ("How Did You Hear About Us? Select One Required") and, from production,
  * without one ("Select One Required", "Yes Required"). Stripping the trailing
  * value and "Required" therefore both RECOVERS a real question when one is
- * there and yields "" when the attribute is pure boilerplate — which is the
+ * there and yields "" when the attribute is pure boilerplate, which is the
  * honest answer, and stops "Yes Required" from being asked as a question.
  */
 function ariaLabelQuestion(el: HTMLElement, ariaLabel: string): string {
@@ -351,8 +351,8 @@ function isChoiceWidget(el: HTMLElement): boolean {
 
 /**
  * Custom dropdowns (react-select, Headless UI, Workday button-listboxes…) nest
- * the operable control — a tiny `role="combobox"` input or an
- * `aria-haspopup="listbox"` button — several layers inside a widget wrapper, and
+ * the operable control, a tiny `role="combobox"` input or an
+ * `aria-haspopup="listbox"` button, several layers inside a widget wrapper, and
  * the field's real `<label>` sits as a sibling of that WRAPPER, not the inner
  * control. Label discovery run from the inner control never climbs far enough
  * (and trips over the "Select…" placeholder on the way). So for combobox-like
@@ -374,7 +374,7 @@ function dropdownWidgetHost(el: HTMLElement): HTMLElement {
       nodeRole === "combobox" ||
       nodeRole === "listbox" ||
       (node.getAttribute("aria-haspopup") || "").toLowerCase() === "listbox";
-    if (!isWidget) break; // reached the field container — its sibling is the label
+    if (!isWidget) break; // reached the field container, its sibling is the label
     host = node;
     node = node.parentElement;
   }
@@ -390,9 +390,9 @@ export interface FieldSignals {
   nameAttr: string;
   idAttr: string;
   autocomplete: string;
-  /** Native input type ("email", "tel", "url"…) — a strong category hint. */
+  /** Native input type ("email", "tel", "url"…), a strong category hint. */
   typeHint: string;
-  /** Developer-assigned test ids (Workday's data-automation-id, data-testid…) —
+  /** Developer-assigned test ids (Workday's data-automation-id, data-testid…),
    *  stable semantic anchors when labels are generic or missing. */
   testId: string;
 }
@@ -413,7 +413,7 @@ function testIdOf(el: HTMLElement): string {
 
 /**
  * A drag-and-drop / "Select file" upload widget hides its real <input type=file>
- * behind a styled zone, and the input itself is usually unlabeled — the
+ * behind a styled zone, and the input itself is usually unlabeled, the
  * describing text ("Upload your resume", "Drop file here") lives on the
  * surrounding zone. True when `el` is the hidden file input of such a widget,
  * so the scanner can still surface it (Workday, Greenhouse, Ashby dropzones).
@@ -436,7 +436,7 @@ export function isUploadAffordance(el: HTMLElement): boolean {
 }
 
 /**
- * Describing text of the upload widget wrapping a hidden file input — e.g.
+ * Describing text of the upload widget wrapping a hidden file input, e.g.
  * Workday's "Upload your resume…" heading, which sits a wrapper or two ABOVE the
  * drop zone, not on the input. Climbs ancestors and returns the first container
  * that names a document (resume/CV/cover letter); else the nearest small wrapper.
@@ -473,7 +473,7 @@ export function collectSignals(el: HTMLElement): FieldSignals {
   const ariaLabel = ariaLabelQuestion(el, cleanText(el.getAttribute("aria-label")));
   // For a custom dropdown that carries NO programmatic label of any kind, the
   // text sitting right before the widget IS its question (that's how the form
-  // reads visually) — promote it to the reliable `label` signal. Without this it
+  // reads visually), promote it to the reliable `label` signal. Without this it
   // would only land in weak `nearby` (0.6) and fall below the autofill bar (0.7),
   // so the field is classified yet never filled (country/gender/disability on
   // Greenhouse). Gated on the absence of every real label signal so a widget that
@@ -483,7 +483,7 @@ export function collectSignals(el: HTMLElement): FieldSignals {
   const promotedLabel = isDropdown && !hasRealLabel ? nearby : "";
   // Last resort before the weak signals: the question printed inside the field's
   // own block. Computed only when nothing programmatic named the field, so a
-  // field that IS labelled keeps the label it already had — and `nearby` is left
+  // field that IS labelled keeps the label it already had, and `nearby` is left
   // exactly as it was, since it feeds the classifier at its own weight.
   const blockLabel =
     hasRealLabel || promotedLabel
@@ -508,14 +508,14 @@ export function collectSignals(el: HTMLElement): FieldSignals {
 
 /**
  * Pick the most human-readable label for display in the popup. Placeholder
- * filler ("Select…", "Choose an option") is never a usable question text — a
+ * filler ("Select…", "Choose an option") is never a usable question text, a
  * dropdown whose only signal is its own placeholder must fall through to the
  * name/id attributes rather than present "Select" as the question.
  *
  * The name/id fallback stops at machine ids. An attribute name like
  * `candidate_country` is a poor label but still says what the field is; Workday's
  * `56370316e58a1001d8aa4cd7b1d70000-b0531cc2ff371001d8a9b9c2eef00002` says
- * nothing, and reaching it means we genuinely could not name the field — which
+ * nothing, and reaching it means we genuinely could not name the field, which
  * the sentinel states plainly instead of dressing an id up as a question.
  */
 export function bestDisplayLabel(signals: FieldSignals): string {
@@ -540,7 +540,7 @@ export function isRequiredField(el: HTMLElement, signals: FieldSignals): boolean
 }
 
 // ---------------------------------------------------------------------------
-// Value writing — must look like real user input to React/Vue/Angular
+// Value writing: must look like real user input to React/Vue/Angular
 // ---------------------------------------------------------------------------
 
 /**
@@ -548,7 +548,7 @@ export function isRequiredField(el: HTMLElement, signals: FieldSignals): boolean
  *
  * For the standard form elements this goes through the native PROTOTYPE setter:
  * React overrides `value` on the instance to track programmatic writes, so
- * assigning `el.value` directly is swallowed — calling the prototype's setter
+ * assigning `el.value` directly is swallowed, calling the prototype's setter
  * with the instance as `this` is what makes React/Vue/Angular see user input.
  *
  * Custom elements (ADP's `sdf-select-simple`, Lightning, some Angular-Material
@@ -556,7 +556,7 @@ export function isRequiredField(el: HTMLElement, signals: FieldSignals): boolean
  * lives on their own class prototype, or they only accept a `value` attribute /
  * a `setValue()` method. Walk the prototype chain for a real setter, then fall
  * back through instance assignment → attribute → setValue()/setAttributeValue().
- * Each strategy is best-effort — a readonly own-property or a missing method must
+ * Each strategy is best-effort: a readonly own-property or a missing method must
  * not abort the ones after it.
  */
 export function setNativeValue(el: HTMLElement, value: string): void {
@@ -587,22 +587,22 @@ export function setNativeValue(el: HTMLElement, value: string): void {
   try {
     anyEl.value = value;
   } catch {
-    /* value is a readonly own property — try the attribute path */
+    /* value is a readonly own property, try the attribute path */
   }
   try {
     el.setAttribute("value", value);
   } catch {
-    /* some elements reject setAttribute('value') — ignore */
+    /* some elements reject setAttribute('value'), ignore */
   }
   try {
     anyEl.setValue?.(value);
   } catch {
-    /* custom setter threw — ignore */
+    /* custom setter threw, ignore */
   }
   try {
     anyEl.setAttributeValue?.(value);
   } catch {
-    /* custom setter threw — ignore */
+    /* custom setter threw, ignore */
   }
 }
 
@@ -642,7 +642,7 @@ export function dispatchInputEvents(el: HTMLElement, value?: string): void {
 /**
  * Fire Enter keydown/keyup on a control. This is what commits an autocomplete /
  * typeahead selection, applies an input mask, and wakes "validate on Enter"
- * handlers — the value is already set through the native setter, so this is the
+ * handlers, the value is already set through the native setter, so this is the
  * belt-and-suspenders that makes stubborn framework fields register it.
  *
  * The `KeyboardEvent` constructor drops `keyCode`/`which` (they always read 0),

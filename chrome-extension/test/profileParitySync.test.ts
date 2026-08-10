@@ -1,7 +1,7 @@
 /**
  * GET /api/extension/sync is the only door the profile comes through. A key the
  * normalizer forgets is dropped no matter what the backend sends, and the field
- * then looks broken everywhere at once — panel, scanner and AI context — with a
+ * then looks broken everywhere at once (panel, scanner and AI context) with a
  * perfectly correct response sitting in the network tab.
  *
  * Also covers the sample profile, which is what "Use sample data" exercises and
@@ -65,8 +65,8 @@ describe("the sample profile exercises the new fields", () => {
   });
 
   it("only uses values the modal actually offers, so no select renders blank", () => {
-    // MOCK_PROFILE.veteranStatus used to be "I am not a veteran" — not in the
-    // list — so mock mode rendered a Veteran Status select with nothing chosen.
+    // MOCK_PROFILE.veteranStatus used to be "I am not a veteran", not in the
+    // list, so mock mode rendered a Veteran Status select with nothing chosen.
     for (const [field, options] of Object.entries(EEO_CHOICES)) {
       const value = (MOCK_PROFILE.eeo as unknown as Record<string, string>)[field];
       if (value) expect(options, `eeo.${field}`).toContain(value);

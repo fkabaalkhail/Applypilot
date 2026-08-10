@@ -7,7 +7,7 @@ Usage:
     python -m backend.db.migrate_aggregator_fields
 
 Supports both SQLite and PostgreSQL (Neon).
-Idempotent — safe to run multiple times.
+Idempotent, safe to run multiple times.
 """
 
 import os
@@ -70,7 +70,7 @@ def migrate():
                 else:
                     print(f"  scraped_jobs.{col_name} already exists, skipping")
         else:
-            print("  Table 'scraped_jobs' does not exist yet — will be created by create_all")
+            print("  Table 'scraped_jobs' does not exist yet, will be created by create_all")
 
         # --- GitHubSource columns ---
         if "github_sources" in existing_tables:
@@ -90,7 +90,7 @@ def migrate():
                 else:
                     print(f"  github_sources.{col_name} already exists, skipping")
         else:
-            print("  Table 'github_sources' does not exist yet — will be created by create_all")
+            print("  Table 'github_sources' does not exist yet, will be created by create_all")
 
     print("\nMigration complete: aggregator classification fields added.")
 

@@ -1,9 +1,9 @@
 /**
  * Signup-wall password generation. Local-only: the password is written into
- * the page and saved to chrome.storage.local (credentialStore) — it is never
+ * the page and saved to chrome.storage.local (credentialStore). It is never
  * sent to the Tailrd backend. Ambiguous glyphs (0/O, 1/l/I) are excluded so a
  * user reading the saved password back never mistypes it. Note that lowercase
- * `i`/`o` remain — only the visually confusable 0/O/1/l/I are dropped.
+ * `i`/`o` remain, only the visually confusable 0/O/1/l/I are dropped.
  */
 
 const LOWER = "abcdefghijkmnopqrstuvwxyz"; // no l
@@ -16,7 +16,7 @@ const SYMBOLS = "!@#$%^&*-_=+?";
  *
  * `v % set.length` carries a small modulo bias (2^32 is not an exact multiple
  * of any of our set lengths). For a locally-generated, class-guaranteed signup
- * password this bias is negligible and acceptable — it does not weaken the
+ * password this bias is negligible and acceptable. It does not weaken the
  * "one of every class + crypto-shuffled" guarantee the tests assert.
  */
 function pick(set: string, count: number): string[] {

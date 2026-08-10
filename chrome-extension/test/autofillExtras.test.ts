@@ -42,7 +42,7 @@ describe("normalizeExtras", () => {
 
   it("drops a retired device-local github override so it cannot shadow the sync", () => {
     // github now round-trips through PUT /api/user/application-profile. A stale
-    // local copy would win forever over whatever the user sets on the web app —
+    // local copy would win forever over whatever the user sets on the web app,
     // the exact bug the 2026-08-09 parity contract set out to kill.
     const n = normalizeExtras({
       fields: { github: "https://github.com/stale", website: "https://ada.dev" },
@@ -57,7 +57,7 @@ describe("normalizeExtras", () => {
 describe("mergeProfileWithExtras", () => {
   // The merge stays generic so an OLDER stored blob keeps filling; nothing in
   // the UI writes scalar overrides any more (github moved to the synced
-  // profile — see the retired-key test above).
+  // profile, see the retired-key test above).
   it("overrides a scalar from a legacy stored blob without mutating the input", () => {
     const p = profile({ portfolio: "" });
     const extras: AutofillExtras = { fields: { portfolio: "https://ada.dev" }, experience: null, customFields: [] };

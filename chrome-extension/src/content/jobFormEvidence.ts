@@ -1,18 +1,18 @@
 /**
- * Pure job-application evidence check — no chrome.* and no DOM, so it
+ * Pure job-application evidence check, no chrome.* and no DOM, so it
  * unit-tests cleanly (crossFrame.ts style).
  *
  * The content script runs on every page, and the generic field categories
  * (name / email / phone / address) match login, newsletter, checkout and
  * contact forms on virtually every site. Auto-mounting the panel therefore
- * must NOT trigger on "some recognized field" — it needs evidence that the
+ * must NOT trigger on "some recognized field". It needs evidence that the
  * form is a job application. ATS-host mounting (adapter / apply-entry) is
  * decided separately in contentScript.ts; this predicate covers the unknown-
  * host generic pipeline.
  */
 import type { FieldCategory } from "../shared/types";
 
-/** Categories that essentially only appear on a job application — any one is proof. */
+/** Categories that essentially only appear on a job application, any one is proof. */
 const APPLICATION_ONLY: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "resumeUpload",
   "coverLetter",
@@ -20,7 +20,7 @@ const APPLICATION_ONLY: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "sponsorship",
   "eeoGender",
   "eeoGenderIdentity",
-  // Split out of eeoOther, which used to own the "Pronouns" pattern — leaving
+  // Split out of eeoOther, which used to own the "Pronouns" pattern, leaving
   // it out here would silently drop evidence a page used to supply.
   "eeoPronouns",
   "eeoRace",
@@ -33,14 +33,14 @@ const APPLICATION_ONLY: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
 
 /**
  * Structured work/education history. Any one of these is rare outside a job
- * application, but not unique to one — a university contact form asks for
+ * application, but not unique to one, a university contact form asks for
  * "School", a loan form for "Highest level of education". So one strong
  * category needs a single job-flavored partner, no more.
  */
 const STRONG: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "school",
   "degree",
-  // Split out of `degree`, and the same kind of evidence — omitting it would
+  // Split out of `degree`, and the same kind of evidence, omitting it would
   // silently drop the weight of a page whose only education control is "Major".
   "fieldOfStudy",
   "graduationYear",
@@ -54,7 +54,7 @@ const STRONG: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
  * Job-flavored, but common on pages that are NOT applications. "Company" +
  * "Job title" is on every B2B demo-request and contact-sales form; LinkedIn +
  * GitHub is a developer's profile-settings page. Two of these is a coincidence,
- * so weak evidence needs THREE distinct categories — or two plus a page-context
+ * so weak evidence needs THREE distinct categories, or two plus a page-context
  * hint that we are on a job page at all.
  */
 const WEAK: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
@@ -69,7 +69,7 @@ const WEAK: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "skills",
 ]);
 
-/** The page the scan came from. Optional and inert — a hint can only upgrade
+/** The page the scan came from. Optional and inert, a hint can only upgrade
  *  existing weak field evidence, never manufacture evidence of its own. */
 export interface PageContext {
   /** Full page URL; only the path + query are inspected (hosts are noisy). */
@@ -78,7 +78,7 @@ export interface PageContext {
   title?: string;
 }
 
-/** Whole-word job-page vocabulary — "careership" and "sniperjobs" must not hit. */
+/** Whole-word job-page vocabulary: "careership" and "sniperjobs" must not hit. */
 const JOB_PAGE_HINT =
   /(?:^|[^a-z])(?:careers?|jobs?|apply|application|requisition|vacanc[a-z]*|job-?post[a-z]*)(?:[^a-z]|$)/i;
 
@@ -91,7 +91,7 @@ function onJobPage(context: PageContext | undefined): boolean {
       const u = new URL(context.url);
       fromUrl = u.pathname + u.search;
     } catch {
-      fromUrl = context.url; // not parseable — test it whole rather than drop it
+      fromUrl = context.url; // not parseable, test it whole rather than drop it
     }
   }
   return JOB_PAGE_HINT.test(fromUrl) || JOB_PAGE_HINT.test(context.title ?? "");

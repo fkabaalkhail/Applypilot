@@ -1,5 +1,5 @@
 """
-LinkedIn "Sign In with LinkedIn using OpenID Connect" — authorization-code flow.
+LinkedIn "Sign In with LinkedIn using OpenID Connect", authorization-code flow.
 
 Unlike Google (which returns an ID token to the browser via the GIS SDK),
 LinkedIn requires a server-side code exchange with a client secret:
@@ -11,7 +11,7 @@ LinkedIn requires a server-side code exchange with a client secret:
 
 The SPA landing (/linkedin/complete) hydrates the session from the refresh
 cookie via POST /auth/refresh, so the access token never appears in a URL.
-NOTE: the SPA landing path must NOT be under /auth/* — vercel.json rewrites
+NOTE: the SPA landing path must NOT be under /auth/*, vercel.json rewrites
 /auth/(.*) to this API.
 """
 
@@ -44,7 +44,7 @@ LINKEDIN_USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 
 STATE_COOKIE = "li_oauth_state"
 NEXT_COOKIE = "li_oauth_next"
-# SPA landing that hydrates the session — deliberately NOT under /auth/*.
+# SPA landing that hydrates the session, deliberately NOT under /auth/*.
 COMPLETE_PATH = "/linkedin/complete"
 
 

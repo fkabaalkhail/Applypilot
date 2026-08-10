@@ -1,5 +1,5 @@
 """
-CoverLetterGenerator — generates tailored cover letters for job applications.
+CoverLetterGenerator, generates tailored cover letters for job applications.
 
 Uses Claude to create personalized cover letters based on the user's resume
 and the target job description. Contact details from the user's profile are
@@ -31,7 +31,7 @@ The cover letter should:
 
 CRITICAL: Use the real contact details below verbatim. Do NOT output bracketed
 placeholders such as [Your Name], [Address], [Date], [Email], or [Phone]. If a
-detail is not provided, simply omit that line — never invent it and never leave
+detail is not provided, simply omit that line, never invent it and never leave
 a placeholder.
 
 Candidate contact details:
@@ -53,7 +53,7 @@ Keep it truthful to the candidate's experience and addressed to the hiring team.
 
 CRITICAL: Use the real contact details below verbatim in the header and
 signature. Remove any bracketed placeholders such as [Your Name], [Address],
-[Date], [Email], or [Phone] — replace them with the real values, or omit the
+[Date], [Email], or [Phone], replace them with the real values, or omit the
 line if no value is provided. Never leave a bracketed placeholder in the output.
 
 Candidate contact details:
@@ -76,7 +76,7 @@ TONE_GUIDANCE = {
     "professional": "Keep a polished, professional tone.",
     "formal": "Use a formal, traditional business tone.",
     "enthusiastic": "Use an enthusiastic, energetic tone that conveys genuine excitement.",
-    "concise": "Be brief and to the point — no more than two short paragraphs.",
+    "concise": "Be brief and to the point, no more than two short paragraphs.",
     "technical": "Emphasize technical depth, tools, and measurable engineering impact.",
 }
 
@@ -141,7 +141,7 @@ def _strip_placeholders(text: str, values: dict[str, str | None]) -> str:
         value = resolve(match.group(1))
         return value if value is not None else ""
 
-    # Markdown links copied from a résumé (e.g. "[https://…](https://…)") — keep
+    # Markdown links copied from a résumé (e.g. "[https://…](https://…)"), keep
     # just the visible text so the URL isn't shown twice.
     out = re.sub(r"\[([^\[\]]+)\]\((https?://[^)\s]+)\)", r"\1", text)
     out = re.sub(r"\[([^\[\]]+)\]", replace, out)
@@ -223,7 +223,7 @@ class CoverLetterGenerator:
                 tone_line=f"- {tone_line}" if tone_line else "",
             )
 
-        text = await self.llm._generate(prompt)
+        text = await self.llm._generate(prompt, op="cover_letter.generate")
         return _strip_placeholders(
             text,
             {

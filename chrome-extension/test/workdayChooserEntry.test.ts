@@ -12,8 +12,8 @@
  * automation-id). Two consequences, both fatal:
  *   1. the flow would re-click the button that opened the chooser instead of
  *      choosing the manual path, and
- *   2. stepSignature() — which on a field-less page is `page:<url>|<entry
- *      label>` — stayed byte-identical across the transition, so the flow
+ *   2. stepSignature(), which on a field-less page is `page:<url>|<entry
+ *      label>`, stayed byte-identical across the transition, so the flow
  *      concluded the page never changed, timed out, and stopped with
  *      "Couldn't open the application from this page".
  *
@@ -41,7 +41,7 @@ const ADVENTURE_BUTTON = `
      data-uxi-widget-type="adventureButton" data-automation-id="adventureButton"
      font-size="14" height="40" class="css-1i3qzi3">Apply</a>`;
 
-/** The chooser Workday overlays on top of it — note the Apply button survives. */
+/** The chooser Workday overlays on top of it, note the Apply button survives. */
 const CHOOSER = `
   <div role="dialog">
     <a href="#" role="button">Autofill with Resume</a>
@@ -69,7 +69,7 @@ describe("Workday job posting → apply-method chooser", () => {
 
   it("switches to Apply Manually once the chooser opens, even though adventureButton is still on the page", () => {
     document.body.innerHTML = ADVENTURE_BUTTON + CHOOSER;
-    // The adapter can still see its button — that is the whole trap.
+    // The adapter can still see its button, that is the whole trap.
     expect(workdayAdapter.entryButton!(document)).not.toBeNull();
 
     const entry = findApplyEntry(document, workdayAdapter);
@@ -84,7 +84,7 @@ describe("Workday job posting → apply-method chooser", () => {
     document.body.innerHTML = ADVENTURE_BUTTON + CHOOSER;
     const after = stepSignature(snap(findApplyEntry(document, workdayAdapter)));
 
-    // Same URL, no fields — the entry label is the ONLY change signal there is.
+    // Same URL, no fields, the entry label is the ONLY change signal there is.
     expect(before).toBe(`page:${URL}|Apply`);
     expect(after).toBe(`page:${URL}|Apply Manually`);
     expect(after).not.toBe(before);
@@ -102,7 +102,7 @@ describe("Workday job posting → apply-method chooser", () => {
 
   it("still falls back to the adapter's button when no generic text tier matches", () => {
     // Workday's resume-a-draft button carries an automation-id but wording the
-    // generic tiers do not anchor on — the adapter is what finds it.
+    // generic tiers do not anchor on, the adapter is what finds it.
     document.body.innerHTML = `
       <a href="#" role="button" data-automation-id="continueButton">Continue</a>`;
     const entry = findApplyEntry(document, workdayAdapter);

@@ -2,7 +2,7 @@
 Cross-source job dedup: the same posting scraped from LinkedIn/Indeed AND from
 the employer's own board (ats/github sources).
 
-The direct row is strictly better — real description, direct apply link — so
+The direct row is strictly better (real description, direct apply link) so
 inferior twins are soft-hidden (`duplicate_of` = winner id, never deleted:
 saved-job and application records may reference them) and the winner inherits
 whatever the twin knew that it doesn't (applicant_count, salary_range, and a
@@ -34,13 +34,13 @@ _SOURCE_TIER = {"ats": 0, "github": 0, "linkedin": 1, "indeed": 2}
 
 # Only aggregator copies may ever be hidden. Two direct-board rows with the
 # same title are distinct requisitions (per-country variants, multiple
-# openings) — their dedup key is the URL, nothing else.
+# openings), their dedup key is the URL, nothing else.
 _MIN_COPY_DESC_LEN = 300  # og:description snippets (~186 chars) must not spread
 
 # Secondary fuzzy matcher for aggregator rows whose normalized title differs
 # from the direct row's by punctuation-scale noise ("Software Engineer Intern
 # Payments" vs "Software Engineer Intern - Payments Team"). Deliberately NOT
-# embeddings: deterministic, free, and conservative — a wrong merge hides a
+# embeddings: deterministic, free, and conservative, a wrong merge hides a
 # real job. Both titles must be substantial and near-identical.
 FUZZY_TITLE_THRESHOLD = 0.93
 _FUZZY_MIN_TITLE_LEN = 12
@@ -73,7 +73,7 @@ def effective_source(source: str, url: str) -> str:
 
 def canonical_url(url: str) -> str:
     """Strip tracking params so 'jobs/86588?utm_source=vansh' and 'jobs/86588'
-    dedupe as one posting. ONLY utm_* is stripped — ATS URLs carry functional
+    dedupe as one posting. ONLY utm_* is stripped, ATS URLs carry functional
     params (gh_jid, jobid, token) that must survive."""
     raw = (url or "").strip()
     if not raw or "?" not in raw:
@@ -101,7 +101,7 @@ _COMPANY_SUFFIX = re.compile(
 def normalize_title(title: str) -> str:
     """Fold a title for twin matching. Season/year decorations vary across
     boards and are stripped; role-level words (intern, new grad, senior) are
-    kept — different levels are different jobs."""
+    kept, different levels are different jobs."""
     text = fold(_PARENTHETICAL.sub(" ", title or ""))
     text = _SEASON_WORDS.sub(" ", text)
     text = _YEARS.sub(" ", text)
@@ -154,7 +154,7 @@ def has_direct_twin(
     country: str = "",
 ) -> bool:
     """True when a direct (ats/github) row for the same employer, title, and
-    city already exists — the ingest guard for LinkedIn/Indeed sources."""
+    city already exists, the ingest guard for LinkedIn/Indeed sources."""
     title_norm = normalize_title(title)
     if not title_norm:
         return False
@@ -295,7 +295,7 @@ def absorb_new_aggregator_rows(db: Session, limit: int = 300) -> int:
 
         if best is None:
             # Fuzzy fallback: same employer, near-identical title. Only
-            # DIRECT rows may absorb here — fuzzy-merging two aggregator
+            # DIRECT rows may absorb here, fuzzy-merging two aggregator
             # copies risks eating a genuinely different posting.
             near = (
                 db.query(ScrapedJob)

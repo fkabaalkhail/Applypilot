@@ -15,7 +15,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("writeControl — text inputs", () => {
+describe("writeControl, text inputs", () => {
   it("fires focus → input → change → blur in that exact order", () => {
     const el = mount(`<input type="text" />`) as HTMLInputElement;
     const seen: string[] = [];
@@ -69,7 +69,7 @@ describe("writeControl — text inputs", () => {
   });
 });
 
-describe("writeControl — select", () => {
+describe("writeControl, select", () => {
   it("selects an option by visible text and verifies", () => {
     const el = mount(
       `<select><option value="">Pick…</option><option value="ca">Canada</option><option value="us">United States</option></select>`
@@ -97,11 +97,11 @@ describe("writeControl — select", () => {
 // Bucketed numeric-range options ("2-3 years", "$90,000-$110,000") are common
 // for experience/salary dropdowns. The AI is told to answer with the exact
 // option text but often answers conversationally with just the number instead
-// ("I have about 3 years of experience") — token-overlap alone can't tell
+// ("I have about 3 years of experience"), token-overlap alone can't tell
 // these options apart (every "_-_ years" option reduces to the same "years"
 // token), so without range-aware matching the FIRST bucket always wins
 // regardless of the number actually stated.
-describe("writeControl — select (bucketed numeric ranges)", () => {
+describe("writeControl, select (bucketed numeric ranges)", () => {
   it("picks the range option that actually contains the stated number, not the first option", () => {
     const el = mount(
       `<select>
@@ -117,7 +117,7 @@ describe("writeControl — select (bucketed numeric ranges)", () => {
     const res = writeControl(control, "I have approximately 3 years of experience");
 
     expect(res.written).toBe(true);
-    expect(el.value).toBe("b"); // "2-3 years" — not "0-1 years"
+    expect(el.value).toBe("b"); // "2-3 years", not "0-1 years"
     expect(verifyControl(control, "I have approximately 3 years of experience")).toBe(true);
   });
 
@@ -150,11 +150,11 @@ describe("writeControl — select (bucketed numeric ranges)", () => {
 
     writeControl(control, "My expected salary is around $95,000");
 
-    expect(el.value).toBe("c"); // "$90,000-$110,000" — not the first bucket
+    expect(el.value).toBe("c"); // "$90,000-$110,000", not the first bucket
   });
 });
 
-describe("writeControl — checkbox", () => {
+describe("writeControl, checkbox", () => {
   it("checks for an affirmative value and verifies", () => {
     const el = mount(`<input type="checkbox" />`) as HTMLInputElement;
     const control: RuntimeControl = { id: "c-1", controlType: "checkbox", el };
@@ -164,7 +164,7 @@ describe("writeControl — checkbox", () => {
   });
 });
 
-describe("writeControl — radio group", () => {
+describe("writeControl, radio group", () => {
   it("selects the matching radio by label and verifies", () => {
     mount(
       `<fieldset>
@@ -184,7 +184,7 @@ describe("writeControl — radio group", () => {
   });
 });
 
-describe("writeControl — unfillable controls", () => {
+describe("writeControl, unfillable controls", () => {
   it("never writes file inputs", () => {
     const el = mount(`<input type="file" />`) as HTMLInputElement;
     const res = writeControl({ id: "f-1", controlType: "file", el }, "x");
@@ -202,7 +202,7 @@ describe("idempotency", () => {
   });
 });
 
-describe("writeControl — never scrolls the page", () => {
+describe("writeControl, never scrolls the page", () => {
   it("focuses text inputs with preventScroll", () => {
     const el = mount(`<input type="text" />`) as HTMLInputElement;
     let opts: FocusOptions | undefined = "untouched" as unknown as FocusOptions;
@@ -245,7 +245,7 @@ describe("writeControl — never scrolls the page", () => {
   });
 });
 
-describe("matchOption — shared-prefix tier", () => {
+describe("matchOption, shared-prefix tier", () => {
   const id = (s: string): string => s;
 
   it('matches "Canada" to "Canadian" (morphological near-miss)', () => {
@@ -263,12 +263,12 @@ describe("matchOption — shared-prefix tier", () => {
   });
 
   it("does not match on short shared prefixes", () => {
-    // "cat" vs "category": shared prefix 3 < 5 — no match.
+    // "cat" vs "category": shared prefix 3 < 5, no match.
     expect(matchOption(["category"], id, id, "cat")).toBeNull();
   });
 });
 
-describe("matchOption — wrong-option guards", () => {
+describe("matchOption, wrong-option guards", () => {
   const id = (s: string): string => s;
 
   it("fails a bucketed-range set it can't place the answer in (never picks the first bucket)", () => {
@@ -284,7 +284,7 @@ describe("matchOption — wrong-option guards", () => {
   });
 
   it("rejects incidental single-token overlap on a long option", () => {
-    // Only "working" overlaps (1 of 3 tokens) — that's noise, not a match.
+    // Only "working" overlaps (1 of 3 tokens), that's noise, not a match.
     expect(
       matchOption(["Working Holiday Visa"], id, id, "several years working abroad")
     ).toBeNull();

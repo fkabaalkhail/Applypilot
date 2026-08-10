@@ -24,7 +24,7 @@ function signupForm(): void {
     </form>`;
 }
 
-describe("scanPage — password fields", () => {
+describe("scanPage, password fields", () => {
   it("surfaces passwords as accountPassword, never fillable, never AI-eligible", () => {
     signupForm();
     const { fields } = scanPage(null, false);
@@ -48,7 +48,7 @@ describe("scanPage — password fields", () => {
   });
 });
 
-describe("writeControl / verifyControl — password", () => {
+describe("writeControl / verifyControl, password", () => {
   it("writes and verifies with exact matching", () => {
     signupForm();
     const el = document.getElementById("pw") as HTMLInputElement;

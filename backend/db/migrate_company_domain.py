@@ -7,7 +7,7 @@ website domain (rather than guessing from the company name).
 Usage:
     python -m backend.db.migrate_company_domain
 
-Supports both SQLite and PostgreSQL (Neon). Idempotent — safe to re-run.
+Supports both SQLite and PostgreSQL (Neon). Idempotent, safe to re-run.
 """
 
 import os
@@ -61,7 +61,7 @@ def migrate():
                 else:
                     print(f"  scraped_jobs.{col_name} already exists, skipping")
         else:
-            print("  Table 'scraped_jobs' does not exist yet — will be created by create_all")
+            print("  Table 'scraped_jobs' does not exist yet, will be created by create_all")
 
     print("\nMigration complete: company_domain / company_url added.")
 

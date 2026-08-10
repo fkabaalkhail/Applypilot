@@ -4,14 +4,14 @@ Migration: Add the profile-parity columns to user_settings.
 Implements section A of docs/superpowers/specs/2026-08-09-profile-parity-contract.md.
 
 Adds (all VARCHAR, default ''):
-  - github_url              — ``github`` had no write path at all. The web app
+  - github_url, ``github`` had no write path at all. The web app
                               wrote it to the resume row, the extension kept it
                               in chrome.storage.local, so an edit on either
                               surface never round-tripped through the API.
-  - address_city            — ``location`` and ``addressCity`` both wrote
+  - address_city, ``location`` and ``addressCity`` both wrote
                               ``user_settings.city``, so a PUT carrying both
                               silently dropped one (dict order decided which).
-  - eeo_gender_identity     — declared in the extension's ``EeoAnswers`` type
+  - eeo_gender_identity, declared in the extension's ``EeoAnswers`` type
   - eeo_pronouns              but implemented nowhere; ``eeo_pronouns`` is new.
   - eeo_sexual_orientation
 
@@ -20,7 +20,7 @@ live in the existing ``prefilled_answers`` JSON under exact keys, exactly like
 ``workAuthorization`` and ``dateOfBirth`` already do.
 
 One-time backfill: ``address_city`` is seeded from ``city`` when the column is
-first created, because until now ``addressCity`` WAS ``city`` — without the
+first created, because until now ``addressCity`` WAS ``city``, without the
 backfill an existing user's mailing-address city would silently vanish on
 deploy. The backfill runs only on the boot that creates the column: re-running
 it every boot would resurrect a value a user deliberately cleared (they can set
@@ -72,7 +72,7 @@ def run_migration(engine=None) -> None:
             logger.info("Added user_settings.%s", name)
 
         if "address_city" in added:
-            # First run only — see the module docstring. NULL is checked as well
+            # First run only: see the module docstring. NULL is checked as well
             # as '' because the column default only applies to rows Postgres
             # rewrites, and a hand-built table may allow NULLs.
             result = conn.execute(text(

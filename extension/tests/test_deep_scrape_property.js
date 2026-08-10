@@ -36,7 +36,7 @@ function report() {
   for (const r of _results) {
     if (r.suite) console.log(`\n  ${r.suite}`);
     else if (r.pass) console.log(`    ✓ ${r.name}`);
-    else console.log(`    ✗ ${r.name} — ${r.error}`);
+    else console.log(`    ✗ ${r.name}, ${r.error}`);
   }
   console.log(`\n  ${_passed} passed, ${_failed} failed\n`);
   if (_failed > 0) process.exitCode = 1;

@@ -18,7 +18,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("mainWorldSuppressor — blocking-dialog suppression", () => {
+describe("mainWorldSuppressor, blocking-dialog suppression", () => {
   it("no-ops window.alert while active, restores it after", () => {
     const original = vi.fn();
     window.alert = original as unknown as typeof window.alert;
@@ -36,7 +36,7 @@ describe("mainWorldSuppressor — blocking-dialog suppression", () => {
   it("neutralizes beforeunload while active, and stops after", () => {
     // In a real browser our handler sets the beforeunload string returnValue to
     // "" (→ no "leave site?" prompt). jsdom models returnValue as the legacy
-    // boolean canceled-flag, so setting "" cancels the event there — observable
+    // boolean canceled-flag, so setting "" cancels the event there, observable
     // as defaultPrevented. Either way: while active our handler processes the
     // event; while inactive it is detached and does nothing.
     installDialogSuppressor(W);
@@ -47,7 +47,7 @@ describe("mainWorldSuppressor — blocking-dialog suppression", () => {
 
     suppress(false);
     const e2 = fireBeforeUnload();
-    expect(e2.defaultPrevented).toBe(false); // listener removed — no-op
+    expect(e2.defaultPrevented).toBe(false); // listener removed, no-op
   });
 
   it("nulls the onbeforeunload property while active and restores it", () => {

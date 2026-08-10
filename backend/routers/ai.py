@@ -187,7 +187,7 @@ async def cover_letter(
 ):
     """Generate (or regenerate in a tone) a cover letter for a job.
 
-    The body is optional — existing callers that POST with no body still get a
+    The body is optional, existing callers that POST with no body still get a
     fresh letter from the primary resume.
     """
     job = _get_job(job_id, db)
@@ -219,7 +219,7 @@ async def cover_letter(
 
 
 # ---------------------------------------------------------------------------
-# Saved cover letters (CRUD) — synced to web app + extension
+# Saved cover letters (CRUD): synced to web app + extension
 # ---------------------------------------------------------------------------
 
 
@@ -365,8 +365,8 @@ async def rewrite_resume(
     """Step 3 'Review': tailor the resume (structured) with the chosen
     sections/keywords, report before/after scores, and save the version.
 
-    Returns a structured ``ResumeDocument`` — the single source the renderer,
-    PDF, and DOCX all consume — so the download always matches the preview.
+    Returns a structured ``ResumeDocument``, the single source the renderer,
+    PDF, and DOCX all consume, so the download always matches the preview.
     """
     job = _get_job(job_id, db)
     opts = body or RewriteIn()
@@ -532,7 +532,7 @@ def save_resume_version(
     db.commit()
     db.refresh(row)
 
-    # Custom resumes are a sync target — bump so the extension picks it up.
+    # Custom resumes are a sync target, bump so the extension picks it up.
     bump_profile_version(db, user_id)
     return _version_out(row)
 
@@ -578,7 +578,7 @@ async def edit_snippet(
 ):
     """Apply a single AI editing action to a selected snippet of resume text.
 
-    Only the provided text is transformed and returned — never the whole resume.
+    Only the provided text is transformed and returned, never the whole resume.
     """
     text = (body.text or "").strip()
     if not text:

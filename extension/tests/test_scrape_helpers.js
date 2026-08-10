@@ -1,5 +1,5 @@
 /**
- * Unit tests for scrape-helpers.js — extracted helper functions
+ * Unit tests for scrape-helpers.js, extracted helper functions
  * for the deep scrape pagination feature.
  *
  * Run: node extension/tests/test_scrape_helpers.js
@@ -57,7 +57,7 @@ function report() {
     } else if (r.pass) {
       console.log(`    ✓ ${r.name}`);
     } else {
-      console.log(`    ✗ ${r.name} — ${r.error}`);
+      console.log(`    ✗ ${r.name}, ${r.error}`);
     }
   }
   console.log(`\n  ${_passed} passed, ${_failed} failed\n`);

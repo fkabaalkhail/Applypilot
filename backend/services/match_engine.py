@@ -1,5 +1,5 @@
 """
-MatchEngine — computes detailed match score breakdowns via the LLM service.
+MatchEngine, computes detailed match score breakdowns via the LLM service.
 
 Extends the existing OpenAIService.match_job with breakdown scores
 for experience, skills, and industry.
@@ -23,7 +23,7 @@ DEFAULT_MATCH_MODEL = "gpt-4o-mini"
 
 
 def _match_model() -> str:
-    """Model used for match scoring — the highest-volume LLM call in the app.
+    """Model used for match scoring, the highest-volume LLM call in the app.
 
     The cron sweep buys a score for every (user, new job) pair whether or not
     anyone opens the app, so this call runs orders of magnitude more often than
@@ -148,7 +148,7 @@ class MatchEngine:
             job_description=job_description[:3000],
         )
 
-        response = await self.llm._generate(prompt, model=_match_model(), json_mode=True)
+        response = await self.llm._generate(prompt, model=_match_model(), json_mode=True, op="match.score")
         data = self._parse_json_response(response)
         if not isinstance(data, dict) or "overall_score" not in data:
             # Raising (instead of returning zeros) matters to callers that
@@ -186,7 +186,7 @@ class MatchEngine:
             job_description=job_description[:3000],
         )
 
-        response = await self.llm._generate(prompt)
+        response = await self.llm._generate(prompt, model=_match_model(), op="match.analyze")
         data = self._parse_json_response(response)
 
         def _strs(key: str) -> list[str]:
@@ -233,7 +233,7 @@ class MatchEngine:
             job_description=job_description[:3000],
         )
 
-        response = await self.llm._generate(prompt)
+        response = await self.llm._generate(prompt, model=_match_model(), op="match.fit")
         data = self._parse_json_response(response)
 
         overall = data.get("overall_score", 0)

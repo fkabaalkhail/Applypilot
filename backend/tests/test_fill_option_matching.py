@@ -9,7 +9,7 @@ from backend.routers.fill import _match_option
 
 
 def test_range_set_without_containment_matches_nothing():
-    # "seven years" has no digits — token overlap on the shared "years" token
+    # "seven years" has no digits, token overlap on the shared "years" token
     # must not select an arbitrary bucket.
     assert _match_option("seven years", ["Under 1 year", "1-2 years", "3-5 years"]) is None
 
@@ -19,7 +19,7 @@ def test_numeric_answer_snaps_into_its_bucket():
 
 
 def test_low_token_overlap_is_rejected():
-    # Only "working" overlaps (1 of the option's 3 tokens) — noise, not a match.
+    # Only "working" overlaps (1 of the option's 3 tokens), noise, not a match.
     assert _match_option("several years working abroad", ["Working Holiday Visa"]) is None
 
 

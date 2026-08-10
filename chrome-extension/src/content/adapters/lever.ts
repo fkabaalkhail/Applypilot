@@ -4,7 +4,7 @@
  * cover-letter) fill cleanly through the generic pipeline, so this adapter only
  * owns the two places the generic path gets Lever wrong:
  *
- *  1. Current-company / org text field — named `org` / `current-company`,
+ *  1. Current-company / org text field, named `org` / `current-company`,
  *     whose visible label the generic classifier reads fine but whose machine
  *     name is the more reliable signal (kept from the old common-table entry).
  *

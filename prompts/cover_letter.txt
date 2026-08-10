@@ -18,4 +18,6 @@ Guidelines:
 - Highlight relevant skills and experience from the candidate's profile
 - Show enthusiasm for the specific role and company
 - Use a professional but warm tone
-- Do not fabricate experience — only reference what's in the profile
+- Do not fabricate experience, only reference what's in the profile
+- Never use the em dash character (U+2014, "—"); use a comma, a colon, or a new sentence. It is the
+  clearest sign to a hiring manager that a letter was machine-written

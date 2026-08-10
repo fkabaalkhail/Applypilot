@@ -4,7 +4,7 @@
  * Loads the bundled engine harness into a genuine Chromium page (and, for the
  * iframe case, into a real same-origin child frame) and drives the EXACT shipping
  * autofill engine against faithful per-ATS fixtures. Asserts, per field, that the
- * value actually committed in the live DOM — including custom dropdowns, shadow
+ * value actually committed in the live DOM, including custom dropdowns, shadow
  * DOM, and an iframe realm, which jsdom cannot exercise.
  *
  * Usage: node test/browser/run.mjs
@@ -36,7 +36,7 @@ function norm(s) {
 // Literal fields must commit the profile value EXACTLY. Dropdowns/radios legitimately
 // map a profile string to an option label (e.g. location "Ottawa, ON, Canada" → option
 // "Canada"), so for those we accept the committed option being contained in the
-// expected value — but never a loose partial of the expected (which would hide a
+// expected value, but never a loose partial of the expected (which would hide a
 // half-filled dropdown).
 const LITERAL_TYPES = new Set(["text", "textarea", "contenteditable"]);
 
@@ -56,7 +56,7 @@ function evaluateResults(results, { eeo = false } = {}) {
   let fills = 0, fillFails = 0;
 
   for (const f of results) {
-    let verdict = "—"; // not a fill target
+    let verdict = "-"; // not a fill target
     const isFileLike = f.controlType === "file";
 
     if (f.fillable && f.expected !== null) {
@@ -199,7 +199,7 @@ async function main() {
 
   // ---- Summary -------------------------------------------------------------
   console.log(`\n${"=".repeat(76)}`);
-  console.log("SUMMARY — real Chromium autofill across ATS systems");
+  console.log("SUMMARY, real Chromium autofill across ATS systems");
   console.log("=".repeat(76));
   let totalFills = 0;
   for (const s of summary) {

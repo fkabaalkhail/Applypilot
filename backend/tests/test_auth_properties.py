@@ -140,7 +140,7 @@ def test_invalid_token_rejection(random_string):
     """
     try:
         decode_token(random_string)
-        # If we get here, the token was somehow valid — that shouldn't happen
+        # If we get here, the token was somehow valid, that shouldn't happen
         # for random strings
         assert False, f"Expected InvalidTokenError for input: {random_string!r}"
     except jwt.InvalidTokenError:

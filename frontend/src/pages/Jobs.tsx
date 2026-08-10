@@ -187,7 +187,7 @@ export default function Jobs() {
           setSelectedJob(res.data);
         }
       } catch {
-        // Job not found or not accessible — fall back to the list.
+        // Job not found or not accessible, fall back to the list.
       } finally {
         // Strip the param so refreshes don't re-open the panel.
         params.delete("job");

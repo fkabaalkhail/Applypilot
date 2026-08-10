@@ -1,5 +1,5 @@
 """
-Tests for POST /jobs/ingest-batch — the batched, authenticated ingest path
+Tests for POST /jobs/ingest-batch, the batched, authenticated ingest path
 for the JobSpy/LinkedIn scraper scripts (plan §4).
 
 This file previously targeted /api/extension/jobs/save-batch, an endpoint

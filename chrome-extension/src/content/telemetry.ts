@@ -1,5 +1,5 @@
 /**
- * Autofill telemetry — build a per-fill summary from the combined pass
+ * Autofill telemetry: build a per-fill summary from the combined pass
  * reports/outcomes so the backend can see which sites and fields the filler
  * struggles with. This is the signal that tells us where a server-side override
  * rule is worth authoring (see api/autofill overrides).
@@ -8,7 +8,7 @@
  * against what the page holds afterwards.
  *
  * Why: recording only failures made one whole bug class unobservable by
- * construction — a field answered wrongly but written successfully produced a
+ * construction, a field answered wrongly but written successfully produced a
  * `filled` count and nothing else, so the record of the page said everything
  * went well. That is exactly the bug we keep hitting ("reported filled,
  * actually wasn't" / "filled with the wrong value"), and it was the one thing
@@ -16,14 +16,14 @@
  *
  * The re-scan diff is the second half. Per-write verification (writeEngine)
  * proves the commit stuck AT WRITE TIME. A framework can still revert a value
- * on blur, on validation, or on a re-render that a LATER field triggered — none
+ * on blur, on validation, or on a re-render that a LATER field triggered, none
  * of which a per-write check can see, because by then it has moved on.
  *
  * Privacy: emits field LABELS, categories, provenance and booleans only, never
  * the user's answer values. `observedValuePresent` is a boolean for that reason
- * — "this control holds something" is the observation, not what it holds.
+ * "this control holds something" is the observation, not what it holds.
  *
- * Pure — host/url/observations are passed in, so it unit-tests without a
+ * Pure: host/url/observations are passed in, so it unit-tests without a
  * document.
  */
 import type { AutofillTelemetry, DetectedField, FieldOutcomeRecord } from "../shared/types";
@@ -75,7 +75,7 @@ export function finalOutcomes(
 /**
  * What the page holds for one field after the fill, read from a fresh scan.
  *
- * `value` is compared, never transmitted — the record carries only whether it
+ * `value` is compared, never transmitted, the record carries only whether it
  * was present and whether it still matches what was written.
  */
 export interface ObservedField {
@@ -97,7 +97,7 @@ export interface IntendedField {
  *
  *  An EMPTY control is never equal to a non-empty write. That has to be stated
  *  outright: every string contains "", so a substring test alone reports a
- *  cleared field as unchanged — which would silently drop the most common
+ *  cleared field as unchanged, which would silently drop the most common
  *  revert there is.
  *
  *  Lenience is deliberately one-directional: a missed revert costs a record, a
@@ -181,7 +181,7 @@ export function buildAutofillTelemetry(
   let filled = 0;
   let failed = 0;
 
-  // Every field with a verdict, plus every field the gate dropped — a dropped
+  // Every field with a verdict, plus every field the gate dropped, a dropped
   // field was never written, so it has no report of its own and would
   // otherwise vanish from the record entirely.
   const ids = new Set<string>([...finalOk.keys(), ...droppedById.keys()]);

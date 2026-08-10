@@ -168,7 +168,7 @@ def get_fill_profile(
         )
         resume_text = profile.raw_text if profile else ""
 
-    # Get resume profile for structured data — prefer primary, fall back to most recent
+    # Get resume profile for structured data, prefer primary, fall back to most recent
     profile = (
         db.query(ResumeProfileDB)
         .filter(ResumeProfileDB.user_id == user_id, ResumeProfileDB.is_primary == 1)
@@ -306,7 +306,7 @@ def log_application(
 
     This is the external-page counterpart to the session `/complete` flow: the
     autofill extension deliberately never clicks Submit, but when the user does,
-    it POSTs here so the job shows up on the user's Applications page — the same
+    it POSTs here so the job shows up on the user's Applications page, the same
     behaviour as Jobright's submit tracking. No internal job_id is required;
     ApplicationRecord.job_id and .url are nullable and the applications list
     outer-joins ScrapedJob, so an external record renders correctly.

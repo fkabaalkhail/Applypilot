@@ -1,9 +1,9 @@
-// Feature: resume-upload-analysis — rendering faithfulness of the resume
+// Feature: resume-upload-analysis, rendering faithfulness of the resume
 // workspace: the list, the document canvas, the save payload, and the report.
 //
 // Both pages talk to the API through the shared axios instance (`auth/api`), so
 // that module is what these tests stub. An earlier version of this file mocked
-// `global.fetch`, which axios never calls — every request fell through to the
+// `global.fetch`, which axios never calls, every request fell through to the
 // page's error state and the assertions never ran against real markup.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

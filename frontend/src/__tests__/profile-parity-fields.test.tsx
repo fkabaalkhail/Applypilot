@@ -5,7 +5,7 @@
  * the labels, the exact option vocabularies, and the fact that editing a new
  * field actually reaches PUT /api/user/application-profile. The label and option
  * strings are shared with chrome-extension/src/content/overlay.ts, which carries
- * an equivalent pin on its twin copy — if you change a string here, change it
+ * an equivalent pin on its twin copy, if you change a string here, change it
  * there too or one of the two suites goes red.
  */
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -80,7 +80,7 @@ const CONTRACT_EEO_UNCHANGED = {
   ],
 };
 
-// Contract section C — the labels the Application Answers card must render.
+// Contract section C: the labels the Application Answers card must render.
 const SCREENING_LABELS = [
   "Current / Target Job Title",
   "Date of Birth",
@@ -137,7 +137,7 @@ function openEditor(ariaLabel: string) {
   fireEvent.click(screen.getByRole("button", { name: ariaLabel }));
 }
 
-describe("Profile — parity-contract fields", () => {
+describe("Profile: parity-contract fields", () => {
   beforeEach(() => {
     get.mockReset();
     put.mockReset();
@@ -160,7 +160,7 @@ describe("Profile — parity-contract fields", () => {
     for (const label of ["Full Name", "Email Address", "Phone", "Location", "LinkedIn", "GitHub", "Portfolio"]) {
       expect(controlFor(label)).toBeInTheDocument();
     }
-    // Harmonised away by the contract — exact-match queries, so "Email Address"
+    // Harmonised away by the contract, exact-match queries, so "Email Address"
     // does not satisfy "Email".
     expect(screen.queryByText("Email", { selector: ".profile-form-group label" })).toBeNull();
     expect(

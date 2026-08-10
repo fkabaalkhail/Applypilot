@@ -1,1 +1,1 @@
-# Auto Apply Bot — Backend Package
+# Auto Apply Bot: Backend Package

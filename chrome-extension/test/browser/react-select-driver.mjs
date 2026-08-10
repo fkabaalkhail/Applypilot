@@ -1,7 +1,7 @@
 /**
  * Loads a REAL react-select (React 18 + react-select from esm.sh) into Chromium,
  * injects the shipping dist/mainWorld.js, dispatches a fill request over the
- * bridge, and asserts the value commits through the widget's own React state —
+ * bridge, and asserts the value commits through the widget's own React state,
  * the exact path jsdom cannot exercise.
  *
  * Usage: npm run build && node test/browser/react-select-driver.mjs
@@ -27,7 +27,7 @@ const PAGE = `<!doctype html><html><body><div id="root"></div>
     React.useEffect(() => {
       // react-select@5's own root only carries an emotion-generated
       // "css-<hash>-container" class (no BEM "rs__container" class exists even
-      // with classNamePrefix set) — so anchor from the reliably-prefixed
+      // with classNamePrefix set), so anchor from the reliably-prefixed
       // ".rs__control" and climb to ITS nearest "-container"/"__container"
       // ancestor, the same way the driver itself resolves the container. Tag
       // THAT real node with FIELD_ID_ATTR so the driver's own

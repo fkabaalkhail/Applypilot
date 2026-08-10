@@ -1,5 +1,5 @@
 /**
- * Pure cross-frame helpers — no chrome.* and no DOM, so they unit-test cleanly.
+ * Pure cross-frame helpers: no chrome.* and no DOM, so they unit-test cleanly.
  * The chrome-messaging plumbing that uses these lives in contentScript.ts.
  *
  * When a job-application form lives in a cross-origin iframe (e.g. Databricks'
@@ -35,7 +35,7 @@ const ALL_OPS: FormOpName[] = [
   "onFlowAdvance",
   // The unanswered-questions modal. onAnswerGaps was missing here, so in a
   // cross-origin form frame `callbacks.onAnswerGaps` was undefined and Save &
-  // fill threw before it wrote anything — the modal simply did not work off the
+  // fill threw before it wrote anything, the modal simply did not work off the
   // top frame. Both return a value, so neither belongs in VOID_OPS.
   "onAnswerGaps",
   "onHarvestGapOptions",
@@ -49,7 +49,7 @@ export function shouldAdoptRemoteHost(localRecognized: number, remoteRecognized:
 /**
  * An OverlayCallbacks whose every method marshals to `send(op, args)` and
  * returns the unwrapped value. Void methods (rescan / profile-resolved) fire
- * and forget — the host pushes fields back over the update channel.
+ * and forget, the host pushes fields back over the update channel.
  */
 export function makeProxyCallbacks(
   send: (op: FormOpName, args: unknown[]) => Promise<FormOpResult>

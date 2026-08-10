@@ -37,7 +37,7 @@ export default function SignUpPage() {
     try {
       await register(email, password);
       // A ?next= caller (the extension connect handshake) must get the user
-      // BACK — the connect page itself handles a still-unverified account.
+      // BACK: the connect page itself handles a still-unverified account.
       // Without next, keep the normal verify-email landing.
       navigate(safeNextPath(searchParams.get("next"), "/verify-email"));
     } catch (err: unknown) {

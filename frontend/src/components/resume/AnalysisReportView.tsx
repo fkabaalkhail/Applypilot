@@ -187,7 +187,7 @@ export default function AnalysisReportView({
         <div>
           <h3>Let AI apply these fixes</h3>
           <p>
-            We'll rewrite your bullets against every finding above — keeping your employers,
+            We'll rewrite your bullets against every finding above, keeping your employers,
             dates, and numbers exactly as they are. You review the changes before anything is
             saved.
           </p>

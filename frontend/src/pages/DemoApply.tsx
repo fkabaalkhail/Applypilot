@@ -19,7 +19,7 @@ export default function DemoApply() {
           />
           <div className="demo-apply-header-text">
             <h1 className="demo-apply-company">Tailrd</h1>
-            <p className="demo-apply-job-title">Software Engineer — Full Stack</p>
+            <p className="demo-apply-job-title">Software Engineer, Full Stack</p>
           </div>
         </div>
       </header>

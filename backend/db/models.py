@@ -149,7 +149,7 @@ class ScrapedJob(Base):
 
     # --- Freshness lifecycle (services/listing_freshness.py) ---
     # `status` above is the USER's workflow state (new/applied/…); this is the
-    # LISTING's lifecycle: active | stale | removed | expired. Soft states only —
+    # LISTING's lifecycle: active | stale | removed | expired. Soft states only,
     # rows are never deleted (saved-job/application records reference them).
     listing_status = Column(String, default="active", index=True)
     listing_status_changed_at = Column(DateTime, nullable=True)
@@ -160,19 +160,19 @@ class ScrapedJob(Base):
     # URL-pattern guessing. Empty for aggregator rows and legacy ATS rows until
     # the freshness cron backfills them from URL shape.
     board_key = Column(String, default="", index=True)
-    # "{platform}:{slug}:{source's own id}" — stable across URL format changes,
+    # "{platform}:{slug}:{source's own id}", stable across URL format changes,
     # so a re-crawl updates in place even when the apply URL shifts shape.
     external_id = Column(String, default="", index=True)
 
     # Change detection: hash of (title|location|description|salary text). A
     # differing hash on re-crawl appends to change_log (capped) and bumps
-    # edit_count — edit frequency and salary-removal are trust signals.
+    # edit_count, edit frequency and salary-removal are trust signals.
     raw_hash = Column(String, default="")
     edit_count = Column(Integer, default=0)
     change_log = Column(JSON, nullable=True)
 
     # Ghost-job heuristic (0-100) + the factors that produced it. Surfaced, not
-    # silently filtered — the product decides whether to hide or badge.
+    # silently filtered, the product decides whether to hide or badge.
     ghost_risk_score = Column(Integer, default=0)
     ghost_risk_factors = Column(JSON, nullable=True)
 
@@ -291,7 +291,7 @@ class JobMatchScore(Base):
     The cron sweep scores jobs on a schedule, so every re-score is money spent
     with nobody using the app. A notification row only exists for jobs that beat
     the alert threshold *and* got emailed, which left every below-threshold job
-    looking unscored forever — so the sweep bought the same answers again on
+    looking unscored forever, so the sweep bought the same answers again on
     every run. This table is the receipt for the score itself, whatever it was.
 
     ``resume_fingerprint`` hashes the resume text the score was computed from,
@@ -357,7 +357,7 @@ class UserSettings(Base):
     website = Column(String, default="")
     # GitHub profile URL. Used to live only on the resume row (parsed out of the
     # uploaded file), so an edit made in the web app or the extension had
-    # nowhere to persist — see the 2026-08-09 profile-parity contract.
+    # nowhere to persist, see the 2026-08-09 profile-parity contract.
     github_url = Column(String, default="")
 
     # Structured mailing address (autofill v2.1). All optional.
@@ -432,7 +432,7 @@ class UserSettings(Base):
     # AI features
     resume_tailoring_enabled = Column(Integer, default=0)
 
-    # Sync versioning — bumped on any profile / resume / cover-letter change so
+    # Sync versioning: bumped on any profile / resume / cover-letter change so
     # the extension can cheaply detect staleness via GET /api/user/profile-version
     # and refetch only when something actually changed.
     data_version = Column(Integer, default=1, nullable=False)
@@ -683,7 +683,7 @@ class RateCounter(Base):
 
     Each row is one (limit-name, identity, time-bucket) tuple. Because the
     counter lives in the database rather than process memory, the limit holds
-    consistently across Vercel function invocations. Rows are disposable —
+    consistently across Vercel function invocations. Rows are disposable,
     ``expires_at`` lets a periodic cleanup drop stale buckets.
     """
     __tablename__ = "rate_counters"
@@ -697,7 +697,7 @@ class RateCounter(Base):
 
 class AutofillReport(Base):
     """One row per autofill pass the extension performs, so we can see which
-    sites and fields the filler struggles with — the signal that tells us where a
+    sites and fields the filler struggles with, the signal that tells us where a
     server-side override rule is worth authoring. Stores field LABELS + outcomes
     only, never the user's answer values.
     """
@@ -712,7 +712,7 @@ class AutofillReport(Base):
     filled = Column(Integer, default=0)
     failed = Column(Integer, default=0)
     skipped = Column(Integer, default=0)
-    # [{ "label": str, "category": str, "reason": str }] — no user values.
+    # [{ "label": str, "category": str, "reason": str }], no user values.
     failed_fields = Column(JSON, default=list)
     # Every attempted field, SUCCESSES INCLUDED:
     #   [{label, category, tier, pass, expected_value_present,
@@ -722,7 +722,7 @@ class AutofillReport(Base):
     # a field answered wrongly but written successfully produced a `filled`
     # count and nothing else, so the record of the page said everything went
     # well. That is the class we keep hitting, and it was the one thing this
-    # table could never show. Still labels, categories and booleans only —
+    # table could never show. Still labels, categories and booleans only,
     # never the user's answers.
     field_outcomes = Column(JSON, default=list)
     # Fields written successfully whose value the page no longer held at the
@@ -776,7 +776,7 @@ class SourceHealth(Base):
     last_error = Column(String, default="")
     last_success_at = Column(DateTime, nullable=True)
     last_failure_at = Column(DateTime, nullable=True)
-    # Listing count seen on the last successful crawl — a sudden drop to zero
+    # Listing count seen on the last successful crawl, a sudden drop to zero
     # on a board that had jobs is itself an alert-worthy signal.
     last_job_count = Column(Integer, default=0)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow,

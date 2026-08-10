@@ -13,7 +13,7 @@ beforeEach(() => {
  * real question lives in a <label> above. nearbyText grabs "Select…" first, which
  * poisons both the display label and the classifier.
  */
-describe("react-select combobox — label must be the question, not the placeholder", () => {
+describe("react-select combobox, label must be the question, not the placeholder", () => {
   function mount(question: string): HTMLElement {
     document.body.innerHTML = `
       <div class="field">
@@ -38,7 +38,7 @@ describe("react-select combobox — label must be the question, not the placehol
     expect(bestDisplayLabel(signals)).toBe("Country");
     const c = classifyField(signals);
     expect(c.category).toBe("country");
-    // Must clear the autofill bar — otherwise it's detected but never filled.
+    // Must clear the autofill bar, otherwise it's detected but never filled.
     expect(c.confidence).toBeGreaterThanOrEqual(AUTOFILL_CONFIDENCE_THRESHOLD);
   });
 

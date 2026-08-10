@@ -63,7 +63,7 @@ describe("detectFillDriver", () => {
   });
 
   // Greenhouse job-boards passes a custom inputId ("country", "605"…), so the
-  // input id carries no react-select marker — but the generated placeholder /
+  // input id carries no react-select marker, but the generated placeholder /
   // live-region ids still do. Regression: these fields must route to the driver
   // (they previously fell to the ARIA engine and failed).
   it("tags react-select v5 with a custom inputId via its generated internal ids", () => {

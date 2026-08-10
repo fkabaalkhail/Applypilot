@@ -2,7 +2,7 @@
  * In-page layout detectors. Serialized into the browser by audit.cjs.
  *
  * Each detector answers a concrete, falsifiable question about the rendered
- * page — no heuristics about "looks wrong". A finding means: a user on this
+ * page, no heuristics about "looks wrong". A finding means: a user on this
  * viewport cannot see or cannot reach something.
  *
  *   page-scrolls-horizontally  the document itself is wider than the viewport
@@ -15,7 +15,7 @@
  */
 
 // NOTE: this function is stringified and evaluated in the page. It must be
-// self-contained — no closures over Node scope.
+// self-contained, no closures over Node scope.
 function pageAudit(opts) {
   const TOUCH = opts.touch;
   const vw = document.documentElement.clientWidth;
@@ -75,7 +75,7 @@ function pageAudit(opts) {
     return animated && clipped;
   };
 
-  // …and the clipping wrapper itself is not animated — only its track is — so
+  // …and the clipping wrapper itself is not animated (only its track is) so
   // looking upward from the wrapper never sees the animation. Look down too.
   const isMarqueeWrapper = (el) => {
     for (const c of el.children) {
@@ -110,7 +110,7 @@ function pageAudit(opts) {
       selector: "body",
       chain: "body",
       text: bodyText.slice(0, 40),
-      detail: "body rendered " + bodyText.length + " chars of text — the screen did not load (crash, redirect, or bad fixture)",
+      detail: "body rendered " + bodyText.length + " chars of text, the screen did not load (crash, redirect, or bad fixture)",
       overflowPx: 0,
     });
     return out; // nothing else is meaningful
@@ -157,9 +157,9 @@ function pageAudit(opts) {
     /* ---------- 2. hard clipping (content cut off, unreachable) ----------
        Two exemptions, both about elements whose scrollWidth does not mean what
        it means on a normal box:
-         · form controls — an <input> longer than its box scrolls internally by
+         · form controls, an <input> longer than its box scrolls internally by
            design; that content is not lost.
-         · replaced elements — <img>.scrollWidth reports the image's *intrinsic*
+         · replaced elements, <img>.scrollWidth reports the image's *intrinsic*
            size, so any downscaled image looks "clipped". It is not. */
     const isFormControl = /^(input|textarea|select|option|progress|meter)$/.test(tag);
     const isReplaced = /^(img|picture|video|canvas|iframe|embed|object)$/.test(tag);
@@ -191,7 +191,7 @@ function pageAudit(opts) {
           text: text(victim || el),
           detail:
             "overflow-x:" + cs.overflowX + " is cutting " + (el.scrollWidth - el.clientWidth) +
-            "px of content" + (victim ? " — hidden child: " + sel(victim) : ""),
+            "px of content" + (victim ? ", hidden child: " + sel(victim) : ""),
           overflowPx: el.scrollWidth - el.clientWidth,
         });
       }
@@ -200,7 +200,7 @@ function pageAudit(opts) {
     /* ---------- 2b. clipped at the START edge ----------
        scrollWidth/scrollHeight only grow from overflow past the *end* edges
        (right/bottom in LTR). Content pushed past the TOP or LEFT of a clipping
-       box is silently shaved and the scroll metrics never notice — so rules 2
+       box is silently shaved and the scroll metrics never notice, so rules 2
        and 3 are structurally blind to it. Rotated ribbons and absolutely
        positioned badges are the usual victims. Measure the children directly. */
     if ((clipX || clipY) && !isDecorative(el)) {
@@ -228,7 +228,7 @@ function pageAudit(opts) {
               "shaved by " + Math.round(Math.max(cutTop, cutLeft)) + "px at the " +
               (cutTop > cutLeft ? "top" : "left") + " edge of " + sel(el) +
               " (overflow " + cs.overflowX + "/" + cs.overflowY +
-              ") — scrollWidth/scrollHeight cannot see start-edge overflow",
+              "), scrollWidth/scrollHeight cannot see start-edge overflow",
             overflowPx: Math.round(Math.max(cutTop, cutLeft)),
           });
           break;
@@ -256,7 +256,7 @@ function pageAudit(opts) {
           text: text(victim),
           detail:
             "overflow-y:" + cs.overflowY + " is cutting " + (el.scrollHeight - el.clientHeight) +
-            "px of content — hidden below the box: " + sel(victim),
+            "px of content, hidden below the box: " + sel(victim),
           overflowPx: el.scrollHeight - el.clientHeight,
         });
       }
@@ -294,7 +294,7 @@ function pageAudit(opts) {
     const parent = el.parentElement;
     if (parent && parent !== document.body && cs.position !== "fixed" && cs.position !== "absolute") {
       const pcs = cs_(parent);
-      // A pure inline parent has no meaningful content edge to spill out of —
+      // A pure inline parent has no meaningful content edge to spill out of,
       // its box wraps around whatever line boxes it produced.
       const inlineParent = pcs.display === "inline";
       if (pcs.overflowX === "visible" && visible(parent, pcs) && !inlineParent && !inAnimatedTrack(el)) {
@@ -350,7 +350,7 @@ function pageAudit(opts) {
      A scrollable column with `justify-content: center` (or `align-items: center`
      on a row) pushes its overflow out of BOTH ends once the content is taller
      than the box. scrollTop cannot go negative, so everything above the origin
-     is unreachable — and the browser does not even count it in scrollHeight, so
+     is unreachable, and the browser does not even count it in scrollHeight, so
      rules 2 and 3 are blind to it. This is a real bug we shipped: the setup
      wizard's first rows of options were unreachable on any screen under ~900px. */
   for (const el of all) {
@@ -382,7 +382,7 @@ function pageAudit(opts) {
         detail:
           Math.round(worst.above) + "px of content sits above the top of " + sel(el) +
           " while it is scrolled to the origin (justify-content:" + cs.justifyContent +
-          ") — scrollTop cannot go negative, so the user can never reach it",
+          "), scrollTop cannot go negative, so the user can never reach it",
         overflowPx: Math.round(worst.above),
       });
     }

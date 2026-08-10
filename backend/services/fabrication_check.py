@@ -1,7 +1,7 @@
 """Rule-based fabricated-number guardrail.
 
 ``merge_rewrite`` already makes fabricated employers/dates/titles structurally
-impossible, but bullets are reworded freely — the one place an invented metric
+impossible, but bullets are reworded freely, the one place an invented metric
 can slip in. This flags (never strips) any number in the rewritten text whose
 numeric value is not present anywhere in the source resume, so the UI can ask
 the user to verify it.

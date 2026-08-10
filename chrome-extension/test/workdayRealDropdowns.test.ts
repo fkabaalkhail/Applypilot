@@ -13,7 +13,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
 });
 
-/** Real Workday "My Information" dropdowns — the exact widgets that fail in
+/** Real Workday "My Information" dropdowns, the exact widgets that fail in
  *  production autofill_reports. All three are choice controls; none must be
  *  treated as a free-text input (which silently "fills" without selecting). */
 describe("Workday real dropdowns are detected as choice controls", () => {

@@ -130,7 +130,7 @@ describe("account wall advance", () => {
    * SAFETY: on a wall page the controller clicks an "advance" WITHOUT parking
    * for the user (flowController: `if (account.wall)` skips the advance gate).
    * Both regexes are \b-anchored alternations, so one button can carry a wall
-   * verb AND a submit verb — classifying that as "advance" would submit the
+   * verb AND a submit verb, classifying that as "advance" would submit the
    * application unreviewed, breaking the never-click-a-terminal invariant.
    */
   it("never returns advance for a button that also reads as a final submit", () => {
@@ -148,7 +148,7 @@ describe("account wall advance", () => {
     }
   });
 
-  it("keeps a wall's 'Sign in to apply' an advance — apply is an entry verb, not a final submit", () => {
+  it("keeps a wall's 'Sign in to apply' an advance, apply is an entry verb, not a final submit", () => {
     document.body.innerHTML = `<div id="scope"><input type="password" /><button>Sign in to apply</button></div>`;
     const found = findAdvanceButton(document.getElementById("scope")!, null, { extraAdvance: LOGIN_ADVANCE_RE });
     expect(found!.kind).toBe("advance");

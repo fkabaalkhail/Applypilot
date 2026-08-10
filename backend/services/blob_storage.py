@@ -4,7 +4,7 @@ Vercel Blob storage for original resume files (PDF/DOCX).
 The resume binary is what the Chrome extension auto-uploads into ATS forms, so
 we must keep the bytes the parser used to discard. Files are stored with an
 unguessable UUID path in a private store. Authorization is enforced by the API
-layer (``GET /resumes/{id}/file`` proxies the bytes only to the owning user) —
+layer (``GET /resumes/{id}/file`` proxies the bytes only to the owning user),
 the private Blob URL (which 403s without the store token) is never handed to
 clients.
 
@@ -52,7 +52,7 @@ async def upload_resume(
     """
     token = _token()
     if not token:
-        logger.info("BLOB_READ_WRITE_TOKEN not set — skipping resume file storage.")
+        logger.info("BLOB_READ_WRITE_TOKEN not set, skipping resume file storage.")
         return None
 
     name = _safe_name(filename)
@@ -65,7 +65,7 @@ async def upload_resume(
                 headers={
                     "authorization": f"Bearer {token}",
                     # The Blob store is configured for private access, so uploads
-                    # MUST declare access="private" — a public upload is rejected
+                    # MUST declare access="private": a public upload is rejected
                     # with HTTP 400 ("Cannot use public access on a private
                     # store"), which is what silently broke every resume upload.
                     # Private is also correct for résumés (PII): the blob URL
@@ -93,7 +93,7 @@ async def upload_resume(
 async def download(url: str) -> bytes | None:
     """Fetch stored bytes by Blob URL (called server-side, behind authz).
 
-    The store is private, so the blob URL 403s without credentials — the
+    The store is private, so the blob URL 403s without credentials, the
     read-write token must be sent as a Bearer header. (Harmless for a public
     store too.)
     """

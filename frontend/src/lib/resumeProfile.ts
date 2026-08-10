@@ -1,6 +1,6 @@
 // The resume profile as the API returns it, plus the helpers that turn it into
 // an ordered list of sections. Mirrors backend/schemas/resume.py and
-// backend/services/resume_document.py — keep the two in step.
+// backend/services/resume_document.py, keep the two in step.
 
 import { DEFAULT_THEME } from "./resumeDocument";
 import type { ResumeDocument, Section, SectionItem } from "./resumeDocument";
@@ -46,7 +46,7 @@ export interface CustomSectionItem {
   bullets: string[];
 }
 
-/** Certifications, awards, volunteering, publications, languages — anything the
+/** Certifications, awards, volunteering, publications, languages, anything the
  *  resume has that isn't one of the five sections we model explicitly. */
 export interface CustomSection {
   id: string;

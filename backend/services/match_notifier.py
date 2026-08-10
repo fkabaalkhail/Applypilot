@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_THRESHOLD = 80
 # Free-tier guard rails (Resend free plan = 100 emails/day, 3,000/month).
 # A user gets at most one digest per cooldown window, and we never send more
-# than the daily budget across all users — leaving headroom for verification
+# than the daily budget across all users, leaving headroom for verification
 # emails. Both are env-overridable.
 DEFAULT_COOLDOWN_HOURS = 24
 DEFAULT_DAILY_BUDGET = 80
@@ -88,7 +88,7 @@ def _emails_sent_today(db: Session) -> int:
     """Distinct users alerted since UTC midnight.
 
     With the per-user cooldown (>=24h) each user receives at most one digest a
-    day, so distinct-users-today equals emails-sent-today — a cheap, reliable
+    day, so distinct-users-today equals emails-sent-today, a cheap, reliable
     proxy for the daily budget without a separate counter table.
     """
     start = datetime.datetime.utcnow().replace(
@@ -381,7 +381,7 @@ async def sweep_match_alerts(
         )
         # The scoring window: the newest N jobs this user hasn't been alerted
         # about. Selected as ids first so the window stays anchored to "newest
-        # N" — filtering by cache state before the LIMIT would make each run
+        # N": filtering by cache state before the LIMIT would make each run
         # dig further into the backlog, growing the bill instead of capping it.
         window = (
             db.query(ScrapedJob.id)
@@ -398,8 +398,8 @@ async def sweep_match_alerts(
         # Fetch full rows only for window jobs this run can actually use:
         # unscored ones (they go to the LLM) and cached strong matches (they
         # may be emailed). A job already scored below threshold for this same
-        # resume can be neither scored nor sent, so its row — description and
-        # all — stays in the database instead of crossing the wire every run.
+        # resume can be neither scored nor sent, so its row, description and
+        # all, stays in the database instead of crossing the wire every run.
         fingerprint = _resume_fingerprint(profile.raw_text)
         jobs = (
             db.query(ScrapedJob)
@@ -418,8 +418,8 @@ async def sweep_match_alerts(
             .all()
         )
 
-        # Reuse anything we already paid to learn. Columns only — never whole
-        # rows — so the lookup stays cheap on the wire.
+        # Reuse anything we already paid to learn. Columns only, never whole
+        # rows, so the lookup stays cheap on the wire.
         cached: dict[int, int] = {}
         if jobs:
             cached = dict(
@@ -433,7 +433,7 @@ async def sweep_match_alerts(
             )
 
         # Snapshot what we score on while these rows are still loaded. Banking a
-        # score commits, and a commit expires every ORM object in the session —
+        # score commits, and a commit expires every ORM object in the session,
         # so reading job.description later in the loop would drag each whole row
         # back over the wire, which is the very cost this table exists to avoid.
         candidates = [(job, job.id, job.description) for job in jobs]

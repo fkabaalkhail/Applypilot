@@ -10,7 +10,7 @@ beforeEach(() => {
 });
 
 /** Echo driver: replies ok to the next fill request, after a tick. `{ once: true }`
- *  keeps this scoped to the single driveField() call under test — jsdom's `window`
+ *  keeps this scoped to the single driveField() call under test, jsdom's `window`
  *  persists across `it()` blocks in the same file, so a non-self-removing listener
  *  here would also answer a later test's unrelated fill request. */
 function installEcho(committed = "Canada"): void {

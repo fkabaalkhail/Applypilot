@@ -83,7 +83,7 @@ const escapeAttrValue = (s: string): string =>
     : s.replace(/["\\]/g, "\\$&");
 
 async function fillField(doc: Document, detail: MwFillDetail): Promise<MwResultDetail> {
-  // The whole body is wrapped so this NEVER rejects — installDriver's bridge
+  // The whole body is wrapped so this NEVER rejects, installDriver's bridge
   // reply must always fire, or the isolated-world caller hangs forever.
   try {
     const el = doc.querySelector<HTMLElement>(`[${FIELD_ID_ATTR}="${escapeAttrValue(detail.fieldId)}"]`);
@@ -156,7 +156,7 @@ async function fillReactSelect(el: HTMLElement, value: string): Promise<string |
       return idx >= 0 ? { opt: flat[idx], label: rsLabel(inst, flat[idx]) } : null;
     };
     let hit = pick();
-    // No match yet — async selects (Places city lookup…) only load options after
+    // No match yet: async selects (Places city lookup…) only load options after
     // the user types. Type the value through the real input and poll the
     // instance's props.options (they refresh on every load) before giving up.
     if (!hit) {
@@ -169,7 +169,7 @@ async function fillReactSelect(el: HTMLElement, value: string): Promise<string |
           hit = pick();
         }
         if (!hit) {
-          // Clear our filter text before closing — leaving it in the box reads
+          // Clear our filter text before closing, leaving it in the box reads
           // as an entered answer sitting on top of (or instead of) the value.
           setNativeInputValue(input, "");
           fireKey(input, "Escape");
@@ -192,7 +192,7 @@ async function fillReactSelectByDom(container: HTMLElement, value: string): Prom
   opener.focus?.();
   if (input) setNativeInputValue(input, value);
 
-  // Menu + options mount lazily (and async selects fetch them) — poll instead of
+  // Menu + options mount lazily (and async selects fetch them), poll instead of
   // a single fixed hop. Menus portal to <body>, so fall back to a document-wide
   // query, but never accept a menu that belongs to a different widget.
   let options: HTMLElement[] = [];
@@ -224,7 +224,7 @@ async function fillReactSelectByDom(container: HTMLElement, value: string): Prom
  * version this extension targets has `window instanceof Window` true).
  * Vitest's jsdom test environment aliases the global `window` to
  * `globalThis` for realistic global-scope emulation, so it fails jsdom's
- * `instanceof Window` brand check there and the constructor throws — guard
+ * `instanceof Window` brand check there and the constructor throws, guard
  * with the same feature-detect fallback style as `escapeAttrValue` above,
  * rather than drop `view` outright.
  */

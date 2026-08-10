@@ -1,7 +1,7 @@
 """
 Deterministic structured extraction for job listings.
 
-Everything here is regex/taxonomy based — NO model calls. This runs inside the
+Everything here is regex/taxonomy based, NO model calls. This runs inside the
 hourly ingest crons across thousands of listings, and the match-sweep incident
 (see openai-cost history) is why the ingest hot path must never bill per job.
 
@@ -75,7 +75,7 @@ def _to_amount(raw: str, k_suffix: str | None) -> int | None:
 
 
 def _infer_period(text: str, span_end: int, amount: int) -> str:
-    """Period stated near the match wins; otherwise infer from magnitude —
+    """Period stated near the match wins; otherwise infer from magnitude,
     two-digit rates are hourly, five-digit-and-up figures are annual."""
     window = text[span_end:span_end + 40]
     m = _PERIOD_RE.search(window)
@@ -93,7 +93,7 @@ def parse_salary(text: str) -> tuple[int, int, str, str] | None:
 
     Returns None when no credible salary is present. Single figures produce
     min == max. Amounts under $10 (hourly or not) and 4-digit "years" like
-    2026 are rejected — job text is full of numbers that are not pay.
+    2026 are rejected, job text is full of numbers that are not pay.
     """
     if not text:
         return None
@@ -106,7 +106,7 @@ def parse_salary(text: str) -> tuple[int, int, str, str] | None:
         lo = _to_amount(m.group("lo"), m.group("lok"))
         hi = _to_amount(m.group("hi"), m.group("hik"))
         if lo and hi:
-            # "$120-150k" — the shared k suffix only decorates the upper bound.
+            # "$120-150k", the shared k suffix only decorates the upper bound.
             if not m.group("lok") and m.group("hik") and lo < 1000 <= hi:
                 lo *= 1000
             if lo > hi:
@@ -209,7 +209,7 @@ _VISA_YES_RE = re.compile(
 def detect_visa_sponsorship(text: str) -> str:
     """'yes' / 'no' only on an explicit statement; anything else is 'unknown'.
 
-    Never inferred from citizenship/clearance requirements — "US citizens
+    Never inferred from citizenship/clearance requirements, "US citizens
     preferred" postings often still sponsor for other roles' text blocks, and a
     wrong "no" hides a job from exactly the user who needed it.
     """
@@ -347,7 +347,7 @@ _EVERGREEN_RE = re.compile(
 
 def looks_evergreen(text: str) -> bool:
     """True when the description reads like a standing/pipeline posting rather
-    than a real opening — one of the ghost-risk factors."""
+    than a real opening, one of the ghost-risk factors."""
     if not text:
         return False
     return bool(_EVERGREEN_RE.search(text))

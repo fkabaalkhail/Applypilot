@@ -2,12 +2,12 @@
 Autofill telemetry + server-side override rules.
 
 POST /autofill/telemetry          → record one autofill pass (which fields failed)
-GET  /autofill/telemetry/summary  → per-host aggregates (admin) — where to author rules
+GET  /autofill/telemetry/summary  → per-host aggregates (admin), where to author rules
 GET  /autofill/overrides          → enabled override rules + a version (extension polls)
 
 Telemetry is the signal that tells us which sites break; overrides are the
 hot-fix we apply in response, without shipping a new extension. Telemetry stores
-field labels + outcomes only — never the user's answer values.
+field labels + outcomes only, never the user's answer values.
 """
 
 import hashlib
@@ -75,7 +75,7 @@ def record_telemetry(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Record one autofill pass. Best-effort — a blank host is silently ignored."""
+    """Record one autofill pass. Best-effort, a blank host is silently ignored."""
     host = (report.host or "").strip().lower()
     if not host:
         return {"status": "skipped"}
@@ -114,7 +114,7 @@ def telemetry_summary(
     days: int = Query(30, ge=1, le=365),
     db: Session = Depends(get_db),
 ):
-    """Per-host fill aggregates, worst fail-rate first — where overrides pay off."""
+    """Per-host fill aggregates, worst fail-rate first, where overrides pay off."""
     since = datetime.datetime.utcnow() - datetime.timedelta(days=days)
     rows = (
         db.query(

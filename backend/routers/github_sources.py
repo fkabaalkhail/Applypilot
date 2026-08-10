@@ -167,7 +167,7 @@ async def cron_ats(
 ):
     """Crawl this hour's shard of ATS boards: ingest new listings, re-confirm
     known ones (last_seen_at), and reconcile each board so vanished postings
-    are marked removed the same hour — the freshness edge over aggregators.
+    are marked removed the same hour, the freshness edge over aggregators.
 
     Per-board failures are isolated and recorded in source_health; a board
     failing repeatedly is skipped for a cooldown (circuit breaker) instead of
@@ -411,7 +411,7 @@ async def scrape_linkedin_jobs(
             else:
                 experience_level = "new_grad"
 
-            # Resolve logo from the company domain — never guess "<name>.com".
+            # Resolve logo from the company domain, never guess "<name>.com".
             from backend.services.logo_resolver import resolve_logo as _resolve_logo
             company_logo, company_domain = _resolve_logo(job.company)
 

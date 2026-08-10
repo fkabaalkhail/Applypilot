@@ -80,7 +80,7 @@ export default function VerifyEmailPage() {
             ch.close();
           }
         } catch {
-          /* BroadcastChannel unavailable — the other tab's poll will catch it. */
+          /* BroadcastChannel unavailable: the other tab's poll will catch it. */
         }
         setTimeout(redirectToApp, 1500);
       } catch (err: unknown) {
@@ -110,7 +110,7 @@ export default function VerifyEmailPage() {
   }, [token, navigate, redirectToApp]);
 
   // While waiting on the "Check your inbox" screen, auto-advance to the app the
-  // moment the email is verified — whether the link was opened in another tab of
+  // moment the email is verified, whether the link was opened in another tab of
   // this browser (BroadcastChannel, instant) or on another device (poll /auth/me).
   useEffect(() => {
     if (state !== "pending") return;
@@ -128,7 +128,7 @@ export default function VerifyEmailPage() {
         const { data } = await api.get("/auth/me");
         if (data?.email_verified) redirectToApp();
       } catch {
-        /* transient network/auth blip — keep waiting */
+        /* transient network/auth blip, keep waiting */
       }
     }, 4000);
 
@@ -167,7 +167,7 @@ export default function VerifyEmailPage() {
 
   const isResendDisabled = isResending || countdown > 0;
 
-  // Verifying state — loading spinner
+  // Verifying state: loading spinner
   if (state === "verifying") {
     return (
       <div className="auth-page">
@@ -279,7 +279,7 @@ export default function VerifyEmailPage() {
     );
   }
 
-  // Pending state — default (no token in URL)
+  // Pending state: default (no token in URL)
   return (
     <div className="auth-page">
       <div className="auth-card">

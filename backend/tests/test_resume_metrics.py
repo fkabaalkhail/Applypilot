@@ -122,7 +122,7 @@ def test_render_digest_states_the_facts_the_prompt_relies_on():
 
 # ---------------------------------------------------------------------------
 # The Yale rules. Each is a fact the analyzer is handed as ground truth, so each
-# needs a fixture that trips it and — where a naive check would misfire — one that
+# needs a fixture that trips it and (where a naive check would misfire) one that
 # must not.
 # ---------------------------------------------------------------------------
 
@@ -222,7 +222,7 @@ def test_an_undated_entry_is_not_guessed_at():
 def test_flags_contractions_but_not_possessives():
     d = build(experience=[{"company": "A", "bullets": [
         "Didn't ship the migration on time",
-        "Owned the team's deployment pipeline",   # possessive — legitimate
+        "Owned the team's deployment pipeline",   # possessive, legitimate
     ]}])
     hits = d["language"]["contractions"]
     assert len(hits) == 1 and "Didn't ship" in hits[0]

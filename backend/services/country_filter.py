@@ -1,5 +1,5 @@
 """
-CountryFilter — classifies job locations into country codes (US, CA) or excludes them.
+CountryFilter, classifies job locations into country codes (US, CA) or excludes them.
 
 Used by the Aggregator to filter jobs to only North American (US/Canada) positions.
 Handles various location formats from jobright-ai GitHub repositories including
@@ -69,7 +69,7 @@ class CountryFilter:
             return "CA"
 
         # Check Canada first (important: must come before USA check
-        # because "CA" is ambiguous — California vs Canada)
+        # because "CA" is ambiguous, California vs Canada)
         if self._is_canada(location):
             return "CA"
 
@@ -102,7 +102,7 @@ class CountryFilter:
             return True
 
         # City, STATE_ABBREV pattern (e.g., "San Francisco, CA" or "Austin, TX")
-        # This handles the "CA" ambiguity — when preceded by a city, it's California
+        # This handles the "CA" ambiguity, when preceded by a city, it's California
         city_state_match = re.search(
             r'[A-Za-z\s]+,\s*([A-Z]{2})\b', location
         )
@@ -119,7 +119,7 @@ class CountryFilter:
 
         # Standalone state abbreviation (not preceded by city comma pattern)
         # Check for state abbreviations as standalone tokens
-        # But skip "CA" standalone — it's ambiguous, handled separately below
+        # But skip "CA" standalone: it's ambiguous, handled separately below
         tokens = re.findall(r'\b([A-Z]{2})\b', location)
         for token in tokens:
             if token in self.US_STATE_ABBREVS and token != "CA":
@@ -127,7 +127,7 @@ class CountryFilter:
                 if token not in self.CA_PROVINCE_ABBREVS:
                     return True
 
-        # Handle standalone "CA" — default to California (USA) for these repos
+        # Handle standalone "CA": default to California (USA) for these repos
         # unless it's clearly Canada context (handled by _is_canada first)
         if "CA" in tokens and "CA" in self.US_STATE_ABBREVS:
             # If we got here, _is_canada didn't match, so treat as California

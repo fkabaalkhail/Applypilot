@@ -1,6 +1,6 @@
 /**
  * Generates the extension toolbar icons from the Tailrd logo
- * (frontend/public/logo-icon.png — the purple paper-plane-in-a-circle mark).
+ * (frontend/public/logo-icon.png, the purple paper-plane-in-a-circle mark).
  * The source has a white background, so we key near-white pixels to transparent
  * first, then resize the clean purple line-art into assets/icon-{16,32,48,128}.png.
  *

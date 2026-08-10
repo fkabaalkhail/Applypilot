@@ -1,5 +1,5 @@
 """
-ConnectionFinder — identifies insider connections at target companies.
+ConnectionFinder, identifies insider connections at target companies.
 
 Categorizes connections by relationship type: beyond_network, previous_company, school.
 """

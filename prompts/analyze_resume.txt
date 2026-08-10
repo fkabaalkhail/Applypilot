@@ -12,7 +12,7 @@ whole document first, decide what each block of text is, then emit one JSON obje
 
 Every line of the candidate's resume must survive into your output. If a line does
 not fit `experience`, `education`, `projects`, `skills`, or `technologies`, it goes
-into `custom_sections` — it is never dropped. A resume that mentions Projects,
+into `custom_sections`: it is never dropped. A resume that mentions Projects,
 Certifications, Awards, Volunteering, Publications, Languages, Leadership,
 Activities, Interests, or anything else must come back with those sections intact,
 under the candidate's own heading.
@@ -24,7 +24,7 @@ under the candidate's own heading.
 - Never invent a value. If something is absent, use "" or [].
 - Never move content between sections to make it "fit better".
 - Strip only the bullet glyph itself (•, -, *, ▪, ‣) and surrounding whitespace.
-- A multi-line bullet that wrapped in the PDF is ONE bullet — rejoin it with a
+- A multi-line bullet that wrapped in the PDF is ONE bullet, rejoin it with a
   single space. A new bullet starts at a new glyph or a clear new sentence at the
   same indentation.
 
@@ -48,7 +48,7 @@ under the candidate's own heading.
   - `bullets`: the role's bullets, verbatim, in order.
 - `education[]`: `school`, `degree`, `location`, `start_date`, `end_date`, `gpa`,
   `achievements` (honours, dean's list, scholarships), `coursework` (relevant course
-  names, one per array entry — split a comma-separated list).
+  names, one per array entry, split a comma-separated list).
 - `projects[]`: personal, academic, hackathon, or open-source work. `name`, `link`,
   `organization` (course/club/company it was built for, "" if none), `location`,
   `start_date`, `end_date`, `bullets`. A resume with a Projects section MUST return a
@@ -75,7 +75,7 @@ under the candidate's own heading.
 
 ## OUTPUT
 
-Return ONLY valid JSON — no markdown fences, no preamble, no trailing commentary.
+Return ONLY valid JSON, no markdown fences, no preamble, no trailing commentary.
 
 {
   "name": "", "email": "", "phone": "", "location": "",

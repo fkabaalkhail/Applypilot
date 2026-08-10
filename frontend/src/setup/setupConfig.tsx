@@ -4,11 +4,11 @@ import { RolePreferencesStep } from "./steps/RolePreferencesStep";
 import { ExperienceStep } from "./steps/ExperienceStep";
 
 // ResumeStep is rendered specially by the wizard (needs file props), so it is
-// NOT in this array — the wizard appends it as the final step.
+// NOT in this array: the wizard appends it as the final step.
 export const SETUP_STEPS: SetupStep[] = [
   {
     id: "welcome",
-    headline: "Welcome to <b>Tailrd</b> — let's set up your job search.",
+    headline: "Welcome to <b>Tailrd</b>: let's set up your job search.",
     Component: WelcomeNameStep,
     validate: (a) => (a.first_name.trim() && a.last_name.trim() ? null : "Please enter your first and last name."),
   },

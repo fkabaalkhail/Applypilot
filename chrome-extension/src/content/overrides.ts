@@ -1,5 +1,5 @@
 /**
- * Server-driven classification overrides — the hot-fix layer.
+ * Server-driven classification overrides, the hot-fix layer.
  *
  * Rules authored server-side (GET /autofill/overrides) let us correct a broken or
  * newly-changed site WITHOUT shipping a new extension: match a field by host +

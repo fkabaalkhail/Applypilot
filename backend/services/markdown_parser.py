@@ -1,5 +1,5 @@
 """
-MarkdownParser — parses jobright-ai GitHub README markdown into structured job records.
+MarkdownParser, parses jobright-ai GitHub README markdown into structured job records.
 
 Handles pipe-delimited markdown tables with support for:
 - Section header detection (mega-repo category assignment)
@@ -207,12 +207,12 @@ class MarkdownParser:
         Skips image syntax ![alt](url). Returns (None, None) if no link found.
         Also handles [<img>](url) pattern used by some repos for apply buttons.
         """
-        # Match [text](url) but NOT ![alt](url) — use negative lookbehind for !
+        # Match [text](url) but NOT ![alt](url), use negative lookbehind for !
         match = re.search(r"(?<!!)\[([^\]]*)\]\(([^)]+)\)", cell)
         if match:
             text = match.group(1)
             url = match.group(2)
-            # If text contains <img>, it's an apply button — still return the URL
+            # If text contains <img>, it's an apply button, still return the URL
             if "<img" in text:
                 text = "Apply"
             return text, url
@@ -325,7 +325,7 @@ class MarkdownParser:
                 if text is not None:
                     data[field] = text
                     # jobright tables put the company WEBSITE in this link, e.g.
-                    # **[Repligen Corporation](http://www.repligen.com)** — this is
+                    # **[Repligen Corporation](http://www.repligen.com)**: this is
                     # the authoritative source for an accurate logo.
                     if link and not link.startswith("https://jobright.ai"):
                         data["company_url"] = link

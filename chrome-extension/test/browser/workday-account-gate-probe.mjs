@@ -21,13 +21,13 @@ const REG_EMAIL = "wd-gate@probe.dev";
 const REG_PASSWORD = "Probe#Pass123";
 
 const html = (body) =>
-  `<!doctype html><html><head><meta charset="utf-8"><title>Acme — Workday</title></head><body>${body}</body></html>`;
+  `<!doctype html><html><head><meta charset="utf-8"><title>Acme, Workday</title></head><body>${body}</body></html>`;
 
 // Both causes on one page:
-//  - `adventureButton` "Apply" — the posting's entry button, still in the DOM
+//  - `adventureButton` "Apply", the posting's entry button, still in the DOM
 //    behind the gate. It matches the terminal verb list, so before the fix the
 //    flow called this page's advance "terminal" and finished with no gate.
-//  - a visible role="alert" password rule — Workday renders these live while
+//  - a visible role="alert" password rule, Workday renders these live while
 //    the password is typed, so pauseReason() reports "validation" and the flow
 //    parks. Before the fix that pause showed no gate and no press cleared it.
 //
@@ -35,7 +35,7 @@ const html = (body) =>
 // searches for an advance within the form scope, and that scope is the lowest
 // common ancestor of the recognized fields (formScope.ts). A sibling of the
 // account container is outside it, so the flow would never see Apply and the
-// page would quietly stop exercising the terminal-Apply cause at all —
+// page would quietly stop exercising the terminal-Apply cause at all,
 // measured, not assumed: with Apply outside, reverting advance.ts still passed.
 // Sharing a scope is also what the real page does, and what the unit-level
 // regression in advance.test.ts models.
@@ -157,7 +157,7 @@ async function waitForGate(pg, timeoutMs) {
 const results = [];
 const check = (label, ok, extra = "") => {
   results.push(ok);
-  console.log(`   ${ok ? "PASS" : "FAIL"}  ${label}${extra ? ` — ${extra}` : ""}`);
+  console.log(`   ${ok ? "PASS" : "FAIL"}  ${label}${extra ? `: ${extra}` : ""}`);
 };
 
 async function main() {
@@ -203,7 +203,7 @@ async function main() {
   await pg.locator("#ap-btn-autofill").click();
 
   // 1. The live password-rule alert parks the flow on a `validation` pause.
-  //    Before the fix that pause showed nothing at all — the reported symptom.
+  //    Before the fix that pause showed nothing at all, the reported symptom.
   const paused = await waitForGate(pg, 30000);
   check(
     "validation pause offers the advance gate",
@@ -220,7 +220,7 @@ async function main() {
   // 2. The user judges the password fine and presses Continue; the press
   //    releases the validation pause and the flow reaches the wall's own
   //    advance. That advance must be the page's "Create Account", NOT the
-  //    posting's "Apply" — which is still in the DOM and reads as terminal.
+  //    posting's "Apply", which is still in the DOM and reads as terminal.
   //    A terminal advance finishes the flow with no gate at all.
   await pg.locator("#ap-flow-next").click();
   const until = Date.now() + 30000;

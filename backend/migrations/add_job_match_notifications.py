@@ -5,14 +5,14 @@ Creates the ``job_match_notifications`` table backing per-user-per-job dedup of
 high-match alert emails:
 
   - id (PK)
-  - user_id (FK users.id, ON DELETE CASCADE)       — recipient
-  - job_id (FK scraped_jobs.id, ON DELETE CASCADE) — the matched job
-  - match_score (INT)          — score at the time we notified
-  - sent_at (TIMESTAMP)        — when the alert was sent
-  - UNIQUE(user_id, job_id)    — a user is never alerted twice about a job
+  - user_id (FK users.id, ON DELETE CASCADE), recipient
+  - job_id (FK scraped_jobs.id, ON DELETE CASCADE), the matched job
+  - match_score (INT), score at the time we notified
+  - sent_at (TIMESTAMP), when the alert was sent
+  - UNIQUE(user_id, job_id), a user is never alerted twice about a job
 
 Both foreign keys cascade: an alert is a receipt for a (user, job) pair and is
-meaningless once either side is gone. They did not always — see
+meaningless once either side is gone. They did not always, see
 ``_ensure_cascade_fks``, which repairs databases created before that was fixed.
 
 Idempotent + additive: guard on the inspector so raw Postgres DDL never reaches
@@ -37,12 +37,12 @@ def _ensure_cascade_fks() -> None:
 
     The table's FKs originally came from ``create_all()``, which emits them with
     Postgres' default NO ACTION. Every other user-owned table cascades, so this
-    one table alone blocked ``DELETE FROM users`` — and blocked deleting any job
+    one table alone blocked ``DELETE FROM users``, and blocked deleting any job
     a user had already been alerted about, since the alert row still pointed at
     it.
 
     Postgres-only: SQLite cannot ALTER a constraint, and the test DB builds this
-    table from the model, which now declares the cascade itself. Idempotent —
+    table from the model, which now declares the cascade itself. Idempotent,
     an FK that already cascades is left alone.
     """
     if engine.dialect.name != "postgresql":

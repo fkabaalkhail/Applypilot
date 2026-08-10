@@ -74,7 +74,7 @@
 .jl-nav-link {
   display: flex;
   align-items: center;
-  min-height: 36px; /* the text is 19px tall — not a thumb target on its own */
+  min-height: 36px; /* the text is 19px tall, not a thumb target on its own */
   text-decoration: none;
   color: #6b7280;
   font-size: 0.875rem;

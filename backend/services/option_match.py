@@ -23,8 +23,8 @@ def first_number(text: str) -> Optional[float]:
 
 def parse_range(text: str) -> Optional[tuple[float, float]]:
     """Parse a bucketed-range option ("2-3 years", "$90,000-$110,000", "6+
-    years", "Under 1 year") into an inclusive (min, max) — Infinity for an
-    open end — or None when the text isn't a recognizable numeric range."""
+    years", "Under 1 year") into an inclusive (min, max), Infinity for an
+    open end, or None when the text isn't a recognizable numeric range."""
     cleaned = re.sub(r"[,$€£¥]", "", text)
     m = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to|–|—)\s*(\d+(?:\.\d+)?)", cleaned, re.IGNORECASE)
     if m:
@@ -57,7 +57,7 @@ def match_option(answer: str, options: list[str]) -> str | None:
     for opt in options:
         o = opt.lower().strip()
         if len(a_words) <= 1:
-            # Single-word answers must match a whole word of the option —
+            # Single-word answers must match a whole word of the option,
             # "cat" must never fuzzy-match "category" (mirrors the extension's
             # matchOption in writeEngine.ts).
             if a_words and a_words[0] in re.split(r"[^a-z0-9]+", o):
@@ -66,7 +66,7 @@ def match_option(answer: str, options: list[str]) -> str | None:
             return opt
     # Bucketed numeric options ("2-3 years", "$90,000-$110,000") share no
     # literal substring with a conversational answer ("about 3 years") even
-    # though the AI is told to answer with exact option text — check whether
+    # though the AI is told to answer with exact option text, check whether
     # the answer's number actually falls inside an option's range.
     target_num = first_number(answer)
     if target_num is not None:
@@ -76,7 +76,7 @@ def match_option(answer: str, options: list[str]) -> str | None:
                 return opt
     # A bucketed-range option set the range tier couldn't place the answer in
     # must fail here: the buckets normalize to the same tokens ("years", "000"),
-    # so token overlap would just pick the first bucket — confidently wrong.
+    # so token overlap would just pick the first bucket, confidently wrong.
     if sum(1 for opt in options if parse_range(opt) is not None) >= 2:
         return None
     # Morphological near-miss: a >=5-char shared token prefix ("canada" ↔
@@ -94,7 +94,7 @@ def match_option(answer: str, options: list[str]) -> str | None:
         # Incidental overlap must not select: one shared generic token scores
         # 0.5 on a two-token option ("University of Ottawa" → "University of
         # Oklahoma"). Require two shared tokens, or a fully-covered
-        # single-token option ("Canadian") — writeEngine/pickOption parity.
+        # single-token option ("Canadian"), writeEngine/pickOption parity.
         score = overlap / len(tokens)
         if score < 0.5 or (overlap < 2 and score != 1):
             continue
@@ -141,7 +141,7 @@ def match_boolean_option(value: bool, options: list[str]) -> str | None:
     """The one option that expresses `value`, or None when that is ambiguous.
 
     A computed yes/no is worthless if the widget words its choices as
-    "I am 18 years of age or older" / "I am under 18 years of age" — a literal
+    "I am 18 years of age or older" / "I am under 18 years of age", a literal
     "Yes" matches neither. This reads each option's polarity and returns the
     single option of the wanted polarity, VERBATIM.
 

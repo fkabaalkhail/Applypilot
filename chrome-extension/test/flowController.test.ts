@@ -75,7 +75,7 @@ const terminalBtn = (): AdvanceButton => ({ el: document.createElement("button")
 
 /**
  * Run a controller to completion, answering every "ready" gate (Task B) as it
- * appears — standing in for the panel's "Next page" button. Mirrors the
+ * appears, standing in for the panel's "Next page" button. Mirrors the
  * microtask-spin the old drafts tests used to clear the review gate.
  */
 async function drive(
@@ -127,7 +127,7 @@ describe("stepSignature", () => {
   });
 
   it("falls back to URL + entry label on field-less pages", () => {
-    // SPA chooser: same URL, but "Apply" became "Apply Manually" — a new page.
+    // SPA chooser: same URL, but "Apply" became "Apply Manually", a new page.
     expect(stepSignature(snap([], "https://a/job", "Apply"))).not.toBe(
       stepSignature(snap([], "https://a/job", "Apply Manually"))
     );
@@ -157,7 +157,7 @@ describe("FlowController", () => {
   it("parks at 'ready' on a clean page and only advances after notifyAdvanceRequested", async () => {
     const pages = [[field("1", "A")], [field("2", "B")]];
     const { deps, log, progress } = makeDeps(pages, [advanceBtn(), terminalBtn()]);
-    // Clean page (no unfilled required) — the flow must NOT auto-advance; the
+    // Clean page (no unfilled required), the flow must NOT auto-advance; the
     // user decides each page turn via the panel's contextual bottom button.
     const controller = new FlowController(deps);
     const run = controller.run(freshState(), null);
@@ -200,7 +200,7 @@ describe("FlowController", () => {
     const samePage = [field("1", "A"), field("2", "B")];
     const pages = [samePage];
     const { deps, progress } = makeDeps(pages, [advanceBtn()]);
-    deps.clickAdvance = (): void => {}; // click does nothing — page never changes
+    deps.clickAdvance = (): void => {}; // click does nothing, page never changes
     await drive(new FlowController(deps), progress);
     const last = progress[progress.length - 1];
     expect(last.phase).toBe("stopped");
@@ -209,7 +209,7 @@ describe("FlowController", () => {
 
   it("stop() during a blocking pause ends the flow as stopped", async () => {
     // The review gate is gone; the remaining pauses poll a blocking condition.
-    // A never-clearing captcha parks the flow — stop() must end it as stopped.
+    // A never-clearing captcha parks the flow, stop() must end it as stopped.
     const { deps, progress } = makeDeps([[field("1", "A")]], [advanceBtn()]);
     deps.pauseReason = async (): Promise<"captcha"> => "captcha"; // never clears
     const controller = new FlowController(deps);
@@ -265,7 +265,7 @@ describe("FlowController", () => {
     deps.hasUnfilledRequired = (): boolean => true; // page 1 has an empty required field
     const controller = new FlowController(deps);
     const run = controller.run(freshState(), null);
-    // Page 1 fills, then the flow pauses — no advance click yet.
+    // Page 1 fills, then the flow pauses, no advance click yet.
     while (!progress.some((p) => p.pauseReason === "unfilled-required")) await Promise.resolve();
     expect(log).not.toContain("click:0");
     controller.notifyAdvanceRequested();
@@ -295,7 +295,7 @@ describe("FlowController", () => {
     // The résumé field lazy-renders: the page reports resume-upload until attached.
     deps.pauseReason = async (): Promise<"resume-upload" | null> => (attached ? null : "resume-upload");
     await drive(new FlowController(deps), progress);
-    expect(attached).toBe(true); // attached on its own — no manual attach needed
+    expect(attached).toBe(true); // attached on its own, no manual attach needed
     expect(progress[progress.length - 1].phase).toBe("done");
   });
 
@@ -339,7 +339,7 @@ describe("FlowController", () => {
   it("pauses (not stops) when an account wall can't auto-advance, and resumes when the user clears it", async () => {
     // Signup wall whose "Create Account" click doesn't take (Workday rejected
     // the generated password / an unmet requirement). The flow must hand off to
-    // the user, then resume once the wall is gone — never finish "stopped".
+    // the user, then resume once the wall is gone, never finish "stopped".
     const wallFields = [field("1", "Password")];
     const formFields = [field("2", "First name")];
     let cleared = false; // the user finishes the signup after a couple polls
@@ -377,7 +377,7 @@ describe("FlowController", () => {
     expect(progress[progress.length - 1].phase).toBe("done"); // resumed, not stopped
   });
 
-  it("parks on an account wall too — the user turns every page, including signup", async () => {
+  it("parks on an account wall too, the user turns every page, including signup", async () => {
     const pages = [[field("1", "A")], [field("2", "B")]];
     const create = document.createElement("button");
     create.textContent = "Create Account";
@@ -461,14 +461,14 @@ describe("manual override of a pause", () => {
     controller.notifyAdvanceRequested();
     await spin();
     // Released: the flow left the pause and parked at the next gate. pauseReason
-    // never clears here, so only the press could have moved it — without the
+    // never clears here, so only the press could have moved it, without the
     // override the flow polls "validation" forever and never reaches "ready".
     expect(progress.some((p) => p.phase === "ready")).toBe(true);
     controller.stop();
     await run;
   });
 
-  it("ignores a press on a captcha pause — a click cannot solve it", async () => {
+  it("ignores a press on a captcha pause, a click cannot solve it", async () => {
     const { deps, progress } = stuckDeps("captcha");
     let polls = 0;
     deps.pauseReason = async () => { polls++; return "captcha"; };
@@ -478,7 +478,7 @@ describe("manual override of a pause", () => {
     controller.notifyAdvanceRequested();
     const before = polls;
     await spin();
-    expect(polls).toBeGreaterThan(before); // still polling — the press did not release it
+    expect(polls).toBeGreaterThan(before); // still polling, the press did not release it
     expect(progress.some((p) => p.phase === "ready")).toBe(false);
     controller.stop();
     await run;
@@ -508,7 +508,7 @@ describe("terminal re-scan before a page turn", () => {
   it("audits every page just before it is replaced", async () => {
     // A page turn is the last moment this page can be observed at all. A value
     // a framework reverted after the fill verified is invisible from the next
-    // page — and per-write verification never sees it either, because it
+    // page, and per-write verification never sees it either, because it
     // happened after the write was checked.
     const { deps, log, progress } = makeDeps(
       [[field("a", "One")], [field("b", "Two")], []],
@@ -527,7 +527,7 @@ describe("terminal re-scan before a page turn", () => {
     expect(log).toContain("audit:0");
   });
 
-  it("audits before the click, not after — the page is gone afterwards", async () => {
+  it("audits before the click, not after, the page is gone afterwards", async () => {
     const { deps, log, progress } = makeDeps(
       [[field("a", "One")], []],
       [advanceBtn(), null]

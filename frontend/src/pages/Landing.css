@@ -1,6 +1,6 @@
-/* Landing Page Styles — Orange Theme */
+/* Landing Page Styles: Orange Theme */
 /* No `overflow-x: hidden` here. It used to hide ~28px of sideways overflow
-   (entry-animation offsets + an unshrinkable hero), which is exactly the bug —
+   (entry-animation offsets + an unshrinkable hero), which is exactly the bug,
    overflow gets fixed where it originates, not swept under a clipping box. */
 .landing {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -51,7 +51,7 @@
   flex-shrink: 0;
 }
 
-/* The brand is a link — give it a real tap target instead of the 32px image box. */
+/* The brand is a link, give it a real tap target instead of the 32px image box. */
 .landing-brand a {
   display: flex;
   align-items: center;
@@ -138,7 +138,7 @@
 .nav-burger.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 
 /* Positioned against .landing-nav (which has a backdrop-filter, so it is the
-   containing block for positioned descendants — absolute, not fixed). */
+   containing block for positioned descendants, absolute, not fixed). */
 .landing-menu-backdrop {
   position: absolute;
   top: 100%;
@@ -238,7 +238,7 @@
   font-weight: 600;
   cursor: pointer;
   padding: 0.5rem 1rem;
-  min-height: 36px; /* was 32px — under the comfortable touch minimum */
+  min-height: 36px; /* was 32px, under the comfortable touch minimum */
 }
 
 .btn-ghost:hover { color: #533afd; }
@@ -304,7 +304,7 @@
 
 .w-full { width: 100%; }
 
-/* ===== Hero — Full Viewport ===== */
+/* ===== Hero, Full Viewport ===== */
 .hero {
   min-height: 100vh;
   display: flex;
@@ -317,7 +317,7 @@
 .hero-bg {
   position: absolute;
   inset: 0;
-  /* Stripe signature gradient mesh — cream / sherbet / lavender / indigo / ruby washed across the top */
+  /* Stripe signature gradient mesh: cream / sherbet / lavender / indigo / ruby washed across the top */
   background:
     radial-gradient(ellipse 60% 50% at 88% 8%, rgba(249, 107, 238, 0.28) 0%, transparent 60%),
     radial-gradient(ellipse 70% 60% at 60% 0%, rgba(83, 58, 253, 0.30) 0%, transparent 62%),
@@ -661,7 +661,7 @@
 
 /* ===== Social Proof (removed) ===== */
 
-/* ===== Stats Section — Light Theme ===== */
+/* ===== Stats Section, Light Theme ===== */
 .stats-section-light {
   background: #ffffff;
   padding: 6rem 2rem;
@@ -1057,7 +1057,7 @@
   min-width: 0;
 }
 
-/* "Artificial Intelligence(AI)" is one unbreakable token — it has to wrap or it
+/* "Artificial Intelligence(AI)" is one unbreakable token. It has to wrap or it
    widens the card and shoves the score badge out of the row. */
 .autofill-company {
   font-size: 0.75rem;
@@ -1524,7 +1524,7 @@
 }
 
 /* An 8px dot is not a tap target. Expand the hit area to the full row height and
-   out to the gap (no wider — neighbouring targets must not overlap or they steal
+   out to the gap (no wider, neighbouring targets must not overlap or they steal
    each other's taps) without changing what is drawn. */
 .testimonials-dot::after,
 .story-nav-dot::after {
@@ -1705,7 +1705,7 @@
   /* There are two tiers, not three. A hardcoded 3-column track parked the pair
    * in columns 1–2 and left an empty column beside them, which reads as the
    * whole block being shoved left of the centered heading. Size the tracks to
-   * the cards instead and center however many there are — a third tier then
+   * the cards instead and center however many there are, a third tier then
    * centers itself too, rather than re-breaking this. */
   grid-template-columns: repeat(auto-fit, minmax(280px, 360px));
   justify-content: center;
@@ -2033,16 +2033,16 @@
    This used to be a 35° ribbon hanging 42px off the card, relying on the card's
    overflow:hidden to cut its ends. That clip cut the badge itself (30px at every
    width from 320 to 2560) and pushed its box past the right edge of the viewport
-   on every phone. It is contained in the corner now — same colour, weight, type
+   on every phone. It is contained in the corner now, same colour, weight, type
    and placement, just no overhang.
 
    Two things keep it inside the card, which still clips:
-   · `transform-origin: top right` — rotating about the top-right corner means the
+   · `transform-origin: top right`: rotating about the top-right corner means the
      rotated box can never grow to the right of `right`, whatever the text says.
    · `top` has to clear the tilt. Rotating lifts the far end by width·sin(angle):
      at 4° a ~155px badge rises ~11px, so `top` must exceed that or the badge's
      own corner gets shaved off. (It was: a 6° tilt with top:12px cut 1.9px off
-     the top edge on every phone — invisible to a scrollWidth check, since top
+     the top edge on every phone, invisible to a scrollWidth check, since top
      overflow does not widen a box.) */
 .success-story-badge {
   position: absolute;
@@ -2238,7 +2238,7 @@
   transform: translateX(30px);
 }
 
-/* ===== Responsive — breakpoint scale is 640 / 768 / 1024 / 1280 ===== */
+/* ===== Responsive, breakpoint scale is 640 / 768 / 1024 / 1280 ===== */
 @media (max-width: 768px) {
   /* Nav: the inline links move into the hamburger panel. The primary CTA stays
      in the bar; "Log in" moves into the panel so the bar fits a 320px screen. */
@@ -2266,7 +2266,7 @@
   .pricing-featured { transform: none; }
   .companies-carousel-track { gap: 2.5rem; }
   .footer-inner { grid-template-columns: 1fr 1fr; gap: 2rem; }
-  /* Footer links are 20px tall — give them a thumb-sized row on touch widths
+  /* Footer links are 20px tall, give them a thumb-sized row on touch widths
      without touching the desktop rhythm. */
   .footer-col { gap: 0.1rem; }
   .footer-col a { padding: 0.5rem 0; }
@@ -2286,7 +2286,7 @@
 
   /* The hero mockup is a real layout, not a picture. On a 320px phone its job
      cards had 45px left for the title, so "Software Engineer" broke mid-word.
-     Trim the chrome (rail, padding, icon) to hand ~95px back to the text — wide
+     Trim the chrome (rail, padding, icon) to hand ~95px back to the text, wide
      enough that every word fits and it wraps at spaces like it does on desktop. */
   .mockup-sidebar { width: 44px; padding: 12px 6px; }
   .mockup-sidebar-item { width: 32px; height: 32px; }

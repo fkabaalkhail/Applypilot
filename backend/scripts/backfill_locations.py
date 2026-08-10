@@ -3,7 +3,7 @@ One-time backfill of structured location columns (+company_domain repair)
 for every scraped_jobs row. Idempotent: only touches rows where
 location_search is NULL/''. Targets Postgres (Neon).
 
-Reads ONLY the columns it needs (never full rows — descriptions would make
+Reads ONLY the columns it needs (never full rows, descriptions would make
 this ~70 MB of egress) and updates in batches.
 
 Usage:

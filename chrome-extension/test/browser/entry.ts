@@ -1,9 +1,9 @@
 /**
- * Browser harness entry — bundled by build.mjs into dist/harness.js and injected
+ * Browser harness entry: bundled by build.mjs into dist/harness.js and injected
  * into a real Chromium page (or iframe realm) by the Playwright spec.
  *
- * It runs the EXACT shipping engine the content script uses — scanPage +
- * AutofillReconciler + fillAriaCombobox — against the same fixtures the jsdom
+ * It runs the EXACT shipping engine the content script uses, scanPage +
+ * AutofillReconciler + fillAriaCombobox, against the same fixtures the jsdom
  * suite uses, then reads every control back from the live DOM so the spec can
  * assert the autofill actually committed. No overlay / background / network.
  */
@@ -16,7 +16,7 @@ import { base64ToFile, injectResumeFile } from "../../src/content/fileUpload";
 import { MOCK_PROFILE } from "../../src/api/mockProfile";
 import type { DetectedField, UserApplicationProfile } from "../../src/shared/types";
 
-// Fixtures — identical builders the jsdom suite mounts.
+// Fixtures: identical builders the jsdom suite mounts.
 import { mountGreenhouseForm, mountLeverForm, mountBambooHrForm, mountBreezyForm } from "../fixtures/easy";
 import {
   mountAshbyForm,
@@ -60,7 +60,7 @@ const FIXTURES: Record<string, MountFn> = {
 };
 
 // Real (non-stubbed) sleeps so the combobox open→commit timing is exercised, but
-// fast — the fixtures mount their listbox synchronously on click.
+// fast, the fixtures mount their listbox synchronously on click.
 const COMBO = {
   sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
   openWaitMs: 800,
@@ -210,7 +210,7 @@ export interface UploadTestResult {
 /**
  * Mount a fixture with a résumé file input, then run the real injectResumeFile
  * (DataTransfer-based) the overlay's "attach résumé" action uses. Reads back the
- * input's FileList — the real-browser capability jsdom cannot reproduce.
+ * input's FileList, the real-browser capability jsdom cannot reproduce.
  */
 function testFileUpload(
   name: string,

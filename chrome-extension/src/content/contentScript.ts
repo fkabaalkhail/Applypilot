@@ -5,9 +5,9 @@
  * is injected on demand into any other page via the popup's Scan button.
  *
  * Two ways it is used:
- *  1. Autonomously — on the top frame it scans for an application form and,
+ *  1. Autonomously, on the top frame it scans for an application form and,
  *     when fields are found, mounts the in-page overlay (FAB + full popup UI).
- *  2. On demand — the toolbar popup sends SCAN_PAGE / FILL_FIELDS messages.
+ *  2. On demand, the toolbar popup sends SCAN_PAGE / FILL_FIELDS messages.
  *
  * Frame coordination: chrome.tabs.sendMessage broadcasts to all frames but
  * resolves with the FIRST response. We exploit that deliberately:
@@ -120,7 +120,7 @@ declare global {
 /**
  * Attach a downloaded résumé/cover file to `el`. When the site's upload can't be
  * scripted at all (a custom button that opens a native picker with no persistent
- * <input type=file> — SAP SuccessFactors), download the file so the user can pick
+ * <input type=file>, SAP SuccessFactors), download the file so the user can pick
  * it in the site's own dialog, and say so.
  */
 async function attachOrGuide(el: HTMLElement, dataBase64: string, name: string, contentType: string): Promise<UploadResult> {
@@ -129,7 +129,7 @@ async function attachOrGuide(el: HTMLElement, dataBase64: string, name: string, 
   downloadBase64File(dataBase64, name, contentType);
   return {
     ok: false,
-    reason: `This site opens its own file picker — I downloaded "${name}" to your Downloads. Click the page's upload button and choose it.`,
+    reason: `This site opens its own file picker. I downloaded "${name}" to your Downloads. Click the page's upload button and choose it.`,
   };
 }
 
@@ -190,15 +190,15 @@ function logScanDiagnostics(
 /** Turn a reconciliation report into the popup's per-field outcome shape. */
 function reportToOutcome(r: FieldReport): { fieldId: string; ok: boolean; reason?: string } {
   if (r.ok) return { fieldId: r.fieldId, ok: true };
-  return { fieldId: r.fieldId, ok: false, reason: r.reason ?? "Could not fill — please check manually" };
+  return { fieldId: r.fieldId, ok: false, reason: r.reason ?? "Could not fill. Please check manually" };
 }
 
 /**
  * Resolve once the page DOM has been structurally quiet for `quietMs`, or after
  * `capMs` regardless. React ATS (Workday) mount a loading skeleton and re-render
- * the form section repeatedly as they hydrate — scanning/filling during that
+ * the form section repeatedly as they hydrate, scanning/filling during that
  * churn captures throwaway controls that detach mid-write ("Field no longer
- * found" — the #1 live Workday failure) or get their values wiped by the next
+ * found", the #1 live Workday failure) or get their values wiped by the next
  * render. Waiting for quiescence lets us scan and fill the real, settled form.
  * Bounded, so a page that never fully settles (animations, polling widgets)
  * still proceeds. Aborts immediately when the fill is cancelled.
@@ -229,7 +229,7 @@ function waitForDomSettle(signal?: AbortSignal, quietMs = 400, capMs = 3000): Pr
 }
 
 /**
- * Log why an advance click left the page put — the real blocker on live ATS
+ * Log why an advance click left the page put, the real blocker on live ATS
  * (Workday et al.): a visible validation error, or a required field the fill
  * couldn't complete, is what makes a page refuse to advance (for the extension
  * AND a manual click). Best-effort; never throws. deepQueryAll already skips the
@@ -266,7 +266,7 @@ function logStuckDiagnostics(): void {
       );
 
     console.log(
-      "[Tailrd stuck] page did not advance —",
+      "[Tailrd stuck] page did not advance:",
       "visible errors:", JSON.stringify([...new Set(errors)].slice(0, 6)),
       "| empty required fields:", JSON.stringify([...new Set(emptyRequired)].slice(0, 10))
     );
@@ -286,7 +286,7 @@ function initialize(): void {
   let flowGeneration = 0;
   /** The panel's picked upload résumé for this flow (auto-attach preference). */
   let flowResumeId: number | null = null;
-  // A login wall we have no credentials for — pauses the flow until it clears.
+  // A login wall we have no credentials for, pauses the flow until it clears.
   let accountBlocked = false;
   // Submit tracking: bound to the terminal (submit) button once the flow reaches
   // it, so the application is recorded when the USER submits. Never auto-clicked.
@@ -295,15 +295,15 @@ function initialize(): void {
   let lastRecordedUrl: string | null = null;
   // Aborts an in-flight fill the instant the user hits Stop (or a new flow
   // supersedes this one), so a running fillOnce stops writing promptly instead
-  // of running to completion — Jobright's CANCEL_AUTO_FILL parity.
+  // of running to completion, Jobright's CANCEL_AUTO_FILL parity.
   let flowAbort: AbortController | null = null;
-  // Fields the terminal re-scan found no longer holding what was written — the
+  // Fields the terminal re-scan found no longer holding what was written, the
   // framework reverted them after the write verified. They are asked about
   // again even though the control is not empty, because "holds SOMETHING" is
   // not "holds the answer"; see selectAnswerGaps.
   let lastRevertedIds: ReadonlySet<string> = new Set();
   /** What the last fill on THIS page wrote, kept so the page can be re-audited
-   *  later — at the page turn, which is the last moment it is observable. */
+   *  later, at the page turn, which is the last moment it is observable. */
   let lastFill: {
     intended: Map<string, string>;
     provenance: Map<string, FieldProvenance>;
@@ -323,7 +323,7 @@ function initialize(): void {
   // scans must then never overwrite the panel with the (formless) top-frame DOM.
   let adoptedRemote = false;
   // A persisted flow is live for this tab (set async at init). A flow is
-  // user-started, so the panel may always mount for it — mid-flow pages
+  // user-started, so the panel may always mount for it, mid-flow pages
   // (account walls, generic page-1 forms on unknown ATSes) carry no
   // job-application field evidence of their own.
   let flowActiveHint = false;
@@ -337,12 +337,12 @@ function initialize(): void {
   // separate from this frame's own scan so local scans never clobber the panel.
   let remoteFields: DetectedField[] = [];
   let remoteCallbacks: OverlayCallbacks | null = null;
-  // When this frame is a child that owns the form, it has no panel of its own —
+  // When this frame is a child that owns the form, it has no panel of its own,
   // it pushes field changes up to the top frame's panel instead of mounting one.
   let actingAsRemoteHost = false;
 
-  /** Push current fields to wherever the panel lives (local overlay, or — when
-   *  this frame is a child form-host — the top frame's panel). */
+  /** Push current fields to wherever the panel lives (local overlay, or, when
+   *  this frame is a child form-host, the top frame's panel). */
   function reportFields(carryReverted = false): void {
     if (actingAsRemoteHost) {
       postToRuntime({
@@ -369,7 +369,7 @@ function initialize(): void {
   // After the extension is reloaded/updated this content script is orphaned:
   // every runtime message throws "Extension context invalidated". The messaging
   // helpers detect that and run this once so we stop the observers that would
-  // otherwise re-fire — and re-throw — on every subsequent page mutation.
+  // otherwise re-fire (and re-throw) on every subsequent page mutation.
   onExtensionContextInvalidated(() => {
     try {
       observer?.disconnect();
@@ -396,7 +396,7 @@ function initialize(): void {
       // controller already unwound
     }
     flowController = null;
-    // The panel is still on screen and still looks usable — tell the truth.
+    // The panel is still on screen and still looks usable, tell the truth.
     try {
       if (isTopFrame) showReloadRequired();
     } catch {
@@ -440,7 +440,7 @@ function initialize(): void {
   /**
    * Fill custom ARIA dropdowns one at a time by opening the listbox and clicking
    * the matching option (comboboxEngine). Sequential so two menus never fight,
-   * and deliberately NOT handed to the reconciler — re-driving a dropdown on
+   * and deliberately NOT handed to the reconciler, re-driving a dropdown on
    * every mutation is the churn we avoid. Returns popup-style outcomes.
    */
   async function fillComboboxTargets(
@@ -450,16 +450,16 @@ function initialize(): void {
     const outcomes: PassOutcome[] = [];
     const reask: ReaskCandidate[] = [];
     for (const t of targets) {
-      if (signal?.aborted) break; // Stop pressed — don't open more menus
+      if (signal?.aborted) break; // Stop pressed, don't open more menus
       const control = registry.get(t.fieldId);
       const el = control?.el;
       if (!el) {
-        outcomes.push({ fieldId: t.fieldId, ok: false, reason: "Field no longer found — rescan the page" });
+        outcomes.push({ fieldId: t.fieldId, ok: false, reason: "Field no longer found. Rescan the page" });
         continue;
       }
       const res = await fillAriaCombobox(el, t.value, { multi: control?.multi });
       // Carry the specific reason (couldn't-open / no-match / didn't-commit) into
-      // telemetry — otherwise a dropdown failure is logged with an empty reason.
+      // telemetry, otherwise a dropdown failure is logged with an empty reason.
       outcomes.push({ fieldId: t.fieldId, ok: res.filled, reason: res.reason });
       if (!res.filled && res.options) reask.push({ fieldId: t.fieldId, options: res.options });
     }
@@ -474,16 +474,16 @@ function initialize(): void {
     const outcomes: PassOutcome[] = [];
     const reask: ReaskCandidate[] = [];
     for (const t of targets) {
-      if (signal?.aborted) break; // Stop pressed — don't drive more fields
+      if (signal?.aborted) break; // Stop pressed, don't drive more fields
       const control = registry.get(t.fieldId);
       if (!control?.driver) { outcomes.push({ fieldId: t.fieldId, ok: false }); continue; }
       // Already displaying this value (an earlier pass, or the user, committed
-      // it) — driving it again would visibly erase and re-pick the selection.
+      // it), driving it again would visibly erase and re-pick the selection.
       if (control.el && comboboxDisplaysValue(control.el, t.value)) {
         outcomes.push({ fieldId: t.fieldId, ok: true });
         continue;
       }
-      // A multi-value widget (skills) takes one chip per item — the driver sets
+      // A multi-value widget (skills) takes one chip per item, the driver sets
       // a single value, so route it to the combobox engine's chip loop instead.
       if (control.multi && control.el) {
         const res = await fillAriaCombobox(control.el, t.value, { multi: true });
@@ -496,7 +496,7 @@ function initialize(): void {
         outcomes.push({ fieldId: t.fieldId, ok: res.ok, reason: res.ok ? undefined : res.reason });
         continue;
       }
-      // Driver miss — best-effort ARIA fallback: may fill, or harvest options.
+      // Driver miss: best-effort ARIA fallback: may fill, or harvest options.
       const fb = await fillAriaCombobox(control.el, t.value, { multi: control.multi });
       outcomes.push({ fieldId: t.fieldId, ok: fb.filled, reason: fb.reason });
       if (!fb.filled && fb.options) reask.push({ fieldId: t.fieldId, options: fb.options });
@@ -550,7 +550,7 @@ function initialize(): void {
       ? await fillDriverTargets(driverTargets, signal)
       : { outcomes: [], reask: [] };
     // A <select> that failed on "No option matches" re-reads its options fresh
-    // (dependent dropdowns — Country → State — repopulate after earlier fills).
+    // (dependent dropdowns (Country → State) repopulate after earlier fills).
     const reask: ReaskCandidate[] = [...combo.reask, ...driver.reask];
     for (const r of reports) {
       if (r.ok || !r.reason?.startsWith("No option matches")) continue;
@@ -574,8 +574,8 @@ function initialize(): void {
     const control = registry.get(id);
     const el = control?.el;
     if (!el) return true;
-    // A committed combobox keeps its INPUT empty — the selection lives in the
-    // widget's value display (react-select single-value div, trigger text) — so
+    // A committed combobox keeps its INPUT empty, the selection lives in the
+    // widget's value display (react-select single-value div, trigger text), so
     // judge by the widget's displayed value, not the input.
     if (control.controlType === "combobox" || control.controlType === "customDropdown") {
       return !readComboboxValue(el);
@@ -594,7 +594,7 @@ function initialize(): void {
   }
 
   /**
-   * Silently fill the user's own custom autofill fields — the labelled
+   * Silently fill the user's own custom autofill fields, the labelled
    * question/answer pairs they authored themselves (autofillExtras), for
    * questions the profile has no slot for. Matched by exact-normalized label,
    * with NO UI: the old interactive "missing information" modal was removed, so
@@ -622,7 +622,7 @@ function initialize(): void {
         }
       }
     } catch {
-      // Storage unavailable — nothing to refill.
+      // Storage unavailable: nothing to refill.
     }
 
     return localFill;
@@ -639,7 +639,7 @@ function initialize(): void {
     for (const kind of SECTION_KINDS) {
       const needed = Math.min(rowsNeeded(lastProfile, kind), MAX_ROWS);
       if (needed === 0) continue; // nothing to add for this section
-      // Drive by needed rows, not "≥1 present" — some ATS show an empty section
+      // Drive by needed rows, not "≥1 present", some ATS show an empty section
       // with just an "Add Work Experience" button. findAddButton falls back to a
       // section-specific button (unambiguous text) when there are no fields to
       // scope a generic "Add", so it can't mis-click a neighbouring section.
@@ -652,7 +652,7 @@ function initialize(): void {
         activateElement(btn);
         await waitForDomSettle(signal);
         runScan();
-        if (rowsPresent(lastFields, kind) <= present) break; // click added no row — stop
+        if (rowsPresent(lastFields, kind) <= present) break; // click added no row, stop
       }
     }
   }
@@ -734,7 +734,7 @@ function initialize(): void {
       // What each field was asked to hold, and where that came from. Recorded
       // as the passes run so the terminal re-scan can diff observed page state
       // against intent, and so telemetry can name the tier and pass responsible
-      // for a value — the attribution the old failure-only record could not make.
+      // for a value, the attribution the old failure-only record could not make.
       const intended = new Map<string, string>();
       const provenance = new Map<string, FieldProvenance>();
       const droppedByBackend = new Map<string, DroppedAnswerLike>();
@@ -755,13 +755,13 @@ function initialize(): void {
         }
       };
 
-      // Phase A — deterministic profile fields fill instantly (local fast-path).
+      // Phase A: deterministic profile fields fill instantly (local fast-path).
       const route = planFillRoute(selected, AUTOFILL_CONFIDENCE_THRESHOLD);
       const localFill = await fillItems(
         noteIntent(route.localTargets, { tier: "profile" }), false, signal
       );
 
-      // Phase B — judgment fields answered by the backend (primary), deduped by the
+      // Phase B: judgment fields answered by the backend (primary), deduped by the
       // session cache; also the eligible EMPTY fields (today's AI candidates). The
       // local proposedValue is the fallback so a judgment field never regresses when
       // the backend is unavailable.
@@ -780,7 +780,7 @@ function initialize(): void {
           const control = registry.get(f.id);
           if (!needsOptionHarvest(f, Boolean(control?.driver)) || !control?.el) continue;
           // Short open budget: a widget that hasn't mounted its menu in 600ms
-          // isn't going to — the default 1.5s (×2 with the re-open) per field
+          // isn't going to, the default 1.5s (×2 with the re-open) per field
           // was seconds of visible dead time before the AI round even started.
           const harvested = await harvestComboboxOptions(control.el, { openWaitMs: 600 }).catch(
             () => undefined
@@ -803,7 +803,7 @@ function initialize(): void {
             }
           }
         } catch {
-          // Backend unavailable — the local fallback below still fills judgment fields.
+          // Backend unavailable: the local fallback below still fills judgment fields.
         }
         const plan = planAiFill(backendFields, answers);
         const passById = new Map(answers.map((a) => [a.id, a.fillPass ?? a.source ?? ""]));
@@ -814,7 +814,7 @@ function initialize(): void {
         );
 
         // Local fallback: judgment fields that had a local value but weren't answered
-        // by the backend still fill from proposedValue — no regression. A single
+        // by the backend still fill from proposedValue, no regression. A single
         // checkbox with a non-boolean value is excluded: it was routed to the AI
         // precisely because that value can only fail as "Ambiguous checkbox value".
         const answered = new Set<string>(plan.simpleTargets.map((t) => t.fieldId));
@@ -828,14 +828,14 @@ function initialize(): void {
       }
 
       // One re-ask round: choice controls whose fill missed now carry the
-      // widget's REAL options — a single batched AI_FILL snaps the answers
+      // widget's REAL options, a single batched AI_FILL snaps the answers
       // ("Canada" → "Canadian"), then a merge pass drives them in.
       let reaskFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
       let demoFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
       const reaskCandidates = [...localFill.reask, ...aiFill.reask, ...fallbackFill.reask];
-      // Sensitive (EEO) fields NEVER reach the backend — pick their closest
+      // Sensitive (EEO) fields NEVER reach the backend, pick their closest
       // option ON-DEVICE from the harvested list. Everything else re-asks the AI.
       const sensitiveReask = reaskCandidates.filter((c) => lastFields.find((f) => f.id === c.fieldId)?.sensitive);
       const openReask = reaskCandidates.filter((c) => !lastFields.find((f) => f.id === c.fieldId)?.sensitive);
@@ -849,7 +849,7 @@ function initialize(): void {
           if (choice) demoTargets.push({ fieldId: c.fieldId, value: choice });
         }
         // Tier 3, on-device: these values never leave the machine, and the
-        // telemetry record says only that the device answered — never what.
+        // telemetry record says only that the device answered, never what.
         if (demoTargets.length > 0) {
           demoFill = await fillItems(noteIntent(demoTargets, { tier: "device" }), true, signal);
         }
@@ -881,7 +881,7 @@ function initialize(): void {
               );
             }
           } catch {
-            // Backend unreachable — the manual-select outcomes stand.
+            // Backend unreachable: the manual-select outcomes stand.
           }
         }
       }
@@ -890,7 +890,7 @@ function initialize(): void {
       const missingFill = signal?.aborted ? { reports: [], outcomes: [] } : await refillCustomFields(signal);
 
       // Cascading location dropdowns (Country → State → City) now that parents
-      // are set — a no-op unless the page actually has a location cascade.
+      // are set, a no-op unless the page actually has a location cascade.
       const cascadeFill = signal?.aborted
         ? { reports: [], outcomes: [] as PassOutcome[] }
         : await retryDependentDropdowns(signal);
@@ -924,9 +924,9 @@ function initialize(): void {
       // diff what it holds against what was written.
       //
       // writeEngine verifies each commit AT WRITE TIME, which proves the value
-      // reached the control and no more. A framework can revert it afterwards —
+      // reached the control and no more. A framework can revert it afterwards,
       // on blur, on its own validation, or on a re-render triggered by a LATER
-      // field — and a per-write check has moved on by then. This is the only
+      // field, and a per-write check has moved on by then. This is the only
       // point where "the page actually holds the answer" can be observed.
       const observed = signal?.aborted ? [] : await observePageState(signal);
       const okIds = new Set(
@@ -949,7 +949,7 @@ function initialize(): void {
       );
       if (lastRevertedIds.size > 0) {
         console.log(
-          `[Tailrd fill] ${lastRevertedIds.size} field(s) no longer hold what was written — re-asking`
+          `[Tailrd fill] ${lastRevertedIds.size} field(s) no longer hold what was written, re-asking`
         );
       }
       // Push the re-scan's own view of the page (and its reverts) to the panel,
@@ -957,11 +957,11 @@ function initialize(): void {
       // the planner intended.
       if (!signal?.aborted) reportFields(true);
 
-      // Per-field record of this page for the panel's summary — every detected
+      // Per-field record of this page for the panel's summary, every detected
       // field, not just the attempted ones, so a skipped required question is
       // visible BEFORE the user turns the page.
       // Fire-and-forget telemetry (field labels, categories, provenance and
-      // booleans only — never values) so we can see which sites/fields the
+      // booleans only, never values) so we can see which sites/fields the
       // filler struggles with, INCLUDING the ones it reported filling and
       // didn't. Skipped on cancel.
       if (!signal?.aborted && total > 0) {
@@ -992,7 +992,7 @@ function initialize(): void {
    * that was replaced mid-fill has a new element behind the same id, and the
    * stale reference would report the old element's value forever.
    *
-   * Values stay in this frame — only presence and equality are ever reported.
+   * Values stay in this frame, only presence and equality are ever reported.
    */
   async function observePageState(signal?: AbortSignal): Promise<ObservedField[]> {
     await waitForDomSettle(signal);
@@ -1004,7 +1004,7 @@ function initialize(): void {
   /**
    * Re-audit the current page against the last fill, and record what changed.
    *
-   * Called before every page turn and once when the flow finishes — a page turn
+   * Called before every page turn and once when the flow finishes, a page turn
    * is the last moment the page can be observed at all, and the final page
    * never gets one. Time has passed since the fill: the user may have typed,
    * the site may have validated, and a framework may have reset a control the
@@ -1046,7 +1046,7 @@ function initialize(): void {
 
   /** Route a flow progress beat to wherever the panel lives (mirrors reportFields). */
   function emitFlowProgress(p: FlowProgress): void {
-    // The fill/flow is over — restore the page's dialogs.
+    // The fill/flow is over: restore the page's dialogs.
     if (p.phase === "done" || p.phase === "stopped") void setDialogSuppression(false);
     if (actingAsRemoteHost) {
       void chrome.runtime
@@ -1123,7 +1123,7 @@ function initialize(): void {
         lastRecordedUrl = null; // let a later attempt retry once connected
       }
     } catch {
-      lastRecordedUrl = null; // transient failure — allow a retry
+      lastRecordedUrl = null; // transient failure, allow a retry
     }
   }
 
@@ -1163,13 +1163,13 @@ function initialize(): void {
         }
         // A sign-in wall with no credential saved for this origin: we never
         // created an account here, so when the page offers a create-account
-        // toggle (Workday's createAccountLink), flip to registration — the
+        // toggle (Workday's createAccountLink), flip to registration, the
         // default intent, matching the reference flow. A user who already has
         // an account still signs in manually during the resulting pause.
         if (wall.kind === "login" && !(await getCredential(location.origin))) {
           const toggle = findSignupToggle(scope);
           if (toggle) {
-            console.log("[Tailrd flow] login wall with no saved credential — switching to create-account");
+            console.log("[Tailrd flow] login wall with no saved credential, switching to create-account");
             clickAdvance(toggle);
             await new Promise((resolve) => setTimeout(resolve, 800));
             runScan();
@@ -1189,14 +1189,14 @@ function initialize(): void {
         );
         // The wall owns its email field: drop the generic proposal so the
         // fill pass that follows can't overwrite the registration email with
-        // the profile email — the saved pair must match what the site got.
+        // the profile email, the saved pair must match what the site got.
         if (wall.emailEl?.value) {
           for (const f of lastFields) {
             if (registry.get(f.id)?.el === wall.emailEl) f.proposedValue = null;
           }
         }
         // Give the form a beat to react to the password + ticked consent before
-        // the controller looks for (and clicks) Create Account — Workday enables
+        // the controller looks for (and clicks) Create Account, Workday enables
         // that button only once its own validation has re-run.
         if (out.filled > 0) await new Promise((resolve) => setTimeout(resolve, 500));
         accountBlocked = out.pause === "account";
@@ -1210,7 +1210,7 @@ function initialize(): void {
         if (isVerificationWall(scope)) return "verification";
         // Form-shaped blockers only apply where there IS a form. On an entry
         // page (job posting, apply-method chooser) the scan finds no fields and
-        // no scope, so `scope` degrades to the whole document — and a
+        // no scope, so `scope` degrades to the whole document, and a
         // page-level alert anywhere on a Workday posting would then read as a
         // rejected form and park the flow before it ever clicks Apply. Nothing
         // has been submitted on such a page, so neither check can be meaningful.
@@ -1233,7 +1233,7 @@ function initialize(): void {
         try {
           await sendToBackground<SimpleResponse>({ type: "FLOW_STATE_SET", state });
         } catch {
-          // Background asleep — the flow still runs, it just won't survive navigation.
+          // Background asleep: the flow still runs, it just won't survive navigation.
         }
       },
       onProgress: emitFlowProgress,
@@ -1245,7 +1245,7 @@ function initialize(): void {
   }
 
   /** Resume a persisted flow after a real navigation (form-owning frame only,
-   *  or the top frame of an entry page — job posting / apply-method chooser). */
+   *  or the top frame of an entry page, job posting / apply-method chooser). */
   async function maybeResumeFlow(): Promise<void> {
     if (flowController || resumeInFlight) return;
     if (
@@ -1269,7 +1269,7 @@ function initialize(): void {
       flowController = new FlowController(makeFlowDeps());
       void flowController.run(st, null);
     } catch {
-      // Background asleep — the flow simply doesn't resume.
+      // Background asleep: the flow simply doesn't resume.
     } finally {
       resumeInFlight = false;
     }
@@ -1303,9 +1303,9 @@ function initialize(): void {
     /**
      * The user answered the questions autofill couldn't. Write them into the
      * page, and save the ones that have a real profile slot to their Tailrd
-     * profile (planAnswerSaves decides — nothing else is persisted anywhere).
+     * profile (planAnswerSaves decides, nothing else is persisted anywhere).
      *
-     * The page write comes first and its result is what we report — a save that
+     * The page write comes first and its result is what we report, a save that
      * "succeeded" while the form stayed empty would be a lie. The profile save
      * is best-effort: a backend hiccup must not lose the answers the user can
      * already see filled in.
@@ -1319,7 +1319,7 @@ function initialize(): void {
       const filled = filledIds.size;
 
       // Persistence must not outlive a failed write where the failure proves the
-      // answer unusable — a profile value is replayed on every future form (see
+      // answer unusable, a profile value is replayed on every future form (see
       // answersWorthRemembering). An ordinary free-text answer that missed is
       // still kept: the write failed, the answer did not. `discarded` goes back
       // to the panel so the banner never claims to have saved what we dropped.
@@ -1349,7 +1349,7 @@ function initialize(): void {
      * Read the real options of each field's control for the gaps modal.
      * Sequential and budgeted: each harvest opens and closes a dropdown on the
      * page, and doing several at once would leave two listboxes open at the
-     * same time — which several ATS treat as a click-away and close both.
+     * same time, which several ATS treat as a click-away and close both.
      */
     onHarvestGapOptions: async (fieldIds) => {
       const HARVEST_BUDGET_MS = 4000;
@@ -1373,12 +1373,12 @@ function initialize(): void {
       void setDialogSuppression(false); // restore the page's dialogs
       flowController?.stop();
       flowController = null;
-      // Stop always clears the persisted state — even when no controller is
+      // Stop always clears the persisted state, even when no controller is
       // live yet (a resume mid-await), so the pending resume cannot proceed.
       void sendToBackground<SimpleResponse>({ type: "FLOW_STATE_SET", state: null }).catch(() => {});
     },
     onFlowAdvance: () => {
-      // User pressed "Next page" — release the flow's ready gate so it advances
+      // User pressed "Next page": release the flow's ready gate so it advances
       // and auto-fills the next page (Task B). No-op when no flow is parked.
       flowController?.notifyAdvanceRequested();
     },
@@ -1532,12 +1532,12 @@ function initialize(): void {
       );
       if (textField) {
         const control = registry.get(textField.id);
-        if (!control) return { ok: false, reason: "Cover-letter field is no longer on the page — rescan." };
+        if (!control) return { ok: false, reason: "Cover-letter field is no longer on the page. Rescan." };
         const res = writeControl(control, text);
         if (!res.written) return { ok: false, reason: res.reason };
         return verifyControl(control, text)
           ? { ok: true }
-          : { ok: false, reason: "Text did not stick — please check the field." };
+          : { ok: false, reason: "Text did not stick. Please check the field." };
       }
       const fileField = lastFields.find(
         (f) => f.category === "coverLetter" && f.controlType === "file"
@@ -1575,12 +1575,12 @@ function initialize(): void {
         await navigator.clipboard.writeText(text);
         return { ok: true };
       } catch {
-        return { ok: false, reason: "Clipboard blocked — select the text and copy manually." };
+        return { ok: false, reason: "Clipboard blocked. Select the text and copy manually." };
       }
     },
   };
 
-  /** Page-context hint for the mount gate — lets two weak job-flavored fields
+  /** Page-context hint for the mount gate, lets two weak job-flavored fields
    *  count as an application when the URL/title says we're on a job page. */
   function pageContext(): PageContext {
     return { url: location.href, title: document.title };
@@ -1609,7 +1609,7 @@ function initialize(): void {
       ...(carryReverted ? { reverted: lastRevertedIds } : {}),
     };
     // Mount on a detected job-application form, on a known ATS's apply-entry
-    // page (Workday job posting), or on an ATS application page — so the
+    // page (Workday job posting), or on an ATS application page, so the
     // always-on "Account Creation & Autofill" button is available to start the
     // flow even before the posting exposes an apply-entry we recognise.
     //
@@ -1617,7 +1617,7 @@ function initialize(): void {
     // host only (/(^|\.)greenhouse\.io$/ …), so the vendors' own marketing
     // sites popped the panel on every page. The registry IS path-gated
     // (Greenhouse only on /{co}/jobs/{id}), so prefer it, and fall back to the
-    // adapter only where the page actually has recognized fields — that keeps
+    // adapter only where the page actually has recognized fields, that keeps
     // adapter hosts missing from the registry working without re-opening the
     // marketing-page hole.
     //
@@ -1637,7 +1637,7 @@ function initialize(): void {
     } else if (overlayShown || panelOpenedManually) {
       updateOverlay(state);
     } else {
-      console.log(`[Tailrd overlay] NOT mounting — no job-application evidence in TOP frame (${recognizedCount(lastFields)} recognized fields, no ATS match)`);
+      console.log(`[Tailrd overlay] NOT mounting: no job-application evidence in TOP frame (${recognizedCount(lastFields)} recognized fields, no ATS match)`);
     }
   }
 
@@ -1680,7 +1680,7 @@ function initialize(): void {
 
   /**
    * Load the server-side hot-fix classification rules for this host, then
-   * re-scan so they take effect. Best-effort — no rules / background asleep just
+   * re-scan so they take effect. Best-effort, no rules / background asleep just
    * leaves the generic pipeline running.
    */
   async function loadOverrides(): Promise<void> {
@@ -1693,14 +1693,14 @@ function initialize(): void {
       reportFields();
       if (!isTopFrame) announceIfFormHost();
     } catch {
-      // No rules or background asleep — generic classification stands.
+      // No rules or background asleep, generic classification stands.
     }
   }
 
   /**
    * If this page is a real job posting (has a substantial description), remember
-   * it so the application form page — which almost never repeats the description
-   * — can still give the AI real context for the résumé rewrite / cover letter.
+   * it so the application form page, which almost never repeats the description
+   * can still give the AI real context for the résumé rewrite / cover letter.
    */
   function captureJobDescription(): void {
     try {
@@ -1735,7 +1735,7 @@ function initialize(): void {
   }
 
   /** If a live flow is persisted for this tab, let the panel mount for it.
-   *  Async — re-runs the mount/announce decision once the hint is known. */
+   *  Async: re-runs the mount/announce decision once the hint is known. */
   async function probeFlowHint(): Promise<void> {
     try {
       const resp = await sendToBackground<FlowStateResponse>({ type: "FLOW_STATE_GET" });
@@ -1745,7 +1745,7 @@ function initialize(): void {
       if (isTopFrame) maybeShowOrUpdateOverlay();
       else announceIfFormHost();
     } catch {
-      // Background asleep — no hint; the panel can still be opened manually.
+      // Background asleep: no hint; the panel can still be opened manually.
     }
   }
 
@@ -1827,7 +1827,7 @@ function initialize(): void {
 
         case "TOGGLE_PANEL": {
           if (isTopFrame && adoptedRemote && remoteCallbacks) {
-            // The form lives in a child frame — toggle the adopted panel as-is,
+            // The form lives in a child frame, toggle the adopted panel as-is,
             // never a local re-scan that would show the empty top-frame DOM.
             toggleOverlay({ fields: remoteFields, tabUrl: location.href }, remoteCallbacks);
           } else if (isTopFrame) {
@@ -1861,7 +1861,7 @@ function initialize(): void {
           maybeShowOrUpdateOverlay();
 
           if (response.fields.length > 0) {
-            sendResponse(response); // we have the form — answer first
+            sendResponse(response); // we have the form, answer first
           } else if (isTopFrame) {
             // Empty top frame: give child frames 400ms to claim the scan.
             setTimeout(() => sendResponse(response), 400);
@@ -1896,7 +1896,7 @@ function initialize(): void {
             // owner whose form lives in a child iframe.
             const response: FillResponse = {
               ok: false,
-              error: "The form's frame is gone — rescan the page",
+              error: "The form's frame is gone. Rescan the page",
               outcomes: [],
             };
             setTimeout(() => sendResponse(response), 3000);
@@ -1938,7 +1938,7 @@ function initialize(): void {
         }
 
         case "REMOTE_FIELDS_UPDATED": {
-          // The child host re-scanned (profile / rescan / mutation) — refresh.
+          // The child host re-scanned (profile / rescan / mutation), refresh.
           if (isTopFrame && adoptedRemote) {
             remoteFields = message.fields;
             updateOverlay({
@@ -1954,7 +1954,7 @@ function initialize(): void {
         }
 
         case "REMOTE_FLOW_PROGRESS": {
-          // The child host's flow beat — render it on the adopted panel.
+          // The child host's flow beat, render it on the adopted panel.
           if (isTopFrame && adoptedRemote) updateFlowProgress(message.progress);
           sendResponse({ ok: true });
           return false;

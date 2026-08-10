@@ -1,5 +1,5 @@
 """
-Company registry loader — single source of truth for ATS boards to scrape.
+Company registry loader, single source of truth for ATS boards to scrape.
 
 The canonical registry lives in ``backend/data/ats_companies.json`` and ships
 with the backend package (so it is available in serverless deploys). Each entry:
@@ -12,7 +12,7 @@ with the backend package (so it is available in serverless deploys). Each entry:
       "enabled": true
     }
 
-To add coverage, edit that JSON file — no code changes required.
+To add coverage, edit that JSON file, no code changes required.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Platforms the ATS scraper can actually fetch today. Workday entries are
 # supported only when they carry a ``workday_url_template`` (the tenant's CxS
-# endpoint base) — the tenant host/site can't be derived from a bare slug, so
+# endpoint base), the tenant host/site can't be derived from a bare slug, so
 # template-less workday entries stay listed but unscraped.
 SUPPORTED_PLATFORMS = {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"}
 
@@ -110,7 +110,7 @@ def shard_for_hour(
 
     Shard count comes from ``CRON_ATS_SHARDS`` when set, otherwise it is sized
     so a run scrapes ~CRON_ATS_SHARD_TARGET companies. Assignment hashes the
-    board slug with crc32 — Python's ``hash()`` is salted per process, and the
+    board slug with crc32, Python's ``hash()`` is salted per process, and the
     assignment must be stable across serverless invocations so every board
     lands in exactly one shard and gets refreshed every ``shard_count`` hours.
     """
@@ -138,7 +138,7 @@ def shard_for_hour(
 
 def load_workday_bases() -> dict[str, str]:
     """Return {board_slug: CxS endpoint base} for workday entries that carry a
-    ``workday_url_template`` — the connector can't fetch a tenant without it."""
+    ``workday_url_template``, the connector can't fetch a tenant without it."""
     out: dict[str, str] = {}
     for entry in _load_raw():
         if (entry.get("ats_platform") or "").strip().lower() != "workday":

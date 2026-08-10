@@ -125,7 +125,7 @@ interface Props {
 
 /**
  * Fast client-side parser that structures job descriptions into sections
- * using regex/heuristics. No AI call needed — instant results.
+ * using regex/heuristics. No AI call needed, instant results.
  */
 function parseDescriptionClientSide(rawDesc: string): any | null {
   // Clean HTML tags and decode entities

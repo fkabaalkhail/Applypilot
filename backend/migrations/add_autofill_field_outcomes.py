@@ -4,7 +4,7 @@ Migration: Add autofill_reports.field_outcomes and autofill_reports.reverted.
 The table recorded FAILURES only. That made one bug class unobservable by
 construction: a field the pipeline answered wrongly but wrote successfully
 produced a `filled` count and nothing else, so the record of the page said
-everything had gone well — and the field that mattered had no row at all.
+everything had gone well, and the field that mattered had no row at all.
 
 `field_outcomes` is the per-field record, successes included:
 ``{label, category, tier, pass, expected_value_present,
@@ -13,7 +13,7 @@ booleans only, matching the table's existing rule that a user's answers are
 never stored here.
 
 `reverted` counts fields written successfully whose value the page no longer
-held at the terminal re-scan — a framework resetting a control after the write
+held at the terminal re-scan, a framework resetting a control after the write
 verified, which per-write verification cannot see.
 
 Idempotent: skips columns that already exist. Runs on app startup so the ORM

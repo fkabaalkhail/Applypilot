@@ -13,7 +13,7 @@ export default function CustomResumeEmbed() {
   const bridge = useMemo(() => createEmbedBridge(), []);
   const api = useMemo(() => createEmbedAxios(bridge.getToken, bridge.requestFreshToken), [bridge]);
   const [ctx, setCtx] = useState<EmbedJob | null>(null);
-  // Latest generated document — used by onAttach to render the PDF bytes.
+  // Latest generated document: used by onAttach to render the PDF bytes.
   const lastDoc = useRef<ResumeDocument | null>(null);
 
   useEffect(() => {

@@ -70,7 +70,7 @@ describe("validationMessages / invalidFieldCount", () => {
    * `role="alert"` is also the standard marker for a screen-reader-only live
    * region, and Workday announces routine navigation through one:
    *   <div role="alert" class="css-ttaaxj">… page is loaded</div>
-   * (captured live from cibc.wd3.myworkdayjobs.com — visually hidden, and not
+   * (captured live from cibc.wd3.myworkdayjobs.com, visually hidden, and not
    * an error at all). Counting it parks the flow on a pause the user cannot
    * clear, because they cannot see the thing they are told to fix.
    */

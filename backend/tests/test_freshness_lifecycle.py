@@ -1,5 +1,5 @@
 """Freshness lifecycle: re-crawls confirm, vanishing removes, age expires,
-ghosts get scored — and none of it deletes a row or hides a bookmark."""
+ghosts get scored, and none of it deletes a row or hides a bookmark."""
 
 import datetime
 
@@ -168,7 +168,7 @@ class TestRefreshKnownListings:
         assert "salary_removed" in row.change_log[-1]["changed"]
 
     def test_empty_description_recrawl_is_not_an_edit(self, db_session):
-        """SmartRecruiters/Workday list payloads carry no description — a
+        """SmartRecruiters/Workday list payloads carry no description, a
         refresh without one must not log a description change."""
         known = _row(db_session, description="Full stored description here.",
                      raw_hash="somehash")
@@ -498,7 +498,7 @@ class TestUrlLiveness:
                                    "/live": 200}) as client:
             assert await probe_url_liveness(client, "https://x.test/dead") == "dead"
             assert await probe_url_liveness(client, "https://x.test/gone") == "dead"
-            # Bot walls are not evidence of death — a real browser gets through.
+            # Bot walls are not evidence of death, a real browser gets through.
             assert await probe_url_liveness(client, "https://x.test/wall") == "unknown"
             assert await probe_url_liveness(client, "https://x.test/live") == "alive"
 
@@ -513,7 +513,7 @@ class TestUrlLiveness:
         # LinkedIn's other closed variant: the expired JD redirects to a search
         # page whose nav links carry this trk token (a live page never has it).
         expired = '<a href="/login?trk=expired_jd_redirect">Sign in</a>'
-        live = "<h1>Software Intern — Apply now</h1>"
+        live = "<h1>Software Intern, Apply now</h1>"
         async with _body_client({
             "linkedin.com/jobs/view/1": (200, closed),
             "linkedin.com/jobs/view/2": (200, live),
@@ -573,7 +573,7 @@ class TestUrlLiveness:
                        source_platform="linkedin", board_key="", last_seen_at=None)
         async with _body_client({
             "/jobs/view/10": (200, "No longer accepting applications"),
-            "/jobs/view/20": (200, "Apply now — role is open"),
+            "/jobs/view/20": (200, "Apply now, role is open"),
         }) as client:
             stats = await verify_recent_aggregator_listings(db_session, client, now=NOW)
 
@@ -607,12 +607,12 @@ class TestVerifyStaleListings:
         assert db_session.get(ScrapedJob, dead_site.id).listing_status == LISTING_REMOVED
         # 200 on greenhouse (honest host) → revived.
         assert db_session.get(ScrapedJob, live_gh.id).listing_status == LISTING_ACTIVE
-        # 200 on an arbitrary site proves nothing — stays stale, probe stamped.
+        # 200 on an arbitrary site proves nothing, stays stale, probe stamped.
         spa = db_session.get(ScrapedJob, spa_site.id)
         assert spa.listing_status == LISTING_STALE
         assert spa.last_seen_at == NOW
         # LinkedIn IS now probed (guest page), but a live one (no dead banner)
-        # is never revived on a bare 200 — it stays stale with last_seen stamped.
+        # is never revived on a bare 200. It stays stale with last_seen stamped.
         li = db_session.get(ScrapedJob, walled_li.id)
         assert li.listing_status == LISTING_STALE
         assert li.last_seen_at == NOW
@@ -765,7 +765,7 @@ class TestListVisibility:
         assert "https://boards.greenhouse.io/acme/jobs/1" in urls
         assert "https://boards.greenhouse.io/acme/jobs/2" not in urls
         assert "https://boards.greenhouse.io/acme/jobs/3" not in urls
-        # stale is a crawl-lag state, not evidence of death — stays visible
+        # stale is a crawl-lag state, not evidence of death, stays visible
         assert "https://boards.greenhouse.io/acme/jobs/4" in urls
 
     def test_saved_view_keeps_removed_jobs(self, client, db_session):

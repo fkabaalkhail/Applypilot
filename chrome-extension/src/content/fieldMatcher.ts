@@ -12,7 +12,7 @@
  *    classify as location just because it contains "address").
  *  - Corroboration across multiple signals adds a small bonus.
  *  - Anything under MIN_CATEGORY_CONFIDENCE is reported as "unknown" rather
- *    than guessed — low-confidence guesses are surfaced for review, not filled.
+ *    than guessed, low-confidence guesses are surfaced for review, not filled.
  */
 import { MIN_CATEGORY_CONFIDENCE } from "../shared/constants";
 import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile } from "../shared/types";
@@ -41,7 +41,7 @@ export function normalize(text: string): string {
 
 interface PatternSpec {
   re: RegExp;
-  /** Pattern strength 0..1 — lower for looser, more ambiguous patterns. */
+  /** Pattern strength 0..1, lower for looser, more ambiguous patterns. */
   weight?: number;
 }
 
@@ -55,7 +55,7 @@ interface CategorySpec {
 
 // Order matters only for tie-breaking: more specific categories come first.
 const CATEGORY_SPECS: CategorySpec[] = [
-  // --- EEO / demographics (sensitive — detected, never filled by default) ---
+  // --- EEO / demographics (sensitive, detected, never filled by default) ---
   {
     category: "eeoGenderIdentity",
     sensitive: true,
@@ -162,7 +162,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
     negative: /\bphone type\b|\bext(ension)?\b|\bcountry code\b|\bdevice type\b/,
   },
 
-  // --- Structured address — more specific than the generic `location`, so these
+  // --- Structured address, more specific than the generic `location`, so these
   //     are ordered BEFORE it: an explicit street/city/state/postal/country field
   //     wins the tie, while a bare "Address"/"Location" field still falls to
   //     `location`. FR keywords included; normalize() strips accents to spaces,
@@ -176,7 +176,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\bcivic\b/ },
       { re: /\badresse\b/ }, // FR
     ],
-    // "address" alone is ambiguous with "email address" — an email field must
+    // "address" alone is ambiguous with "email address", an email field must
     // never classify as a street address. FR: "adresse courriel" / "adresse
     // électronique" (normalize() strips the accent → "lectronique").
     negative: /\be ?mail\b|\bip address\b|\bcourriel\b|\blectronique\b/,
@@ -306,7 +306,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\brelocat(e|ion|ing)\b/, weight: 0.85 },
     ],
     // "Do you require relocation assistance?" is a benefits question, not a
-    // willingness one — answering it "Yes" from a willingness answer is wrong.
+    // willingness one, answering it "Yes" from a willingness answer is wrong.
     negative: /\brelocation (assistance|package|support|expenses?|benefits?|allowance|reimbursement)\b/,
   },
   {
@@ -332,7 +332,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
     ],
   },
   {
-    // Availability — "when can you start?". Distinct from experienceStartDate,
+    // Availability: "when can you start?". Distinct from experienceStartDate,
     // whose own negative already vetoes "earliest" / "available" / "when can
     // you", so the two can never both claim a signal.
     category: "startDate",
@@ -350,11 +350,11 @@ const CATEGORY_SPECS: CategorySpec[] = [
   },
   {
     // The headline number only. "Years of experience with Python" is a SKILL
-    // question whose answer is not on the profile — see the negative below.
+    // question whose answer is not on the profile, see the negative below.
     category: "yearsOfExperience",
     patterns: [
       // "years experience", "years of experience", "years of relevant work
-      // experience" — any run of the usual qualifiers, but nothing else.
+      // experience", any run of the usual qualifiers, but nothing else.
       { re: /\byears?(?: of)? (?:(?:relevant|professional|work|total|overall|paid|full time|industry)\s+)*experience\b/ },
       { re: /\btotal (years?|work|professional) experience\b/ },
       { re: /\bexperience \(years\)\b|\bexperience in years\b/ },
@@ -533,12 +533,12 @@ const CATEGORY_SPECS: CategorySpec[] = [
 ];
 
 /**
- * HTML autocomplete tokens are the most reliable signal there is — the site
+ * HTML autocomplete tokens are the most reliable signal there is, the site
  * itself declared the semantic meaning of the field.
  */
 const AUTOCOMPLETE_MAP: Record<string, FieldCategory> = {
   "given-name": "firstName",
-  "additional-name": "unknown", // middle name — we have no data for it
+  "additional-name": "unknown", // middle name. We have no data for it
   "family-name": "lastName",
   name: "fullName",
   email: "email",
@@ -650,7 +650,7 @@ function formatExperience(profile: UserApplicationProfile): string | null {
   return profile.experience
     .map((e) => {
       const dates = [e.startDate, e.endDate].filter(Boolean).join(" to ");
-      const header = [e.title, e.company].filter(Boolean).join(" — ");
+      const header = [e.title, e.company].filter(Boolean).join(", ");
       return [`${header}${dates ? ` (${dates})` : ""}`, e.description].filter(Boolean).join("\n");
     })
     .join("\n\n");
@@ -667,7 +667,7 @@ function formatEducation(profile: UserApplicationProfile): string | null {
  *  "in"/"of". Ordered longest-first so "Bachelor of Science" is consumed whole
  *  before the bare "Bachelor" alternative can match.
  *
- *  The `\b` after the group is load-bearing — without it "Barts" reads as
+ *  The `\b` after the group is load-bearing, without it "Barts" reads as
  *  "B.A." + "rts". But `\b` cannot hold between a trailing "." and a space, so
  *  the abbreviation's OWN final period ("B.S. Electrical Engineering") is only
  *  reachable by the `\.?` that follows the boundary. */
@@ -675,7 +675,7 @@ const DEGREE_PREFIX_RE =
   /^\s*(bachelor(?:'?s)?(?:\s+of\s+(?:science|arts|engineering|commerce|business))?|master(?:'?s)?(?:\s+of\s+(?:science|arts|engineering|business administration))?|doctor(?:ate)?(?:\s+of\s+philosophy)?|ph\.?\s?d\.?|b\.?\s?(?:sc?|a|eng|comm)\.?|m\.?\s?(?:sc?|a|eng|ba)\.?|associate(?:'?s)?|diploma|certificate)\b\.?[\s,]*(?:degree\b[\s,]*)?(?:in|of)?\b[\s,]*/i;
 
 /**
- * The subject of a degree string — Workday's "Field of Study" dropdown, which
+ * The subject of a degree string, Workday's "Field of Study" dropdown, which
  * is a SEPARATE control from "Degree" and rejects the degree's own text.
  *
  * "BSc Computer Science" / "Bachelor of Science in Computer Science" →
@@ -687,7 +687,7 @@ const DEGREE_PREFIX_RE =
  * Science, Mathematics") proposes "Computer Science" and never "Computer
  * Science, Mathematics". That truncation is a safety property, not a cosmetic
  * one: comboboxEngine treats any widget under a `multiselectInputContainer` as
- * multi-select and SPLITS a comma-bearing value into one pick per item — but
+ * multi-select and SPLITS a comma-bearing value into one pick per item, but
  * that container also wraps Workday prompts that are single-value in fact,
  * where each pick REPLACES the last (see test/fixtures/workdayReal.ts). Handing
  * such a widget "Computer Science, Mathematics" commits "Mathematics" and
@@ -804,7 +804,7 @@ export function resolveProfileValue(
       if (!v) return null;
       // Yes/No controls get a Yes/No answer; free-text gets the statement. A
       // custom dropdown's options aren't known at scan time, but these screeners
-      // are virtually always Yes/No — so a combobox is treated as a choice.
+      // are virtually always Yes/No, so a combobox is treated as a choice.
       return isYesNoChoice(control) ? toYesNo(v) : v;
     }
     case "sponsorship": {
@@ -816,7 +816,7 @@ export function resolveProfileValue(
     // Screening answers stated once on the profile. Returned RAW: a constrained
     // control (select / radio / checkbox group) runs the value through
     // guardConstrainedOption in formScanner, and a combobox through
-    // comboboxEngine — both use matchOption, so "Yes" lands on "Yes, I am
+    // comboboxEngine, both use matchOption, so "Yes" lands on "Yes, I am
     // willing to relocate" and "5" lands in a "5-7 years" bucket. A value that
     // matches no option is dropped there rather than written raw.
     case "willingToRelocate": {
@@ -848,7 +848,7 @@ export function resolveProfileValue(
       // Only into long-text controls; a cover-letter *file* input can't be filled.
       return LONG_TEXT.includes(control.controlType) ? orNull(profile.coverLetter) : null;
     case "experience":
-      // Free-form summaries only — a "years of experience" number we don't have.
+      // Free-form summaries only: a "years of experience" number we don't have.
       return LONG_TEXT.includes(control.controlType) ? formatExperience(profile) : null;
 
     case "resumeUpload":
@@ -856,7 +856,7 @@ export function resolveProfileValue(
 
     // EEO / demographics: the user entered these in their own profile expressly
     // to autofill applications, so the presence of an answer IS the consent to
-    // fill it — resolved whenever set (empty → null; never fabricated). These
+    // fill it, resolved whenever set (empty → null; never fabricated). These
     // stay `sensitive`, so the AI never guesses them and they're clearly flagged
     // for review, and the user can still deselect any before filling.
     case "eeoGender":
@@ -880,7 +880,7 @@ export function resolveProfileValue(
     case "eeoOther":
       return null;
 
-    // Account signup password — never resolved from the profile; it is written
+    // Account signup password: never resolved from the profile; it is written
     // only by the account sub-flow, never generically.
     case "accountPassword":
     case "unknown":

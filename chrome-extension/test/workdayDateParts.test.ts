@@ -56,7 +56,7 @@ describe("Workday date spinbuttons", () => {
     expect(scanned!.currentValue).toBe("2025");
   });
 
-  it("leaves an ordinary number input alone — 0 is a legitimate answer there", () => {
+  it("leaves an ordinary number input alone, 0 is a legitimate answer there", () => {
     document.body.innerHTML = `<label>Years of experience <input type="number" value="0"></label>`;
     const { fields } = scanPage(MOCK_PROFILE, false);
     const n = fields.find((f) => f.label.toLowerCase().includes("years"));
@@ -65,14 +65,14 @@ describe("Workday date spinbuttons", () => {
 });
 
 /**
- * REGRESSION: the read-fix above was gated on `aria-valuemin > 0` alone — an
+ * REGRESSION: the read-fix above was gated on `aria-valuemin > 0` alone, an
  * attribute inferred from a bug report and never captured from a live tenant.
  * A part rendered with NO `aria-valuemin`, or with `aria-valuemin="0"`, read as
  * already-filled, so shared/selection dropped it from the default selection and
  * answerGaps dropped it from the gaps modal: the original symptom, silently.
  *
  * The `dateSection*` automation-id decides instead, and needs no attribute
- * evidence — 0 is never a month, a day or a year.
+ * evidence, 0 is never a month, a day or a year.
  */
 describe("empty date parts, whatever the tenant emits for aria-valuemin", () => {
   /** The live widget shape, with the year part's range attributes swapped out. */
@@ -137,7 +137,7 @@ describe("Workday split-date container", () => {
     expect(container!.getAttribute("data-automation-id")).toBe("dateWidget");
   });
 
-  /** FillContext is `{ control, value, el }` — see adapters/types.ts. */
+  /** FillContext is `{ control, value, el }`: see adapters/types.ts. */
   const fillCtx = (el: HTMLInputElement, value: string) => ({
     control: { id: "f1", controlType: "text" as const, el },
     value,
@@ -177,7 +177,7 @@ describe("Workday split-date container", () => {
 
   it("resolves the widget, not the per-part display wrapper that holds one input", async () => {
     // Workday's "-input" suffix implies a sibling "-display" wrapper. Stopping
-    // at that wrapper wrote `0 0 2025` — month and day were never reachable.
+    // at that wrapper wrote `0 0 2025`: month and day were never reachable.
     document.body.innerHTML = `
       <div data-automation-id="dateWidget">
         <div data-automation-id="dateSectionMonth-display">${part("Month", "m")}</div>
@@ -194,7 +194,7 @@ describe("Workday split-date container", () => {
 
   it("never claims a plain input that merely sits NEXT TO a date widget", () => {
     // DATE_CONTAINER_RE is /date/i, and "candidateEducationSection" contains
-    // "date" — so this section used to resolve as the graduation field's own
+    // "date", so this section used to resolve as the graduation field's own
     // date widget, sending the year into the neighbouring spinbuttons.
     document.body.innerHTML = `
       <div data-automation-id="candidateEducationSection">
@@ -215,7 +215,7 @@ describe("Workday split-date container", () => {
     document.body.innerHTML = `<div data-automation-id="dateWidget">${part("Month", "m")}</div>`;
     const month = document.getElementById("m") as HTMLInputElement;
     const op = workdayAdapter.fillOperation!(fillCtx(month, "2026"));
-    expect(op, "a date widget — the adapter still claims it").toBeDefined();
+    expect(op, "a date widget, the adapter still claims it").toBeDefined();
     return op!.then((r) => {
       expect(r.filled).toBe(false);
       expect(month.value).toBe("0");
@@ -225,7 +225,7 @@ describe("Workday split-date container", () => {
   it("fills the one-part widget it was handed, not the full widget next door", async () => {
     // Two date fields in one section. Preferring a container with a second part
     // climbed straight past the correct single-part widget into the section,
-    // where q("year") resolves by document order — to the START date's input.
+    // where q("year") resolves by document order, to the START date's input.
     document.body.innerHTML = `
       <div data-automation-id="candidateEducationSection">
         <div data-automation-id="formField-startDate">
@@ -239,7 +239,7 @@ describe("Workday split-date container", () => {
     expect(dateContainerOf(grad)!.getAttribute("data-automation-id")).toBe("formField-graduationDate");
     expect(await workdayAdapter.fillOperation!(fillCtx(grad, "2026-05"))).toEqual({ filled: true });
     expect(grad.value).toBe("2026");
-    // The neighbouring start date must be untouched — including its month,
+    // The neighbouring start date must be untouched, including its month,
     // which "2026-05" would otherwise have written.
     expect((document.getElementById("sy") as HTMLInputElement).value).toBe("0");
     expect((document.getElementById("sm") as HTMLInputElement).value).toBe("0");
@@ -258,7 +258,7 @@ describe("Workday split-date container", () => {
       </div>`;
     const year = document.getElementById("y") as HTMLInputElement;
     const r = await workdayAdapter.fillOperation!(fillCtx(year, "2025-05-14"))!;
-    expect(r.filled, "month and day were unreachable — this is not a fill").toBe(false);
+    expect(r.filled, "month and day were unreachable. This is not a fill").toBe(false);
     expect(r.reason).toBeTruthy();
     // Nothing written at all: a half-filled date is worse than an empty one.
     expect(year.value).toBe("0");
@@ -294,7 +294,7 @@ describe("Workday split-date container", () => {
  * SECTION_DATE_RULES lives in the Workday adapter's `classify`, so the adapter
  * has to be handed to scanPage explicitly: under jsdom `location.hostname` is
  * "localhost", and scanPage's default `getAdapter(location.hostname, …)`
- * resolves to null — the rules would never be consulted.
+ * resolves to null, the rules would never be consulted.
  */
 describe("Workday date-part categories", () => {
   const categoriesOf = (): Record<string, string> => {
@@ -317,7 +317,7 @@ describe("Workday date-part categories", () => {
   });
 
   it("maps an education end date to the graduation year", () => {
-    // Generically every part reads as `experienceEndDate` — the id says
+    // Generically every part reads as `experienceEndDate`: the id says
     // "endDate" and nothing in a part's own signals says which section it is in.
     mountWorkdayDate("education-11--endDate");
     expect(categoriesOf()).toEqual({

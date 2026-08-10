@@ -1,5 +1,5 @@
 """
-WorkTypeClassifier — extracts work arrangement type from job location text.
+WorkTypeClassifier, extracts work arrangement type from job location text.
 
 Used by the Aggregator to classify jobs as remote, hybrid, or onsite based on
 location field content from jobright-ai GitHub repositories.
@@ -53,7 +53,7 @@ class WorkTypeClassifier:
         - "Work from home"
         - "WFH"
         """
-        # "remote in <location>" pattern — still remote
+        # "remote in <location>" pattern, still remote
         if re.search(r'\bremote\s+in\b', location_lower):
             return True
 

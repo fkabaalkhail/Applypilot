@@ -11,7 +11,7 @@
 
 // Every known extension id: the dev/unpacked id (pinned via the manifest "key",
 // which the Web Store strips) and the store-assigned id (live since 2026-07-14).
-// They are DIFFERENT — the Store does not honour the manifest key — so both must
+// They are DIFFERENT (the Store does not honour the manifest key) so both must
 // be here or store users are invisible to us: pingExtension() would never hear
 // back from a store install, and the banner would tell someone who already has
 // the extension to go install it.
@@ -51,7 +51,7 @@ export interface ApplyIntentJob {
 
 /**
  * Fire-and-forget: tell the extension which job this apply is for. Safe to call
- * unconditionally — no-ops when the extension isn't installed. `url` overrides
+ * unconditionally, no-ops when the extension isn't installed. `url` overrides
  * `job.url` when the resolved apply URL differs (e.g. after fetch-details).
  */
 export function notifyApplyIntent(job: ApplyIntentJob, url?: string): void {
@@ -76,7 +76,7 @@ export function notifyApplyIntent(job: ApplyIntentJob, url?: string): void {
         }
       );
     } catch {
-      // chrome.runtime present but messaging blocked — ignore.
+      // chrome.runtime present but messaging blocked, ignore.
     }
   }
 }
@@ -104,20 +104,20 @@ interface PingResponse {
  * https://(www.)tailrd.ca, so on localhost this always resolves "not-installed".
  * ExtensionBanner has a dev-only ?extState= override for that reason.
  *
- * The 1500ms default is load-bearing, and every caller needs it — so it lives
+ * The 1500ms default is load-bearing, and every caller needs it, so it lives
  * here rather than being passed in, where two call sites drifted apart once
  * already. An MV3 service worker that has gone idle must be woken to answer, and
  * a cold start can outrun a short timeout. Answering late is free: callers render
  * nothing until the ping resolves, so a longer timeout only delays the answer and
- * can never flash the wrong one. Answering *wrong* is not free — callers ping once
+ * can never flash the wrong one. Answering *wrong* is not free, callers ping once
  * and never retry, so one slow wake pins "Add to Chrome" on a user who already has
  * the extension for their whole session.
  */
 export function pingExtension(timeoutMs = 1500): Promise<ExtensionState> {
   const rt = runtime();
   // Type check, not truthiness: a truthy non-function `sendMessage` would survive a
-  // truthiness guard and then throw out of `.bind()` below — synchronously, outside
-  // the promise and every try — breaking the never-rejects contract.
+  // truthiness guard and then throw out of `.bind()` below, synchronously, outside
+  // the promise and every try, breaking the never-rejects contract.
   if (typeof rt?.sendMessage !== "function" || EXTENSION_IDS.length === 0) {
     return Promise.resolve("not-installed");
   }

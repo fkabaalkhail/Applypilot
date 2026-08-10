@@ -1,6 +1,6 @@
 """
 One-time exhaustive description backfill for DIRECT-URL rows (the hourly cron
-then maintains the trickle). LinkedIn/Indeed rows are skipped here — they are
+then maintains the trickle). LinkedIn/Indeed rows are skipped here. They are
 login-walled and only waste attempts; the dedup pass is their real fix.
 
 Usage:
@@ -31,7 +31,7 @@ from backend.services.description_extractor import (  # noqa: E402
 
 def _fetch_indeed_urllib(url: str) -> str:
     """Indeed 403s httpx's TLS fingerprint but serves urllib from residential
-    IPs — fetch the raw page the boring way."""
+    IPs, fetch the raw page the boring way."""
     req = urllib.request.Request(
         url,
         headers={"User-Agent": BROWSER_HEADERS["User-Agent"], "Accept-Language": "en"},
@@ -44,7 +44,7 @@ CONCURRENCY = 6
 
 def select_sql(include_indeed: bool):
     # --include-indeed: Indeed walls datacenter IPs but serves residential
-    # ones — meaningful only when running this script from a home machine.
+    # ones, meaningful only when running this script from a home machine.
     indeed_clause = "" if include_indeed else "AND url NOT ILIKE '%indeed.com%' "
     return text(
         "SELECT id, url FROM scraped_jobs "

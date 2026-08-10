@@ -1,10 +1,10 @@
 // REAL Workday "My Information" dropdown markup, captured verbatim from
 // bmo.wd3.myworkdayjobs.com/…/apply/applyManually on 2026-07-04 (SVGs/inline
 // styles stripped). Unlike fixtures/workday.ts (a reconstruction), this is the
-// actual DOM the extension must handle — used to reproduce the production
+// actual DOM the extension must handle, used to reproduce the production
 // autofill_reports failures for these three dropdowns.
 
-/** Country Phone Code — a Workday *multiselect*. Its trigger is a plain
+/** Country Phone Code: a Workday *multiselect*. Its trigger is a plain
  *  `<input data-uxi-widget-type="selectinput">` with NO role="combobox" and NO
  *  aria-haspopup, so the generic scanner misread it as a text field and typed
  *  "Canada" into the search box instead of selecting the "Canada (+1)" option. */
@@ -27,7 +27,7 @@ export const WD_COUNTRY_PHONE_CODE = `
   </div></div></div>
 </div>`;
 
-/** Phone Device Type — Workday button dropdown: `<button aria-haspopup="listbox">`
+/** Phone Device Type: Workday button dropdown: `<button aria-haspopup="listbox">`
  *  with a hidden mirror `<input type="text">`. The real button carries NO
  *  aria-controls/aria-owns (the reconstruction fixture wrongly added one). */
 export const WD_PHONE_DEVICE_TYPE = `
@@ -42,7 +42,7 @@ export const WD_PHONE_DEVICE_TYPE = `
   </div></div></div>
 </div>`;
 
-/** How Did You Hear About Us? — same button-dropdown pattern, unselected. */
+/** How Did You Hear About Us?, same button-dropdown pattern, unselected. */
 export const WD_HOW_DID_YOU_HEAR = `
 <div role="group" aria-labelledby="source-section">
   <div data-automation-id="formField-source" data-fkit-id="source--source">

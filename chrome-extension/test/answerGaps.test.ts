@@ -27,13 +27,13 @@ function field(over: Partial<DetectedField> = {}): DetectedField {
 
 const NO_JOB = { company: null, jobTitle: null };
 
-describe("selectAnswerGaps — candidacy", () => {
+describe("selectAnswerGaps, candidacy", () => {
   it("asks about an unanswered dropdown", () => {
     expect(selectAnswerGaps([field()], NO_JOB)).toHaveLength(1);
   });
 
   // Was: "skips a field autofill already answered". A proposed value is a plan,
-  // not an outcome — gating on it hid every field whose write missed, which is
+  // not an outcome, gating on it hid every field whose write missed, which is
   // exactly when the user needs to be asked (BMO gender identity / military
   // service, 2026-08-09). What proves a field is answered is the PAGE holding a
   // value, which the next test pins.
@@ -72,7 +72,7 @@ describe("selectAnswerGaps — candidacy", () => {
   });
 });
 
-describe("selectAnswerGaps — askable-looking only", () => {
+describe("selectAnswerGaps, askable-looking only", () => {
   const constrained: ControlType[] = [
     "select",
     "radioGroup",
@@ -92,7 +92,7 @@ describe("selectAnswerGaps — askable-looking only", () => {
     expect(selectAnswerGaps([f], NO_JOB)).toHaveLength(1);
   });
 
-  it("never asks about a textarea — the essay compose path owns those", () => {
+  it("never asks about a textarea, the essay compose path owns those", () => {
     const f = field({ controlType: "textarea", label: "Additional information", options: [] });
     expect(selectAnswerGaps([f], NO_JOB)).toEqual([]);
   });
@@ -116,18 +116,18 @@ describe("selectAnswerGaps — askable-looking only", () => {
     );
   });
 
-  it("still asks about an essay-worded DROPDOWN — the options make it answerable", () => {
+  it("still asks about an essay-worded DROPDOWN, the options make it answerable", () => {
     const f = field({ controlType: "select", label: "Why are you leaving your current role?" });
     expect(selectAnswerGaps([f], NO_JOB)).toHaveLength(1);
   });
 });
 
-// A one-off question — one naming this employer or role — is asked like any
+// A one-off question (one naming this employer or role) is asked like any
 // other, because the form still needs it filled. Dropping it from the modal
 // outright (the previous behavior) left a required question with no way to
 // answer it: BMO's "…that would continue after obtaining employment with BMO
 // Financial Group?" was silently absent from the modal on 2026-08-09.
-describe("selectAnswerGaps — one-off questions", () => {
+describe("selectAnswerGaps, one-off questions", () => {
   const job = { company: "Acme Corp", jobTitle: "Software Engineer" };
 
   it("asks a question naming this company, marked one-off", () => {
@@ -142,7 +142,7 @@ describe("selectAnswerGaps — one-off questions", () => {
     expect(selectAnswerGaps([f], job)[0].oneOff).toBe(true);
   });
 
-  it("marks it one-off when the help text — not the label — names the company", () => {
+  it("marks it one-off when the help text (not the label) names the company", () => {
     const f = field({ label: "How did you hear about us?", helpText: "Acme Corp uses this to..." });
     expect(selectAnswerGaps([f], job)[0].oneOff).toBe(true);
   });
@@ -159,7 +159,7 @@ describe("selectAnswerGaps — one-off questions", () => {
   });
 });
 
-describe("selectAnswerGaps — shape of the result", () => {
+describe("selectAnswerGaps, shape of the result", () => {
   it("dedupes repeated questions by normalized label, keeping the first", () => {
     const a = field({ id: "a", label: "Are you willing to relocate?" });
     const b = field({ id: "b", label: "Are you  willing to Relocate? " });
@@ -216,10 +216,10 @@ const gap = (over: Partial<AnswerGap> = {}): AnswerGap => ({
 
 /**
  * There is exactly ONE sink left: the user's Tailrd profile. Everything else the
- * modal asks is filled into this page and persisted nowhere — the cross-
+ * modal asks is filled into this page and persisted nowhere, the cross-
  * application answer bank and the device-local sensitive store are both gone.
  */
-describe("planAnswerSaves — only profile-slot answers persist", () => {
+describe("planAnswerSaves, only profile-slot answers persist", () => {
   it("persists nothing for a question with no profile slot", () => {
     const plan = planAnswerSaves([{ gap: gap(), value: "Yes" }]);
     expect(plan).toEqual({ profilePatch: {} });
@@ -235,7 +235,7 @@ describe("planAnswerSaves — only profile-slot answers persist", () => {
   it("persists nothing for a sensitive answer with no profile slot", () => {
     // eeoOther is the leftover demographic bucket (transgender / LGBTQ /
     // generic "demographic" prompts). Gender identity, pronouns and sexual
-    // orientation moved OUT of it into real profile slots — see below.
+    // orientation moved OUT of it into real profile slots, see below.
     const g = gap({
       category: "eeoOther" as FieldCategory,
       question: "Do you identify as transgender?",
@@ -286,7 +286,7 @@ describe("planAnswerSaves — only profile-slot answers persist", () => {
   });
 
   /**
-   * A profile slot is keyed by CATEGORY, never by the form's label — which is
+   * A profile slot is keyed by CATEGORY, never by the form's label, which is
    * why the removed "is this label a real question?" guard is not needed here.
    * An id-shaped label still reaches the right profile field.
    */
@@ -305,7 +305,7 @@ describe("planAnswerSaves — only profile-slot answers persist", () => {
 });
 
 /**
- * Persistence must not outlive a failed write — but only where the failure
+ * Persistence must not outlive a failed write, but only where the failure
  * proves the answer itself is unusable.
  *
  * A value saved into a profile slot is replayed on every future form, so storing
@@ -328,7 +328,7 @@ describe("answersWorthRemembering", () => {
     expect(answersWorthRemembering(answers, ok())).toEqual([]);
   });
 
-  it("KEEPS a failed free-text answer — the write failed, the answer did not", () => {
+  it("KEEPS a failed free-text answer, the write failed, the answer did not", () => {
     const answers = [{ gap: gap({ fieldId: "a", controlType: "text", options: [] }), value: "Ottawa" }];
     expect(answersWorthRemembering(answers, ok())).toEqual(answers);
   });
@@ -338,7 +338,7 @@ describe("answersWorthRemembering", () => {
     expect(answersWorthRemembering(answers, ok())).toEqual(answers);
   });
 
-  it("keeps a failed bare-checkbox answer — Yes/No is a value the widget knows", () => {
+  it("keeps a failed bare-checkbox answer, Yes/No is a value the widget knows", () => {
     const answers = [{ gap: gap({ fieldId: "a", controlType: "checkbox", options: [] }), value: "Yes" }];
     expect(answersWorthRemembering(answers, ok())).toEqual(answers);
   });
@@ -362,11 +362,11 @@ describe("answersWorthRemembering", () => {
   });
 });
 
-describe("selectAnswerGaps — fields the page reverted", () => {
+describe("selectAnswerGaps, fields the page reverted", () => {
   it("asks again about a field the framework reset after the write verified", () => {
     // "Has a value" is not "has the right value". A control the site reset to
     // its own default holds something nobody chose, and the emptiness test
-    // alone would skip it forever — which is exactly the case a per-write
+    // alone would skip it forever, which is exactly the case a per-write
     // verification cannot see, because the reset happened after it passed.
     const f = field({ currentValue: "Select One" });
     expect(selectAnswerGaps([f], NO_JOB)).toHaveLength(0);

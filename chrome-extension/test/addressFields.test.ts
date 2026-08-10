@@ -24,7 +24,7 @@ function sig(over: Partial<FieldSignals>): FieldSignals {
 const byLabel = (label: string) => classifyField(sig({ label })).category;
 const byAutocomplete = (autocomplete: string) => classifyField(sig({ autocomplete })).category;
 
-describe("classifyField — structured address categories (EN)", () => {
+describe("classifyField, structured address categories (EN)", () => {
   it("classifies a street-address label", () => {
     expect(byLabel("Street Address")).toBe("addressStreet");
     expect(byLabel("Address Line 1")).toBe("addressStreet");
@@ -49,7 +49,7 @@ describe("classifyField — structured address categories (EN)", () => {
   });
 });
 
-describe("classifyField — structured address categories (FR)", () => {
+describe("classifyField, structured address categories (FR)", () => {
   it("classifies French address labels", () => {
     expect(byLabel("Adresse")).toBe("addressStreet");
     expect(byLabel("Ville")).toBe("addressCity");
@@ -61,13 +61,13 @@ describe("classifyField — structured address categories (FR)", () => {
   });
 });
 
-describe("classifyField — address does NOT swallow email (regression)", () => {
+describe("classifyField, address does NOT swallow email (regression)", () => {
   it('classifies "Email address" as email, never addressStreet or location', () => {
     expect(byLabel("Email address")).toBe("email");
     expect(byLabel("E-mail Address")).toBe("email");
   });
   // FR: "Adresse courriel" / "Adresse électronique" both contain "adresse", which
-  // the addressStreet rule matches — they must classify as email, not a street.
+  // the addressStreet rule matches. They must classify as email, not a street.
   it("classifies French email labels as email, never addressStreet", () => {
     expect(byLabel("Adresse courriel")).toBe("email");
     expect(byLabel("Adresse électronique")).toBe("email");
@@ -75,7 +75,7 @@ describe("classifyField — address does NOT swallow email (regression)", () => 
   });
 });
 
-describe("classifyField — HTML autocomplete tokens map to address categories", () => {
+describe("classifyField, HTML autocomplete tokens map to address categories", () => {
   it("maps the standard address autocomplete tokens", () => {
     expect(byAutocomplete("street-address")).toBe("addressStreet");
     expect(byAutocomplete("address-line1")).toBe("addressStreet");
@@ -89,7 +89,7 @@ describe("classifyField — HTML autocomplete tokens map to address categories",
 
 const sel = { controlType: "text" as const };
 
-describe("resolveProfileValue — structured address mapping", () => {
+describe("resolveProfileValue, structured address mapping", () => {
   const full = {
     addressStreet: "123 Main St",
     addressCity: "Toronto",
@@ -129,7 +129,7 @@ describe("resolveProfileValue — structured address mapping", () => {
   });
 });
 
-describe("scanPage — postal-code input resolves from profile.postalCode", () => {
+describe("scanPage, postal-code input resolves from profile.postalCode", () => {
   let restore: () => void;
   beforeAll(() => {
     restore = stubLayout();

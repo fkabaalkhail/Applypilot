@@ -29,7 +29,7 @@ export default function SetupWizard() {
 
   // Resume is the final step, appended after the config steps.
   const resumeStep: WizardStep = useMemo(
-    () => ({ id: "resume", headline: "One last step — <b>level up</b> your search with your resume." }),
+    () => ({ id: "resume", headline: "One last step: <b>level up</b> your search with your resume." }),
     [],
   );
   const steps: WizardStep[] = useMemo(() => [...SETUP_STEPS, resumeStep], [resumeStep]);
@@ -59,7 +59,7 @@ export default function SetupWizard() {
       /* non-fatal: user can re-save in Settings */
     }
     // 2) Resume already uploaded inline via the real /resumes/upload pipeline
-    //    on the resume step (required — finish is gated on it), so nothing to do.
+    //    on the resume step (required, finish is gated on it), so nothing to do.
     // 3) Seed dashboard filters so first load is personalized.
     try {
       localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(answersToFilters(answers)));

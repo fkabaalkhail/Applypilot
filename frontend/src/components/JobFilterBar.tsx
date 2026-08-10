@@ -43,7 +43,7 @@ export const JOB_FUNCTION_OPTIONS = [
   "Other",
 ];
 
-// Values are the spellings stored in scraped_jobs.experience_level — the only two
+// Values are the spellings stored in scraped_jobs.experience_level, the only two
 // levels the catalogue actually contains. Labels carry both the US ("internship",
 // "entry level") and Canadian ("co-op", "new grad") vocabulary.
 export const EXPERIENCE_OPTIONS = [
@@ -65,7 +65,7 @@ const LEGACY_EXPERIENCE_MAP: Record<string, string[]> = {
  * Migrate persisted experience filters onto the current taxonomy.
  *
  * Saved filters outlive the options that produced them. Without this, a user holding
- * `["senior"]` in localStorage would carry an invisible filter — no checkbox renders
+ * `["senior"]` in localStorage would carry an invisible filter, no checkbox renders
  * for it, so it cannot be cleared, and it silently returns an empty job list.
  * Unknown values are dropped, which restores an unfiltered view instead.
  */
@@ -309,7 +309,7 @@ export default function JobFilterBar({ filters, onChange }: JobFilterBarProps) {
 
   /**
    * Text sitting in the city input is a filter the user typed but never
-   * committed with Enter — Confirm must not silently drop it. Returns the
+   * committed with Enter, Confirm must not silently drop it. Returns the
    * effective tag list so confirm handlers don't race setState.
    */
   function commitPendingCityInput(): string[] {

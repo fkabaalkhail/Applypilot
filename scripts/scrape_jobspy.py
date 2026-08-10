@@ -97,7 +97,7 @@ def to_payload(job_data: dict) -> dict | None:
     posted = job_data.get("date_posted")
     if posted is not None and str(posted) not in ("", "nan", "NaT", "None"):
         payload["posted_date"] = str(posted)
-    # JobSpy returns the employer's real logo for LinkedIn/Indeed rows — keep it
+    # JobSpy returns the employer's real logo for LinkedIn/Indeed rows, keep it
     # instead of letting the API fall back to a name-guessed favicon.
     logo = job_data.get("company_logo") or job_data.get("logo_photo_url") or ""
     if logo and str(logo).startswith("http"):
@@ -107,7 +107,7 @@ def to_payload(job_data: dict) -> dict | None:
 
 async def push_batches(jobs: list[dict]) -> tuple[int, int, int, int]:
     """POST jobs to /jobs/ingest-batch in chunks. One request dedupes and
-    inserts a whole chunk — the old per-job /jobs/create loop cost one
+    inserts a whole chunk, the old per-job /jobs/create loop cost one
     (unauthenticated, always-401) request per job.
 
     Returns (created, duplicates, skipped, errors).

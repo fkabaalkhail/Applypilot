@@ -1,7 +1,7 @@
 /**
  * On-device closest-option matcher for EEO / demographic dropdowns. Given the
  * user's profile value and the widget's REAL options, returns the nearest
- * available option — so "Arab" fills a US-Census race dropdown as "White" or a
+ * available option, so "Arab" fills a US-Census race dropdown as "White" or a
  * MENA option when offered. Never sent to any server; demographic answers stay
  * on the device by policy.
  */

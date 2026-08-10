@@ -19,7 +19,7 @@ export interface SeverityCounts {
  *
  * Three numbers side by side don't tell you whether a resume is mostly broken or
  * mostly polished. One proportional rail does, before you read a digit. It's the
- * same object everywhere severity appears — the header, a category, a section —
+ * same object everywhere severity appears, the header, a category, a section,
  * so the shape is learnable.
  */
 export default function SeverityRail({

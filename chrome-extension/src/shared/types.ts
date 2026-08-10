@@ -61,7 +61,7 @@ export interface UserApplicationProfile {
   requiresSponsorship: string;
   /**
    * ISO "YYYY-MM-DD". The one profile fact that exists purely so an age gate
-   * ("Are you 18 or older?") is COMPUTED rather than guessed — see
+   * ("Are you 18 or older?") is COMPUTED rather than guessed, see
    * backend/services/derived_facts.py. Blank is normal and means every age
    * resolver abstains, which is the honest default, not a degraded one.
    */
@@ -69,7 +69,7 @@ export interface UserApplicationProfile {
   /**
    * Screening answers the applicant stated once on their profile (2026-08-09
    * profile-parity contract). Each is a FACT the user supplied, so a matching
-   * question is answered from it directly — pass 1, no backend/LLM call. Blank
+   * question is answered from it directly, pass 1, no backend/LLM call. Blank
    * (or absent) means "not answered" and every resolver abstains.
    */
   willingToRelocate?: string;
@@ -88,7 +88,7 @@ export interface UserApplicationProfile {
   eeo?: EeoAnswers;
 }
 
-/** Where a profile came from — shown in the popup so the user always knows. */
+/** Where a profile came from, shown in the popup so the user always knows. */
 export type ProfileSource = "api" | "api-settings" | "cache" | "mock";
 
 /** A resume available for syncing / auto-upload (mirrors a sync snapshot item). */
@@ -123,13 +123,13 @@ export interface CustomResumeSummary {
   createdAt?: string | null;
 }
 
-/** Subscription status — forward-compatible stub until billing exists. */
+/** Subscription status: forward-compatible stub until billing exists. */
 export interface Subscription {
   tier: string;
   status: string;
 }
 
-/** Usage limits — forward-compatible stub until metering exists. */
+/** Usage limits: forward-compatible stub until metering exists. */
 export interface Usage {
   aiCreditsUsed: number;
   aiCreditsLimit: number | null;
@@ -170,7 +170,7 @@ export type FieldCategory =
   | "phone"
   // Workday splits a phone number into three controls: the dialing country
   // ("Canada (+1)"), the number, and the device type ("Mobile"). The two
-  // satellites are dropdowns, NOT text — routing the number into either fails.
+  // satellites are dropdowns, NOT text, routing the number into either fails.
   | "phoneCountryCode"
   | "phoneDeviceType"
   | "location"
@@ -215,7 +215,7 @@ export type FieldCategory =
   | "securityClearance"
   | "driversLicense"
   | "languages"
-  // EEO / demographic — detected but never autofilled unless explicitly enabled
+  // EEO / demographic: detected but never autofilled unless explicitly enabled
   | "eeoGender"
   | "eeoGenderIdentity"
   | "eeoPronouns"
@@ -225,7 +225,7 @@ export type FieldCategory =
   | "eeoDisability"
   | "eeoSexualOrientation"
   | "eeoOther"
-  // Account signup password — first-class but locked down: scanned so the
+  // Account signup password: first-class but locked down: scanned so the
   // account sub-flow can fill it, but never generically fillable or AI-eligible.
   | "accountPassword"
   | "unknown";
@@ -242,7 +242,7 @@ export type ControlType =
   | "combobox"
   | "ariaRadioGroup"
   | "customDropdown"
-  // Account signup password — never generically fillable or AI-eligible;
+  // Account signup password: never generically fillable or AI-eligible;
   // written/verified only by the account sub-flow.
   | "password";
 
@@ -261,7 +261,7 @@ export interface DetectedField {
   /** Stable id, prefixed with the owning frame's token (e.g. "x7ab2-3"). */
   id: string;
   category: FieldCategory;
-  /** 0..1 — how confident the matcher is about the category. */
+  /** 0..1, how confident the matcher is about the category. */
   confidence: number;
   /** Best human-readable label found for the field. */
   label: string;
@@ -271,7 +271,7 @@ export interface DetectedField {
   proposedValue: string | null;
   /** Whether the autofill engine can write this control at all. */
   fillable: boolean;
-  /** EEO / demographic flag — excluded from autofill unless enabled. */
+  /** EEO / demographic flag: excluded from autofill unless enabled. */
   sensitive: boolean;
   /** Short note shown in the review panel (e.g. file-upload guidance). */
   note?: string;
@@ -279,9 +279,9 @@ export interface DetectedField {
   options?: string[];
   /** Current value already present in the control, if any. */
   currentValue?: string;
-  /** Surrounding help/section text (FieldSignals.nearby) — page context for the AI. */
+  /** Surrounding help/section text (FieldSignals.nearby), page context for the AI. */
   helpText?: string;
-  /** Native input type hint (FieldSignals.typeHint: "date", "number"…) — AI format cue. */
+  /** Native input type hint (FieldSignals.typeHint: "date", "number"…), AI format cue. */
   inputType?: string;
   /** 0-based repeating-row index parsed from the field name (`experience[1][company]`),
    *  or null/undefined when the field is not part of a repeating section. */
@@ -299,16 +299,16 @@ export interface AiFillField {
   type: "text" | "textarea" | "select" | "radio" | "checkbox";
   options: string[];
   required: boolean;
-  /** Surrounding help/section text — page context for the AI (mirrors FormField.helpText). */
+  /** Surrounding help/section text: page context for the AI (mirrors FormField.helpText). */
   helpText: string;
-  /** Native input type hint — AI format cue (mirrors FormField.inputType). */
+  /** Native input type hint: AI format cue (mirrors FormField.inputType). */
   inputType: string;
 }
 
 /**
  * Non-sensitive slice of the user's Autofill Information, sent to the backend AI
  * as grounding context so answers come from what the user maintains. EEO /
- * demographic data is deliberately excluded — it never leaves the device.
+ * demographic data is deliberately excluded. It never leaves the device.
  * Mirrors backend ApplicantProfile (backend/routers/fill.py). Built by
  * toApplicantProfile (content/applicantProfile.ts).
  */
@@ -331,7 +331,7 @@ export interface ApplicantProfile {
   workAuthorization: string;
   requiresSponsorship: string;
   salaryExpectation: string;
-  /** Screening answers stated on the profile — the backend's `_profile_context()`
+  /** Screening answers stated on the profile, the backend's `_profile_context()`
    *  emits them and `_raw_rule_based_answer` answers the obvious ones without a
    *  model call, so they must reach it (mirrors backend ApplicantProfile). */
   willingToRelocate: string;
@@ -369,7 +369,7 @@ export interface AiFillAnswer {
   label: string;
   answer: string;
   confidence: string;
-  /** rule | profile | ai — how the answer was produced. */
+  /** rule | profile | ai, how the answer was produced. */
   source?: string;
   /** AI suggestions need user review. */
   needsReview?: boolean;
@@ -438,7 +438,7 @@ export interface FlowProgress {
   filledFail: number;
   pauseReason?: FlowPauseReason;
   detail?: string;
-  /** Text of the button the flow will click next ("Next", "Create Account"…) —
+  /** Text of the button the flow will click next ("Next", "Create Account"…),
    *  labels the panel's manual advance gate to match the real page. */
   nextLabel?: string;
 }
@@ -598,7 +598,7 @@ export interface FieldsUpdatedEvent {
 // Cross-frame form support (form lives in a child iframe; panel in top frame)
 // ---------------------------------------------------------------------------
 
-/** Every OverlayCallbacks method name — the generic form-op surface. */
+/** Every OverlayCallbacks method name, the generic form-op surface. */
 export type FormOpName =
   | "onAutofill"
   | "onRescan"
@@ -644,7 +644,7 @@ export interface RemoteFieldsUpdated {
   type: "REMOTE_FIELDS_UPDATED";
   fields: DetectedField[];
   /** Field ids the child's terminal re-scan found no longer holding what was
-   *  written. An array rather than a Set — this crosses a structured-clone
+   *  written. An array rather than a Set. This crosses a structured-clone
    *  boundary. Omitted on an ordinary rescan, which carries no new verdict. */
   reverted?: string[];
 }
@@ -721,7 +721,7 @@ export type BackgroundRequest =
 /**
  * A job application the user submitted on an ATS page, recorded to their Tailrd
  * account (Applications page). Sent when the user clicks the real submit button
- * after an autofill flow — the extension never submits, it only observes.
+ * after an autofill flow, the extension never submits, it only observes.
  */
 export interface ApplicationLog {
   company: string;
@@ -729,7 +729,7 @@ export interface ApplicationLog {
   url: string;
   /** Matched site adapter id (greenhouse, workday…) when known. */
   atsType?: string;
-  /** "original" | "uploaded" — which résumé the user attached this flow. */
+  /** "original" | "uploaded", which résumé the user attached this flow. */
   resumeVersion?: string;
   /** Internal Tailrd job id when the apply was launched from the dashboard. */
   jobId?: number | null;
@@ -764,13 +764,13 @@ export interface OverridesResponse {
 /**
  * One autofill pass summary, reported to the backend so we can see which sites
  * and fields the filler struggles with (the signal for authoring server-side
- * override rules). Field labels + outcomes only — never the user's values.
+ * override rules). Field labels + outcomes only, never the user's values.
  */
 /**
  * What happened to one field, whether or not it worked.
  *
- * Recording only FAILURES made the one bug class we keep hitting — reported
- * filled, actually wasn't — unobservable by construction. A field that the
+ * Recording only FAILURES made the one bug class we keep hitting, reported
+ * filled, actually wasn't, unobservable by construction. A field that the
  * pipeline answered wrongly but wrote successfully produced a `filled` count
  * and nothing else, so the record of the page said everything went well.
  *
@@ -791,14 +791,14 @@ export interface FieldOutcomeRecord {
   /** Did the control hold a value when the page was re-scanned afterwards? */
   observedValuePresent: boolean;
   /**
-   * "filled"    — written, and still holding a value at the terminal re-scan
-   * "failed"    — the write itself did not land
-   * "reverted"  — the write landed, and the value was gone (or changed) by the
+   * "filled", written, and still holding a value at the terminal re-scan
+   * "failed", the write itself did not land
+   * "reverted", the write landed, and the value was gone (or changed) by the
    *               re-scan. This is the case per-write verification cannot see:
    *               a framework can reset a control on blur, on validation, or on
    *               a re-render some LATER field triggered.
-   * "dropped"   — the backend gate refused the candidate value
-   * "skipped"   — nothing was proposed for this field
+   * "dropped", the backend gate refused the candidate value
+   * "skipped", nothing was proposed for this field
    */
   outcome: "filled" | "failed" | "reverted" | "dropped" | "skipped";
   /** Failure/drop reason when there is one. Never contains an answer. */
@@ -840,7 +840,7 @@ export interface StatusResponse {
   /** mock = sample data, connected = signed in, sessionExpired = was connected but refresh failed, signedOut = needs to connect */
   mode: "mock" | "connected" | "sessionExpired" | "signedOut";
   email?: string;
-  /** Account name from /auth/me — used for the avatar before the profile loads. */
+  /** Account name from /auth/me: used for the avatar before the profile loads. */
   firstName?: string;
   lastName?: string;
   apiBaseUrl: string;

@@ -1,5 +1,5 @@
 :root {
-  /* ===== Stripe design system — brand palette ===== */
+  /* ===== Stripe design system, brand palette ===== */
   --stripe-primary: #533afd;
   --stripe-primary-deep: #4434d4;
   --stripe-primary-press: #2e2b8c;
@@ -74,7 +74,7 @@ body {
  * The rules below exist because two browser defaults fight against fluid
  * layouts, and both bite at *every* viewport, not just small ones:
  *
- *   1. A flex/grid child defaults to `min-width: auto` — it refuses to shrink
+ *   1. A flex/grid child defaults to `min-width: auto`: it refuses to shrink
  *      below its content's intrinsic width. One long job title is then enough
  *      to shove the whole page sideways. Every text-bearing flex/grid child
  *      needs `min-width: 0`.
@@ -104,7 +104,7 @@ h1 { letter-spacing: -1.4px; line-height: 1.04; }
 h2 { letter-spacing: -0.8px; line-height: 1.12; }
 h3 { letter-spacing: -0.4px; line-height: 1.15; }
 
-/* Money / numeric cells — tabular figures, the Stripe financial-data signal */
+/* Money / numeric cells: tabular figures, the Stripe financial-data signal */
 .tnum, .money, .numeric {
   font-feature-settings: "tnum";
   letter-spacing: -0.42px;
@@ -142,7 +142,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 }
 
 /* The manual collapse toggle only exists where there is a sidebar to collapse.
- * Below 768px the sidebar is a drawer, and these rules must not leak into it —
+ * Below 768px the sidebar is a drawer, and these rules must not leak into it,
  * a drawer with its labels hidden is just a mystery. */
 @media (min-width: 768px) {
   .app-layout.sidebar-collapsed .sidebar {
@@ -482,7 +482,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   min-width: 0;
   /* This is the shell's full-bleed surface: it guarantees the viewport height and
    * paints the page background, so a page inside it never has to do either. It
-   * stays a BLOCK container on purpose — every page root is written as a block
+   * stays a BLOCK container on purpose, every page root is written as a block
    * child, and making this a flex/grid container re-sizes them as flex items
    * (they size to max-content and scroll the page sideways). */
   min-height: 100vh;
@@ -496,7 +496,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   flex-direction: column;
   /* Deliberately NO viewport min-height. .main-content above already guarantees
    * 100dvh and paints the background, so asking for it again here bought nothing
-   * — and once anything else renders in .main-content (the extension banner), a
+   * and once anything else renders in .main-content (the extension banner), a
    * second 100dvh is purely additive: the page becomes viewport + banner tall and
    * every user without the extension gets a banner's worth of dead scroll under
    * the fold, even when the content fits. The floor was never a cap either (a
@@ -663,7 +663,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   min-width: 0;
 }
 
-/* The icon is rendered as an <svg> (phosphor), not an <i> — it has to be taken
+/* The icon is rendered as an <svg> (phosphor), not an <i>. It has to be taken
  * out of flow either way, since the input reserves 2.2rem of left padding for it. */
 .search-wrapper > i,
 .search-wrapper > svg {
@@ -1163,7 +1163,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 /* Card Footer
  * `space-between` with no wrap means that once the applicant count plus the
  * action buttons stop fitting, the free space goes negative and the *last*
- * item — the action row — is pushed straight out of the card. Wrapping lets
+ * item (the action row) is pushed straight out of the card. Wrapping lets
  * the actions drop to their own line instead. */
 .job-card-footer {
   display: flex;
@@ -1336,7 +1336,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 
 /* Illustrated empty state: art, one line of direction, one way out. The feed
  * it drops into is 1100px wide, which is far too wide to read a sentence
- * across — so it caps itself and centers. */
+ * across, so it caps itself and centers. */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -1485,7 +1485,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
     width: min(84vw, 288px);
     transform: translateX(-100%);
     /* Translating the drawer off-screen hides it from the eye but not from the
-     * keyboard or a screen reader — its links stay focusable and announced.
+     * keyboard or a screen reader, its links stay focusable and announced.
      * `visibility: hidden` takes it out of the tab order; the delay keeps it
      * on screen for the length of the slide-out. */
     visibility: hidden;
@@ -1534,7 +1534,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
  * whitespace, which is what forces the toolbar and the job cards to fight. */
 @media (max-width: 767.98px) {
   /* .jobs-page used to hand-subtract the 56px topbar here
-   * (`min-height: calc(100dvh - 56px)`) — a floor that compensated for one piece
+   * (`min-height: calc(100dvh - 56px)`), a floor that compensated for one piece
    * of chrome above it by hardcoding that chrome's height. It is gone with the
    * desktop floor, and must not come back: the shell is a column on phones, so
    * .main-content is already sized to what the topbar left and already paints the
@@ -1549,7 +1549,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   }
 
   /* The tabs now sit on the header's fixed 64px line, which cannot grow a
-   * second row — so they tighten instead of wrapping, and the search box
+   * second row, so they tighten instead of wrapping, and the search box
    * absorbs what's left. Tighten the horizontal padding only: the box still
    * has to clear 36px vertically to stay a legal tap target. */
   .jobs-tabs { flex-wrap: nowrap; }
@@ -1568,7 +1568,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 @media (max-width: 639.98px) {
   .job-card-body { padding: 1rem; }
 
-  /* The score badge is a fixed 90px column carved out of a 288px card — it
+  /* The score badge is a fixed 90px column carved out of a 288px card, it
    * leaves the card body too narrow for its own buttons. Slim it down rather
    * than hide it; the number is the reason people scan the list. */
   .match-score-badge {
@@ -1803,7 +1803,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   padding: 2rem;
 }
 
-/* 767.98, not 768 — at exactly 768px the tablet rail query (min-width: 768px)
+/* 767.98, not 768, at exactly 768px the tablet rail query (min-width: 768px)
  * is also live, and both were matching. */
 @media (max-width: 767.98px) {
   .job-detail-content {
@@ -2197,7 +2197,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 
 /* The subtitle interpolates the signed-in address ("we sent a link to <email>").
  * A 60-character corporate address is one unbreakable word, and without this it
- * sets its own width — 600px of it — and drags the card off the screen. */
+ * sets its own width (600px of it) and drags the card off the screen. */
 .auth-subtitle {
   font-size: 0.9rem;
   color: var(--text-muted);
@@ -2546,7 +2546,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
 
 .profile-privacy-icon {
   display: inline-flex;
-  color: #0e9f6e; /* trust green — the one accent tint borrowed from the reference */
+  color: #0e9f6e; /* trust green, the one accent tint borrowed from the reference */
   flex-shrink: 0;
 }
 
@@ -2554,7 +2554,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
    The bar owns the sticky chrome; the tabs scroll in their own lane *inside* it
    and the Save button sits outside that lane. Previously the button lived in the
    scrolling row, so once the tabs outgrew the width it was silently scrolled out
-   of sight — and the scrollbar is hidden, so there was nothing to hint at it.
+   of sight, and the scrollbar is hidden, so there was nothing to hint at it.
    Adding a seventh section did exactly that. Now a new section can never push
    Save out of view. */
 .profile-nav-bar {
@@ -2574,7 +2574,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   align-items: center;
   gap: 0.25rem;
   /* min-width: 0 is load-bearing. A flex child defaults to min-width: auto and
-     refuses to shrink below its content's intrinsic width — which would push the
+     refuses to shrink below its content's intrinsic width, which would push the
      Save button out of the bar instead of scrolling the tabs. */
   flex: 1;
   min-width: 0;
@@ -2617,7 +2617,7 @@ h3 { letter-spacing: -0.4px; line-height: 1.15; }
   border-radius: 2px;
 }
 
-/* Save button — outside the scrolling tab lane, so it is always reachable. */
+/* Save button: outside the scrolling tab lane, so it is always reachable. */
 .profile-save-btn {
   position: relative;
   flex-shrink: 0;
@@ -3167,7 +3167,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   }
 }
 
-/* Responsive — 767.98 so this never co-fires with the min-width:768 rail query. */
+/* Responsive: 767.98 so this never co-fires with the min-width:768 rail query. */
 @media (max-width: 767.98px) {
   .profile-page {
     padding: 1rem;
@@ -3324,7 +3324,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   background: rgba(0, 0, 0, 0.5);
   z-index: 1000;
   display: flex;
-  /* See .modal-overlay — centring a scrolling overlay strands the top of a
+  /* See .modal-overlay, centring a scrolling overlay strands the top of a
    * too-tall preview above the scroll origin. */
   align-items: center;
   align-items: safe center;
@@ -3456,7 +3456,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 }
 
 /* An <input> carries an intrinsic min-width (its `size`), so `flex: 1` alone
- * will not let it shrink — it holds its ground and evicts the Copy button
+ * will not let it shrink. It holds its ground and evicts the Copy button
  * through the right edge of the page instead. */
 .refer-link-input {
   flex: 1 1 auto;
@@ -3618,7 +3618,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 }
 
 /* min() keeps the track from insisting on 220px inside a container narrower
- * than that — the classic auto-fill overflow. */
+ * than that, the classic auto-fill overflow. */
 .interview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
@@ -4023,7 +4023,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 /* ===== Generic Modal =====
  * One pattern, every modal. The overlay scrolls so a modal can never be taller
  * than the screen it is centred in, and the content is capped against `dvh`,
- * not `vh` — on a phone `100vh` is measured against the *expanded* viewport, so
+ * not `vh`: on a phone `100vh` is measured against the *expanded* viewport, so
  * a 90vh modal is taller than what you can actually see the moment the URL bar
  * is showing. That is exactly how a primary button ends up under the fold. */
 .modal-overlay {
@@ -4033,7 +4033,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   display: flex;
   /* `safe` is doing real work here. A plain `center` on a scrolling overlay
    * pushes a too-tall modal out of BOTH ends, and scrollTop cannot go negative
-   * — so the top of the modal (its title, its close button) becomes impossible
+   * so the top of the modal (its title, its close button) becomes impossible
    * to scroll to. `safe` drops back to start-alignment exactly then, and still
    * centres modals that fit. Same fix as .setup-right. */
   align-items: center;
@@ -4100,7 +4100,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   gap: 0.75rem;
 }
 
-/* ApplyFlowModal ships no skin of its own — without a cap it would inherit the
+/* ApplyFlowModal ships no skin of its own, without a cap it would inherit the
  * generic content width and stretch to the full overlay. */
 .apply-flow-modal {
   max-width: 480px;
@@ -4303,7 +4303,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   object-fit: contain;
 }
 
-/* ===== Interview — Premium UI ===== */
+/* ===== Interview, Premium UI ===== */
 .interview-hero {
   position: relative;
   overflow: hidden;
@@ -4356,7 +4356,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 
 /* Three stats side by side need ~250px; a 320px phone offers ~208 inside the
  * hero. Without wrapping, the third one ("Free to practice") walks straight out
- * of the hero — which clips it, because the hero has overflow:hidden for its
+ * of the hero, which clips it, because the hero has overflow:hidden for its
  * gradient. */
 .interview-hero-stats {
   display: flex;
@@ -4756,7 +4756,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 }
 
 /* Grid children default to min-width:auto and will not shrink below their
- * content — which is a résumé, i.e. arbitrarily wide. */
+ * content, which is a résumé, i.e. arbitrarily wide. */
 .tailor-overlay-content > * {
   min-width: 0;
 }
@@ -4999,7 +4999,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   transform: translateY(-1px);
 }
 
-/* Responsive — normalized from the off-scale 1100/900/600 to 1280/1024/640. */
+/* Responsive: normalized from the off-scale 1100/900/600 to 1280/1024/640. */
 @media (max-width: 1279.98px) {
   .tailor-overlay-content {
     grid-template-columns: 180px 1fr 260px;
@@ -5060,7 +5060,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
 
 
 /* ============================================================
-   Stripe palette — dashboard color variety
+   Stripe palette, dashboard color variety
    Uses the full mesh set (indigo / soft-indigo / ruby / magenta /
    cream / navy) so the dashboard isn't mono-indigo.
    ============================================================ */
@@ -5092,7 +5092,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   color: #1c1e54;
 }
 
-/* Sidebar active nav — slim indigo rail + soft wash */
+/* Sidebar active nav: slim indigo rail + soft wash */
 .nav-item.active {
   background: linear-gradient(90deg, rgba(83, 58, 253, 0.10), rgba(83, 58, 253, 0.02));
 }
@@ -5143,7 +5143,7 @@ a.profile-chip:hover .profile-chip-icon { color: var(--accent); }
   color: var(--stripe-ruby);
 }
 
-/* Salary keeps the financial-data signal — tabular figures */
+/* Salary keeps the financial-data signal, tabular figures */
 .job-detail-item .salary {
   font-feature-settings: "tnum";
   letter-spacing: -0.3px;

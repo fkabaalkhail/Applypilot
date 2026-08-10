@@ -3,7 +3,7 @@ import type { TourStep } from "./types";
 /**
  * The product tour, as data. Adding/removing a step should only require
  * editing this array. `target` selectors reference `data-tour="..."`
- * attributes on real UI elements — the stable contract with the DOM.
+ * attributes on real UI elements, the stable contract with the DOM.
  */
 export const TOUR_STEPS: TourStep[] = [
   {

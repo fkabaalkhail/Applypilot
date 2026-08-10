@@ -36,7 +36,7 @@ function ensureInstalled(): Promise<boolean> {
 
 /**
  * Toggle MAIN-world blocking-dialog suppression for the duration of an active
- * fill/flow. Turning it on injects the driver first (best-effort — if injection
+ * fill/flow. Turning it on injects the driver first (best-effort, if injection
  * fails we simply don't suppress); turning it off just dispatches the toggle.
  */
 export async function setDialogSuppression(on: boolean): Promise<void> {
@@ -70,7 +70,7 @@ export async function driveField(
       resolve(r);
     };
     // Trust boundary: a hostile page could dispatch a forged tailrd:mw:result with
-    // a guessed id. Acceptable — it can only affect the accuracy of a fill into the
+    // a guessed id. Acceptable. It can only affect the accuracy of a fill into the
     // page's OWN form; no token or cross-origin data is exposed to page context.
     const onResult = (e: Event): void => {
       const d = (e as CustomEvent<MwResultDetail>).detail;

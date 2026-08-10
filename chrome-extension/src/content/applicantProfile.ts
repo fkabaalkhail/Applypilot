@@ -1,7 +1,7 @@
 /**
  * Builds the non-sensitive applicant profile the backend AI uses as context.
  * Mirrors backend ApplicantProfile (backend/routers/fill.py). EEO/demographic
- * data is deliberately dropped here — it must never reach any server.
+ * data is deliberately dropped here. It must never reach any server.
  */
 import type { ApplicantProfile, UserApplicationProfile } from "../shared/types";
 
@@ -28,7 +28,7 @@ export function toApplicantProfile(p: UserApplicationProfile): ApplicantProfile 
     requiresSponsorship: p.requiresSponsorship ?? "",
     salaryExpectation: p.salaryExpectation ?? "",
     // Screening answers stated once on the profile. They are facts, not
-    // assumptions, so the backend can answer from them with no model call —
+    // assumptions, so the backend can answer from them with no model call,
     // but only if they actually travel (see backend ApplicantProfile).
     willingToRelocate: p.willingToRelocate ?? "",
     workPreference: p.workPreference ?? "",
@@ -54,7 +54,7 @@ export function toApplicantProfile(p: UserApplicationProfile): ApplicantProfile 
       ),
     // Structured duplicates of the two lists above, for the backend's
     // deterministic resolvers. The prose forms are context for the model and
-    // are the wrong input for arithmetic — "BSc, uOttawa (2025)" has to be
+    // are the wrong input for arithmetic, "BSc, uOttawa (2025)" has to be
     // parsed back apart before a graduation year can be read out of it, and a
     // parser that is wrong about a date is worse than no answer at all.
     dateOfBirth: p.dateOfBirth ?? "",

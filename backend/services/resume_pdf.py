@@ -4,7 +4,7 @@ Render a structured ResumeDocument to PDF bytes with reportlab.
 Mirrors the structure + theme mapping of the web app's DOCX builder
 (frontend/src/lib/resumeExport.ts) so the extension's PDF stays consistent
 with the web app's outputs: clean, single-column, real selectable text
-(ATS-friendly). Pure function — no DB, no network, no file I/O.
+(ATS-friendly). Pure function, no DB, no network, no file I/O.
 """
 from __future__ import annotations
 

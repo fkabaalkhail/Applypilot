@@ -1,4 +1,4 @@
-"""Structured extraction is deterministic — these tests pin its judgment calls."""
+"""Structured extraction is deterministic, these tests pin its judgment calls."""
 
 from backend.services.structured_extraction import (
     compute_raw_hash,

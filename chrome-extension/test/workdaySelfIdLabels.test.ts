@@ -14,14 +14,14 @@
  *                                        b0531cc2ff371001d8a9b7f658ab0007"
  *
  * So three distinct wrong answers to "what is this field called": the widget's
- * aria-label boilerplate, that boilerplate over an already-picked value, and —
- * when there was no aria-label at all — the raw Workday id. All three are what
+ * aria-label boilerplate, that boilerplate over an already-picked value, and,
+ * when there was no aria-label at all, the raw Workday id. All three are what
  * the panel prints and what the gap modal puts to the user as the question.
  *
  * The markup below is `test/fixtures/workdayReal.ts` (BMO, captured verbatim
  * 2026-07-04) with only what production proves changed: the aria-label carries
- * no question, and the `<label>` is not associated to the widget. The nesting —
- * three divs between the `formField-*` wrapper and the button — is verbatim, and
+ * no question, and the `<label>` is not associated to the widget. The nesting,
+ * three divs between the `formField-*` wrapper and the button, is verbatim, and
  * is exactly what put the question out of `nearbyText`'s three-ancestor reach.
  */
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
@@ -42,7 +42,7 @@ const WID = "56370316e58a1001d8aa4cd7b1d70000-b0531cc2ff371001d8a9b9c2eef00002";
 
 /**
  * One Workday prompt field. `question` is rendered the way the self-ID page
- * does it — inside the `formField-*` wrapper, but NOT associated to the widget.
+ * does it, inside the `formField-*` wrapper, but NOT associated to the widget.
  */
 function promptField(opts: {
   question: string;
@@ -67,7 +67,7 @@ function promptField(opts: {
 const trigger = (): HTMLElement =>
   document.querySelector("button[aria-haspopup=listbox]") as HTMLElement;
 
-describe("Workday self-ID prompt — the label is the question, never the widget", () => {
+describe("Workday self-ID prompt, the label is the question, never the widget", () => {
   it("aria-label 'Select One Required' does not become the question (report #148)", () => {
     document.body.innerHTML = promptField({
       question: "Gender Identity",
@@ -155,7 +155,7 @@ describe("Workday self-ID prompt — the label is the question, never the widget
   });
 });
 
-describe("Workday self-ID prompt — end to end into the gap modal", () => {
+describe("Workday self-ID prompt, end to end into the gap modal", () => {
   it("asks under the real question, not the widget's boilerplate", () => {
     document.body.innerHTML = promptField({
       question: "Gender Identity",
@@ -170,7 +170,7 @@ describe("Workday self-ID prompt — end to end into the gap modal", () => {
 
   it("never puts a raw widget id to the user as a question", () => {
     // Nothing anywhere names this field. The label still must not be the
-    // Workday id — that is what the user reads in the modal.
+    // Workday id: that is what the user reads in the modal.
     document.body.innerHTML = `
       <div><div><div>
         <button aria-haspopup="listbox" type="button" value="" aria-required="true"
@@ -181,7 +181,7 @@ describe("Workday self-ID prompt — end to end into the gap modal", () => {
     for (const gap of gaps) {
       expect(gap.question).not.toContain(WID);
       // Self-ID has no profile slot, so the answer fills the page and persists
-      // nowhere — there is no cross-application answer memory to poison.
+      // nowhere. There is no cross-application answer memory to poison.
       expect(planAnswerSaves([{ gap, value: "Yes" }])).toEqual({ profilePatch: {} });
     }
   });

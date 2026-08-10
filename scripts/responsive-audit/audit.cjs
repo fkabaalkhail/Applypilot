@@ -196,7 +196,7 @@ async function runState(browser, state, viewport) {
             token: "audit-stub-token",
             job: {
               title:
-                "Senior Software Development Engineer II — Distributed Systems & Platform Infrastructure",
+                "Senior Software Development Engineer II, Distributed Systems & Platform Infrastructure",
               company: "Hoffman-Rutherford Global Technology Solutions International",
               description:
                 "We are looking for a talented engineer to join our platform team. " +
@@ -226,7 +226,7 @@ async function runState(browser, state, viewport) {
       // Width-dependent chrome: the phone drawer's hamburger does not exist on
       // desktop, and the sidebar nav item it reveals is not clickable on a
       // phone. A step that is a no-op at some widths must not be a hard failure
-      // there — but a step that SHOULD have worked and didn't must still be
+      // there, but a step that SHOULD have worked and didn't must still be
       // loud, or the audit silently measures the wrong screen and calls it clean.
       if (step.clickIfVisible) {
         const el = page.locator(step.clickIfVisible).first();
@@ -256,7 +256,7 @@ async function runState(browser, state, viewport) {
       if (step.waitFor) {
         // If the thing we were supposed to open never opened, we are about to
         // audit a completely different screen and report it clean. That is worse
-        // than a missed defect — it is a false all-clear. Fail loudly.
+        // than a missed defect. It is a false all-clear. Fail loudly.
         const reached = await page
           .waitForSelector(step.waitFor, { timeout: 6000 })
           .then(() => true)
@@ -269,7 +269,7 @@ async function runState(browser, state, viewport) {
             chain: step.waitFor,
             text: "",
             detail:
-              "the screen never appeared (waited for `" + step.waitFor + "`) — this cell audited " +
+              "the screen never appeared (waited for `" + step.waitFor + "`). This cell audited " +
               "whatever was underneath instead, so treat any 'clean' result for it as meaningless",
             overflowPx: 0,
           });
@@ -278,7 +278,7 @@ async function runState(browser, state, viewport) {
       await page.waitForTimeout(350);
     }
 
-    // let fonts settle — web fonts change every measurement
+    // let fonts settle, web fonts change every measurement
     await page.evaluate(() => document.fonts && document.fonts.ready).catch(() => {});
     await page.waitForTimeout(250);
 
@@ -293,7 +293,7 @@ async function runState(browser, state, viewport) {
 
     // push, NOT assign. The steps loop above pushes `state-not-reached` findings
     // into cell.findings; an assignment here silently discarded every one of them
-    // before any consumer (the counts, the report) could see it — so the loud form
+    // before any consumer (the counts, the report) could see it, so the loud form
     // was never loud, and a state that never rendered still reported clean. That is
     // the precise false all-clear the waitFor step exists to prevent.
     cell.findings.push(...findings);
@@ -400,7 +400,7 @@ function writeMarkdown(cells, tag) {
   }
   summary.sort((a, b) => b[1] - a[1]);
   lines.push("| screen | high+medium findings |", "| --- | --- |");
-  for (const [s, n] of summary) lines.push(`| ${s} | ${n || "—"} |`);
+  for (const [s, n] of summary) lines.push(`| ${s} | ${n || ", "} |`);
   lines.push("");
 
   for (const [state, cs] of byState) {
@@ -421,7 +421,7 @@ function writeMarkdown(cells, tag) {
     lines.push(`## ${state}`, "");
     for (const g of sorted) {
       lines.push(
-        `- **[${g.f.severity}] ${g.f.type}** — \`${g.f.chain}\`` +
+        `- **[${g.f.severity}] ${g.f.type}**: \`${g.f.chain}\`` +
           (g.f.text ? `\n  - content: “${g.f.text}”` : "") +
           `\n  - ${g.f.detail}` +
           `\n  - viewports: ${g.viewports.join(", ")}`

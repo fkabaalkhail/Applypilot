@@ -25,7 +25,7 @@ describe("openShadowRoots", () => {
   });
 });
 
-describe("observePage — shadow reach", () => {
+describe("observePage, shadow reach", () => {
   it("fires a rescan when a field is added inside an open shadow root", async () => {
     const host = document.createElement("div");
     document.body.appendChild(host);

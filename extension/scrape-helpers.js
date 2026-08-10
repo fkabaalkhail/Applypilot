@@ -1,5 +1,5 @@
 /**
- * Scrape Helpers — Pure utility functions for the deep scrape pagination feature.
+ * Scrape Helpers: Pure utility functions for the deep scrape pagination feature.
  * Extracted from content.js for testability.
  *
  * These helpers are used by content.js (pagination loop) and popup.js (settings/UI).
@@ -9,7 +9,7 @@
 /**
  * Calculate the number of pages to scrape based on the target job count.
  * LinkedIn shows ~25 jobs per page.
- * @param {number} maxJobs — target number of jobs (1–500)
+ * @param {number} maxJobs - target number of jobs (1–500)
  * @returns {number} number of pages to scrape
  */
 function calculateMaxPages(maxJobs) {
@@ -20,7 +20,7 @@ function calculateMaxPages(maxJobs) {
  * Validate and default the maxJobsPerRun setting.
  * Accepts values in [1, 500]. Invalid inputs (undefined, null, NaN, 0, negative,
  * non-numeric strings) resolve to the default of 25. Values above 500 are clamped to 500.
- * @param {*} setting — raw value from extension storage
+ * @param {*} setting - raw value from extension storage
  * @returns {number} validated maxJobs value in [1, 500]
  */
 function resolveMaxJobs(setting) {
@@ -42,8 +42,8 @@ function resolveMaxJobs(setting) {
 /**
  * Return a promise that resolves after a random delay in [min, max] ms.
  * Used for rate limiting between page navigations.
- * @param {number} [min=2000] — minimum delay in ms
- * @param {number} [max=5000] — maximum delay in ms
+ * @param {number} [min=2000] - minimum delay in ms
+ * @param {number} [max=5000] - maximum delay in ms
  * @returns {Promise<number>} resolves with the actual delay value in ms
  */
 function randomDelay(min, max) {
@@ -56,7 +56,7 @@ function randomDelay(min, max) {
 /**
  * Deduplicate an array of job objects by URL.
  * Jobs without a url property are kept (treated as unique).
- * @param {Array<Object>} jobs — array of job objects with `url` property
+ * @param {Array<Object>} jobs - array of job objects with `url` property
  * @returns {{ unique: Array<Object>, duplicatesSkipped: number }}
  */
 function deduplicateJobs(jobs) {
@@ -80,9 +80,9 @@ function deduplicateJobs(jobs) {
 
 /**
  * Format a progress toast message for the scraping UI.
- * @param {number} page — current page number (1-based)
- * @param {number} totalJobs — total jobs found so far
- * @param {number} maxJobs — target job count
+ * @param {number} page - current page number (1-based)
+ * @param {number} totalJobs - total jobs found so far
+ * @param {number} maxJobs - target job count
  * @returns {string} formatted progress string
  */
 function formatProgressToast(page, totalJobs, maxJobs) {
@@ -91,9 +91,9 @@ function formatProgressToast(page, totalJobs, maxJobs) {
 
 /**
  * Construct a LinkedIn job search URL with encoded parameters and Easy Apply filter.
- * @param {string} jobTitle — job title / keywords
- * @param {string} searchLocation — location string
- * @param {Object} [filters={}] — additional filter params (reserved for future use)
+ * @param {string} jobTitle - job title / keywords
+ * @param {string} searchLocation - location string
+ * @param {Object} [filters={}] - additional filter params (reserved for future use)
  * @returns {string} full LinkedIn search URL
  */
 function buildLinkedInSearchUrl(jobTitle, searchLocation, filters) {

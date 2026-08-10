@@ -1,5 +1,5 @@
 /**
- * Build script — bundles the TypeScript sources with esbuild and copies
+ * Build script: bundles the TypeScript sources with esbuild and copies
  * static assets (manifest, popup HTML/CSS, icons) into dist/.
  *
  * Usage:

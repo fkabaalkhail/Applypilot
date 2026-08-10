@@ -2,7 +2,7 @@
 /**
  * Workday splits a phone number into THREE controls, all `formField-*`:
  * countryPhoneCode (dialing prompt), phoneNumber (text), phoneType (device
- * prompt). Both satellites are dropdowns — writing the phone NUMBER into either
+ * prompt). Both satellites are dropdowns, writing the phone NUMBER into either
  * can only fail, and leaving them unclassified sends a required field to the AI
  * on every fill.
  *
@@ -62,7 +62,7 @@ describe("Workday phone satellites are classified apart from the number", () => 
 });
 
 describe("Workday phone satellites resolve without the AI", () => {
-  it("the dialing prompt takes the country name — 'Canada' matches 'Canada (+1)'", () => {
+  it("the dialing prompt takes the country name, 'Canada' matches 'Canada (+1)'", () => {
     expect(resolve("formField-countryPhoneCode", "phoneCountryCode", { country: "Canada" })).toBe("Canada");
   });
   it("the dialing prompt falls back to the country parsed from location", () => {

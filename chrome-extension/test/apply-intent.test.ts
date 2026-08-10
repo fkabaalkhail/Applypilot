@@ -27,7 +27,7 @@ afterEach(() => {
   delete (globalThis as unknown as { chrome?: unknown }).chrome;
 });
 
-describe("applyIntent — dashboard job_id handoff store", () => {
+describe("applyIntent, dashboard job_id handoff store", () => {
   it("matches a recorded intent by host (ignoring query params)", async () => {
     await recordApplyIntent({ jobId: 42, url: "https://boards.greenhouse.io/acme/jobs/1" });
     expect(

@@ -1,4 +1,4 @@
-"""Session registry helpers — create / look up / touch / revoke sessions.
+"""Session registry helpers, create / look up / touch / revoke sessions.
 
 A session is a long-lived auth grant keyed by a stable ``sid`` that survives
 refresh-token rotation. Backs the "Connected Devices" dashboard.

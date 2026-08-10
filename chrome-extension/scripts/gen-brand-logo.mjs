@@ -2,14 +2,14 @@
  * Regenerate src/content/brandLogo.ts from the source logos.
  *
  * Emits two data URIs:
- *   BRAND_LOGO_DATA_URI — the horizontal lockup (mark + "Tailrd" wordmark) for
+ *   BRAND_LOGO_DATA_URI: the horizontal lockup (mark + "Tailrd" wordmark) for
  *                         the panel header, cropped from docs/Logo.jpeg.
- *   BRAND_MARK_DATA_URI — the square mark on its own, for the collapsed-state
+ *   BRAND_MARK_DATA_URI: the square mark on its own, for the collapsed-state
  *                         edge tab, from frontend/public/logo-icon.png.
  *
  * Because the panel is a content script injected into third-party pages (whose
  * img-src CSP can block data-URI images), both are embedded as compact data
- * URIs and each surface degrades on strict-CSP sites — the header to a plain
+ * URIs and each surface degrades on strict-CSP sites, the header to a plain
  * "Tailrd" wordmark, the edge tab to its original purple chevron.
  *
  * Run this if either source art changes:  node scripts/gen-brand-logo.mjs
@@ -45,7 +45,7 @@ const markPng = await sharp(MARK_SRC)
 
 const dataUri = "data:image/png;base64," + png.toString("base64");
 const markDataUri = "data:image/png;base64," + markPng.toString("base64");
-const module = `// AUTO-GENERATED brand assets — do not hand-edit. Regenerate with
+const module = `// AUTO-GENERATED brand assets, do not hand-edit. Regenerate with
 // scripts/gen-brand-logo.mjs. The panel is a content script, so on strict
 // img-src CSP sites these <img> data URIs are blocked and each surface falls
 // back (header → plain "Tailrd" wordmark, edge tab → purple chevron).

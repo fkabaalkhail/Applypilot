@@ -24,7 +24,7 @@ from backend.services import match_notifier
 
 @pytest.fixture
 def swept_user(db_session):
-    """A verified user with a resume — i.e. one the cron sweep will score."""
+    """A verified user with a resume, i.e. one the cron sweep will score."""
     user = User(
         email="sweep@example.com",
         first_name="Sweep",
@@ -58,7 +58,7 @@ def _make_job(db_session, title="Engineer", company="Globex"):
 def llm_calls(monkeypatch):
     """Count every paid compute_breakdown call the sweep makes.
 
-    The fake scores 42 — deliberately below MATCH_NOTIFY_THRESHOLD. A job that
+    The fake scores 42, deliberately below MATCH_NOTIFY_THRESHOLD. A job that
     never clears the bar is never emailed, so it never lands in
     job_match_notifications and never puts the user in cooldown. That is exactly
     the case that used to be re-scored, at full price, on every cron run.
@@ -122,8 +122,8 @@ async def test_banking_a_score_does_not_refetch_the_job_rows(
     """Committing a score must not drag every job row back over the wire.
 
     A commit expires the session's ORM objects. If the scoring loop then reads
-    job.description again, SQLAlchemy silently re-SELECTs the whole row —
-    description column and all — once per job, per user, per cron run. That is
+    job.description again, SQLAlchemy silently re-SELECTs the whole row,
+    description column and all, once per job, per user, per cron run. That is
     the same whole-row-fetch bill this table exists to avoid.
     """
     for i in range(3):
@@ -181,7 +181,7 @@ async def test_cached_low_scores_do_not_cross_the_wire_again(
 
     Memoization (above) stops the re-buying of LLM scores; this pins the other
     half of the bill: a below-threshold job can be neither scored nor emailed,
-    so later sweeps must not keep dragging its full row — description included —
+    so later sweeps must not keep dragging its full row, description included,
     over the wire just to look up a cached number and drop it.
     """
     for i in range(3):
@@ -217,7 +217,7 @@ async def test_cached_strong_match_is_still_emailed_without_a_new_llm_call(
 
     That happens when the score was bought but the email couldn't go out (send
     budget spent, transient Resend failure). The pair is cached and un-notified:
-    the sweep must fetch the row and email it from the cache — zero LLM spend.
+    the sweep must fetch the row and email it from the cache, zero LLM spend.
     """
     job = _make_job(db_session)
     fingerprint = match_notifier._resume_fingerprint("resume body text")
@@ -251,7 +251,7 @@ async def test_unparseable_llm_response_is_not_banked_as_zero(
 
     compute_breakdown runs for real here; only the HTTP layer is stubbed to
     return garbage. If the resulting zero were banked, this (user, job, resume)
-    triple would be silenced forever — a real match never alerted. The sweep
+    triple would be silenced forever, a real match never alerted. The sweep
     must skip banking and pay to retry on the next run.
     """
     _make_job(db_session)
@@ -264,7 +264,7 @@ async def test_unparseable_llm_response_is_not_banked_as_zero(
 
     calls = []
 
-    async def garbage(self, prompt, system=None, model=None, json_mode=False):
+    async def garbage(self, prompt, system=None, model=None, json_mode=False, op="unknown"):
         calls.append(prompt)
         return "I am not JSON at all"
 
@@ -284,7 +284,7 @@ async def test_unparseable_llm_response_is_not_banked_as_zero(
 @pytest.mark.asyncio
 async def test_scoring_runs_on_the_cheap_model(db_session, swept_user, monkeypatch):
     """Sweep scoring must go to OPENAI_MATCH_MODEL (default gpt-4o-mini), in
-    JSON mode — not to the flagship OPENAI_MODEL the rewrite flows use."""
+    JSON mode, not to the flagship OPENAI_MODEL the rewrite flows use."""
     _make_job(db_session)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
@@ -295,7 +295,7 @@ async def test_scoring_runs_on_the_cheap_model(db_session, swept_user, monkeypat
 
     seen = {}
 
-    async def fake(self, prompt, system=None, model=None, json_mode=False):
+    async def fake(self, prompt, system=None, model=None, json_mode=False, op="unknown"):
         seen["model"] = model
         seen["json_mode"] = json_mode
         return (
@@ -327,7 +327,7 @@ async def test_scoring_model_is_env_overridable(db_session, swept_user, monkeypa
 
     seen = {}
 
-    async def fake(self, prompt, system=None, model=None, json_mode=False):
+    async def fake(self, prompt, system=None, model=None, json_mode=False, op="unknown"):
         seen["model"] = model
         return (
             '{"overall_score": 55, "experience_score": 50, "skill_score": 60,'

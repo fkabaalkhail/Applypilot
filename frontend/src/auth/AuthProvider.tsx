@@ -15,7 +15,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // On mount, check localStorage for access token and validate by calling /auth/me
   useEffect(() => {
     // The extension embed authenticates via its own token (not a web session),
-    // so skip the /auth/me bootstrap entirely — a stale localStorage token would
+    // so skip the /auth/me bootstrap entirely, a stale localStorage token would
     // otherwise 401 and bounce the iframe to /sign-in.
     if (isEmbedded()) {
       setIsLoading(false);
@@ -74,7 +74,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const completeOAuthRedirect = useCallback(async () => {
     // The backend OAuth callback already set the HttpOnly refresh cookie. Trade
-    // it for an access token, store it, and load the profile — same end state as
+    // it for an access token, store it, and load the profile, same end state as
     // loginWithGoogle, but the token was never exposed in a URL.
     const { data } = await api.post("/auth/refresh", {});
     localStorage.setItem("access_token", data.access_token);

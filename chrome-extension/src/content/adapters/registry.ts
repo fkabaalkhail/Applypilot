@@ -1,10 +1,10 @@
 import type { SiteAdapter } from "./types";
 
-/** Registered adapters, ordered — first match wins. Populated in the adapter
+/** Registered adapters, ordered, first match wins. Populated in the adapter
  *  modules (greenhouse.ts, workday.ts) via `ADAPTERS.push(...)` at import time. */
 export const ADAPTERS: SiteAdapter[] = [];
 
-/** Pure resolution against an explicit list — a throwing match() is skipped. */
+/** Pure resolution against an explicit list, a throwing match() is skipped. */
 export function resolveAdapter(adapters: SiteAdapter[], host: string, url: string): SiteAdapter | null {
   for (const a of adapters) {
     try {

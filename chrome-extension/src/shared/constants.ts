@@ -6,7 +6,7 @@ export const DEFAULT_DASHBOARD_URL = "https://www.tailrd.ca";
 
 /** One-shot snapshot of everything the extension syncs from the web app. */
 export const SYNC_ENDPOINT = "/api/extension/sync";
-/** Cheap staleness check — returns just the global sync version. */
+/** Cheap staleness check: returns just the global sync version. */
 export const SYNC_VERSION_ENDPOINT = "/api/extension/sync/version";
 
 /** Fields at or above this confidence are pre-selected for autofill. */
@@ -80,15 +80,15 @@ export const CATEGORY_LABELS: Record<string, string> = {
   securityClearance: "Security clearance",
   driversLicense: "Driver's licence",
   languages: "Languages",
-  eeoGender: "EEO — Gender",
-  eeoGenderIdentity: "EEO — Gender identity",
-  eeoPronouns: "EEO — Pronouns",
-  eeoRace: "EEO — Race/Ethnicity",
-  eeoHispanic: "EEO — Hispanic/Latino",
-  eeoVeteran: "EEO — Veteran status",
-  eeoDisability: "EEO — Disability",
-  eeoSexualOrientation: "EEO — Sexual orientation",
-  eeoOther: "EEO — Demographic",
+  eeoGender: "EEO: Gender",
+  eeoGenderIdentity: "EEO: Gender identity",
+  eeoPronouns: "EEO: Pronouns",
+  eeoRace: "EEO: Race/Ethnicity",
+  eeoHispanic: "EEO: Hispanic/Latino",
+  eeoVeteran: "EEO: Veteran status",
+  eeoDisability: "EEO: Disability",
+  eeoSexualOrientation: "EEO: Sexual orientation",
+  eeoOther: "EEO: Demographic",
   accountPassword: "Account password",
   unknown: "Unrecognized",
 };

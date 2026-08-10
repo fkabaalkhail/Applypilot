@@ -2,7 +2,7 @@
 Resume text extraction service.
 
 Supports PDF (via PyMuPDF/fitz primary, pdfplumber fallback) and DOCX (via python-docx).
-Imports are lazy — these deps are optional for serverless deployment.
+Imports are lazy, these deps are optional for serverless deployment.
 """
 
 import io

@@ -4,7 +4,7 @@ import type { UserApplicationProfile } from "../shared/types";
  * Mock profile used while the real backend endpoint is not available
  * (or when "Use sample data" is enabled in settings).
  *
- * This is NOT user data — it is clearly fake sample data so the extension
+ * This is NOT user data. It is clearly fake sample data so the extension
  * can be exercised end-to-end before the API is wired up.
  */
 export const MOCK_PROFILE: UserApplicationProfile = {
@@ -27,7 +27,7 @@ export const MOCK_PROFILE: UserApplicationProfile = {
   workAuthorization: "Authorized to work in Canada",
   requiresSponsorship: "No",
   dateOfBirth: "1999-03-14",
-  // Screening answers — every value is one of the contract's exact options
+  // Screening answers: every value is one of the contract's exact options
   // (docs/superpowers/specs/2026-08-09-profile-parity-contract.md §D) so mock
   // mode renders a select with a real selection, not a blank one.
   willingToRelocate: "Yes",

@@ -1,7 +1,7 @@
 /**
  * Calls the backend AI form-fill endpoint (POST /api/fill). The endpoint does
  * rule-based answers first, then Claude for the rest, and pulls the user's
- * resume from the DB — so we send an empty resumeText. Runs in the service
+ * resume from the DB, so we send an empty resumeText. Runs in the service
  * worker, where authedRequest handles auth + silent token refresh.
  */
 import type {
@@ -17,7 +17,7 @@ interface FillApiResponse {
   answers: AiFillAnswer[];
   errors: string[];
   /** Candidate values the backend's grounding gate refused, with a reason.
-   *  Absent from older backends — callers must treat it as optional. */
+   *  Absent from older backends: callers must treat it as optional. */
   dropped?: DroppedAnswer[];
 }
 

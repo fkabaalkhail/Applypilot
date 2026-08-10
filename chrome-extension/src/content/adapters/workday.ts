@@ -1,11 +1,11 @@
 // chrome-extension/src/content/adapters/workday.ts
 /**
  * Workday (`*.myworkdayjobs.com` etc.). Workday's visible labels are generic, but
- * its `data-automation-id`s are reliable — the adapter's main win. Also formats
+ * its `data-automation-id`s are reliable, the adapter's main win. Also formats
  * the country prompt and owns the split (month/day/year) date widget the generic
  * writer can't drive as one value.
  *
- * Every automation-id lives in ./workdaySelectors — this file holds only logic.
+ * Every automation-id lives in ./workdaySelectors. This file holds only logic.
  */
 import { isVisible } from "../domUtils";
 import { ADAPTERS } from "./registry";
@@ -32,12 +32,12 @@ import {
 
 /** Workday's phone-device-type prompt lists Home / Mobile / Work / Pager / Fax.
  *  Applicants give a mobile number essentially always, and the field is
- *  required — answering it deterministically saves an AI round-trip per fill. */
+ *  required, answering it deterministically saves an AI round-trip per fill. */
 const DEFAULT_PHONE_DEVICE_TYPE = "Mobile";
 
 /** Parse the date shapes the profile and the page actually use: ISO
- *  (2025-05-14), year-month (2025-05 — how experience start/end dates are
- *  stored), US (5/14/2025), and a bare year (2026 — graduation). Missing parts
+ *  (2025-05-14), year-month (2025-05, how experience start/end dates are
+ *  stored), US (5/14/2025), and a bare year (2026, graduation). Missing parts
  *  come back as "" and are simply not written.
  *
  *  Fully anchored and range-checked on purpose: this parse is the only thing
@@ -117,8 +117,8 @@ export const workdayAdapter: SiteAdapter = {
     // The chain says nothing on the drop-zone layout: the input's own id is
     // generic ("file-upload-input-ref"), the zone's classes are hashed per
     // tenant, and its text reads only "Drop files here / or / Select files".
-    // The document IS named — as an element **id** on the Select-files button
-    // ("resumeAttachments--attachments") — which neither the chain nor the zone
+    // The document IS named: as an element **id** on the Select-files button
+    // ("resumeAttachments--attachments"), which neither the chain nor the zone
     // text reads. Without this the field classifies `unknown`, so
     // `resumeFieldNeedingFile` never returns it and auto-attach never runs.
     const inDropZone = ctx.el.closest(FILE_DROP_ZONE_SELECTOR) !== null;
@@ -127,7 +127,7 @@ export const workdayAdapter: SiteAdapter = {
       if (COVER_WIDGET_ID_RE.test(ids)) {
         return { category: "coverLetter", confidence: 0.9, sensitive: false };
       }
-      // A named résumé widget — or, inside a Workday drop zone, an unnamed one:
+      // A named résumé widget: or, inside a Workday drop zone, an unnamed one:
       // the résumé is the only upload that appears before the cover-letter
       // section, and leaving it `unknown` is exactly today's failure. A bare
       // file input standing OUTSIDE any drop zone still needs a positive signal
@@ -172,8 +172,8 @@ export const workdayAdapter: SiteAdapter = {
       // over ids that are only mostly reliable, and each time it has been wrong
       // the symptom was the same: some parts written, the rest left at 0, and a
       // success reported over the top. So ask the question that actually
-      // matters — is there a part this value needs, that this widget HAS, that
-      // the container did not give us? — and refuse the whole fill if so. An
+      // matters, is there a part this value needs, that this widget HAS, that
+      // the container did not give us?, and refuse the whole fill if so. An
       // unanticipated DOM shape then fails loudly here instead of silently on
       // the page, and the reason reaches autofill_reports.
       const widget = dateWidgetPartsOf(container);
@@ -182,7 +182,7 @@ export const workdayAdapter: SiteAdapter = {
         return { filled: false, reason: `date parts outside the resolved widget: ${unreachable.join(", ")}` };
       }
       // A part the value doesn't carry (no day in "2025-05") is left alone
-      // rather than zeroed — Workday reads 0 as empty and flags it invalid.
+      // rather than zeroed, Workday reads 0 as empty and flags it invalid.
       let wrote = 0;
       for (const frag of DATE_FRAGMENTS) {
         const input = inputs[frag];
@@ -198,12 +198,12 @@ export const workdayAdapter: SiteAdapter = {
   },
 
   advanceButton(scope) {
-    // Workday's step footer often sits OUTSIDE the fields' container — fall
+    // Workday's step footer often sits OUTSIDE the fields' container, fall
     // back to the whole document when the scope doesn't hold it.
     //
     // First CLICKABLE match, not first match. Workday's SPA leaves an earlier
     // step's footer in the DOM (hidden, or disabled until its step validates),
-    // and it comes first in document order — so `querySelector` handed back a
+    // and it comes first in document order, so `querySelector` handed back a
     // button `findAdvanceButton` then rejected, abandoning the adapter path
     // entirely and leaving the live footer unfound. That ended the flow with no
     // advance gate, and only ever on a later step, which is exactly how it

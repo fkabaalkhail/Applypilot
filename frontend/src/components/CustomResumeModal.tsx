@@ -190,7 +190,7 @@ export default function CustomResumeModal({
   // Visual editor: edited document + undo/redo history, seeded on generate.
   const [editing, setEditing] = useState(false);
   // Default to the "what changed" layer so the review opens showing what the
-  // rewrite did (the printed PDF/DOCX stay clean — see printResume + schema DOCX).
+  // rewrite did (the printed PDF/DOCX stay clean, see printResume + schema DOCX).
   const [highlightMode, setHighlightMode] = useState<HighlightMode>("changed");
   const {
     doc: editedDoc,
@@ -330,9 +330,9 @@ export default function CustomResumeModal({
   const matchHeadline = useMemo(() => {
     if (!analysis) return "";
     const l = analysis.match_label.split(" ")[0];
-    if (l === "STRONG") return "Your Resume is a Strong Match — Let's Make It Even Better";
-    if (l === "GOOD") return "Your Resume is a Good Match — Let's Sharpen It";
-    return "Your Resume is a Partial Match — Let's Make It Great";
+    if (l === "STRONG") return "Your Resume is a Strong Match. Let's Make It Even Better";
+    if (l === "GOOD") return "Your Resume is a Good Match. Let's Sharpen It";
+    return "Your Resume is a Partial Match. Let's Make It Great";
   }, [analysis]);
 
   return (
@@ -401,7 +401,7 @@ export default function CustomResumeModal({
             <span className="ai-info">
               <i className="info-dot">i</i>
               {fullCoverage
-                ? "Strong keyword coverage — a few tweaks will sharpen it further."
+                ? "Strong keyword coverage. A few tweaks will sharpen it further."
                 : "You're on the right track, but some keywords are still missing."}
             </span>
           </div>
@@ -515,7 +515,7 @@ export default function CustomResumeModal({
             )}
           </div>
           <div className="ai-kw-grid">
-            {missing.length === 0 && <span className="ai-ov-meta">No missing keywords — nice!</span>}
+            {missing.length === 0 && <span className="ai-ov-meta">No missing keywords. Nice!</span>}
             {missing.map((k) => {
               const on = keywords.has(k);
               return (
@@ -620,7 +620,7 @@ export default function CustomResumeModal({
             }}
           >
             ⚠️ We couldn't fully read this resume's structure, so the result may be limited. A simpler
-            one-column PDF or DOCX usually parses best — or add sections in the editor.
+            one-column PDF or DOCX usually parses best, or add sections in the editor.
           </div>
         )}
         <div className="ai-review">
@@ -680,7 +680,7 @@ export default function CustomResumeModal({
                 )}
                 {figures.length > 0 && (
                   <div className="ai-gaps-verify">
-                    Verify these figures — not in your original: <strong>{figures.join(", ")}</strong>
+                    Verify these figures (not in your original): <strong>{figures.join(", ")}</strong>
                   </div>
                 )}
               </div>

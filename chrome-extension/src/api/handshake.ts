@@ -4,7 +4,7 @@
  * The extension never handles credentials. ``connectAccount()`` opens the web
  * app's /extension/connect page via chrome.identity.launchWebAuthFlow (which
  * reuses the user's live web session), receives a one-time authorization code,
- * and exchanges it — proving possession of the PKCE verifier — for an
+ * and exchanges it (proving possession of the PKCE verifier) for an
  * extension-scoped token pair at POST /auth/extension/token.
  *
  * Security:
@@ -53,7 +53,7 @@ async function sha256Challenge(verifier: string): Promise<string> {
 /**
  * Run the full connect handshake. On success the extension's token pair is
  * persisted via saveAuth. Throws on cancellation or any failure (the caller
- * surfaces the message). Does NOT sync — the caller triggers the initial sync.
+ * surfaces the message). Does NOT sync, the caller triggers the initial sync.
  */
 export async function connectAccount(): Promise<{ email: string }> {
   const { dashboardUrl } = await getConfig();
@@ -80,7 +80,7 @@ export async function connectAccount(): Promise<{ email: string }> {
   const code = fragment.get("code");
   const returnedState = fragment.get("state");
   if (!code) throw new Error("No authorization code was returned");
-  if (returnedState !== stateNonce) throw new Error("Security check failed — please try again");
+  if (returnedState !== stateNonce) throw new Error("Security check failed. Please try again");
 
   const tokens = await publicRequest<ExtensionTokenResponse>("/auth/extension/token", {
     method: "POST",

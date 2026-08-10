@@ -1,5 +1,5 @@
 """
-AggregatorService — orchestrates scraping, classification, and storage of jobs
+AggregatorService, orchestrates scraping, classification, and storage of jobs
 from jobright-ai GitHub repositories.
 
 Pipeline: seed sources → check commit SHA → fetch README → parse markdown →
@@ -365,7 +365,7 @@ class AggregatorService:
                 is_mega_repo = "Internship" in source.repo_name
                 parsed_jobs = self.parser.parse(content, is_mega_repo=is_mega_repo)
 
-                # The lists re-publish postings employers already closed —
+                # The lists re-publish postings employers already closed,
                 # verify genuinely-new URLs before they become catalogue rows
                 # a user can click into a 404.
                 dead_urls = await self._probe_new_urls(parsed_jobs)
@@ -527,7 +527,7 @@ class AggregatorService:
         catalogue never shows them, and remembering the URL stops the next
         poll from re-discovering and re-probing the same dead posting.
         """
-        # Reject jobright redirect URLs — we only want direct company links
+        # Reject jobright redirect URLs: we only want direct company links
         if "jobright.ai" in job.url:
             return False
 
@@ -616,12 +616,12 @@ class AggregatorService:
         try:
             self.db.commit()
         except Exception:
-            # Duplicate URL or other constraint violation — rollback and skip
+            # Duplicate URL or other constraint violation, rollback and skip
             self.db.rollback()
             return False
 
         if is_dead:
-            return False  # remembered, hidden — not a new catalogue job
+            return False  # remembered, hidden, not a new catalogue job
 
         # This direct row supersedes LinkedIn/Indeed copies that arrived first.
         try:

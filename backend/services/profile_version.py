@@ -4,7 +4,7 @@ Profile sync version anchor.
 Every change to a user's synced data (profile fields, resumes, cover letters)
 bumps ``user_settings.data_version``. The Chrome extension polls the cheap
 ``GET /api/user/profile-version`` endpoint and only re-downloads the full
-profile when the version changed — keeping sync feeling instant without
+profile when the version changed, keeping sync feeling instant without
 persistent connections or wasteful refetches.
 """
 
@@ -53,12 +53,12 @@ def get_profile_version(
 ) -> tuple[int, datetime.datetime | None]:
     """Return ``(version, updated_at)`` for cheap staleness polling.
 
-    A user with no ``user_settings`` row yet reports version ``0`` — the
+    A user with no ``user_settings`` row yet reports version ``0``, the
     "nothing synced yet" sentinel. This MUST be distinct from the value the
     first :func:`bump_profile_version` assigns (``1``); otherwise the very first
     synced write (e.g. uploading the first resume, which creates the settings
-    row) would leave the version unchanged, and an already-connected extension —
-    having cached the pre-write version — would never re-download and would keep
+    row) would leave the version unchanged, and an already-connected extension,
+    having cached the pre-write version, would never re-download and would keep
     showing "no resume". (Both used to return ``1``; that was the bug.)
     """
     settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()

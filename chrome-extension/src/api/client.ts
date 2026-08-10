@@ -9,7 +9,7 @@
  *   - silent refresh-on-401 (the backend rotates refresh tokens)
  *   - logout + checkAuthStatus
  *
- * The extension never logs in here — tokens are obtained via the web handshake
+ * The extension never logs in here, tokens are obtained via the web handshake
  * (see api/handshake.ts). Data fetching + caching lives in api/sync.ts.
  */
 import {
@@ -53,7 +53,7 @@ async function parseError(res: Response): Promise<ApiError> {
     const body = (await res.json()) as ApiErrorBody;
     if (body.detail) detail = body.detail;
   } catch {
-    // non-JSON error body — keep the generic message
+    // non-JSON error body, keep the generic message
   }
   return new ApiError(detail, res.status);
 }
@@ -81,7 +81,7 @@ async function refreshTokens(): Promise<void> {
           method: "POST",
           body: JSON.stringify({ refresh_token: auth.refreshToken }),
         });
-        // The backend revokes the old refresh token — always store the new pair.
+        // The backend revokes the old refresh token, always store the new pair.
         await saveAuth({
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
@@ -111,7 +111,7 @@ export const ACCESS_TOKEN_SKEW_SECONDS = 120;
 
 export async function ensureFreshAccessToken(): Promise<void> {
   const auth = await getAuth();
-  if (!auth?.refreshToken) return; // not connected — nothing to refresh
+  if (!auth?.refreshToken) return; // not connected, nothing to refresh
   const exp = await getAccessTokenExp();
   const needs = !auth.accessToken || exp === null || exp - Math.floor(Date.now() / 1000) <= ACCESS_TOKEN_SKEW_SECONDS;
   if (needs) await refreshTokens();
@@ -175,7 +175,7 @@ export async function logout(): Promise<void> {
         body: JSON.stringify({ refresh_token: auth.refreshToken }),
       });
     } catch {
-      // Best effort — clear local state regardless.
+      // Best effort: clear local state regardless.
     }
   }
   await clearAuth();

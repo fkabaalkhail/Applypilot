@@ -5,6 +5,8 @@ is used.
 """
 from unittest.mock import patch, AsyncMock
 
+from backend.tests.conftest import ANSWER_BATCH, COMPOSE_BATCH, batch_returning, questions_asked
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -20,7 +22,7 @@ test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread"
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 TEST_USER_ID = 1
-_ANSWER = "backend.services.openai_service.OpenAIService.answer_question"
+_ANSWER = ANSWER_BATCH
 
 app = FastAPI()
 app.include_router(fill.router, prefix="/api", tags=["fill"])
@@ -68,7 +70,7 @@ def _payload(**field):
 def test_sentinel_answer_emits_no_field_answer(client):
     # Nothing in pass 1 answers this, so it reaches the AI pass, which returns
     # the grounding sentinel.
-    with patch(_ANSWER, AsyncMock(return_value="__NO_ANSWER__")):
+    with patch(_ANSWER, batch_returning("__NO_ANSWER__")):
         resp = client.post("/api/fill", json=_payload())
     assert resp.status_code == 200
     # A field the AI could not ground produces no answer -> stays blank.
@@ -76,12 +78,15 @@ def test_sentinel_answer_emits_no_field_answer(client):
 
 
 def test_help_text_and_input_type_reach_the_prompt(client):
-    mock = AsyncMock(return_value="__NO_ANSWER__")
+    mock = batch_returning("__NO_ANSWER__")
     with patch(_ANSWER, mock):
         client.post("/api/fill", json=_payload(
             label="Start date", type="text",
             helpText="When can you begin?", inputType="date",
         ))
-    question = mock.call_args.kwargs["question"]
-    assert "date" in question
-    assert "When can you begin?" in question
+    # Batched: the rendered question is a value in the questions dict, keyed by
+    # the id the model must echo back.
+    asked = list(questions_asked(mock).values())
+    assert len(asked) == 1
+    assert "date" in asked[0]
+    assert "When can you begin?" in asked[0]

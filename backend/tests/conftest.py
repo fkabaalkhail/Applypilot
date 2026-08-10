@@ -80,3 +80,42 @@ def client(db_session):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+# --- /api/fill batched-answer test helpers ----------------------------------
+# The fill endpoint answers a whole form in one call per group (factual /
+# open-ended) rather than one call per field, so a stand-in for the LLM has to
+# fan one canned answer out across every id it was asked about.
+
+ANSWER_BATCH = "backend.services.openai_service.OpenAIService.answer_questions_batch"
+COMPOSE_BATCH = "backend.services.openai_service.OpenAIService.compose_answers_batch"
+
+
+def batch_returning(value):
+    """A stand-in for a batched answer method that answers every id with ``value``.
+
+    Mirrors the real contract: keys in, keys out. Pass a dict instead of a
+    string to answer specific ids differently; ids left out come back absent,
+    which is how the endpoint learns a field went unanswered.
+    """
+    from unittest.mock import AsyncMock
+
+    async def _impl(questions, context, model=None):
+        if isinstance(value, dict):
+            return {qid: value[qid] for qid in questions if qid in value}
+        return {qid: value for qid in questions}
+
+    return AsyncMock(side_effect=_impl)
+
+
+def questions_asked(mock) -> dict:
+    """The questions dict a batch mock was handed (empty if it never ran).
+
+    Routing is asserted with this rather than with ``assert_not_awaited``: both
+    groups are always awaited concurrently, so "did this field go to the essay
+    path?" is a question about which dict it landed in, not about which
+    coroutine ran.
+    """
+    if not mock.await_args_list:
+        return {}
+    return mock.await_args_list[0].args[0]

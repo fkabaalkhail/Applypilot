@@ -45,7 +45,7 @@ def test_post_setup_response_carries_auth_provider(client, db_session, provider)
     """This response replaces the whole user object in frontend auth state.
 
     SetupWizard's final step calls setSetupComplete(true), and AuthProvider
-    feeds the response straight into setUser(data) — so any key missing here
+    feeds the response straight into setUser(data), so any key missing here
     goes `undefined` for the rest of the session. Every new user hits this
     path, and Settings -> Account reads user.auth_provider to render the
     "Connected account" row. Omitting it blanks that row until a full reload.

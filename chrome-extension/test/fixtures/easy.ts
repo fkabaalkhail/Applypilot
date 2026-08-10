@@ -1,6 +1,6 @@
 /**
  * Faithful Easy-tier ATS field markup (Greenhouse, Lever, BambooHR, Breezy HR):
- * standard, well-labelled HTML — label/for inputs, native selects, plain
+ * standard, well-labelled HTML, label/for inputs, native selects, plain
  * textareas, native radio groups. Mounted in-document. Reconstructed from known
  * patterns as of 2026-06-30, not copied markup.
  */

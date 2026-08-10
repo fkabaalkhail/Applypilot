@@ -1,5 +1,5 @@
 """
-Tests for /autofill — telemetry recording, admin summary, and override serving.
+Tests for /autofill, telemetry recording, admin summary, and override serving.
 
 Isolated in-memory SQLite app (never the Neon lifespan), same pattern as
 test_apply_log.py, so it is safe to run standalone.

@@ -1,6 +1,6 @@
 /**
  * REAL-SITE test: load the packaged extension into Chromium, open a genuine,
- * public ATS application form (Greenhouse / Lever — no login required), drive the
+ * public ATS application form (Greenhouse / Lever, no login required), drive the
  * extension's real overlay (open panel → sample-data profile → Autofill), and
  * read back every field from the live DOM. Captures the page console and
  * before/after screenshots so the result is independently verifiable.
@@ -51,7 +51,7 @@ async function main() {
     );
     console.log("seeded ap_config.useMockData = true via service worker ✅");
   } else {
-    console.log("⚠ no service worker handle — will fall back to clicking 'Try with sample data'");
+    console.log("⚠ no service worker handle, will fall back to clicking 'Try with sample data'");
   }
 
   const page = await ctx.newPage();
@@ -99,7 +99,7 @@ async function main() {
     if (enabled) { console.log("Autofill enabled"); break; }
     await sleep(500);
   }
-  if (!enabled) console.log("⚠ Autofill button never enabled — capturing state anyway.");
+  if (!enabled) console.log("⚠ Autofill button never enabled, capturing state anyway.");
 
   if (enabled) {
     await autofill.click().catch((e) => console.log("autofill click warn:", e.message.split("\n")[0]));

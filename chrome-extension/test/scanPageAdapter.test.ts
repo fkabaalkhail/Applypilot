@@ -5,7 +5,7 @@ import type { SiteAdapter } from "../src/content/adapters/types";
 import type { UserApplicationProfile } from "../src/shared/types";
 
 // jsdom has no layout engine (getClientRects() is empty), so the scanner's
-// isVisible() would reject every plain control — see helpers/layout.ts.
+// isVisible() would reject every plain control, see helpers/layout.ts.
 let restore: () => void;
 beforeAll(() => {
   restore = stubLayout();
@@ -47,7 +47,7 @@ describe("scanPage adapter integration", () => {
   });
 });
 
-describe("scanPage — repeating education rows (index-aware)", () => {
+describe("scanPage, repeating education rows (index-aware)", () => {
   it("fills each education row from the matching profile entry", () => {
     // If stubLayout() isn't already applied in a shared beforeEach, call it here first.
     document.body.innerHTML = `

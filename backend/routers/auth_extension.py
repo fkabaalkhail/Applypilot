@@ -5,16 +5,16 @@ The Chrome extension never handles credentials. Instead it bounces the user
 through the web app's ``/extension/connect`` page (which reuses the live web
 session) and exchanges a short-lived authorization code for its own token pair:
 
-  1. POST /auth/extension/authorize  — called by the *web app* with the user's
+  1. POST /auth/extension/authorize, called by the *web app* with the user's
      web access token. Mints a single-use code bound to the user + the PKCE
      ``code_challenge`` + the extension's ``redirect_uri``.
-  2. POST /auth/extension/token      — called by the *extension* (public). Proves
+  2. POST /auth/extension/token, called by the *extension* (public). Proves
      possession of the matching ``code_verifier`` (S256) and redeems the code for
      an access + refresh token pair tagged ``client="extension"``.
 
 Security:
   - Codes are high-entropy, single-use, and expire in ~60s.
-  - PKCE S256 only (no ``plain``) — a leaked code is useless without the verifier.
+  - PKCE S256 only (no ``plain``), a leaked code is useless without the verifier.
   - ``redirect_uri`` must be an extension ``chromiumapp.org`` URL; in production it
     must match the ``EXTENSION_ALLOWED_IDS`` allowlist so a malicious site can't
     phish a code. Dev allows any ``*.chromiumapp.org``.
@@ -182,7 +182,7 @@ def token(
 ):
     """Redeem an authorization code (+ PKCE verifier) for an extension token pair.
 
-    Public endpoint — possession of the matching ``code_verifier`` is the proof.
+    Public endpoint, possession of the matching ``code_verifier`` is the proof.
     """
     rate_limiter.enforce(request, "ext_token", max_requests=10, window_seconds=60)
 
@@ -218,7 +218,7 @@ def token(
         db.commit()
         _reject("pkce_mismatch")
 
-    # Single use — mark redeemed before issuing tokens.
+    # Single use: mark redeemed before issuing tokens.
     auth_code.used = True
     db.commit()
 

@@ -33,9 +33,9 @@ interface ResumeEditorProps {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
-  /** Job keywords — shows a live ATS coverage badge in the toolbar when set. */
+  /** Job keywords: shows a live ATS coverage badge in the toolbar when set. */
   keywords?: string[];
-  /** Job id — enables the inline AI assistant on text fields when set. */
+  /** Job id: enables the inline AI assistant on text fields when set. */
   jobId?: number | null;
 }
 
@@ -216,7 +216,7 @@ export default function ResumeEditor({
           ))}
 
           {value.sections.length === 0 && (
-            <p className="redit-empty">No sections yet — use “+ Add section” above to start building.</p>
+            <p className="redit-empty">No sections yet. Use “+ Add section” above to start building.</p>
           )}
         </div>
 

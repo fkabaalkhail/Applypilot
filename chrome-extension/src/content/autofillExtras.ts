@@ -1,5 +1,5 @@
 /**
- * Device-local autofill extras — the user's own edits and additions layered over
+ * Device-local autofill extras: the user's own edits and additions layered over
  * the synced profile, kept in chrome.storage.local (never sent to the backend).
  *
  * The web-app profile is the source of truth for résumé-derived data, but the
@@ -23,7 +23,7 @@ const STORE_KEY = "ap_autofill_extras";
  *
  * `github` used to be edited here because the profile API had no write path for
  * it. It has one now (2026-08-09 profile-parity contract), so a stale local
- * value would permanently shadow whatever the user sets on the web app — the
+ * value would permanently shadow whatever the user sets on the web app, the
  * exact bug the contract set out to kill. Dropping the key on READ makes that
  * unreachable, and the next saveExtras() (which prunes the normalized draft)
  * removes it from storage for good.
@@ -41,10 +41,10 @@ export interface CustomField {
 
 export interface AutofillExtras {
   /** Legacy overrides for scalar profile fields. Nothing in the UI writes these
-   *  any more — every scalar the modal shows now round-trips through the
-   *  profile API — but the merge is kept so an older stored blob still fills. */
+   *  any more, every scalar the modal shows now round-trips through the
+   *  profile API, but the merge is kept so an older stored blob still fills. */
   fields: Record<string, string>;
-  /** User-edited work experience — null means "use the synced experience". */
+  /** User-edited work experience: null means "use the synced experience". */
   experience: ExperienceEntry[] | null;
   /** User-added labelled fields, filled by exact-normalized label match. */
   customFields: CustomField[];
@@ -105,13 +105,13 @@ export async function saveExtras(extras: AutofillExtras): Promise<void> {
   try {
     await chrome.storage.local.set({ [STORE_KEY]: pruneExtras(extras) });
   } catch {
-    // Storage unavailable — the in-memory draft stays so a retry can persist it.
+    // Storage unavailable: the in-memory draft stays so a retry can persist it.
   }
 }
 
 /**
  * Apply the local overrides over the synced profile: non-empty scalar overrides
- * win, and a user-edited experience array replaces the synced one. Pure — never
+ * win, and a user-edited experience array replaces the synced one. Pure, never
  * mutates the input. This is the single merge used by the panel, the scanner and
  * the AI context, so what the user sees is exactly what fills.
  */

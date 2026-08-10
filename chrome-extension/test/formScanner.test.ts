@@ -3,7 +3,7 @@ import { scanPage } from "../src/content/formScanner";
 import { stubLayout } from "./helpers/layout";
 
 // jsdom reports zero rects for everything; comboboxes get NO relaxed-visibility
-// pass (an invisible combobox is not operable — see formScanner), so give every
+// pass (an invisible combobox is not operable, see formScanner), so give every
 // element a real box the way a browser would. See helpers/layout.ts.
 let restoreLayout: () => void;
 beforeAll(() => {
@@ -47,7 +47,7 @@ function labeledCombobox(
   document.body.append(wrap);
 }
 
-describe("scanPage — custom dropdowns", () => {
+describe("scanPage, custom dropdowns", () => {
   it("surfaces a combobox's options and committed value", () => {
     labeledCombobox(["United States", "Canada"], { label: "Country", value: "Canada" });
     const { fields } = scanPage(null, false);
@@ -93,7 +93,7 @@ describe("driver tagging", () => {
   });
 });
 
-describe("scanPage — field page context", () => {
+describe("scanPage, field page context", () => {
   it("carries the native input type and nearby help text on the detected field", () => {
     document.body.innerHTML = `
       <form>
@@ -110,7 +110,7 @@ describe("scanPage — field page context", () => {
   });
 });
 
-describe("scanPage — widget-internal controls are not fields (Greenhouse job-boards regression)", () => {
+describe("scanPage, widget-internal controls are not fields (Greenhouse job-boards regression)", () => {
   it("skips react-select's aria-hidden required companion input", () => {
     document.body.innerHTML = `
       <div class="select__container">
@@ -135,7 +135,7 @@ describe("scanPage — widget-internal controls are not fields (Greenhouse job-b
   it("skips a zero-area input even without aria-hidden", () => {
     document.body.innerHTML = `<label for="ghost">Ghost</label><input id="ghost" type="text" />`;
     const ghost = document.getElementById("ghost") as HTMLElement;
-    // Rendered box exists but is 0px tall — a validation shim, not a field.
+    // Rendered box exists but is 0px tall, a validation shim, not a field.
     ghost.getClientRects = () => [{ width: 100, height: 0 }] as unknown as DOMRectList;
     const { fields } = scanPage(null, false);
     expect(fields).toHaveLength(0);
@@ -144,7 +144,7 @@ describe("scanPage — widget-internal controls are not fields (Greenhouse job-b
   it("skips a bot-trap honeypot input (Workday beecatcher: clipped, sub-pixel box)", () => {
     // Real Workday markup: a labelled text input hidden with the sr-only clip
     // trick and a ~1px×fractional box. Filling it flags the submission as a bot,
-    // so Workday silently refuses to create the account — it must never be filled.
+    // so Workday silently refuses to create the account. It must never be filled.
     document.body.innerHTML = `
       <label for="hp">Website</label>
       <input id="hp" name="website" data-automation-id="beecatcher" type="text"
@@ -183,7 +183,7 @@ describe("scanPage — widget-internal controls are not fields (Greenhouse job-b
   });
 });
 
-describe("scanPage — malformed profile robustness", () => {
+describe("scanPage, malformed profile robustness", () => {
   it("does not throw when the profile is missing education/experience/skills arrays", () => {
     document.body.innerHTML = `
       <label for="s">School</label><input id="s" name="education[0][school]" />

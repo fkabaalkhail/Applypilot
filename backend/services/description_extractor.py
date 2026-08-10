@@ -37,7 +37,7 @@ def sanitize_description(text: str) -> str:
 
 def workday_cxs_url(public_url: str) -> str:
     """Convert a public Workday job URL into its CXS detail-API endpoint."""
-    # Tracking params (?utm_source=…) break the CXS API — strip query/fragment.
+    # Tracking params (?utm_source=…) break the CXS API, strip query/fragment.
     public_url = public_url.split("#")[0].split("?")[0]
     m = re.match(r"(https://([^.]+)\.[^/]*myworkdayjobs\.com)(/.*)", public_url)
     if not m:
@@ -389,7 +389,7 @@ def _extract_taleo_html(html: str) -> str:
 
 
 def _extract_indeed_html(html: str) -> str:
-    """Indeed serves the full posting in <div id="jobDescriptionText"> — but
+    """Indeed serves the full posting in <div id="jobDescriptionText">, but
     only to residential IPs; datacenter fetches get walled, which the attempt
     cap absorbs. Nested divs end a naive closing-tag regex early, so cut at
     the next top-level marker instead."""

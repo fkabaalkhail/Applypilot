@@ -14,7 +14,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("Taleo table-layout markup — detection", () => {
+describe("Taleo table-layout markup, detection", () => {
   it("classifies fields whose labels live in sibling table cells", () => {
     mountTaleoForm(document);
     const { fields } = scanPage(MOCK_PROFILE, false);
@@ -34,7 +34,7 @@ describe("Taleo table-layout markup — detection", () => {
   });
 });
 
-describe("Taleo table-layout markup — autofill", () => {
+describe("Taleo table-layout markup, autofill", () => {
   it("fills text fields and the country select; skips resume + EEO (no EEO data)", async () => {
     mountTaleoForm(document);
     await runAutofill(PROFILE_NO_EEO, false);

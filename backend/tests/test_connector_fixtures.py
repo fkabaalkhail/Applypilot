@@ -1,6 +1,6 @@
 """Connector parsing pinned against saved board payloads (one per platform).
 
-These are the fixtures that catch a source changing its response shape — the
+These are the fixtures that catch a source changing its response shape, the
 classic silent-failure mode where a parser starts returning zero jobs and
 nobody notices until the catalogue goes stale.
 """
@@ -77,7 +77,7 @@ async def test_greenhouse_fixture_parses_ids_salary_and_content():
 @pytest.mark.asyncio
 async def test_greenhouse_snapshot_all_urls_includes_filtered_out_jobs():
     """The senior role fails the entry-level filter but its URL must stay in
-    all_urls — reconciliation would otherwise mark live jobs as removed."""
+    all_urls, reconciliation would otherwise mark live jobs as removed."""
     transport = FixtureTransport({"boards-api.greenhouse.io": _load("greenhouse_board.json")})
     async with httpx.AsyncClient(transport=transport) as client:
         snapshot = await _filtered().scrape_board(client, "greenhouse", "acme", "Acme")

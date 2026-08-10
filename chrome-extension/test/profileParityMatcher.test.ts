@@ -1,7 +1,7 @@
 /**
  * The point of the 2026-08-09 parity contract (§G): questions whose answer is
  * already a stated fact on the profile must be classified and resolved in
- * pass 1 — no backend call, no model, no invention.
+ * pass 1, no backend call, no model, no invention.
  *
  * The precedence cases are the load-bearing half. "Years of experience with
  * Python" answered from the headline total, or "Earliest start date" answered
@@ -42,7 +42,7 @@ function profile(over: Partial<UserApplicationProfile> = {}): UserApplicationPro
 // Classification
 // ---------------------------------------------------------------------------
 
-describe("classifyField — screening questions the profile answers", () => {
+describe("classifyField, screening questions the profile answers", () => {
   it("recognises willingness to relocate", () => {
     expect(catOf("Are you willing to relocate?")).toBe("willingToRelocate");
     expect(catOf("Willing to relocate")).toBe("willingToRelocate");
@@ -77,7 +77,7 @@ describe("classifyField — screening questions the profile answers", () => {
 
   it("keeps a plain employment Start Date on experienceStartDate", () => {
     // A repeating work-experience row's own "Start Date" must never be read as
-    // the applicant's availability — it fills from the employment record.
+    // the applicant's availability. It fills from the employment record.
     expect(catOf("Start Date")).toBe("experienceStartDate");
     expect(catOf("End Date")).toBe("experienceEndDate");
     expect(catOf("Employment start date")).toBe("experienceStartDate");
@@ -90,7 +90,7 @@ describe("classifyField — screening questions the profile answers", () => {
   });
 
   it("does NOT read a per-skill experience question as the headline number", () => {
-    // The profile has no answer for "with Python" — abstaining routes it to the
+    // The profile has no answer for "with Python", abstaining routes it to the
     // grounded AI pass instead of writing a confidently wrong number.
     expect(catOf("Years of experience with Python")).not.toBe("yearsOfExperience");
     expect(catOf("How many years of experience do you have in project management?")).not.toBe(
@@ -148,10 +148,10 @@ describe("classifyField — screening questions the profile answers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Resolution — pass 1, no LLM
+// Resolution: pass 1, no LLM
 // ---------------------------------------------------------------------------
 
-describe("resolveProfileValue — screening answers fill straight from the profile", () => {
+describe("resolveProfileValue, screening answers fill straight from the profile", () => {
   const p = profile({
     willingToRelocate: "Yes",
     workPreference: "Hybrid",

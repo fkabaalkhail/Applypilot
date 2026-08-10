@@ -6,7 +6,7 @@ export interface PendingJob {
   id: number;
   title: string;
   company: string;
-  /** ATS apply URL — handed to the extension so a submit is tracked to this job. */
+  /** ATS apply URL: handed to the extension so a submit is tracked to this job. */
   url?: string;
 }
 
@@ -76,7 +76,7 @@ export function ApplyTrackingProvider({ children }: { children: ReactNode }) {
     const job = state.current;
     if (job) {
       api.post(`/jobs/${job.id}/mark-applied`).catch(() => {
-        // Silently fail — the user already confirmed visually; not worth a blocking error UI.
+        // Silently fail: the user already confirmed visually; not worth a blocking error UI.
       });
     }
     dispatch({ type: "DEQUEUE" });

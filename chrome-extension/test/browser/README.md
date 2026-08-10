@@ -2,7 +2,7 @@
 
 These tests drive the **actual shipping autofill engine** (`scanPage` +
 `AutofillReconciler` + `fillAriaCombobox`) inside a genuine Chromium via
-Playwright — covering what the jsdom suite (`npm test`) cannot: real shadow DOM,
+Playwright, covering what the jsdom suite (`npm test`) cannot: real shadow DOM,
 real custom-dropdown open→click interaction, a real same-origin iframe realm, and
 real `DataTransfer` file injection.
 
@@ -23,13 +23,13 @@ performs, then reads **every** control back from the live DOM and asserts the
 value committed:
 
 - 15 ATS fixtures (Easy/Medium/Hard) in the top frame
-- `workday-shadow` — a Workday combobox + inputs inside an **open shadow root**,
+- `workday-shadow`: a Workday combobox + inputs inside an **open shadow root**,
   with the listbox portaled into that shadow root (exercises `deepQueryAll`
   piercing + the combobox engine's shadow-aware listbox lookup)
-- `icims-in-iframe` — the iCIMS form mounted inside a real **same-origin iframe**;
+- `icims-in-iframe`: the iCIMS form mounted inside a real **same-origin iframe**;
   the harness runs in that child frame's realm (mirrors `all_frames` injection)
-- `workday` EEO-on — proves EEO selects fill only when the toggle + answers are present
-- résumé upload — injects a real generated PDF via `injectResumeFile`'s
+- `workday` EEO-on, proves EEO selects fill only when the toggle + answers are present
+- résumé upload, injects a real generated PDF via `injectResumeFile`'s
   `DataTransfer` path and confirms the `FileList` + `change` event
 
 `load-extension.mjs` loads the built `dist/` as an unpacked extension in full
@@ -41,7 +41,7 @@ auto-mounts (its host element + shadow-root UI appear in the page DOM).
 
 | File | Role |
 |------|------|
-| `entry.ts` | Browser bundle entry — exposes `window.__T` (`fillAndVerify`, `fillAndVerifyEeo`, `testFileUpload`) |
+| `entry.ts` | Browser bundle entry, exposes `window.__T` (`fillAndVerify`, `fillAndVerifyEeo`, `testFileUpload`) |
 | `build.mjs` | esbuild bundles `entry.ts` → `dist/harness.js` (injected via `addScriptTag`) |
 | `run.mjs` | Playwright runner + per-field assertions + report |
 | `load-extension.mjs` | Packaged-extension boot/detect smoke |
@@ -49,4 +49,4 @@ auto-mounts (its host element + shadow-root UI appear in the page DOM).
 | `fixtures/workdayShadow.ts` | Browser-only shadow-DOM Workday fixture |
 
 The ATS fixtures themselves live in `../fixtures/` and are shared with the jsdom
-suite — same builders, exercised here in a real browser.
+suite, same builders, exercised here in a real browser.

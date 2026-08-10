@@ -8,10 +8,11 @@ User Profile:
 
 Job Applied For: {{JOB_TITLE}} at {{COMPANY}}
 
-Write a brief, professional connection request message (under 300 characters — LinkedIn's limit). The message should:
+Write a brief, professional connection request message (under 300 characters, LinkedIn's limit). The message should:
 - Reference the specific role applied for
 - Be warm and genuine, not salesy
 - Not use generic phrases like "I'd love to connect"
 - Sound like a real person, not a template
+- Never use the em dash character (U+2014, "—"); use a comma or a second sentence
 
 Return ONLY the message text, no quotes, no explanation.

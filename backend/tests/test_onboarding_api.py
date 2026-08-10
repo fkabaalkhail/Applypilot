@@ -49,7 +49,7 @@ def test_post_onboarding_response_carries_auth_provider(client, db_session, prov
 
     OnboardingProvider calls setOnboardingComplete(true) at the end of the
     product tour, and AuthProvider feeds the response straight into
-    setUser(data) — so any key missing here goes `undefined` for the rest of
+    setUser(data), so any key missing here goes `undefined` for the rest of
     the session, blanking the Settings -> Account "Connected account" row
     until a full page reload re-hits GET /auth/me.
 

@@ -1,5 +1,5 @@
 /**
- * Split-date <select> widgets — a Month/Day/Year trio that shares one visual
+ * Split-date <select> widgets: a Month/Day/Year trio that shares one visual
  * label ("Date of birth", "Graduation date"). The AI resolves the single date
  * value to each sub-select, so a full date answer ("1995-06-15") must reduce to
  * the right part for whichever select it lands in. Handled inside
@@ -86,7 +86,7 @@ describe("non-date selects are never touched by date reduction", () => {
   it("a numeric-range select ('2-3 years') is unaffected by a non-date number answer", () => {
     const el = select(["0-1 years", "2-3 years", "4-5 years", "6+ years"]);
     const control: RuntimeControl = { id: "e", controlType: "select", el };
-    // "3" is a plain number, not a date — must NOT be treated as a day/month.
+    // "3" is a plain number, not a date, must NOT be treated as a day/month.
     expect(writeControl(control, "3 years").written).toBe(true);
     expect(el.options[el.selectedIndex].textContent).toBe("2-3 years");
   });

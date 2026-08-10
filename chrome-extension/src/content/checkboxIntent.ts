@@ -14,7 +14,7 @@
  *   - anything else (misclassified text, unknown)    → skip (null), never fail
  *
  * Returning null means "no proposed value", so the field is simply not selected
- * for autofill (see shared/selection.isDefaultSelected) — skipped, not failed.
+ * for autofill (see shared/selection.isDefaultSelected), skipped, not failed.
  */
 
 /** Opt-ins we must NOT enable on the user's behalf. Checked first so an
@@ -24,7 +24,7 @@ const MARKETING_RE =
 
 /** Application-completion agreements we DO enable (the user launched autofill to
  *  apply). Deliberately narrow: explicit first-person agreement or a named legal
- *  document — never a bare "yes/no" question. */
+ *  document, never a bare "yes/no" question. */
 const CONSENT_RE =
   /\bi (?:agree|consent|accept|acknowledge|certify|confirm|authoriz(?:e|ed)|declare)\b|\b(?:agree|consent) to\b|\bterms (?:and|&) conditions\b|\bprivacy (?:policy|notice|statement)\b|\bdata (?:processing|protection|privacy)\b|\bgdpr\b|\bi have read\b/i;
 

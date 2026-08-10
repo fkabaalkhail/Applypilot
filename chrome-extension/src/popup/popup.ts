@@ -2,7 +2,7 @@
  * Popup controller.
  *
  * Layout: a gradient header, a tab bar (Autofill / Profile / Experience /
- * Education / Skills / Settings), and a footer status bar — the structure from
+ * Education / Skills / Settings), and a footer status bar, the structure from
  * the Chrome Extension UI Figma, in the app's lavender brand color.
  *
  * Flow on open:
@@ -208,7 +208,7 @@ async function ensureContentScript(tabId: number): Promise<boolean> {
     await sendToTab(tabId, { type: "PING" }, 500);
     return true;
   } catch {
-    // Not injected yet (non-ATS page) — inject on demand via activeTab.
+    // Not injected yet (non-ATS page), inject on demand via activeTab.
   }
   try {
     await chrome.scripting.executeScript({
@@ -311,7 +311,7 @@ async function autofill(): Promise<void> {
     showBanner(
       `Filled ${okCount} of ${instructions.length} field${instructions.length === 1 ? "" : "s"}` +
         (failCount > 0 ? ` (${failCount} need attention)` : "") +
-        ". Review the form before submitting — ApplyPilot never submits for you.",
+        ". Review the form before submitting. ApplyPilot never submits for you.",
       failCount > 0 ? "warn" : "ok"
     );
     renderFields();
@@ -343,7 +343,7 @@ function profileInitials(): string {
   const { first, last } = accountName();
   const initials = ((first[0] ?? "") + (last[0] ?? "")).toUpperCase();
   if (initials) return initials;
-  // No name yet — use the email's first letter rather than a generic fallback.
+  // No name yet: use the email's first letter rather than a generic fallback.
   const email = state.status?.email ?? state.profile?.email ?? "";
   return email ? email[0].toUpperCase() : "AP";
 }
@@ -399,7 +399,7 @@ function renderSiteLine(): void {
       line.appendChild(badge);
     }
   } catch {
-    // unparsable URL — leave empty
+    // unparsable URL, leave empty
   }
 }
 
@@ -490,7 +490,7 @@ function renderFieldRow(field: DetectedField): HTMLElement {
   if (field.currentValue && field.proposedValue !== null) {
     const note = document.createElement("div");
     note.className = "field-note";
-    note.textContent = `Already filled: "${field.currentValue}" — check to overwrite`;
+    note.textContent = `Already filled: "${field.currentValue}", check to overwrite`;
     main.appendChild(note);
   }
   if (field.note) {
@@ -546,7 +546,7 @@ function renderFields(): void {
   if (review.length > 0) {
     const title = document.createElement("div");
     title.className = "group-title";
-    title.textContent = "Review — not filled automatically";
+    title.textContent = "Review: not filled automatically";
     container.appendChild(title);
     for (const f of review) container.appendChild(renderFieldRow(f));
   }
@@ -603,7 +603,7 @@ function renderProfileTab(): void {
   name.textContent = [first, last].filter(Boolean).join(" ") || p.email || "Your profile";
   const title = document.createElement("div");
   title.className = "profile-title";
-  title.textContent = [p.currentTitle, p.currentCompany].filter(Boolean).join(" · ") || "—";
+  title.textContent = [p.currentTitle, p.currentCompany].filter(Boolean).join(" · ") || "-";
   const pill = document.createElement("span");
   const complete = Boolean(p.firstName && p.email && p.phone);
   pill.className = "profile-pill" + (complete ? "" : " warn");
@@ -798,7 +798,7 @@ async function handleConnect(): Promise<void> {
   btn.disabled = true;
   btn.textContent = "Connecting…";
   try {
-    // The web auth window steals focus and may close this popup — that's fine,
+    // The web auth window steals focus and may close this popup, that's fine,
     // the background completes the handshake regardless. If we're still open,
     // reflect the result.
     const resp = await sendToBackground<LoginResponse>({ type: "CONNECT" });

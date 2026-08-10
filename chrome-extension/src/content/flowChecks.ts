@@ -1,6 +1,6 @@
 /**
  * Pause-condition probes for the multi-page flow. Each is a cheap, read-only
- * DOM check the controller polls while paused — every reason auto-resumes the
+ * DOM check the controller polls while paused, every reason auto-resumes the
  * moment its condition clears (the user solved the captcha, fixed the error,
  * attached the file…).
  */
@@ -27,7 +27,7 @@ export function hasUnsolvedCaptcha(doc: Document): boolean {
  *
  * VISIBLE ones only, like invalidFieldCount below. `role="alert"` is also the
  * standard marker for a screen-reader-only live region, and SPAs use those to
- * announce routine navigation — Workday puts
+ * announce routine navigation, Workday puts
  * `<div role="alert">…page is loaded</div>` on every job posting. Counting an
  * sr-only announcement as a validation failure parks the flow on "fix the
  * highlighted errors" forever: the user cannot fix an error they cannot see,
@@ -44,7 +44,7 @@ export function validationMessages(scope: HTMLElement): string[] {
   return msgs.slice(0, 5);
 }
 
-/** Visible aria-invalid fields. Only meaningful AFTER a rejected advance click —
+/** Visible aria-invalid fields. Only meaningful AFTER a rejected advance click,
  *  many ATS pre-mark untouched required fields invalid on load. */
 export function invalidFieldCount(scope: HTMLElement): number {
   return deepQueryAll(scope, '[aria-invalid="true"]').filter((el) => isVisible(el)).length;
@@ -65,12 +65,12 @@ function firstEmptyResumeField(
 }
 
 /**
- * The résumé file field to ATTACH to — empty, required or not.
+ * The résumé file field to ATTACH to, empty, required or not.
  *
  * Attaching and blocking are different questions and must not share a
  * predicate. Workday's drop zone carries no `required` attribute, no
  * `aria-required` and no trailing "*", so gating attach on `required` meant
- * every entry point read null and the résumé was silently never attached —
+ * every entry point read null and the résumé was silently never attached,
  * which is the whole defect this helper exists to close.
  */
 export function resumeFieldForAttach(
@@ -81,7 +81,7 @@ export function resumeFieldForAttach(
 }
 
 /**
- * The REQUIRED résumé file field that still has no file, if any — the only kind
+ * The REQUIRED résumé file field that still has no file, if any, the only kind
  * that may PARK the flow.
  *
  * Deliberately narrower than `resumeFieldForAttach`: pausing on any empty
@@ -100,7 +100,7 @@ export function resumeFieldNeedingFile(
 const VERIFICATION_RE =
   /verification code|verify your email|enter the code|check your (email|inbox)|code de v[ée]rification|v[ée]rifiez votre (courriel|adresse)/i;
 
-/** An email-verification / OTP wall — always human-only, the flow pauses. */
+/** An email-verification / OTP wall, always human-only, the flow pauses. */
 export function isVerificationWall(scope: HTMLElement): boolean {
   return VERIFICATION_RE.test(cleanText(scope.textContent).slice(0, 4000));
 }

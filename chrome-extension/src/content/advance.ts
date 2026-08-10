@@ -1,7 +1,7 @@
 /**
  * Advance-button discovery for multi-page flows. The search is confined to the
  * form scope so a nav link can never be clicked. Terminal (submit-like)
- * buttons are detected but NEVER clicked — the flow stops for user review.
+ * buttons are detected but NEVER clicked, the flow stops for user review.
  */
 import { cleanText, deepQueryAll, isVisible } from "./domUtils";
 import { activateElement } from "./comboboxEngine";
@@ -20,7 +20,7 @@ const ADVANCE_RE =
 /** Verbs that send the application. Reaching one always ends the flow. */
 const FINAL_SUBMIT_RE =
   /\b(submit|send application|complete application|finish|soumettre|envoyer|terminer)\b/i;
-/** Entry verbs — the job posting's own "Apply". Terminal on their own, but they
+/** Entry verbs: the job posting's own "Apply". Terminal on their own, but they
  *  do not send an application, so they never disqualify a wall's advance. */
 const APPLY_ENTRY_RE = /\b(apply now|apply|postuler)\b/i;
 // Composed, not re-listed: the wall carve-out below keys off FINAL_SUBMIT_RE, so
@@ -42,7 +42,7 @@ export function findAdvanceButton(
 ): AdvanceButton | null {
   const fromAdapter = adapter?.advanceButton?.(scope);
   if (fromAdapter && isClickable(fromAdapter)) {
-    // Workday reuses one automation-id for Next AND the final Submit — the
+    // Workday reuses one automation-id for Next AND the final Submit, the
     // terminal check must still gate adapter-supplied buttons. A hidden/disabled
     // adapter button falls through to the generic text search below.
     return { el: fromAdapter, kind: TERMINAL_RE.test(buttonText(fromAdapter)) ? "terminal" : "advance" };
@@ -54,13 +54,13 @@ export function findAdvanceButton(
     const text = buttonText(el);
     if (!text) continue;
     // A wall's own verb wins outright. `extraAdvance` is set ONLY while an
-    // account wall is on the page, and there the posting's "Apply" button —
-    // still in the DOM behind the gate — matches TERMINAL_RE and ends the flow
+    // account wall is on the page, and there the posting's "Apply" button,
+    // still in the DOM behind the gate, matches TERMINAL_RE and ends the flow
     // on a page the user has not passed yet.
     //
     // FINAL_SUBMIT_RE is the guard, and it is load-bearing. Both regexes are
     // \b-anchored alternations, so ONE button can carry a wall verb AND a
-    // submit verb — "Register and Submit" on a one-page form with an inline
+    // submit verb, "Register and Submit" on a one-page form with an inline
     // password field.
     //
     // What the guard buys is the KIND, and the kind decides what happens to the
@@ -70,7 +70,7 @@ export function findAdvanceButton(
     // labelled from the wall verb ("Create Account ▶"). Without the guard, the
     // one press the user is invited to make sends the application unreviewed,
     // with no submit beat and nothing tracked. (The click itself is always the
-    // user's — flowController waits on waitForAdvanceRequest before every
+    // user's, flowController waits on waitForAdvanceRequest before every
     // advance click, walls included; the danger here is the label, not an
     // automatic click.) `apply` is deliberately NOT a disqualifier: it is the
     // entry verb this carve-out exists to beat, and a wall's "Sign in to apply"
@@ -96,7 +96,7 @@ const NAV_LANDMARK_ROLES = new Set(["navigation", "banner", "search", "complemen
  * `resolveFormScope` returns the deepest container holding the fields, and a
  * multi-step form commonly pins Back / Save-and-Continue in a page-level footer
  * that is a SIBLING of that container. The scoped search then finds nothing,
- * and a filled page ends the flow at `finish("done")` — no gate, no
+ * and a filled page ends the flow at `finish("done")`: no gate, no
  * explanation, nothing for the user to press (Workday "My Experience",
  * 2026-08-09).
  *
@@ -114,7 +114,7 @@ function findInPageFooter(scope: HTMLElement): AdvanceButton | null {
     if (scope.contains(el) || inNavLandmark(el)) continue;
     // A cookie banner's "Continue" is an advance verb sitting outside every
     // form scope. The gate would then offer to dismiss a cookie notice as if it
-    // were the page turn — in scope this could not happen, so guard it here.
+    // were the page turn, in scope this could not happen, so guard it here.
     if (isConsentField(el)) continue;
     if (!isClickable(el)) continue;
     const text = buttonText(el);

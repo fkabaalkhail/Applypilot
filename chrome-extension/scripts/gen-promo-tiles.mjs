@@ -52,7 +52,7 @@ const baseCss = `
   .accent { color: ${INDIGO}; }
 `;
 
-/* ---- Small promo tile: 440×280 — pure typographic lockup ---- */
+/* ---- Small promo tile: 440×280, pure typographic lockup ---- */
 function smallHtml(logo) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
   ${baseCss}
@@ -71,13 +71,13 @@ function smallHtml(logo) {
   </style></head><body>
     <div class="wrap">
       <img class="logo" src="${logo}" alt="" />
-      <h1>Fill every job<br/>application —<br/><span class="accent">automatically.</span></h1>
+      <h1>Fill every job<br/>application,<br/><span class="accent">automatically.</span></h1>
       <div class="foot">Works on 60+ ATS &amp; career sites</div>
     </div>
   </body></html>`;
 }
 
-/* ---- Marquee promo tile: 1400×560 — hero copy + panel card replica ---- */
+/* ---- Marquee promo tile: 1400×560, hero copy + panel card replica ---- */
 function marqueeHtml(logo, logoSmall) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
   ${baseCss}
@@ -98,7 +98,7 @@ function marqueeHtml(logo, logoSmall) {
     color: ${FAINT}; text-transform: uppercase;
   }
 
-  /* Panel card — simplified replica of the real side panel */
+  /* Panel card: simplified replica of the real side panel */
   .card {
     position: absolute; right: 72px; top: 52px; width: 372px;
     background: #ffffff; border-radius: 18px;
@@ -142,7 +142,7 @@ function marqueeHtml(logo, logoSmall) {
   </style></head><body>
     <div class="wrap">
       <img class="logo" src="${logo}" alt="" />
-      <h1>Create the account &amp;<br/><span class="accent">fill the form</span> — automatically.</h1>
+      <h1>Create the account &amp;<br/><span class="accent">fill the form</span>, automatically.</h1>
       <div class="sub">Tailrd signs you up and completes every field from your profile
       on Greenhouse, Workday, Lever and 60+ other&nbsp;ATSs.</div>
       <div class="foot">You always review and submit</div>

@@ -3,7 +3,7 @@
  * how to map them to the backend's field shape, which backend answers fill
  * inline, and how to tally outcomes across passes.
  *
- * Pure functions only — no DOM, no network — so the orchestration in
+ * Pure functions only (no DOM, no network) so the orchestration in
  * contentScript stays thin and this logic is fully unit-tested.
  */
 import type { AiFillField, DetectedField, FieldCategory } from "../shared/types";
@@ -65,7 +65,7 @@ function mapType(controlType: DetectedField["controlType"]): AiFillField["type"]
       return "checkbox";
     case "checkboxGroup":
       return "select";
-    // Custom ARIA dropdown — a single-choice control; the backend snaps the
+    // Custom ARIA dropdown: a single-choice control; the backend snaps the
     // answer to one of `options` when present (see backend/routers/fill.py).
     case "combobox":
       return "select";
@@ -94,13 +94,13 @@ export interface AiFillPlan {
 export interface PlannedAnswer {
   id: string;
   answer: string;
-  /** Backend's review verdict — retained for parity with the backend answer
+  /** Backend's review verdict: retained for parity with the backend answer
    *  shape (and the answer cache); no longer consumed (every answer fills). */
   needsReview?: boolean;
-  /** "memory" | "ai" | "rule" | "profile" — backend provenance (unused now). */
+  /** "memory" | "ai" | "rule" | "profile", backend provenance (unused now). */
   source?: string;
   /** Which backend pass produced it: "derived" | "rule" | "memory" | "ai".
-   *  Not used to decide anything — recorded so telemetry can name the pass
+   *  Not used to decide anything, recorded so telemetry can name the pass
    *  responsible for a value, which is what a wrong-but-successful fill needs
    *  in order to be attributable at all. */
   fillPass?: string;
@@ -109,7 +109,7 @@ export interface PlannedAnswer {
 
 /**
  * Turn backend answers into inline (silent) fills: every non-empty answer for a
- * candidate field becomes a simple target. There is no review gate — the
+ * candidate field becomes a simple target. There is no review gate, the
  * backend's `needsReview` verdict is ignored (an AI answer fills like any other).
  */
 export function planAiFill(
@@ -136,7 +136,7 @@ export function tallyOutcomes(
   return { ok, fail: status.size - ok, total: status.size };
 }
 
-/** Profile-lookup categories answered locally when confident — instant, offline, free. */
+/** Profile-lookup categories answered locally when confident, instant, offline, free. */
 export const LOCAL_FAST_PATH: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "firstName", "lastName", "fullName", "email", "phone",
   // Workday's phone satellites: both resolve from the profile alone (dialing
@@ -154,7 +154,7 @@ export interface FillRoute {
 }
 
 /** Values a single checkbox can actually take (mirrors writeEngine's
- *  parseDesiredBool — duplicated so this module stays dependency-free). */
+ *  parseDesiredBool, duplicated so this module stays dependency-free). */
 export function isBoolish(value: string): boolean {
   return /^(yes|y|true|1|agree|checked|no|n|false|0|unchecked)$/i.test(value.trim());
 }
@@ -170,7 +170,7 @@ export function planFillRoute(selected: DetectedField[], threshold: number): Fil
   for (const f of selected) {
     // A single checkbox can only take a yes/no-ish value. Profile text routed at
     // one (a job title landing on a "Current role" checkbox) can only fail as
-    // "Ambiguous checkbox value" — send it to the option-aware AI pass instead.
+    // "Ambiguous checkbox value", send it to the option-aware AI pass instead.
     const checkboxMismatch =
       f.controlType === "checkbox" && f.proposedValue !== null && !isBoolish(f.proposedValue);
     const deterministic =
@@ -188,7 +188,7 @@ export function planFillRoute(selected: DetectedField[], threshold: number): Fil
 }
 
 /** A choice control whose fill missed, plus the REAL options harvested from
- *  the live widget — input to the one-shot re-ask round. */
+ *  the live widget, input to the one-shot re-ask round. */
 export interface ReaskCandidate {
   fieldId: string;
   options: string[];

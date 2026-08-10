@@ -1,5 +1,5 @@
 """
-Property Test — Backend ATS Preservation (Property 4)
+Property Test, Backend ATS Preservation (Property 4)
 
 For any job payload sent to save_job_batch, the stored ats_type should equal
 the payload's atsType field (defaulting to "easy_apply" when absent), and the
@@ -23,12 +23,12 @@ from backend.db.models import ScrapedJob
 VALID_ATS_TYPES = ["easy_apply", "external", "greenhouse", "lever", "workday"]
 
 ats_type_strategy = st.one_of(
-    st.just(None),  # absent — should default to "easy_apply"
+    st.just(None),  # absent, should default to "easy_apply"
     st.sampled_from(VALID_ATS_TYPES),
 )
 
 easy_apply_strategy = st.one_of(
-    st.just(None),  # absent — should default to 1
+    st.just(None),  # absent, should default to 1
     st.sampled_from([0, 1]),
 )
 
@@ -65,7 +65,7 @@ def _replicate_save_logic(payload):
 
 
 # ===========================================================================
-# Property Test — Backend ATS Preservation
+# Property Test: Backend ATS Preservation
 # ===========================================================================
 
 

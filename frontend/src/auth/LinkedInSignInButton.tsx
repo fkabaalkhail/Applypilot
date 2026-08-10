@@ -2,7 +2,7 @@ import { useSearchParams } from "react-router-dom";
 import { LinkedinLogo } from "@phosphor-icons/react";
 
 /**
- * "Continue with LinkedIn" — a full-page navigation to the backend OAuth start
+ * "Continue with LinkedIn", a full-page navigation to the backend OAuth start
  * endpoint (it leaves the SPA, so a plain <a> is correct). Hidden unless
  * VITE_LINKEDIN_ENABLED === "true", mirroring the Google button's gating.
  * The "or" divider is provided by <GoogleSignInButton /> above it.

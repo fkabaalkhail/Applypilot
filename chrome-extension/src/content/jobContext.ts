@@ -73,7 +73,7 @@ export function extractJobContext(doc: Document = document): JobContext {
 }
 
 /**
- * Cheap company + title only — skips the expensive description scan. The panel's
+ * Cheap company + title only, skips the expensive description scan. The panel's
  * job-card header re-derives this on every overlay refresh, so it must stay
  * lightweight (a few querySelector reads, no whole-page text walk).
  */

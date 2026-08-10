@@ -1,7 +1,7 @@
 /**
  * Device-local store for signup-wall credentials, keyed by origin.
  *
- * SECURITY POSTURE (spec): chrome.storage.local only — never synced, never
+ * SECURITY POSTURE (spec): chrome.storage.local only, never synced, never
  * sent to the Tailrd backend, never included in any AI_FILL payload. The panel
  * shows these under "Saved sign-ins" (reveal/copy/delete); Chrome's own
  * password manager usually also offers to save on submit.
@@ -21,7 +21,7 @@ export interface SavedCredential {
  * The user's preferred account-creation credentials (Autofill Information →
  * Account creation). Signup walls use this pair instead of a generated
  * password; login walls fall back to it when no per-origin pair exists.
- * Either field may be "" (unset) — the account flow treats blank password as
+ * Either field may be "" (unset), the account flow treats blank password as
  * "generate one per site".
  */
 export interface DefaultCredential {

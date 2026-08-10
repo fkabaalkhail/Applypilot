@@ -1,5 +1,5 @@
 """
-LogoResolver — turns a company name and/or website URL into an accurate,
+LogoResolver, turns a company name and/or website URL into an accurate,
 stable company logo URL.
 
 Accuracy strategy (highest confidence first):
@@ -12,7 +12,7 @@ Accuracy strategy (highest confidence first):
 
 The logo image itself is served by Google's favicon service, which is fast,
 high-availability, and returns a transparent 1x1 (not a broken image) when it
-has nothing — but we also expose the resolved domain so the frontend can render
+has nothing, but we also expose the resolved domain so the frontend can render
 a deterministic letter-avatar fallback and never show a broken <img>.
 
 These are pure functions with no I/O so they are cheap and unit-testable.
@@ -157,7 +157,7 @@ def domain_from_url(url: Optional[str]) -> Optional[str]:
 
     registrable = _registrable_domain(host)
 
-    # Reject job boards / ATS / social hosts — not real company sites.
+    # Reject job boards / ATS / social hosts, not real company sites.
     if registrable in _NON_COMPANY_HOSTS or host in _NON_COMPANY_HOSTS:
         return None
 

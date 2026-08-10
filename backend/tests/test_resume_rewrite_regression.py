@@ -1,6 +1,6 @@
 """Golden baseline: a real rewrite (structure changed), not a keyword append.
 
-Future prompt/pipeline changes are compared against these assertions — if a
+Future prompt/pipeline changes are compared against these assertions, if a
 change turns the rewriter back into a keyword-patcher (no reorder, no summary,
 duty-phrasing left intact, fabrications unflagged), this test fails.
 """

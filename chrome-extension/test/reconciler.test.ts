@@ -30,7 +30,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("AutofillReconciler — happy path", () => {
+describe("AutofillReconciler, happy path", () => {
   it("fills mapped fields and marks them stable", async () => {
     const a = input("f-1");
     const b = input("f-2");
@@ -51,7 +51,7 @@ describe("AutofillReconciler — happy path", () => {
   });
 });
 
-describe("AutofillReconciler — drift reconciliation", () => {
+describe("AutofillReconciler, drift reconciliation", () => {
   it("re-applies a field the framework wipes during the settle window", async () => {
     const a = input("f-1");
     let wiped = false;
@@ -73,7 +73,7 @@ describe("AutofillReconciler — drift reconciliation", () => {
 
   it("gives up after the cycle budget and reports drift honestly", async () => {
     const a = input("f-1");
-    // A field whose value is wiped on every settle window — can never stabilize.
+    // A field whose value is wiped on every settle window, can never stabilize.
     const sleep = async (): Promise<void> => {
       a.el.value = "";
     };
@@ -87,7 +87,7 @@ describe("AutofillReconciler — drift reconciliation", () => {
   });
 });
 
-describe("AutofillReconciler — idempotency", () => {
+describe("AutofillReconciler, idempotency", () => {
   it("re-running an already-filled form writes nothing and stays stable", async () => {
     const a = input("f-1", "Wissam"); // already correct
     let writes = 0;
@@ -103,10 +103,10 @@ describe("AutofillReconciler — idempotency", () => {
   });
 });
 
-describe("AutofillReconciler — fills around CAPTCHA (never suspends the form)", () => {
+describe("AutofillReconciler, fills around CAPTCHA (never suspends the form)", () => {
   it("fills the normal fields even when a reCAPTCHA widget is on the page", async () => {
     // A reCAPTCHA widget present on the page must NOT stop the rest of the form
-    // from filling — we skip the captcha itself and fill everything else.
+    // from filling. We skip the captcha itself and fill everything else.
     document.body.innerHTML = `<div class="g-recaptcha" data-sitekey="abc"></div>`;
     const a = input("f-1");
     const engine = new AutofillReconciler({ sleep: instant, observe: false });
@@ -119,7 +119,7 @@ describe("AutofillReconciler — fills around CAPTCHA (never suspends the form)"
   });
 });
 
-describe("AutofillReconciler — targeted reapply", () => {
+describe("AutofillReconciler, targeted reapply", () => {
   it("reapplies only the drifted field on reconcileNow", async () => {
     const a = input("f-1");
     const b = input("f-2");
@@ -147,7 +147,7 @@ describe("AutofillReconciler — targeted reapply", () => {
   });
 });
 
-describe("AutofillReconciler — removed field", () => {
+describe("AutofillReconciler, removed field", () => {
   it("reports a field removed from the DOM as not ok", async () => {
     const a = input("f-1");
     const engine = new AutofillReconciler({ sleep: instant, observe: false });
@@ -160,7 +160,7 @@ describe("AutofillReconciler — removed field", () => {
   });
 });
 
-describe("AutofillReconciler — observer-driven background reconciliation", () => {
+describe("AutofillReconciler, observer-driven background reconciliation", () => {
   it("restores a wiped value after a DOM mutation while observing", async () => {
     const a = input("f-1");
     const engine = new AutofillReconciler({ sleep: instant, observerDebounceMs: 5 });
@@ -178,10 +178,10 @@ describe("AutofillReconciler — observer-driven background reconciliation", () 
   });
 });
 
-describe("AutofillReconciler — stops churning on unfillable fields", () => {
+describe("AutofillReconciler, stops churning on unfillable fields", () => {
   it("does not keep refilling a field it gave up on after the cycle budget", async () => {
     const a = input("f-1");
-    // The value never sticks across the settle window — mirrors a custom
+    // The value never sticks across the settle window, mirrors a custom
     // dropdown the text writer can't actually drive.
     const engine = new AutofillReconciler({
       sleep: async () => {
@@ -205,7 +205,7 @@ describe("AutofillReconciler — stops churning on unfillable fields", () => {
   });
 });
 
-describe("AutofillReconciler — respects the user after autofill", () => {
+describe("AutofillReconciler, respects the user after autofill", () => {
   it("does not revert a field the user edits after it was filled", async () => {
     const a = input("f-1");
     const engine = new AutofillReconciler({ sleep: instant, observerDebounceMs: 5 });
@@ -257,7 +257,7 @@ describe("AutofillReconciler — respects the user after autofill", () => {
   });
 });
 
-describe("addTargets — merges without resetting existing tracking", () => {
+describe("addTargets, merges without resetting existing tracking", () => {
   it("fills new targets and keeps prior fields in the engine state", async () => {
     document.body.innerHTML = `<input id="a" /><input id="b" />`;
     const a = document.getElementById("a") as HTMLInputElement;
@@ -282,7 +282,7 @@ describe("addTargets — merges without resetting existing tracking", () => {
   });
 });
 
-describe("AutofillReconciler — cancellation (Stop mid-fill)", () => {
+describe("AutofillReconciler, cancellation (Stop mid-fill)", () => {
   it("writes nothing when the signal is already aborted", async () => {
     const a = input("f-1");
     const controller = new AbortController();
@@ -296,7 +296,7 @@ describe("AutofillReconciler — cancellation (Stop mid-fill)", () => {
     );
     engine.dispose();
 
-    expect(a.el.value).toBe(""); // never written — cancelled before any write
+    expect(a.el.value).toBe(""); // never written, cancelled before any write
     expect(reports[0].ok).toBe(false);
   });
 

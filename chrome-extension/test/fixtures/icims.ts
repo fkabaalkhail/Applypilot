@@ -2,7 +2,7 @@
  * Reproduces iCIMS application field markup as the owning-frame content-script
  * instance sees it (mounted in-document; the #icims_content_iframe wrapper is a
  * cross-realm coordination concern verified via crossFrame unit tests + a live
- * spot-check — see docs/superpowers/specs/2026-06-30-icims-autofill-hardening-design.md
+ * spot-check, see docs/superpowers/specs/2026-06-30-icims-autofill-hardening-design.md
  * §1.1). Reconstructed from known iCIMS patterns as of 2026-06-30, not copied markup.
  */
 

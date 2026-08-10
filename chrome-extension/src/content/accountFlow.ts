@@ -2,9 +2,9 @@
  * Account-wall sub-flow: Workday-style signup/login pages that gate the real
  * application. Signup walls fill the user's saved account-creation credentials
  * (Autofill Information → Account creation), falling back to a generated
- * password (saved device-locally — see credentialStore's security posture);
+ * password (saved device-locally, see credentialStore's security posture);
  * login walls replay saved credentials or pause for the user. Verification/2FA
- * walls always pause (flowChecks.isVerificationWall) — that part is human-only.
+ * walls always pause (flowChecks.isVerificationWall), that part is human-only.
  */
 import { cleanText, deepQueryAll, isHiddenButLabeled, isVisible } from "./domUtils";
 import { generatePassword } from "./passwordGen";
@@ -35,7 +35,7 @@ export const WALL_ADVANCE_RE =
   /\b(create( an| my)? account|sign ?up|register|sign ?in|log ?in|créer (un|mon) compte|s'?inscrire|se connecter)\b/i;
 
 /** Kind-specific advance verbs: on a signup wall the flow must click "Create
- *  Account", never the "Sign In" link beside it — and vice versa. */
+ *  Account", never the "Sign In" link beside it, and vice versa. */
 export const SIGNUP_ADVANCE_RE =
   /\b(create( an| my)? account|sign ?up|register|créer (un|mon) compte|s'?inscrire)\b/i;
 export const LOGIN_ADVANCE_RE = /\b(sign ?in|log ?in|se connecter|connexion)\b/i;
@@ -46,7 +46,7 @@ const SIGNUP_TOGGLE_RE = /^(create( an| my)? account|sign ?up|register|new user\
 
 /**
  * The control that switches a login wall to its registration form, if the page
- * offers one. Workday's sign-in page carries a "Create Account" toggle — when
+ * offers one. Workday's sign-in page carries a "Create Account" toggle, when
  * we have no saved credential for this origin, creating an account is the only
  * move that can succeed, so the flow clicks this first.
  */
@@ -65,7 +65,7 @@ export function findSignupToggle(scope: HTMLElement): HTMLElement | null {
 const AGREE_RE = /agree|consent|i have read|read and|\bterms\b|privacy|policy|acknowledge|gdpr/i;
 
 /** Generic test-id wording that marks a consent gate on any ATS. The
- *  Workday-specific marker (`createAccountCheckbox` — a native checkbox
+ *  Workday-specific marker (`createAccountCheckbox`: a native checkbox
  *  rendered visually hidden, with no `required` and no agreement-worded label)
  *  comes from workdaySelectors, since only its automation-id identifies it. */
 const CONSENT_WORDS_RE = /agree|consent|privacy|terms|acknowledg|gdpr/i;
@@ -119,7 +119,7 @@ function agreementCheckboxes(scope: HTMLElement): HTMLElement[] {
 
 /** Tick a consent checkbox so its framework registers the change. `el.click()`
  *  runs the native toggle (checked → true) AND fires the click/input/change a
- *  framework listens to — the one primitive that behaves the same in a real
+ *  framework listens to, the one primitive that behaves the same in a real
  *  browser and jsdom. Guarded against an already-checked box so a re-tick on a
  *  retry can't switch it back off (callers also filter checked boxes out). */
 function checkBox(el: HTMLElement): void {
@@ -127,7 +127,7 @@ function checkBox(el: HTMLElement): void {
     if (el.checked) return;
     el.click();
     if (!el.checked) {
-      // A handler that preventDefault'd the toggle — set it and notify anyway.
+      // A handler that preventDefault'd the toggle, set it and notify anyway.
       el.checked = true;
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -145,7 +145,7 @@ export function detectWall(scope: HTMLElement): WallInfo | null {
   if (passwordEls.length === 0) return null;
   const text = cleanText(scope.textContent).slice(0, 4000);
   // A Workday create-account marker (verify-password / createAccountCheckbox)
-  // is decisive — its sign-in and create-account pages read the same in body
+  // is decisive, its sign-in and create-account pages read the same in body
   // text, and a slow-loading verify-password field can leave only one password
   // box visible, which would otherwise be misread as a login.
   const kind: WallKind =
@@ -180,7 +180,7 @@ export async function runAccountWall(
   const defaults = await getDefaultCredential();
   if (wall.kind === "signup") {
     // Password precedence: the user's chosen account-creation password (Autofill
-    // Information → Account creation) wins — an explicit choice is always honored,
+    // Information → Account creation) wins, an explicit choice is always honored,
     // even when a stale per-origin pair exists from an earlier attempt. Only when
     // no default is set do we replay the pair this origin's account was created
     // with (so a repeat signup wall stays idempotent), then a generated one.
@@ -194,7 +194,7 @@ export async function runAccountWall(
       if (!el.value && write(el, password).written) filled++;
     }
     // Workday's create-account gate won't submit until a required consent
-    // checkbox is ticked — the missing step that left "Create Account" inert.
+    // checkbox is ticked, the missing step that left "Create Account" inert.
     for (const box of wall.agreeEls) {
       checkBox(box);
       filled++;

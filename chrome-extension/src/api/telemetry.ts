@@ -18,7 +18,7 @@ export async function reportAutofillTelemetry(t: AutofillTelemetry): Promise<voi
       failed: t.failed,
       skipped: t.skipped,
       failed_fields: t.failedFields,
-      // Successes included — see FieldOutcomeRecord. Labels, categories,
+      // Successes included: see FieldOutcomeRecord. Labels, categories,
       // provenance and booleans only; the wire carries no answer text.
       field_outcomes: (t.fieldOutcomes ?? []).map((f) => ({
         label: f.label,

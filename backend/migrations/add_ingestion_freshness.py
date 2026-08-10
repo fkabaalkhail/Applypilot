@@ -81,7 +81,7 @@ def run_migration() -> None:
                 f"CREATE INDEX IF NOT EXISTS {index_name} ON scraped_jobs ({column})"
             ))
 
-        # Backfills only touch rows the new defaults left NULL/empty — a
+        # Backfills only touch rows the new defaults left NULL/empty, a
         # re-run after the columns exist matches zero rows and costs nothing.
         conn.execute(text(
             "UPDATE scraped_jobs SET first_seen_at = scraped_at "

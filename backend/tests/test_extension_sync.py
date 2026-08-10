@@ -123,7 +123,7 @@ def test_profile_version_sentinel_changes_on_first_write(db_session, user):
     """Regression: the first synced write must change the reported version.
 
     A brand-new user (no ``user_settings`` row) must report version 0, and the
-    first ``bump_profile_version`` (which creates the row — e.g. the first resume
+    first ``bump_profile_version`` (which creates the row, e.g. the first resume
     upload) must move it to a *different* value. Both used to be 1, so an
     extension that synced before the first upload stayed stuck on the empty
     snapshot and kept telling the user to upload a resume.

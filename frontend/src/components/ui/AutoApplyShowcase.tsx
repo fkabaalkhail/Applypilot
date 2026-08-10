@@ -86,7 +86,7 @@ export default function AutoApplyShowcase() {
           stepIndex++;
           timeout = setTimeout(showNextStep, 800);
         } else {
-          // Cycle complete — wait then restart
+          // Cycle complete: wait then restart
           timeout = setTimeout(() => {
             setIsProcessing(false);
             setActiveJobIndex((prev) => (prev + 1) % JOBS.length);

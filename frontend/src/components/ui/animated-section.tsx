@@ -22,7 +22,7 @@ interface AnimatedSectionProps {
  * Horizontal offsets are NOT. The element is parked at its `hidden` offset until
  * it scrolls into view, so a section below the fold sits translated sideways for
  * the whole time the user is above it. On a grid column that already fills its
- * track that widens the document and puts a horizontal scrollbar on the page —
+ * track that widens the document and puts a horizontal scrollbar on the page,
  * this is where the landing page's mystery 28px of sideways scroll came from.
  *
  * So X_OFFSET must stay within the narrowest gutter any consumer has, which is
@@ -120,7 +120,7 @@ export const StaggerContainer: React.FC<{
   )
 }
 
-/** Individual stagger item — must be inside StaggerContainer */
+/** Individual stagger item: must be inside StaggerContainer */
 export const StaggerItem: React.FC<{
   children: React.ReactNode
   className?: string

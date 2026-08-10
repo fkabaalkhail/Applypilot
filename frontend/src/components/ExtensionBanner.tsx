@@ -97,7 +97,7 @@ export default function ExtensionBanner() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            Add to Chrome — it's free
+            Add to Chrome, it's free
           </a>
         )}
       </div>

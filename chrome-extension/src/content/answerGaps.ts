@@ -2,13 +2,13 @@
  * Which unanswered fields are worth asking the user about?
  *
  * Autofill leaves a field blank whenever the profile has no value and the AI
- * returns __NO_ANSWER__ (the grounding contract — it must not invent facts).
+ * returns __NO_ANSWER__ (the grounding contract. It must not invent facts).
  * A required question nothing can ground has no other way to get answered, so
  * the modal asks the user directly and the answer is written into THIS page.
  * The asking is still deliberately conservative: a prompt shaped like an essay,
  * or a field with no typed answer at all, is noise in a follow-up dialog.
  *
- * Pure — no chrome.*, no DOM — so it unit-tests cleanly (jobFormEvidence.ts
+ * Pure: no chrome.*, no DOM, so it unit-tests cleanly (jobFormEvidence.ts
  * style).
  */
 import type {
@@ -20,24 +20,24 @@ import type {
 import { buildProfilePatch, isProfileCategory } from "../shared/profileCategories";
 import { normalize } from "./fieldMatcher";
 
-/** Never ask about more than this in one sitting — the modal is a follow-up,
+/** Never ask about more than this in one sitting, the modal is a follow-up,
  *  not a second application form. */
 export const MAX_GAPS = 8;
 
 /** One unanswered question to put to the user. */
 export interface AnswerGap {
   fieldId: string;
-  /** The field's label — the question as put to the user. */
+  /** The field's label: the question as put to the user. */
   question: string;
   controlType: ControlType;
   category: FieldCategory;
   /** The page's own option strings, for constrained controls. */
   options: string[];
   required: boolean;
-  /** EEO / demographic — never transmitted to the AI fill pipeline. */
+  /** EEO / demographic: never transmitted to the AI fill pipeline. */
   sensitive: boolean;
   helpText?: string;
-  /** Native input type hint ("date", "number") — picks the modal's input type. */
+  /** Native input type hint ("date", "number"), picks the modal's input type. */
   inputType?: string;
   /** Names this employer or role, so the answer is about THIS application only.
    *  Informational: every answer is scoped to this page now. */
@@ -51,7 +51,7 @@ export interface GapJobContext {
 
 /** Controls that offer a fixed set of choices. A constrained field is a
  *  screening question almost by definition, and answering it is one click on a
- *  value the page itself named — always worth asking. */
+ *  value the page itself named, always worth asking. */
 const CONSTRAINED: ReadonlySet<ControlType> = new Set<ControlType>([
   "select",
   "radioGroup",
@@ -62,7 +62,7 @@ const CONSTRAINED: ReadonlySet<ControlType> = new Set<ControlType>([
   "checkbox",
 ]);
 
-/** Free-text controls we may ask about — but only for a short, generic prompt. */
+/** Free-text controls we may ask about, but only for a short, generic prompt. */
 const FREE_TEXT: ReadonlySet<ControlType> = new Set<ControlType>(["text", "contenteditable"]);
 
 /** Controls we never ask about: a file upload has no typed answer, a signup
@@ -71,7 +71,7 @@ const FREE_TEXT: ReadonlySet<ControlType> = new Set<ControlType>(["text", "conte
 const NEVER: ReadonlySet<ControlType> = new Set<ControlType>(["file", "password", "textarea"]);
 
 /** Essay-shaped prompts. A prose answer does not belong in a one-line box in a
- *  follow-up dialog — the compose path owns those. */
+ *  follow-up dialog, the compose path owns those. */
 const ESSAY_RE = /\bwhy\b|\bdescribe\b|\btell us\b|\bexplain\b|in your own words/i;
 
 /** Above this a "short text question" is really a prose prompt in disguise. */
@@ -110,7 +110,7 @@ function isAskable(f: DetectedField): boolean {
  *
  * The test is what the PAGE holds, not what the planner produced. Gating on
  * "we had no answer for it" instead meant a field we DID answer was never
- * offered again — even when the write missed and the control was left empty,
+ * offered again, even when the write missed and the control was left empty,
  * which is precisely when the user needs to be asked. On the BMO questionnaire
  * that hid "What is your gender identity?" (we proposed "Male") and "Have you
  * ever had any Canadian military service?" (we proposed "I am not a protected
@@ -119,7 +119,7 @@ function isAskable(f: DetectedField): boolean {
  *
  * This is only ever called after a fill has run (PanelState.fillRan) and over a
  * re-scan of the page, so `currentValue` is the post-fill truth. It follows that
- * a control whose committed value we cannot read is asked about again — the
+ * a control whose committed value we cannot read is asked about again, the
  * honest failure direction, and why `readComboboxValue` must see a button-style
  * trigger's own text.
  *
@@ -181,7 +181,7 @@ export interface AnsweredGap {
  *
  * A combobox mounts its listbox lazily, so a scan often sees no options at all.
  * The modal harvests them (overlay.harvestGapOptions) and, when that yields
- * nothing, honestly falls back to a text input — the user then TYPES an answer
+ * nothing, honestly falls back to a text input, the user then TYPES an answer
  * for a widget whose vocabulary nobody knows.
  *
  * A bare `checkbox` is excluded on purpose: with no options it still renders a
@@ -199,17 +199,17 @@ export function isBlindConstrainedGap(gap: AnswerGap): boolean {
 /**
  * The answers still worth keeping after the page write.
  *
- * Persistence must not outlive a failed write — but only where the failure
+ * Persistence must not outlive a failed write, but only where the failure
  * proves the ANSWER is unusable, not merely that this moment was bad. A value
  * saved into a profile slot is replayed on every future form, so storing one
  * the widget rejects means the user is never asked again and never sees why.
  *
  * So exactly one case is dropped: a blind constrained gap (above) whose write
- * failed — text typed into a box that stood in for a dropdown nobody could read.
+ * failed, text typed into a box that stood in for a dropdown nobody could read.
  *
  * Everything else is kept, deliberately. A genuinely free-text question that
- * failed to write for an unrelated reason — a disabled input, a re-render
- * mid-fill, a field that scrolled out of the DOM — is still a correct answer,
+ * failed to write for an unrelated reason, a disabled input, a re-render
+ * mid-fill, a field that scrolled out of the DOM, is still a correct answer,
  * and discarding it would silently throw away the user's work.
  *
  * The count of what was dropped is also what the panel's banner reports, so it
@@ -236,8 +236,8 @@ export interface AnswerSavePlan {
  * Only one sink is left, and it is the honest one: a question whose category
  * maps to a real profile slot (phone, LinkedIn, the five standard EEO answers)
  * is stored in the user's Tailrd profile, where they can see and edit it.
- * Everything else — an employer's own screening question, a prompt with no
- * profile slot — is filled on THIS page and persisted nowhere. There is no
+ * Everything else: an employer's own screening question, a prompt with no
+ * profile slot, is filled on THIS page and persisted nowhere. There is no
  * cross-application answer memory any more.
  *
  * Keying is by category, never by label. A profile slot stays correct however

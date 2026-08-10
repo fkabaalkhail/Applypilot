@@ -3,8 +3,8 @@ Server-side logo harvesting for companies whose favicon is tiny or missing.
 
 Two free, attribution-safe sources, tried in order:
 1. The company homepage's own icon declarations (apple-touch-icon, og:image,
-   large rel=icon) — the source of truth when present.
-2. Wikidata's logo claim (P154) rendered through Wikimedia Commons — covers
+   large rel=icon), the source of truth when present.
+2. Wikidata's logo claim (P154) rendered through Wikimedia Commons, covers
    large public companies (Agnico Eagle, Textron, …) whose sites only ship a
    16px favicon.
 
@@ -38,7 +38,7 @@ _HARVEST_HEADERS = {
 
 # Wikimedia 403s spoofed browser UAs from script traffic and requires a
 # descriptive one (api.wikimedia.org/wiki/Special:MyLanguage/User-Agent_policy).
-# Corporate homepages want the opposite — keep both header sets.
+# Corporate homepages want the opposite, keep both header sets.
 _WIKIMEDIA_HEADERS = {
     "User-Agent": "TailrdJobBoard/1.0 (https://www.tailrd.ca; logo resolution)",
 }
@@ -139,7 +139,7 @@ async def harvest_from_wikidata(client: httpx.AsyncClient, company: str) -> str:
     """Wikidata P154 logo (rendered via Commons at 256px), or ''.
 
     Precision guard: the matched entity's label must start with the company
-    name's first word — a wrong logo is worse than a letter avatar.
+    name's first word, a wrong logo is worse than a letter avatar.
     """
     company = (company or "").strip()
     if len(company) < 3:
@@ -200,7 +200,7 @@ async def harvest_from_linkedin(
 
     Guest pages carry dozens of company-logo images (the similar-jobs
     sidebar), so anchor on the company NAME's first occurrence and take the
-    nearest logo URL — a far-away logo is someone else's."""
+    nearest logo URL, a far-away logo is someone else's."""
     company_fold = (company or "").strip().lower()
     if not linkedin_job_url or len(company_fold) < 3:
         return ""

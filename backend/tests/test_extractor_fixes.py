@@ -66,7 +66,7 @@ def test_taleo_ignores_pages_without_island():
 
 def test_all_named_extractors_exist():
     # Regression guard: an Edit once consumed a def line and orphaned a
-    # function body — every URL-routed extractor must resolve by name.
+    # function body, every URL-routed extractor must resolve by name.
     from backend.services import description_extractor as de
     for name in ("_extract_linkedin_html", "_extract_indeed_html", "_extract_taleo_html"):
         assert callable(getattr(de, name)), name

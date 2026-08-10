@@ -65,7 +65,7 @@ class SettingsUpdate(BaseModel):
 
 
 class SettingsOut(BaseModel):
-    """Settings returned to the frontend — password is masked."""
+    """Settings returned to the frontend, password is masked."""
     linkedin_email: str = ""
     linkedin_password_set: bool = False
     linkedin_cookies_set: bool = False

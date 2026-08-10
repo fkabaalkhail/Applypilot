@@ -44,7 +44,7 @@ export function useApplyFlow(jobId: number): ApplyFlowState {
         const data = await resumeRes.json();
         setHasTailoredResume(data.has_accepted === true);
       } else {
-        // Endpoint may not exist yet — fall back to checking via job data
+        // Endpoint may not exist yet, fall back to checking via job data
         setHasTailoredResume(false);
       }
     } catch {

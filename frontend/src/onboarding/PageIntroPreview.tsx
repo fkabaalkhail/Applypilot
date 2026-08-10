@@ -2,7 +2,7 @@ import type { PageIntroId } from "./pageIntros";
 
 /**
  * A detailed, themed mini-mock of each page/feature, shown inside the intro
- * modal. Purely decorative (aria-hidden) — CSS-driven, no real data.
+ * modal. Purely decorative (aria-hidden), CSS-driven, no real data.
  */
 export function PageIntroPreview({ id }: { id: PageIntroId }) {
   return (

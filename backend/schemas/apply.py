@@ -47,7 +47,7 @@ class LogApplicationRequest(BaseModel):
     """An application the extension observed the user submit on an ATS page.
 
     Everything is optional so the extension can log whatever job context it
-    scraped from the page. Used by POST /apply/log — the external-page analogue
+    scraped from the page. Used by POST /apply/log, the external-page analogue
     of POST /apply/{session_id}/complete (which needs an internal job_id).
     """
     company: str = ""

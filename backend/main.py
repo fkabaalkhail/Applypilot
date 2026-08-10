@@ -1,5 +1,5 @@
 """
-ApplyPilot — FastAPI Backend
+ApplyPilot, FastAPI Backend
 
 Serves AI endpoints for the Chrome extension and React frontend.
 Runs as Vercel serverless function or standalone with uvicorn.
@@ -11,6 +11,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+from backend.services.llm_cost import configure_logging
+
+# Before anything else logs: uvicorn and Vercel leave the root logger
+# unconfigured, so without this the app's own INFO records (including the
+# per-call `llm_cost` lines) are dropped and spend is unobservable.
+configure_logging()
 
 from backend.db.database import engine, Base
 from backend.migrations.add_email_verification import run_migration
@@ -138,7 +145,7 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Content-Security-Policy"] = (
             "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
         )
-    # HSTS — only enable if behind HTTPS in production
+    # HSTS: only enable if behind HTTPS in production
     if _IS_PRODUCTION:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response

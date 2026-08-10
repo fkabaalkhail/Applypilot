@@ -28,7 +28,7 @@ try {
     const req = createRequire(path.join(here, "..", "..", "frontend", "package.json"));
     ({ JSDOM } = req("jsdom"));
   } catch {
-    console.error("jsdom not found — run `npm install` in chrome-extension first.");
+    console.error("jsdom not found, run `npm install` in chrome-extension first.");
     process.exit(1);
   }
 }
@@ -49,7 +49,7 @@ const html = readFileSync(path.join(here, "sample-form.html"), "utf8");
 const dom = new JSDOM(html, { url: "http://localhost:8080/sample-form.html" });
 const { window } = dom;
 
-// jsdom has no layout engine — pretend everything has a box so the
+// jsdom has no layout engine, pretend everything has a box so the
 // visibility check passes (we are testing classification, not layout).
 window.HTMLElement.prototype.getClientRects = function () {
   return [{ width: 100, height: 20 }];
@@ -106,7 +106,7 @@ const toFill = fields.filter(
     f.confidence >= AUTOFILL_CONFIDENCE_THRESHOLD
 );
 // Drive the real reconciliation engine: instant settle window, no background
-// observer — this exercises the production fill+verify path headlessly.
+// observer. This exercises the production fill+verify path headlessly.
 const engine = new AutofillReconciler({ sleep: async () => {}, observe: false });
 const reports = await engine.run(
   toFill.map((f) => ({ fieldId: f.id, value: f.proposedValue })),

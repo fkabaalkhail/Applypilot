@@ -12,8 +12,8 @@ const HARNESS = path.join(here, "dist", "harness.js");
 const BLANK = "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>";
 
 const LOCATIONS = [
-  "Ottawa, ON, Canada",        // baseline — contains "Canada"
-  "San Francisco, CA, USA",    // option is "United States" — no token overlap with "USA"
+  "Ottawa, ON, Canada",        // baseline, contains "Canada"
+  "San Francisco, CA, USA",    // option is "United States", no token overlap with "USA"
   "Austin, Texas, United States", // contains "United States"
   "London, United Kingdom",    // contains "United Kingdom"
   "Berlin, Germany",           // no matching option at all
@@ -25,7 +25,7 @@ const page = await browser.newPage();
 await page.setContent(BLANK);
 await page.addScriptTag({ path: HARNESS });
 
-console.log("Workday Country dropdown — options: [United States, Canada, Mexico, United Kingdom]\n");
+console.log("Workday Country dropdown, options: [United States, Canada, Mexico, United Kingdom]\n");
 console.log("location".padEnd(30), "country filled?".padEnd(18), "city got");
 console.log("-".repeat(90));
 for (const loc of LOCATIONS) {

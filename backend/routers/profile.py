@@ -1,18 +1,18 @@
 """
 Application profile endpoint for the Chrome extension.
 
-GET /api/user/application-profile — the canonical, ready-to-fill profile the
+GET /api/user/application-profile, the canonical, ready-to-fill profile the
 extension autofills from. It merges the three places a user's data can live:
 
-    1. ResumeProfileDB  — data parsed from the uploaded resume (what the web
+    1. ResumeProfileDB, data parsed from the uploaded resume (what the web
                           app's Profile page shows). This is the primary source.
-    2. UserSettings     — manually-entered form-filling fields + screening answers.
-    3. User             — account name/email as a final fallback.
+    2. UserSettings, manually-entered form-filling fields + screening answers.
+    3. User, account name/email as a final fallback.
 
 The response uses camelCase keys so it maps 1:1 onto the extension's
 `UserApplicationProfile` type (see chrome-extension/src/shared/types.ts). Before
 this endpoint existed the extension fell back to GET /settings, which a resume
-upload never populates — so signed-in users saw an empty profile.
+upload never populates, so signed-in users saw an empty profile.
 """
 
 import logging
@@ -71,7 +71,7 @@ class ApplicationProfileOut(BaseModel):
     location: str = ""
     # Structured mailing address. addressCity has its own ``address_city``
     # column and falls back to ``city`` (which backs ``location``) while that
-    # column is still blank — the two shared one column until 2026-08-09.
+    # column is still blank, the two shared one column until 2026-08-09.
     addressStreet: str = ""
     addressCity: str = ""
     addressState: str = ""
@@ -86,7 +86,7 @@ class ApplicationProfileOut(BaseModel):
     requiresSponsorship: str = ""
     salaryExpectation: str = ""
     # ISO "YYYY-MM-DD". The only fact on this profile that exists purely so an
-    # age gate can be COMPUTED rather than recalled — see
+    # age gate can be COMPUTED rather than recalled, see
     # backend/services/derived_facts.py. Blank means every age resolver
     # abstains, which is the honest default.
     dateOfBirth: str = ""
@@ -155,7 +155,7 @@ class ApplicationProfileIn(BaseModel):
     requiresSponsorship: str | None = None
     salaryExpectation: str | None = None
     dateOfBirth: str | None = None
-    # Screening answers — persisted into prefilled_answers under _SCREENING_KEYS.
+    # Screening answers: persisted into prefilled_answers under _SCREENING_KEYS.
     willingToRelocate: str | None = None
     workPreference: str | None = None
     noticePeriod: str | None = None
@@ -197,7 +197,7 @@ def _split_name(full_name: str) -> tuple[str, str]:
 _WORK_AUTH_KEY = "Are you authorized to work in this country?"
 _SPONSOR_KEY = "Do you now or in the future require sponsorship?"
 _SALARY_KEY = "Salary expectation"
-# Not a screening ANSWER — a stored fact, kept in the same free-form map so it
+# Not a screening ANSWER: a stored fact, kept in the same free-form map so it
 # needs no column of its own. Never mined by substring: a date of birth is
 # either the value under this exact key or absent.
 _DOB_KEY = "Date of birth"
@@ -206,7 +206,7 @@ _DOB_KEY = "Date of birth"
 # API field → the EXACT prefilled_answers key. These keys are binding: the web
 # app, the extension and this router must all agree on them byte for byte, so
 # never rename one. (``driversLicense`` / "Driver's licence" mixing spellings is
-# deliberate — the API key mirrors the extension's camelCase field, the storage
+# deliberate, the API key mirrors the extension's camelCase field, the storage
 # key mirrors the label the user sees.)
 _SCREENING_KEYS: dict[str, str] = {
     "willingToRelocate": "Willing to relocate",
@@ -219,7 +219,7 @@ _SCREENING_KEYS: dict[str, str] = {
     "languages": "Languages",
 }
 
-# Keys read by EXACT MATCH ONLY, never mined by substring — for the reason
+# Keys read by EXACT MATCH ONLY, never mined by substring, for the reason
 # _stored_dob documents at length: "Earliest start date" is one fuzzy read away
 # from being served as a date of birth, and "Work preference" is one added
 # keyword away from being served as a work-authorization answer. Excluding them
@@ -229,7 +229,7 @@ _EXACT_ONLY_KEYS = frozenset({_DOB_KEY, *_SCREENING_KEYS.values()})
 
 # SetupWizard (frontend/src/setup/SetupWizard.tsx) dumps its own internal filter
 # state into the same map. These are enum tokens ("needs_sponsorship",
-# "internship"), not answers any employer should ever see — and
+# "internship"), not answers any employer should ever see, and
 # "work_authorization" happens to contain "authoriz", so substring mining used
 # to serve it back as the user's work-authorization answer and shadow their
 # real one.
@@ -242,7 +242,7 @@ def _stored_dob(prefilled: dict | None) -> str:
     Substring mining is deliberately not used here. "Date of birth" is close
     enough to a dozen other question texts a form might harvest ("Date of birth
     of dependent", "Earliest start date") that a fuzzy read could hand an age
-    resolver the wrong date — and an age gate answered from the wrong date is
+    resolver the wrong date, and an age gate answered from the wrong date is
     exactly the class of bug this whole path exists to remove.
     """
     value = (prefilled or {}).get(_DOB_KEY)
@@ -270,7 +270,7 @@ def _mine_screening(prefilled: dict | None) -> tuple[str, str, str]:
     Resolve the work-authorization, sponsorship and salary answers from the
     free-form prefilled_answers question→answer map.
 
-    Exact fixed keys win — they are what update_application_profile writes, so an
+    Exact fixed keys win. They are what update_application_profile writes, so an
     answer the user or the extension deliberately saved is authoritative. Only a
     still-empty slot falls back to substring mining, which exists for legacy rows
     and for question text the extension harvested verbatim from a real form.
@@ -444,7 +444,7 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
             # States", so it must never outrank a city the user actually typed:
             # while the two shared a column that was impossible, and now that
             # they don't, a user who fills only City would otherwise be told
-            # they live in the United States — and the LLM would be told so too.
+            # they live in the United States, and the LLM would be told so too.
             settings.address_city if settings else "",
             settings.location if settings else "",
             resume.location if resume else "",
@@ -611,7 +611,7 @@ def read_profile_version(
     user: User = Depends(get_verified_user),
     db: Session = Depends(get_db),
 ):
-    """Cheap staleness check for the extension — returns the current sync
+    """Cheap staleness check for the extension, returns the current sync
     version so it only re-downloads the full profile when something changed."""
     version, updated_at = get_profile_version(db, user.id)
     return ProfileVersionOut(

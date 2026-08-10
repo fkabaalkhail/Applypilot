@@ -1,7 +1,7 @@
 /**
  * Server timestamps are UTC. Some endpoints still serialize them without an
  * offset ("2026-07-08T14:00:00"), and JavaScript reads an offset-less date-time
- * as *local* time — which made a just-uploaded resume render as "-240m ago" for
+ * as *local* time, which made a just-uploaded resume render as "-240m ago" for
  * a UTC-4 user. Parse defensively here rather than trusting the wire format.
  */
 
@@ -24,7 +24,7 @@ export function parseServerDate(value: string | null | undefined): Date | null {
  */
 export function timeAgo(value: string | null | undefined): string {
   const date = parseServerDate(value);
-  if (!date) return "—";
+  if (!date) return "-";
 
   const diffMs = Date.now() - date.getTime();
   if (diffMs < 60_000) return "just now";
@@ -42,10 +42,10 @@ export function timeAgo(value: string | null | undefined): string {
   return years === 1 ? "a year ago" : `${years} years ago`;
 }
 
-/** "Jul 8, 2026" — for tooltips and anywhere absolute time is clearer. */
+/** "Jul 8, 2026", for tooltips and anywhere absolute time is clearer. */
 export function formatDate(value: string | null | undefined): string {
   const date = parseServerDate(value);
-  if (!date) return "—";
+  if (!date) return "-";
   return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",

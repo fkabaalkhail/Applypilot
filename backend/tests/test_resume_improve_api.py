@@ -5,7 +5,7 @@ The point of these tests is the guarantee that makes the feature safe to ship:
 a rewrite may change wording and section order, and nothing else. If the model
 returns invented employers, dates, or degrees, they must not reach the response.
 
-So these stub the *HTTP call to OpenAI*, not the service — the real
+So these stub the *HTTP call to OpenAI*, not the service, the real
 ``improve_resume_structured`` and the real ``merge_rewrite`` run, because they
 are the thing under test.
 """

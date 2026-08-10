@@ -1,11 +1,11 @@
 """
 Extension cover-letter endpoints (mounted at /api).
 
-POST /api/cover-letter        — generate/regenerate a cover letter for a
+POST /api/cover-letter, generate/regenerate a cover letter for a
                                 *scraped* job (no job_id), reusing the same
                                 CoverLetterGenerator as the web flow. Ephemeral:
                                 nothing is persisted to the cover_letters table.
-POST /api/render-cover-letter — render cover-letter text to a PDF (base64 JSON).
+POST /api/render-cover-letter, render cover-letter text to a PDF (base64 JSON).
 
 Used by the Chrome extension on live application pages, where there is no
 ScrapedJob row to key off (unlike the web /ai/cover-letter/{job_id} flow).

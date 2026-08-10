@@ -11,7 +11,7 @@ import api from "../auth/api";
  * back to the extension's chromiumapp.org URL with the code in the fragment. The
  * extension exchanges it for tokens at POST /auth/extension/token.
  *
- * No credentials are ever entered here — if the user isn't signed in, we bounce
+ * No credentials are ever entered here, if the user isn't signed in, we bounce
  * through the normal /sign-in UI (?next) and return.
  */
 
@@ -56,7 +56,7 @@ export default function ExtensionConnect() {
       return;
     }
 
-    // Signed in but email not verified — authorize requires a verified user.
+    // Signed in but email not verified, authorize requires a verified user.
     if (!isEmailVerified) {
       setStatus("needs_verification");
       return;

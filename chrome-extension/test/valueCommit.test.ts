@@ -1,5 +1,5 @@
 /**
- * Value-commit robustness — the reliability layer that makes typeaheads, masked
+ * Value-commit robustness: the reliability layer that makes typeaheads, masked
  * inputs, validation-on-keyup frameworks and custom/web-component controls
  * actually register a scripted value (Jobright-parity fill cascade).
  */
@@ -36,7 +36,7 @@ function record(el: HTMLElement, types: string[]): Rec[] {
   return seen;
 }
 
-describe("dispatchCommitKeys — Enter keydown/keyup that commits typeaheads", () => {
+describe("dispatchCommitKeys, Enter keydown/keyup that commits typeaheads", () => {
   it("fires Enter down then up with legacy keyCode 13, bubbling and composed", () => {
     const el = document.createElement("input");
     document.body.append(el);
@@ -44,14 +44,14 @@ describe("dispatchCommitKeys — Enter keydown/keyup that commits typeaheads", (
     dispatchCommitKeys(el);
     expect(seen.map((s) => s.type)).toEqual(["keydown", "keyup"]);
     expect(seen.every((s) => s.key === "Enter")).toBe(true);
-    // Legacy handlers read keyCode/which — the KeyboardEvent constructor drops
+    // Legacy handlers read keyCode/which, the KeyboardEvent constructor drops
     // them, so they must be forced to 13 or "validate on Enter" code never runs.
     expect(seen.every((s) => s.keyCode === 13)).toBe(true);
     expect(seen.every((s) => s.composed === true)).toBe(true);
   });
 });
 
-describe("dispatchInputEvents — crosses shadow boundaries", () => {
+describe("dispatchInputEvents, crosses shadow boundaries", () => {
   it("fires a composed input (insertText) and a change", () => {
     const el = document.createElement("input");
     document.body.append(el);
@@ -94,7 +94,7 @@ describe("writeControl text path fires the full commit cascade", () => {
   });
 });
 
-describe("setNativeValue — web-component / non-standard value setting", () => {
+describe("setNativeValue, web-component / non-standard value setting", () => {
   it("uses a value setter defined on a custom element's own prototype", () => {
     class FancySelect extends HTMLElement {
       private _v = "";

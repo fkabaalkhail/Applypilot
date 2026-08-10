@@ -73,7 +73,7 @@ describe("ensureFreshAccessToken", () => {
   });
 
   it("does not refresh when there is no refreshToken (not connected)", async () => {
-    // chrome stub starts empty — no auth stored
+    // chrome stub starts empty, no auth stored
     globalThis.fetch = vi.fn() as unknown as typeof fetch;
     const client = await import("../src/api/client");
     await client.ensureFreshAccessToken(); // must resolve without calling fetch

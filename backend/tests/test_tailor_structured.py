@@ -30,7 +30,7 @@ async def test_parses_wrapped_contract_and_reorders(monkeypatch):
         "gaps": ["Role wants Kubernetes; not found in your experience"],
     }
 
-    async def fake_generate(prompt, system=None):
+    async def fake_generate(prompt, system=None, **kwargs):
         return json.dumps(payload)
     monkeypatch.setattr(svc, "_generate", fake_generate)
 
@@ -59,7 +59,7 @@ async def test_accepts_bare_document_for_back_compat(monkeypatch):
          "items": [{"id": "p1", "title": "Proj", "bullets": ["Built a thing"]}]},
     ]}
 
-    async def fake_generate(prompt, system=None):
+    async def fake_generate(prompt, system=None, **kwargs):
         return json.dumps(bare)
     monkeypatch.setattr(svc, "_generate", fake_generate)
 
@@ -73,7 +73,7 @@ async def test_accepts_bare_document_for_back_compat(monkeypatch):
 async def test_parse_failure_falls_back_to_original(monkeypatch):
     svc = OpenAIService.__new__(OpenAIService)
 
-    async def fake_generate(prompt, system=None):
+    async def fake_generate(prompt, system=None, **kwargs):
         return "not json"
     monkeypatch.setattr(svc, "_generate", fake_generate)
 

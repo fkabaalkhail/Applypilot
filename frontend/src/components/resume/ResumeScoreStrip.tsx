@@ -16,14 +16,14 @@ export function countsOf(report: AnalysisReport) {
   };
 }
 
-/** No report yet — the one thing to do is obvious, so say only that. */
+/** No report yet: the one thing to do is obvious, so say only that. */
 export function UnanalyzedStrip({ onAnalyze, analyzing }: { onAnalyze: () => void; analyzing: boolean }) {
   return (
     <div className="rd-unanalyzed">
       <div style={{ flex: 1 }}>
         <h2>This resume hasn't been analyzed</h2>
         <p>
-          Get a graded breakdown of your impact, wording, structure, and ATS readiness —
+          Get a graded breakdown of your impact, wording, structure, and ATS readiness,
           with the exact lines to fix.
         </p>
         {analyzing && <div className="rd-progress"><span /></div>}

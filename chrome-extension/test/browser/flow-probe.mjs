@@ -5,7 +5,7 @@
  * form (fill + Next) → final page (Submit detected as terminal, NEVER clicked).
  *
  * Every transition is a REAL navigation, so this also proves the flow state
- * persists in the background and resumes in a fresh content script each page —
+ * persists in the background and resumes in a fresh content script each page,
  * including the field-less chooser page (autoInit entry resume).
  *
  * Usage: npm run build && node test/browser/flow-probe.mjs
@@ -125,7 +125,7 @@ async function togglePanel(sw, urlPrefix) {
 const results = [];
 function check(label, ok, extra = "") {
   results.push(ok);
-  console.log(`   ${ok ? "✅" : "❌"} ${label}${extra ? ` — ${extra}` : ""}`);
+  console.log(`   ${ok ? "✅" : "❌"} ${label}${extra ? `: ${extra}` : ""}`);
   return ok;
 }
 
@@ -197,9 +197,9 @@ async function main() {
 
   // 5. The account wall fills the saved credentials and ticks consent, then
   //    parks at the panel's advance gate: the flow never creates an account on
-  //    its own — the USER turns every page, the wall included. Press the gate
+  //    its own, the USER turns every page, the wall included. Press the gate
   //    exactly as step 6 does for the form page. The press clicks Create Account
-  //    (a real GET submit — the server sees exactly what the site would).
+  //    (a real GET submit, the server sees exactly what the site would).
   await pg.waitForFunction(
     () => {
       const sr = document.getElementById("applypilot-overlay-host")?.shadowRoot;
@@ -223,7 +223,7 @@ async function main() {
   check("per-site pair recorded under Saved sign-ins", pair?.email === REG_EMAIL && pair?.password === REG_PASSWORD);
 
   // 6. The application form fills from the profile, then parks at the user's
-  //    Next-page gate — one Autofill click fills every page; the USER turns
+  //    Next-page gate: one Autofill click fills every page; the USER turns
   //    each page. Press the panel gate as the user would.
   await pg.waitForFunction(
     () => {

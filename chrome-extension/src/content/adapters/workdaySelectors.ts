@@ -4,12 +4,12 @@
  * extension depends on.
  *
  * Workday's visible labels are generic and its CSS classes are hashed per
- * tenant, but `data-automation-id` is stable across tenants and releases — it is
+ * tenant, but `data-automation-id` is stable across tenants and releases. It is
  * the only selector surface worth targeting. When a tenant renames one, this is
  * the ONLY file that should need editing: everything here is data, no logic.
  *
  * Deliberately a dependency-free leaf module (types only). It must never import
- * `./registry` — `adapters/workday.ts` registers itself on import, and modules
+ * `./registry`: `adapters/workday.ts` registers itself on import, and modules
  * like comboboxEngine/accountFlow pull selectors from here without wanting that
  * side effect.
  */
@@ -19,7 +19,7 @@ import type { FieldCategory } from "../../shared/types";
 export const WD_HOST = /(^|\.)(myworkdayjobs|myworkday|myworkdayjobs-impl|myworkdaysite)\.com$/i;
 
 // ---------------------------------------------------------------------------
-// Field classification — automation-id → category
+// Field classification: automation-id → category
 // ---------------------------------------------------------------------------
 
 /**
@@ -49,7 +49,7 @@ export const FIELD_RULES: ReadonlyArray<readonly [RegExp, FieldCategory]> = [
 /**
  * Workday namespaces a repeating row in the element **id**
  * ("workExperience-10--startDate-dateSectionYear-input"), not in the
- * automation-id — which is section-agnostic ("dateSectionYear-input"). Matched
+ * automation-id, which is section-agnostic ("dateSectionYear-input"). Matched
  * against the id and consulted BEFORE FIELD_RULES, since the id is the more
  * specific signal. All three parts of one widget resolve to the same category;
  * the adapter's fillOperation then writes every part from that one value.
@@ -80,7 +80,7 @@ export type DateParts = Partial<Record<DateFragment, HTMLInputElement>>;
  * A part input Workday tags by automation-id ("dateSectionYear-input").
  *
  * Split out of DATE_PART_SELECTOR because this half alone is proof that a "0"
- * in the box is an EMPTY month/day/year rather than a legitimate zero — 0 is
+ * in the box is an EMPTY month/day/year rather than a legitimate zero, 0 is
  * not a valid value for any of the three. `role="spinbutton"` carries no such
  * guarantee (an ordinary number input can be one), so formScanner reads THIS,
  * not the compound selector below.
@@ -91,7 +91,7 @@ export const DATE_PART_ID_SELECTOR = 'input[data-automation-id*="dateSection" i]
 export const DATE_PART_SELECTOR = `${DATE_PART_ID_SELECTOR}, input[role="spinbutton"]`;
 
 /**
- * The date WIDGET a part input belongs to — never the part itself, and never a
+ * The date WIDGET a part input belongs to, never the part itself, and never a
  * widget the element merely sits NEXT TO.
  *
  * `Element.closest()` matches the element it is called on, and a part's own
@@ -105,7 +105,7 @@ export const DATE_PART_SELECTOR = `${DATE_PART_ID_SELECTOR}, input[role="spinbut
  *
  *   - a PART resolves to its nearest date-ish ancestor holding a SECOND part.
  *     A wrapper holding only `el` ("dateSectionYear-display") wraps the part,
- *     not the widget — climbing stops there and month/day never get written.
+ *     not the widget, climbing stops there and month/day never get written.
  *     A genuinely single-part widget falls back to that innermost wrapper.
  *   - anything else resolves only to ITSELF, so an input standing beside a date
  *     widget can never claim it.
@@ -118,8 +118,8 @@ export function dateContainerOf(el: HTMLElement): HTMLElement | null {
   /**
    * One widget holds at most one input per fragment. The caller reads each part
    * with a `*="month|day|year"` query and takes the FIRST hit, so a node holding
-   * two of any fragment — a section wrapping a start date AND a graduation date
-   * — cannot answer that query for `el`: it answers it for whichever widget
+   * two of any fragment, a section wrapping a start date AND a graduation date
+   * cannot answer that query for `el`: it answers it for whichever widget
    * comes first in document order. Such a node is not a container, at any depth.
    */
   const unambiguous = (node: HTMLElement): boolean =>
@@ -143,13 +143,13 @@ export function dateContainerOf(el: HTMLElement): HTMLElement | null {
 }
 
 /**
- * The date parts under `node`, keyed by fragment — or null when `node` spans
+ * The date parts under `node`, keyed by fragment, or null when `node` spans
  * MORE THAN ONE widget (some fragment is claimed by two part inputs).
  *
  * Note the direction: this reads the actual part inputs and asks each one which
  * fragment it renders, rather than querying for "an input whose id contains
  * year". A page's own `graduationYearField` is not a part, so it can never be
- * returned here and never be written to — the ambiguity that motivated
+ * returned here and never be written to, the ambiguity that motivated
  * `unambiguous` above cannot even arise on this path.
  */
 export function datePartsIn(node: HTMLElement): DateParts | null {
@@ -165,7 +165,7 @@ export function datePartsIn(node: HTMLElement): DateParts | null {
 }
 
 /**
- * Every part of the ONE widget `container` belongs to — the container's own
+ * Every part of the ONE widget `container` belongs to, the container's own
  * parts, plus any the container turned out to exclude.
  *
  * Expands outward while each expansion still renders at most one part per
@@ -193,7 +193,7 @@ export function dateWidgetPartsOf(container: HTMLElement, depth = 6): DateParts 
 /**
  * The step footer's Next / Save-and-Continue button. Two footer generations
  * ship in the wild: `bottom-navigation-*` (current) and `pageFooter*` (older
- * tenants). NB Workday reuses these ids for the FINAL submit too — callers must
+ * tenants). NB Workday reuses these ids for the FINAL submit too, callers must
  * still apply the terminal-text check before clicking.
  */
 export const ADVANCE_BUTTON_SELECTOR =
@@ -203,7 +203,7 @@ export const ADVANCE_BUTTON_SELECTOR =
  * Entry into the application from a job posting: the posting's Apply button
  * (`adventureButton`) or the resume-a-draft button (`continueButton`). The
  * apply-method chooser that follows (Autofill with Resume / Apply Manually /
- * Use My Last Application) carries NO stable automation-ids — applyEntry.ts
+ * Use My Last Application) carries NO stable automation-ids, applyEntry.ts
  * picks "Apply Manually" from anchored button text instead.
  */
 export const ENTRY_BUTTON_SELECTOR =
@@ -222,7 +222,7 @@ export const SIGNUP_MARKER_RE = /createaccount|verifypassword|verifynewpassword|
 /**
  * Workday's create-account consent checkbox. It is a native checkbox rendered
  * visually hidden behind a styled control, with no `required` attribute and no
- * agreement-worded label — nothing but this automation-id identifies it.
+ * agreement-worded label, nothing but this automation-id identifies it.
  */
 export const CONSENT_MARKER_RE = /createaccountcheckbox/i;
 
@@ -237,7 +237,7 @@ export const PROMPT_OPTION_SELECTOR = '[data-automation-id="promptOption"]';
 
 /**
  * Workday's multiselect ("Type to Add Skills", Country Phone Code) exposes no
- * ARIA multi signal — the container automation-id is the only reliable marker.
+ * ARIA multi signal: the container automation-id is the only reliable marker.
  * Used as a case-insensitive `*=` fragment.
  */
 export const MULTISELECT_CONTAINER_FRAGMENT = "multiselect";
@@ -261,7 +261,7 @@ export const FILE_INPUT_SELECTOR = '[data-automation-id="file-upload-input-ref"]
 
 /**
  * Workday's upload widget carries no automation-id and no visible text naming
- * the document — its CSS classes are hashed per tenant ("css-1ikudie") and the
+ * the document, its CSS classes are hashed per tenant ("css-1ikudie") and the
  * zone reads only "Drop files here / or / Select files". The one place the
  * document IS named is the element **id** on the Select-files button
  * ("resumeAttachments--attachments"), which neither the automation-id chain nor
@@ -279,12 +279,12 @@ export const COVER_WIDGET_ID_RE = /cover.?letter/i;
  *
  * "Nearest wrapper holding EXACTLY ONE zone" is the load-bearing part. The
  * element `classify` receives is that sibling input, whose `closest(zone)` is
- * null — so a plain `parentElement` reads every id under the parent, and a
+ * null, so a plain `parentElement` reads every id under the parent, and a
  * parent wrapping a résumé widget AND a cover-letter widget hands the résumé
  * input "coverLetter--attachments". `COVER_WIDGET_ID_RE` is tested first, so
  * the résumé upload would classify as a cover letter and never be attached.
  * A wrapper holding two zones can speak for neither: climbing stops and the
- * caller gets nothing, which degrades to `unknown` — the old do-nothing
+ * caller gets nothing, which degrades to `unknown`: the old do-nothing
  * failure, never a confidently wrong answer.
  */
 function uploadWidgetOf(el: HTMLElement): HTMLElement | null {
@@ -320,8 +320,8 @@ export function automationId(el: HTMLElement): string {
 /**
  * Every automation-id from `el` up through `depth` ancestors, lower-cased and
  * space-joined. Workday tags the SECTION (résumé, cover letter, create-account)
- * while the input's own id is generic ("file-upload-input-ref"), so the chain —
- * not the element — is what carries the meaning.
+ * while the input's own id is generic ("file-upload-input-ref"), so the chain,
+ * not the element, is what carries the meaning.
  */
 export function automationIdChain(el: HTMLElement, depth = 6): string {
   const ids: string[] = [];

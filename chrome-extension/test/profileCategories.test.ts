@@ -23,7 +23,7 @@ describe("profileFieldForCategory", () => {
     expect(profileFieldForCategory("workPreference")).toBe("workPreference");
     expect(profileFieldForCategory("noticePeriod")).toBe("noticePeriod");
     // The category is named after the QUESTION ("when can you start?"), the
-    // profile key after the field — same quirk as sponsorship/salary.
+    // profile key after the field, same quirk as sponsorship/salary.
     expect(profileFieldForCategory("startDate")).toBe("earliestStartDate");
     expect(profileFieldForCategory("yearsOfExperience")).toBe("yearsOfExperience");
     expect(profileFieldForCategory("securityClearance")).toBe("securityClearance");

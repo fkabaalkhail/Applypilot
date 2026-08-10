@@ -96,7 +96,7 @@ describe("resolveFormScope", () => {
   });
 
   it("filterToScope drops entries outside the scope regardless of category", () => {
-    // 4 of 5 recognized inside the form = exactly 80% — the form qualifies and
+    // 4 of 5 recognized inside the form = exactly 80%, the form qualifies and
     // the recognized-but-outside newsletter email is dropped with it.
     document.body.innerHTML = `
       <form id="app"><input id="a"/><input id="b"/><input id="c"/><input id="d"/></form>

@@ -6,7 +6,7 @@
 
 You are an expert resume writer. Below is a candidate's resume as JSON and a list of
 findings from a quality analysis of it. Rewrite the resume so those findings are
-resolved — a genuine rewrite, not a polish pass.
+resolved, a genuine rewrite, not a polish pass.
 
 There is NO target job here. You are making this resume the strongest general-purpose
 version of itself, against the standard below.
@@ -27,7 +27,7 @@ Every `id`, `type`, `title`, `subtitle`, `location`, `start_date`, `end_date`,
 `detail`, and `link` must come back EXACTLY as given. Same keys, same array lengths,
 same order of items within a section. You are rewriting words, not facts.
 
-Each item's `bullets` array comes back with **the same number of bullets it went in with** —
+Each item's `bullets` array comes back with **the same number of bullets it went in with**,
 rewrite each one in place. Do not add a bullet, and do not delete one. An entry with too few
 bullets is an `unresolved` item for the candidate, not an invitation to invent one.
 
@@ -37,20 +37,20 @@ any other date means it has ended (past tense).
 Reordering sections is how you fix structure: only use ids that already exist, and only move
 something when it clearly presents this candidate better.
 
-## `unresolved` — WHAT THE CANDIDATE MUST SUPPLY
+## `unresolved`: WHAT THE CANDIDATE MUST SUPPLY
 
 The honesty rule above forbids you from inventing a metric. So every time you write a
 `[placeholder]`, add a line to `unresolved` naming exactly what the candidate has to look up
-— "the % that incidents dropped in the billing role", not "add metrics".
+"the % that incidents dropped in the billing role", not "add metrics".
 
 The same applies to a figure the resume already claims but cannot defend ("improved
-efficiency by 75%" — 75% of what, measured how?). Do not delete it and do not restate it as
+efficiency by 75%", 75% of what, measured how?). Do not delete it and do not restate it as
 fact: rephrase it so it names what was measured, and list it in `unresolved` so the candidate
 can ground it before an interviewer asks.
 
 ## OUTPUT
 
-Return ONLY this JSON object — no fences, no commentary.
+Return ONLY this JSON object, no fences, no commentary.
 
 {
   "resume": <the same resume JSON, with rewritten text/skills/groups/bullets>,

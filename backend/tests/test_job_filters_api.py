@@ -131,7 +131,7 @@ def test_experience_filter_legacy_values_still_resolve():
 
 def test_experience_filter_dead_legacy_values_never_widen():
     """Dropping mid/senior/lead/director from the map must not make them silently
-    widen into the real catalogue — they keep matching only their own (nonexistent)
+    widen into the real catalogue. They keep matching only their own (nonexistent)
     rows, which is exactly what they did before."""
     for dead in ("mid", "senior", "lead", "director"):
         titles = _titles_for(dead)

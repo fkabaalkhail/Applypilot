@@ -1,6 +1,6 @@
 /**
  * Workday "Autofill with Resume" step: the real file input is display:none behind
- * a styled drop zone and carries NO label/aria — its identity is the surrounding
+ * a styled drop zone and carries NO label/aria, its identity is the surrounding
  * "Upload your resume…" heading. Regression test for the panel reporting
  * "No résumé field detected" on that step.
  */
@@ -135,13 +135,13 @@ describe("Workday drop zone with no document heading", () => {
   });
 
   /**
-   * Both widgets FLAT under one wrapper — no per-widget wrapper to scope to.
+   * Both widgets FLAT under one wrapper, no per-widget wrapper to scope to.
    * Scooping the wrapper's ids would hand the résumé input
    * "coverLetter--attachments", and the cover-letter rule is tested first, so
    * the résumé upload would classify as a cover letter and the résumé would be
    * attached to the wrong control (or, since coverLetter has no attach path, to
    * nothing). Abstaining is the deliberate outcome: a wrapper holding TWO drop
-   * zones can answer for neither, so both fall through to `unknown` — the old
+   * zones can answer for neither, so both fall through to `unknown`: the old
    * do-nothing failure, never a confidently wrong answer.
    */
   it("refuses to guess when two widgets share one flat wrapper", () => {
@@ -166,7 +166,7 @@ describe("Workday drop zone with no document heading", () => {
 /**
  * Classification alone never attached anything: `resumeFieldNeedingFile` also
  * demands `required`, and Workday's drop zone carries no `required`, no
- * `aria-required` and no trailing "*" — so every auto-attach entry point read
+ * `aria-required` and no trailing "*", so every auto-attach entry point read
  * NULL and did nothing. These pin the split that fixed it.
  */
 describe("the reported drop zone reaches auto-attach", () => {
@@ -186,7 +186,7 @@ describe("the reported drop zone reaches auto-attach", () => {
     expect(resumeFieldForAttach([field!], get)?.id).toBe(field!.id);
   });
 
-  it("but never parks the flow behind it — an optional upload must not block advance", () => {
+  it("but never parks the flow behind it, an optional upload must not block advance", () => {
     const { field, get } = scanBareDropzone();
     expect(resumeFieldNeedingFile([field!], get)).toBeNull();
   });

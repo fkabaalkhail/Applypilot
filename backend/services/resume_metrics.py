@@ -3,9 +3,9 @@ Deterministic structural facts about a resume.
 
 The quality analyzer used to be handed nothing but raw text, so its counts
 ("3 issues related") were guesses and its evidence was often paraphrased. This
-module computes what can be *measured* — bullet lengths, action-verb coverage,
+module computes what can be *measured*, bullet lengths, action-verb coverage,
 quantification coverage, the literal weak-verb and passive hits, date-format
-consistency — and the prompt hands those facts to the model as ground truth.
+consistency, and the prompt hands those facts to the model as ground truth.
 
 Nothing here calls an LLM. ``build_digest`` returns a plain dict; ``render_digest``
 formats it for a prompt.
@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# Verbs that open a strong, achievement-oriented bullet. Deliberately broad —
+# Verbs that open a strong, achievement-oriented bullet. Deliberately broad,
 # the point is coverage, not a stylebook.
 STRONG_VERBS: frozenset[str] = frozenset("""
 accelerated achieved acquired adapted addressed advanced advised analyzed architected
@@ -275,7 +275,7 @@ def _tense_of(word: str) -> str | None:
     """The tense of a bullet's opening verb, or None when it carries no tense signal.
 
     Returns "past", "present", "continuous", or None. None is the honest answer for an
-    opener we cannot classify — a guess here becomes a finding the candidate cannot act on.
+    opener we cannot classify, a guess here becomes a finding the candidate cannot act on.
     """
     w = word.lower()
     if not w:
@@ -352,7 +352,7 @@ def _date_key(value: str) -> tuple[int, int | None] | None:
 def _is_strictly_later(a: tuple[int, int | None], b: tuple[int, int | None]) -> bool:
     """Is ``a`` unambiguously later than ``b``?
 
-    When either side omits its month, only the years are compared — a resume that writes
+    When either side omits its month, only the years are compared, a resume that writes
     "2024" in one place and "May 2024" in another is untidy, not out of order, and this
     check must not invent a violation out of that.
     """
@@ -396,7 +396,7 @@ def _chronology_violations(profile: Any) -> list[str]:
 
 
 def _repeated_openers(bullets: list[tuple[str, str]]) -> list[str]:
-    """Opening verbs used three or more times — the tell of a templated resume."""
+    """Opening verbs used three or more times, the tell of a templated resume."""
     counts: dict[str, int] = {}
     for _, text in bullets:
         word = _first_word(text)
@@ -600,7 +600,7 @@ def render_digest(digest: dict[str, Any]) -> str:
     fmt = digest["formatting"]
 
     out = [
-        "MEASURED FACTS (computed from the resume — treat as ground truth):",
+        "MEASURED FACTS (computed from the resume, treat as ground truth):",
         f"Candidate level (from their degrees): {digest['level']}",
         f"Sections present, in order: {', '.join(digest['sections_in_order']) or 'none detected'}",
         f"Has a summary section: {'yes' if digest['has_summary'] else 'no'}",
@@ -613,7 +613,7 @@ def render_digest(digest: dict[str, Any]) -> str:
         f"Bullets containing a number/metric: {bullets['quantified_pct']}%",
         f"Bullets opening with a strong action verb: {bullets['strong_verb_pct']}%",
         (
-            f"Length: {fmt['word_count']} words (~{fmt['estimated_pages']} page(s)) — "
+            f"Length: {fmt['word_count']} words (~{fmt['estimated_pages']} page(s)), "
             f"{_length_note(digest)}"
         ),
         (

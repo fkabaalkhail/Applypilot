@@ -58,7 +58,7 @@ describe("CompanyLogo", () => {
     Object.defineProperty(img, "naturalWidth", { value: 16, configurable: true });
     fireEvent.load(img);
     // Advanced past the tiny favicon to the unavatar fallback, not straight to
-    // the avatar — a real logo still has a chance to render.
+    // the avatar, a real logo still has a chance to render.
     img = screen.getByRole("img") as HTMLImageElement;
     expect(img.src).toContain("unavatar.io");
     fireEvent.error(img); // unavatar has nothing -> letter avatar

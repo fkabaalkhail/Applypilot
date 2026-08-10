@@ -34,7 +34,7 @@ class TestShardForHour:
 
     def test_shards_partition_the_registry(self):
         """Across shard_count consecutive hours, every company is scraped
-        exactly once — no board lost, none double-scraped."""
+        exactly once, no board lost, none double-scraped."""
         companies = _fake_companies(400)
         _, count, _ = shard_for_hour(companies, hour=0)
         assert count > 1

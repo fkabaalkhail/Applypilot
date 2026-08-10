@@ -1,13 +1,13 @@
 /**
  * Multi-page autofill flow: fill → advance → fill → … → done/paused/stopped.
  *
- * Pure orchestration over injected deps — no chrome.*, no direct DOM writes —
+ * Pure orchestration over injected deps, no chrome.*, no direct DOM writes,
  * so the whole machine unit-tests with scripted fakes. contentScript provides
  * the real deps (fillOnce, scanner snapshots, advance discovery, background
  * state persistence) and the overlay renders the progress beats.
  *
  * Invariants:
- *  - NEVER clicks a terminal (submit-like) button — finishes "done" instead.
+ *  - NEVER clicks a terminal (submit-like) button, finishes "done" instead.
  *  - Persists FlowState BEFORE clicking advance, so a real navigation (content
  *    script death) resumes on the next page via the session flag.
  *  - Every pause auto-resumes when its condition clears (polled).
@@ -31,7 +31,7 @@ const ADVANCE_WAIT_MS = 8000;
  *  the fill before falling back to waiting for a manual attach. */
 const RESUME_ATTACH_TRIES = 6;
 
-/** Pauses a user CAN clear by pressing the panel's advance button — they have
+/** Pauses a user CAN clear by pressing the panel's advance button. They have
  *  fixed the page (or judged it fine) and want the flow to try again. Captcha,
  *  verification and resume-upload are absent on purpose: the click cannot
  *  clear them, so offering a button that does nothing is worse than none.
@@ -52,11 +52,11 @@ export interface StepTally {
 export interface FlowSnapshot {
   fields: DetectedField[];
   scopeEl: HTMLElement | null;
-  /** Page URL at snapshot time — the change signal on field-less entry pages. */
+  /** Page URL at snapshot time, the change signal on field-less entry pages. */
   url: string;
   /** Apply-entry button (job posting / apply-method chooser), when one exists. */
   entry: { el: HTMLElement; label: string } | null;
-  /** True while a signup/login account wall is on the page — lets the flow
+  /** True while a signup/login account wall is on the page, lets the flow
    *  hand a stuck wall back to the user instead of stopping the whole flow. */
   accountWall: boolean;
 }
@@ -69,7 +69,7 @@ export interface FlowDeps {
   rescan(): void;
   findAdvance(scope: HTMLElement, extraAdvance?: RegExp): AdvanceButton | null;
   clickAdvance(el: HTMLElement): void;
-  /** The flow reached the terminal (submit) button — hand it over so the caller
+  /** The flow reached the terminal (submit) button, hand it over so the caller
    *  can bind submit tracking. NEVER clicked by the controller. */
   onTerminal?(el: HTMLElement): void;
   /** Account-wall handling (Phase 4); {} when no wall. `wall` reports the kind
@@ -86,15 +86,15 @@ export interface FlowDeps {
   setState(state: FlowState | null): Promise<void>;
   onProgress(p: FlowProgress): void;
   /** Best-effort log of why the page didn't advance (visible validation errors,
-   *  empty required fields) — surfaces the real blocker on live ATS. No-op in tests. */
+   *  empty required fields), surfaces the real blocker on live ATS. No-op in tests. */
   diagnoseStuck?(): void;
   /**
    * Re-read this page and record how it differs from what was written, just
    * before it goes away.
    *
    * A page turn is the last moment this page is observable. Anything a
-   * framework reverted after the fill — on blur, on its own validation, on a
-   * re-render some later field triggered — is invisible from the next page, and
+   * framework reverted after the fill, on blur, on its own validation, on a
+   * re-render some later field triggered, is invisible from the next page, and
    * per-write verification cannot see it either, because it happened after the
    * write was verified. Called before every advance click and once when the
    * flow finishes; failures are the caller's to swallow.
@@ -104,7 +104,7 @@ export interface FlowDeps {
   now(): number;
 }
 
-/** Order-independent hash of the scanned field set — step-change detection. */
+/** Order-independent hash of the scanned field set, step-change detection. */
 export function fieldSignature(fields: DetectedField[]): string {
   const s = fields
     .map((f) => `${f.category}|${f.label}|${f.controlType}`)
@@ -118,7 +118,7 @@ export function fieldSignature(fields: DetectedField[]): string {
 /**
  * The "did the page change?" signal for one step. Field-less pages (job
  * posting, apply-method chooser) all hash to the same fieldSignature, so there
- * the URL + entry-button label stand in — an SPA that swaps "Apply" for
+ * the URL + entry-button label stand in, an SPA that swaps "Apply" for
  * "Apply Manually" without navigating still reads as a new page.
  */
 export function stepSignature(snap: FlowSnapshot): string {
@@ -133,7 +133,7 @@ export class FlowController {
   private lastTally = { ok: 0, fail: 0 };
   /** Resolver for the "ready" gate while the flow awaits the user's Next page. */
   private advanceResolver: ((advance: boolean) => void) | null = null;
-  /** Set by notifyAdvanceRequested() when no gate is currently awaiting it —
+  /** Set by notifyAdvanceRequested() when no gate is currently awaiting it,
    *  polled by waitForWallCleared, which has no resolver to hand out. */
   private advanceRequested = false;
 
@@ -151,7 +151,7 @@ export class FlowController {
   }
 
   /**
-   * User pressed "Next page" — release the ready gate so the flow advances to
+   * User pressed "Next page": release the ready gate so the flow advances to
    * the next page. No-op when the flow is not currently parked at a gate.
    */
   notifyAdvanceRequested(): void {
@@ -161,7 +161,7 @@ export class FlowController {
       resolve(true);
       return;
     }
-    // No gate awaiting a resolver — the account-wall park polls this flag.
+    // No gate awaiting a resolver, the account-wall park polls this flag.
     this.advanceRequested = true;
   }
 
@@ -178,7 +178,7 @@ export class FlowController {
     let pending = firstTally;
 
     while (!this.stopRequested) {
-      if (this.step >= MAX_STEPS) return this.finish("stopped", "Step limit reached — review the page");
+      if (this.step >= MAX_STEPS) return this.finish("stopped", "Step limit reached. Review the page");
       if (this.expired()) return this.finish("stopped", "Flow timed out");
       // A new step invalidates any press that arrived while no gate was open
       // (a double-click on the last page), so it can never auto-turn this one.
@@ -190,12 +190,12 @@ export class FlowController {
 
       const tally = pending ?? (await this.deps.fillStep(null));
       pending = null;
-      // Cumulative across steps — the final "done" beat reports the whole flow.
+      // Cumulative across steps: the final "done" beat reports the whole flow.
       this.lastTally = { ok: this.lastTally.ok + tally.ok, fail: this.lastTally.fail + tally.fail };
       this.emit("filling", { detail: wallDetail });
 
       if (this.deps.needsResume(this.deps.snapshot()) && !(await this.deps.attachResume())) {
-        // attachResume failed (no résumé on file) — wait for a manual attach.
+        // attachResume failed (no résumé on file), wait for a manual attach.
       }
       if (!(await this.waitWhileBlocked())) return this.finishStopped();
 
@@ -207,7 +207,7 @@ export class FlowController {
       if (!adv) {
         // No advance inside a form scope. On a page with no recognized fields,
         // an apply-entry button (job posting "Apply", chooser "Apply Manually")
-        // is the way forward — click it and treat the transition as a step.
+        // is the way forward, click it and treat the transition as a step.
         if (recognized === 0 && snap.entry) {
           console.log(`[Tailrd flow] clicking apply entry "${snap.entry.label}"…`);
           if (!(await this.advanceStep(snap, snap.entry.el, `opening "${snap.entry.label}"…`))) {
@@ -219,30 +219,30 @@ export class FlowController {
         if (!snap.scopeEl && recognized === 0) {
           return this.finish("stopped", "No application form found on this page");
         }
-        console.log("[Tailrd flow] no advance button — finishing done");
+        console.log("[Tailrd flow] no advance button, finishing done");
         return this.finish("done");
       }
       if (adv.kind === "terminal") {
-        // Reached the real submit button — hand it to the caller for submit
+        // Reached the real submit button, hand it to the caller for submit
         // tracking, then finish. The controller itself never clicks it.
         this.deps.onTerminal?.(adv.el);
         return this.finish("done", "Ready to review and submit");
       }
 
-      // The page is filled — hand control back to the user. The flow never
+      // The page is filled: hand control back to the user. The flow never
       // turns a page on its own: the panel shows a contextual bottom button
       // (Continue / Create Account, mirroring advText) and the flow advances
       // only when the user presses it. One Autofill click fills every page; the
-      // user decides every page turn, including the account wall — creating an
+      // user decides every page turn, including the account wall, creating an
       // account is irreversible enough that it should not happen while the user
       // is still reading the form. A page with an unfilled required field
       // surfaces the same gate as a "paused" beat so the panel can explain why
       // (the site's own validation would reject an advance otherwise).
       if (this.deps.hasUnfilledRequired(snap)) {
-        console.log("[Tailrd flow] parked — required field(s) still empty; press the advance button to continue anyway");
+        console.log("[Tailrd flow] parked: required field(s) still empty; press the advance button to continue anyway");
         this.emit("paused", { pauseReason: "unfilled-required", nextLabel: advText || undefined });
       } else {
-        console.log(`[Tailrd flow] parked at ready — press "${advText || "Next page"}" to advance`);
+        console.log(`[Tailrd flow] parked at ready, press "${advText || "Next page"}" to advance`);
         this.emit("ready", { nextLabel: advText || undefined });
       }
       if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
@@ -255,13 +255,13 @@ export class FlowController {
         if (this.stopRequested) return this.finishStopped();
         this.deps.diagnoseStuck?.(); // surface the real blocker (validation / empty required)
         // An account wall that didn't advance means auto-signup/sign-in
-        // couldn't complete on its own — a password the site rejected, an
+        // couldn't complete on its own, a password the site rejected, an
         // unmet requirement, an email-verification/2FA step, a captcha inside
         // the account form. Hand it to the user and resume when they clear it,
         // instead of killing the whole flow.
         if (account.wall) {
-          console.log("[Tailrd flow] account wall didn't advance — pausing for the user to finish");
-          // Drop any stray click from before this pause, THEN announce it —
+          console.log("[Tailrd flow] account wall didn't advance, pausing for the user to finish");
+          // Drop any stray click from before this pause, THEN announce it,
           // onProgress runs synchronously, so a user pressing Continue the
           // instant the gate appears must be honoured, not cleared by the
           // wait we are about to enter.
@@ -273,7 +273,7 @@ export class FlowController {
         }
         // Click rejected (validation) or this page genuinely can't advance.
         // NB: this pre-check consumes one pauseReason() poll, so emit the
-        // pause beat here — waitWhileBlocked may find the reason already clear.
+        // pause beat here, waitWhileBlocked may find the reason already clear.
         const reason = await this.deps.pauseReason(this.deps.snapshot());
         console.log(`[Tailrd flow] couldn't advance; pauseReason=${reason ?? "none"}`);
         if (reason === "validation") {
@@ -301,7 +301,7 @@ export class FlowController {
     const before = stepSignature(snap);
     const state: FlowState = { active: true, step: this.step + 1, startedAt: this.startedAt, lastSignature: before };
     this.step = state.step;
-    await this.deps.setState(state); // BEFORE the click — survives navigation
+    await this.deps.setState(state); // BEFORE the click, survives navigation
     this.emit("advancing", { detail });
     this.deps.clickAdvance(el);
     const changed = await this.waitForChange(before);
@@ -324,7 +324,7 @@ export class FlowController {
   }
 
   private async finish(phase: "done" | "stopped", detail?: string): Promise<void> {
-    // The final page never gets an advance click, so this is its only audit —
+    // The final page never gets an advance click, so this is its only audit,
     // and it is the page the user is about to submit.
     await this.deps.auditPageState?.().catch(() => {});
     await this.deps.setState(null);
@@ -361,7 +361,7 @@ export class FlowController {
    *  The manual release matters: an account wall the flow could not pass (the
    *  site rejected the password, an extra field is required) leaves the user
    *  looking at a filled form with no way to tell the flow to try again. Auto-
-   *  clearing alone cannot cover that — the wall is still on screen. */
+   *  clearing alone cannot cover that, the wall is still on screen. */
   private async waitForWallCleared(): Promise<boolean> {
     for (;;) {
       if (this.stopRequested) return false;
@@ -372,7 +372,7 @@ export class FlowController {
       await this.deps.sleep(PAUSE_POLL_MS);
       if (this.advanceRequested) {
         this.advanceRequested = false;
-        return true; // the user says this wall is dealt with — re-attempt
+        return true; // the user says this wall is dealt with, re-attempt
       }
       this.deps.rescan();
       const snap = this.deps.snapshot();
@@ -393,7 +393,7 @@ export class FlowController {
       const reason = await this.deps.pauseReason(this.deps.snapshot());
       if (!reason) return true;
       // The user pressed Continue: on a pause they own, that means "I have
-      // dealt with this — go". Checked before the emit so a press that lands
+      // dealt with this, go". Checked before the emit so a press that lands
       // during the synchronous onProgress is not dropped.
       if (this.advanceRequested && USER_CLEARABLE_PAUSES.has(reason)) {
         this.advanceRequested = false;
@@ -401,12 +401,12 @@ export class FlowController {
       }
       // A résumé upload field often lazy-renders after the page fills (Workday and
       // other SPAs), so the one attach attempt at fill time misses it. Auto-attach
-      // it here as it appears — the user should never have to click attach. Bounded
+      // it here as it appears, the user should never have to click attach. Bounded
       // so a page whose résumé simply has no stored file doesn't hammer the backend;
       // once the tries are spent we fall back to the manual-attach pause below.
       if (reason === "resume-upload" && resumeTries < RESUME_ATTACH_TRIES) {
         resumeTries++;
-        if (await this.deps.attachResume()) continue; // injected — re-poll; likely clears now
+        if (await this.deps.attachResume()) continue; // injected, re-poll; likely clears now
       }
       if (reason !== current) {
         current = reason;

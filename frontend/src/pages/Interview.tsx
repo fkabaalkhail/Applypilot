@@ -65,7 +65,7 @@ function practiceLinks(q: Question): { label: string; url: string; icon: string;
   // Coding (default)
   const links: { label: string; url: string; icon: string; variant?: string }[] = [];
   if (q.url && q.url.includes("leetcode.com/problems/")) {
-    // Direct problem page — viewable without login.
+    // Direct problem page: viewable without login.
     links.push({ label: "Solve on LeetCode", url: q.url, icon: "fa-solid fa-code", variant: "primary" });
   } else {
     links.push({
@@ -130,7 +130,7 @@ export default function Interview() {
         </span>
         <h1>Land the offer with real questions</h1>
         <p>
-          Curated technical, system design &amp; behavioral questions actually asked at top companies —
+          Curated technical, system design &amp; behavioral questions actually asked at top companies,
           each linked to a free, no-login resource to practice.
         </p>
         <div className="interview-hero-stats">
@@ -229,7 +229,7 @@ export default function Interview() {
         <i className="fa-solid fa-circle-plus"></i>
         <div>
           <strong>Don't see a company or question?</strong>
-          <span>Submit a company or a question you faced — we'll add it to the database.</span>
+          <span>Submit a company or a question you faced. We'll add it to the database.</span>
         </div>
         <i className="fa-solid fa-chevron-right"></i>
       </div>
@@ -400,7 +400,7 @@ function SubmitModal({ onClose }: { onClose: () => void }) {
     const message =
       mode === "company"
         ? `[Interview] Company request: ${company.trim()}`
-        : `[Interview] Question submission — Company: ${questionCompany.trim() || "N/A"} | Topic: ${topic} | Question: ${questionTitle.trim()}`;
+        : `[Interview] Question submission | Company: ${questionCompany.trim() || "N/A"} | Topic: ${topic} | Question: ${questionTitle.trim()}`;
     try {
       await api.post("/feedback", {
         category: "feature_request",

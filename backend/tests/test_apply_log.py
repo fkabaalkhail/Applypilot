@@ -1,5 +1,5 @@
 """
-Tests for POST /apply/log — the extension's submit-tracking endpoint.
+Tests for POST /apply/log, the extension's submit-tracking endpoint.
 
 Runs against an isolated in-memory SQLite app (never the Neon lifespan), the
 same pattern as test_apply_integration.py, so it is safe to run standalone.
@@ -104,7 +104,7 @@ def test_log_dedupes_by_url(client, db_session):
 
 
 def test_log_requires_some_context(client):
-    """An empty payload is rejected — no phantom blank records."""
+    """An empty payload is rejected, no phantom blank records."""
     resp = client.post("/apply/log", json={"company": "", "role": "", "url": ""})
     assert resp.status_code == 422
 
@@ -136,7 +136,7 @@ def test_log_with_job_id_marks_job_applied(client, db_session):
 
 
 def test_log_dedupes_by_job_id_even_with_a_different_url(client, db_session):
-    """A job_id that already has a record is refreshed, not duplicated — even when
+    """A job_id that already has a record is refreshed, not duplicated, even when
     the ATS page URL differs from the record's stored URL (mark-applied case)."""
     job = ScrapedJob(
         title="X", company="Y", url="https://y.com/j",

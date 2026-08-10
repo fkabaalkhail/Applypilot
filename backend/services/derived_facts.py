@@ -13,7 +13,7 @@ boilerplate label had attracted. Nothing on that path consulted the profile, so
 nothing could notice.
 
 These resolvers run in pass 1 and SHORT-CIRCUIT: a question they can answer is
-settled before any later pass sees it. Each one returns a value or abstains —
+settled before any later pass sees it. Each one returns a value or abstains,
 abstaining is always allowed and never a guess. The same resolvers are re-used
 by ``answer_gate`` to REFUTE an answer another pass produced, so the arithmetic
 is stated once and enforced everywhere.
@@ -32,7 +32,7 @@ from typing import Any, Optional
 from backend.services.option_match import match_boolean_option, match_option
 
 # A birth year that would make the applicant older than this is a typo, not a
-# fact — better to abstain than to answer an age gate from a bad row.
+# fact, better to abstain than to answer an age gate from a bad row.
 MAX_REASONABLE_AGE = 110
 
 _MONTHS = {
@@ -119,7 +119,7 @@ def _month_span(year: int, month: int) -> DateSpan:
 
 
 def age_on(born: date, today: date) -> int:
-    """Completed years between two dates — the ordinary meaning of "age"."""
+    """Completed years between two dates, the ordinary meaning of "age"."""
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
@@ -153,7 +153,7 @@ _AGE_SUFFIX_RE = re.compile(
     r"\b(\d{1,2})\s*(?:\+|(?:years?\s+of\s+age|years?\s+old|or\s+older|or\s+above|or\s+over|and\s+older|and\s+over)\b)",
     re.IGNORECASE,
 )
-# "under 18", "younger than 18", "below 18" — the same gate, asked backwards.
+# "under 18", "younger than 18", "below 18", the same gate, asked backwards.
 _AGE_UNDER_RE = re.compile(
     r"\b(?:under|younger\s+than|below|less\s+than)\s+(?:the\s+age\s+of\s+)?(\d{1,2})\b",
     re.IGNORECASE,
@@ -184,7 +184,7 @@ _HIGHEST_DEGREE_RE = re.compile(
     r"\b(?:level|type)\s+of\s+(?:education|degree)\b|\beducation\s+level\b|\bdegree\s+level\b",
     re.IGNORECASE,
 )
-# "Do you CURRENTLY work at Acme?" — present tense only. The broader
+# "Do you CURRENTLY work at Acme?", present tense only. The broader
 # "have you ever worked here" question is answered from full history by the
 # keyword rule in fill.py; this one must not borrow that answer.
 _CURRENT_EMPLOYER_RE = re.compile(
@@ -238,7 +238,7 @@ def _attr(profile: Any, name: str, default: Any = "") -> Any:
 def _work_spans(profile: Any, today: date) -> list[tuple[date, date]]:
     """Concrete (start, end) windows from the structured work history.
 
-    A row whose start date cannot be parsed contributes nothing — measuring a
+    A row whose start date cannot be parsed contributes nothing, measuring a
     career from a date we could not read is exactly the guess this module
     exists to avoid. A blank or "Present" end date is read as today, which is
     what a résumé means by it.
@@ -267,7 +267,7 @@ def total_experience_years(profile: Any, today: date) -> Optional[int]:
     """Completed years of work experience, counting overlapping roles once.
 
     None when the profile holds no datable role. Two jobs held at the same time
-    are one span of time, not two — merging the intervals is the difference
+    are one span of time, not two, merging the intervals is the difference
     between "4 years" and a confidently doubled "8".
     """
     spans = sorted(_work_spans(profile, today))
@@ -327,7 +327,7 @@ def _boolean_answer(value: bool, options: list[str]) -> Optional[str]:
 
     With no options it is plain "Yes"/"No" (free text, or a control whose
     choices weren't harvested). With options it must be one of them, word for
-    word — including when they are worded as prose ("I am 18 years of age or
+    word, including when they are worded as prose ("I am 18 years of age or
     older"), which a literal "Yes" would never match.
     """
     if not options:
@@ -351,25 +351,25 @@ def _resolve_age_gate(q: str, options: list[str], profile: Any, today: date) -> 
 
     threshold = int(m.group(1))
     if not 13 <= threshold <= 80:
-        return None  # not an employment age gate — a count of something else
+        return None  # not an employment age gate, a count of something else
 
     bounds = age_bounds(str(_attr(profile, "dateOfBirth", "")), today)
     if bounds is None:
-        return None  # no usable DOB — abstain, never assume
+        return None  # no usable DOB, abstain, never assume
     youngest, oldest = bounds
     if youngest >= threshold:
         meets = True
     elif oldest < threshold:
         meets = False
     else:
-        return None  # a birth year that straddles the birthday — genuinely unknown
+        return None  # a birth year that straddles the birthday, genuinely unknown
 
     value = _boolean_answer(meets != inverted, options)
     return Derived(value, "age_gate") if value else None
 
 
 def _resolve_age_value(q: str, options: list[str], profile: Any, today: date) -> Optional[Derived]:
-    """"What is your age?" — a number, not a gate."""
+    """"What is your age?", a number, not a gate."""
     if not re.search(r"\b(?:what\s+is\s+your\s+age|your\s+age|age\s+in\s+years|how\s+old\s+are\s+you)\b", q, re.IGNORECASE):
         return None
     if _AGE_MIN_RE.search(q) or _AGE_SUFFIX_RE.search(q) or _AGE_UNDER_RE.search(q):
@@ -414,7 +414,7 @@ def _resolve_graduation_year(q: str, options: list[str], profile: Any, _today: d
 def _resolve_highest_degree(q: str, options: list[str], profile: Any, _today: date) -> Optional[Derived]:
     """The applicant's highest completed level of education.
 
-    With options, the answer is the option at the SAME tier — "Bachelor of
+    With options, the answer is the option at the SAME tier, "Bachelor of
     Science in Computer Science" and "Bachelor's Degree" share no phrase a
     text matcher would accept, but they are plainly the same level.
     """
@@ -426,7 +426,7 @@ def _resolve_highest_degree(q: str, options: list[str], profile: Any, _today: da
     if options:
         same_tier = [o for o in options if degree_tier(o) == rank]
         if len(same_tier) != 1:
-            return None  # ambiguous or unoffered — let a later pass try
+            return None  # ambiguous or unoffered, let a later pass try
         return Derived(same_tier[0], "highest_degree")
     label = _tier_label(rank)
     return Derived(label, "highest_degree") if label else None
@@ -435,7 +435,7 @@ def _resolve_highest_degree(q: str, options: list[str], profile: Any, _today: da
 def _resolve_current_employer(
     q: str, options: list[str], profile: Any, _today: date, company: str
 ) -> Optional[Derived]:
-    """"Do you currently work at {company}?" — compared to the current employer.
+    """"Do you currently work at {company}?", compared to the current employer.
 
     Abstains when the profile names no current employer: "no" would then be a
     guess that happens to be right most of the time, which is exactly the habit

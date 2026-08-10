@@ -1,7 +1,7 @@
 """
 Unit tests for the web "Generate Custom Resume" flow endpoints:
-  POST /ai/job-analysis/{job_id}  (Step 1 — keywords + scores)
-  POST /ai/rewrite/{job_id}       (Step 3 — tailor + before/after scores)
+  POST /ai/job-analysis/{job_id}  (Step 1, keywords + scores)
+  POST /ai/rewrite/{job_id}       (Step 3, tailor + before/after scores)
   POST /ai/cover-letter/{job_id}  (tone option, backward compatible)
 
 The OpenAI call (`OpenAIService._generate`) is mocked, so no network/API key.
@@ -158,7 +158,7 @@ class TestJobAnalysis:
 
     def test_string_list_fields_are_not_exploded_into_chars(self, client, db_session):
         """When the model returns a list field as a single string, it must
-        become a one-element list — not one item per character."""
+        become a one-element list, not one item per character."""
         job = _seed(db_session)
         json_with_string_suggestions = """
         {

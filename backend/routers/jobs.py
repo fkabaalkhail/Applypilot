@@ -1,11 +1,11 @@
 """
-Job listing endpoints (data only — no bot automation).
+Job listing endpoints (data only, no bot automation).
 
-GET  /jobs          — list scraped jobs with filters
-GET  /jobs/{id}     — get a single job
-GET  /jobs/stats    — aggregate stats
-POST /jobs/{id}/save   — save a job
-POST /jobs/{id}/unsave — unsave a job
+GET  /jobs, list scraped jobs with filters
+GET  /jobs/{id}, get a single job
+GET  /jobs/stats, aggregate stats
+POST /jobs/{id}/save, save a job
+POST /jobs/{id}/unsave, unsave a job
 """
 
 import datetime
@@ -113,7 +113,7 @@ def list_jobs(
         q = q.filter(ScrapedJob.source_platform == source)
     if saved:
         # "Liked" jobs are per-user (UserSavedJob), not a global flag on the job.
-        # Hidden cross-source duplicates STAY visible here — a bookmark the
+        # Hidden cross-source duplicates STAY visible here, a bookmark the
         # user made must not vanish because its twin arrived later.
         if user_id is None:
             return []
@@ -123,7 +123,7 @@ def list_jobs(
     else:
         q = q.filter(ScrapedJob.duplicate_of.is_(None))
         # Freshness: listings the source took down (or that aged out) leave
-        # the catalogue. `stale` stays visible — usually crawl lag, not death.
+        # the catalogue. `stale` stays visible, usually crawl lag, not death.
         q = q.filter(
             or_(
                 ScrapedJob.listing_status.is_(None),
@@ -231,7 +231,7 @@ def create_job(
     _admin: int = Depends(get_admin_user_id),
     db: Session = Depends(get_db),
 ):
-    """Create a new job listing (admin only — used by scrapers to push jobs)."""
+    """Create a new job listing (admin only, used by scrapers to push jobs)."""
     # Dedup by URL. Query the id, not the entity: loading the row would pull its
     # ~1.9 KB description over the wire just to read back an id. Scrapers call
     # this once per job, hourly, and nearly every call is a duplicate.
@@ -269,11 +269,11 @@ def ingest_batch(
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
 ):
-    """Bulk-ingest scraped jobs (cron-secret auth — for the JobSpy/LinkedIn
+    """Bulk-ingest scraped jobs (cron-secret auth, for the JobSpy/LinkedIn
     scraper scripts).
 
     The per-job /jobs/create path costs one request + one query per job and is
-    admin-JWT-only, which the scripts can't send — every call 401'd since
+    admin-JWT-only, which the scripts can't send, every call 401'd since
     809c80f. This dedupes the whole batch with ONE url query and bulk-inserts
     the rest.
     """
@@ -323,7 +323,7 @@ def ingest_batch(
         fields = location_fields(job.location)
 
         # A direct (ats/github) row for this employer+title+city already in
-        # the catalogue makes this aggregator copy redundant — skip it.
+        # the catalogue makes this aggregator copy redundant, skip it.
         if job.source_platform in ("linkedin", "indeed") and has_direct_twin(
             db,
             company=job.company,
@@ -433,7 +433,7 @@ async def cron_backfill(
     async with httpx.AsyncClient(
         follow_redirects=True, timeout=12, headers=BROWSER_HEADERS
     ) as client:
-        # Phase 1: concurrent HTTP only — the Session is not thread/task safe,
+        # Phase 1: concurrent HTTP only, the Session is not thread/task safe,
         # so every DB mutation happens sequentially in phase 2.
         semaphore = asyncio.Semaphore(6)
 
@@ -464,7 +464,7 @@ async def cron_backfill(
                 job.description = _sanitize_description(text)
                 job.description_sections = None
                 descriptions_fixed += 1
-                # A description just landed — the structured fields it feeds
+                # A description just landed: the structured fields it feeds
                 # (visa/skills/salary/type) can finally be extracted.
                 job.visa_sponsorship = detect_visa_sponsorship(job.description)
                 job.skills = extract_skills(job.title, job.description) or None
@@ -586,7 +586,7 @@ async def cron_freshness(
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
 ):
-    """Hourly lifecycle sweep — the half of freshness that board crawls can't
+    """Hourly lifecycle sweep, the half of freshness that board crawls can't
     do: age out rows nothing re-confirms, spot-check stale URLs against
     reality, keep ghost-risk scores current, and adopt legacy rows into board
     reconciliation."""
@@ -603,7 +603,7 @@ async def cron_freshness(
         verified = await listing_freshness.verify_stale_listings(db, client)
         # GitHub lists re-publish closed postings and aged LinkedIn rows go
         # soft-dead (200 + "no longer accepting applications"); probe the newest
-        # rows — the ones users actually click — so dead apply links leave the
+        # rows (the ones users actually click) so dead apply links leave the
         # catalogue within the hour instead of collecting 404 complaints.
         recent = await listing_freshness.verify_recent_aggregator_listings(db, client)
 
@@ -1141,7 +1141,7 @@ Job Description:
 {job.description[:6000]}"""
 
     try:
-        response = await llm._generate(prompt, model="gpt-4o-mini", json_mode=True)
+        response = await llm._generate(prompt, model="gpt-4o-mini", json_mode=True, op="jobs.structure_description")
         data = json.loads(response)
         if data.get("sections"):
             job.description_sections = data

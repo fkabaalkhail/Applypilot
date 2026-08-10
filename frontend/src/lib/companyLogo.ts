@@ -170,7 +170,7 @@ export function logoProviderChain(job: JobLike): string[] {
   if (!domain) domain = domainFromName(job.company) || "";
   if (domain) {
     // Google's favicon service is fast and cached but misses (or returns a tiny
-    // 16px globe) for a large share of company domains — the main reason so
+    // 16px globe) for a large share of company domains, the main reason so
     // many cards fall through to a letter avatar. If it misses, try unavatar,
     // which aggregates several logo sources and 404s cleanly (fallback=false)
     // when it truly has nothing, so a real logo shows before the letter avatar.

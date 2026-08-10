@@ -1,5 +1,5 @@
 """
-ResumeTailor — generates tailored resume versions for specific job postings.
+ResumeTailor, generates tailored resume versions for specific job postings.
 
 Uses Claude to rewrite/reorder resume content to emphasize skills and experience
 relevant to the target job. Stores tailored versions linked to specific jobs.

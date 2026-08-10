@@ -1,4 +1,4 @@
-// AUTO-GENERATED brand assets — do not hand-edit. Regenerate with
+// AUTO-GENERATED brand assets: do not hand-edit. Regenerate with
 // scripts/gen-brand-logo.mjs. The panel is a content script, so on strict
 // img-src CSP sites these <img> data URIs are blocked and each surface falls
 // back (header → plain "Tailrd" wordmark, edge tab → purple chevron).

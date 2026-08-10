@@ -13,7 +13,7 @@ const NAV_LINKS: { to: To; label: string }[] = [
 ];
 
 /** Shared marketing top nav. Under 768px the inline links collapse into a
- *  hamburger menu — they used to be `display:none` with no replacement, which
+ *  hamburger menu. They used to be `display:none` with no replacement, which
  *  made Features / Pricing / Results / FAQ unreachable on a phone. */
 export default function SiteHeader() {
   const navigate = useNavigate();

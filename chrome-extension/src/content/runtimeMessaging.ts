@@ -3,7 +3,7 @@
  *
  * Once the extension is reloaded / updated / disabled, content scripts already
  * injected into open tabs are ORPHANED: `chrome.runtime.id` becomes undefined
- * and every messaging call throws "Extension context invalidated" — and it
+ * and every messaging call throws "Extension context invalidated", and it
  * throws SYNCHRONOUSLY, so a trailing `.catch()` never sees it. That is the
  * error the page's MutationObserver was spamming on every re-render after a
  * reload (its FIELDS_UPDATED send).
@@ -11,11 +11,11 @@
  * These helpers check the context first, swallow the synchronous throw, and run
  * a registered teardown handler exactly once so the orphaned script can
  * disconnect its observers and go quiet. A normal "no receiver" rejection (the
- * toolbar popup is simply closed) is NOT an invalidation — it is expected and
+ * toolbar popup is simply closed) is NOT an invalidation. It is expected and
  * ignored.
  */
 
-/** The slice of chrome.runtime we touch — kept minimal so tests can stub it and
+/** The slice of chrome.runtime we touch, kept minimal so tests can stub it and
  *  so we don't depend on @types/chrome's non-nullable ambient `chrome`. */
 interface MinimalRuntime {
   id?: string;
@@ -75,7 +75,7 @@ export function postToRuntime(message: unknown): void {
     });
   } catch {
     // A synchronous throw right after a valid id check means the context was
-    // invalidated between the check and the send — treat it as such.
+    // invalidated between the check and the send, treat it as such.
     fireInvalidated();
   }
 }

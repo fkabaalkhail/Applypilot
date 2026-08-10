@@ -1,5 +1,5 @@
 """
-Tests for GET /api/user/application-profile — the endpoint the Chrome extension
+Tests for GET /api/user/application-profile, the endpoint the Chrome extension
 autofills from. The key regression it guards: a signed-in user whose data came
 from an uploaded resume (ResumeProfileDB) must get a populated profile, even
 when UserSettings is empty.
@@ -142,7 +142,7 @@ def test_settings_fill_gaps_and_screening_answers(client, db_session, user):
 
     body = client.get("/api/user/application-profile").json()
 
-    # Resume had no phone/portfolio — settings fill them.
+    # Resume had no phone/portfolio: settings fill them.
     assert body["phone"] == "+1 555 999 0000"
     assert body["portfolio"] == "https://portfolio.example.com"
     # Screening answers mined from prefilled_answers.
@@ -203,7 +203,7 @@ def test_patch_address_and_eeo_then_get_returns_them(client, db_session, user):
     assert body["addressState"] == "ON"
     assert body["postalCode"] == "K1A 0B1"
     assert body["country"] == "Canada"
-    # location and addressCity are separate columns now — see
+    # location and addressCity are separate columns now, see
     # test_location_and_address_city_both_survive_one_put below.
     assert body["location"] == "Ottawa, ON, Canada"
     # EEO is a nested object with the exact camelCase keys the extension reads.
@@ -220,7 +220,7 @@ def test_patch_address_and_eeo_then_get_returns_them(client, db_session, user):
 def test_address_and_eeo_default_empty(client, db_session, user):
     """With only a resume, the new fields default to empty (never null/missing).
 
-    addressCity comes from the settings columns only — the resume's free-form
+    addressCity comes from the settings columns only, the resume's free-form
     location does NOT populate the structured city field.
     """
     db_session.add(_make_resume())
@@ -301,7 +301,7 @@ def test_github_round_trips_through_put(client, db_session, user):
 
 
 def test_saved_github_overrides_the_resume_parsed_one(client, db_session, user):
-    """The resume value is only what the parser found — an explicit edit wins."""
+    """The resume value is only what the parser found, an explicit edit wins."""
     db_session.add(_make_resume(github_url="https://github.com/parsed-wrong"))
     db_session.commit()
 
@@ -339,7 +339,7 @@ def test_screening_answers_round_trip(client, db_session, user):
 
 def test_screening_answers_use_the_exact_contract_keys(client, db_session, user):
     """The prefilled_answers keys are binding on the web app and the extension
-    too — they are what all three surfaces agree on. Pin them."""
+    too. They are what all three surfaces agree on. Pin them."""
     client.put("/api/user/application-profile", json=_SCREENING_PAYLOAD)
 
     db_session.expire_all()
@@ -370,7 +370,7 @@ def test_screening_answers_default_empty(client, db_session, user):
 def test_screening_answers_are_never_substring_mined(client, db_session, user):
     """The whole point of exact keys. "Earliest start date" must not be read as
     a date of birth, and "Work preference" must not become the user's
-    work-authorization answer — mining either would put a wrong, confident
+    work-authorization answer, mining either would put a wrong, confident
     answer on a real employer's form."""
     client.put(
         "/api/user/application-profile",
@@ -406,7 +406,7 @@ def test_screening_keys_cannot_shadow_a_mined_legacy_answer(client, db_session, 
 
 def test_sync_snapshot_carries_the_new_fields(client, db_session, user):
     """GET /api/extension/sync reuses build_application_profile, so everything
-    above must reach the extension unchanged — including the raw answer map."""
+    above must reach the extension unchanged, including the raw answer map."""
     client.put("/api/user/application-profile", json={
         **_SCREENING_PAYLOAD,
         "github": "https://github.com/wissam-e",
@@ -487,7 +487,7 @@ def test_screening_answers_round_trip_together(client, db_session, user):
 # Onboarding (frontend/src/setup/SetupWizard.tsx) PUTs its own filter state into
 # the same prefilled_answers map: {"job_types": ..., "work_authorization": ...}.
 # The literal key "work_authorization" contains the substring "authoriz", is
-# non-empty, and is inserted first — so first-match substring mining used to
+# non-empty, and is inserted first, so first-match substring mining used to
 # serve the internal enum token back as the user's answer AND block the real
 # fixed key from ever winning. The user's correction was silently discarded and
 # the extension kept autofilling "needs_sponsorship" into employers' forms.
@@ -574,8 +574,8 @@ def test_exact_saved_key_beats_a_conflicting_mined_key(client, db_session, user)
 
 def test_settings_put_merges_prefilled_answers(client, db_session, user):
     """prefilled_answers is now user-owned, user-curated data (the Profile card
-    writes the three screening answers into it). A client sending its own keys —
-    SetupWizard is the only one — must not wipe the rest of the map."""
+    writes the three screening answers into it). A client sending its own keys,
+    SetupWizard is the only one, must not wipe the rest of the map."""
     _seed_settings(db_session, prefilled_answers={"Salary expectation": "120000"})
 
     res = client.put("/settings", json={"prefilled_answers": {"job_types": "internship"}})

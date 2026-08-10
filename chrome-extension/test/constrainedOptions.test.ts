@@ -2,7 +2,7 @@
  * A deterministic profile value must never be proposed into a constrained-option
  * control (select / radio / checkbox group) when it cannot match any option.
  * Real-world trigger: Lever's "Which location are you applying for?" is a
- * <select> of company offices — filling the applicant's home city ("Ottawa")
+ * <select> of company offices, filling the applicant's home city ("Ottawa")
  * can only fail ("No option matches"). The value must be dropped so the field
  * routes to the option-aware AI pass instead.
  */

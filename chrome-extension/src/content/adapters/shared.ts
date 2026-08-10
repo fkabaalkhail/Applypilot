@@ -13,7 +13,7 @@ import type { FieldCategory } from "../../shared/types";
 
 /**
  * Structural attributes an ATS uses to *name* a field, most reliable first.
- * Deliberately excludes the visible label / aria-label — the generic classifier
+ * Deliberately excludes the visible label / aria-label, the generic classifier
  * already reads those. Adapters win precisely where the machine name carries
  * meaning the label hides (e.g. Lever's `urls[LinkedIn]`, Workday's
  * `data-automation-id`).
@@ -31,8 +31,8 @@ const FIELD_ATTRS = [
 ] as const;
 
 /**
- * Lower-cased concatenation of `el`'s structural attributes, plus — for each
- * name in `ancestorAttrs` — the value on its closest ancestor carrying that
+ * Lower-cased concatenation of `el`'s structural attributes, plus, for each
+ * name in `ancestorAttrs`: the value on its closest ancestor carrying that
  * attribute (Workday wraps the real input in a `[data-automation-id]` div).
  */
 export function attrBlob(el: HTMLElement, ancestorAttrs: readonly string[] = []): string {
@@ -95,7 +95,7 @@ export const SOCIAL_URL_RULES: readonly AttrRule[] = [
 ];
 
 /**
- * First/last name by machine name — for ATS that namespace fields
+ * First/last name by machine name, for ATS that namespace fields
  * (`candidate[first_name]`, `job_application[last_name]`). Kept to the two
  * unambiguous names; email/phone are left to the generic matcher because their
  * machine names collide with country-code / extension sub-fields.

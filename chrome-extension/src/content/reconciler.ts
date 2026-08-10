@@ -1,5 +1,5 @@
 /**
- * Layer C — Stability & Reconciliation. The autofill *core engine*.
+ * Layer C: Stability & Reconciliation. The autofill *core engine*.
  *
  * The DOM is unstable by default. This engine treats filling as continuous
  * reconciliation until the live DOM matches the canonical user data model, not
@@ -10,7 +10,7 @@
  *
  * - Write + immediate read-back (Layer B), retried up to `maxWriteAttempts`.
  * - A field is only *complete* (`stable`) once it still verifies after the
- *   render/mutation settle window (300–800ms) — timing backs up the observer,
+ *   render/mutation settle window (300–800ms), timing backs up the observer,
  *   it is never the sole correctness mechanism.
  * - Up to `maxCycles` reconciliation cycles; stop early when everything is
  *   settled. A single field that drifts is reapplied on its own, not via a
@@ -101,7 +101,7 @@ export class AutofillReconciler {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private reconciling = false;
   private pending = false;
-  /** True only while the engine is performing its own write — lets the
+  /** True only while the engine is performing its own write, lets the
    *  interaction guard tell the user's events apart from our synthetic ones. */
   private writing = false;
   /** Capture-phase listener that flags fields the user has taken over. */
@@ -154,7 +154,7 @@ export class AutofillReconciler {
       this.retireUnfillable();
       // Start background drift correction only after the initial pass, so the
       // observer never races the deterministic cycle logic above. A cancelled
-      // fill starts no observer — it must not resurrect fills the user stopped.
+      // fill starts no observer. It must not resurrect fills the user stopped.
       if (this.observe && !signal?.aborted) this.startObserver();
     }
   }
@@ -220,7 +220,7 @@ export class AutofillReconciler {
       if (s.terminal || s.released) continue; // a field the user owns is never reverted
       const control = this.registry.get(s.fieldId);
       if (s.status === "stable" && (!control || !verifyControl(control, s.value))) {
-        s.status = "mapped"; // drift detected — restart this field's reconciliation
+        s.status = "mapped"; // drift detected, restart this field's reconciliation
       }
     }
     for (const s of this.active()) this.fillOnce(s);
@@ -297,16 +297,16 @@ export class AutofillReconciler {
     const control = this.registry.get(s.fieldId);
     if (!control) {
       s.status = "drifted";
-      s.reason = "Field no longer found — rescan the page";
+      s.reason = "Field no longer found. Rescan the page";
       s.terminal = true;
       return;
     }
     if (verifyControl(control, s.value)) {
-      s.status = "verified"; // already satisfied — idempotent no-op
+      s.status = "verified"; // already satisfied, idempotent no-op
       s.reason = undefined;
       return;
     }
-    // Never wrest focus from a control the user is currently in — that is the
+    // Never wrest focus from a control the user is currently in, that is the
     // "I click a field and it immediately unclicks" symptom. Leave it for a
     // later pass once the user has moved on.
     if (this.isActiveElement(control)) return;
@@ -327,12 +327,12 @@ export class AutofillReconciler {
       }
     }
     s.status = "drifted";
-    s.reason = "Value did not stick — fill manually";
+    s.reason = "Value did not stick. Fill manually";
   }
 
   /**
    * After the full cycle budget, a field still drifting will not be rescued by
-   * more background writes — most often a custom dropdown / combobox the text
+   * more background writes, most often a custom dropdown / combobox the text
    * writer can't actually drive. Retire it so the observer stops re-focusing it
    * on every page mutation (the "dropdown keeps flickering / form unclicks"
    * churn). Stable fields are untouched, so genuine post-render drift is still
@@ -401,7 +401,7 @@ export class AutofillReconciler {
   private ensureInteractionGuard(): void {
     if (this.interactionHandler) return;
     const handler = (e: Event): void => {
-      if (this.writing) return; // our own synthetic event — not the user
+      if (this.writing) return; // our own synthetic event, not the user
       const s = this.findStateForTarget(e.target);
       if (s && !s.released) {
         s.released = true; // the user owns this field now

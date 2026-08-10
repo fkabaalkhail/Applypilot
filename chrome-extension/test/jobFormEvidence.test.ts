@@ -39,7 +39,7 @@ describe("looksLikeJobApplication", () => {
     expect(looksLikeJobApplication(fields("fullName", "email", "unknown"))).toBe(false);
   });
 
-  it("accepts a résumé upload on its own — minimal apply forms exist", () => {
+  it("accepts a résumé upload on its own, minimal apply forms exist", () => {
     expect(looksLikeJobApplication(fields("resumeUpload"))).toBe(true);
   });
 
@@ -112,7 +112,7 @@ describe("looksLikeJobApplication", () => {
   });
 
   /** Field of Study was split out of the `degree` rule. It is the same kind of
-   *  evidence — a structured education field — so it has to carry the same
+   *  evidence (a structured education field) so it has to carry the same
    *  weight, or a page whose only education control is labelled "Major" stops
    *  mounting the panel it used to mount. */
   it("accepts Field of Study paired with a weak one (major + LinkedIn)", () => {
@@ -136,7 +136,7 @@ describe("looksLikeJobApplication", () => {
   it("accepts two weak fields when the page title names a job application", () => {
     expect(
       looksLikeJobApplication(fields("linkedin", "currentTitle"), {
-        title: "Job Application — Software Engineer",
+        title: "Job Application, Software Engineer",
       })
     ).toBe(true);
   });

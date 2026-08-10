@@ -38,7 +38,7 @@ export function matchPattern(pattern: string, url: string): boolean {
 }
 
 export interface SiteEntry {
-  /** Stable id — matches the adapter id and Jobright's registry key. */
+  /** Stable id: matches the adapter id and Jobright's registry key. */
   id: string;
   /** Human label for the panel ("Workday", "iCIMS"). */
   label: string;
@@ -571,7 +571,7 @@ export function detectSite(host: string, url: string, opts: DetectOpts = {}): Si
   try {
     path = new URL(url).pathname;
   } catch {
-    /* malformed url — gate on "/" */
+    /* malformed url, gate on "/" */
   }
   for (const e of SITE_REGISTRY) {
     if (e.iframeOnly && !opts.inIframe) continue;

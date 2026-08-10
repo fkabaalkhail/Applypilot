@@ -114,12 +114,12 @@ describe("readGapAnswer", () => {
 });
 
 /**
- * A radio, unlike the <select> it replaced, cannot be deselected — and the modal
+ * A radio, unlike the <select> it replaced, cannot be deselected, and the modal
  * offers no reset, only "Skip for now", which throws away EVERY answer. So a
  * mis-click on a sponsorship question was unrecoverable, and went straight into
  * the form the employer reads.
  */
-describe("gapInputHTML — a radio group stays un-answerable", () => {
+describe("gapInputHTML, a radio group stays un-answerable", () => {
   it("prepends a default 'No answer' radio so a mis-click can be undone", () => {
     const root = mount(gapInputHTML(gap({ controlType: "radioGroup", options: ["Yes", "No"] }), 0));
     const radios = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
@@ -141,7 +141,7 @@ describe("gapInputHTML — a radio group stays un-answerable", () => {
     expect(readGapAnswer(root, 0)).toBe("");
   });
 
-  it("leaves a checkbox GROUP alone — a checkbox already un-ticks", () => {
+  it("leaves a checkbox GROUP alone, a checkbox already un-ticks", () => {
     const root = mount(gapInputHTML(gap({ controlType: "checkboxGroup", options: ["X", "Y"] }), 0));
     expect(root.querySelectorAll('input[type="radio"]').length).toBe(0);
     expect([...root.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].map((c) => c.value))
@@ -163,8 +163,8 @@ describe("harvestGapOptions", () => {
     const asked: string[][] = [];
     const gaps = [
       combo("a"),
-      gap({ fieldId: "b", controlType: "text" }),                      // free text — never asked
-      gap({ fieldId: "c", controlType: "select", options: ["Yes"] }),  // already known — never asked
+      gap({ fieldId: "b", controlType: "text" }),                      // free text, never asked
+      gap({ fieldId: "c", controlType: "select", options: ["Yes"] }),  // already known, never asked
     ];
     await harvestGapOptions(gaps, async (ids) => { asked.push(ids); return {}; });
     expect(asked).toEqual([["a"]]);
@@ -200,7 +200,7 @@ describe("harvestGapOptions", () => {
 /**
  * The placeholder must be transient. Keying it purely on "constrained + no
  * options" would leave a widget that yielded nothing showing "Loading choices…"
- * forever, with no way to answer — the opposite of the free-text fallback.
+ * forever, with no way to answer, the opposite of the free-text fallback.
  */
 describe("gapControlHTML", () => {
   const combo = gap({ controlType: "combobox", options: [] });
@@ -235,7 +235,7 @@ describe("gapControlHTML", () => {
  * Drift guard. isBlindConstrainedGap decides whether a failed answer may still
  * be kept; gapInputHTML decides what the user was actually offered. If the two
  * ever disagree, a real answer gets silently dropped or an unusable one gets
- * saved into the profile — so pin them to each other rather than to a
+ * saved into the profile, so pin them to each other rather than to a
  * hand-written list of control types.
  */
 describe("isBlindConstrainedGap agrees with what the modal renders", () => {
@@ -260,13 +260,13 @@ describe("isBlindConstrainedGap agrees with what the modal renders", () => {
     }
   });
 
-  it("is false once the options are known — the user picked a real choice", () => {
+  it("is false once the options are known, the user picked a real choice", () => {
     for (const t of ["select", "combobox", "customDropdown", "radioGroup", "ariaRadioGroup", "checkboxGroup"] as const) {
       expect(isBlindConstrainedGap(gap({ controlType: t, options: ["A"] })), t).toBe(false);
     }
   });
 
-  it("is false for a bare checkbox — it renders a real Yes/No pair, not a text box", () => {
+  it("is false for a bare checkbox. It renders a real Yes/No pair, not a text box", () => {
     expect(isBlindConstrainedGap(gap({ controlType: "checkbox", options: [] }))).toBe(false);
     const root = mount(gapControlHTML(gap({ controlType: "checkbox", options: [] }), 0, false));
     expect(root.querySelectorAll('input[type="radio"]').length).toBe(3);
@@ -276,7 +276,7 @@ describe("isBlindConstrainedGap agrees with what the modal renders", () => {
 /**
  * The modal is interactive the moment it opens; the harvest settles up to four
  * seconds later. Rebuilding gapsBody wholesale at that point erased every
- * answer typed in the meantime — the user could then hit Save & fill on a form
+ * answer typed in the meantime, the user could then hit Save & fill on a form
  * they had just filled in and be told "only filled 0 of 2". Only the
  * "Loading choices…" placeholders may be replaced: they hold no input, so
  * nothing can be lost, and they are exactly the rows that must change.
@@ -315,7 +315,7 @@ describe("resolveGapPlaceholders", () => {
     expect(body.querySelector('.ap-gap-choices[data-i="2"]')).toBe(radios);
   });
 
-  it("still frees a row whose harvest yielded nothing — placeholder becomes free text", () => {
+  it("still frees a row whose harvest yielded nothing, placeholder becomes free text", () => {
     const g = gaps();
     const body = mount(gapsBodyHTML(g, true));
     expect(body.querySelectorAll(".ap-gap-loading").length).toBe(1);
@@ -356,12 +356,12 @@ describe("resolveGapPlaceholders", () => {
 /**
  * The tests above pin resolveGapPlaceholders; these pin the CALL SITE that uses
  * it. openGapsModal shows the modal immediately and settles the harvest seconds
- * later, and swapping that settle back to a wholesale renderGaps() re-render —
- * the answer-erasing bug a fix round already closed — left the whole suite
+ * later, and swapping that settle back to a wholesale renderGaps() re-render,
+ * the answer-erasing bug a fix round already closed, left the whole suite
  * green. So drive the real function: a mounted panel, a slow harvest, an answer
  * typed while it is in flight.
  */
-describe("openGapsModal — the harvest settle", () => {
+describe("openGapsModal, the harvest settle", () => {
   const gaps = (): AnswerGap[] => [
     gap({ fieldId: "a", question: "Country", controlType: "combobox", options: [] }),
     gap({ fieldId: "b", question: "City", controlType: "text", options: [] }),
@@ -382,7 +382,7 @@ describe("openGapsModal — the harvest settle", () => {
     const body = root.querySelector<HTMLElement>("#ap-gaps-body")!;
     const g = gaps();
 
-    // A harvest that settles a tick later — the modal is live in the meantime.
+    // A harvest that settles a tick later, the modal is live in the meantime.
     const settled = __openGapsModalForTests(g, async () => {
       await Promise.resolve();
       return { a: ["Canada", "United States"] };
@@ -432,7 +432,7 @@ describe("openGapsModal — the harvest settle", () => {
  * The banner may only claim what actually happened, and what happens now is
  * confined to THIS page: there is no answer memory left, so no wording may
  * promise a future application. Separately, "filled" must not be said about an
- * answer we deliberately threw away — answersWorthRemembering discards a value
+ * answer we deliberately threw away, answersWorthRemembering discards a value
  * the widget rejected precisely so the question is asked again.
  */
 describe("gapsSaveBanner", () => {
@@ -466,14 +466,14 @@ describe("gapsSaveBanner", () => {
     const one = gapsSaveBanner(1, 0, 1);
     expect(one.text).not.toMatch(/\bSaved\b/); // the old wording claimed exactly this
     expect(one.text).toBe(
-      "Filled 0 of 1. This form rejected an answer, so we didn't keep it — we'll ask again next time."
+      "Filled 0 of 1. This form rejected an answer, so we didn't keep it. We'll ask again next time."
     );
     expect(one.tone).toBe("warn");
   });
 
   it("pluralises a multi-answer discard", () => {
     expect(gapsSaveBanner(3, 1, 2).text).toBe(
-      "Filled 1 of 3. This form rejected 2 answers, so we didn't keep them — we'll ask again next time."
+      "Filled 1 of 3. This form rejected 2 answers, so we didn't keep them. We'll ask again next time."
     );
   });
 });

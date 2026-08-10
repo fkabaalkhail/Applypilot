@@ -64,7 +64,7 @@ const CATEGORY_TO_PROFILE_KEY: Partial<Record<FieldCategory, PersistableProfileK
   currentTitle: "currentTitle",
   workAuthorization: "workAuthorization",
   // Category name ≠ profile key for the two oldest screening answers; the new
-  // ones below follow the same rule — the category is named after the QUESTION
+  // ones below follow the same rule, the category is named after the QUESTION
   // ("startDate" = "when can you start?"), the key after the profile field.
   sponsorship: "requiresSponsorship",
   salary: "salaryExpectation",
@@ -83,7 +83,7 @@ const CATEGORY_TO_PROFILE_KEY: Partial<Record<FieldCategory, PersistableProfileK
  *  a demographic dropdown once in the missing-info modal refills it on every
  *  future application via resolveProfileValue. `eeoOther` is the leftover
  *  bucket (transgender / LGBTQ / generic "demographic" prompts) and still has
- *  no profile slot — those answers stay device-local. */
+ *  no profile slot, those answers stay device-local. */
 const CATEGORY_TO_EEO_KEY: Partial<Record<FieldCategory, keyof NonNullable<UserApplicationProfile["eeo"]>>> = {
   eeoGender: "gender",
   eeoGenderIdentity: "genderIdentity",

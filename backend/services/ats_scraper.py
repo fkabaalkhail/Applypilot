@@ -1,5 +1,5 @@
 """
-ATS Scraper — directly polls public ATS (Applicant Tracking System) APIs
+ATS Scraper, directly polls public ATS (Applicant Tracking System) APIs
 for job listings with direct company apply links.
 
 Supported platforms:
@@ -7,7 +7,7 @@ Supported platforms:
 - Lever (api.lever.co)
 - Ashby (api.ashbyhq.com)
 - SmartRecruiters (api.smartrecruiters.com)
-- Workday (per-tenant CxS JSON endpoints — registry entries that carry a
+- Workday (per-tenant CxS JSON endpoints, registry entries that carry a
   ``workday_url_template``)
 
 These APIs are public and intended for job board consumption.
@@ -15,7 +15,7 @@ No authentication required.
 
 Two consumption shapes:
 - ``scrape_all`` / ``scrape_company`` / ``_scrape_<platform>`` return filtered
-  ``list[ATSJob]`` (the original interface — tests and callers rely on it).
+  ``list[ATSJob]`` (the original interface, tests and callers rely on it).
 - ``scrape_board`` returns a ``BoardSnapshot``: the filtered jobs PLUS the
   full set of live listing URLs on the board, which is what lets the ingest
   reconcile its rows against reality (mark removed / revive) instead of only
@@ -49,7 +49,7 @@ class ATSJob:
     department: Optional[str] = None
     work_type: Optional[str] = None  # Remote, On Site, Hybrid
     description: str = ""  # Plain text, captured from the board API when it carries content
-    external_id: str = ""  # The source's own posting id — stable across URL changes
+    external_id: str = ""  # The source's own posting id, stable across URL changes
     employment_type: str = ""  # Source-declared commitment (Intern / Full-time / …)
     salary_text: str = ""  # Source-structured pay range, verbatim-ish
     detail_ref: str = ""  # Connector-specific ref for a lazy detail fetch (Workday externalPath)
@@ -60,7 +60,7 @@ class BoardSnapshot:
     """One board crawl: what to ingest, and what the board says is live.
 
     ``all_urls`` covers EVERY listing on the board, including ones the
-    entry-level/NA filters rejected — reconciliation must never mistake
+    entry-level/NA filters rejected, reconciliation must never mistake
     "filtered out" for "taken down". ``complete`` is False when the fetch was
     partial (huge Workday boards); an incomplete snapshot must not be used to
     mark rows removed.
@@ -221,7 +221,7 @@ _LEGACY_ATS_COMPANIES: list[tuple[str, str, str]] = [
 ]
 
 
-# Canonical company list — loaded from backend/data/ats_companies.json.
+# Canonical company list: loaded from backend/data/ats_companies.json.
 # Falls back to the legacy hardcoded list if the registry can't be read.
 try:
     from backend.data.company_registry import load_companies
@@ -403,7 +403,7 @@ class ATSScraper:
     async def scrape_all(
         self, companies: Optional[list[tuple[str, str, str]]] = None
     ) -> list[ATSJob]:
-        """Scrape the given (platform, slug, name) companies — the full
+        """Scrape the given (platform, slug, name) companies, the full
         registry when omitted. Returns filtered job list."""
         all_jobs: list[ATSJob] = []
         if companies is None:
@@ -438,7 +438,7 @@ class ATSScraper:
     ) -> BoardSnapshot:
         """Fetch one board completely: filtered jobs + the full live-URL set.
 
-        Raises on fetch failure (callers isolate per-board errors) — a failed
+        Raises on fetch failure (callers isolate per-board errors), a failed
         board must never produce an empty snapshot that reads as "everything
         was taken down"."""
         if platform == "greenhouse":
@@ -744,7 +744,7 @@ class ATSScraper:
         The endpoint base comes from the registry's ``workday_url_template``
         ("https://{tenant}.wd{n}.myworkdayjobs.com/wday/cxs/{tenant}/{site}").
         POST {base}/jobs pages 20 at a time, newest first. Descriptions are NOT
-        in the list payload — fetch_workday_detail() fills them per new job.
+        in the list payload, fetch_workday_detail() fills them per new job.
 
         Returns (listings, complete, total_on_board). Big boards (Amazon-sized)
         exceed the page cap; complete=False tells reconciliation to stand down.
@@ -780,7 +780,7 @@ class ATSScraper:
             data = response.json()
             postings = data.get("jobPostings", []) or []
             # Some tenants only report "total" on the first page (BMO returns
-            # 0 afterwards) — keep the largest figure seen, never regress.
+            # 0 afterwards), keep the largest figure seen, never regress.
             total = max(total, int(data.get("total") or 0))
 
             for posting in postings:
@@ -888,7 +888,7 @@ async def fetch_workday_detail(
 ) -> dict:
     """Fetch one Workday posting's detail (description + timeType).
 
-    GET {cxs_base}{externalPath} → jobPostingInfo. Called for NEW jobs only —
+    GET {cxs_base}{externalPath} → jobPostingInfo. Called for NEW jobs only,
     one request per job, same budget shape as the SmartRecruiters detail fetch.
     Returns {"description": str, "employment_type": str}; empty dict on miss.
     """

@@ -5,7 +5,7 @@
  * The `/account` page mimics Workday's create-account gate:
  *  - password + verifyPassword inputs tagged only by data-automation-id
  *  - a consent checkbox that is `data-automation-id="createAccountCheckbox"`,
- *    visually hidden, NOT `required`, and has NO agreement-worded label — the
+ *    visually hidden, NOT `required`, and has NO agreement-worded label, the
  *    exact shape the old filter skipped ("0 agreement boxes")
  *  - a "Create Account" button whose page-side handler refuses to submit unless
  *    the consent box is checked AND both passwords are filled and match
@@ -28,9 +28,9 @@ const REG_EMAIL = "wd-e2e@probe.dev";
 const REG_PASSWORD = "Probe#Pass123";
 
 const html = (body) =>
-  `<!doctype html><html><head><meta charset="utf-8"><title>Acme — Workday</title></head><body>${body}</body></html>`;
+  `<!doctype html><html><head><meta charset="utf-8"><title>Acme, Workday</title></head><body>${body}</body></html>`;
 
-// The consent checkbox is hidden and unlabelled — only its automation-id marks
+// The consent checkbox is hidden and unlabelled, only its automation-id marks
 // it. The page script gates Create Account on it, exactly like Workday.
 const ACCOUNT = html(`
   <h1>Create Account</h1>
@@ -124,7 +124,7 @@ async function togglePanel(sw, urlPrefix) {
 const results = [];
 const check = (label, ok, extra = "") => {
   results.push(ok);
-  console.log(`   ${ok ? "✅" : "❌"} ${label}${extra ? ` — ${extra}` : ""}`);
+  console.log(`   ${ok ? "✅" : "❌"} ${label}${extra ? `: ${extra}` : ""}`);
 };
 
 async function main() {
@@ -151,7 +151,7 @@ async function main() {
   const pg = await ctx.newPage();
   await pg.goto(`${origin}/account`, { waitUntil: "load" });
   // A bare email+password gate is no job-application evidence, and 127.0.0.1
-  // is not a Workday host — the panel no longer auto-mounts here (on real
+  // is not a Workday host, the panel no longer auto-mounts here (on real
   // Workday the host-matched adapter mounts it). Open it as the user would.
   await togglePanel(sw, origin);
   await pg.waitForSelector("#applypilot-overlay-host", { state: "attached", timeout: 10000 });
@@ -167,7 +167,7 @@ async function main() {
 
   await pg.locator("#ap-btn-autofill").click();
 
-  // The flow fills the wall and then parks at the panel's advance gate — it
+  // The flow fills the wall and then parks at the panel's advance gate, it
   // never presses Create Account by itself; the USER turns every page, the
   // account wall included. Press the gate as the user would.
   await pg.waitForFunction(

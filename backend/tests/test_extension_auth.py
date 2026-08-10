@@ -102,7 +102,7 @@ def test_token_rejects_reused_code(client, user):
     ).json()["code"]
 
     assert client.post("/auth/extension/token", json={"code": code, "code_verifier": verifier}).status_code == 200
-    # Single use — a replay fails.
+    # Single use: a replay fails.
     assert client.post("/auth/extension/token", json={"code": code, "code_verifier": verifier}).status_code == 400
 
 

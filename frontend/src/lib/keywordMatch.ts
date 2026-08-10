@@ -1,7 +1,7 @@
 // Client-side keyword/ATS analysis. Given the job's important keywords (matched
 // + missing, from the step-1 analysis) and the CURRENT resume document, compute
 // per-keyword coverage so the ATS panel and the heatmap update live as the user
-// edits — no backend round-trip, no LLM.
+// edits, no backend round-trip, no LLM.
 
 import { documentToText, type ResumeDocument } from "./resumeDocument";
 

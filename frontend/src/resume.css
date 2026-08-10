@@ -1,4 +1,4 @@
-/* ===== Resume Pages — Shared Styles ===== */
+/* ===== Resume Pages, Shared Styles ===== */
 
 /* ===== New Resume Page ===== */
 .resume-page-new {
@@ -891,7 +891,7 @@
 }
 
 @media (max-width: 640px) {
-  /* 4rem of side padding on a 320px screen is 20% of the viewport — it is what
+  /* 4rem of side padding on a 320px screen is 20% of the viewport. It is what
      forces the table to scroll. Give the content the width back. */
   .resume-page-new { padding: 1.5rem 1rem; }
 

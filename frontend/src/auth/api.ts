@@ -35,7 +35,7 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle 403 "Email verification required" — redirect to verify page
+    // Handle 403 "Email verification required", redirect to verify page
     if (
       error.response?.status === 403 &&
       error.response?.data?.detail === "Email verification required"
@@ -58,7 +58,7 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch {
         localStorage.removeItem("access_token");
-        // In the extension embed the modal has its own token — don't hijack the
+        // In the extension embed the modal has its own token, don't hijack the
         // iframe to /sign-in; let the caller (embed axios) handle the 401.
         if (!isEmbedded()) window.location.href = "/sign-in";
       }

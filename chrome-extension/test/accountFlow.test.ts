@@ -105,7 +105,7 @@ describe("runAccountWall", () => {
   });
 
   it("signup: detects and ticks Workday's createAccountCheckbox (hidden, unlabelled, not required)", async () => {
-    // Workday's consent is a native checkbox with only a data-automation-id —
+    // Workday's consent is a native checkbox with only a data-automation-id,
     // no `required`, no agreement-worded label, often visually hidden. The old
     // filter missed it entirely ("0 agreement boxes"), leaving Create Account
     // inert. It must now be found by its automation-id and ticked.

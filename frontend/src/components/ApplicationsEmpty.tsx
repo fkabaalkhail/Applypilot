@@ -4,8 +4,8 @@ import { MagnifyingGlass } from "@phosphor-icons/react";
 /**
  * Empty state for the Applications page.
  *
- * The illustration deliberately draws the card this page will be made of — logo
- * tile, role, company — so the blank screen previews its own filled state. The
+ * The illustration deliberately draws the card this page will be made of, logo
+ * tile, role, company, so the blank screen previews its own filled state. The
  * check seal is the only saturated element; everything else stays in the
  * hairline greys the real cards use.
  */
@@ -27,7 +27,7 @@ function ApplicationsArt() {
           <stop offset="0%" stopColor="#665efd" />
           <stop offset="100%" stopColor="#533afd" />
         </linearGradient>
-        {/* The front card is white on a white panel — without a shadow it is only
+        {/* The front card is white on a white panel, without a shadow it is only
           * a hairline, and the whole stack reads as a smudge. */}
         <filter id="app-empty-lift" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="5" stdDeviation="5" floodColor="#0d253d" floodOpacity="0.10" />
@@ -85,7 +85,7 @@ export default function ApplicationsEmpty() {
       <h2>No applications yet</h2>
       <p>
         Apply from the jobs feed or with the Tailrd extension, and each one is tracked
-        here — the company, the role, and the day you applied.
+        here: the company, the role, and the day you applied.
       </p>
       <Link to="/app" className="empty-state-cta">
         <MagnifyingGlass size={16} weight="bold" /> Browse jobs

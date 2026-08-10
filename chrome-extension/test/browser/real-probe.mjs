@@ -1,7 +1,7 @@
 /**
  * Robust real-ATS probe (hang-proof). Loads the packaged extension, opens a real
- * public Greenhouse/Lever application form, and reports — with a hard overall
- * timeout — exactly what happens: how many form fields the PAGE actually has,
+ * public Greenhouse/Lever application form, and reports, with a hard overall
+ * timeout, exactly what happens: how many form fields the PAGE actually has,
  * whether the extension detected them (overlay mount + [Tailrd scan] diagnostics),
  * and, if so, the result of driving Autofill. Viewport screenshots only.
  *
@@ -104,6 +104,6 @@ async function run() {
 // Hard overall timeout so the probe can never hang the session.
 await Promise.race([
   run(),
-  sleep(120000).then(() => { console.log("\n⏱ probe hard-timeout (120s) — exiting"); process.exit(0); }),
+  sleep(120000).then(() => { console.log("\n⏱ probe hard-timeout (120s), exiting"); process.exit(0); }),
 ]);
 process.exit(0);

@@ -1,9 +1,9 @@
 /**
- * LIVE-page forensic harness — injected into a real ATS page (MAIN world) by
+ * LIVE-page forensic harness: injected into a real ATS page (MAIN world) by
  * live-probe.mjs. Runs the exact shipping engine (scanPage → driver/combobox/
  * reconciler routing, mirroring contentScript.fillItems) against the real form
  * and reports, per field: what the scanner saw, what it proposed, how the fill
- * routed, and what actually committed. Pure diagnostics — no overlay/network.
+ * routed, and what actually committed. Pure diagnostics, no overlay/network.
  */
 import { scanPage } from "../../src/content/formScanner";
 import type { RuntimeControl } from "../../src/content/formScanner";

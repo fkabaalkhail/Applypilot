@@ -42,7 +42,7 @@ export function ResumeStep({ onUploaded }: Props) {
       )}
       {(fileError || apiError) && <div className="setup-error" role="alert">{fileError || apiError}</div>}
       <p className="setup-resume-privacy">
-        We use your resume only to match you with the right jobs and tailor your applications —
+        We use your resume only to match you with the right jobs and tailor your applications,
         it's never shared with third parties.
       </p>
     </div>

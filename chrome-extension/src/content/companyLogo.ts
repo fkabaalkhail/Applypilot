@@ -1,9 +1,9 @@
 /**
- * Company logo + monogram resolver for the panel's job card. On-device only —
+ * Company logo + monogram resolver for the panel's job card. On-device only,
  * reads the page's own icons (apple-touch-icon, favicon, og:image); never calls
  * an external service. Always returns a monogram + deterministic color so the
  * card renders a clean colored initial when the page exposes no usable image
- * (or when the page CSP blocks the <img> — the caller falls back on error).
+ * (or when the page CSP blocks the <img>, the caller falls back on error).
  */
 
 export interface CompanyLogo {
@@ -45,7 +45,7 @@ function absolute(doc: Document, href: string | null): string | null {
   }
 }
 
-/** The best declared icon link — apple-touch-icon (clean square) wins, else the
+/** The best declared icon link, apple-touch-icon (clean square) wins, else the
  *  largest favicon by declared size. Null when the page declares none. */
 function iconFromLinks(doc: Document): string | null {
   const links = Array.from(

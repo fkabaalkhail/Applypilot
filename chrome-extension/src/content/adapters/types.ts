@@ -37,7 +37,7 @@ export interface SiteAdapter {
   id: string;
   /** Human label for the panel ("Workday", "iCIMS"); falls back to id. */
   label?: string;
-  /** Detection — pure, host/url only, no DOM. */
+  /** Detection: pure, host/url only, no DOM. */
   match(host: string, url: string): boolean;
   /** Correct a field's category; undefined keeps the generic Classification. */
   classify?(ctx: FieldContext, generic: Classification): Classification | undefined;
@@ -47,7 +47,7 @@ export interface SiteAdapter {
   fillOperation?(ctx: FillContext): Promise<AdapterFillResult> | undefined;
   /** The step's advance (Next/Continue) button, when the site needs an exact
    *  selector. The generic text-based discovery runs when undefined. The
-   *  returned button is still terminal-checked — a Submit is never clicked. */
+   *  returned button is still terminal-checked, a Submit is never clicked. */
   advanceButton?(scope: HTMLElement): HTMLElement | null;
   /** The job posting's apply-entry button (leads INTO the application), when
    *  the site has a reliable selector (Workday: adventureButton). Only

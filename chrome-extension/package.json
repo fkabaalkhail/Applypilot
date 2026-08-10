@@ -3,7 +3,7 @@
   "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "ApplyPilot Chrome extension — detects job application forms and autofills them from the user's ApplyPilot profile.",
+  "description": "ApplyPilot Chrome extension that detects job application forms and autofills them from the user's ApplyPilot profile.",
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",

@@ -1,4 +1,4 @@
-// Structured resume document — the single source of truth shared by the
+// Structured resume document: the single source of truth shared by the
 // renderer (preview), the PDF export, and the DOCX export. Mirrors the backend
 // Pydantic models in backend/schemas/resume_document.py.
 
@@ -101,7 +101,7 @@ export function documentToText(doc: ResumeDocument): string {
       if (items.length) lines.push(`${category}: ${items.join(", ")}`);
     }
     for (const item of section.items) {
-      const heading = [item.title, item.subtitle].filter(Boolean).join(" — ");
+      const heading = [item.title, item.subtitle].filter(Boolean).join(", ");
       const dates = [item.start_date, item.end_date].filter(Boolean).join(" - ");
       const head = [heading, dates].filter(Boolean).join("  ");
       if (head) lines.push(head);

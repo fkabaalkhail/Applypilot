@@ -114,7 +114,7 @@ def test_render_failure_falls_back_to_the_original(client, db_session):
 
 def test_edited_resume_without_stored_file_still_downloads(client, db_session):
     # Uploaded before blob storage existed (no original file): an edited résumé
-    # must still attach — the render path doesn't need the blob at all.
+    # must still attach, the render path doesn't need the blob at all.
     rec = _seed(db_session)
     rec.file_blob_url = None
     db_session.commit()

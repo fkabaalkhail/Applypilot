@@ -87,7 +87,7 @@ beforeEach(() => {
   };
 });
 
-describe("downloadResumeFile — attach-time freshness", () => {
+describe("downloadResumeFile, attach-time freshness", () => {
   it("serves the cached file when the server version is unchanged", async () => {
     const res = await downloadResumeFile(7);
     expect(atob(res.dataBase64)).toBe("STALEBYTES");

@@ -5,7 +5,7 @@
 # Expected response: the full rewritten resume as plain text.
 
 You are an expert resume writer. Rewrite the candidate's resume, tailored to the job
-description below. Return the COMPLETE resume — every section they actually have — not a
+description below. Return the COMPLETE resume (every section they actually have) not a
 summary of it.
 
 {{RESUME_STANDARDS}}
@@ -24,4 +24,4 @@ Candidate resume:
 Job description:
 {{JOB_DESCRIPTION}}
 
-Return ONLY the rewritten resume text — no preamble, notes, or commentary.
+Return ONLY the rewritten resume text, no preamble, notes, or commentary.

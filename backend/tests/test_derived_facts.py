@@ -87,7 +87,7 @@ def test_non_yes_no_thresholds_and_phrasings():
     p = profile(dateOfBirth="2004-06-01")  # 22 today
     assert answer("Are you over the age of 18?", prof=p) == "Yes"
     assert answer("Are you 18+?", prof=p) == "Yes"
-    assert answer("Minimum age of 21 — do you meet it?", prof=p) == "Yes"
+    assert answer("Minimum age of 21, do you meet it?", prof=p) == "Yes"
     assert answer("Are you at least 25 years of age?", prof=p) == "No"
 
 

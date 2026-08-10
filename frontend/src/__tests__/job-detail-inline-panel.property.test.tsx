@@ -659,7 +659,7 @@ describe("Feature: job-detail-inline-panel, Property 5: Selection highlight excl
 
         allCards.forEach((card) => {
           if (card.textContent?.includes(selectedJob.title) && card.classList.contains("selected")) {
-            // This is the selected card — already verified above
+            // This is the selected card, already verified above
             return;
           }
           if (card !== selectedCards[0]) {
