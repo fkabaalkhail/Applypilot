@@ -44,7 +44,7 @@ class FieldOutcome(BaseModel):
     category: str = ""
     # "profile" | "backend" | "device" | "user"
     tier: str = ""
-    # "derived" | "rule" | "memory" | "ai" | ""  ("pass" is a Python keyword)
+    # "derived" | "rule" | "ai" | ""  ("pass" is a Python keyword)
     pass_: str = Field(default="", alias="pass")
     expected_value_present: bool = False
     observed_value_present: bool = False

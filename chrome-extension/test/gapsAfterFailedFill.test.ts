@@ -19,7 +19,7 @@
  *
  * The third case is the long "…with BMO Financial Group…" question: naming the
  * employer made it one-off, and a one-off question was dropped from the modal
- * entirely rather than merely kept out of the answer bank.
+ * entirely rather than merely asked-and-not-persisted.
  */
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { scanPage } from "../src/content/formScanner";
@@ -86,7 +86,7 @@ describe("gap modal asks about what the page still has blank", () => {
   });
 });
 
-describe("one-off questions are asked, just never remembered", () => {
+describe("one-off questions are asked, and persist nowhere", () => {
   const LONG_Q =
     "Are you presently involved in any outside activities that would continue " +
     "after obtaining employment with BMO Financial Group?";
@@ -96,22 +96,21 @@ describe("one-off questions are asked, just never remembered", () => {
     expect(questionsOffered({ company: "BMO Financial Group" })).toContain(LONG_Q);
   });
 
-  it("but never banks its answer — it cannot transfer to another application", () => {
+  it("and persists nothing — the answer is about this application only", () => {
     document.body.innerHTML = prompt(LONG_Q);
     const { fields } = scanPage(PROFILE, true);
     const gaps = selectAnswerGaps(fields, { company: "BMO Financial Group" });
     const gap = gaps.find((g) => g.question === LONG_Q)!;
 
     const plan = planAnswerSaves([{ gap, value: "No" }]);
-    expect(plan.bank).toEqual([]);
-    expect(plan.local).toEqual([]);
+    expect(plan).toEqual({ profilePatch: {} });
   });
 
-  it("a question that does NOT name the employer is still banked", () => {
+  it("nor does a generic screening question with no profile slot", () => {
     document.body.innerHTML = prompt("Do you hold a valid social insurance number (SIN)?");
     const { fields } = scanPage(PROFILE, true);
     const gaps = selectAnswerGaps(fields, { company: "BMO Financial Group" });
     const plan = planAnswerSaves([{ gap: gaps[0], value: "Yes" }]);
-    expect(plan.bank.map((b) => b.answer)).toEqual(["Yes"]);
+    expect(plan).toEqual({ profilePatch: {} });
   });
 });

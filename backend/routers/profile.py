@@ -55,6 +55,12 @@ class EeoOut(BaseModel):
     hispanicLatino: str = ""
     veteranStatus: str = ""
     disabilityStatus: str = ""
+    # Second wave (2026-08-09 profile-parity contract). genderIdentity and
+    # sexualOrientation were already in the extension's type with nothing behind
+    # them; pronouns are new. Option vocabularies are pinned in the contract.
+    genderIdentity: str = ""
+    pronouns: str = ""
+    sexualOrientation: str = ""
 
 
 class ApplicationProfileOut(BaseModel):
@@ -63,8 +69,9 @@ class ApplicationProfileOut(BaseModel):
     email: str = ""
     phone: str = ""
     location: str = ""
-    # Structured mailing address. addressCity mirrors the ``city`` column that
-    # also backs ``location``; the rest come from their own columns (Task C1).
+    # Structured mailing address. addressCity has its own ``address_city``
+    # column and falls back to ``city`` (which backs ``location``) while that
+    # column is still blank — the two shared one column until 2026-08-09.
     addressStreet: str = ""
     addressCity: str = ""
     addressState: str = ""
@@ -83,6 +90,18 @@ class ApplicationProfileOut(BaseModel):
     # backend/services/derived_facts.py. Blank means every age resolver
     # abstains, which is the honest default.
     dateOfBirth: str = ""
+    # Screening answers the applicant states once and every ATS then asks for.
+    # Stored in prefilled_answers under the exact keys in _SCREENING_KEYS; blank
+    # means "not answered", never "no". Filling these is what lets /api/fill
+    # answer the questions with no LLM call at all.
+    willingToRelocate: str = ""
+    workPreference: str = ""
+    noticePeriod: str = ""
+    earliestStartDate: str = ""
+    yearsOfExperience: str = ""
+    securityClearance: str = ""
+    driversLicense: str = ""
+    languages: str = ""
     education: list[EducationEntry] = []
     experience: list[ExperienceEntry] = []
     skills: list[str] = []
@@ -102,6 +121,9 @@ class EeoIn(BaseModel):
     hispanicLatino: str | None = None
     veteranStatus: str | None = None
     disabilityStatus: str | None = None
+    genderIdentity: str | None = None
+    pronouns: str | None = None
+    sexualOrientation: str | None = None
 
 
 class ApplicationProfileIn(BaseModel):
@@ -116,20 +138,32 @@ class ApplicationProfileIn(BaseModel):
     email: str | None = None
     phone: str | None = None
     location: str | None = None
-    # Structured mailing address (addressCity persists to the ``city`` column,
-    # same as ``location``; send one consistently).
+    # Structured mailing address. addressCity has its own column now, so a PUT
+    # carrying both it and ``location`` persists both (it used to drop one).
     addressStreet: str | None = None
     addressCity: str | None = None
     addressState: str | None = None
     postalCode: str | None = None
     country: str | None = None
     linkedin: str | None = None
+    # Writable since 2026-08-09: github used to be read-only here, so the web
+    # app wrote it to the resume row and the extension kept it device-local.
+    github: str | None = None
     portfolio: str | None = None
     currentTitle: str | None = None
     workAuthorization: str | None = None
     requiresSponsorship: str | None = None
     salaryExpectation: str | None = None
     dateOfBirth: str | None = None
+    # Screening answers — persisted into prefilled_answers under _SCREENING_KEYS.
+    willingToRelocate: str | None = None
+    workPreference: str | None = None
+    noticePeriod: str | None = None
+    earliestStartDate: str | None = None
+    yearsOfExperience: str | None = None
+    securityClearance: str | None = None
+    driversLicense: str | None = None
+    languages: str | None = None
     eeo: EeoIn | None = None
 
 
@@ -168,6 +202,31 @@ _SALARY_KEY = "Salary expectation"
 # either the value under this exact key or absent.
 _DOB_KEY = "Date of birth"
 
+# The eight screening answers added by the 2026-08-09 profile-parity contract,
+# API field → the EXACT prefilled_answers key. These keys are binding: the web
+# app, the extension and this router must all agree on them byte for byte, so
+# never rename one. (``driversLicense`` / "Driver's licence" mixing spellings is
+# deliberate — the API key mirrors the extension's camelCase field, the storage
+# key mirrors the label the user sees.)
+_SCREENING_KEYS: dict[str, str] = {
+    "willingToRelocate": "Willing to relocate",
+    "workPreference": "Work preference",
+    "noticePeriod": "Notice period",
+    "earliestStartDate": "Earliest start date",
+    "yearsOfExperience": "Years of experience",
+    "securityClearance": "Security clearance",
+    "driversLicense": "Driver's licence",
+    "languages": "Languages",
+}
+
+# Keys read by EXACT MATCH ONLY, never mined by substring — for the reason
+# _stored_dob documents at length: "Earliest start date" is one fuzzy read away
+# from being served as a date of birth, and "Work preference" is one added
+# keyword away from being served as a work-authorization answer. Excluding them
+# from the mining loop is belt-and-braces today (none of the current keywords
+# hit them) and load-bearing the moment a keyword is added.
+_EXACT_ONLY_KEYS = frozenset({_DOB_KEY, *_SCREENING_KEYS.values()})
+
 # SetupWizard (frontend/src/setup/SetupWizard.tsx) dumps its own internal filter
 # state into the same map. These are enum tokens ("needs_sponsorship",
 # "internship"), not answers any employer should ever see — and
@@ -188,6 +247,22 @@ def _stored_dob(prefilled: dict | None) -> str:
     """
     value = (prefilled or {}).get(_DOB_KEY)
     return value.strip() if isinstance(value, str) else ""
+
+
+def _stored_screening(prefilled: dict | None) -> dict[str, str]:
+    """The eight screening answers, keyed by API field name.
+
+    Exact-key only, for the same reason as :func:`_stored_dob`: every one of
+    these has a fixed key that the PUT writes, so a fuzzy read could only ever
+    hand back somebody else's answer. A missing or non-string value reads as ""
+    ("not answered"), which is what makes every downstream rule abstain.
+    """
+    p = prefilled or {}
+    out: dict[str, str] = {}
+    for field, key in _SCREENING_KEYS.items():
+        value = p.get(key)
+        out[field] = value.strip() if isinstance(value, str) else ""
+    return out
 
 
 def _mine_screening(prefilled: dict | None) -> tuple[str, str, str]:
@@ -213,7 +288,7 @@ def _mine_screening(prefilled: dict | None) -> tuple[str, str, str]:
     salary_expectation = exact(_SALARY_KEY)
 
     for question, answer in p.items():
-        if not isinstance(answer, str) or question in _SETUP_KEYS:
+        if not isinstance(answer, str) or question in _SETUP_KEYS or question in _EXACT_ONLY_KEYS:
             continue
         q = question.lower()
         if not requires_sponsorship and "sponsor" in q:
@@ -336,9 +411,9 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
         experience[0].title if experience else "",
     )
 
-    work_authorization, requires_sponsorship, salary_expectation = _mine_screening(
-        settings.prefilled_answers if settings else None
-    )
+    prefilled = settings.prefilled_answers if settings else None
+    work_authorization, requires_sponsorship, salary_expectation = _mine_screening(prefilled)
+    screening = _stored_screening(prefilled)
 
     # Active cover letter (synced to the extension's cover-letter fields).
     cover = (
@@ -364,13 +439,24 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
         ),
         location=_first_non_empty(
             settings.city if settings else "",
+            # The mirror of addressCity's fallback below. ``settings.location``
+            # is the LinkedIn bot's SEARCH region and defaults to "United
+            # States", so it must never outrank a city the user actually typed:
+            # while the two shared a column that was impossible, and now that
+            # they don't, a user who fills only City would otherwise be told
+            # they live in the United States — and the LLM would be told so too.
+            settings.address_city if settings else "",
             settings.location if settings else "",
             resume.location if resume else "",
         ),
         addressStreet=_first_non_empty(settings.street_address if settings else ""),
-        # addressCity mirrors the ``city`` column (the structured counterpart to
-        # ``location``); the client falls back to location when this is blank.
-        addressCity=_first_non_empty(settings.city if settings else ""),
+        # addressCity has its own column since the profile-parity contract. Rows
+        # written before that stored it in ``city`` (which ``location`` also
+        # writes), so a blank falls back there rather than losing the value.
+        addressCity=_first_non_empty(
+            settings.address_city if settings else "",
+            settings.city if settings else "",
+        ),
         addressState=_first_non_empty(settings.address_state if settings else ""),
         postalCode=_first_non_empty(settings.postal_code if settings else ""),
         country=_first_non_empty(settings.country if settings else ""),
@@ -378,7 +464,12 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
             settings.linkedin_url if settings else "",
             resume.linkedin_url if resume else "",
         ),
-        github=_first_non_empty(resume.github_url if resume else ""),
+        # Settings first: the resume row is only the PARSED value, so an edit
+        # made in the app or the extension has to be able to override it.
+        github=_first_non_empty(
+            settings.github_url if settings else "",
+            resume.github_url if resume else "",
+        ),
         portfolio=_first_non_empty(
             settings.website if settings else "",
             resume.other_link if resume else "",
@@ -388,7 +479,8 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
         workAuthorization=work_authorization,
         requiresSponsorship=requires_sponsorship,
         salaryExpectation=salary_expectation,
-        dateOfBirth=_stored_dob(settings.prefilled_answers if settings else None),
+        dateOfBirth=_stored_dob(prefilled),
+        **screening,
         education=education,
         experience=experience,
         skills=skills,
@@ -399,6 +491,9 @@ def build_application_profile(user: User, db: Session) -> tuple[ApplicationProfi
             hispanicLatino=_first_non_empty(settings.eeo_hispanic if settings else ""),
             veteranStatus=_first_non_empty(settings.eeo_veteran if settings else ""),
             disabilityStatus=_first_non_empty(settings.eeo_disability if settings else ""),
+            genderIdentity=_first_non_empty(settings.eeo_gender_identity if settings else ""),
+            pronouns=_first_non_empty(settings.eeo_pronouns if settings else ""),
+            sexualOrientation=_first_non_empty(settings.eeo_sexual_orientation if settings else ""),
         ),
         version=version,
         resumeId=resume.id if resume else None,
@@ -446,13 +541,14 @@ def update_application_profile(
         "phone": "phone",
         "location": "city",
         "linkedin": "linkedin_url",
+        "github": "github_url",
         "portfolio": "website",
         "currentTitle": "job_title",
-        # Structured address. addressCity shares the ``city`` column with
-        # ``location``; if both are sent, the later key here wins (they mean the
-        # same thing, so this is intentional).
+        # Structured address. ``addressCity`` has its own column: it shared
+        # ``city`` with ``location`` until 2026-08-09, which meant dict order
+        # here decided which of the two survived a PUT carrying both.
         "addressStreet": "street_address",
-        "addressCity": "city",
+        "addressCity": "address_city",
         "addressState": "address_state",
         "postalCode": "postal_code",
         "country": "country",
@@ -470,6 +566,9 @@ def update_application_profile(
             "hispanicLatino": "eeo_hispanic",
             "veteranStatus": "eeo_veteran",
             "disabilityStatus": "eeo_disability",
+            "genderIdentity": "eeo_gender_identity",
+            "pronouns": "eeo_pronouns",
+            "sexualOrientation": "eeo_sexual_orientation",
         }
         for in_field, col in eeo_map.items():
             val = getattr(body.eeo, in_field)
@@ -489,6 +588,13 @@ def update_application_profile(
         answers[_SALARY_KEY] = body.salaryExpectation
     if body.dateOfBirth is not None:
         answers[_DOB_KEY] = body.dateOfBirth.strip()
+    # The eight screening answers, each under its own exact key. _stored_screening
+    # reads these back by exact match only, so nothing here can be mined into a
+    # neighbouring answer and nothing here can shadow one.
+    for in_field, key in _SCREENING_KEYS.items():
+        val = getattr(body, in_field)
+        if val is not None:
+            answers[key] = val.strip()
     settings.prefilled_answers = answers
 
     db.commit()

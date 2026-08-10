@@ -27,6 +27,17 @@ export const MOCK_PROFILE: UserApplicationProfile = {
   workAuthorization: "Authorized to work in Canada",
   requiresSponsorship: "No",
   dateOfBirth: "1999-03-14",
+  // Screening answers — every value is one of the contract's exact options
+  // (docs/superpowers/specs/2026-08-09-profile-parity-contract.md §D) so mock
+  // mode renders a select with a real selection, not a blank one.
+  willingToRelocate: "Yes",
+  workPreference: "Hybrid",
+  noticePeriod: "2 weeks",
+  earliestStartDate: "2026-09-01",
+  yearsOfExperience: "3",
+  securityClearance: "None",
+  driversLicense: "Yes",
+  languages: "English (Native), French (Professional)",
   education: [
     {
       school: "University of Ottawa",
@@ -49,9 +60,14 @@ export const MOCK_PROFILE: UserApplicationProfile = {
   // path end-to-end (EEO fills on data-presence; absent values are never guessed).
   eeo: {
     gender: "Male",
+    genderIdentity: "Cisgender",
+    pronouns: "He/Him",
     race: "White",
     hispanicLatino: "No",
-    veteranStatus: "I am not a veteran",
+    // Must be an option the modal actually offers, or mock mode renders a
+    // select with nothing selected. "I am not a veteran" was NOT one.
+    veteranStatus: "I am not a protected veteran",
     disabilityStatus: "No, I do not have a disability",
+    sexualOrientation: "Heterosexual",
   },
 };

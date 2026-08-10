@@ -174,6 +174,7 @@ def test_falls_back_to_account_name(client, db_session, user):
 
 _ADDRESS_EEO_PAYLOAD = {
     "addressStreet": "123 Main St",
+    "location": "Ottawa, ON, Canada",
     "addressCity": "Ottawa",
     "addressState": "ON",
     "postalCode": "K1A 0B1",
@@ -184,6 +185,9 @@ _ADDRESS_EEO_PAYLOAD = {
         "hispanicLatino": "No",
         "veteranStatus": "Not a protected veteran",
         "disabilityStatus": "No, I do not have a disability",
+        "genderIdentity": "Cisgender",
+        "pronouns": "He/Him",
+        "sexualOrientation": "Prefer not to say",
     },
 }
 
@@ -199,21 +203,25 @@ def test_patch_address_and_eeo_then_get_returns_them(client, db_session, user):
     assert body["addressState"] == "ON"
     assert body["postalCode"] == "K1A 0B1"
     assert body["country"] == "Canada"
-    # addressCity shares the ``city`` column, so ``location`` reflects it too.
-    assert body["location"] == "Ottawa"
+    # location and addressCity are separate columns now — see
+    # test_location_and_address_city_both_survive_one_put below.
+    assert body["location"] == "Ottawa, ON, Canada"
     # EEO is a nested object with the exact camelCase keys the extension reads.
     assert body["eeo"]["gender"] == "Male"
     assert body["eeo"]["race"] == "Prefer not to say"
     assert body["eeo"]["hispanicLatino"] == "No"
     assert body["eeo"]["veteranStatus"] == "Not a protected veteran"
     assert body["eeo"]["disabilityStatus"] == "No, I do not have a disability"
+    assert body["eeo"]["genderIdentity"] == "Cisgender"
+    assert body["eeo"]["pronouns"] == "He/Him"
+    assert body["eeo"]["sexualOrientation"] == "Prefer not to say"
 
 
 def test_address_and_eeo_default_empty(client, db_session, user):
     """With only a resume, the new fields default to empty (never null/missing).
 
-    addressCity comes from the ``city`` settings column only — the resume's
-    free-form location does NOT populate the structured city field.
+    addressCity comes from the settings columns only — the resume's free-form
+    location does NOT populate the structured city field.
     """
     db_session.add(_make_resume())
     db_session.commit()
@@ -230,7 +238,199 @@ def test_address_and_eeo_default_empty(client, db_session, user):
         "hispanicLatino": "",
         "veteranStatus": "",
         "disabilityStatus": "",
+        "genderIdentity": "",
+        "pronouns": "",
+        "sexualOrientation": "",
     }
+
+
+# ── location vs addressCity: two fields, two columns ──────────────────────────
+#
+# They shared ``user_settings.city`` until 2026-08-09, so the PUT's field_map had
+# two entries pointing at one column and dict iteration order silently decided
+# which of the user's two values survived.
+
+def test_location_and_address_city_both_survive_one_put(client, db_session, user):
+    """A single PUT carrying different values for both must persist BOTH."""
+    res = client.put(
+        "/api/user/application-profile",
+        json={"location": "Greater Toronto Area", "addressCity": "Mississauga"},
+    )
+    assert res.status_code == 200
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["location"] == "Greater Toronto Area"
+    assert body["addressCity"] == "Mississauga"
+
+
+def test_city_only_user_is_not_relocated_to_the_bot_default(client, db_session, user):
+    """The mirror fallback. ``user_settings.location`` is the LinkedIn bot's
+    search region and defaults to "United States"; splitting the columns must not
+    let it become the answer for a user who only ever filled in their City."""
+    assert client.put(
+        "/api/user/application-profile", json={"addressCity": "Ottawa"}
+    ).status_code == 200
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["addressCity"] == "Ottawa"
+    assert body["location"] == "Ottawa"
+
+
+def test_address_city_falls_back_to_the_legacy_city_column(client, db_session, user):
+    """Rows written before the split kept the address city in ``city``; they must
+    keep working, so a blank ``address_city`` reads through to it."""
+    _seed_settings(db_session, city="Ottawa")
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["addressCity"] == "Ottawa"
+    assert body["location"] == "Ottawa"
+
+
+# ── github is writable now ────────────────────────────────────────────────────
+
+def test_github_round_trips_through_put(client, db_session, user):
+    """github had no write path at all: the web app wrote it to the resume row
+    and the extension kept it in chrome.storage.local, so it never synced."""
+    assert client.put(
+        "/api/user/application-profile",
+        json={"github": "https://github.com/wissam-e"},
+    ).status_code == 200
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["github"] == "https://github.com/wissam-e"
+
+
+def test_saved_github_overrides_the_resume_parsed_one(client, db_session, user):
+    """The resume value is only what the parser found — an explicit edit wins."""
+    db_session.add(_make_resume(github_url="https://github.com/parsed-wrong"))
+    db_session.commit()
+
+    client.put(
+        "/api/user/application-profile",
+        json={"github": "https://github.com/corrected"},
+    )
+    body = client.get("/api/user/application-profile").json()
+    assert body["github"] == "https://github.com/corrected"
+
+
+# ── The eight screening answers ───────────────────────────────────────────────
+
+_SCREENING_PAYLOAD = {
+    "willingToRelocate": "Yes",
+    "workPreference": "Hybrid",
+    "noticePeriod": "2 weeks",
+    "earliestStartDate": "2026-09-01",
+    "yearsOfExperience": "5",
+    "securityClearance": "None",
+    "driversLicense": "Yes",
+    "languages": "English (Native), French (Professional)",
+}
+
+
+def test_screening_answers_round_trip(client, db_session, user):
+    assert client.put(
+        "/api/user/application-profile", json=_SCREENING_PAYLOAD
+    ).status_code == 200
+
+    body = client.get("/api/user/application-profile").json()
+    for field, value in _SCREENING_PAYLOAD.items():
+        assert body[field] == value, field
+
+
+def test_screening_answers_use_the_exact_contract_keys(client, db_session, user):
+    """The prefilled_answers keys are binding on the web app and the extension
+    too — they are what all three surfaces agree on. Pin them."""
+    client.put("/api/user/application-profile", json=_SCREENING_PAYLOAD)
+
+    db_session.expire_all()
+    stored = db_session.query(UserSettings).filter(
+        UserSettings.user_id == TEST_USER_ID
+    ).first().prefilled_answers
+    assert stored == {
+        "Willing to relocate": "Yes",
+        "Work preference": "Hybrid",
+        "Notice period": "2 weeks",
+        "Earliest start date": "2026-09-01",
+        "Years of experience": "5",
+        "Security clearance": "None",
+        "Driver's licence": "Yes",
+        "Languages": "English (Native), French (Professional)",
+    }
+
+
+def test_screening_answers_default_empty(client, db_session, user):
+    db_session.add(_make_resume())
+    db_session.commit()
+
+    body = client.get("/api/user/application-profile").json()
+    for field in _SCREENING_PAYLOAD:
+        assert body[field] == "", field
+
+
+def test_screening_answers_are_never_substring_mined(client, db_session, user):
+    """The whole point of exact keys. "Earliest start date" must not be read as
+    a date of birth, and "Work preference" must not become the user's
+    work-authorization answer — mining either would put a wrong, confident
+    answer on a real employer's form."""
+    client.put(
+        "/api/user/application-profile",
+        json={"dateOfBirth": "1998-04-11", "workAuthorization": "Canadian citizen"},
+    )
+    client.put("/api/user/application-profile", json=_SCREENING_PAYLOAD)
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["dateOfBirth"] == "1998-04-11"
+    assert body["earliestStartDate"] == "2026-09-01"
+    assert body["workAuthorization"] == "Canadian citizen"
+    assert body["workPreference"] == "Hybrid"
+    # And nothing leaked into the answers they sit next to.
+    assert body["requiresSponsorship"] == ""
+    assert body["salaryExpectation"] == ""
+
+
+def test_screening_keys_cannot_shadow_a_mined_legacy_answer(client, db_session, user):
+    """A saved screening answer must not join the substring-mining pool, where
+    it could out-rank the real harvested question text it sits beside."""
+    _seed_settings(
+        db_session,
+        prefilled_answers={
+            "Work preference": "Remote",
+            "Are you legally eligible to work in the US?": "Yes",
+        },
+    )
+
+    body = client.get("/api/user/application-profile").json()
+    assert body["workAuthorization"] == "Yes"
+    assert body["workPreference"] == "Remote"
+
+
+def test_sync_snapshot_carries_the_new_fields(client, db_session, user):
+    """GET /api/extension/sync reuses build_application_profile, so everything
+    above must reach the extension unchanged — including the raw answer map."""
+    client.put("/api/user/application-profile", json={
+        **_SCREENING_PAYLOAD,
+        "github": "https://github.com/wissam-e",
+        "location": "Greater Toronto Area",
+        "addressCity": "Mississauga",
+        "eeo": {"genderIdentity": "Non-binary", "pronouns": "They/Them",
+                "sexualOrientation": "Bisexual"},
+    })
+
+    snap = client.get("/api/extension/sync")
+    assert snap.status_code == 200
+    body = snap.json()
+    profile = body["profile"]
+
+    for field, value in _SCREENING_PAYLOAD.items():
+        assert profile[field] == value, field
+    assert profile["github"] == "https://github.com/wissam-e"
+    assert profile["location"] == "Greater Toronto Area"
+    assert profile["addressCity"] == "Mississauga"
+    assert profile["eeo"]["genderIdentity"] == "Non-binary"
+    assert profile["eeo"]["pronouns"] == "They/Them"
+    assert profile["eeo"]["sexualOrientation"] == "Bisexual"
+    # The snapshot also passes the raw map through; the exact keys survive it.
+    assert body["settings"]["prefilledAnswers"]["Driver's licence"] == "Yes"
 
 
 def test_sync_snapshot_carries_address_and_eeo(client, db_session, user):

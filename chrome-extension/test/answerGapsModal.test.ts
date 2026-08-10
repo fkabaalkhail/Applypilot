@@ -116,8 +116,8 @@ describe("readGapAnswer", () => {
 /**
  * A radio, unlike the <select> it replaced, cannot be deselected — and the modal
  * offers no reset, only "Skip for now", which throws away EVERY answer. So a
- * mis-click on a sponsorship question was unrecoverable, and (see
- * answersWorthRemembering) then remembered forever.
+ * mis-click on a sponsorship question was unrecoverable, and went straight into
+ * the form the employer reads.
  */
 describe("gapInputHTML — a radio group stays un-answerable", () => {
   it("prepends a default 'No answer' radio so a mis-click can be undone", () => {
@@ -232,11 +232,11 @@ describe("gapControlHTML", () => {
 });
 
 /**
- * Drift guard. isBlindConstrainedGap decides whether a failed answer may be
- * remembered; gapInputHTML decides what the user was actually offered. If the
- * two ever disagree, a real answer gets silently dropped or an unusable one
- * gets stored forever — so pin them to each other rather than to a hand-written
- * list of control types.
+ * Drift guard. isBlindConstrainedGap decides whether a failed answer may still
+ * be kept; gapInputHTML decides what the user was actually offered. If the two
+ * ever disagree, a real answer gets silently dropped or an unusable one gets
+ * saved into the profile — so pin them to each other rather than to a
+ * hand-written list of control types.
  */
 describe("isBlindConstrainedGap agrees with what the modal renders", () => {
   const everyType: ControlType[] = [
@@ -429,41 +429,51 @@ describe("openGapsModal — the harvest settle", () => {
 });
 
 /**
- * "Saved" must not be said about an answer we deliberately threw away.
- * answersWorthRemembering discards a value the widget rejected precisely so the
- * question is asked again — telling the user it was saved is a lie they cannot
- * see through.
+ * The banner may only claim what actually happened, and what happens now is
+ * confined to THIS page: there is no answer memory left, so no wording may
+ * promise a future application. Separately, "filled" must not be said about an
+ * answer we deliberately threw away — answersWorthRemembering discards a value
+ * the widget rejected precisely so the question is asked again.
  */
 describe("gapsSaveBanner", () => {
   it("celebrates only when everything landed", () => {
     expect(gapsSaveBanner(2, 2, 0)).toEqual({
-      text: "Saved 2 answers — they'll fill automatically next time.",
+      text: "Filled all 2 answers into this application.",
       tone: "ok",
     });
-    expect(gapsSaveBanner(1, 1, 0).text).toBe(
-      "Saved your answer — they'll fill automatically next time."
-    );
+    expect(gapsSaveBanner(1, 1, 0).text).toBe("Filled your answer into this application.");
   });
 
-  it("keeps the old wording when the write missed but the answer was still kept", () => {
+  it("never promises that an answer will fill a FUTURE application", () => {
+    for (const banner of [
+      gapsSaveBanner(2, 2, 0),
+      gapsSaveBanner(2, 1, 0),
+      gapsSaveBanner(1, 0, 1),
+      gapsSaveBanner(3, 1, 2),
+    ]) {
+      expect(banner.text).not.toMatch(/automatically|remember|next application/i);
+    }
+  });
+
+  it("reports a partial fill as a partial fill", () => {
     expect(gapsSaveBanner(2, 1, 0)).toEqual({
-      text: "Saved, but only filled 1 of 2 on this page. Check the form.",
+      text: "Only filled 1 of 2 on this page. Check the form.",
       tone: "warn",
     });
   });
 
-  it("never claims to have saved a discarded answer", () => {
+  it("never claims to have kept a discarded answer", () => {
     const one = gapsSaveBanner(1, 0, 1);
     expect(one.text).not.toMatch(/\bSaved\b/); // the old wording claimed exactly this
     expect(one.text).toBe(
-      "Filled 0 of 1. This form rejected an answer, so we didn't save it — we'll ask again next time."
+      "Filled 0 of 1. This form rejected an answer, so we didn't keep it — we'll ask again next time."
     );
     expect(one.tone).toBe("warn");
   });
 
   it("pluralises a multi-answer discard", () => {
     expect(gapsSaveBanner(3, 1, 2).text).toBe(
-      "Filled 1 of 3. This form rejected 2 answers, so we didn't save them — we'll ask again next time."
+      "Filled 1 of 3. This form rejected 2 answers, so we didn't keep them — we'll ask again next time."
     );
   });
 });

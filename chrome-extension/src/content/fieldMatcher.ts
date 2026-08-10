@@ -93,10 +93,16 @@ const CATEGORY_SPECS: CategorySpec[] = [
     patterns: [{ re: /\bsexual orientation\b/ }, { re: /\borientation\b/, weight: 0.8 }],
   },
   {
+    // Ordered BEFORE eeoOther, which used to own this pattern: both score the
+    // same on a "Pronouns" label, and ties go to the first spec listed.
+    category: "eeoPronouns",
+    sensitive: true,
+    patterns: [{ re: /\bpronouns?\b/ }],
+  },
+  {
     category: "eeoOther",
     sensitive: true,
     patterns: [
-      { re: /\bpronouns?\b/ },
       { re: /\blgbtq?\b/ },
       { re: /\btransgender\b/ },
       { re: /\bdemographic\b/ },
@@ -284,6 +290,114 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\bwork permit\b/, weight: 0.85 },
     ],
     negative: /\bsponsor/,
+  },
+
+  // --- Screening answers stated on the profile (2026-08-09 parity contract) ---
+  // Each of these is answered from a fact the user typed once, so a matching
+  // question never reaches the AI pass. Their guards matter more than their
+  // patterns: a near-miss here writes a confident wrong answer into a real
+  // application, whereas abstaining just routes the field to the grounded AI.
+  {
+    category: "willingToRelocate",
+    patterns: [
+      { re: /\bwilling(ness)? to relocate\b/ },
+      { re: /\b(open|able|willing) to relocat(e|ion|ing)\b/ },
+      { re: /\bwould you relocate\b/ },
+      { re: /\brelocat(e|ion|ing)\b/, weight: 0.85 },
+    ],
+    // "Do you require relocation assistance?" is a benefits question, not a
+    // willingness one — answering it "Yes" from a willingness answer is wrong.
+    negative: /\brelocation (assistance|package|support|expenses?|benefits?|allowance|reimbursement)\b/,
+  },
+  {
+    category: "workPreference",
+    patterns: [
+      { re: /\bwork (preference|arrangement|setting|model|mode)\b/ },
+      { re: /\bworking (preference|arrangement)\b/ },
+      { re: /\bremote or on ?site\b|\bon ?site or remote\b/ },
+      { re: /\bremote or hybrid\b|\bhybrid or remote\b/ },
+      { re: /\b(remote|hybrid|on ?site) work preference\b/ },
+    ],
+    // A geographic "preferred work location" is the `location` question.
+    negative: /\bwork location\b|\blocation preference\b/,
+  },
+  {
+    category: "noticePeriod",
+    patterns: [
+      { re: /\bnotice period\b/ },
+      { re: /\bperiod of notice\b/ },
+      { re: /\bhow (much|long a|many weeks|many days) notice\b/ },
+      { re: /\bnotice (required|do you|to give|you (must|need to) give)\b/ },
+      { re: /\bcurrent notice\b/ },
+    ],
+  },
+  {
+    // Availability — "when can you start?". Distinct from experienceStartDate,
+    // whose own negative already vetoes "earliest" / "available" / "when can
+    // you", so the two can never both claim a signal.
+    category: "startDate",
+    patterns: [
+      { re: /\bearliest (possible )?(start|starting|available|availability|joining) date\b/ },
+      { re: /\bearliest (date you can start|availability|start)\b/ },
+      { re: /\b(available|availability|preferred|desired|proposed|anticipated|expected|potential|possible) (start|starting|joining) date\b/ },
+      { re: /\bwhen (can|could|would) you (be able to )?(start|begin|join|commence)\b/ },
+      { re: /\bdate available (to start|for work|to begin)\b/ },
+      { re: /\bavailability to start\b|\bstart availability\b/ },
+      { re: /\bdate you can start\b|\bhow soon can you start\b/ },
+    ],
+    // Never a birth date, and never an employment-history row's own start date.
+    negative: /\bbirth\b|\bemployment start\b|\bprevious\b|\bmost recent (job|role|position|employer)\b/,
+  },
+  {
+    // The headline number only. "Years of experience with Python" is a SKILL
+    // question whose answer is not on the profile — see the negative below.
+    category: "yearsOfExperience",
+    patterns: [
+      // "years experience", "years of experience", "years of relevant work
+      // experience" — any run of the usual qualifiers, but nothing else.
+      { re: /\byears?(?: of)? (?:(?:relevant|professional|work|total|overall|paid|full time|industry)\s+)*experience\b/ },
+      { re: /\btotal (years?|work|professional) experience\b/ },
+      { re: /\bexperience \(years\)\b|\bexperience in years\b/ },
+    ],
+    // Anything that qualifies WHAT the experience is in ("…experience with
+    // React", "…experience do you have in project management") is a different
+    // question with a different answer; abstain and let the grounded AI answer.
+    negative: /\bexperience\b[\s\S]*\b(with|in|using|related to)\b|\bexperience level\b/,
+  },
+  {
+    category: "securityClearance",
+    patterns: [
+      { re: /\bsecurity clearance\b/ },
+      { re: /\bclearance (level|status|held)\b/ },
+      { re: /\b(active|current|existing|valid) clearance\b/ },
+      { re: /\bclearance\b/, weight: 0.85 },
+    ],
+    // Customs / credit / medical "clearance" is not a security clearance.
+    negative: /\bcustoms\b|\bcredit\b|\bmedical\b|\bclearance sale\b/,
+  },
+  {
+    // normalize() turns "Driver's" into "driver s", so both spellings and both
+    // apostrophe forms have to be reachable from one pattern.
+    category: "driversLicense",
+    patterns: [
+      { re: /\bdrivers? (s )?licen[sc]e\b/ },
+      { re: /\bdriving licen[sc]e\b/ },
+      { re: /\bpermis de conduire\b/ }, // FR
+    ],
+    // A license NUMBER is a data-entry field, not the yes/no screening question.
+    negative: /\blicen[sc]e (number|no|#)\b/,
+  },
+  {
+    category: "languages",
+    patterns: [
+      { re: /\blanguages? (spoken|you speak)\b/ },
+      { re: /\bspoken languages?\b/ },
+      { re: /\blanguage (proficiency|fluency|skills?|ability|abilities)\b/ },
+      { re: /\blanguages?\b/, weight: 0.9 },
+    ],
+    // Programming languages are the `skills` answer, and "preferred language"
+    // is almost always the site's own UI locale.
+    negative: /\bprogramming\b|\bcoding\b|\bcomputer\b|\bmarkup\b|\btechnical\b|\bpreferred language\b|\blanguage of (correspondence|communication|instruction)\b/,
   },
 
   // --- Education ---
@@ -699,6 +813,37 @@ export function resolveProfileValue(
       return isYesNoChoice(control) ? toYesNo(v) : v;
     }
 
+    // Screening answers stated once on the profile. Returned RAW: a constrained
+    // control (select / radio / checkbox group) runs the value through
+    // guardConstrainedOption in formScanner, and a combobox through
+    // comboboxEngine — both use matchOption, so "Yes" lands on "Yes, I am
+    // willing to relocate" and "5" lands in a "5-7 years" bucket. A value that
+    // matches no option is dropped there rather than written raw.
+    case "willingToRelocate": {
+      const v = orNull(profile.willingToRelocate);
+      if (!v) return null;
+      // Stored as "Yes"/"No", but a hand-typed sentence still answers a Yes/No
+      // control correctly rather than being written into it verbatim.
+      return isYesNoChoice(control) ? toYesNo(v) : v;
+    }
+    case "driversLicense": {
+      const v = orNull(profile.driversLicense);
+      if (!v) return null;
+      return isYesNoChoice(control) ? toYesNo(v) : v;
+    }
+    case "workPreference":
+      return orNull(profile.workPreference);
+    case "noticePeriod":
+      return orNull(profile.noticePeriod);
+    case "startDate":
+      return orNull(profile.earliestStartDate);
+    case "yearsOfExperience":
+      return orNull(profile.yearsOfExperience);
+    case "securityClearance":
+      return orNull(profile.securityClearance);
+    case "languages":
+      return orNull(profile.languages);
+
     case "coverLetter":
       // Only into long-text controls; a cover-letter *file* input can't be filled.
       return LONG_TEXT.includes(control.controlType) ? orNull(profile.coverLetter) : null;
@@ -719,6 +864,9 @@ export function resolveProfileValue(
     case "eeoGenderIdentity":
       // Falls back to the plain gender answer when no distinct identity is set.
       return orNull(profile.eeo?.genderIdentity || profile.eeo?.gender);
+    case "eeoPronouns":
+      // No fallback: pronouns are not derivable from a gender answer.
+      return orNull(profile.eeo?.pronouns);
     case "eeoRace":
       return orNull(profile.eeo?.race);
     case "eeoHispanic":

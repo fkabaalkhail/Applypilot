@@ -278,8 +278,7 @@ function fieldBlockOf(el: HTMLElement): HTMLElement | null {
  *
  * `aria-hidden` subtrees are skipped because they are not part of any accessible
  * name — which also drops Workday's `<abbr aria-hidden="true">*</abbr>` required
- * marker, so the question is remembered as "Gender Identity", not
- * "Gender Identity*".
+ * marker, so the question reads as "Gender Identity", not "Gender Identity*".
  */
 function blockQuestionText(block: HTMLElement, el: HTMLElement): string {
   const visibleText = (node: Element): string => {

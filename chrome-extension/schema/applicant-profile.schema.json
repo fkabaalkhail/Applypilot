@@ -93,6 +93,46 @@
       "description": "Optional. Free text or a range; bucketed option sets (\"$90,000-$110,000\") are resolved by numeric containment.",
       "examples": ["$85,000"]
     },
+    "willingToRelocate": {
+      "type": "string",
+      "description": "Optional screening answer. \"Yes\" / \"No\"; blank means not answered and the question is left for the user.",
+      "examples": ["Yes", "No"]
+    },
+    "workPreference": {
+      "type": "string",
+      "description": "Optional screening answer — the applicant's preferred work arrangement.",
+      "examples": ["Remote", "Hybrid", "On-site", "No preference"]
+    },
+    "noticePeriod": {
+      "type": "string",
+      "description": "Optional screening answer. Free text — how much notice the applicant must give their current employer.",
+      "examples": ["2 weeks", "1 month", "Immediate"]
+    },
+    "earliestStartDate": {
+      "type": "string",
+      "description": "Optional screening answer. The AVAILABILITY date (\"when can you start?\"), never an employment-history start date.",
+      "examples": ["2026-09-01"]
+    },
+    "yearsOfExperience": {
+      "type": "string",
+      "description": "Optional screening answer. The applicant's headline total, as a string; a bucketed option set (\"5-7 years\") is resolved by numeric containment. NOT an answer to \"years of experience with X\".",
+      "examples": ["3", "10+"]
+    },
+    "securityClearance": {
+      "type": "string",
+      "description": "Optional screening answer.",
+      "examples": ["None", "Active clearance", "Eligible / previously held"]
+    },
+    "driversLicense": {
+      "type": "string",
+      "description": "Optional screening answer. \"Yes\" / \"No\".",
+      "examples": ["Yes", "No"]
+    },
+    "languages": {
+      "type": "string",
+      "description": "Optional screening answer — SPOKEN languages, not programming languages (those are `skills`).",
+      "examples": ["English (Native), French (Professional)"]
+    },
     "eeo": { "$ref": "#/$defs/eeoAnswers" }
   },
   "$defs": {
@@ -132,12 +172,13 @@
       "description": "Optional demographic answers. These NEVER leave the device: they are excluded from every backend request, and a question with no answer here is left blank rather than guessed. Values are free text matched on-device against the site's own options.",
       "properties": {
         "gender": { "type": "string", "examples": ["Male", "Female", "Prefer not to say"] },
-        "genderIdentity": { "type": "string" },
+        "genderIdentity": { "type": "string", "examples": ["Cisgender", "Transgender", "Non-binary", "Prefer not to say"] },
+        "pronouns": { "type": "string", "examples": ["He/Him", "She/Her", "They/Them", "Prefer not to say"] },
         "race": { "type": "string", "examples": ["White", "Asian", "Prefer not to say"] },
         "hispanicLatino": { "type": "string", "examples": ["No", "Yes"] },
-        "veteranStatus": { "type": "string", "examples": ["I am not a veteran"] },
+        "veteranStatus": { "type": "string", "examples": ["I am not a protected veteran"] },
         "disabilityStatus": { "type": "string", "examples": ["No, I do not have a disability"] },
-        "sexualOrientation": { "type": "string" }
+        "sexualOrientation": { "type": "string", "examples": ["Heterosexual", "Gay or Lesbian", "Bisexual", "Prefer not to say"] }
       }
     }
   }

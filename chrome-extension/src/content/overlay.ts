@@ -37,7 +37,6 @@ import {
 import { defaultSelectedIds } from "../shared/selection";
 import { getConfig, saveConfig, type ExtensionConfig } from "../shared/storage";
 import type {
-  AnswersResponse,
   BackgroundRequest,
   ControlType,
   CoverLetterGenOpts,
@@ -52,8 +51,6 @@ import type {
   RenderResumeResponse,
   ResumeDoc,
   ResumeSummary,
-  SavedAnswerItem,
-  SimpleResponse,
   StatusResponse,
   TailorResult,
   TailorResumeOpts,
@@ -70,11 +67,12 @@ export interface OverlayCallbacks {
     uploadResumeId?: number | null
   ) => Promise<{ ok: number; fail: number; total: number }>;
   /**
-   * Write the user's answers to the unanswered questions into the page, then
-   * remember them (profile / device-local / answer bank — see planAnswerSaves).
-   * Returns the number written, and how many answers were deliberately NOT
-   * remembered (answersWorthRemembering), so the panel can report honestly
-   * rather than claiming to have saved something it threw away.
+   * Write the user's answers to the unanswered questions into the page, and
+   * save the ones with a real profile slot to their Tailrd profile (see
+   * planAnswerSaves — nothing else is persisted). Returns the number written,
+   * and how many answers were deliberately dropped (answersWorthRemembering),
+   * so the panel can report honestly rather than claiming to have done
+   * something it threw away.
    */
   onAnswerGaps: (
     answers: { gap: AnswerGap; value: string }[]
@@ -1002,38 +1000,6 @@ export const STYLES = `
 .ap-modal-actions { display: flex; align-items: center; gap: 10px; }
 .ap-modal-actions .ap-btn-update { padding: 12px 28px; }
 
-/* ---- Remembered answers (Autofill Information tab) ---- */
-.ap-remembered-row { padding: 10px 0; border-bottom: 1px solid var(--stripe-hairline-soft); }
-.ap-remembered-row:last-child { border-bottom: none; }
-.ap-remembered-q {
-  display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;
-  font-size: 12.5px; font-weight: 600; color: var(--stripe-ink);
-}
-.ap-remembered-q > span:first-child { flex: 1; min-width: 0; }
-.ap-remembered-reuse {
-  flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--stripe-primary);
-  background: var(--stripe-accent-light); border-radius: 9999px; padding: 1px 8px;
-}
-.ap-remembered-flag {
-  flex-shrink: 0; font-size: 11px; font-weight: 600; color: #92400e;
-  background: #fef3c7; border-radius: 9999px; padding: 1px 8px; cursor: help;
-}
-.ap-remembered-why {
-  margin-top: 6px; font-size: 11.5px; line-height: 1.45; color: #92400e;
-}
-.ap-remembered-warn {
-  border-left: 3px solid #f59e0b; padding-left: 10px; color: #92400e;
-}
-.ap-remembered-edit { display: flex; gap: 8px; align-items: center; }
-.ap-remembered-input {
-  flex: 1; min-width: 0; padding: 8px 10px; font-size: 13px; font-family: inherit;
-  border: 1px solid var(--stripe-hairline); border-radius: 8px; color: var(--stripe-ink);
-}
-.ap-remembered-input:focus {
-  outline: none; border-color: var(--stripe-primary);
-  box-shadow: 0 0 0 3px rgba(var(--stripe-primary-rgb),0.12);
-}
-
 /* ---- Saved sign-ins (section row badge + modal card list) ---- */
 .ap-section-count {
   min-width: 20px; padding: 1px 6px; border-radius: 9999px;
@@ -1133,10 +1099,10 @@ interface PanelState {
   busy: boolean;
   scanned: boolean;
   view: View;
-  infoCategory: string;
+  infoCategory: InfoCategory;
   /** Working copy of the editable profile fields while the info modal is open. */
   profileDraft: EditableProfileDraft | null;
-  /** Device-local autofill extras (GitHub/experience overrides + custom fields)
+  /** Device-local autofill extras (work-experience overrides + custom fields)
    *  merged over the synced profile — loaded once, edited via extrasDraft. */
   extras: AutofillExtras;
   /** Working copy of `extras` while the info modal is open. */
@@ -1237,7 +1203,6 @@ interface Refs {
   modalBackdrop: HTMLDivElement;
   infoSidebar: HTMLDivElement;
   infoForm: HTMLDivElement;
-  infoFooter: HTMLDivElement;
   loginView: HTMLDivElement;
   loginError: HTMLDivElement;
   btnConnect: HTMLButtonElement;
@@ -1486,7 +1451,6 @@ export function buildHTML(): string {
             <button class="ap-modal-sidebar-item" data-cat="preference">Preference</button>
             <button class="ap-modal-sidebar-item" data-cat="eeo">Equal Employment</button>
             <button class="ap-modal-sidebar-item" data-cat="signup">Account creation</button>
-            <button class="ap-modal-sidebar-item" data-cat="remembered">Remembered answers</button>
           </div>
           <div class="ap-modal-form" id="ap-info-form"></div>
         </div>
@@ -1506,7 +1470,7 @@ export function buildHTML(): string {
         </div>
         <div class="ap-modal-notice">
           <span class="ap-modal-notice-icon">${I_INFO}</span>
-          <span>Tailrd never guesses an answer it can't back up. Answer these once and they'll be filled in automatically on future applications.</span>
+          <span>Tailrd never guesses an answer it can't back up. Answer these and they'll be filled into this application — the ones your Tailrd profile has a place for are saved there too.</span>
         </div>
         <div class="ap-modal-body">
           <div class="ap-gaps-body" id="ap-gaps-body"></div>
@@ -1606,7 +1570,6 @@ function collectRefs(root: HTMLDivElement): Refs {
     modalBackdrop: q("#ap-modal-backdrop"),
     infoSidebar: q("#ap-info-sidebar"),
     infoForm: q("#ap-info-form"),
-    infoFooter: q("#ap-info-footer"),
     loginView: q("#ap-login-view"),
     loginError: q("#ap-login-error"),
     btnConnect: q("#ap-btn-connect"),
@@ -1683,7 +1646,7 @@ function wireEvents(root: HTMLDivElement): void {
   // Info sidebar category clicks
   root.querySelectorAll<HTMLButtonElement>(".ap-modal-sidebar-item").forEach((btn) => {
     btn.addEventListener("click", () => {
-      overlayState.infoCategory = btn.dataset.cat!;
+      overlayState.infoCategory = btn.dataset.cat as InfoCategory;
       root.querySelectorAll<HTMLButtonElement>(".ap-modal-sidebar-item").forEach((b) =>
         b.classList.toggle("active", b === btn)
       );
@@ -2155,9 +2118,9 @@ const GAP_MULTI_TYPES: ReadonlySet<ControlType> = new Set<ControlType>(["checkbo
  *
  * An HTML radio cannot be deselected, and the modal's only other exit is "Skip
  * for now", which discards EVERY answer. Without this, one mis-click on a
- * sponsorship question was unrecoverable — and, once written, remembered
- * forever (answersWorthRemembering). Its value is "" so readGapAnswer reports
- * the question as unanswered, exactly like the <select> placeholder it replaced.
+ * sponsorship question was unrecoverable — and went straight into the form the
+ * employer reads. Its value is "" so readGapAnswer reports the question as
+ * unanswered, exactly like the <select> placeholder it replaced.
  * Checked by default: the modal opens with nothing asserted on the user's behalf.
  */
 const noAnswerChoice = (id: string): string =>
@@ -2232,12 +2195,17 @@ export function readGapAnswer(root: ParentNode, i: number): string {
 /**
  * What to tell the user after Save & fill.
  *
- * "Saved" must not be said about an answer that was deliberately thrown away.
- * answersWorthRemembering discards a value the widget rejected precisely SO
- * THAT the question gets asked again; reporting it as saved would be a lie the
- * user cannot see through — the panel card would still show the question and
- * nothing would explain why. `discarded` takes precedence, and implies
- * `filled < total` (an answer can only be discarded when its write failed).
+ * The claim is about THIS page: the answers are written into the form in front
+ * of them, and nothing promises a future application. (Answers with a real
+ * profile slot are also saved to their Tailrd profile; that is the profile's
+ * promise to keep, not the banner's.)
+ *
+ * "Filled" must not be said about an answer the widget rejected.
+ * answersWorthRemembering discards such a value precisely SO THAT the question
+ * gets asked again; reporting it as done would be a lie the user cannot see
+ * through — the panel card would still show the question and nothing would
+ * explain why. `discarded` takes precedence, and implies `filled < total` (an
+ * answer can only be discarded when its write failed).
  */
 export function gapsSaveBanner(
   total: number,
@@ -2248,18 +2216,18 @@ export function gapsSaveBanner(
     const what = discarded === 1 ? "an answer" : `${discarded} answers`;
     const it = discarded === 1 ? "it" : "them";
     return {
-      text: `Filled ${filled} of ${total}. This form rejected ${what}, so we didn't save ${it} — we'll ask again next time.`,
+      text: `Filled ${filled} of ${total}. This form rejected ${what}, so we didn't keep ${it} — we'll ask again next time.`,
       tone: "warn",
     };
   }
   if (filled === total) {
     return {
-      text: `Saved ${total === 1 ? "your answer" : `${total} answers`} — they'll fill automatically next time.`,
+      text: `Filled ${total === 1 ? "your answer" : `all ${total} answers`} into this application.`,
       tone: "ok",
     };
   }
   return {
-    text: `Saved, but only filled ${filled} of ${total} on this page. Check the form.`,
+    text: `Only filled ${filled} of ${total} on this page. Check the form.`,
     tone: "warn",
   };
 }
@@ -2597,17 +2565,32 @@ function showBanner(text: string, kind: "ok" | "warn" | "error", hide = false): 
 // ---------------------------------------------------------------------------
 
 // Editable profile draft — the working copy the info modal binds to so edits
-// survive switching categories. Only the fields the application-profile endpoint
-// accepts are editable; résumé-derived sections (education/experience/skills,
-// GitHub) stay read-only and are managed from the web-app profile.
-interface EditableProfileDraft {
+// survive switching categories. Every key here round-trips through
+// PUT /api/user/application-profile; a field that renders but is missing from
+// this type (or from draftFromProfile / saveInfoEdits below) silently never
+// saves. Résumé-derived sections (education/experience/skills) stay read-only
+// and are managed from the web-app profile.
+/** The modal's sidebar tabs, in the order buildHTML() renders them. */
+export type InfoCategory =
+  | "personal"
+  | "address"
+  | "education"
+  | "experience"
+  | "skill"
+  | "preference"
+  | "eeo"
+  | "signup";
+
+export interface EditableProfileDraft {
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
   location: string;
   linkedin: string;
+  github: string;
   portfolio: string;
+  currentTitle: string;
   addressStreet: string;
   addressCity: string;
   addressState: string;
@@ -2617,16 +2600,36 @@ interface EditableProfileDraft {
   requiresSponsorship: string;
   salaryExpectation: string;
   dateOfBirth: string;
+  willingToRelocate: string;
+  workPreference: string;
+  noticePeriod: string;
+  earliestStartDate: string;
+  yearsOfExperience: string;
+  securityClearance: string;
+  driversLicense: string;
+  languages: string;
   eeo: {
     gender: string;
     race: string;
     hispanicLatino: string;
     veteranStatus: string;
     disabilityStatus: string;
+    genderIdentity: string;
+    pronouns: string;
+    sexualOrientation: string;
   };
 }
 
-const EEO_CHOICES: Record<keyof EditableProfileDraft["eeo"], string[]> = {
+/**
+ * TWIN COPY — must stay byte-identical to `EEO_OPTIONS` in
+ * frontend/src/lib/profileExtras.ts. The web app and the extension write the
+ * same `eeo` object through the same endpoint, so an option added on one side
+ * only and picked there renders as an EMPTY select on the other. Both files
+ * carry a test pinning these exact arrays; edit them together or one suite
+ * fails. Vocabulary is fixed by
+ * docs/superpowers/specs/2026-08-09-profile-parity-contract.md §D.
+ */
+export const EEO_CHOICES: Record<keyof EditableProfileDraft["eeo"], string[]> = {
   gender: ["Male", "Female", "Non-binary", "Prefer not to say"],
   race: [
     "American Indian or Alaska Native", "Asian", "Black or African American",
@@ -2642,7 +2645,21 @@ const EEO_CHOICES: Record<keyof EditableProfileDraft["eeo"], string[]> = {
   disabilityStatus: [
     "Yes, I have a disability", "No, I do not have a disability", "Prefer not to say",
   ],
+  genderIdentity: ["Cisgender", "Transgender", "Non-binary", "Prefer not to say"],
+  pronouns: ["He/Him", "She/Her", "They/Them", "Prefer not to say"],
+  sexualOrientation: ["Heterosexual", "Gay or Lesbian", "Bisexual", "Prefer not to say"],
 };
+
+/**
+ * Option vocabularies for the non-demographic screening selects, same contract
+ * (§D) and same "blank first, rendered `Select…`" rule as EEO_CHOICES.
+ */
+export const SCREENING_CHOICES = {
+  willingToRelocate: ["Yes", "No"],
+  workPreference: ["Remote", "Hybrid", "On-site", "No preference"],
+  securityClearance: ["None", "Active clearance", "Eligible / previously held"],
+  driversLicense: ["Yes", "No"],
+} satisfies Partial<Record<keyof EditableProfileDraft, string[]>>;
 
 /** The profile the scanner + AI actually fill from: the synced profile with the
  *  user's device-local extras (GitHub / experience overrides) merged on top, so
@@ -2654,7 +2671,7 @@ function fillProfile(): UserApplicationProfile | null {
     : null;
 }
 
-function draftFromProfile(p: UserApplicationProfile): EditableProfileDraft {
+export function draftFromProfile(p: UserApplicationProfile): EditableProfileDraft {
   return {
     firstName: p.firstName ?? "",
     lastName: p.lastName ?? "",
@@ -2662,7 +2679,9 @@ function draftFromProfile(p: UserApplicationProfile): EditableProfileDraft {
     phone: p.phone ?? "",
     location: p.location ?? "",
     linkedin: p.linkedin ?? "",
+    github: p.github ?? "",
     portfolio: p.portfolio ?? "",
+    currentTitle: p.currentTitle ?? "",
     addressStreet: p.addressStreet ?? "",
     addressCity: p.addressCity ?? "",
     addressState: p.addressState ?? "",
@@ -2672,12 +2691,23 @@ function draftFromProfile(p: UserApplicationProfile): EditableProfileDraft {
     requiresSponsorship: p.requiresSponsorship ?? "",
     salaryExpectation: p.salaryExpectation ?? "",
     dateOfBirth: p.dateOfBirth ?? "",
+    willingToRelocate: p.willingToRelocate ?? "",
+    workPreference: p.workPreference ?? "",
+    noticePeriod: p.noticePeriod ?? "",
+    earliestStartDate: p.earliestStartDate ?? "",
+    yearsOfExperience: p.yearsOfExperience ?? "",
+    securityClearance: p.securityClearance ?? "",
+    driversLicense: p.driversLicense ?? "",
+    languages: p.languages ?? "",
     eeo: {
       gender: p.eeo?.gender ?? "",
       race: p.eeo?.race ?? "",
       hispanicLatino: p.eeo?.hispanicLatino ?? "",
       veteranStatus: p.eeo?.veteranStatus ?? "",
       disabilityStatus: p.eeo?.disabilityStatus ?? "",
+      genderIdentity: p.eeo?.genderIdentity ?? "",
+      pronouns: p.eeo?.pronouns ?? "",
+      sexualOrientation: p.eeo?.sexualOrientation ?? "",
     },
   };
 }
@@ -2687,21 +2717,33 @@ function apField(
   field: keyof EditableProfileDraft,
   label: string,
   value: string,
-  opts: { required?: boolean; type?: string } = {}
+  opts: { required?: boolean; type?: string; placeholder?: string } = {}
 ): string {
   const req = opts.required ? '<span class="ap-required">*</span>' : "";
-  return `<div class="ap-form-row"><label>${req}${label}</label><input data-field="${field}" type="${opts.type ?? "text"}" value="${esc(value)}" /></div>`;
+  const ph = opts.placeholder ? ` placeholder="${esc(opts.placeholder)}"` : "";
+  return `<div class="ap-form-row"><label>${req}${label}</label><input data-field="${field}" type="${opts.type ?? "text"}" value="${esc(value)}"${ph} /></div>`;
+}
+
+/** One editable <select> bound to a draft key via the same data-field channel,
+ *  so it flows through onInfoInput → saveInfoEdits exactly like a text field. */
+function apSelect(
+  field: keyof typeof SCREENING_CHOICES,
+  label: string,
+  value: string
+): string {
+  const opts = ['<option value="">Select…</option>']
+    .concat(
+      SCREENING_CHOICES[field].map(
+        (o) => `<option value="${esc(o)}"${o === value ? " selected" : ""}>${esc(o)}</option>`
+      )
+    )
+    .join("");
+  return `<div class="ap-form-row"><label>${label}</label><select data-field="${field}">${opts}</select></div>`;
 }
 
 /** One read-only field (résumé-derived; managed on the web app). */
 function apReadonly(label: string, value: string): string {
   return `<div class="ap-form-row"><label>${label}</label><input value="${esc(value)}" readonly /></div>`;
-}
-
-/** One field bound to the device-local extras (extrasDraft.fields[key]) via
- *  data-extra — for scalar fields the sync treats as read-only, e.g. GitHub. */
-function apExtraField(key: string, label: string, value: string, opts: { type?: string } = {}): string {
-  return `<div class="ap-form-row"><label>${label}</label><input data-extra="${esc(key)}" type="${opts.type ?? "text"}" value="${esc(value)}" /></div>`;
 }
 
 /** One work-experience field bound to extrasDraft.experience[idx][key]. */
@@ -2725,14 +2767,13 @@ function apExpField(
  * application question whose label matches, so people can teach the extension
  * answers the standard profile has no slot for.
  */
-function renderSectionCustom(section: string): string {
-  const ed = overlayState.extrasDraft ?? emptyExtras();
+function renderSectionCustom(section: string, ed: AutofillExtras): string {
   const rows = ed.customFields
     .filter((c) => c.section === section)
     .map(
       (c) => `
       <div class="ap-custom-row">
-        <input class="ap-custom-label" data-custom-id="${esc(c.id)}" data-custom-key="label" value="${esc(c.label)}" placeholder="Field name (e.g. Pronouns)" />
+        <input class="ap-custom-label" data-custom-id="${esc(c.id)}" data-custom-key="label" value="${esc(c.label)}" placeholder="Field name (e.g. How did you hear about us?)" />
         <input class="ap-custom-value" data-custom-id="${esc(c.id)}" data-custom-key="value" value="${esc(c.value)}" placeholder="Your answer" />
         <button type="button" class="ap-custom-del" data-custom-del="${esc(c.id)}" title="Remove field">${I_CLOSE}</button>
       </div>`
@@ -2755,38 +2796,29 @@ function apEeoSelect(field: keyof EditableProfileDraft["eeo"], label: string, va
 
 const RESUME_HINT = '<div class="ap-form-hint">Synced from your résumé — edit it on your Tailrd profile.</div>';
 
-function renderInfoForm(): void {
-  if (!refs) return;
-  const p = overlayState.profile;
-  const d = overlayState.profileDraft;
-  const cat = overlayState.infoCategory;
-  const form = refs.infoForm;
-  form.innerHTML = "";
-
-  // Remembered answers edit in place (commit on blur) and have no draft to
-  // submit, so the shared "Update" footer would be a button that does nothing
-  // to what's on screen.
-  refs.infoFooter.style.display = cat === "remembered" ? "none" : "";
-
-  if (!p || !d) {
-    form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Sign in and upload a resume to see your information.</div>';
-    return;
-  }
-
-  const ed = overlayState.extrasDraft ?? emptyExtras();
+/**
+ * The markup for one category of the Autofill Information modal — pure, so the
+ * label/round-trip guards can assert on it without mounting the panel.
+ *
+ * EVERY `data-field` / `data-eeo` control rendered here must also appear in
+ * `EditableProfileDraft`, `draftFromProfile` and `saveInfoEdits`'s diff, or it
+ * renders, accepts typing, and silently discards it on Update.
+ *
+ * `signup` is absent on purpose: it is device-local credential state with its
+ * own async load (renderSignupForm).
+ */
+export function infoSectionHTML(
+  cat: Exclude<InfoCategory, "signup">,
+  p: UserApplicationProfile,
+  d: EditableProfileDraft,
+  ed: AutofillExtras
+): string {
   switch (cat) {
-    case "personal": {
-      // Data-driven links: a link row only appears when the user actually has
-      // one, so nobody sees a phantom GitHub/LinkedIn they never filled. GitHub
-      // is editable via the device-local extras (the sync treats it read-only);
-      // to add a link they don't have yet, use "Add field".
-      const github = ed.fields.github ?? p.github;
-      const links = [
-        d.linkedin ? apField("linkedin", "LinkedIn", d.linkedin, { type: "url" }) : "",
-        github ? apExtraField("github", "GitHub", github, { type: "url" }) : "",
-        d.portfolio ? apField("portfolio", "Portfolio", d.portfolio, { type: "url" }) : "",
-      ].filter(Boolean);
-      form.innerHTML = `
+    case "personal":
+      // LinkedIn / GitHub / Portfolio are ALWAYS rendered, empty or not:
+      // hiding a blank row meant the only way to add a link you didn't already
+      // have was "Add field", which saves nowhere the web app can see.
+      return `
         <div class="ap-form-grid">
           ${apField("firstName", "First Name", d.firstName, { required: true })}
           ${apField("lastName", "Last Name", d.lastName, { required: true })}
@@ -2794,15 +2826,16 @@ function renderInfoForm(): void {
         ${apField("email", "Email Address", d.email, { required: true, type: "email" })}
         ${apField("phone", "Phone", d.phone, { required: true, type: "tel" })}
         ${apField("location", "Location", d.location)}
+        ${apField("currentTitle", "Current / Target Job Title", d.currentTitle)}
         ${apField("dateOfBirth", "Date of Birth", d.dateOfBirth, { type: "date" })}
         <div class="ap-form-hint">Used only to answer age questions ("Are you 18 or older?") from a fact instead of a guess. Leave it blank and those questions are left for you.</div>
-        ${links.join("")}
-        ${renderSectionCustom("personal")}
+        ${apField("linkedin", "LinkedIn", d.linkedin, { type: "url" })}
+        ${apField("github", "GitHub", d.github, { type: "url" })}
+        ${apField("portfolio", "Portfolio", d.portfolio, { type: "url" })}
+        ${renderSectionCustom("personal", ed)}
       `;
-      break;
-    }
     case "address":
-      form.innerHTML = `
+      return `
         ${apField("addressStreet", "Street Address", d.addressStreet)}
         <div class="ap-form-grid">
           ${apField("addressCity", "City", d.addressCity)}
@@ -2812,9 +2845,8 @@ function renderInfoForm(): void {
           ${apField("postalCode", "Postal Code", d.postalCode)}
           ${apField("country", "Country", d.country)}
         </div>
-        ${renderSectionCustom("address")}
+        ${renderSectionCustom("address", ed)}
       `;
-      break;
     case "education": {
       let html =
         (p.education ?? []).length === 0
@@ -2830,15 +2862,16 @@ function renderInfoForm(): void {
           <hr style="border:none;border-top:1px solid var(--stripe-hairline-soft);margin:14px 0" />
         `;
       }
-      form.innerHTML = html + renderSectionCustom("education");
-      break;
+      return html + renderSectionCustom("education", ed);
     }
     case "experience": {
       // Editable: work off the user's edited copy if there is one, else the
-      // synced résumé entries. Edits + added roles persist to device-local extras.
+      // synced résumé entries. Edits + added roles persist to device-local
+      // extras — the profile API has no write path for résumé-derived
+      // sections, so the hint below says so rather than implying they sync.
       const entries = ed.experience ?? p.experience ?? [];
       let html =
-        '<div class="ap-form-hint">Edit any role, add ones your résumé missed, or add your own fields. Saved on this device and used to autofill applications.</div>';
+        '<div class="ap-form-hint">Edit any role, add ones your résumé missed, or add your own fields. <strong>These edits stay on this device</strong> — they autofill applications from this browser but do not change your Tailrd profile or show up on the web app. Edit your résumé there to change it everywhere.</div>';
       entries.forEach((e, i) => {
         html += `
           <div class="ap-exp-entry">
@@ -2855,136 +2888,65 @@ function renderInfoForm(): void {
           </div>`;
       });
       html += `<button type="button" class="ap-add-field" data-add-exp="1">+ Add work experience</button>`;
-      html += renderSectionCustom("experience");
-      form.innerHTML = html;
-      break;
+      return html + renderSectionCustom("experience", ed);
     }
     case "skill":
-      form.innerHTML =
+      return (
         ((p.skills ?? []).length === 0
           ? '<div class="ap-form-hint">No skills synced from your résumé yet.</div>'
           : RESUME_HINT + apReadonly("Skills", (p.skills ?? []).join(", "))) +
-        renderSectionCustom("skill");
-      break;
+        renderSectionCustom("skill", ed)
+      );
     case "preference":
-      form.innerHTML = `
+      // The screening answers. Each one answered here is a question the filler
+      // resolves from a stated fact instead of asking the model to infer it.
+      return `
         ${apField("workAuthorization", "Work Authorization", d.workAuthorization)}
         ${apField("requiresSponsorship", "Requires Sponsorship", d.requiresSponsorship)}
         ${apField("salaryExpectation", "Salary Expectation", d.salaryExpectation)}
-        ${renderSectionCustom("preference")}
+        ${apSelect("willingToRelocate", "Willing to Relocate", d.willingToRelocate)}
+        ${apSelect("workPreference", "Work Preference", d.workPreference)}
+        ${apField("noticePeriod", "Notice Period", d.noticePeriod, { placeholder: "2 weeks" })}
+        ${apField("earliestStartDate", "Earliest Start Date", d.earliestStartDate, { type: "date" })}
+        ${apField("yearsOfExperience", "Years of Experience", d.yearsOfExperience, { placeholder: "5" })}
+        ${apSelect("securityClearance", "Security Clearance", d.securityClearance)}
+        ${apSelect("driversLicense", "Driver's Licence", d.driversLicense)}
+        ${apField("languages", "Languages", d.languages, { placeholder: "English (Native), French (Professional)" })}
+        ${renderSectionCustom("preference", ed)}
       `;
-      break;
     case "eeo":
-      form.innerHTML = `
+      return `
         <div class="ap-form-hint">Optional self-identification. Only filled when EEO autofill is enabled. Kept private.</div>
         ${apEeoSelect("gender", "Gender", d.eeo.gender)}
         ${apEeoSelect("race", "Race / Ethnicity", d.eeo.race)}
         ${apEeoSelect("hispanicLatino", "Hispanic or Latino", d.eeo.hispanicLatino)}
         ${apEeoSelect("veteranStatus", "Veteran Status", d.eeo.veteranStatus)}
         ${apEeoSelect("disabilityStatus", "Disability Status", d.eeo.disabilityStatus)}
+        ${apEeoSelect("genderIdentity", "Gender Identity", d.eeo.genderIdentity)}
+        ${apEeoSelect("pronouns", "Pronouns", d.eeo.pronouns)}
+        ${apEeoSelect("sexualOrientation", "Sexual Orientation", d.eeo.sexualOrientation)}
       `;
-      break;
-    case "signup":
-      renderSignupForm(form, p);
-      break;
-    case "remembered":
-      renderRememberedAnswers(form);
-      break;
   }
 }
 
-/**
- * Render the answer bank — the screening answers the user gave on earlier
- * applications, which /api/fill recalls semantically on new ones. Same rows the
- * web app's Profile page shows, so an edit in either surface is the same edit.
- *
- * Device-local sensitive answers are deliberately NOT listed here: they never
- * reach the backend, and putting EEO answers on screen is a separate decision.
- */
-/**
- * Why a stored key is unusable, in the user's terms.
- *
- * These are not cosmetic complaints. An answer is stored under its question and
- * recalled by matching that text, so a key that names no question can never
- * match the question it came from — and matches unrelated ones verbatim.
- */
-const SUSPECT_TEXT: Record<string, string> = {
-  widget_boilerplate:
-    "Saved under a dropdown's own wording rather than a question, so every similar dropdown on a form can pick it up.",
-  machine_id: "Saved under the form's internal id for the field, which names no question.",
-  unlabeled: "Saved under a field Tailrd couldn't name, so it can't be matched back to anything.",
-  empty_key: "Saved with no question at all.",
-  attracts_other_questions:
-    "Worded closely enough to another saved question that it can be used to answer that one instead.",
-};
+function renderInfoForm(): void {
+  if (!refs) return;
+  const p = overlayState.profile;
+  const d = overlayState.profileDraft;
+  const cat = overlayState.infoCategory;
+  const form = refs.infoForm;
+  form.innerHTML = "";
 
-function renderRememberedAnswers(form: HTMLElement): void {
-  form.innerHTML =
-    '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Loading…</div>';
-  void (async () => {
-    const resp = await bg<AnswersResponse>({ type: "GET_ANSWERS" }).catch(() => null);
-    // The user may have clicked to another category while this was in flight.
-    if (!refs || overlayState.infoCategory !== "remembered") return;
-    if (!resp?.ok) {
-      form.innerHTML = `<div class="ap-form-hint">Could not load your remembered answers.</div>`;
-      return;
-    }
-    const answers: SavedAnswerItem[] = resp.answers;
-    if (answers.length === 0) {
-      form.innerHTML = `<div class="ap-form-hint">Nothing remembered yet. When autofill hits a question it can't answer, the panel offers to ask you — the answers you give appear here and fill automatically from then on.</div>`;
-      return;
-    }
-    const suspects = answers.filter((a) => a.suspect).length;
-    form.innerHTML =
-      `<div class="ap-form-hint">Answers Tailrd reuses on future applications. Edit one and it changes everywhere, including your Tailrd profile page.</div>` +
-      (suspects > 0
-        ? `<div class="ap-form-hint ap-remembered-warn">${
-            suspects === 1 ? "1 answer is" : `${suspects} answers are`
-          } saved under a question Tailrd can't recognise. An answer is looked up by its question, so one of these can be handed to questions it was never about — deleting it is safe, and Tailrd will ask you again next time.</div>`
-        : "") +
-      answers
-        .map(
-          (a) => `
-        <div class="ap-remembered-row" data-answer-id="${a.id}">
-          <div class="ap-remembered-q">
-            <span>${esc(a.question)}</span>
-            ${a.suspect ? `<span class="ap-remembered-flag" title="${esc(SUSPECT_TEXT[a.suspectReason ?? ""] ?? "This key names no question")}">check this</span>` : ""}
-            ${(a.timesMatched ?? 0) > 0 ? `<span class="ap-remembered-reuse">matched ${a.timesMatched}×</span>` : ""}
-          </div>
-          <div class="ap-remembered-edit">
-            <input class="ap-remembered-input" data-answer-id="${a.id}" value="${esc(a.answer)}" />
-            <button class="ap-mini-btn ap-remembered-del" data-answer-id="${a.id}" type="button">Delete</button>
-          </div>
-          ${a.suspect ? `<div class="ap-remembered-why">${esc(SUSPECT_TEXT[a.suspectReason ?? ""] ?? "This key names no question.")}</div>` : ""}
-        </div>`
-        )
-        .join("");
+  if (!p || !d) {
+    form.innerHTML = '<div style="padding:20px;text-align:center;color:var(--stripe-ink-mute)">Sign in and upload a resume to see your information.</div>';
+    return;
+  }
 
-    // Commit an edit on blur — no Save button, matching how the rest of the
-    // modal's device-local fields behave.
-    form.querySelectorAll<HTMLInputElement>(".ap-remembered-input").forEach((input) => {
-      const original = input.value;
-      input.addEventListener("blur", () => {
-        const answer = input.value.trim();
-        if (!answer || answer === original) {
-          if (!answer) input.value = original; // never store an empty answer
-          return;
-        }
-        void bg<SimpleResponse>({
-          type: "UPDATE_ANSWER",
-          id: Number(input.dataset.answerId),
-          answer,
-        }).catch(() => {});
-      });
-    });
-    form.querySelectorAll<HTMLButtonElement>(".ap-remembered-del").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        void bg<SimpleResponse>({ type: "DELETE_ANSWER", id: Number(btn.dataset.answerId) })
-          .then(() => renderRememberedAnswers(form))
-          .catch(() => {});
-      });
-    });
-  })();
+  if (cat === "signup") {
+    renderSignupForm(form, p);
+    return;
+  }
+  form.innerHTML = infoSectionHTML(cat, p, d, overlayState.extrasDraft ?? emptyExtras());
 }
 
 /**
@@ -3046,12 +3008,6 @@ function onInfoInput(e: Event): void {
     return;
   }
   const ed = overlayState.extrasDraft;
-  // Device-local scalar override (e.g. GitHub).
-  const extraKey = t.dataset.extra;
-  if (extraKey && ed) {
-    ed.fields[extraKey] = t.value;
-    return;
-  }
   // Work-experience entry edit — lazily fork the synced entries into the draft
   // the first time one is touched, so "no override" holds until the user edits.
   const expIdx = t.dataset.expIdx;
@@ -3150,6 +3106,37 @@ function setInfoError(msg: string): void {
   el.style.display = msg ? "block" : "none";
 }
 
+/**
+ * The PUT /api/user/application-profile payload for a draft: only the keys the
+ * user actually changed, so a no-op Update never bumps the shared sync version.
+ *
+ * The scalar key list is DERIVED from the draft rather than hand-written. A
+ * hand-written list is exactly how a field ends up rendering, accepting typing,
+ * and silently discarding it on Update — the failure has no error and no
+ * symptom until the user notices the value never reached the web app. Every
+ * key of EditableProfileDraft except the nested `eeo` object is a scalar the
+ * endpoint accepts under the same name.
+ */
+export function profileUpdateDiff(
+  d: EditableProfileDraft,
+  orig: UserApplicationProfile
+): Partial<UserApplicationProfile> {
+  const update: Partial<UserApplicationProfile> = {};
+  for (const k of Object.keys(d) as (keyof EditableProfileDraft)[]) {
+    if (k === "eeo") continue;
+    const next = (d as unknown as Record<string, string>)[k];
+    const prev = (orig as unknown as Record<string, string>)[k] ?? "";
+    if (next !== prev) (update as Record<string, string>)[k] = next;
+  }
+  const eeoOrig = orig.eeo ?? {};
+  const eeoDiff: EeoAnswers = {};
+  (Object.keys(d.eeo) as (keyof EditableProfileDraft["eeo"])[]).forEach((k) => {
+    if (d.eeo[k] !== ((eeoOrig as Record<string, string>)[k] ?? "")) eeoDiff[k] = d.eeo[k];
+  });
+  if (Object.keys(eeoDiff).length > 0) update.eeo = eeoDiff;
+  return update;
+}
+
 /** Persist the info-modal edits to the profile the extension + web app share. */
 async function saveInfoEdits(): Promise<void> {
   if (!refs) return;
@@ -3171,9 +3158,9 @@ async function saveInfoEdits(): Promise<void> {
     }
   }
 
-  // Device-local autofill extras (GitHub / work-experience edits + custom
-  // fields), also independent of the backend profile — they never leave the
-  // machine. Saved regardless of whether any synced field changed.
+  // Device-local autofill extras (work-experience edits + custom fields), also
+  // independent of the backend profile — they never leave the machine. Saved
+  // regardless of whether any synced field changed.
   if (overlayState.extrasDraft) {
     const pruned = pruneExtras(overlayState.extrasDraft);
     await saveExtras(pruned);
@@ -3182,24 +3169,7 @@ async function saveInfoEdits(): Promise<void> {
 
   // Send only what changed so we don't bump the sync version (and force a
   // re-download) when the user opens the modal and clicks Update without edits.
-  const orig = overlayState.profile ?? ({} as UserApplicationProfile);
-  const update: Partial<UserApplicationProfile> = {};
-  const scalarKeys: (keyof EditableProfileDraft)[] = [
-    "firstName", "lastName", "email", "phone", "location", "linkedin", "portfolio",
-    "addressStreet", "addressCity", "addressState", "postalCode", "country",
-    "workAuthorization", "requiresSponsorship", "salaryExpectation", "dateOfBirth",
-  ];
-  for (const k of scalarKeys) {
-    const next = (d as unknown as Record<string, string>)[k];
-    const prev = (orig as unknown as Record<string, string>)[k] ?? "";
-    if (next !== prev) (update as Record<string, string>)[k] = next;
-  }
-  const eeoOrig = orig.eeo ?? {};
-  const eeoDiff: EeoAnswers = {};
-  (Object.keys(d.eeo) as (keyof EditableProfileDraft["eeo"])[]).forEach((k) => {
-    if (d.eeo[k] !== ((eeoOrig as Record<string, string>)[k] ?? "")) eeoDiff[k] = d.eeo[k];
-  });
-  if (Object.keys(eeoDiff).length > 0) update.eeo = eeoDiff;
+  const update = profileUpdateDiff(d, overlayState.profile ?? ({} as UserApplicationProfile));
 
   if (Object.keys(update).length === 0) {
     // Nothing to sync — but device-local extras may have changed, so re-feed the

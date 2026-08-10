@@ -59,7 +59,6 @@ import { getLastJobContext, saveLastJobContext } from "../shared/storage";
 const MIN_CACHEABLE_DESC = 200;
 import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
-import { getLocalAnswers, saveLocalAnswer } from "./localAnswers";
 import { answersWorthRemembering, planAnswerSaves } from "./answerGaps";
 import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
@@ -311,7 +310,7 @@ function initialize(): void {
     wroteOk: Set<string>;
     dropped: DroppedAnswerLike[];
   } | null = null;
-  // Remembered so MutationObserver rescans can recompute proposed values.
+  // Retained so MutationObserver rescans can recompute proposed values.
   let lastProfile: UserApplicationProfile | null = null;
   let lastFillEEO = false;
   let observer: MutationObserver | null = null;
@@ -595,26 +594,23 @@ function initialize(): void {
   }
 
   /**
-   * Silently refill device-local sensitive answers (gender/orientation/veteran/…
-   * — the sensitive questions with no profile slot, saved on an earlier
-   * application). They never reach any backend, so we refill them here with NO UI.
-   * The old interactive "missing information" modal was removed: unknown fields
-   * are left for the user to fill, and the flow's advance gate surfaces any empty
-   * required ones. Returns the fills so the caller can fold them into its tally.
+   * Silently fill the user's own custom autofill fields — the labelled
+   * question/answer pairs they authored themselves (autofillExtras), for
+   * questions the profile has no slot for. Matched by exact-normalized label,
+   * with NO UI: the old interactive "missing information" modal was removed, so
+   * unknown fields are left for the user and the flow's advance gate surfaces
+   * any empty required ones. Returns the fills so the caller can fold them into
+   * its tally.
    */
-  async function refillLocalAnswers(signal?: AbortSignal): Promise<{
+  async function refillCustomFields(signal?: AbortSignal): Promise<{
     reports: FieldReport[];
     outcomes: { fieldId: string; ok: boolean }[];
   }> {
     const empty = { reports: [], outcomes: [] };
 
-    // Device-local sensitive answers + the user's own custom autofill fields,
-    // refilled silently before we hand off (both matched by exact-normalized
-    // label — custom fields are just user-authored local answers).
     let localFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[] } = empty;
     try {
-      const stored = await getLocalAnswers();
-      for (const [k, v] of customFieldAnswers(await getExtras())) stored.set(k, v);
+      const stored = customFieldAnswers(await getExtras());
       if (stored.size > 0) {
         const storedTargets = lastFields
           .filter((f) => f.fillable && f.proposedValue === null && controlIsEmpty(f.id))
@@ -890,9 +886,8 @@ function initialize(): void {
         }
       }
 
-      // Silently refill any device-local sensitive answers we saved before.
-      // Skipped once cancelled.
-      const missingFill = signal?.aborted ? { reports: [], outcomes: [] } : await refillLocalAnswers(signal);
+      // Silently fill the user's own custom autofill fields. Skipped once cancelled.
+      const missingFill = signal?.aborted ? { reports: [], outcomes: [] } : await refillCustomFields(signal);
 
       // Cascading location dropdowns (Country → State → City) now that parents
       // are set — a no-op unless the page actually has a location cascade.
@@ -1307,13 +1302,13 @@ function initialize(): void {
     },
     /**
      * The user answered the questions autofill couldn't. Write them into the
-     * page, then remember each one where it belongs (planAnswerSaves decides:
-     * profile / device-local / answer bank).
+     * page, and save the ones that have a real profile slot to their Tailrd
+     * profile (planAnswerSaves decides — nothing else is persisted anywhere).
      *
      * The page write comes first and its result is what we report — a save that
-     * "succeeded" while the form stayed empty would be a lie. Remembering is
-     * best-effort per sink: a backend hiccup must not lose the answers the user
-     * can already see filled in.
+     * "succeeded" while the form stayed empty would be a lie. The profile save
+     * is best-effort: a backend hiccup must not lose the answers the user can
+     * already see filled in.
      */
     onAnswerGaps: async (answers) => {
       const targets = answers
@@ -1324,48 +1319,29 @@ function initialize(): void {
       const filled = filledIds.size;
 
       // Persistence must not outlive a failed write where the failure proves the
-      // answer unusable — remembering it retires the question forever (see
+      // answer unusable — a profile value is replayed on every future form (see
       // answersWorthRemembering). An ordinary free-text answer that missed is
       // still kept: the write failed, the answer did not. `discarded` goes back
       // to the panel so the banner never claims to have saved what we dropped.
       const keep = answersWorthRemembering(answers, filledIds);
       const discarded = answers.length - keep.length;
       const plan = planAnswerSaves(keep);
-      const problems: string[] = [];
 
-      // Device-local first: it cannot fail on the network and must never be
-      // skipped because a remote save threw.
-      for (const { question, answer } of plan.local) {
-        await saveLocalAnswer(question, answer).catch(() => {});
-      }
       if (Object.keys(plan.profilePatch).length > 0) {
         const resp = await sendToBackground<ProfileResponse>({
           type: "UPDATE_PROFILE",
           update: plan.profilePatch,
         }).catch(() => null);
-        if (!resp?.ok) problems.push("your profile");
-        else lastProfile = resp.profile ?? lastProfile;
-      }
-      for (const item of plan.bank) {
-        const resp = await sendToBackground<SimpleResponse>({
-          type: "SAVE_ANSWER",
-          question: item.question,
-          answer: item.answer,
-          jobContext: extractJobContext(),
-        }).catch(() => null);
         if (!resp?.ok) {
-          problems.push("your remembered answers");
-          break; // one failure is enough — don't spam the same error per answer
+          return {
+            ok: true,
+            filled,
+            discarded,
+            reason:
+              "Filled the form, but couldn't save to your profile. You may be asked these again.",
+          };
         }
-      }
-
-      if (problems.length > 0) {
-        return {
-          ok: true,
-          filled,
-          discarded,
-          reason: `Filled the form, but couldn't save to ${problems.join(" or ")}. They may not autofill next time.`,
-        };
+        lastProfile = resp.profile ?? lastProfile;
       }
       return { ok: true, filled, discarded };
     },

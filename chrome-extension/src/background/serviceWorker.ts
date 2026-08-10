@@ -13,18 +13,17 @@ import { connectAccount } from "../api/handshake";
 import { AuthRequiredError, checkAuthStatus, ensureFreshAccessToken, logout } from "../api/client";
 import { downloadResumeFile, getSnapshotForUi, syncIfStale, updateApplicationProfile } from "../api/sync";
 import { aiFillFields } from "../api/aiFill";
-import { deleteAnswer, listAnswers, saveAnswer, updateAnswer } from "../api/answers";
 import { renderResume, tailorResume } from "../api/tailorResume";
 import { generateCoverLetter, renderCoverLetter } from "../api/coverLetter";
 import { recordApplication } from "../api/applications";
 import { reportAutofillTelemetry } from "../api/telemetry";
 import { fetchAndCacheOverrides, getCachedOverrideRules } from "../api/overrides";
 import { matchApplyIntent, recordApplyIntent } from "./applyIntent";
+import { cleanupLegacyStorage } from "./cleanupLegacyStorage";
 import { clearSessionExpired, getAuth, getConfig, getSessionExpired, getSnapshot, saveConfig } from "../shared/storage";
 import { getFlowState, setFlowState, watchTabRemoval } from "./flowState";
 import type {
   AiFillResponse,
-  AnswersResponse,
   BackgroundRequest,
   FieldsUpdatedEvent,
   GenerateCoverLetterResponse,
@@ -88,14 +87,17 @@ chrome.runtime.onInstalled.addListener(() => {
   // getConfig() merges defaults, so no seeding is required.
   ensureSyncAlarm();
   setUninstallFeedbackUrl();
+  void cleanupLegacyStorage();
   void syncIfStale().catch(() => {});
   void fetchAndCacheOverrides().catch(() => {});
 });
 
 // Re-arm the alarm and sync once whenever the worker spins up (startup).
+// Also the ONLY cleanup path an existing user who never reinstalls will reach.
 chrome.runtime.onStartup.addListener(() => {
   ensureSyncAlarm();
   setUninstallFeedbackUrl();
+  void cleanupLegacyStorage();
   void syncIfStale().catch(() => {});
   void fetchAndCacheOverrides().catch(() => {});
 });
@@ -321,7 +323,6 @@ export async function handle(
   | RenderCoverLetterResponse
   | RecordApplicationResponse
   | OverridesResponse
-  | AnswersResponse
 > {
   switch (message.type) {
     case "GET_STATUS": {
@@ -481,54 +482,6 @@ export async function handle(
           answers: [],
           errors: [err instanceof Error ? err.message : "AI fill failed"],
         };
-      }
-    }
-
-    case "SAVE_ANSWER": {
-      try {
-        await saveAnswer(message.question, message.answer, message.jobContext);
-        return { ok: true };
-      } catch (err) {
-        if (err instanceof AuthRequiredError) {
-          return { ok: false, needsLogin: true, error: err.message };
-        }
-        return { ok: false, error: err instanceof Error ? err.message : "Save failed" };
-      }
-    }
-
-    case "GET_ANSWERS": {
-      try {
-        const answers = await listAnswers();
-        return { ok: true, answers };
-      } catch (err) {
-        if (err instanceof AuthRequiredError) {
-          return { ok: false, needsLogin: true, answers: [] };
-        }
-        return { ok: false, error: err instanceof Error ? err.message : "Load failed", answers: [] };
-      }
-    }
-
-    case "UPDATE_ANSWER": {
-      try {
-        await updateAnswer(message.id, message.answer);
-        return { ok: true };
-      } catch (err) {
-        if (err instanceof AuthRequiredError) {
-          return { ok: false, needsLogin: true, error: err.message };
-        }
-        return { ok: false, error: err instanceof Error ? err.message : "Update failed" };
-      }
-    }
-
-    case "DELETE_ANSWER": {
-      try {
-        await deleteAnswer(message.id);
-        return { ok: true };
-      } catch (err) {
-        if (err instanceof AuthRequiredError) {
-          return { ok: false, needsLogin: true, error: err.message };
-        }
-        return { ok: false, error: err instanceof Error ? err.message : "Delete failed" };
       }
     }
 

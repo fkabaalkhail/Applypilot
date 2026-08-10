@@ -20,6 +20,9 @@ const APPLICATION_ONLY: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "sponsorship",
   "eeoGender",
   "eeoGenderIdentity",
+  // Split out of eeoOther, which used to own the "Pronouns" pattern — leaving
+  // it out here would silently drop evidence a page used to supply.
+  "eeoPronouns",
   "eeoRace",
   "eeoHispanic",
   "eeoVeteran",

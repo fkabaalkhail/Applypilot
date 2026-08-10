@@ -112,7 +112,7 @@ describe("planAiFill", () => {
     ];
     const answers = [
       { id: "essay", answer: "Because I love it.", needsReview: true, source: "ai", category: "company_specific" },
-      { id: "summary", answer: "Seasoned engineer.", needsReview: false, source: "memory", category: "general" },
+      { id: "summary", answer: "Seasoned engineer.", needsReview: false, source: "profile", category: "general" },
       { id: "exp", answer: "5 years", needsReview: true, source: "ai", category: "general" },
       { id: "auth", answer: "Yes", needsReview: false, source: "rule", category: "work_authorization" },
       { id: "blank", answer: "   ", needsReview: true, source: "ai", category: "general" }, // empty → ignored

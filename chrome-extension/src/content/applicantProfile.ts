@@ -27,6 +27,17 @@ export function toApplicantProfile(p: UserApplicationProfile): ApplicantProfile 
     workAuthorization: p.workAuthorization ?? "",
     requiresSponsorship: p.requiresSponsorship ?? "",
     salaryExpectation: p.salaryExpectation ?? "",
+    // Screening answers stated once on the profile. They are facts, not
+    // assumptions, so the backend can answer from them with no model call —
+    // but only if they actually travel (see backend ApplicantProfile).
+    willingToRelocate: p.willingToRelocate ?? "",
+    workPreference: p.workPreference ?? "",
+    noticePeriod: p.noticePeriod ?? "",
+    earliestStartDate: p.earliestStartDate ?? "",
+    yearsOfExperience: p.yearsOfExperience ?? "",
+    securityClearance: p.securityClearance ?? "",
+    driversLicense: p.driversLicense ?? "",
+    languages: p.languages ?? "",
     skills: (p.skills ?? []).slice(0, 30),
     experience: (p.experience ?? [])
       .slice(0, 8)

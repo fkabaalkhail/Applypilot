@@ -205,36 +205,6 @@ class PendingQuestion(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
-class SavedAnswer(Base):
-    """A previously approved application answer, reusable across applications.
-
-    Searched by semantic similarity (embedding cosine) so the same question is
-    recognized regardless of company/role wording. Written only after the user
-    accepts or edits a suggestion — see POST /api/answers."""
-    __tablename__ = "saved_answers"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    question_raw = Column(Text, nullable=False)
-    question_canonical = Column(Text, nullable=False, index=True)
-    answer = Column(Text, nullable=False)
-    category = Column(String, default="general")
-    embedding = Column(JSON, default=list)
-    embedding_model = Column(String, default="")
-    source = Column(String, default="ai")
-    times_reused = Column(Integer, default=0)
-    # How often this row was the nearest neighbour at fill time. Distinct from
-    # times_reused, which POST /api/answers also bumps on every re-save — so a
-    # row saved ten times looks "popular" without ever having been recalled.
-    # Only a true match count can show a key that is attracting questions it
-    # has nothing to do with, which is what the answer-bank audit looks for.
-    times_matched = Column(Integer, default=0)
-    last_matched_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
-                        onupdate=datetime.datetime.utcnow)
-
-
 class ResumeProfileDB(Base):
     """Stores a parsed resume profile in the database."""
     __tablename__ = "resume_profiles"
@@ -385,10 +355,17 @@ class UserSettings(Base):
     city = Column(String, default="")
     linkedin_url = Column(String, default="")
     website = Column(String, default="")
+    # GitHub profile URL. Used to live only on the resume row (parsed out of the
+    # uploaded file), so an edit made in the web app or the extension had
+    # nowhere to persist — see the 2026-08-09 profile-parity contract.
+    github_url = Column(String, default="")
 
-    # Structured mailing address (autofill v2.1). ``city`` above is reused for
-    # addressCity; these cover the rest of a mailing address. All optional.
+    # Structured mailing address (autofill v2.1). All optional.
     street_address = Column(String, default="")
+    # Mailing-address city. ``city`` above backs the free-form ``location``
+    # field; the two used to share one column, so a PUT carrying both silently
+    # dropped one. Blank here falls back to ``city`` on read.
+    address_city = Column(String, default="")
     address_state = Column(String, default="")
     postal_code = Column(String, default="")
     country = Column(String, default="")
@@ -401,6 +378,12 @@ class UserSettings(Base):
     eeo_hispanic = Column(String, default="")
     eeo_veteran = Column(String, default="")
     eeo_disability = Column(String, default="")
+    # Second wave of demographics (2026-08-09 profile-parity contract). The
+    # first two were already declared in the extension's ``EeoAnswers`` type but
+    # had no column to persist into; pronouns are new.
+    eeo_gender_identity = Column(String, default="")
+    eeo_pronouns = Column(String, default="")
+    eeo_sexual_orientation = Column(String, default="")
 
     # Resume file path
     resume_file_path = Column(String, default="")

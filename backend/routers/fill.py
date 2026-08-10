@@ -5,7 +5,6 @@ Takes form fields + resume context, returns AI-generated answers.
 Used by both the Plasmo extension and the React frontend.
 """
 
-import datetime as dt
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -15,11 +14,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import UserSettings, ResumeProfileDB, SavedAnswer
+from backend.db.models import UserSettings, ResumeProfileDB
 from backend.auth.dependencies import get_verified_user_id
 from backend.services.usage_limiter import llm_guard
 from backend.services.llm import get_llm_service
-from backend.services.embeddings import EmbeddingsService
 from backend.services.answer_gate import GateResult, validate_answer
 from backend.services.derived_facts import resolve_derived_fact
 from backend.services.option_match import (
@@ -27,12 +25,6 @@ from backend.services.option_match import (
     match_option as _match_option,
     parse_range as _parse_range,
     shared_prefix_len as _shared_prefix_len,
-)
-from backend.services.answer_memory import (
-    canonicalize_question,
-    categorize_question,
-    best_match,
-    MATCH_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +81,18 @@ class ApplicantProfile(BaseModel):
     workAuthorization: str = ""
     requiresSponsorship: str = ""
     salaryExpectation: str = ""
+    # Screening answers the applicant stated once on their profile (2026-08-09
+    # profile-parity contract). Every one is a FACT the user supplied, not an
+    # assumption, which is what makes it safe to answer from without an LLM.
+    # Blank means "not answered" — every rule below abstains on a blank.
+    willingToRelocate: str = ""
+    workPreference: str = ""
+    noticePeriod: str = ""
+    earliestStartDate: str = ""
+    yearsOfExperience: str = ""
+    securityClearance: str = ""
+    driversLicense: str = ""
+    languages: str = ""
     skills: list[str] = []
     experience: list[str] = []   # pre-flattened "Title at Company (dates)" lines
     education: list[str] = []     # pre-flattened "Degree, School (year)" lines
@@ -117,13 +121,11 @@ class FieldAnswer(BaseModel):
     label: str
     answer: str
     confidence: str = "high"  # high, medium, low
-    source: str = "rule"  # rule | profile | memory | ai
-    needsReview: bool = False  # AI suggestions + company-specific matches
-    category: str = "general"
-    canonicalQuestion: str = ""
-    # Which pass produced this, for telemetry: "derived" | "rule" | "memory" |
-    # "ai". `source` is the older, coarser field the client already reads;
-    # keeping both means nothing that consumes `source` has to change.
+    source: str = "rule"  # rule | profile | ai
+    needsReview: bool = False  # AI suggestions
+    # Which pass produced this, for telemetry: "derived" | "rule" | "ai".
+    # `source` is the older, coarser field the client already reads; keeping
+    # both means nothing that consumes `source` has to change.
     fillPass: str = "rule"
 
 
@@ -197,6 +199,66 @@ def _raw_rule_based_answer(label: str, options: list[str], settings, profile=Non
         worked = bool(company and any(company.lower() in e.lower() for e in exp))
         return ("Yes" if yes_no else "yes") if worked else ("No" if yes_no else "no")
 
+    # Screening answers the applicant stated on their profile. These sit ABOVE
+    # the generic name/city block on purpose: "preferred work location" and
+    # "earliest start date" both carry that block's keywords, and the city
+    # answer would win the race and then be filtered out as unmatchable.
+    #
+    # Each fires only when the profile actually holds the answer — a blank falls
+    # through to the AI pass rather than being invented. That is the same line
+    # test_assumption_rules_are_dropped draws: "are you willing to relocate?" is
+    # a hardcoded guess when nobody said so, and a stated fact when they did.
+    if profile is not None:
+        if profile.willingToRelocate and any(kw in q for kw in [
+            "relocat", "willing to move", "open to moving",
+        ]):
+            return profile.willingToRelocate
+        if profile.workPreference and any(kw in q for kw in [
+            "work preference", "work arrangement", "work setting", "work model",
+            "work style", "work location preference", "preferred work location",
+            "remote or", "remote/", "hybrid", "on-site", "onsite", "in-office",
+            "remote work", "work remotely",
+        ]):
+            return profile.workPreference
+        if profile.noticePeriod and any(kw in q for kw in [
+            "notice period", "notice do you", "notice are you", "much notice",
+            "required notice",
+        ]):
+            return profile.noticePeriod
+        if profile.earliestStartDate and any(kw in q for kw in [
+            "start date", "when can you start", "when could you start",
+            "earliest you can", "available to start", "availability to start",
+            "date available", "when are you available",
+        ]):
+            return profile.earliestStartDate
+        # "years of experience WITH Kubernetes" is a question about one skill,
+        # not a career total — the same narrowing guard derived_facts applies.
+        if (
+            profile.yearsOfExperience
+            and any(kw in q for kw in ["years of experience", "years experience", "yrs of experience"])
+            and not any(kw in q for kw in [
+                "experience with", "experience in", "experience using",
+                "experience as", "experience on",
+            ])
+        ):
+            return profile.yearsOfExperience
+        if profile.securityClearance and "clearance" in q:
+            return profile.securityClearance
+        if profile.driversLicense and "licen" in q and ("driver" in q or "driving" in q):
+            return profile.driversLicense
+        # A programming-language question is not a spoken-language question, and
+        # answering it "English (Native)" is exactly the kind of confident
+        # nonsense the grounding contract exists to stop.
+        if (
+            profile.languages
+            and any(kw in q for kw in ["language", "fluent in", "do you speak"])
+            and not any(kw in q for kw in [
+                "programming", "coding", "code", "software", "technolog",
+                "framework", "scripting",
+            ])
+        ):
+            return profile.languages
+
     # Profile-based answers — request profile first, stored settings as fallback.
     first = (profile.firstName if profile else "") or (settings.first_name if settings else "")
     last = (profile.lastName if profile else "") or (settings.last_name if settings else "")
@@ -242,6 +304,22 @@ def _profile_context(p: ApplicantProfile) -> str:
         lines.append(f"Requires visa sponsorship: {p.requiresSponsorship}")
     if p.salaryExpectation:
         lines.append(f"Salary expectation: {p.salaryExpectation}")
+    # Stated screening answers. Labelled with the same wording the profile
+    # stores them under (the contract's prefilled_answers keys), so the prompt,
+    # the storage and both UIs all name the same fact the same way. A blank is
+    # omitted entirely — the model is never shown "unknown" as if it were data.
+    for label, value in (
+        ("Willing to relocate", p.willingToRelocate),
+        ("Work preference", p.workPreference),
+        ("Notice period", p.noticePeriod),
+        ("Earliest start date", p.earliestStartDate),
+        ("Years of experience", p.yearsOfExperience),
+        ("Security clearance", p.securityClearance),
+        ("Driver's licence", p.driversLicense),
+        ("Languages", p.languages),
+    ):
+        if value:
+            lines.append(f"{label}: {value}")
     for link in (p.linkedin, p.github, p.portfolio):
         if link:
             lines.append(link)
@@ -345,9 +423,8 @@ async def fill_form(
     # shortcuts. Both fill silently, and both are gated.
     #
     # The derived resolvers run FIRST and short-circuit: a question whose answer
-    # the profile already contains ("are you 18 or older?") must never reach a
-    # vector index, where it would be answered by whatever question happened to
-    # canonicalize alongside it.
+    # the profile already contains ("are you 18 or older?") is settled here, so
+    # it is never handed to the LLM to be guessed at.
     for field in request.fields:
         derived = resolve_derived_fact(
             label=field.label,
@@ -363,7 +440,6 @@ async def fill_form(
                 answers.append(FieldAnswer(
                     id=field.id, label=field.label, answer=verdict.value,
                     source="profile", fillPass="derived",
-                    category=categorize_question(field.label),
                 ))
                 continue
 
@@ -378,67 +454,10 @@ async def fill_form(
                 continue
         remaining.append(field)
 
-    # Pass 2: Question Memory — reuse previously approved answers by meaning.
-    # Generic matches fill silently; company-specific matches are flagged for
-    # review so one company's answer isn't pasted blind into another's form.
-    ai_fields: list[tuple[FormField, str]] = []
+    # Pass 2: AI generation for everything pass 1 left unanswered. Suggestions
+    # are returned for review (needsReview) and are never persisted — each fill
+    # re-derives its answers, so nothing carries over between applications.
     if remaining:
-        canonicals = [
-            canonicalize_question(f.label, request.company, request.jobTitle)
-            for f in remaining
-        ]
-        saved_rows = db.query(SavedAnswer).filter(SavedAnswer.user_id == user_id).all()
-        vectors = None
-        if saved_rows:
-            try:
-                vectors = await EmbeddingsService().embed_batch(canonicals)
-            except Exception as e:  # missing key, network — degrade to AI
-                logger.warning("Memory search unavailable: %s", e)
-                vectors = None
-
-        touched = False
-        for idx, field in enumerate(remaining):
-            canonical = canonicals[idx]
-            matched = None
-            if vectors is not None:
-                cand, score = best_match(vectors[idx], saved_rows)
-                if cand is not None and score >= MATCH_THRESHOLD:
-                    matched = cand
-            if matched is None:
-                ai_fields.append((field, canonical))
-                continue
-
-            # Count the MATCH, whatever happens to the answer next. This is the
-            # signal the audit reads: a key matching far more questions than a
-            # person is ever asked is a key that is matching the wrong ones, and
-            # `times_reused` cannot show that — it is also incremented on save.
-            matched.times_matched = (matched.times_matched or 0) + 1
-            matched.last_matched_at = dt.datetime.utcnow()
-            touched = True
-
-            verdict = gated(field, matched.answer, "memory")
-            if verdict is None:
-                # A remembered answer the profile refutes is not a candidate for
-                # a later pass either — but the AI may still answer honestly.
-                ai_fields.append((field, canonical))
-                continue
-
-            needs_review = matched.category == "company_specific"
-            if not needs_review:
-                matched.times_reused = (matched.times_reused or 0) + 1
-            answers.append(FieldAnswer(
-                id=field.id, label=field.label, answer=verdict.value,
-                confidence="high", source="memory", needsReview=needs_review,
-                category=matched.category, canonicalQuestion=canonical,
-                fillPass="memory",
-            ))
-        if touched:
-            db.commit()
-
-    # Pass 3: AI generation for anything still unanswered. Suggestions are
-    # returned for review (needsReview) and never auto-saved — POST /api/answers
-    # is the only write path, used after the user accepts/edits.
-    if ai_fields:
         try:
             llm = get_llm_service()
             # Today's date lets the model compute durations ("Present" roles,
@@ -459,7 +478,7 @@ async def fill_form(
 
             context = "\n\n".join(context_parts)
 
-            for field, canonical in ai_fields:
+            for field in remaining:
                 try:
                     q = field.label
                     if field.inputType:
@@ -484,8 +503,6 @@ async def fill_form(
                     answers.append(FieldAnswer(
                         id=field.id, label=field.label, answer=verdict.value,
                         confidence="medium", source="ai", needsReview=True,
-                        category=categorize_question(field.label),
-                        canonicalQuestion=canonical,
                         fillPass="ai",
                     ))
                 except Exception as e:

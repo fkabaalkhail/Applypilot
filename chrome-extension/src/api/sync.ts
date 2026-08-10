@@ -31,9 +31,20 @@ import { MOCK_PROFILE } from "./mockProfile";
 // Normalization + mock snapshot
 // ---------------------------------------------------------------------------
 
-/** Coerce a (possibly partial) profile payload so the UI never null-checks. */
-function normalizeProfile(raw: Partial<UserApplicationProfile>): UserApplicationProfile {
+/**
+ * Coerce a (possibly partial) profile payload so the UI never null-checks.
+ *
+ * This is the ONLY door the server's profile comes through: a key omitted here
+ * is dropped no matter what the API returns, and the field then looks broken
+ * end-to-end with nothing in the network tab to explain it. Exported so that
+ * stays under test.
+ */
+export function normalizeProfile(raw: Partial<UserApplicationProfile>): UserApplicationProfile {
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  // Optional fields keep `undefined` for "not answered" rather than "" — same
+  // convention salaryExpectation has always used, so a blank never reads as an
+  // answer the user gave.
+  const opt = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
   return {
     firstName: str(raw.firstName),
     lastName: str(raw.lastName),
@@ -53,11 +64,24 @@ function normalizeProfile(raw: Partial<UserApplicationProfile>): UserApplication
     workAuthorization: str(raw.workAuthorization),
     requiresSponsorship: str(raw.requiresSponsorship),
     dateOfBirth: str(raw.dateOfBirth),
+    // Screening answers (2026-08-09 profile-parity contract). Dropping them
+    // here would make the whole feature invisible to the extension no matter
+    // what the API returns.
+    willingToRelocate: opt(raw.willingToRelocate),
+    workPreference: opt(raw.workPreference),
+    noticePeriod: opt(raw.noticePeriod),
+    earliestStartDate: opt(raw.earliestStartDate),
+    yearsOfExperience: opt(raw.yearsOfExperience),
+    securityClearance: opt(raw.securityClearance),
+    driversLicense: opt(raw.driversLicense),
+    languages: opt(raw.languages),
     education: Array.isArray(raw.education) ? raw.education : [],
     experience: Array.isArray(raw.experience) ? raw.experience : [],
     skills: Array.isArray(raw.skills) ? raw.skills.filter((s): s is string => typeof s === "string") : [],
     coverLetter: str(raw.coverLetter),
     salaryExpectation: raw.salaryExpectation ? str(raw.salaryExpectation) : undefined,
+    // Passed through whole — the nested demographics (incl. genderIdentity /
+    // pronouns / sexualOrientation) carry with it.
     eeo: raw.eeo,
   };
 }

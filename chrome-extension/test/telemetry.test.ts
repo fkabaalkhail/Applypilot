@@ -107,13 +107,13 @@ describe("successes are recorded too", () => {
       {
         reports: [rep("a", true)],
         outcomes: [],
-        provenance: new Map([["a", { tier: "backend", pass: "memory" }]]),
+        provenance: new Map([["a", { tier: "backend", pass: "rule" }]]),
         intended: [{ fieldId: "a", value: "No" }],
         observed: [{ fieldId: "a", value: "No" }],
       }
     );
     expect(t.fieldOutcomes?.[0].tier).toBe("backend");
-    expect(t.fieldOutcomes?.[0].pass).toBe("memory");
+    expect(t.fieldOutcomes?.[0].pass).toBe("rule");
   });
 
   it("carries no answer text in any per-field record", () => {
@@ -137,7 +137,7 @@ describe("successes are recorded too", () => {
       {
         reports: [],
         outcomes: [],
-        dropped: [{ fieldId: "a", reason: "contradicts_profile:age_gate", source: "memory" }],
+        dropped: [{ fieldId: "a", reason: "contradicts_profile:age_gate", source: "rule" }],
       }
     );
     expect(t.fieldOutcomes?.[0].outcome).toBe("dropped");

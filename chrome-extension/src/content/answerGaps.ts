@@ -3,13 +3,13 @@
  *
  * Autofill leaves a field blank whenever the profile has no value and the AI
  * returns __NO_ANSWER__ (the grounding contract — it must not invent facts).
- * Many of those blanks are recurring screening questions ("Are you willing to
- * relocate?", "Years of experience with Python") whose answer transfers to
- * every future application. Asking once and remembering the answer is the whole
- * point; asking about a question that CANNOT transfer is pure noise.
+ * A required question nothing can ground has no other way to get answered, so
+ * the modal asks the user directly and the answer is written into THIS page.
+ * The asking is still deliberately conservative: a prompt shaped like an essay,
+ * or a field with no typed answer at all, is noise in a follow-up dialog.
  *
- * So this predicate is deliberately conservative. Pure — no chrome.*, no DOM —
- * so it unit-tests cleanly (jobFormEvidence.ts style).
+ * Pure — no chrome.*, no DOM — so it unit-tests cleanly (jobFormEvidence.ts
+ * style).
  */
 import type {
   ControlType,
@@ -18,7 +18,6 @@ import type {
   UserApplicationProfile,
 } from "../shared/types";
 import { buildProfilePatch, isProfileCategory } from "../shared/profileCategories";
-import { isNamedQuestion } from "../shared/questionText";
 import { normalize } from "./fieldMatcher";
 
 /** Never ask about more than this in one sitting — the modal is a follow-up,
@@ -28,20 +27,20 @@ export const MAX_GAPS = 8;
 /** One unanswered question to put to the user. */
 export interface AnswerGap {
   fieldId: string;
-  /** The field's label — also the key the answer is remembered under. */
+  /** The field's label — the question as put to the user. */
   question: string;
   controlType: ControlType;
   category: FieldCategory;
   /** The page's own option strings, for constrained controls. */
   options: string[];
   required: boolean;
-  /** EEO / demographic — the answer stays device-local and is never transmitted. */
+  /** EEO / demographic — never transmitted to the AI fill pipeline. */
   sensitive: boolean;
   helpText?: string;
   /** Native input type hint ("date", "number") — picks the modal's input type. */
   inputType?: string;
-  /** Names this employer or role, so the answer cannot transfer to another
-   *  application: still asked, never banked. */
+  /** Names this employer or role, so the answer is about THIS application only.
+   *  Informational: every answer is scoped to this page now. */
   oneOff?: boolean;
 }
 
@@ -51,8 +50,8 @@ export interface GapJobContext {
 }
 
 /** Controls that offer a fixed set of choices. A constrained field is a
- *  screening question almost by definition, and its answer is one of a handful
- *  of values that recur verbatim across ATS vendors — always worth asking. */
+ *  screening question almost by definition, and answering it is one click on a
+ *  value the page itself named — always worth asking. */
 const CONSTRAINED: ReadonlySet<ControlType> = new Set<ControlType>([
   "select",
   "radioGroup",
@@ -71,8 +70,8 @@ const FREE_TEXT: ReadonlySet<ControlType> = new Set<ControlType>(["text", "conte
  *  compose path already handles. */
 const NEVER: ReadonlySet<ControlType> = new Set<ControlType>(["file", "password", "textarea"]);
 
-/** Essay-shaped prompts. The answer is about THIS company or a personal story,
- *  so replaying it on the next application would be wrong, not helpful. */
+/** Essay-shaped prompts. A prose answer does not belong in a one-line box in a
+ *  follow-up dialog — the compose path owns those. */
 const ESSAY_RE = /\bwhy\b|\bdescribe\b|\btell us\b|\bexplain\b|in your own words/i;
 
 /** Above this a "short text question" is really a prose prompt in disguise. */
@@ -96,8 +95,8 @@ function isOneOff(gapText: string, job: GapJobContext): boolean {
   return false;
 }
 
-/** Is this field's answer plausibly reusable on a future application? */
-function isReusable(f: DetectedField): boolean {
+/** Can this field be put to the user as a short question in the modal? */
+function isAskable(f: DetectedField): boolean {
   if (NEVER.has(f.controlType)) return false;
   if (CONSTRAINED.has(f.controlType)) return true;
   if (!FREE_TEXT.has(f.controlType)) return false;
@@ -144,7 +143,7 @@ export function selectAnswerGaps(
     if ((f.currentValue ?? "").trim() && !reverted.has(f.id)) continue;
     const question = f.label.trim();
     if (!question) continue;
-    if (!isReusable(f)) continue;
+    if (!isAskable(f)) continue;
     const key = normalize(question);
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -158,9 +157,9 @@ export function selectAnswerGaps(
       sensitive: f.sensitive,
       helpText: f.helpText,
       inputType: f.inputType,
-      // Asked, because the form needs it filled now; not remembered, because the
-      // answer is about THIS employer. Dropping it from the modal instead left a
-      // required question with no way to answer it.
+      // Asked, because the form needs it filled now. Dropping a question that
+      // names the employer from the modal instead left a required field with no
+      // way to answer it at all.
       oneOff: isOneOff(`${question} ${f.helpText ?? ""}`, job),
     });
   }
@@ -198,14 +197,12 @@ export function isBlindConstrainedGap(gap: AnswerGap): boolean {
 }
 
 /**
- * The answers still worth remembering after the page write.
+ * The answers still worth keeping after the page write.
  *
  * Persistence must not outlive a failed write — but only where the failure
- * proves the ANSWER is unusable, not merely that this moment was bad.
- * selectAnswerGaps skips any field that already has a proposedValue, so an
- * answer we remember permanently retires its question: store a value the widget
- * rejects and the user is never asked again, never sees why, and the extension
- * replays the rejected value on every future application.
+ * proves the ANSWER is unusable, not merely that this moment was bad. A value
+ * saved into a profile slot is replayed on every future form, so storing one
+ * the widget rejects means the user is never asked again and never sees why.
  *
  * So exactly one case is dropped: a blind constrained gap (above) whose write
  * failed — text typed into a box that stood in for a dropdown nobody could read.
@@ -214,6 +211,9 @@ export function isBlindConstrainedGap(gap: AnswerGap): boolean {
  * failed to write for an unrelated reason — a disabled input, a re-render
  * mid-fill, a field that scrolled out of the DOM — is still a correct answer,
  * and discarding it would silently throw away the user's work.
+ *
+ * The count of what was dropped is also what the panel's banner reports, so it
+ * matters even for an answer that has no profile slot to be saved into.
  */
 export function answersWorthRemembering(
   answers: readonly AnsweredGap[],
@@ -224,53 +224,35 @@ export function answersWorthRemembering(
   );
 }
 
-/** Where a batch of answers should be written. Each answer lands in exactly one
- *  bucket — the caller executes all three. */
+/** Where a batch of answers should be written. One sink: the user's profile. */
 export interface AnswerSavePlan {
   /** Merged patch for PUT /api/user/application-profile (may be empty). */
   profilePatch: Partial<UserApplicationProfile>;
-  /** Device-local sensitive answers — never transmitted anywhere. */
-  local: { question: string; answer: string }[];
-  /** Question Memory (POST /api/answers) — recalled semantically by /api/fill. */
-  bank: { question: string; answer: string; fieldType: string }[];
 }
 
 /**
- * Decide where each answer is remembered.
+ * Decide which answers persist.
  *
- * Order matters. A profile slot wins first, so the five standard EEO questions
- * — which the profile genuinely stores — persist there and sync, exactly as
- * localAnswers.ts documents. Only THEN does `sensitive` divert to the device:
- * that catches gender identity, orientation and pronouns, which have no profile
- * slot and must never leave the machine. Everything left is an ordinary
- * screening question and goes to the answer bank.
+ * Only one sink is left, and it is the honest one: a question whose category
+ * maps to a real profile slot (phone, LinkedIn, the five standard EEO answers)
+ * is stored in the user's Tailrd profile, where they can see and edit it.
+ * Everything else — an employer's own screening question, a prompt with no
+ * profile slot — is filled on THIS page and persisted nowhere. There is no
+ * cross-application answer memory any more.
  *
- * The consequence worth stating: a sensitive answer can never reach the bank,
- * because the sensitive check is above it.
+ * Keying is by category, never by label. A profile slot stays correct however
+ * badly the form named the field, which is why the old "is this label a real
+ * question?" guard is gone with the label-keyed store it protected.
  */
 export function planAnswerSaves(answers: readonly AnsweredGap[]): AnswerSavePlan {
   const profileEntries: { category: FieldCategory; value: string }[] = [];
-  const local: AnswerSavePlan["local"] = [];
-  const bank: AnswerSavePlan["bank"] = [];
 
   for (const { gap, value } of answers) {
     const answer = value.trim();
     if (!answer) continue;
-    // An answer is remembered UNDER ITS QUESTION, and recalled by matching that
-    // text against a future form's question. A key that names no question —
-    // "Unlabeled field", or a raw widget id — can never match the question it
-    // came from, and can match unrelated ones. Filling the page already happened;
-    // this only declines to remember it. A profile slot is exempt: its key is the
-    // category, not the label, so it stays correct however the field was named.
-    if (!isProfileCategory(gap.category) && (gap.oneOff || !isNamedQuestion(gap.question))) continue;
-    if (isProfileCategory(gap.category)) {
-      profileEntries.push({ category: gap.category, value: answer });
-    } else if (gap.sensitive) {
-      local.push({ question: gap.question, answer });
-    } else {
-      bank.push({ question: gap.question, answer, fieldType: gap.controlType });
-    }
+    if (!isProfileCategory(gap.category)) continue;
+    profileEntries.push({ category: gap.category, value: answer });
   }
 
-  return { profilePatch: buildProfilePatch(profileEntries), local, bank };
+  return { profilePatch: buildProfilePatch(profileEntries) };
 }

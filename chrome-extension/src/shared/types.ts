@@ -28,6 +28,7 @@ export interface ExperienceEntry {
 export interface EeoAnswers {
   gender?: string;
   genderIdentity?: string;
+  pronouns?: string;
   race?: string;
   hispanicLatino?: string;
   veteranStatus?: string;
@@ -60,11 +61,25 @@ export interface UserApplicationProfile {
   requiresSponsorship: string;
   /**
    * ISO "YYYY-MM-DD". The one profile fact that exists purely so an age gate
-   * ("Are you 18 or older?") is COMPUTED rather than recalled — see
+   * ("Are you 18 or older?") is COMPUTED rather than guessed — see
    * backend/services/derived_facts.py. Blank is normal and means every age
    * resolver abstains, which is the honest default, not a degraded one.
    */
   dateOfBirth: string;
+  /**
+   * Screening answers the applicant stated once on their profile (2026-08-09
+   * profile-parity contract). Each is a FACT the user supplied, so a matching
+   * question is answered from it directly — pass 1, no backend/LLM call. Blank
+   * (or absent) means "not answered" and every resolver abstains.
+   */
+  willingToRelocate?: string;
+  workPreference?: string;
+  noticePeriod?: string;
+  earliestStartDate?: string;
+  yearsOfExperience?: string;
+  securityClearance?: string;
+  driversLicense?: string;
+  languages?: string;
   education: EducationEntry[];
   experience: ExperienceEntry[];
   skills: string[];
@@ -187,9 +202,23 @@ export type FieldCategory =
   | "experienceCurrent"
   | "salary"
   | "skills"
+  // Screening answers held on the profile (2026-08-09 profile-parity contract).
+  // Each resolves straight from a stated fact, so these questions cost no LLM
+  // call. `startDate` is the AVAILABILITY date ("when can you start?") and is
+  // deliberately distinct from experienceStartDate, which only ever resolves
+  // inside a repeating employment row.
+  | "willingToRelocate"
+  | "workPreference"
+  | "noticePeriod"
+  | "startDate"
+  | "yearsOfExperience"
+  | "securityClearance"
+  | "driversLicense"
+  | "languages"
   // EEO / demographic — detected but never autofilled unless explicitly enabled
   | "eeoGender"
   | "eeoGenderIdentity"
+  | "eeoPronouns"
   | "eeoRace"
   | "eeoHispanic"
   | "eeoVeteran"
@@ -302,6 +331,17 @@ export interface ApplicantProfile {
   workAuthorization: string;
   requiresSponsorship: string;
   salaryExpectation: string;
+  /** Screening answers stated on the profile — the backend's `_profile_context()`
+   *  emits them and `_raw_rule_based_answer` answers the obvious ones without a
+   *  model call, so they must reach it (mirrors backend ApplicantProfile). */
+  willingToRelocate: string;
+  workPreference: string;
+  noticePeriod: string;
+  earliestStartDate: string;
+  yearsOfExperience: string;
+  securityClearance: string;
+  driversLicense: string;
+  languages: string;
   skills: string[];
   experience: string[];
   education: string[];
@@ -314,27 +354,6 @@ export interface ApplicantProfile {
   dateOfBirth: string;
   workHistory: { startDate: string; endDate: string }[];
   educationHistory: { degree: string; school: string; graduationYear: string }[];
-}
-
-/** One remembered answer (Question Memory), shown in Autofill Information. */
-export interface SavedAnswerItem {
-  id: number;
-  question: string;
-  answer: string;
-  category: string;
-  timesReused: number;
-  /** How often this row won recall at fill time. Distinct from timesReused,
-   *  which a re-save also bumps — only a true match count can show a key that
-   *  is attracting questions it has nothing to do with. */
-  timesMatched?: number;
-  /** "user_edited" (the gap modal) | "ai" (accepted as-is). */
-  source?: string;
-  createdAt?: string;
-  /** The backend judged this row's KEY unusable — widget boilerplate, an
-   *  opaque id, or a key sitting close enough to others to win their recall.
-   *  Such a row answers questions it was never about. */
-  suspect?: boolean;
-  suspectReason?: string;
 }
 
 /** Scraped page context that improves AI answers. Empty strings are fine. */
@@ -350,13 +369,12 @@ export interface AiFillAnswer {
   label: string;
   answer: string;
   confidence: string;
-  /** rule | profile | memory | ai — how the answer was produced. */
+  /** rule | profile | ai — how the answer was produced. */
   source?: string;
-  /** AI suggestions + company-specific memory matches need user review. */
+  /** AI suggestions need user review. */
   needsReview?: boolean;
   category?: string;
-  canonicalQuestion?: string;
-  /** Which backend pass produced it: "derived" | "rule" | "memory" | "ai".
+  /** Which backend pass produced it: "derived" | "rule" | "ai".
    *  Absent from older backends. */
   fillPass?: string;
 }
@@ -374,7 +392,7 @@ export interface DroppedAnswer {
   label: string;
   /** "no_answer" | "not_an_offered_option" | "contradicts_profile:<what>". */
   reason: string;
-  /** Which backend pass proposed it: "derived" | "rule" | "memory" | "ai". */
+  /** Which backend pass proposed it: "derived" | "rule" | "ai". */
   source: string;
 }
 
@@ -673,10 +691,6 @@ export type BackgroundRequest =
   | { type: "DOWNLOAD_RESUME"; resumeId: number }
   | { type: "OPEN_DASHBOARD" }
   | { type: "AI_FILL"; fields: AiFillField[]; jobContext: JobContext; profile?: ApplicantProfile }
-  | { type: "SAVE_ANSWER"; question: string; answer: string; jobContext: JobContext }
-  | { type: "GET_ANSWERS" }
-  | { type: "UPDATE_ANSWER"; id: number; answer: string }
-  | { type: "DELETE_ANSWER"; id: number }
   | {
       type: "TAILOR_RESUME";
       resumeId: number | null;
@@ -770,7 +784,7 @@ export interface FieldOutcomeRecord {
   /** Which layer produced the value: "profile" | "backend" | "device" | "user". */
   tier: string;
   /** Which backend pass, when the value came from one: "derived" | "rule" |
-   *  "memory" | "ai"; "" for anything resolved without the backend. */
+   *  "ai"; "" for anything resolved without the backend. */
   pass: string;
   /** Did we intend to write anything here? */
   expectedValuePresent: boolean;
@@ -880,10 +894,3 @@ export interface SimpleResponse {
   error?: string;
 }
 
-/** Background reply for GET_ANSWERS (Remembered answers list). */
-export interface AnswersResponse {
-  ok: boolean;
-  error?: string;
-  needsLogin?: boolean;
-  answers: SavedAnswerItem[];
-}

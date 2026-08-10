@@ -72,7 +72,7 @@ describe("selectAnswerGaps — candidacy", () => {
   });
 });
 
-describe("selectAnswerGaps — reusable-looking only", () => {
+describe("selectAnswerGaps — askable-looking only", () => {
   const constrained: ControlType[] = [
     "select",
     "radioGroup",
@@ -109,24 +109,24 @@ describe("selectAnswerGaps — reusable-looking only", () => {
     );
   });
 
-  it("skips a text question too long to be a reusable prompt", () => {
+  it("skips a text question too long to be a short prompt", () => {
     const label = "Please provide a summary of ".repeat(5);
     expect(selectAnswerGaps([field({ controlType: "text", label, options: [] })], NO_JOB)).toEqual(
       []
     );
   });
 
-  it("still asks about an essay-worded DROPDOWN — the options make it reusable", () => {
+  it("still asks about an essay-worded DROPDOWN — the options make it answerable", () => {
     const f = field({ controlType: "select", label: "Why are you leaving your current role?" });
     expect(selectAnswerGaps([f], NO_JOB)).toHaveLength(1);
   });
 });
 
-// A one-off question is asked like any other — the form still needs it filled —
-// and marked so its answer is never banked. Dropping it from the modal outright
-// (the previous behavior) left a required question with no way to answer it:
-// BMO's "…that would continue after obtaining employment with BMO Financial
-// Group?" was silently absent from the modal on 2026-08-09.
+// A one-off question — one naming this employer or role — is asked like any
+// other, because the form still needs it filled. Dropping it from the modal
+// outright (the previous behavior) left a required question with no way to
+// answer it: BMO's "…that would continue after obtaining employment with BMO
+// Financial Group?" was silently absent from the modal on 2026-08-09.
 describe("selectAnswerGaps — one-off questions", () => {
   const job = { company: "Acme Corp", jobTitle: "Software Engineer" };
 
@@ -214,51 +214,51 @@ const gap = (over: Partial<AnswerGap> = {}): AnswerGap => ({
   ...over,
 });
 
-describe("planAnswerSaves — where each answer is remembered", () => {
-  it("sends a question with no profile slot to the answer bank", () => {
+/**
+ * There is exactly ONE sink left: the user's Tailrd profile. Everything else the
+ * modal asks is filled into this page and persisted nowhere — the cross-
+ * application answer bank and the device-local sensitive store are both gone.
+ */
+describe("planAnswerSaves — only profile-slot answers persist", () => {
+  it("persists nothing for a question with no profile slot", () => {
     const plan = planAnswerSaves([{ gap: gap(), value: "Yes" }]);
-    expect(plan.profilePatch).toEqual({});
-    expect(plan.local).toEqual([]);
-    expect(plan.bank).toEqual([
-      { question: "Are you willing to relocate?", answer: "Yes", fieldType: "select" },
-    ]);
+    expect(plan).toEqual({ profilePatch: {} });
   });
 
-  it("sends a profile-slot category to the profile, not the bank", () => {
+  it("sends a profile-slot category to the profile", () => {
     const plan = planAnswerSaves([
       { gap: gap({ category: "linkedin" as FieldCategory, controlType: "text" }), value: "u/me" },
     ]);
     expect(plan.profilePatch).toEqual({ linkedin: "u/me" });
-    expect(plan.bank).toEqual([]);
   });
 
-  it("keeps a sensitive answer with no profile slot on the device", () => {
+  it("persists nothing for a sensitive answer with no profile slot", () => {
+    // eeoOther is the leftover demographic bucket (transgender / LGBTQ /
+    // generic "demographic" prompts). Gender identity, pronouns and sexual
+    // orientation moved OUT of it into real profile slots — see below.
     const g = gap({
-      category: "eeoGenderIdentity" as FieldCategory,
+      category: "eeoOther" as FieldCategory,
       question: "Do you identify as transgender?",
       sensitive: true,
     });
     const plan = planAnswerSaves([{ gap: g, value: "Prefer not to say" }]);
-    expect(plan.local).toEqual([
-      { question: "Do you identify as transgender?", answer: "Prefer not to say" },
-    ]);
-    expect(plan.bank).toEqual([]);
-    expect(plan.profilePatch).toEqual({});
+    expect(plan).toEqual({ profilePatch: {} });
   });
 
   it("still persists the five standard EEO answers to the profile", () => {
     const g = gap({ category: "eeoGender" as FieldCategory, question: "Gender", sensitive: true });
     const plan = planAnswerSaves([{ gap: g, value: "Man" }]);
     expect(plan.profilePatch.eeo).toEqual({ gender: "Man" });
-    expect(plan.local).toEqual([]);
   });
 
-  it("never transmits a sensitive answer, whichever bucket it misses", () => {
-    const plan = planAnswerSaves([
-      { gap: gap({ sensitive: true, question: "Pronouns" }), value: "they/them" },
-    ]);
-    expect(plan.bank).toEqual([]);
-    expect(plan.local).toHaveLength(1);
+  it("persists the three demographics added by the parity contract", () => {
+    const answer = (category: string, value: string) =>
+      planAnswerSaves([
+        { gap: gap({ category: category as FieldCategory, sensitive: true }), value },
+      ]).profilePatch.eeo;
+    expect(answer("eeoGenderIdentity", "Non-binary")).toEqual({ genderIdentity: "Non-binary" });
+    expect(answer("eeoPronouns", "They/Them")).toEqual({ pronouns: "They/Them" });
+    expect(answer("eeoSexualOrientation", "Bisexual")).toEqual({ sexualOrientation: "Bisexual" });
   });
 
   it("merges several profile answers into one patch", () => {
@@ -269,18 +269,38 @@ describe("planAnswerSaves — where each answer is remembered", () => {
     expect(plan.profilePatch).toEqual({ phone: "555", country: "Canada" });
   });
 
-  it("drops blank and whitespace-only answers everywhere", () => {
+  it("drops blank and whitespace-only answers", () => {
     const plan = planAnswerSaves([
       { gap: gap(), value: "   " },
       { gap: gap({ category: "phone" as FieldCategory }), value: "" },
       { gap: gap({ sensitive: true }), value: " " },
     ]);
-    expect(plan).toEqual({ profilePatch: {}, local: [], bank: [] });
+    expect(plan).toEqual({ profilePatch: {} });
   });
 
   it("trims the stored answer", () => {
-    const plan = planAnswerSaves([{ gap: gap(), value: "  Yes  " }]);
-    expect(plan.bank[0].answer).toBe("Yes");
+    const plan = planAnswerSaves([
+      { gap: gap({ category: "phone" as FieldCategory }), value: "  555  " },
+    ]);
+    expect(plan.profilePatch).toEqual({ phone: "555" });
+  });
+
+  /**
+   * A profile slot is keyed by CATEGORY, never by the form's label — which is
+   * why the removed "is this label a real question?" guard is not needed here.
+   * An id-shaped label still reaches the right profile field.
+   */
+  it("saves to the profile even when the form named the field with a widget id", () => {
+    const plan = planAnswerSaves([
+      {
+        gap: gap({
+          category: "phone" as FieldCategory,
+          question: "b0531cc2ff371001d8a97c876e680000-b0531cc2ff371001d8a9b9c2eef00002",
+        }),
+        value: "555",
+      },
+    ]);
+    expect(plan.profilePatch).toEqual({ phone: "555" });
   });
 });
 
@@ -288,9 +308,9 @@ describe("planAnswerSaves — where each answer is remembered", () => {
  * Persistence must not outlive a failed write — but only where the failure
  * proves the answer itself is unusable.
  *
- * selectAnswerGaps skips any field that already has a proposedValue, so a
- * remembered answer permanently retires its question. Store a value the widget
- * rejects and the user is never asked again, and never sees why.
+ * A value saved into a profile slot is replayed on every future form, so storing
+ * one the widget rejects means the user is never asked again and never sees why.
+ * The count of what was dropped is also what the panel's banner reports.
  */
 describe("answersWorthRemembering", () => {
   const ok = (...ids: string[]) => new Set(ids);
@@ -359,7 +379,7 @@ describe("selectAnswerGaps — fields the page reverted", () => {
   });
 
   it("still respects everything else about candidacy", () => {
-    // A reverted field that is not reusable is still not worth asking about.
+    // A reverted field that is not askable is still not worth asking about.
     const f = field({ currentValue: "x", controlType: "file" as ControlType });
     expect(selectAnswerGaps([f], NO_JOB, new Set([f.id]))).toHaveLength(0);
   });

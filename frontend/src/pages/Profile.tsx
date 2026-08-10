@@ -7,27 +7,12 @@ import {
   ProfileUpdatePayload,
   EMPTY_PROFILE_EXTRAS,
   EEO_OPTIONS,
+  SCREENING_OPTIONS,
   computeProfileDiff,
   splitName,
 } from "../lib/profileExtras";
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
-
-/** A row of the answer bank as the API returns it (GET /api/answers). */
-interface RawAnswer {
-  id: number;
-  question_raw: string;
-  answer: string;
-  times_reused?: number;
-}
-
-/** The same row in this page's shape. */
-interface RememberedAnswer {
-  id: number;
-  question: string;
-  answer: string;
-  timesReused: number;
-}
 
 interface ExperienceItem {
   company: string;
@@ -122,7 +107,6 @@ const SECTIONS = [
   { id: "skills", label: "Skills" },
   { id: "projects", label: "Projects" },
   { id: "screening", label: "Application Answers" },
-  { id: "remembered", label: "Remembered Answers" },
   { id: "eeo", label: "Equal Employment" },
 ] as const;
 
@@ -285,15 +269,27 @@ export default function Profile() {
           postalCode: d.postalCode ?? "",
           country: d.country ?? "",
           currentTitle: d.currentTitle ?? "",
+          dateOfBirth: d.dateOfBirth ?? "",
           workAuthorization: d.workAuthorization ?? "",
           requiresSponsorship: d.requiresSponsorship ?? "",
           salaryExpectation: d.salaryExpectation ?? "",
+          willingToRelocate: d.willingToRelocate ?? "",
+          workPreference: d.workPreference ?? "",
+          noticePeriod: d.noticePeriod ?? "",
+          earliestStartDate: d.earliestStartDate ?? "",
+          yearsOfExperience: d.yearsOfExperience ?? "",
+          securityClearance: d.securityClearance ?? "",
+          driversLicense: d.driversLicense ?? "",
+          languages: d.languages ?? "",
           eeo: {
             gender: d.eeo?.gender ?? "",
             race: d.eeo?.race ?? "",
             hispanicLatino: d.eeo?.hispanicLatino ?? "",
             veteranStatus: d.eeo?.veteranStatus ?? "",
             disabilityStatus: d.eeo?.disabilityStatus ?? "",
+            genderIdentity: d.eeo?.genderIdentity ?? "",
+            pronouns: d.eeo?.pronouns ?? "",
+            sexualOrientation: d.eeo?.sexualOrientation ?? "",
           },
         };
         // Show the merged, extension-synced contact values (settings-first, then
@@ -342,6 +338,10 @@ export default function Profile() {
     if (profile.phone !== originalProfile.phone) payload.phone = profile.phone;
     if (profile.location !== originalProfile.location) payload.location = profile.location;
     if (profile.linkedin_url !== originalProfile.linkedin_url) payload.linkedin = profile.linkedin_url;
+    // GitHub used to stop at the resume row: the profile endpoint rejected it, so
+    // the extension never saw an edit made here. It now round-trips like the
+    // other two links.
+    if (profile.github_url !== originalProfile.github_url) payload.github = profile.github_url;
     if (profile.other_link !== originalProfile.other_link) payload.portfolio = profile.other_link;
 
     return Object.keys(payload).length > 0 ? payload : null;
@@ -640,10 +640,13 @@ export default function Profile() {
               value={extras.currentTitle}
               onChange={(v) => setExtras({ ...extras, currentTitle: v })}
             />
+            {/* Every "are you over 18 / of legal working age" answer is derived
+                from this. It used to be editable only inside the extension. */}
             <Field
-              label="Salary Expectation"
-              value={extras.salaryExpectation}
-              onChange={(v) => setExtras({ ...extras, salaryExpectation: v })}
+              label="Date of Birth"
+              type="date"
+              value={extras.dateOfBirth}
+              onChange={(v) => setExtras({ ...extras, dateOfBirth: v })}
             />
             <Field
               label="Work Authorization"
@@ -657,19 +660,79 @@ export default function Profile() {
               onChange={(v) => setExtras({ ...extras, requiresSponsorship: v })}
               full
             />
+            <Field
+              label="Salary Expectation"
+              value={extras.salaryExpectation}
+              onChange={(v) => setExtras({ ...extras, salaryExpectation: v })}
+            />
+            <Field
+              label="Years of Experience"
+              placeholder="5"
+              value={extras.yearsOfExperience}
+              onChange={(v) => setExtras({ ...extras, yearsOfExperience: v })}
+            />
+            <SelectField
+              label="Willing to Relocate"
+              options={SCREENING_OPTIONS.willingToRelocate}
+              value={extras.willingToRelocate}
+              onChange={(v) => setExtras({ ...extras, willingToRelocate: v })}
+            />
+            <SelectField
+              label="Work Preference"
+              options={SCREENING_OPTIONS.workPreference}
+              value={extras.workPreference}
+              onChange={(v) => setExtras({ ...extras, workPreference: v })}
+            />
+            <Field
+              label="Notice Period"
+              placeholder="2 weeks"
+              value={extras.noticePeriod}
+              onChange={(v) => setExtras({ ...extras, noticePeriod: v })}
+            />
+            <Field
+              label="Earliest Start Date"
+              type="date"
+              value={extras.earliestStartDate}
+              onChange={(v) => setExtras({ ...extras, earliestStartDate: v })}
+            />
+            <SelectField
+              label="Security Clearance"
+              options={SCREENING_OPTIONS.securityClearance}
+              value={extras.securityClearance}
+              onChange={(v) => setExtras({ ...extras, securityClearance: v })}
+            />
+            <SelectField
+              label="Driver's Licence"
+              options={SCREENING_OPTIONS.driversLicense}
+              value={extras.driversLicense}
+              onChange={(v) => setExtras({ ...extras, driversLicense: v })}
+            />
+            <Field
+              label="Languages"
+              placeholder="English (Native), French (Professional)"
+              value={extras.languages}
+              onChange={(v) => setExtras({ ...extras, languages: v })}
+              full
+            />
           </div>
         ) : (
           <div className="profile-info-grid">
             <InfoRow label="Current / Target Job Title" value={extras.currentTitle} />
-            <InfoRow label="Salary Expectation" value={extras.salaryExpectation} />
+            <InfoRow label="Date of Birth" value={extras.dateOfBirth} />
             <InfoRow label="Work Authorization" value={extras.workAuthorization} />
             <InfoRow label="Requires Sponsorship" value={extras.requiresSponsorship} />
+            <InfoRow label="Salary Expectation" value={extras.salaryExpectation} />
+            <InfoRow label="Years of Experience" value={extras.yearsOfExperience} />
+            <InfoRow label="Willing to Relocate" value={extras.willingToRelocate} />
+            <InfoRow label="Work Preference" value={extras.workPreference} />
+            <InfoRow label="Notice Period" value={extras.noticePeriod} />
+            <InfoRow label="Earliest Start Date" value={extras.earliestStartDate} />
+            <InfoRow label="Security Clearance" value={extras.securityClearance} />
+            <InfoRow label="Driver's Licence" value={extras.driversLicense} />
+            <InfoRow label="Languages" value={extras.languages} />
           </div>
         )}
       </Section>
-
-      {/* ── Remembered answers (the extension's answer bank — same rows) ── */}
-      <RememberedAnswers onToast={showToast} />
 
       {/* ── Equal Employment (EEO self-identification) ── */}
       <Section id="eeo" title="Equal Employment" onEdit={() => toggleEdit("eeo")}>
@@ -685,6 +748,9 @@ export default function Profile() {
             <InfoRow label="Hispanic or Latino" value={extras.eeo.hispanicLatino} />
             <InfoRow label="Veteran Status" value={extras.eeo.veteranStatus} />
             <InfoRow label="Disability Status" value={extras.eeo.disabilityStatus} />
+            <InfoRow label="Gender Identity" value={extras.eeo.genderIdentity} />
+            <InfoRow label="Pronouns" value={extras.eeo.pronouns} />
+            <InfoRow label="Sexual Orientation" value={extras.eeo.sexualOrientation} />
           </div>
         )}
       </Section>
@@ -728,138 +794,6 @@ function Chip({ kind, text, href }: { kind: "location" | "email" | "phone" | "gi
   return <span className="profile-chip">{inner}</span>;
 }
 
-/**
- * The answer bank — screening answers given on earlier applications, which
- * /api/fill recalls on new ones. Exactly the rows the extension shows under
- * Autofill Information → Remembered answers; both surfaces read and write the
- * same table, so an edit here is the same edit there.
- *
- * No pencil/Section chrome: each row edits in place (commit on blur) because
- * there is no fixed set of fields to put into an edit mode.
- *
- * Device-local sensitive answers are deliberately absent — they never reach the
- * backend, so this page cannot see them.
- */
-export function RememberedAnswers({ onToast }: { onToast: (type: "success" | "error", message: string) => void }) {
-  const [answers, setAnswers] = useState<RememberedAnswer[] | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let live = true;
-    api
-      .get("/api/answers")
-      .then((res) => {
-        if (!live) return;
-        setAnswers(
-          (res.data as RawAnswer[]).map((r) => ({
-            id: r.id,
-            question: r.question_raw,
-            answer: r.answer,
-            timesReused: r.times_reused ?? 0,
-          }))
-        );
-      })
-      .catch(() => live && setFailed(true));
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  async function save(id: number, answer: string) {
-    try {
-      await api.put(`/api/answers/${id}`, { answer });
-      setAnswers((prev) => prev?.map((a) => (a.id === id ? { ...a, answer } : a)) ?? prev);
-      onToast("success", "Answer updated");
-    } catch {
-      onToast("error", "Could not update that answer");
-    }
-  }
-
-  async function remove(id: number) {
-    try {
-      await api.delete(`/api/answers/${id}`);
-      setAnswers((prev) => prev?.filter((a) => a.id !== id) ?? prev);
-      onToast("success", "Answer forgotten");
-    } catch {
-      onToast("error", "Could not delete that answer");
-    }
-  }
-
-  return (
-    <section id="profile-sec-remembered" className="profile-card">
-      <div className="profile-card-head">
-        <h2 className="profile-section-title">Remembered Answers</h2>
-      </div>
-      <p className="profile-section-sub">
-        Answers you've given to application questions Tailrd couldn't answer from your
-        profile. They're reused automatically on future applications — edit or delete
-        one here and the extension picks up the change too.
-      </p>
-      {failed ? (
-        <p className="profile-empty-text">Could not load your remembered answers.</p>
-      ) : answers === null ? (
-        <p className="profile-empty-text">Loading…</p>
-      ) : answers.length === 0 ? (
-        <p className="profile-empty-text">
-          Nothing remembered yet. When the Tailrd extension hits a question it can't
-          answer, it offers to ask you — those answers land here.
-        </p>
-      ) : (
-        <div className="profile-answers">
-          {answers.map((a) => (
-            <AnswerRow key={a.id} answer={a} onSave={save} onDelete={remove} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function AnswerRow({
-  answer,
-  onSave,
-  onDelete,
-}: {
-  answer: RememberedAnswer;
-  onSave: (id: number, answer: string) => void;
-  onDelete: (id: number) => void;
-}) {
-  const [draft, setDraft] = useState(answer.answer);
-
-  return (
-    <div className="profile-answer-row">
-      <div className="profile-answer-q">
-        <span className="profile-answer-question">{answer.question}</span>
-        {answer.timesReused > 0 && (
-          <span className="profile-answer-reuse">used {answer.timesReused}×</span>
-        )}
-      </div>
-      <div className="profile-answer-edit">
-        <input
-          className="profile-answer-input"
-          aria-label={answer.question}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            const next = draft.trim();
-            // An empty answer would silently stop autofilling — restore instead.
-            if (!next) return setDraft(answer.answer);
-            if (next !== answer.answer) onSave(answer.id, next);
-          }}
-        />
-        <button
-          className="profile-answer-del"
-          type="button"
-          onClick={() => onDelete(answer.id)}
-          aria-label={`Forget answer to ${answer.question}`}
-        >
-          Delete
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="profile-info-row">
@@ -896,13 +830,14 @@ function PersonalEditor({
   return (
     <div className="profile-editor">
       <div className="profile-form-grid">
+        {/* Full Name stays a composite: it splits into firstName/lastName on save. */}
         <Field label="Full Name" value={profile.name} onChange={(v) => set("name", v)} />
-        <Field label="Email" type="email" value={profile.email} onChange={(v) => set("email", v)} />
+        <Field label="Email Address" type="email" value={profile.email} onChange={(v) => set("email", v)} />
         <Field label="Phone" type="tel" value={profile.phone} onChange={(v) => set("phone", v)} />
         <Field label="Location" value={profile.location} onChange={(v) => set("location", v)} />
         <Field label="LinkedIn" type="url" value={profile.linkedin_url} onChange={(v) => set("linkedin_url", v)} />
         <Field label="GitHub" type="url" value={profile.github_url} onChange={(v) => set("github_url", v)} />
-        <Field label="Portfolio / Other" type="url" value={profile.other_link} onChange={(v) => set("other_link", v)} full />
+        <Field label="Portfolio" type="url" value={profile.other_link} onChange={(v) => set("other_link", v)} full />
       </div>
 
       <div className="profile-subsection">
@@ -926,18 +861,55 @@ function Field({
   value,
   onChange,
   type = "text",
+  placeholder,
   full = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
+  placeholder?: string;
   full?: boolean;
 }) {
   return (
     <div className={`profile-form-group${full ? " profile-form-group-full" : ""}`}>
       <label>{label}</label>
-      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Same shape as Field, for the answers with a closed vocabulary. Blank is always
+ * first and means "not answered" — see the parity contract, section D.
+ */
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+  full = false,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  onChange: (v: string) => void;
+  full?: boolean;
+}) {
+  return (
+    <div className={`profile-form-group${full ? " profile-form-group-full" : ""}`}>
+      <label>{label}</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Select…</option>
+        {options.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -952,19 +924,20 @@ function EeoEditor({ eeo, onChange }: { eeo: EeoData; onChange: (e: EeoData) => 
     { field: "hispanicLatino", label: "Hispanic or Latino" },
     { field: "veteranStatus", label: "Veteran Status" },
     { field: "disabilityStatus", label: "Disability Status" },
+    { field: "genderIdentity", label: "Gender Identity" },
+    { field: "pronouns", label: "Pronouns" },
+    { field: "sexualOrientation", label: "Sexual Orientation" },
   ];
   return (
     <div className="profile-form-grid">
       {selects.map(({ field, label }) => (
-        <div className="profile-form-group" key={field}>
-          <label>{label}</label>
-          <select value={eeo[field]} onChange={(e) => set(field, e.target.value)}>
-            <option value="">Select…</option>
-            {EEO_OPTIONS[field].map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        </div>
+        <SelectField
+          key={field}
+          label={label}
+          options={EEO_OPTIONS[field]}
+          value={eeo[field]}
+          onChange={(v) => set(field, v)}
+        />
       ))}
     </div>
   );

@@ -2,8 +2,8 @@
 The gate every pass's output goes through.
 
 These are written source-blind on purpose: the gate takes an answer and a
-question, so the same value must be refused whether a rule, a remembered answer
-or the model produced it. Which pass is responsible is telemetry, not policy.
+question, so the same value must be refused whether a derived fact, a rule or
+the model produced it. Which pass is responsible is telemetry, not policy.
 """
 
 from datetime import date
@@ -32,13 +32,13 @@ def test_no_answer_sentinel_is_dropped():
 
 # ── Profile contradictions, on every path ────────────────────────────────────
 
-def test_a_remembered_no_cannot_override_a_computed_yes():
+def test_an_unfounded_no_cannot_override_a_computed_yes():
     """The production failure, as a test.
 
-    A Workday yes/no group whose label harvested as boilerplate shared one
-    memory row with every other yes/no group on the page, and the 18+ question
-    was answered from it. With a date of birth on file the gate refutes that
-    answer no matter which pass carried it.
+    A Workday yes/no group whose label harvested as boilerplate was
+    indistinguishable from every other yes/no group on the page, and the 18+
+    question was answered from what that label had attracted. With a date of
+    birth on file the gate refutes that answer no matter which pass carried it.
     """
     adult = ApplicantProfile(dateOfBirth="2000-04-23")
     verdict = check("No", "Are you 18 years of age or older?", YES_NO, adult)

@@ -72,8 +72,26 @@ describe("unanswered questions", () => {
 });
 
 describe("autofill information", () => {
-  it("has a Remembered answers category", () => {
-    expect(root.querySelector('.ap-modal-sidebar-item[data-cat="remembered"]')).not.toBeNull();
+  // The Remembered-answers feature is gone: no tab, and nothing in the panel
+  // may offer to recall an answer across applications.
+  it("has no Remembered answers category", () => {
+    expect(root.querySelector('.ap-modal-sidebar-item[data-cat="remembered"]')).toBeNull();
+  });
+
+  it("every sidebar tab renders a real category form", () => {
+    const cats = [...root.querySelectorAll<HTMLElement>(".ap-modal-sidebar-item")].map(
+      (b) => b.dataset.cat
+    );
+    expect(cats).toEqual([
+      "personal",
+      "address",
+      "education",
+      "experience",
+      "skill",
+      "preference",
+      "eeo",
+      "signup",
+    ]);
   });
 });
 

@@ -3,12 +3,12 @@
  * the synced profile, kept in chrome.storage.local (never sent to the backend).
  *
  * The web-app profile is the source of truth for résumé-derived data, but the
- * user must be able to (a) edit fields the sync treats as read-only (GitHub,
- * work experience), and (b) add their own labelled fields for questions the
- * profile has no slot for. Those live here and are merged back in two places:
+ * user must be able to (a) edit fields the sync has no write path for (work
+ * experience), and (b) add their own labelled fields for questions the profile
+ * has no slot for. Those live here and are merged back in two places:
  *   - the profile the panel shows + the fill/AI context use (mergeProfileWithExtras)
- *   - the device-local answer map the silent-refill path matches by label
- *     (customFieldAnswers) — same exact-normalized matching as localAnswers.
+ *   - the answer map the silent-refill path matches by label
+ *     (customFieldAnswers), keyed by exact-normalized label
  *
  * Only non-empty values are persisted, so clearing a field falls back to the
  * synced value rather than masking it forever.
@@ -17,6 +17,18 @@ import type { ExperienceEntry, UserApplicationProfile } from "../shared/types";
 import { normalize } from "./fieldMatcher";
 
 const STORE_KEY = "ap_autofill_extras";
+
+/**
+ * Scalar overrides that are NO LONGER device-local and must never be read back.
+ *
+ * `github` used to be edited here because the profile API had no write path for
+ * it. It has one now (2026-08-09 profile-parity contract), so a stale local
+ * value would permanently shadow whatever the user sets on the web app — the
+ * exact bug the contract set out to kill. Dropping the key on READ makes that
+ * unreachable, and the next saveExtras() (which prunes the normalized draft)
+ * removes it from storage for good.
+ */
+const RETIRED_FIELD_KEYS: ReadonlySet<string> = new Set(["github"]);
 
 /** A user-added labelled field the profile has no standard slot for. */
 export interface CustomField {
@@ -28,7 +40,9 @@ export interface CustomField {
 }
 
 export interface AutofillExtras {
-  /** Overrides for scalar profile fields the sync treats as read-only (github…). */
+  /** Legacy overrides for scalar profile fields. Nothing in the UI writes these
+   *  any more — every scalar the modal shows now round-trips through the
+   *  profile API — but the merge is kept so an older stored blob still fills. */
   fields: Record<string, string>;
   /** User-edited work experience — null means "use the synced experience". */
   experience: ExperienceEntry[] | null;
@@ -46,6 +60,7 @@ export function normalizeExtras(raw: unknown): AutofillExtras {
   const fields: Record<string, string> = {};
   if (r.fields && typeof r.fields === "object") {
     for (const [k, v] of Object.entries(r.fields)) {
+      if (RETIRED_FIELD_KEYS.has(k)) continue;
       if (typeof v === "string" && v.trim()) fields[k] = v;
     }
   }

@@ -1,20 +1,19 @@
 """
-Facts that are COMPUTED from the profile, not recalled.
+Facts that are COMPUTED from the profile, not guessed.
 
-Question Memory recalls an answer by embedding proximity. That is the right
-instrument for a preference ("are you willing to relocate?") and the wrong one
-for arithmetic: "are you 18 or older?" has an answer the profile already
-contains, and asking a vector index for it means the answer is whatever a
-neighbouring question happened to be answered last.
+Asking a language model is the right instrument for a preference ("are you
+willing to relocate?") and the wrong one for arithmetic: "are you 18 or older?"
+has an answer the profile already contains, and anything that infers it instead
+of computing it can get it wrong.
 
 Production, 2026-08-09: a Workday yes/no radio group whose label harvested as
-the widget boilerplate "Yes Required" canonicalized identically for EVERY such
-group on the page, so all of them shared one memory row — last write wins. The
-18+ question was answered from it. Nothing on that path consults the profile,
-so nothing could notice.
+the widget boilerplate "Yes Required" was indistinguishable from EVERY other
+such group on the page, so the 18+ question was answered from whatever that
+boilerplate label had attracted. Nothing on that path consulted the profile, so
+nothing could notice.
 
-These resolvers run in pass 1 and SHORT-CIRCUIT: a question they can answer
-never reaches Question Memory at all. Each one returns a value or abstains —
+These resolvers run in pass 1 and SHORT-CIRCUIT: a question they can answer is
+settled before any later pass sees it. Each one returns a value or abstains —
 abstaining is always allowed and never a guess. The same resolvers are re-used
 by ``answer_gate`` to REFUTE an answer another pass produced, so the arithmetic
 is stated once and enforced everywhere.
@@ -506,8 +505,8 @@ def resolve_derived_fact(
 ) -> Optional[Derived]:
     """The computed answer for this question, or None to fall through.
 
-    Called from pass 1 BEFORE the keyword rules and before Question Memory, so
-    a question with a computable answer never reaches a vector index.
+    Called from pass 1 BEFORE the keyword rules and before the AI pass, so a
+    question with a computable answer is never handed to the model to guess at.
     """
     q = f"{label or ''} {help_text or ''}".strip()
     if not q:

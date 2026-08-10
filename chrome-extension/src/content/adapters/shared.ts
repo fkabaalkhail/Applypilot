@@ -50,10 +50,13 @@ export function attrBlob(el: HTMLElement, ancestorAttrs: readonly string[] = [])
 
 const SENSITIVE: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "eeoGender",
+  "eeoGenderIdentity",
+  "eeoPronouns",
   "eeoRace",
   "eeoHispanic",
   "eeoVeteran",
   "eeoDisability",
+  "eeoSexualOrientation",
   "eeoOther",
 ]);
 

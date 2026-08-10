@@ -15,8 +15,8 @@
  *
  * So three distinct wrong answers to "what is this field called": the widget's
  * aria-label boilerplate, that boilerplate over an already-picked value, and —
- * when there was no aria-label at all — the raw Workday id. The last two were
- * banked as Question Memory keys, which no future question can ever match.
+ * when there was no aria-label at all — the raw Workday id. All three are what
+ * the panel prints and what the gap modal puts to the user as the question.
  *
  * The markup below is `test/fixtures/workdayReal.ts` (BMO, captured verbatim
  * 2026-07-04) with only what production proves changed: the aria-label carries
@@ -155,8 +155,8 @@ describe("Workday self-ID prompt — the label is the question, never the widget
   });
 });
 
-describe("Workday self-ID prompt — end to end into the gap modal and answer bank", () => {
-  it("asks under the real question and banks it under the same key", () => {
+describe("Workday self-ID prompt — end to end into the gap modal", () => {
+  it("asks under the real question, not the widget's boilerplate", () => {
     document.body.innerHTML = promptField({
       question: "Gender Identity",
       ariaLabel: "Select One Required",
@@ -166,15 +166,11 @@ describe("Workday self-ID prompt — end to end into the gap modal and answer ba
 
     expect(gaps).toHaveLength(1);
     expect(gaps[0].question).toBe("Gender Identity");
-
-    const plan = planAnswerSaves([{ gap: gaps[0], value: "Non-binary" }]);
-    const banked = [...plan.bank, ...plan.local].map((a) => a.question);
-    expect(banked).toEqual(["Gender Identity"]);
   });
 
-  it("never banks an answer under a question we could not name", () => {
-    // Nothing anywhere names this field — the honest outcome is to fill the page
-    // and remember nothing, not to bank "Unlabeled field" as a recallable key.
+  it("never puts a raw widget id to the user as a question", () => {
+    // Nothing anywhere names this field. The label still must not be the
+    // Workday id — that is what the user reads in the modal.
     document.body.innerHTML = `
       <div><div><div>
         <button aria-haspopup="listbox" type="button" value="" aria-required="true"
@@ -184,9 +180,9 @@ describe("Workday self-ID prompt — end to end into the gap modal and answer ba
     const gaps = selectAnswerGaps(fields, {});
     for (const gap of gaps) {
       expect(gap.question).not.toContain(WID);
-      const plan = planAnswerSaves([{ gap, value: "Yes" }]);
-      expect(plan.bank).toEqual([]);
-      expect(plan.local).toEqual([]);
+      // Self-ID has no profile slot, so the answer fills the page and persists
+      // nowhere — there is no cross-application answer memory to poison.
+      expect(planAnswerSaves([{ gap, value: "Yes" }])).toEqual({ profilePatch: {} });
     }
   });
 });

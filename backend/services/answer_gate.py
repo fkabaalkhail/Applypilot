@@ -2,17 +2,15 @@
 One gate every answer passes before it is returned to the client.
 
 The grounding contract used to live entirely in ``prompts/answer_question.txt``.
-A prompt can only constrain the model that reads it, so only pass 3 was ever
-checked: a rule-based shortcut and a Question Memory recall reached the page
-without anything looking at them. That is not a contract that failed — it is a
-contract that was never invoked on two of the three paths.
+A prompt can only constrain the model that reads it, so only the AI pass was
+ever checked: a rule-based shortcut reached the page without anything looking
+at it. That is not a contract that failed — it is a contract that was never
+invoked on the non-model paths.
 
-Production evidence for each path, 2026-08:
+Production evidence, 2026-08:
 
   pass 1  "…employed by uOttawa in any capaCITY?"  → "Ottawa, ON"
           (the `"city" in question` shortcut, matching inside "capacity")
-  pass 2  a Workday yes/no group labelled "Yes Required" → the answer last
-          banked under that same boilerplate key, on a different question
 
 So the gate is applied by SOURCE-BLIND design: it takes an answer and the
 question, and does not care which pass produced it.

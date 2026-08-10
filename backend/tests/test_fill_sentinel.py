@@ -1,7 +1,7 @@
 """The grounding sentinel and page-context forwarding on /api/fill.
 
 Isolated SQLite app; OpenAIService.answer_question is mocked so no network/key
-is used. Mirrors test_fill_memory.py's harness.
+is used.
 """
 from unittest.mock import patch, AsyncMock
 
@@ -66,8 +66,8 @@ def _payload(**field):
 
 
 def test_sentinel_answer_emits_no_field_answer(client):
-    # No saved answers seeded -> memory pass is skipped and this goes to the AI
-    # pass, which returns the grounding sentinel.
+    # Nothing in pass 1 answers this, so it reaches the AI pass, which returns
+    # the grounding sentinel.
     with patch(_ANSWER, AsyncMock(return_value="__NO_ANSWER__")):
         resp = client.post("/api/fill", json=_payload())
     assert resp.status_code == 200

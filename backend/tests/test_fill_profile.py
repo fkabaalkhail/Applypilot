@@ -61,3 +61,121 @@ def test_assumption_rules_are_dropped():
     assert _rule_based_answer("Do you have a valid driver's license?", ["Yes", "No"], settings=None) is None
     assert _rule_based_answer("Do you consent to a background check?", ["Yes", "No"], settings=None) is None
     assert _rule_based_answer("Are you willing to take a drug test?", ["Yes", "No"], settings=None) is None
+
+
+# ── Stated screening answers (2026-08-09 profile-parity contract) ─────────────
+#
+# These are the same questions test_assumption_rules_are_dropped proves we must
+# NOT guess at. The difference is not the question — it is that the applicant
+# has now answered it once on their profile, so filling it is recall, not
+# invention. Every rule below must abstain when the profile is silent.
+
+SCREENED = dict(
+    willingToRelocate="Yes",
+    workPreference="Remote",
+    noticePeriod="2 weeks",
+    earliestStartDate="2026-09-01",
+    yearsOfExperience="5",
+    securityClearance="Active clearance",
+    driversLicense="Yes",
+    languages="English (Native), French (Professional)",
+)
+
+
+def test_profile_context_includes_the_screening_answers_when_set():
+    ctx = _profile_context(ApplicantProfile(**SCREENED))
+    assert "Willing to relocate: Yes" in ctx
+    assert "Work preference: Remote" in ctx
+    assert "Notice period: 2 weeks" in ctx
+    assert "Earliest start date: 2026-09-01" in ctx
+    assert "Years of experience: 5" in ctx
+    assert "Security clearance: Active clearance" in ctx
+    assert "Driver's licence: Yes" in ctx
+    assert "Languages: English (Native), French (Professional)" in ctx
+    # Still no demographics anywhere near the prompt.
+    assert "race" not in ctx.lower()
+
+
+def test_profile_context_omits_blank_screening_answers():
+    """A blank must be absent, not rendered as "unknown" — an empty line is a
+    fact the model would otherwise be invited to reason from."""
+    ctx = _profile_context(ApplicantProfile(firstName="Ada", workPreference="Hybrid"))
+    assert "Work preference: Hybrid" in ctx
+    for label in ("Willing to relocate", "Notice period", "Earliest start date",
+                  "Years of experience", "Security clearance", "Driver's licence",
+                  "Languages"):
+        assert label not in ctx
+
+
+def test_stated_screening_answers_fill_without_ai():
+    p = ApplicantProfile(**SCREENED)
+    assert _rule_based_answer("Are you willing to relocate?", ["Yes", "No"], None, p) == "Yes"
+    assert _rule_based_answer(
+        "What is your work preference?", ["Remote", "Hybrid", "On-site", "No preference"], None, p
+    ) == "Remote"
+    assert _rule_based_answer("What is your notice period?", [], None, p) == "2 weeks"
+    assert _rule_based_answer("Earliest start date", [], None, p) == "2026-09-01"
+    assert _rule_based_answer("When can you start?", [], None, p) == "2026-09-01"
+    assert _rule_based_answer("Total years of experience", [], None, p) == "5"
+    assert _rule_based_answer(
+        "Do you hold a security clearance?", ["None", "Active clearance", "Eligible / previously held"], None, p
+    ) == "Active clearance"
+    assert _rule_based_answer("Do you have a valid driver's license?", ["Yes", "No"], None, p) == "Yes"
+    assert _rule_based_answer("What languages do you speak?", [], None, p) == SCREENED["languages"]
+
+
+def test_screening_rules_abstain_when_the_profile_is_silent():
+    """An empty profile field is "not answered", never "no"."""
+    p = ApplicantProfile(firstName="Ada")
+    for label in [
+        "Are you willing to relocate?",
+        "What is your work preference?",
+        "What is your notice period?",
+        "Earliest start date",
+        "Total years of experience",
+        "Do you hold a security clearance?",
+        "Do you have a valid driver's license?",
+        "What languages do you speak?",
+    ]:
+        assert _rule_based_answer(label, [], None, p) is None, label
+
+
+def test_screening_rules_defer_when_the_options_cannot_take_the_value():
+    """The file's standing guard: a specific-option field only accepts a
+    shortcut that snaps to one of its options. A "Remote" preference cannot be
+    forced into an on-site/hybrid-only list."""
+    p = ApplicantProfile(**SCREENED)
+    assert _rule_based_answer("Work arrangement", ["On-site", "Hybrid"], None, p) is None
+    # A bucketed years-of-experience list the stated value fits still resolves…
+    assert _rule_based_answer(
+        "Years of experience", ["0-2 years", "3-5 years", "6+ years"], None, p
+    ) == "3-5 years"
+    # …and a start-date field offering quarters the ISO date cannot match defers.
+    assert _rule_based_answer(
+        "Earliest start date", ["Q1 2027", "Q2 2027"], None, p
+    ) is None
+
+
+def test_narrowed_experience_question_is_not_the_career_total():
+    """"Years of experience WITH Kubernetes" asks about one skill. Answering it
+    with the career total is a fabrication, so the rule must abstain."""
+    p = ApplicantProfile(**SCREENED)
+    assert _rule_based_answer("Years of experience with Kubernetes", [], None, p) is None
+    assert _rule_based_answer("How many years of experience in Rust do you have?", [], None, p) is None
+
+
+def test_programming_language_question_is_not_a_spoken_language_question():
+    p = ApplicantProfile(**SCREENED)
+    assert _rule_based_answer("Which programming languages do you know?", [], None, p) is None
+    assert _rule_based_answer("List the coding languages you use", [], None, p) is None
+
+
+def test_work_preference_wins_over_the_generic_location_rule():
+    """"Preferred work location" carries the city rule's keyword. The stated
+    preference is the better answer and must be checked first."""
+    p = ApplicantProfile(**SCREENED, addressCity="Ottawa")
+    assert _rule_based_answer(
+        "Preferred work location", ["Remote", "Hybrid", "On-site"], None, p
+    ) == "Remote"
+    # A plain address field still gets the city.
+    assert _rule_based_answer("City", [], None, p) == "Ottawa"
