@@ -5,9 +5,13 @@ Extends the existing OpenAIService.match_job with breakdown scores
 for experience, skills, and industry.
 """
 
+import hashlib
 import json
 import logging
 import os
+import time
+from collections import OrderedDict
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -32,6 +36,55 @@ def _match_model() -> str:
     flows on OPENAI_MODEL.
     """
     return os.getenv("OPENAI_MATCH_MODEL", DEFAULT_MATCH_MODEL).strip().strip("﻿") or DEFAULT_MATCH_MODEL
+
+
+# ── Analysis memo ────────────────────────────────────────────────────────────
+#
+# One "tailor my résumé" journey asked for the SAME résumé↔job analysis up to
+# three times in 34 seconds (prod, 2026-08-11): once when the user opened the
+# job, once for the "See Your Difference" panel, and once more as the rewrite's
+# own before-state. Identical prompt, identical answer, three round-trips the
+# user waits through.
+#
+# Keyed on the rendered prompt, so the key IS the complete input — no chance of
+# a stale hit from a résumé edit or a different job. Process-local and
+# short-lived: on Fluid Compute an instance serves consecutive requests from the
+# same user, which is exactly the window this needs to cover. A miss simply
+# costs what it costs today, so this can never return a wrong answer, only fail
+# to save one.
+ANALYSIS_MEMO_TTL = float(os.getenv("MATCH_ANALYSIS_MEMO_TTL", "600"))
+ANALYSIS_MEMO_MAX = 128
+
+_analysis_memo: "OrderedDict[str, tuple[float, JobAnalysisOut]]" = OrderedDict()
+
+
+def _memo_key(prompt: str, model: str) -> str:
+    return hashlib.sha256(f"{model}\x00{prompt}".encode("utf-8")).hexdigest()
+
+
+def _memo_get(key: str) -> Optional[JobAnalysisOut]:
+    hit = _analysis_memo.get(key)
+    if hit is None:
+        return None
+    stored_at, value = hit
+    if time.time() - stored_at > ANALYSIS_MEMO_TTL:
+        _analysis_memo.pop(key, None)
+        return None
+    _analysis_memo.move_to_end(key)
+    # A copy, so a caller mutating the result cannot poison later hits.
+    return value.model_copy(deep=True)
+
+
+def _memo_put(key: str, value: JobAnalysisOut) -> None:
+    _analysis_memo[key] = (time.time(), value.model_copy(deep=True))
+    _analysis_memo.move_to_end(key)
+    while len(_analysis_memo) > ANALYSIS_MEMO_MAX:
+        _analysis_memo.popitem(last=False)
+
+
+def reset_analysis_memo() -> None:
+    """Drop every memoised analysis (tests, and anything that needs a cold read)."""
+    _analysis_memo.clear()
 
 
 def score_to_label(score: int) -> str:
@@ -178,6 +231,10 @@ class MatchEngine:
 
         Adds an ATS score plus matched/missing keyword lists (and a derived
         keyword-coverage percentage) on top of the overall fit score.
+
+        Memoised for ``ANALYSIS_MEMO_TTL``: the "See Your Difference" panel and
+        the rewrite's own before-state ask the identical question seconds apart,
+        so the second and third asks are served from memory.
         """
         prompt = JOB_ANALYSIS_PROMPT.format(
             job_title=job_title or "",
@@ -186,7 +243,14 @@ class MatchEngine:
             job_description=job_description[:3000],
         )
 
-        response = await self.llm._generate(prompt, model=_match_model(), op="match.analyze")
+        model = _match_model()
+        key = _memo_key(prompt, model)
+        cached = _memo_get(key)
+        if cached is not None:
+            logger.info("llm_memo op=match.analyze hit=1")
+            return cached
+
+        response = await self.llm._generate(prompt, model=model, op="match.analyze")
         data = self._parse_json_response(response)
 
         def _strs(key: str) -> list[str]:
@@ -212,7 +276,7 @@ class MatchEngine:
         coverage = round(100 * len(matched) / total) if total else 0
         overall = _score("overall_score")
 
-        return JobAnalysisOut(
+        result = JobAnalysisOut(
             overall_score=overall,
             ats_score=_score("ats_score"),
             match_label=score_to_label(overall),
@@ -223,6 +287,11 @@ class MatchEngine:
             weaknesses=_strs("weaknesses"),
             suggestions=_strs("suggestions"),
         )
+        # Only a parsed, non-empty analysis is worth remembering: banking a zero
+        # born from a parse hiccup would freeze it in for the whole TTL.
+        if overall or matched or missing:
+            _memo_put(key, result)
+        return result
 
     async def analyze_fit(
         self, resume_text: str, job_description: str

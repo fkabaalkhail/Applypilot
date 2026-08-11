@@ -130,17 +130,46 @@ def _stated_polarity(value: str) -> Optional[bool]:
     return option_polarity(text)
 
 
-def _screening_conflict(label: str, answer: str, profile: Any) -> str:
-    if profile is None or _NEGATED_RE.search(label):
+def _screening_topic(label: str, help_text: str) -> Optional[str]:
+    """Which screening question this field IS: "sponsorship", "authorized", or None.
+
+    The label decides. `help_text` is harvested from surrounding DOM, so on a
+    real form it routinely carries the *neighbouring* question's wording — an
+    "authorized to work?" field sitting next to a sponsorship question comes
+    through with sponsorship text attached. Letting that pick the rule made the
+    gate compare an authorization answer against `requiresSponsorship` and drop
+    a correct "Yes", blanking the field on a live application (prod 2026-08-11).
+
+    So help text is consulted only when the label names neither topic — which is
+    what makes it useful for a bare "Sponsorship?" label — and never overrides a
+    label that already says which question this is.
+    """
+    for text in (label, help_text):
+        if not text:
+            continue
+        sponsorship = bool(_SPONSORSHIP_RE.search(text))
+        authorized = bool(_AUTHORIZED_RE.search(text))
+        # Both matching in one string means that string is describing two
+        # questions at once; it cannot identify this field, so keep looking.
+        if sponsorship and not authorized:
+            return "sponsorship"
+        if authorized and not sponsorship:
+            return "authorized"
+    return None
+
+
+def _screening_conflict(label: str, answer: str, profile: Any, help_text: str = "") -> str:
+    if profile is None or _NEGATED_RE.search(f"{label} {help_text}"):
         return ""
     answered = option_polarity(answer)
     if answered is None:
         return ""
-    if _SPONSORSHIP_RE.search(label):
+    topic = _screening_topic(label, help_text)
+    if topic == "sponsorship":
         stated = _stated_polarity(str(getattr(profile, "requiresSponsorship", "") or ""))
         if stated is not None and stated != answered:
             return "contradicts_profile:requiresSponsorship"
-    elif _AUTHORIZED_RE.search(label):
+    elif topic == "authorized":
         stated = _stated_polarity(str(getattr(profile, "workAuthorization", "") or ""))
         if stated is not None and stated != answered:
             return "contradicts_profile:workAuthorization"
@@ -211,7 +240,14 @@ def validate_answer(
     if computed is not None and not _agrees(computed.value, value, options):
         return GateResult(None, f"contradicts_profile:{computed.rule}")
 
-    conflict = _identity_conflict(question, value, profile) or _screening_conflict(question, value, profile)
+    # Identity checks (name/email/phone) still read the combined text — a stray
+    # neighbouring sentence cannot make an email look like someone else's. The
+    # screening check gets label and help text separately, because for it the
+    # two are not interchangeable: see _screening_topic.
+    conflict = (
+        _identity_conflict(question, value, profile)
+        or _screening_conflict(label or "", value, profile, help_text or "")
+    )
     if conflict:
         return GateResult(None, conflict)
 

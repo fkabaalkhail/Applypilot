@@ -143,3 +143,65 @@ def test_options_can_be_left_unenforced_for_a_partial_option_list():
         profile=None, today=TODAY, enforce_options=False,
     )
     assert unenforced.value == "Something"
+
+
+# ── Screening topic routing: label decides, help text only fills a gap ────────
+# Regression from prod 2026-08-11: an "authorized to work?" field whose harvested
+# helpText carried the NEIGHBOURING sponsorship question was routed to the
+# sponsorship rule, so a correct "Yes" was compared against requiresSponsorship
+# "No" and dropped — the field submitted blank on a real application.
+
+_AUTH_LABEL = "Are you authorized to work in the country you currently reside in?Yes No"
+_SPONSOR_HELP = "Will you now or in the future require sponsorship for employment visa status?"
+
+
+def _profile(**kw):
+    from backend.routers.fill import ApplicantProfile
+    return ApplicantProfile(firstName="Ada", **kw)
+
+
+def _gate(answer, label, profile, help_text="", options=("Yes", "No")):
+    from datetime import date
+    return validate_answer(answer, label=label, options=list(options), profile=profile,
+                           today=date(2026, 8, 11), company="Acme", help_text=help_text)
+
+
+def test_neighbouring_sponsorship_help_text_does_not_hijack_an_auth_field():
+    p = _profile(requiresSponsorship="No", workAuthorization="Canadian citizen")
+    assert _gate("Yes", _AUTH_LABEL, p, help_text=_SPONSOR_HELP).value == "Yes"
+
+
+def test_a_real_sponsorship_contradiction_still_drops():
+    """The check must keep working, not just stop firing."""
+    p = _profile(requiresSponsorship="No")
+    v = _gate("Yes", "Will you now or in the future require sponsorship?", p)
+    assert v.value is None and v.reason == "contradicts_profile:requiresSponsorship"
+
+
+def test_a_real_authorization_contradiction_still_drops():
+    p = _profile(workAuthorization="Not authorized")
+    v = _gate("Yes", "Are you legally authorized to work in Canada?", p)
+    assert v.value is None and v.reason == "contradicts_profile:workAuthorization"
+
+
+def test_help_text_still_identifies_a_field_whose_label_says_nothing():
+    """Help text remains useful — it just cannot override an explicit label."""
+    p = _profile(requiresSponsorship="No")
+    v = _gate("Yes", "Sponsorship", p, help_text="Do you require sponsorship for a work visa?")
+    assert v.value is None and v.reason == "contradicts_profile:requiresSponsorship"
+
+
+def test_text_naming_both_topics_identifies_neither():
+    """A blob describing two questions cannot say which field this is, so the
+    gate abstains rather than guessing and dropping a good answer."""
+    p = _profile(requiresSponsorship="No", workAuthorization="Canadian citizen")
+    both = "Are you authorized to work here, and will you require sponsorship?"
+    assert _gate("Yes", both, p).value == "Yes"
+
+
+def test_consistent_pair_both_survive_on_one_form():
+    """The two questions answered oppositely is the CORRECT pairing for someone
+    authorized who needs no sponsorship — neither answer may be dropped."""
+    p = _profile(requiresSponsorship="No", workAuthorization="Canadian citizen")
+    assert _gate("Yes", _AUTH_LABEL, p, help_text=_SPONSOR_HELP).value == "Yes"
+    assert _gate("No", "Will you now or in the future require sponsorship?", p).value == "No"
