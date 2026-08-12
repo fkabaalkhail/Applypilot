@@ -177,7 +177,7 @@ SETUP (once)
 
 CORE FUNCTIONALITY (no real application is submitted)
 4. Go to https://www.tailrd.ca/demo-apply — a demo job-application form.
-5. Open the panel (toolbar icon) and click "Account Creation & Autofill".
+5. Open the panel (toolbar icon) and click "Autofill".
 6. Expected: the form fills from the signed-in profile within a few seconds
    (name, email, phone, address, work authorization…), and the resume file
    attaches where an upload field exists. Questions the profile cannot answer

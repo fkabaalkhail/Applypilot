@@ -251,32 +251,13 @@ export function showsAdvanceGate(p: FlowProgress): boolean {
   );
 }
 
-/** Render a flow beat: minimal strip (no narration) + the bottom Next page gate. */
+/** Render a flow beat: the bottom Next page gate. */
 export function updateFlowProgress(p: FlowProgress): void {
   if (!refs) return;
-  const running =
-    p.phase === "filling" || p.phase === "advancing" || p.phase === "paused" || p.phase === "ready";
-  refs.flow.style.display = running ? "flex" : "none";
-  // NO step-by-step narration in the panel, "Step 1 · filling…" style chatter
-  // reads as clutter. The strip shows one calm word while the flow is actively
-  // working (plus Stop), and nothing at all on a parked page: the bottom gate
-  // already shows the next action.
-  //
-  // A PAUSE is the exception, and it has to say why. A paused flow shows no
-  // gate and no summary, so an unexplained blank strip is a dead end, the user
-  // cannot tell whether it is still working, finished, or waiting on them, and
-  // the only thing left to try is clicking Autofill again. The reason is
-  // actionable ("add account credentials in Autofill Information → Account
-  // creation, or sign in manually"), so it belongs on screen, not just in the
-  // console. The unfilled-required pause is excluded: it DOES show the gate,
-  // whose label already says what to do.
-  const active = p.phase === "filling" || p.phase === "advancing";
-  const explainPause = p.phase === "paused" && p.pauseReason !== "unfilled-required";
-  refs.flowText.textContent = active
-    ? "Autofilling…"
-    : explainPause
-      ? `Paused: ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`
-      : "";
+  // NO narration in the panel. The status strip that carried "Autofilling…"
+  // and "Paused: <reason>" is gone: the waves say a fill is running, and the
+  // bottom gate says what to do on a parked page. Every beat, pause reasons
+  // included, still goes to the console via formatFlowProgress.
   console.info(`[Tailrd] ${formatFlowProgress(p)}`);
   // The advance gate is pinned at the panel bottom. The flow parks on every
   // filled page, at a "ready" beat, or a "paused" beat when a required field is
@@ -335,8 +316,6 @@ const P_REGEN = '<path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.
 const P_DOWNLOAD = '<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z"/>';
 const P_PAPERCLIP = '<path d="M209.66,122.34a8,8,0,0,1,0,11.32l-82.05,82a56,56,0,0,1-79.2-79.21L147.67,35.73a40,40,0,1,1,56.61,56.55L105,193A24,24,0,1,1,71,159L154.3,74.38A8,8,0,1,1,165.7,85.6L82.39,170.31a8,8,0,1,0,11.27,11.36L192.93,81A24,24,0,1,0,159,47L59.76,147.68a40,40,0,1,0,56.53,56.62l82.06-82A8,8,0,0,1,209.66,122.34Z"/>';
 const P_INFO = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"/>';
-// Phosphor "question": the unanswered-questions card.
-const P_QUESTION = '<path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>';
 // Phosphor "key": the Saved sign-ins section/modal mark.
 const P_KEY = '<path d="M216.57,39.43A80,80,0,0,0,83.91,120.78L28.69,176A15.86,15.86,0,0,0,24,187.31V216a16,16,0,0,0,16,16H72a8,8,0,0,0,8-8V208H96a8,8,0,0,0,8-8V184h16a8,8,0,0,0,5.66-2.34l9.56-9.57A80,80,0,0,0,216.57,39.43ZM180,100a16,16,0,1,1,16-16A16,16,0,0,1,180,100Z"/>';
 
@@ -351,7 +330,6 @@ const I_DOWNLOAD = ph(P_DOWNLOAD);
 const I_PAPERCLIP = ph(P_PAPERCLIP);
 const I_INFO = ph(P_INFO);
 const I_KEY = ph(P_KEY);
-const I_QUESTION = ph(P_QUESTION);
 
 // The header brand mark is the real Tailrd wing logo, rendered as a data-URI
 // <img> (see brandLogo.ts + wireBrandLogo). It is NOT an inline SVG because the
@@ -492,7 +470,10 @@ export const STYLES = `
   width: 100%;
   padding: 16px;
   border: none;
-  border-radius: 9999px;
+  /* Rectangular, sharing .ap-flow-next's 8px corner so the panel's two
+     actions read as the same family. Kept larger and solid-filled (the
+     Continue gate is a gradient) so it still outranks it. */
+  border-radius: 8px;
   background: var(--stripe-primary);
   color: #fff;
   font-size: 15px;
@@ -508,6 +489,69 @@ export const STYLES = `
   box-shadow: 0 6px 20px rgba(var(--stripe-primary-rgb),0.32);
 }
 .ap-btn-autofill:disabled { opacity: 0.5; cursor: default; transform: none; }
+
+/* ---- "Autofilling" waves ----
+   Slides open under the primary button for as long as a fill runs, pushing
+   "Your Autofill Information" and every section below it down to make the
+   room, then slides shut and lets them settle back.
+
+   The waves are inline <svg>, never a url(data:image/svg+xml…) background:
+   pages with a strict img-src CSP (Greenhouse, Workday, many banks) block
+   data-URI images outright, the same trap wireBrandLogo() works around for
+   the brand marks. */
+.ap-fillwave {
+  flex-shrink: 0;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: height 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease;
+}
+.ap-fillwave.is-active { height: 116px; opacity: 1; }
+/* Fixed inner height so the block wipes into view rather than squashing its
+   own contents while the outer height animates. */
+.ap-fillwave-inner { height: 116px; padding: 14px 16px 16px; }
+.ap-fillwave-label {
+  display: block; text-align: center;
+  font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--stripe-ink-secondary);
+}
+.ap-fillwave-stage {
+  position: relative; height: 60px; margin-top: 10px;
+  border-radius: 10px; overflow: hidden;
+  background: var(--stripe-canvas-soft);
+}
+/* Two animations cannot share one element's transform, so each wave is a
+   layer that bobs vertically wrapping an <svg> that drifts horizontally.
+   Both sit further below the stage floor than the bob can lift them, so no
+   gap ever opens along the bottom edge. */
+.ap-wave-layer { position: absolute; left: 0; right: 0; }
+.ap-wave-layer svg { display: block; width: 200%; height: 100%; }
+.ap-wave-back {
+  bottom: -10px; height: 52px; opacity: 0.5;
+  animation: ap-wave-bob 3.2s ease-in-out infinite;
+}
+.ap-wave-back svg { animation: ap-wave-drift 7s linear infinite; }
+.ap-wave-front {
+  bottom: -12px; height: 46px; opacity: 0.92;
+  animation: ap-wave-bob 2.4s -0.8s ease-in-out infinite;
+}
+.ap-wave-front svg { animation: ap-wave-drift 5s linear infinite reverse; }
+@keyframes ap-wave-bob {
+  0%, 100% { transform: translateY(4px); }
+  50%      { transform: translateY(-5px); }
+}
+/* The path carries four 60-unit periods across its 240-unit viewBox and the
+   <svg> is 200% wide, so -50% is exactly two of them and the shape never pops.
+   Its gradient repeats over that same 120-unit distance (spreadMethod="repeat",
+   first and last stop the same hue), so the colour does not pop either. */
+@keyframes ap-wave-drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ap-fillwave { transition: none; }
+  .ap-wave-layer, .ap-wave-layer svg { animation: none; }
+}
 
 /* ---- Job card (company logo + name + title) ---- */
 .ap-jobcard {
@@ -928,9 +972,6 @@ export const STYLES = `
   vertical-align: -2px; margin-right: 6px;
 }
 @keyframes ap-spin { to { transform: rotate(360deg); } }
-.ap-flow { display: flex; align-items: center; gap: 8px; margin: 6px 16px; font-size: 12px; }
-.ap-flow-text { flex: 1; color: var(--stripe-ink-mute); line-height: 1.35; }
-.ap-flow-stop { flex: 0 0 auto; }
 /* Next-page gate: pinned at the panel bottom, shown once a page is filled and
    waiting on the user. The one control they touch after the first Autofill. */
 .ap-flow-next-wrap {
@@ -948,19 +989,9 @@ export const STYLES = `
 }
 .ap-flow-next:hover { box-shadow: 0 6px 16px rgba(var(--stripe-primary-rgb), 0.35); }
 .ap-flow-next:active { background: var(--stripe-primary-press); box-shadow: none; }
-/* ---- Unanswered questions (panel card + modal) ---- */
-.ap-gaps-card {
-  display: flex; align-items: center; gap: 10px; width: calc(100% - 32px);
-  margin: 0 16px 12px; padding: 11px 12px; text-align: left;
-  border: 1px solid #f0dcae; border-radius: 10px; background: #fdf8ec;
-  cursor: pointer; font-family: inherit; font-size: 12.5px; color: #7a5b12;
-}
-.ap-gaps-card:hover { background: #fcf3de; }
-.ap-gaps-icon { display: flex; color: #b8860b; flex-shrink: 0; }
-.ap-gaps-icon svg { width: 17px; height: 17px; }
-.ap-gaps-text { flex: 1; font-weight: 600; }
-.ap-gaps-arrow { display: flex; color: #b8860b; flex-shrink: 0; }
-.ap-gaps-arrow svg { width: 15px; height: 15px; }
+/* ---- Unanswered questions (modal only) ----
+   The panel card that used to open this is gone; the modal keeps its markup,
+   styles and handlers, it simply has no entry point in the panel today. */
 .ap-gaps-body { flex: 1; min-width: 0; padding: 4px 20px 8px; overflow-y: auto; }
 .ap-gap-card { border-bottom: 1px solid var(--stripe-hairline-soft); padding: 14px 0; }
 .ap-gap-card:last-child { border-bottom: none; }
@@ -1097,6 +1128,10 @@ interface PanelState {
   selected: Set<string>;
   outcomes: Map<string, FillOutcome>;
   busy: boolean;
+  /** True only while doAutofill() is running, which is what raises the
+   *  "Autofilling" waves. Deliberately not `busy`: that is also set by a
+   *  résumé upload and by the tailor path, and neither should raise them. */
+  autofilling: boolean;
   scanned: boolean;
   view: View;
   infoCategory: InfoCategory;
@@ -1149,6 +1184,7 @@ const overlayState: PanelState = {
   selected: new Set(),
   outcomes: new Map(),
   busy: false,
+  autofilling: false,
   scanned: false,
   view: "main",
   infoCategory: "personal",
@@ -1177,16 +1213,13 @@ interface Refs {
   jobcardCompany: HTMLDivElement;
   jobcardTitle: HTMLDivElement;
   btnAutofill: HTMLButtonElement;
+  fillWave: HTMLDivElement;
   banner: HTMLDivElement;
-  flow: HTMLDivElement;
-  flowText: HTMLSpanElement;
   flowNext: HTMLDivElement;
   flowNextBtn: HTMLButtonElement;
   signinsModal: HTMLDivElement;
   signinsBody: HTMLDivElement;
   signinsCount: HTMLSpanElement;
-  gapsCard: HTMLButtonElement;
-  gapsText: HTMLSpanElement;
   gapsModal: HTMLDivElement;
   gapsBody: HTMLDivElement;
   gapsError: HTMLDivElement;
@@ -1295,6 +1328,58 @@ function installMountWatchdog(): void {
   mountObserver.observe(document.documentElement, { childList: true });
 }
 
+/**
+ * One filled wave layer of the "Autofilling" animation.
+ *
+ * The path holds four full 60-unit periods across its 240-unit viewBox, so the
+ * drift animation's -50% shift is exactly two of them and loops invisibly, and
+ * the gradient repeats on that same 120-unit distance with matching end stops
+ * so the colour tiles with the shape (see @keyframes ap-wave-drift).
+ *
+ * Four periods, not two: preserveAspectRatio="none" stretches 240 units across
+ * twice the panel's width, so a longer wave flattens into a barely-visible
+ * swell. At 60 units roughly two crests are in view at a time.
+ *
+ * The hues are the landing page's hero mesh, frontend/src/pages/Landing.css
+ * `.hero-bg`: cream, sherbet, lavender, indigo, ruby. Hardcoded rather than
+ * tokenised because that gradient hardcodes them too, and only the two
+ * indigos exist as Stripe tokens here.
+ */
+export function waveLayerHTML(which: "back" | "front"): string {
+  const id = `ap-wave-grad-${which}`;
+  // Back crests where the front troughs: half a period out of phase. Both
+  // ride a y=16 baseline and are filled down to the 40-unit floor.
+  const d =
+    which === "back"
+      ? "M0 16C7.5 2 22.5 2 30 16S52.5 30 60 16S82.5 2 90 16S112.5 30 120 16S142.5 2 150 16S172.5 30 180 16S202.5 2 210 16S232.5 30 240 16L240 40L0 40Z"
+      : "M0 16C7.5 30 22.5 30 30 16S52.5 2 60 16S82.5 30 90 16S112.5 2 120 16S142.5 30 150 16S172.5 2 180 16S202.5 30 210 16S232.5 2 240 16L240 40L0 40Z";
+  const stops =
+    which === "back"
+      ? `<stop offset="0%" stop-color="#f5e9d4"/>
+         <stop offset="20%" stop-color="#ffd9a8"/>
+         <stop offset="45%" stop-color="#c3b9fd"/>
+         <stop offset="70%" stop-color="#665efd"/>
+         <stop offset="100%" stop-color="#f5e9d4"/>`
+      : `<stop offset="0%" stop-color="#ffd9a8"/>
+         <stop offset="18%" stop-color="#c3b9fd"/>
+         <stop offset="38%" stop-color="#533afd"/>
+         <stop offset="58%" stop-color="#f96bee"/>
+         <stop offset="78%" stop-color="#c3b9fd"/>
+         <stop offset="100%" stop-color="#ffd9a8"/>`;
+  return `
+              <div class="ap-wave-layer ap-wave-${which}">
+                <svg viewBox="0 0 240 40" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+                  <defs>
+                    <linearGradient id="${id}" gradientUnits="userSpaceOnUse"
+                                    x1="0" y1="0" x2="120" y2="0" spreadMethod="repeat">
+                      ${stops}
+                    </linearGradient>
+                  </defs>
+                  <path d="${d}" fill="url(#${id})"/>
+                </svg>
+              </div>`;
+}
+
 export function buildHTML(): string {
   return `
     <button class="ap-edge-tab" type="button" title="Open Tailrd" aria-label="Open Tailrd">
@@ -1324,26 +1409,24 @@ export function buildHTML(): string {
           </div>
         </div>
 
-        <!-- Account Creation & Autofill button -->
+        <!-- Autofill button -->
         <div class="ap-autofill-section">
-          <button class="ap-btn-autofill" id="ap-btn-autofill" disabled>Account Creation &amp; Autofill</button>
+          <button class="ap-btn-autofill" id="ap-btn-autofill" disabled>Autofill</button>
         </div>
-
-        <!-- Unanswered reusable questions (shown only after a fill has run) -->
-        <button class="ap-gaps-card" id="ap-gaps-card" type="button" style="display:none">
-          <span class="ap-gaps-icon">${I_QUESTION}</span>
-          <span class="ap-gaps-text" id="ap-gaps-text"></span>
-          <span class="ap-gaps-arrow">${I_CHEVRON_RIGHT}</span>
-        </button>
 
         <!-- Banner -->
         <div class="ap-banner" id="ap-banner" style="display:none"></div>
 
-        <!-- Multi-page flow status line -->
-        <div class="ap-flow" id="ap-flow" style="display:none">
-          <span class="ap-flow-text" id="ap-flow-text"></span>
+        <!-- "Autofilling" waves. Collapsed to nothing until a fill starts,
+             when it slides open and pushes Your Autofill Information and the
+             sections under it down into the space it needs. -->
+        <div class="ap-fillwave" id="ap-fillwave" aria-hidden="true">
+          <div class="ap-fillwave-inner">
+            <span class="ap-fillwave-label" role="status">Autofilling</span>
+            <div class="ap-fillwave-stage">${waveLayerHTML("back")}${waveLayerHTML("front")}
+            </div>
+          </div>
         </div>
-
 
         <!-- Your Autofill Information -->
         <div class="ap-section">
@@ -1544,16 +1627,13 @@ function collectRefs(root: HTMLDivElement): Refs {
     jobcardCompany: q("#ap-jobcard-company"),
     jobcardTitle: q("#ap-jobcard-title"),
     btnAutofill: q("#ap-btn-autofill"),
+    fillWave: q("#ap-fillwave"),
     banner: q("#ap-banner"),
-    flow: q("#ap-flow"),
-    flowText: q("#ap-flow-text"),
     flowNext: q(".ap-flow-next-wrap"),
     flowNextBtn: q("#ap-flow-next"),
     signinsModal: q("#ap-signins-modal"),
     signinsBody: q("#ap-signins-body"),
     signinsCount: q("#ap-signins-count"),
-    gapsCard: q("#ap-gaps-card"),
-    gapsText: q("#ap-gaps-text"),
     gapsModal: q("#ap-gaps-modal"),
     gapsBody: q("#ap-gaps-body"),
     gapsError: q("#ap-gaps-error"),
@@ -1597,8 +1677,8 @@ function wireEvents(root: HTMLDivElement): void {
   });
 
 
-  // Unanswered questions -> open the modal; Save writes + remembers, Skip closes.
-  root.querySelector("#ap-gaps-card")!.addEventListener("click", openGapsModal);
+  // Unanswered-questions modal; Save writes + remembers, Skip closes. Nothing
+  // in the panel opens it: the card that did was removed from the UI.
   root.querySelector("#ap-gaps-close")!.addEventListener("click", closeGapsModal);
   root.querySelector("#ap-gaps-skip")!.addEventListener("click", closeGapsModal);
   root.querySelector("#ap-gaps-save")!.addEventListener("click", () => void saveGaps());
@@ -1903,13 +1983,32 @@ function refreshMainView(): void {
   // per-page fill summary above the Continue gate are the feedback surface.
   const canRun = Boolean(overlayState.profile) && !overlayState.busy;
   refs.btnAutofill.disabled = !canRun;
-  refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Account Creation & Autofill";
+  refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Autofill";
+  renderFillWave(overlayState.autofilling);
 
 
   // Keep the r\u00e9sum\u00e9-upload button in sync as the form is (re)scanned.
   updateUploadButtonState();
   updateTailorButtonState();
   updateCoverButtonState();
+}
+
+/**
+ * Raise or lower the "Autofilling" waves.
+ *
+ * Adding the class is the whole animation: CSS grows the block from zero,
+ * which pushes "Your Autofill Information" and the sections below it down,
+ * and removing it lets them slide back. Exported so tests can drive the real
+ * render path, the same way installRefs backs updateFlowProgress and
+ * showReloadRequired.
+ */
+export function renderFillWave(active: boolean): void {
+  if (!refs) return;
+  refs.fillWave.classList.toggle("is-active", active);
+  // Collapsed, it is a zero-height decoration. Keeping it out of the a11y
+  // tree until then means "Autofilling" is only ever announced while a fill
+  // is really running.
+  refs.fillWave.setAttribute("aria-hidden", active ? "false" : "true");
 }
 
 /** Friendly fallback names when a field's own label is missing/too generic. */
@@ -1925,9 +2024,13 @@ function refreshMainView(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Recompute the questions the last fill left blank and paint the panel card.
- * Called on every re-render, but the card only shows once a fill has run, see
- * PanelState.fillRan.
+ * Recompute the questions the last fill left blank, on every re-render, so
+ * overlayState.gaps stays current for whoever opens the modal.
+ *
+ * Nothing paints from this any more: the "N questions need your answer" card
+ * was removed from the panel. The computation stays because it is what the
+ * modal renders from, and re-exposing an entry point is then a markup change
+ * rather than a rebuild.
  */
 function refreshGaps(): void {
   if (!refs) return;
@@ -1938,10 +2041,6 @@ function refreshGaps(): void {
         overlayState.reverted
       )
     : [];
-  const n = overlayState.gaps.length;
-  refs.gapsCard.style.display = n > 0 ? "" : "none";
-  refs.gapsText.textContent =
-    n === 1 ? "1 question needs your answer" : `${n} questions need your answer`;
 }
 
 /** True while a harvest pass is in flight, the only time "Loading choices…"
@@ -2510,6 +2609,7 @@ async function doAutofill(): Promise<void> {
   if (ids.length === 0 && !entryStart) return;
 
   overlayState.busy = true;
+  overlayState.autofilling = true;
   refreshMainView();
   showBanner("", "ok", true);
 
@@ -2529,6 +2629,7 @@ async function doAutofill(): Promise<void> {
     showBanner(`Autofill failed: ${err instanceof Error ? err.message : "unknown error"}`, "error");
   } finally {
     overlayState.busy = false;
+    overlayState.autofilling = false;
     refreshMainView();
   }
 }
@@ -2547,8 +2648,10 @@ async function doAutofill(): Promise<void> {
 export function showReloadRequired(): void {
   if (!refs) return;
   refs.btnAutofill.disabled = true;
-  refs.flow.style.display = "none";
   refs.flowNext.style.display = "none";
+  // Nothing is running any more, so waves left mid-fill would be a lie.
+  overlayState.autofilling = false;
+  renderFillWave(false);
   showBanner("Tailrd was updated. Reload this page to continue.", "warn");
 }
 
@@ -3245,6 +3348,7 @@ async function reInit(): Promise<void> {
   overlayState.selected = new Set();
   overlayState.outcomes = new Map();
   overlayState.busy = false;
+  overlayState.autofilling = false;
   overlayState.scanned = false;
   overlayState.tailorResult = null;
   overlayState.tailorKeywords = new Set();

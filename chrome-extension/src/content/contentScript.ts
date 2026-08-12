@@ -1610,8 +1610,8 @@ function initialize(): void {
     };
     // Mount on a detected job-application form, on a known ATS's apply-entry
     // page (Workday job posting), or on an ATS application page, so the
-    // always-on "Account Creation & Autofill" button is available to start the
-    // flow even before the posting exposes an apply-entry we recognise.
+    // always-on "Autofill" button is available to start the flow even before
+    // the posting exposes an apply-entry we recognise.
     //
     // "ATS page" is deliberately NOT a bare adapter match: adapters match by
     // host only (/(^|\.)greenhouse\.io$/ …), so the vendors' own marketing

@@ -135,7 +135,6 @@ describe("orphaned panel tells the user to reload", () => {
 
     expect((host.querySelector("#ap-btn-autofill") as HTMLButtonElement).disabled).toBe(true);
     expect((host.querySelector(".ap-flow-next-wrap") as HTMLElement).style.display).toBe("none");
-    expect((host.querySelector("#ap-flow") as HTMLElement).style.display).toBe("none");
     const banner = host.querySelector("#ap-banner") as HTMLElement;
     expect(banner.style.display).toBe("block");
     expect(banner.textContent).toMatch(/reload this page/i);

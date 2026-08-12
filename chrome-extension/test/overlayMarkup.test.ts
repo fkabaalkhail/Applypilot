@@ -44,8 +44,6 @@ describe("saved sign-ins", () => {
 describe("unanswered questions", () => {
   it("exposes the refs collectRefs() queries", () => {
     for (const sel of [
-      "#ap-gaps-card",
-      "#ap-gaps-text",
       "#ap-gaps-modal",
       "#ap-gaps-body",
       "#ap-gaps-error",
@@ -55,8 +53,11 @@ describe("unanswered questions", () => {
     }
   });
 
-  it("hides the panel card until a fill has run", () => {
-    expect(root.querySelector<HTMLElement>("#ap-gaps-card")!.style.display).toBe("none");
+  // The panel card that opened this was removed from the UI. The modal and
+  // everything behind it stays; it just has no entry point in the panel.
+  it("has no panel card", () => {
+    expect(root.querySelector("#ap-gaps-card")).toBeNull();
+    expect(root.querySelector("#ap-gaps-text")).toBeNull();
   });
 
   it("offers Skip alongside Save, so answering is never forced", () => {
