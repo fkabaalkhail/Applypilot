@@ -102,8 +102,16 @@ Two records, deliberately different:
   since that is not the user's data.
 - `autofill_field_captures` — **opted-in accounts only**. Answers and markup.
 
-Two floors apply even with capture on:
+Three floors apply even with capture on:
 
+- **Demographic (EEO) answers are never transmitted.** Not a capture setting:
+  the store listing states it outright, and it is why the AI pass has never been
+  shown these fields either. The value becomes `<demographic>`, and a
+  demographic field's markup is captured as **structure only** (tags and
+  attributes, text replaced) — a filled react-select renders the committed
+  choice as ordinary text, so keeping the markup while withholding the value
+  column would leak exactly what was withheld. Everything needed to debug the
+  widget survives: control type, the options offered, the outcome, the markup.
 - Passwords and values shaped like a national ID or payment card are replaced
   with a type marker, and flagged `redacted`.
 - Markup is sanitised before it is sent: scripts, styles, SVG paths, images and

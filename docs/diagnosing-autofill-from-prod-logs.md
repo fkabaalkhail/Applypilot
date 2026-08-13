@@ -107,11 +107,38 @@ OpenAI rate limited (429), retrying in 3s (attempt 1/4)          … 6s … 12s 
 AI batch failed for factual fields: OpenAI API rate limited after retries.
 ```
 
-**429 is two different failures.** `rate_limit_exceeded` clears by waiting;
-`insufficient_quota` (spent credit / hard billing limit) never does. The log
-line now prints the code, so `429 insufficient_quota` says "go look at the
-OpenAI billing page" and `429 rate_limit_exceeded` says "a burst". Terminal
-codes fail fast instead of burning 45s of a request the user is waiting on.
+**429 is two different failures.** `rate_limit_exceeded` clears by waiting; an
+account-level refusal never does. The log line now prints the code, so
+`429 billing_not_active` says "go look at the OpenAI billing page" and
+`429 rate_limit_exceeded` says "a burst". Account-level codes fail fast instead
+of burning 45s of a request the user is waiting on.
+
+The code that outage actually returned was **`billing_not_active`** ("Your
+account is not active, please check your billing details"), which is why
+`_is_terminal_429` matches the family by substring
+(`billing|quota|deactivat|suspend|expired`) rather than listing exact codes: an
+allowlist of the three one would think to guess — `insufficient_quota`,
+`billing_hard_limit_reached`, `account_deactivated` — did not contain it.
+Unknown codes still retry, so an undocumented burst limit keeps its backoff.
+
+**Settle it in one call rather than inferring from the logs.** A 429 that
+persists for hours is not a rate limit, and the error body says so outright:
+
+```bash
+python - <<'PY'
+import json, os, urllib.request, urllib.error
+key = os.environ["OPENAI_API_KEY"]
+req = urllib.request.Request(
+    "https://api.openai.com/v1/chat/completions",
+    data=json.dumps({"model": "gpt-4o-mini", "max_tokens": 1,
+                     "messages": [{"role": "user", "content": "hi"}]}).encode(),
+    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+try:
+    print("OK", urllib.request.urlopen(req, timeout=30).status)
+except urllib.error.HTTPError as e:
+    print(e.code, e.read().decode()[:400])
+PY
+```
 
 ### `tier` tells you which layer failed
 

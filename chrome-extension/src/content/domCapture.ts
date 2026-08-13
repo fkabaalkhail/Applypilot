@@ -44,10 +44,26 @@ const SECRET_VALUE = [
  * rather than silently looking like an empty answer, which would send a future
  * investigation after a fill bug that does not exist.
  */
-export function redactCaptureValue(category: string, value: string): [string, boolean] {
+export function redactCaptureValue(
+  category: string,
+  value: string,
+  sensitive = false
+): [string, boolean] {
   const v = (value ?? "").trim();
   if (!v) return ["", false];
   if (category === "accountPassword") return ["<password>", true];
+  // Demographic (EEO) answers never leave the device. That is not a capture
+  // setting, it is a standing promise the extension makes in its store listing
+  // ("Demographic (EEO) answers never leave your device"), and the reason the
+  // AI pass has never been allowed to see these fields either. Diagnostic mode
+  // opts an account into sending its ANSWERS; it does not, and must not,
+  // reopen this one.
+  //
+  // The rest of the record is still captured, so an EEO dropdown that fails to
+  // fill is fully debuggable, its options, control type, markup and outcome all
+  // survive. Only the answer is withheld, and that is the one part no fix ever
+  // needed.
+  if (sensitive) return ["<demographic>", true];
   for (const re of SECRET_VALUE) {
     if (re.test(v)) return ["<redacted-id>", true];
   }
@@ -121,6 +137,20 @@ function scrubElement(el: Element): void {
   }
 }
 
+/** Replace every text node with a placeholder, keeping tags and attributes. */
+function stripTextNodes(root: Element): void {
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  let node = walker.nextNode();
+  while (node) {
+    nodes.push(node as Text);
+    node = walker.nextNode();
+  }
+  for (const text of nodes) {
+    if ((text.textContent ?? "").trim()) text.textContent = "…";
+  }
+}
+
 /** Blank any value the page serialised into the markup. */
 function scrubValues(root: Element): void {
   for (const el of [root, ...root.querySelectorAll("*")]) {
@@ -138,7 +168,7 @@ function scrubValues(root: Element): void {
  */
 export function captureFieldDom(
   el: HTMLElement,
-  opts: { maxChars?: number; keepValues?: boolean } = {}
+  opts: { maxChars?: number; keepValues?: boolean; stripText?: boolean } = {}
 ): string {
   const maxChars = opts.maxChars ?? 4000;
   let clone: HTMLElement;
@@ -157,6 +187,14 @@ export function captureFieldDom(
   scrubElement(clone);
   for (const node of clone.querySelectorAll("*")) scrubElement(node);
   if (!opts.keepValues) scrubValues(clone);
+  // Structure-only capture, for a demographic field. A filled react-select
+  // shows its committed choice as ordinary text (`<div
+  // class="select__single-value">Male</div>`), so keeping the markup while
+  // withholding the answer column would leak exactly what was withheld.
+  // Everything the fill engine reads is in tags and attributes, and the option
+  // list survives in the record's own `options` column, so nothing a fix needs
+  // is lost here.
+  if (opts.stripText) stripTextNodes(clone);
 
   const html = clone.outerHTML.replace(/\s+/g, " ").replace(/> </g, "><").trim();
   return html.length > maxChars ? `${html.slice(0, maxChars)}<!--truncated-->` : html;

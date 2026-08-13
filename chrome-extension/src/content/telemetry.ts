@@ -299,7 +299,11 @@ export function buildAutofillTelemetry(
 
     if (inputs.capture) {
       const snap = inputs.capture.snapshot(id);
-      const [value, redacted] = redactCaptureValue(category, intendedById.get(id) ?? f?.proposedValue ?? "");
+      const [value, redacted] = redactCaptureValue(
+        category,
+        intendedById.get(id) ?? f?.proposedValue ?? "",
+        f?.sensitive ?? false
+      );
       fieldCaptures.push({
         fieldId: id,
         label: f?.label ?? label, // full, not the 200-char outcome label
@@ -314,7 +318,12 @@ export function buildAutofillTelemetry(
         // options at all, which is precisely the case worth capturing.
         options: snap?.options?.length ? snap.options : f?.options ?? [],
         proposedValue: value,
-        observedValue: observedById.get(id) ?? "",
+        // Redacted on the same terms: what the page HOLDS for a demographic
+        // field is the same answer as what we proposed, so withholding one and
+        // sending the other would protect nothing.
+        observedValue: redactCaptureValue(
+          category, observedById.get(id) ?? "", f?.sensitive ?? false
+        )[0],
         redacted,
         tier: prov?.tier ?? "",
         pass: prov?.pass ?? "",

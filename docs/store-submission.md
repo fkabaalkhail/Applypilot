@@ -130,6 +130,34 @@ the user's account:
 NOT collected: browsing history, financial info, health info, location,
 personal communications, keystrokes.
 
+### Diagnostic capture (off by default — read before ticking the boxes above)
+
+There is one opt-in mode that changes the "never field values" line, so it must
+be understood before this form is filled in.
+
+`user_settings.diagnostic_capture` is **FALSE for every account** unless a
+Tailrd operator sets it. While it is off, the extension asks the server before
+capturing anything and therefore assembles and transmits **no answers and no
+form markup at all** — the disclosure above is exactly right.
+
+While it is ON for an account, that account additionally sends, for its own
+fills: the answer written into each field, the options the widget offered, and a
+sanitised snapshot of the employer's form markup. It exists so a form that
+failed can be rebuilt as a test (see
+[autofill-capture-workflow.md](./autofill-capture-workflow.md)).
+
+**If any account with this flag on belongs to a Web Store user, the listing must
+disclose that field values are collected.** As shipped it is a maintainer
+debugging tool used on the developer's own account, which is why the boxes above
+describe the default. Two protections hold even with it on:
+
+- **Demographic (EEO) answers are still never transmitted.** They are replaced
+  with a `<demographic>` marker, and a demographic field's markup is captured as
+  structure only, because a filled dropdown renders the choice as ordinary text.
+  This keeps the "never leave your device" claim below literally true.
+- Passwords and values shaped like a national ID or payment card are replaced
+  with a type marker.
+
 Certify: data is not sold; not used for unrelated purposes; not used for
 creditworthiness.
 

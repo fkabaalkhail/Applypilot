@@ -1058,9 +1058,15 @@ function initialize(): void {
                     snapshot: (fieldId: string) => {
                       const el = registry.get(fieldId)?.el;
                       if (!el) return null;
+                      // A demographic field is captured as STRUCTURE ONLY. Its
+                      // committed choice renders as ordinary text in the
+                      // markup, and "EEO answers never leave your device" is a
+                      // promise the store listing makes, which diagnostic mode
+                      // does not get to revoke.
+                      const sensitive = lastFields.find((f) => f.id === fieldId)?.sensitive ?? false;
                       try {
                         return {
-                          dom: captureFieldDom(el, { keepValues: true }),
+                          dom: captureFieldDom(el, { keepValues: !sensitive, stripText: sensitive }),
                           selector: fieldSelector(el),
                           options: captureOptions(el),
                         };

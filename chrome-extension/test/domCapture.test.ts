@@ -5,7 +5,7 @@
  * page did, or the capture is not worth storing.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { captureFieldDom, captureOptions, fieldContainer } from "../src/content/domCapture";
+import { captureFieldDom, captureOptions, fieldContainer, redactCaptureValue } from "../src/content/domCapture";
 
 beforeEach(() => { document.body.innerHTML = ""; });
 
@@ -102,6 +102,54 @@ describe("captureFieldDom and typed values", () => {
     input.removeAttribute("value");
     input.value = "secret@example.com";
     expect(captureFieldDom(el("c"), { keepValues: true })).not.toContain("secret@example.com");
+  });
+});
+
+describe("structure-only capture, for demographic fields", () => {
+  beforeEach(() => {
+    // A filled react-select renders its committed choice as ordinary text, so
+    // markup alone leaks the answer that the value column withheld.
+    document.body.innerHTML = `
+      <div class="input-wrapper">
+        <label for="g">Gender</label>
+        <div class="select__single-value">Male</div>
+        <input id="g" role="combobox" aria-controls="m"/>
+      </div>`;
+  });
+
+  it("keeps the answer out of the markup", () => {
+    expect(captureFieldDom(el("g"), { stripText: true })).not.toContain("Male");
+  });
+
+  it("keeps every structural signal the fill engine reads", () => {
+    const html = captureFieldDom(el("g"), { stripText: true });
+    for (const kept of ['role="combobox"', 'id="g"', 'class="select__single-value"', "label"]) {
+      expect(html, kept).toContain(kept);
+    }
+  });
+
+  it("leaves ordinary fields' text alone", () => {
+    expect(captureFieldDom(el("g"))).toContain("Male");
+  });
+});
+
+describe("redactCaptureValue", () => {
+  it("withholds a demographic answer whatever its category is called", () => {
+    // Driven by the field's `sensitive` flag, not by a category allowlist: a
+    // new EEO category must be protected the day it is added, not the day
+    // somebody remembers to add it here.
+    expect(redactCaptureValue("eeoSomethingNew", "Male", true)).toEqual(["<demographic>", true]);
+  });
+
+  it("passes an ordinary answer through", () => {
+    expect(redactCaptureValue("school", "University of Ottawa")).toEqual(
+      ["University of Ottawa", false]
+    );
+  });
+
+  it("still withholds passwords and ID-shaped values", () => {
+    expect(redactCaptureValue("accountPassword", "hunter2")[0]).toBe("<password>");
+    expect(redactCaptureValue("unknown", "123-45-6789")[0]).toBe("<redacted-id>");
   });
 });
 

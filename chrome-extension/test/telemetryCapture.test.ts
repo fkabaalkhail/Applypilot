@@ -143,6 +143,50 @@ describe("secrets are redacted even in diagnostic mode", () => {
   });
 });
 
+describe("demographic answers never leave the device, capture or not", () => {
+  // This is not a capture setting. The store listing states it outright
+  // ("Demographic (EEO) answers never leave your device"), and it is why the AI
+  // pass has never been shown these fields either. Opting into diagnostics
+  // opts an account into sending ITS ANSWERS; it must not reopen this.
+  const eeo = () =>
+    buildAutofillTelemetry(
+      [field({ id: "g", category: "eeoGender", label: "Gender", sensitive: true, proposedValue: "Male" })],
+      ctx,
+      {
+        ...base,
+        reports: [{ fieldId: "g", ok: true }] as never,
+        intended: [{ fieldId: "g", value: "Male" }],
+        observed: [{ fieldId: "g", value: "Male" }],
+        capture: { snapshot },
+      }
+    ).fieldCaptures![0];
+
+  it("withholds the proposed demographic answer", () => {
+    expect(eeo().proposedValue).toBe("<demographic>");
+    expect(eeo().redacted).toBe(true);
+  });
+
+  it("withholds what the page ended up holding, too", () => {
+    // Sending `observed` while withholding `proposed` would protect nothing:
+    // for a demographic field they are the same answer.
+    expect(eeo().observedValue).not.toBe("Male");
+  });
+
+  it("nothing in the whole record spells the answer out", () => {
+    expect(JSON.stringify(eeo())).not.toContain("Male");
+  });
+
+  it("still records everything a fix would need", () => {
+    // The EEO dropdowns have real, telemetry-confirmed bugs. Withholding the
+    // ANSWER must not cost the ability to debug the WIDGET.
+    const c = eeo();
+    expect(c.category).toBe("eeoGender");
+    expect(c.controlType).toBe("combobox");
+    expect(c.options.length).toBeGreaterThan(0);
+    expect(c.outcome).toBe("filled");
+  });
+});
+
 describe("rankForCapture keeps the interesting fields when the cap bites", () => {
   const rec = (outcome: string, fieldId: string) =>
     ({ outcome, fieldId } as FieldCaptureRecord);
