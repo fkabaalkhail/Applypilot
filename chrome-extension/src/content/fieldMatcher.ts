@@ -53,6 +53,26 @@ interface CategorySpec {
   sensitive?: boolean;
 }
 
+/**
+ * A label that OPENS with an interrogative auxiliary is a yes/no question about
+ * a datum, not a field asking you to type it. "May we contact your current
+ * employer?" is answered "Yes", never "Acme Corp", but it out-scores every
+ * generic pattern because it contains the exact phrase "current employer".
+ *
+ * Anchored to the start on purpose: "What is your current employer?" is also a
+ * question, and that one DOES want the company name. The auxiliary is the only
+ * thing that separates them.
+ */
+const YES_NO_QUESTION =
+  /^(may|can|could|do|does|did|have|has|had|are|is|was|were|will|would|should|shall)\s+(we|i|you|your|they|it|he|she|there)\b/;
+
+/**
+ * Word count above which a label reads as prose (a statement or a multi-clause
+ * question) rather than a field name. On prose, only exact patterns (weight 1)
+ * may classify, see classifyField.
+ */
+const PROSE_WORDS = 25;
+
 // Order matters only for tie-breaking: more specific categories come first.
 const CATEGORY_SPECS: CategorySpec[] = [
   // --- EEO / demographics (sensitive, detected, never filled by default) ---
@@ -65,7 +85,13 @@ const CATEGORY_SPECS: CategorySpec[] = [
     category: "eeoGender",
     sensitive: true,
     patterns: [{ re: /\bgender\b/ }, { re: /\bsex\b/, weight: 0.85 }],
-    negative: /\bsexual orientation\b|\bgender identity\b/,
+    // "Please share your gender pronouns" contains "gender", and eeoPronouns
+    // scores identically on it, so the tie went to whichever spec is listed
+    // first, this one. Lyft's pronouns list then got the gender answer:
+    // 'No option matches "Male" (saw: She / Her | He / Him | …)'. Pronouns are
+    // a different question with a different answer, so veto rather than reorder,
+    // that way the fix holds wherever either spec moves to.
+    negative: /\bsexual orientation\b|\bgender identity\b|\bpronouns?\b/,
   },
   {
     category: "eeoRace",
@@ -451,7 +477,12 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\bcompany( name)?\b/, weight: 0.7 },
       { re: /\borganization\b/, weight: 0.6 },
     ],
-    negative: /\bprevious\b|\bformer\b|\bsponsor\b|\bschool\b|\breferr(al|er)\b/,
+    negative: new RegExp(
+      // "May we contact your current employer?" is a Yes/No screening question;
+      // it was classified here and would have answered with a company name.
+      YES_NO_QUESTION.source + "|" +
+      /\bprevious\b|\bformer\b|\bsponsor\b|\bschool\b|\breferr(al|er)\b/.source
+    ),
   },
   {
     category: "currentTitle",
@@ -574,12 +605,14 @@ export interface Classification {
 
 export function classifyField(signals: FieldSignals): Classification {
   // Pre-normalize every text source once.
-  const texts: Array<{ weight: number; text: string }> = [];
+  const texts: Array<{ weight: number; text: string; prose: boolean }> = [];
   for (const { key, weight } of SOURCE_WEIGHTS) {
     const raw = signals[key];
     if (raw) {
       const text = normalize(raw);
-      if (text) texts.push({ weight, text });
+      if (text) {
+        texts.push({ weight, text, prose: text.split(" ").length >= PROSE_WORDS });
+      }
     }
   }
 
@@ -588,10 +621,19 @@ export function classifyField(signals: FieldSignals): Classification {
   for (const spec of CATEGORY_SPECS) {
     let max = 0;
     let matchedSources = 0;
-    for (const { weight, text } of texts) {
+    for (const { weight, text, prose } of texts) {
       if (spec.negative?.test(text)) continue;
       let sourceBest = 0;
       for (const { re, weight: pw } of spec.patterns) {
+        // On prose, a loose keyword is a coincidence, not a classification.
+        // Lyft's 431-char certification statement says "Employer" three times
+        // ("I authorize the Employer to make an investigation…"), which the
+        // weight-0.85 /\bemployer\b/ pattern read as an employer FIELD, so the
+        // applicant's company name was typed into Lyft's legal certification
+        // box (autofill_reports #167, 2026-08-12). Exact patterns still fire:
+        // the equally prose-y "…are you open to relocating?" carries the
+        // weight-1 phrase "open to relocating" and stays willingToRelocate.
+        if (prose && (pw ?? 1) < 1) continue;
         if (re.test(text)) sourceBest = Math.max(sourceBest, weight * (pw ?? 1));
       }
       if (sourceBest > 0) {
@@ -704,6 +746,65 @@ export function deriveFieldOfStudy(degree: string): string | null {
   return rest.split(",")[0].trim() || null;
 }
 
+/**
+ * "Is this your current role?" answered from one experience row's end date:
+ * "yes" only for the row that has none (or names the present). Abstains when
+ * the row is unknown, so a standalone checkbox never gets a guessed answer.
+ */
+function currentRoleFlag(profile: UserApplicationProfile, gi: number | null): string | null {
+  if (gi === null) return null;
+  const end = profile.experience?.[gi]?.endDate;
+  if (end === undefined) return null;
+  return !end.trim() || /\b(present|current|now|ongoing|to date)\b/i.test(end) ? "yes" : "no";
+}
+
+/**
+ * Canonical degree LEVELS, longest/highest first so "Master of Business
+ * Administration" is read as an MBA and not as a plain Master's, and a
+ * transcript naming several degrees resolves to the highest one.
+ *
+ * Abbreviations require their periods (`M.A.`, `B.Sc`) or a distinctive spelling
+ * (`msc`, `beng`). A bare two-letter alternative would match inside ordinary
+ * words, and mislabelling somebody's degree is worse than abstaining.
+ */
+const DEGREE_LEVELS: Array<[RegExp, string]> = [
+  [/\bph\.?\s?d\b|\bdoctorate\b|\bdoctor of philosophy\b|\bd\.?phil\b/i, "Doctorate"],
+  [/\bm\.?b\.?a\b|\bmaster of business administration\b/i, "MBA"],
+  [/\bmaster(?:'?s)?\b|\bm\.\s?(?:sc?|a|eng)\.?\b|\bmsc\b|\bmeng\b/i, "Master"],
+  [/\bbachelor(?:'?s)?\b|\bb\.\s?(?:sc?|a|eng|comm)\.?\b|\bbsc\b|\bbeng\b|\bundergraduate\b/i, "Bachelor"],
+  [/\bassociate(?:'?s)?\b/i, "Associate"],
+  [/\bdiploma\b/i, "Diploma"],
+  [/\bcertificate\b/i, "Certificate"],
+  [/\bhigh school\b|\bsecondary school\b/i, "High School"],
+];
+
+/**
+ * The level a degree title names, for a Degree control that offers levels
+ * rather than titles: "Bachelor of Applied Science (Honours) in Software
+ * Engineering" → "Bachelor", which matchOption then snaps onto Greenhouse's
+ * "Bachelor's Degree".
+ *
+ * Returns null when the string names no recognizable level, so an unusual
+ * qualification keeps its own text instead of being forced into a bucket.
+ *
+ * Why this exists: on the real Lyft form (autofill_reports #168, 2026-08-13)
+ * the Degree dropdown was typed the applicant's full degree title, matched
+ * nothing, and the combobox engine wiped the text again, which is what the
+ * user saw as "it put it in then removed it". The neighbouring Discipline field
+ * worked because deriveFieldOfStudy already reduces the same string.
+ */
+export function deriveDegreeLevel(degree: string): string | null {
+  const d = (degree || "").trim();
+  if (!d) return null;
+  for (const [re, level] of DEGREE_LEVELS) {
+    if (re.test(d)) return level;
+  }
+  return null;
+}
+
+/** Controls that force the answer to be one of a fixed set of options. */
+const CHOICE_CONTROLS: ControlType[] = ["select", "combobox", "radioGroup", "checkboxGroup", "customDropdown"];
+
 export const LONG_TEXT: ControlType[] = ["textarea", "contenteditable"];
 
 /**
@@ -766,6 +867,11 @@ export function resolveProfileValue(
     case "currentCompany":
       return orNull(gi !== null ? profile.experience?.[gi]?.company : profile.currentCompany);
     case "currentTitle":
+      // Greenhouse's "Current role" is a CHECKBOX ("this is my current role"),
+      // sharing a label with the job-title text field but asking a different
+      // question. Writing a title string into it can only fail as an ambiguous
+      // checkbox value, so answer it the way experienceCurrent does.
+      if (control.controlType === "checkbox") return currentRoleFlag(profile, gi);
       return orNull(gi !== null ? profile.experience?.[gi]?.title : profile.currentTitle);
     // Experience dates / description only resolve inside a repeating row (gi set),
     // so a standalone "Start Date" (availability) never pulls an employment date.
@@ -775,13 +881,8 @@ export function resolveProfileValue(
       return orNull(gi !== null ? profile.experience?.[gi]?.endDate : undefined);
     case "experienceDescription":
       return orNull(gi !== null ? profile.experience?.[gi]?.description : undefined);
-    case "experienceCurrent": {
-      // Check the box only for the row that has no end date (the current job).
-      if (gi === null) return null;
-      const end = profile.experience?.[gi]?.endDate;
-      if (end === undefined) return null;
-      return !end.trim() || /\b(present|current|now|ongoing|to date)\b/i.test(end) ? "yes" : "no";
-    }
+    case "experienceCurrent":
+      return currentRoleFlag(profile, gi);
     case "salary":
       return orNull(profile.salaryExpectation);
     case "skills":
@@ -790,8 +891,14 @@ export function resolveProfileValue(
       return orNull(profile.skills?.filter((s) => s.trim()).join(", "));
     case "school":
       return orNull(edu?.school);
-    case "degree":
-      return orNull(edu?.degree);
+    case "degree": {
+      const d = orNull(edu?.degree);
+      if (!d) return null;
+      // A Degree DROPDOWN offers levels ("Bachelor's Degree"); a full degree
+      // title matches none of them. A free-text Degree field wants the title.
+      if (CHOICE_CONTROLS.includes(control.controlType)) return deriveDegreeLevel(d) ?? d;
+      return d;
+    }
     case "fieldOfStudy":
       return edu?.degree ? deriveFieldOfStudy(edu.degree) : null;
     case "graduationYear":

@@ -94,6 +94,52 @@ is it working. What makes a drop a bug:
 Drop reasons: `no_answer` (model declined — usually correct), `ai_error` (the
 call failed — our bug), `not_an_offered_option`, `contradicts_profile:<field>`.
 
+### `ai_error` on *every* AI field means the batch died, not the fields
+
+If a report is mostly `ai_error`, stop reading the fields and go read the
+request. On 2026-08-12 a Lyft application (report #167) came back 11 filled /
+13 failed with `ai_error` on twelve of them, and the cause was four OpenAI 429s
+in a row:
+
+```
+POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+OpenAI rate limited (429), retrying in 3s (attempt 1/4)          … 6s … 12s … 24s
+AI batch failed for factual fields: OpenAI API rate limited after retries.
+```
+
+**429 is two different failures.** `rate_limit_exceeded` clears by waiting;
+`insufficient_quota` (spent credit / hard billing limit) never does. The log
+line now prints the code, so `429 insufficient_quota` says "go look at the
+OpenAI billing page" and `429 rate_limit_exceeded` says "a burst". Terminal
+codes fail fast instead of burning 45s of a request the user is waiting on.
+
+### `tier` tells you which layer failed
+
+`field_outcomes` carries `tier` alongside the drop reason, and they can
+disagree — that disagreement is the useful part:
+
+| tier | expected | observed | what actually broke |
+|---|---|---|---|
+| `backend` | true | false | the AI answer was refused or never came |
+| `profile` | true | false | the local fallback ran and **the write missed** |
+| `""` | false | — | nothing was ever proposed: a *resolver* gap, not a fill gap |
+
+The Lyft report showed `tier: "profile"` on Work Authorization, School and
+Degree — so the AI failing was not the whole story; those three had a local
+answer, wrote it into a react-select, and the write did not stick. A blank
+`tier` on the employment dates meant the opposite: no value was ever computed,
+which pointed at `detectGroupIndex` rather than at any fill engine.
+
+### Greenhouse has no `<select>` elements
+
+Worth knowing before reading any Greenhouse report: every dropdown on a
+`job-boards.greenhouse.io` form is an `<input type="text" role="combobox">`
+(react-select v5), so **`options` is empty at scan time for all of them** and
+the option list only exists after the widget is opened. "Start date" is not a
+date picker either — it is a month combobox plus a separate free-text year
+input, with the row index as an id *suffix* (`start-date-month-0`). See
+`test/fixtures/greenhouseLyftReal.ts` for the captured markup.
+
 ### The trap: the log line is not the whole input
 
 `fill.py` logs `field.label[:80]`. The gate is given **label *and* helpText**, and

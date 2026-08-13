@@ -64,7 +64,7 @@ import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
-import { aiFillCandidates, isBoolish, needsOptionHarvest, planAiFill, planFillRoute, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
+import { aiFillCandidates, isBoolish, needsOptionHarvest, planAiFill, planFillRoute, planOnDeviceReask, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { closestDemographicOption } from "./demographicMatch";
 import { toApplicantProfile } from "./applicantProfile";
 import { splitByCache, cacheAnswers } from "./answerCache";
@@ -73,7 +73,7 @@ import { activateElement, comboboxDisplaysValue, fillAriaCombobox, harvestCombob
 import { SECTION_KINDS, MAX_ROWS, rowsPresent, rowsNeeded, findAddButton } from "./repeatingSections";
 import { driveField, setDialogSuppression } from "./mainWorldClient";
 import { dispatchFormOp, makeProxyCallbacks, shouldAdoptRemoteHost } from "./crossFrame";
-import { verifyControl, writeControl } from "./writeEngine";
+import { matchOption, verifyControl, writeControl } from "./writeEngine";
 import {
   showOverlay,
   updateOverlay,
@@ -834,6 +834,8 @@ function initialize(): void {
         { reports: [], outcomes: [], reask: [] };
       let demoFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
+      let deviceReaskFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
+        { reports: [], outcomes: [], reask: [] };
       const reaskCandidates = [...localFill.reask, ...aiFill.reask, ...fallbackFill.reask];
       // Sensitive (EEO) fields NEVER reach the backend, pick their closest
       // option ON-DEVICE from the harvested list. Everything else re-asks the AI.
@@ -859,7 +861,18 @@ function initialize(): void {
           const f = lastFields.find((x) => x.id === c.fieldId);
           if (f) f.options = c.options; // panel now shows the real choices
         }
-        const reaskFields = planReaskFields(lastFields, openReask);
+        // Anything the profile already answers is snapped to a real option HERE,
+        // on device, before the backend is consulted. Free, instant, and it
+        // keeps a fact the user stated from depending on the AI being reachable.
+        const onDevice = planOnDeviceReask(lastFields, openReask, (options, value) =>
+          matchOption(options, (o) => o, (o) => o, value)
+        );
+        if (onDevice.targets.length > 0) {
+          deviceReaskFill = await fillItems(
+            noteIntent(onDevice.targets, { tier: "profile", pass: "reask" }), true, signal
+          );
+        }
+        const reaskFields = planReaskFields(lastFields, onDevice.remaining);
         if (reaskFields.length > 0) {
           try {
             const resp = await sendToBackground<AiFillResponse>({
@@ -901,6 +914,7 @@ function initialize(): void {
         fallbackFill.reports,
         reaskFill.reports,
         demoFill.reports,
+        deviceReaskFill.reports,
         missingFill.reports,
         cascadeFill.reports,
         localFill.outcomes,
@@ -908,17 +922,20 @@ function initialize(): void {
         fallbackFill.outcomes,
         reaskFill.outcomes,
         demoFill.outcomes,
+        deviceReaskFill.outcomes,
         missingFill.outcomes,
         cascadeFill.outcomes
       );
 
       const allReports = [
         ...localFill.reports, ...aiFill.reports, ...fallbackFill.reports,
-        ...reaskFill.reports, ...demoFill.reports, ...missingFill.reports, ...cascadeFill.reports,
+        ...reaskFill.reports, ...demoFill.reports, ...deviceReaskFill.reports,
+        ...missingFill.reports, ...cascadeFill.reports,
       ];
       const allOutcomes = [
         ...localFill.outcomes, ...aiFill.outcomes, ...fallbackFill.outcomes,
-        ...reaskFill.outcomes, ...demoFill.outcomes, ...missingFill.outcomes, ...cascadeFill.outcomes,
+        ...reaskFill.outcomes, ...demoFill.outcomes, ...deviceReaskFill.outcomes,
+        ...missingFill.outcomes, ...cascadeFill.outcomes,
       ];
       // Terminal re-scan: read the page back once the fill has settled, and
       // diff what it holds against what was written.

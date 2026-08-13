@@ -38,6 +38,56 @@ DEFAULT_FIELD_MODEL = "gpt-4o-mini"
 def _field_model() -> str:
     return os.getenv("OPENAI_FIELD_MODEL", DEFAULT_FIELD_MODEL).strip().strip("﻿") or DEFAULT_FIELD_MODEL
 
+
+# Substrings that mark a 429 as an ACCOUNT problem rather than a traffic one:
+# out of credit, unpaid, deactivated, over a configured ceiling. Waiting cannot
+# fix any of them, so retrying is pure latency on a request a user is watching.
+#
+# Matched as substrings, not an exact allowlist, because OpenAI uses several
+# names from the same family and the exact one is not documented per case. The
+# real 2026-08-12 outage returned `billing_not_active` ("Your account is not
+# active, please check your billing details"), which an allowlist of the three
+# codes one would think to guess did not contain.
+_TERMINAL_429_MARKERS = ("billing", "quota", "deactivat", "suspend", "expired")
+
+
+def _is_terminal_429(code: str) -> bool:
+    """True when a 429 will never clear on its own.
+
+    Unknown/blank codes are treated as transient, so an undocumented burst limit
+    still gets its retries; only a recognizably account-level failure fails fast.
+    """
+    c = (code or "").lower()
+    return any(marker in c for marker in _TERMINAL_429_MARKERS)
+
+
+def _openai_error_code(response: httpx.Response) -> str:
+    """OpenAI's machine-readable error code, or "" when the body is unreadable.
+
+    The body is `{"error": {"code": "insufficient_quota", "type": ...}}`; `code`
+    is preferred and `type` is the fallback, since some errors set only one.
+    """
+    try:
+        err = response.json().get("error") or {}
+    except Exception:
+        return ""
+    return str(err.get("code") or err.get("type") or "")
+
+
+def _retry_after(response: httpx.Response) -> float | None:
+    """The `Retry-After` header in seconds, when it is present and sane.
+
+    The API knows when its own window reopens; a blind doubling does not.
+    Capped at 30s so a long header value cannot stall a user-facing request.
+    """
+    raw = response.headers.get("retry-after", "").strip()
+    if not raw:
+        return None
+    try:
+        return min(max(float(raw), 0.0), 30.0)
+    except ValueError:
+        return None
+
 STANDARDS_TOKEN = "{{RESUME_STANDARDS}}"
 STANDARDS_FILE = "_standards.md"
 
@@ -225,10 +275,29 @@ class OpenAIService:
             async with httpx.AsyncClient() as client:
                 r = await client.post(url, json=body, headers=headers, timeout=self.timeout)
                 if r.status_code == 429:
-                    wait_time = (2 ** attempt) * 3
+                    code = _openai_error_code(r)
+                    # 429 covers two conditions that want opposite handling. A
+                    # spent quota / hard billing limit will NEVER clear by
+                    # waiting, so retrying it burns 45s (3+6+12+24) of a
+                    # user-facing request and fails anyway, which is exactly
+                    # what blanked 12 fields of a real Lyft application on
+                    # 2026-08-12 while the log said only "rate limited".
+                    if _is_terminal_429(code):
+                        logger.error(
+                            "OpenAI refused the call (429 %s) for op=%s, this is an "
+                            "ACCOUNT/BILLING problem and will not clear by retrying",
+                            code, op,
+                        )
+                        raise ConnectionError(
+                            f"OpenAI rejected the request ({code}). This is an account "
+                            "billing/quota problem, not a transient rate limit."
+                        )
+                    # A genuine rate limit: obey Retry-After when the API sends
+                    # one, since it knows when the window actually reopens.
+                    wait_time = _retry_after(r) or (2 ** attempt) * 3
                     logger.warning(
-                        f"OpenAI rate limited (429), retrying in {wait_time}s "
-                        f"(attempt {attempt + 1}/{max_retries})"
+                        f"OpenAI rate limited (429 {code or 'no-code'}), retrying in "
+                        f"{wait_time}s (attempt {attempt + 1}/{max_retries})"
                     )
                     await asyncio.sleep(wait_time)
                     continue

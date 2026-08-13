@@ -144,6 +144,15 @@ export const LOCAL_FAST_PATH: ReadonlySet<FieldCategory> = new Set<FieldCategory
   "phoneCountryCode", "phoneDeviceType",
   "linkedin", "github", "portfolio", "location", "currentCompany", "currentTitle",
   "addressStreet", "addressCity", "addressState", "postalCode", "country",
+  // Education and employment dates are transcription, not judgment: the answer
+  // is a field of the profile row, and asking a model to restate it can only
+  // lose fidelity. Routing them through the AI is also what made them fragile,
+  // on 2026-08-12 a Lyft application submitted School, Degree and both
+  // employment dates BLANK because OpenAI returned 429 (autofill_reports #167).
+  // A value that does not fit the widget's options is not stranded here: the
+  // fill misses, and planOnDeviceReask hands it to the option-aware AI pass.
+  "school", "degree", "fieldOfStudy", "graduationYear",
+  "experienceStartDate", "experienceEndDate",
 ]);
 
 export interface FillRoute {
@@ -192,6 +201,47 @@ export function planFillRoute(selected: DetectedField[], threshold: number): Fil
 export interface ReaskCandidate {
   fieldId: string;
   options: string[];
+}
+
+/**
+ * Split the re-ask round into what the device can answer and what still needs
+ * the backend.
+ *
+ * A choice fill that missed does NOT always need an LLM. When the field already
+ * carries a profile value the user stated, and the options we just harvested
+ * from the live widget contain something that value snaps to, the answer is
+ * already known: "Yes" → "Yes", "University of Toronto" → its entry in the
+ * school list. Asking a model to restate a fact we hold is a round trip that can
+ * only lose information, and it makes a fact the user typed depend on the API
+ * being up.
+ *
+ * That dependency is what this exists to break. On the real Lyft form
+ * (autofill_reports #167, 2026-08-12) OpenAI returned 429 four times, the whole
+ * batch failed, and Work Authorization, School and Degree submitted BLANK even
+ * though the profile answered all three, because the only recovery path for a
+ * missed choice fill went through the backend.
+ *
+ * `snap` is injected so this module stays pure (no DOM import); callers pass the
+ * same matcher the write engine uses, so on-device and in-widget matching agree.
+ */
+export function planOnDeviceReask(
+  fields: DetectedField[],
+  candidates: ReaskCandidate[],
+  snap: (options: string[], value: string) => string | null
+): { targets: { fieldId: string; value: string }[]; remaining: ReaskCandidate[] } {
+  const byId = new Map(fields.map((f) => [f.id, f]));
+  const targets: { fieldId: string; value: string }[] = [];
+  const remaining: ReaskCandidate[] = [];
+  for (const c of candidates) {
+    const f = byId.get(c.fieldId);
+    const value = f?.proposedValue;
+    const choice = f && value && c.options.length > 0 ? snap(c.options, value) : null;
+    // No stated value, or nothing it matches: this one is a genuine question,
+    // and the backend is the right place to answer it.
+    if (choice) targets.push({ fieldId: c.fieldId, value: choice });
+    else remaining.push(c);
+  }
+  return { targets, remaining };
 }
 
 /**

@@ -380,14 +380,30 @@ async function pollForMatch(
     const opt = lb ? findOption(lb, target) : null;
     if (lb && opt) return { lb, opt };
     const key = optionsKey(lb);
+    // An EMPTY option list is the widget mid-flight, never its answer.
+    //
+    // A remote typeahead (Greenhouse's school search, Workday's skills search)
+    // renders nothing until it has a response, and shows a "Loading…" notice
+    // that is not a [role="option"] — so `key` stays empty across the whole
+    // round trip. Both of the exits below used to fire on that empty list: the
+    // stability counter three polls after it emptied, and the reaction window
+    // 800ms after typing when it had been empty all along. Either one ends the
+    // attempt while the request is still in the air, and the caller then
+    // restores the input to blank. That is what the user saw as School being
+    // filled in and then removed (autofill_reports #168, 2026-08-13).
+    //
+    // So neither exit may end the wait while the list is empty; only the hard
+    // budget can. A list with something in it can still settle immediately,
+    // which keeps the fast path fast for ordinary local dropdowns.
+    const hasOptions = key.length > 0;
     if (key !== lastKey) {
       reacted = true;
       stablePolls = 0;
       lastKey = key;
-    } else if (reacted && ++stablePolls >= 3) {
+    } else if (reacted && hasOptions && ++stablePolls >= 3) {
       return null; // the filter answered and settled, no match in its final list
     }
-    if (!reacted && elapsed >= reactionWindowMs) return null;
+    if (!reacted && hasOptions && elapsed >= reactionWindowMs) return null;
     if (elapsed >= budgetMs) return null;
     await sleep(pollMs);
   }
