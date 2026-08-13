@@ -107,6 +107,7 @@ import {
   type ObservedField,
 } from "./telemetry";
 import { setOverrideRules } from "./overrides";
+import { captureFieldDom, captureOptions, fieldSelector } from "./domCapture";
 import { looksLikeJobApplication, type PageContext } from "./jobFormEvidence";
 import { onExtensionContextInvalidated, postToRuntime, sendToRuntime } from "./runtimeMessaging";
 
@@ -115,6 +116,33 @@ declare global {
   interface Window {
     __apContentScriptLoaded?: boolean;
   }
+}
+
+/** This build's version, so a stale local extension is visible in telemetry
+ *  rather than being investigated as a code bug (it has been, more than once). */
+function extensionVersion(): string {
+  try {
+    return chrome.runtime.getManifest().version ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Whether this account opted into diagnostic capture (answers + form markup).
+ *
+ * Resolved once per page: the service worker caches the server's answer, and
+ * a failure resolves `false`, because the safe direction is always to capture
+ * less rather than more.
+ */
+let diagnosticModeCheck: Promise<boolean> | null = null;
+function isDiagnosticMode(): Promise<boolean> {
+  diagnosticModeCheck ??= sendToBackground<{ ok?: boolean; enabled?: boolean }>({
+    type: "DIAGNOSTIC_MODE",
+  })
+    .then((r) => Boolean(r?.enabled))
+    .catch(() => false);
+  return diagnosticModeCheck;
 }
 
 /**
@@ -735,6 +763,18 @@ function initialize(): void {
       // as the passes run so the terminal re-scan can diff observed page state
       // against intent, and so telemetry can name the tier and pass responsible
       // for a value, the attribution the old failure-only record could not make.
+      // Phase timings. "The autofill takes exceptionally long" was reported on
+      // 2026-08-13 with nothing in the record to support it; the cause (45s of
+      // futile OpenAI retries inside the backend phase) had to be found by
+      // reading timestamps in Vercel logs. These make that a query.
+      const fillStartedAt = performance.now();
+      const phase = { scanMs: 0, localMs: 0, backendMs: 0, reaskMs: 0 };
+      const since = (t: number): number => Math.round(performance.now() - t);
+      // Started here, awaited at the end: an account that never opted in must
+      // not pay a round trip for it, and one that did must not build captures
+      // before we know.
+      const diagnosticCheck = isDiagnosticMode();
+
       const intended = new Map<string, string>();
       const provenance = new Map<string, FieldProvenance>();
       const droppedByBackend = new Map<string, DroppedAnswerLike>();
@@ -756,10 +796,12 @@ function initialize(): void {
       };
 
       // Phase A: deterministic profile fields fill instantly (local fast-path).
+      const localStartedAt = performance.now();
       const route = planFillRoute(selected, AUTOFILL_CONFIDENCE_THRESHOLD);
       const localFill = await fillItems(
         noteIntent(route.localTargets, { tier: "profile" }), false, signal
       );
+      phase.localMs = since(localStartedAt);
 
       // Phase B: judgment fields answered by the backend (primary), deduped by the
       // session cache; also the eligible EMPTY fields (today's AI candidates). The
@@ -770,6 +812,7 @@ function initialize(): void {
         { reports: [], outcomes: [], reask: [] };
       let fallbackFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
+      const backendStartedAt = performance.now();
       if (backendFields.length > 0 && !signal?.aborted) {
         const { hits, misses } = splitByCache(backendFields);
         // Harvest real options for lazy dropdowns BEFORE asking the AI, so its
@@ -826,6 +869,8 @@ function initialize(): void {
           noteIntent(fallbackTargets, { tier: "profile" }), true, signal
         );
       }
+      phase.backendMs = since(backendStartedAt);
+      const reaskStartedAt = performance.now();
 
       // One re-ask round: choice controls whose fill missed now carry the
       // widget's REAL options, a single batched AI_FILL snaps the answers
@@ -908,6 +953,8 @@ function initialize(): void {
         ? { reports: [], outcomes: [] as PassOutcome[] }
         : await retryDependentDropdowns(signal);
 
+      phase.reaskMs = since(reaskStartedAt);
+
       const { ok, fail, total } = tallyOutcomes(
         localFill.reports,
         aiFill.reports,
@@ -982,6 +1029,7 @@ function initialize(): void {
       // filler struggles with, INCLUDING the ones it reported filling and
       // didn't. Skipped on cancel.
       if (!signal?.aborted && total > 0) {
+        const diagnosticOn = await diagnosticCheck;
         const telemetry = buildAutofillTelemetry(
           lastFields,
           { host: location.host, url: location.href, atsType: lastAdapter?.id ?? "" },
@@ -992,6 +1040,37 @@ function initialize(): void {
             intended: [...intended].map(([fieldId, value]) => ({ fieldId, value })),
             observed,
             dropped: [...droppedByBackend.values()],
+            extensionVersion: extensionVersion(),
+            durations: {
+              scanMs: phase.scanMs,
+              localMs: phase.localMs,
+              backendMs: phase.backendMs,
+              reaskMs: phase.reaskMs,
+              totalMs: Math.round(performance.now() - fillStartedAt),
+            },
+            // Diagnostic capture, only for an account that turned it on. The
+            // check is awaited BEFORE anything is built, so a non-diagnostic
+            // account never even assembles an answer or a snapshot, let alone
+            // transmits one.
+            ...(diagnosticOn
+              ? {
+                  capture: {
+                    snapshot: (fieldId: string) => {
+                      const el = registry.get(fieldId)?.el;
+                      if (!el) return null;
+                      try {
+                        return {
+                          dom: captureFieldDom(el, { keepValues: true }),
+                          selector: fieldSelector(el),
+                          options: captureOptions(el),
+                        };
+                      } catch {
+                        return null; // a snapshot is never worth failing a fill for
+                      }
+                    },
+                  },
+                }
+              : {}),
           }
         );
         if (telemetry.totalFields > 0) {

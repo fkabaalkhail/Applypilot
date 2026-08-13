@@ -713,6 +713,7 @@ export type BackgroundRequest =
   | { type: "RECORD_APPLICATION"; application: ApplicationLog }
   | { type: "RECORD_TELEMETRY"; telemetry: AutofillTelemetry }
   | { type: "GET_OVERRIDES" }
+  | { type: "DIAGNOSTIC_MODE" }
   | FormHostAnnounce
   | RelayFormOp
   | RelayToTop
@@ -805,6 +806,59 @@ export interface FieldOutcomeRecord {
   reason?: string;
 }
 
+/**
+ * The full diagnostic record of one field, captured only for accounts that
+ * turned diagnostic mode ON (see UserSettings.diagnosticCapture).
+ *
+ * This is a deliberately different object from FieldOutcomeRecord, and the
+ * split is the privacy boundary: FieldOutcomeRecord is labels and booleans and
+ * is sent for everybody; this carries the answer and the employer's markup and
+ * is sent for nobody unless they asked for it.
+ *
+ * Every property here exists because its absence blocked a real diagnosis on
+ * 2026-08-12/13: `controlType` (Greenhouse has no <select>s, which cost a live
+ * page fetch to discover), `options` (the Degree list, which had to be guessed
+ * at), `proposedValue` (the certification field's wrong answer was only caught
+ * because its CATEGORY looked odd), `helpText` (the documented "trap"),
+ * `durationMs` (the "takes exceptionally long" report had no data at all), and
+ * `dom` (the only thing that lets an agent rebuild the form as a fixture).
+ */
+export interface FieldCaptureRecord {
+  fieldId: string;
+  /** Full label, NOT truncated to 200 like the outcome record's. */
+  label: string;
+  category: string;
+  confidence: number;
+  controlType: string;
+  inputType: string;
+  helpText: string;
+  required: boolean;
+  groupIndex: number | null;
+  /** Options read from the live widget at capture time, not at scan time. */
+  options: string[];
+  /** What we tried to write. `redacted` says a secret was swapped for a marker. */
+  proposedValue: string;
+  /** What the control actually held at the terminal re-scan. */
+  observedValue: string;
+  redacted: boolean;
+  tier: string;
+  pass: string;
+  outcome: string;
+  reason: string;
+  /** Sanitised markup around the control; drops into test/fixtures verbatim. */
+  dom: string;
+  selector: string;
+}
+
+/** Wall-clock cost of each phase, so "it was slow" becomes a query. */
+export interface FillDurations {
+  scanMs: number;
+  localMs: number;
+  backendMs: number;
+  reaskMs: number;
+  totalMs: number;
+}
+
 export interface AutofillTelemetry {
   host: string;
   atsType: string;
@@ -818,6 +872,11 @@ export interface AutofillTelemetry {
   fieldOutcomes?: FieldOutcomeRecord[];
   /** Fields whose observed page state disagreed with what was written. */
   reverted?: number;
+  /** Which build produced this report, so a stale local build is visible. */
+  extensionVersion?: string;
+  durations?: FillDurations;
+  /** Diagnostic mode only; empty/absent for everyone else. */
+  fieldCaptures?: FieldCaptureRecord[];
 }
 
 /**
@@ -892,5 +951,11 @@ export interface ResumeFileResponse {
 export interface SimpleResponse {
   ok: boolean;
   error?: string;
+}
+
+/** Answer to DIAGNOSTIC_MODE: does this account capture answers + form markup? */
+export interface DiagnosticModeResponse {
+  ok: boolean;
+  enabled: boolean;
 }
 

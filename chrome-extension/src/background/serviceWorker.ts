@@ -16,7 +16,7 @@ import { aiFillFields } from "../api/aiFill";
 import { renderResume, tailorResume } from "../api/tailorResume";
 import { generateCoverLetter, renderCoverLetter } from "../api/coverLetter";
 import { recordApplication } from "../api/applications";
-import { reportAutofillTelemetry } from "../api/telemetry";
+import { isDiagnosticCaptureEnabled, reportAutofillTelemetry } from "../api/telemetry";
 import { fetchAndCacheOverrides, getCachedOverrideRules } from "../api/overrides";
 import { matchApplyIntent, recordApplyIntent } from "./applyIntent";
 import { cleanupLegacyStorage } from "./cleanupLegacyStorage";
@@ -37,6 +37,7 @@ import type {
   ResumeFileResponse,
   ResumesResponse,
   SimpleResponse,
+  DiagnosticModeResponse,
   StatusResponse,
   SyncResponse,
   TailorResumeResponse,
@@ -312,6 +313,7 @@ export async function handle(
   | ProfileResponse
   | LoginResponse
   | SimpleResponse
+  | DiagnosticModeResponse
   | ResumesResponse
   | ResumeFileResponse
   | SyncResponse
@@ -579,6 +581,15 @@ export async function handle(
       // an empty list just means the generic pipeline runs unmodified.
       const rules = await getCachedOverrideRules().catch(() => []);
       return { ok: true, rules };
+    }
+
+    case "DIAGNOSTIC_MODE": {
+      // Whether this account opted into storing its answers + form markup.
+      // Asked BEFORE any capture is built, so an account that never opted in
+      // does not assemble or transmit one. A failure answers "off": the safe
+      // direction is always to capture less.
+      const enabled = await isDiagnosticCaptureEnabled().catch(() => false);
+      return { ok: true, enabled };
     }
 
     case "RECORD_TELEMETRY": {

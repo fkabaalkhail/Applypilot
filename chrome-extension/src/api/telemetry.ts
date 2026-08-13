@@ -6,6 +6,25 @@
 import { authedRequest } from "./client";
 import type { AutofillTelemetry } from "../shared/types";
 
+/**
+ * Whether this account turned diagnostic capture on.
+ *
+ * Cached for the life of the service worker: it changes at most when the user
+ * flips a setting, and asking once per fill would add a round trip to every
+ * autofill for a value that is almost always `false`.
+ */
+let diagnosticCache: { at: number; value: boolean } | null = null;
+const DIAGNOSTIC_TTL_MS = 10 * 60 * 1000;
+
+export async function isDiagnosticCaptureEnabled(): Promise<boolean> {
+  const now = Date.now();
+  if (diagnosticCache && now - diagnosticCache.at < DIAGNOSTIC_TTL_MS) return diagnosticCache.value;
+  const res = await authedRequest<{ enabled?: boolean }>("/autofill/diagnostic");
+  const value = Boolean(res?.enabled);
+  diagnosticCache = { at: now, value };
+  return value;
+}
+
 export async function reportAutofillTelemetry(t: AutofillTelemetry): Promise<void> {
   await authedRequest("/autofill/telemetry", {
     method: "POST",
@@ -31,6 +50,31 @@ export async function reportAutofillTelemetry(t: AutofillTelemetry): Promise<voi
         reason: f.reason ?? "",
       })),
       reverted: t.reverted ?? 0,
+      extension_version: t.extensionVersion ?? "",
+      durations: t.durations ?? null,
+      // Diagnostic mode only. Absent for every account that did not opt in,
+      // which is what keeps the default posture above true.
+      field_captures: (t.fieldCaptures ?? []).map((c) => ({
+        field_id: c.fieldId,
+        label: c.label,
+        category: c.category,
+        confidence: c.confidence,
+        control_type: c.controlType,
+        input_type: c.inputType,
+        help_text: c.helpText,
+        required: c.required,
+        group_index: c.groupIndex,
+        options: c.options,
+        proposed_value: c.proposedValue,
+        observed_value: c.observedValue,
+        redacted: c.redacted,
+        tier: c.tier,
+        pass: c.pass,
+        outcome: c.outcome,
+        reason: c.reason,
+        dom: c.dom,
+        selector: c.selector,
+      })),
     }),
   });
 }

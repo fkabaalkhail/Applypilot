@@ -19,14 +19,24 @@
  * on blur, on validation, or on a re-render that a LATER field triggered, none
  * of which a per-write check can see, because by then it has moved on.
  *
- * Privacy: emits field LABELS, categories, provenance and booleans only, never
- * the user's answer values. `observedValuePresent` is a boolean for that reason
- * "this control holds something" is the observation, not what it holds.
+ * Privacy: the DEFAULT record emits field LABELS, categories, provenance and
+ * booleans only, never the user's answer values. `observedValuePresent` is a
+ * boolean for that reason, "this control holds something" is the observation,
+ * not what it holds. That is what every account sends.
+ *
+ * Diagnostic capture (`TelemetryInputs.capture`) is the deliberate exception: an
+ * account that turns it ON also sends answers and sanitised employer markup, so
+ * that a form which failed can be rebuilt as a fixture without visiting the live
+ * site. It is opt-in, per account, and off unless the backend says otherwise,
+ * so the paragraph above stays true for everybody who did not ask for it.
  *
  * Pure: host/url/observations are passed in, so it unit-tests without a
  * document.
  */
-import type { AutofillTelemetry, DetectedField, FieldOutcomeRecord } from "../shared/types";
+import { redactCaptureValue } from "./domCapture";
+import type {
+  AutofillTelemetry, DetectedField, FieldCaptureRecord, FieldOutcomeRecord, FillDurations,
+} from "../shared/types";
 import type { FieldReport } from "./reconciler";
 
 export interface PassOutcomeLike {
@@ -146,6 +156,42 @@ export function revertedFields(
   return out;
 }
 
+/**
+ * Interesting first, so a size cap never silently drops the failures.
+ *
+ * A `filled` field is captured too (that is how a silently-wrong-but-written
+ * answer becomes visible at all), but if something has to go, it goes first.
+ */
+const CAPTURE_RANK: Record<string, number> = {
+  failed: 0, reverted: 1, dropped: 2, skipped: 3, filled: 4,
+};
+
+/**
+ * Strip the user's answer out of a failure reason.
+ *
+ * The fill engine builds reasons by quoting what it tried to write, e.g.
+ * `No option matches "University of Ottawa" (saw: McGill | Queen's)`. That text
+ * then went into `field_outcomes`, which is sent for EVERY account, so the
+ * record has been carrying answers all along despite this module promising it
+ * did not. Found on 2026-08-13 by a test asserting the promise.
+ *
+ * Only the quoted span is removed. The `(saw: …)` list is the EMPLOYER's option
+ * text, not the applicant's answer, and it is the single most useful thing in a
+ * dropdown failure, so it stays.
+ *
+ * Diagnostic captures keep the reason intact: that record stores the answer in
+ * its own column by design, so there is nothing left to protect there.
+ */
+export function scrubAnswerFromReason(reason: string): string {
+  return reason.replace(/"[^"]*"/g, '"<value>"');
+}
+
+export function rankForCapture(captures: FieldCaptureRecord[]): FieldCaptureRecord[] {
+  return [...captures].sort(
+    (a, b) => (CAPTURE_RANK[a.outcome] ?? 9) - (CAPTURE_RANK[b.outcome] ?? 9)
+  );
+}
+
 export interface TelemetryInputs {
   reports: FieldReport[];
   outcomes: PassOutcomeLike[];
@@ -157,6 +203,19 @@ export interface TelemetryInputs {
   observed?: ObservedField[];
   /** Candidate values the backend gate refused. */
   dropped?: DroppedAnswerLike[];
+  /**
+   * Diagnostic capture. Absent (the default, and the only behaviour for an
+   * account that did not opt in) means no answers and no markup are recorded.
+   *
+   * `snapshot` is injected rather than imported so this module stays DOM-free
+   * and unit-testable: the content script closes over its live registry.
+   */
+  capture?: {
+    snapshot(fieldId: string): { dom: string; selector: string; options: string[] } | null;
+  };
+  /** Which build produced this report. */
+  extensionVersion?: string;
+  durations?: FillDurations;
 }
 
 export function buildAutofillTelemetry(
@@ -178,6 +237,8 @@ export function buildAutofillTelemetry(
 
   const failedFields: { label: string; category: string; reason: string }[] = [];
   const fieldOutcomes: FieldOutcomeRecord[] = [];
+  const fieldCaptures: FieldCaptureRecord[] = [];
+  const intendedById = new Map(intended.map((i) => [i.fieldId, i.value]));
   let filled = 0;
   let failed = 0;
 
@@ -217,8 +278,12 @@ export function buildAutofillTelemetry(
     // lie this record exists to stop telling.
     if (outcome === "filled") filled++;
     else failed++;
+    // Answers are stripped from every reason that leaves in the DEFAULT record
+    // (see scrubAnswerFromReason); the diagnostic capture below keeps the
+    // original, because it stores the answer in its own column anyway.
+    const safeReason = scrubAnswerFromReason(reason);
     if (outcome !== "filled" && outcome !== "skipped") {
-      failedFields.push({ label, category, reason: reason.slice(0, 200) });
+      failedFields.push({ label, category, reason: safeReason.slice(0, 200) });
     }
 
     fieldOutcomes.push({
@@ -229,8 +294,36 @@ export function buildAutofillTelemetry(
       expectedValuePresent: intendedIds.has(id),
       observedValuePresent: (observedById.get(id) ?? "").trim() !== "",
       outcome,
-      ...(reason ? { reason: reason.slice(0, 200) } : {}),
+      ...(safeReason ? { reason: safeReason.slice(0, 200) } : {}),
     });
+
+    if (inputs.capture) {
+      const snap = inputs.capture.snapshot(id);
+      const [value, redacted] = redactCaptureValue(category, intendedById.get(id) ?? f?.proposedValue ?? "");
+      fieldCaptures.push({
+        fieldId: id,
+        label: f?.label ?? label, // full, not the 200-char outcome label
+        category,
+        confidence: f?.confidence ?? 0,
+        controlType: f?.controlType ?? "",
+        inputType: f?.inputType ?? "",
+        helpText: f?.helpText ?? "",
+        required: f?.required ?? false,
+        groupIndex: f?.groupIndex ?? null,
+        // The live list beats the scan-time one: a react-select scans with no
+        // options at all, which is precisely the case worth capturing.
+        options: snap?.options?.length ? snap.options : f?.options ?? [],
+        proposedValue: value,
+        observedValue: observedById.get(id) ?? "",
+        redacted,
+        tier: prov?.tier ?? "",
+        pass: prov?.pass ?? "",
+        outcome,
+        reason,
+        dom: snap?.dom ?? "",
+        selector: snap?.selector ?? "",
+      });
+    }
   }
 
   return {
@@ -244,5 +337,11 @@ export function buildAutofillTelemetry(
     failedFields: failedFields.slice(0, 50),
     fieldOutcomes: fieldOutcomes.slice(0, 100),
     reverted: reverted.length,
+    ...(inputs.extensionVersion ? { extensionVersion: inputs.extensionVersion } : {}),
+    ...(inputs.durations ? { durations: inputs.durations } : {}),
+    // Capped: a form with hundreds of controls should not post a megabyte.
+    // Sorted so the fields that FAILED survive the cap, they are the ones worth
+    // turning into a fixture.
+    ...(inputs.capture ? { fieldCaptures: rankForCapture(fieldCaptures).slice(0, 120) } : {}),
   };
 }

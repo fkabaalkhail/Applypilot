@@ -385,6 +385,12 @@ class UserSettings(Base):
     eeo_pronouns = Column(String, default="")
     eeo_sexual_orientation = Column(String, default="")
 
+    # Diagnostic autofill capture: when ON, this account's fills also store the
+    # answers written and a sanitised snapshot of the employer's form markup
+    # (see AutofillFieldCapture). OFF for everybody by default, which is what
+    # keeps "telemetry never stores your answers" true for every other account.
+    diagnostic_capture = Column(Boolean, default=False, nullable=False)
+
     # Resume file path
     resume_file_path = Column(String, default="")
 
@@ -729,6 +735,68 @@ class AutofillReport(Base):
     # terminal re-scan. Counted separately from `failed` so a framework that
     # reverts values is visible as itself rather than as a write failure.
     reverted = Column(Integer, default=0)
+    # Which build produced this report, so a stale local extension is visible as
+    # itself instead of being investigated as a code bug (it has been, twice).
+    extension_version = Column(String, default="")
+    # {scan_ms, local_ms, backend_ms, reask_ms, total_ms}. "The autofill takes
+    # exceptionally long" was reported on 2026-08-13 with nothing in the record
+    # to support it; the cause was found in Vercel logs by reading timestamps.
+    durations = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
+
+class AutofillFieldCapture(Base):
+    """One field of one fill, in full, for accounts that opted into diagnostics.
+
+    The deliberate opposite of AutofillReport.field_outcomes: this DOES store
+    the answer and the employer's markup. It is written only when
+    ``UserSettings.diagnostic_capture`` is on, so the no-values posture holds
+    for every account that did not ask for this.
+
+    It exists for one workflow: read a failed field out of here, paste `dom`
+    into ``chrome-extension/test/fixtures/``, and write a regression test
+    without visiting the live page. For the forms that fail most, several steps
+    into a flow behind a login, there is no other way to get that markup back.
+    """
+    __tablename__ = "autofill_field_captures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    report_id = Column(Integer, ForeignKey("autofill_reports.id", ondelete="CASCADE"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Denormalised from the report so the common queries need no join.
+    host = Column(String, index=True)
+    ats_type = Column(String, default="")
+    url = Column(String, default="")
+
+    field_id = Column(String, default="")
+    label = Column(Text, default="")          # full, not truncated
+    category = Column(String, default="", index=True)
+    confidence = Column(Float, default=0)
+    control_type = Column(String, default="")
+    input_type = Column(String, default="")
+    help_text = Column(Text, default="")
+    required = Column(Boolean, default=False)
+    group_index = Column(Integer, nullable=True)
+    # What the widget was really offering, read live. DetectedField.options is
+    # captured at SCAN time, which for a react-select is before its list exists.
+    options = Column(JSON, default=list)
+
+    proposed_value = Column(Text, default="")
+    observed_value = Column(Text, default="")
+    # True when a secret (password, national ID) was replaced by a type marker,
+    # so an empty-looking answer is never mistaken for a fill failure.
+    redacted = Column(Boolean, default=False)
+
+    tier = Column(String, default="")
+    pass_ = Column("pass", String, default="")
+    outcome = Column(String, default="", index=True)
+    reason = Column(Text, default="")
+
+    # Sanitised markup around the control: scripts, styles, SVG paths, images
+    # and inline styles stripped, capped client-side. Postgres TOAST compresses
+    # this, so a ~4 KB snapshot costs well under that on disk.
+    dom = Column(Text, default="")
+    selector = Column(String, default="")
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
 
