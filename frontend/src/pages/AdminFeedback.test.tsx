@@ -13,7 +13,6 @@ const row = (over: Record<string, any> = {}) => ({
   email: "student@school.edu",
   category: "bug_report",
   message: "autofill put my employer in the certification box",
-  wants_followup: false,
   created_at: "2026-08-12T10:00:00",
   ...over,
 });
@@ -91,20 +90,29 @@ describe("AdminFeedback", () => {
     expect(await screen.findByText("delete me")).toBeInTheDocument();
   });
 
-  it("filters down to submissions awaiting a reply", async () => {
+  it("narrows to one category", async () => {
     get.mockResolvedValue(
       page([
-        row({ id: 1, message: "wants an answer", wants_followup: true }),
-        row({ id: 2, message: "just venting", wants_followup: false }),
+        row({ id: 1, category: "bug_report", message: "something broke" }),
+        row({ id: 2, category: "feature_request", message: "please add this" }),
       ])
     );
 
     render(<AdminFeedback />);
-    await screen.findByText("just venting");
-    fireEvent.click(screen.getByLabelText(/follow-up/i));
+    await screen.findByText("please add this");
+    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: "bug_report" } });
 
-    expect(screen.getByText("wants an answer")).toBeInTheDocument();
-    expect(screen.queryByText("just venting")).toBeNull();
+    expect(screen.getByText("something broke")).toBeInTheDocument();
+    expect(screen.queryByText("please add this")).toBeNull();
+  });
+
+  it("offers no follow-up filter, because the form no longer asks", async () => {
+    get.mockResolvedValue(page([row()]));
+
+    render(<AdminFeedback />);
+    await screen.findByText("student@school.edu");
+
+    expect(screen.queryByLabelText(/follow-up/i)).toBeNull();
   });
 
   it("loads the next page rather than hiding the rest", async () => {

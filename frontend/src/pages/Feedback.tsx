@@ -13,7 +13,6 @@ const CATEGORIES = [
 export default function Feedback() {
   const [category, setCategory] = useState("");
   const [message, setMessage] = useState("");
-  const [wantsFollowup, setWantsFollowup] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -27,7 +26,7 @@ export default function Feedback() {
     setError("");
     setSubmitting(true);
     try {
-      await api.post("/feedback", { category, message, wants_followup: wantsFollowup });
+      await api.post("/feedback", { category, message });
       setSubmitted(true);
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || "Failed to submit feedback.");
@@ -49,7 +48,6 @@ export default function Feedback() {
               setSubmitted(false);
               setCategory("");
               setMessage("");
-              setWantsFollowup(false);
             }}
           >
             Submit More Feedback
@@ -97,17 +95,6 @@ export default function Feedback() {
             onChange={(e) => setMessage(e.target.value)}
             rows={6}
           />
-        </div>
-
-        <div className="feedback-field">
-          <label className="feedback-checkbox-label">
-            <input
-              type="checkbox"
-              checked={wantsFollowup}
-              onChange={(e) => setWantsFollowup(e.target.checked)}
-            />
-            <span>I'd like follow-up support via email</span>
-          </label>
         </div>
 
         {error && <div className="feedback-error">{error}</div>}

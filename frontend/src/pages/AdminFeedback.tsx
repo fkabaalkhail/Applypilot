@@ -10,7 +10,6 @@ interface FeedbackRow {
   email: string | null;
   category: string;
   message: string;
-  wants_followup: boolean;
   created_at: string | null;
 }
 
@@ -31,7 +30,6 @@ export default function AdminFeedback() {
   const [status, setStatus] = useState<Status>("loading");
   const [notice, setNotice] = useState("");
   const [category, setCategory] = useState("all");
-  const [followupOnly, setFollowupOnly] = useState(false);
 
   const load = useCallback(async (offset: number) => {
     try {
@@ -92,10 +90,7 @@ export default function AdminFeedback() {
   }
 
   const categories = Array.from(new Set(rows.map((r) => r.category).filter(Boolean))).sort();
-  const visible = rows.filter(
-    (r) => (category === "all" || r.category === category) && (!followupOnly || r.wants_followup)
-  );
-  const waiting = rows.filter((r) => r.wants_followup).length;
+  const visible = rows.filter((r) => category === "all" || r.category === category);
 
   return (
     <main className="admin">
@@ -104,7 +99,6 @@ export default function AdminFeedback() {
         <h1>Feedback</h1>
         <p className="admin-count">
           {rows.length} of {total} loaded
-          {waiting > 0 && <span className="admin-waiting"> · {waiting} awaiting a reply</span>}
         </p>
       </header>
 
@@ -119,14 +113,6 @@ export default function AdminFeedback() {
               </option>
             ))}
           </select>
-        </label>
-        <label className="admin-filter admin-filter-check">
-          <input
-            type="checkbox"
-            checked={followupOnly}
-            onChange={(e) => setFollowupOnly(e.target.checked)}
-          />
-          <span>Follow-up requested</span>
         </label>
       </div>
 
@@ -148,7 +134,7 @@ export default function AdminFeedback() {
 
       <ul className="admin-list">
         {visible.map((row) => (
-          <li key={row.id} className={`admin-item${row.wants_followup ? " waiting" : ""}`}>
+          <li key={row.id} className="admin-item">
             <div className="admin-meta">
               <span className="admin-category">{row.category || "uncategorised"}</span>
               {row.email ? (
@@ -161,7 +147,6 @@ export default function AdminFeedback() {
                 </span>
               )}
               <span className="admin-when">{when(row.created_at)}</span>
-              {row.wants_followup && <span className="admin-flag">wants a reply</span>}
               <button className="admin-delete" type="button" onClick={() => remove(row)}>
                 Delete
               </button>

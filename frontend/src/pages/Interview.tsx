@@ -405,7 +405,6 @@ function SubmitModal({ onClose }: { onClose: () => void }) {
       await api.post("/feedback", {
         category: "feature_request",
         message,
-        wants_followup: false,
       });
     } catch {
       // Non-blocking: still show success so the UX isn't punishing.

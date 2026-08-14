@@ -1,7 +1,8 @@
 /* Back-of-house triage desk. Deliberately unlike the product: this is a
    database view for two developers, not a page a user should ever mistake for
-   Tailrd. Dense, monospaced metadata, one amber signal for "someone is waiting
-   on a reply", and no motion beyond a hover state. */
+   Tailrd. Dense, monospaced metadata, and one amber accent reserved for the
+   only actionable thing on a row: the address you reply to. No motion beyond a
+   hover state. */
 
 .admin,
 .admin-blank {
@@ -59,10 +60,6 @@
   color: var(--muted);
 }
 
-.admin-waiting {
-  color: var(--signal);
-}
-
 .admin-filters {
   display: flex;
   flex-wrap: wrap;
@@ -91,14 +88,6 @@
   color: var(--text);
   font-family: var(--mono);
   font-size: 12px;
-}
-
-.admin-filter-check {
-  cursor: pointer;
-}
-
-.admin-filter-check input {
-  accent-color: var(--signal);
 }
 
 .admin-notice,
@@ -133,11 +122,6 @@
   background: var(--panel);
 }
 
-/* The one signal worth shouting about: this person asked to be emailed back. */
-.admin-item.waiting {
-  border-left-color: var(--signal);
-}
-
 .admin-meta {
   display: flex;
   flex-wrap: wrap;
@@ -155,10 +139,11 @@
   color: var(--text);
 }
 
+/* The one thing on a row you can act on: click it and reply. */
 .admin-who {
-  color: var(--text);
+  color: var(--signal);
   text-decoration: none;
-  border-bottom: 1px dotted var(--muted);
+  border-bottom: 1px dotted currentColor;
 }
 
 .admin-who:hover {
@@ -168,10 +153,6 @@
 .admin-anon {
   color: var(--muted);
   border-bottom: none;
-}
-
-.admin-flag {
-  color: var(--signal);
 }
 
 .admin-delete {

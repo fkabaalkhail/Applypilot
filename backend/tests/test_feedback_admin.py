@@ -35,7 +35,6 @@ def _feedback(db, **overrides) -> Feedback:
             "user_id": "",
             "category": "bug_report",
             "message": "it broke",
-            "wants_followup": 0,
             **overrides,
         }
     )
@@ -48,12 +47,12 @@ def _feedback(db, **overrides) -> Feedback:
 
 
 def test_list_carries_the_submitter_email(client, db_session):
-    """Someone who ticked "I'd like follow-up support via email" is unanswerable
-    if the console only shows their numeric id, so the row carries the address.
+    """A bug report is unanswerable if the console shows only a numeric id, so
+    the row carries the address you would reply to.
     """
     _user(db_session, 7, "admin@tailrd.ca", is_admin=True)
     _user(db_session, 12, "student@school.edu", is_admin=False)
-    _feedback(db_session, user_id="12", wants_followup=1)
+    _feedback(db_session, user_id="12")
 
     resp = client.get("/feedback", headers=_auth(7))
 

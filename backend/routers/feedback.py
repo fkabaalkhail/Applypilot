@@ -16,7 +16,6 @@ router = APIRouter(prefix="/feedback", tags=["feedback"])
 class FeedbackCreate(BaseModel):
     category: str
     message: str
-    wants_followup: bool = False
 
 
 @router.post("")
@@ -26,11 +25,12 @@ def submit_feedback(
     db: Session = Depends(get_db),
 ):
     """Submit user feedback."""
+    # wants_followup stays on the table (older rows carry it) but nothing sets
+    # it any more: the form no longer offers email follow-up.
     feedback = Feedback(
         user_id=str(user_id) if user_id else "",
         category=body.category,
         message=body.message,
-        wants_followup=1 if body.wants_followup else 0,
     )
     db.add(feedback)
     db.commit()
@@ -82,7 +82,6 @@ def list_feedback(
                 "email": emails.get(f.user_id),
                 "category": f.category,
                 "message": f.message,
-                "wants_followup": bool(f.wants_followup),
                 "created_at": f.created_at.isoformat() if f.created_at else None,
             }
             for f in rows
