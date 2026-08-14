@@ -246,6 +246,10 @@ const STATES = [
   },
   { id: "app-feedback", url: "/app/feedback", ...AUTHED, wait: ".feedback-page, main" },
   { id: "app-refer-page", url: "/app/refer", ...AUTHED, wait: "main" },
+
+  /* Internal feedback console. Not part of the product, but it renders text a
+     user typed, so it wraps or it does not like any other screen. */
+  { id: "admin-feedback", url: "/admin", ...AUTHED, wait: ".admin-list, .admin-empty" },
 ];
 
 /** Device matrix. `touch` widths get the tap-target detector. */

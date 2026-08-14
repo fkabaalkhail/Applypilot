@@ -131,6 +131,9 @@ function stubFor(pathname, method, userOverrides, empty) {
   if (p === "/ai/resume-versions") return json({ versions: [] });
   if (p.startsWith("/ai/")) return json({ status: "done", result: {} });
 
+  if (p === "/feedback") return json(F.feedback);
+  if (/^\/feedback\/\d+$/.test(p)) return json({ status: "deleted", id: 1 });
+
   if (p === "/github-sources") return json(F.githubSources);
   if (p.startsWith("/github-sources")) return json({ ok: true });
 

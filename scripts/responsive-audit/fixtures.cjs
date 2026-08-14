@@ -455,8 +455,43 @@ const coverLetter = {
   cover_letter: "",
 };
 
+/* Admin feedback console. Long message and long email on purpose: the console
+   renders whatever a user typed, so wrapping is the thing worth auditing. */
+const feedbackItems = [
+  {
+    id: 3,
+    user_id: "44",
+    email: LONG_EMAIL,
+    category: "bug_report",
+    message:
+      "The autofill typed my employer's name into the box that asks me to certify " +
+      "the information is accurate, and it reported the field as filled. I had to " +
+      "clear it by hand before the application would submit.",
+    created_at: "2026-08-12T15:04:00",
+  },
+  {
+    id: 2,
+    user_id: "12",
+    email: "student@school.edu",
+    category: "feature_request",
+    message: "Could you add a way to sort saved jobs by application deadline?",
+    created_at: "2026-08-11T09:20:00",
+  },
+  {
+    id: 1,
+    user_id: "",
+    email: null,
+    category: "ux_feedback",
+    message: "Love it.",
+    created_at: "2026-08-10T18:45:00",
+  },
+];
+
+const feedback = { items: feedbackItems, total: 128 };
+
 module.exports = {
   user,
+  feedback,
   jobs,
   stats,
   profile,

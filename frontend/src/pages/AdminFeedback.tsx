@@ -4,6 +4,17 @@ import "../admin.css";
 
 const PAGE_SIZE = 100;
 
+/** The wording the Feedback form itself uses, so both pages name things alike. */
+const CATEGORY_LABELS: Record<string, string> = {
+  bug_report: "Bug Report",
+  feature_request: "Feature Request",
+  ux_feedback: "User Experience",
+  subscription: "Subscription",
+  other: "Other",
+};
+
+const categoryLabel = (value: string) => CATEGORY_LABELS[value] || value || "Uncategorised";
+
 interface FeedbackRow {
   id: number;
   user_id: string;
@@ -106,10 +117,10 @@ export default function AdminFeedback() {
         <label className="admin-filter">
           <span>Category</span>
           <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="all">all</option>
+            <option value="all">All</option>
             {categories.map((c) => (
               <option key={c} value={c}>
-                {c}
+                {categoryLabel(c)}
               </option>
             ))}
           </select>
@@ -135,23 +146,27 @@ export default function AdminFeedback() {
       <ul className="admin-list">
         {visible.map((row) => (
           <li key={row.id} className="admin-item">
-            <div className="admin-meta">
-              <span className="admin-category">{row.category || "uncategorised"}</span>
-              {row.email ? (
-                <a className="admin-who" href={`mailto:${row.email}`}>
-                  {row.email}
-                </a>
-              ) : (
-                <span className="admin-who admin-anon">
-                  {row.user_id ? `user ${row.user_id}` : "anonymous"}
-                </span>
-              )}
-              <span className="admin-when">{when(row.created_at)}</span>
+            <div className="admin-row">
+              <div className="admin-body">
+                <div className="admin-meta">
+                  <span className="admin-category">{categoryLabel(row.category)}</span>
+                  {row.email ? (
+                    <a className="admin-who" href={`mailto:${row.email}`}>
+                      {row.email}
+                    </a>
+                  ) : (
+                    <span className="admin-who admin-anon">
+                      {row.user_id ? `user ${row.user_id}` : "anonymous"}
+                    </span>
+                  )}
+                  <span className="admin-when">{when(row.created_at)}</span>
+                </div>
+                <p className="admin-message">{row.message}</p>
+              </div>
               <button className="admin-delete" type="button" onClick={() => remove(row)}>
                 Delete
               </button>
             </div>
-            <p className="admin-message">{row.message}</p>
           </li>
         ))}
       </ul>
