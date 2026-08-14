@@ -1,0 +1,237 @@
+/* Back-of-house triage desk. Deliberately unlike the product: this is a
+   database view for two developers, not a page a user should ever mistake for
+   Tailrd. Dense, monospaced metadata, one amber signal for "someone is waiting
+   on a reply", and no motion beyond a hover state. */
+
+.admin,
+.admin-blank {
+  --ink: #0e1116;
+  --panel: #161b22;
+  --line: #262d36;
+  --text: #d7dee7;
+  --muted: #7d8896;
+  --signal: #f2b544;
+  --danger: #ff7a72;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", monospace;
+
+  min-height: 100dvh;
+  margin: 0;
+  padding: 40px 24px 96px;
+  background: var(--ink);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.admin-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.admin-head {
+  max-width: 900px;
+  margin: 0 auto 24px;
+}
+
+.admin-eyebrow {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-head h1 {
+  margin: 6px 0 4px;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.admin-count {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.admin-waiting {
+  color: var(--signal);
+}
+
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  max-width: 900px;
+  margin: 0 auto 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.admin-filter select {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.admin-filter-check {
+  cursor: pointer;
+}
+
+.admin-filter-check input {
+  accent-color: var(--signal);
+}
+
+.admin-notice,
+.admin-empty {
+  max-width: 900px;
+  margin: 0 auto 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.admin-notice {
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  color: var(--danger);
+}
+
+.admin-list {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-item {
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+/* The one signal worth shouting about: this person asked to be emailed back. */
+.admin-item.waiting {
+  border-left-color: var(--signal);
+}
+
+.admin-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.admin-category {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text);
+}
+
+.admin-who {
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--muted);
+}
+
+.admin-who:hover {
+  border-bottom-style: solid;
+}
+
+.admin-anon {
+  color: var(--muted);
+  border-bottom: none;
+}
+
+.admin-flag {
+  color: var(--signal);
+}
+
+.admin-delete {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.admin-delete:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.admin-message {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.admin-more {
+  display: block;
+  max-width: 900px;
+  margin: 16px auto 0;
+  padding: 10px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.admin-more:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.admin :focus-visible,
+.admin-blank :focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .admin,
+  .admin-blank {
+    padding: 24px 14px 64px;
+  }
+
+  .admin-delete {
+    margin-left: 0;
+  }
+}

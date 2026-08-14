@@ -89,6 +89,14 @@
       "destination": "/api/index.py"
     },
     {
+      "source": "/feedback",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/feedback/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }

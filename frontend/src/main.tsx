@@ -31,6 +31,11 @@ import CoverLetterEmbed from "./pages/embed/CoverLetterEmbed";
 import LinkedInComplete from "./pages/LinkedInComplete";
 import "./index.css";
 
+// Internal feedback console. Lazy so the admin bundle is never downloaded by
+// the users whose feedback it reads. The route is unlisted, but the real gate
+// is server-side: /feedback rejects anyone without users.is_admin.
+const AdminFeedback = React.lazy(() => import("./pages/AdminFeedback"));
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>
@@ -53,6 +58,14 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/list" element={<JobsList />} />
           <Route path="/demo-apply" element={<DemoApply />} />
           <Route path="/setup" element={<SetupRoute />} />
+          <Route
+            path="/admin"
+            element={
+              <React.Suspense fallback={null}>
+                <AdminFeedback />
+              </React.Suspense>
+            }
+          />
           <Route
             path="/app"
             element={
