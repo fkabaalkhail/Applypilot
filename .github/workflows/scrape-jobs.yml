@@ -25,11 +25,17 @@ on:
     - cron: '47 * * * *'
   workflow_dispatch:
 
-# actions: write is for the keepalive step (re-enabling this workflow through
-# the REST API); nothing else needs more than read.
+# Least privilege: the job token can only read this repo. What uses it:
+#   - actions/checkout clones the repo: contents: read. The token is not
+#     persisted into .git/config (persist-credentials: false); nothing after
+#     checkout runs git against the remote.
+#   - the inactivity check reads the default branch and its newest commit
+#     through the REST API: contents: read (metadata is always granted).
+#   - actions/setup-python only fetches its public version manifest.
+# Nothing else touches it: the scrapers and the endpoint steps authenticate
+# to Tailrd with CRON_SECRET, never with the GitHub token.
 permissions:
   contents: read
-  actions: write
 
 # One run at a time. A delivery that lands while a run is in flight waits
 # (cancel-in-progress: false), so a crawl is never cut off half way and two
@@ -41,25 +47,49 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    # A normal run takes 7-8 minutes; the steps' own caps add up to ~33.
+    # A normal run takes 7-8 minutes; the steps' own caps add up to ~35.
     # Anything longer is hung and would block the concurrency group.
     timeout-minutes: 40
     env:
       API_BASE: https://www.tailrd.ca
     steps:
-      # Keepalive. GitHub disables scheduled workflows in a public repo after
-      # 60 days without repository activity (last commit 2026-08-14, so ~Oct
-      # 13) and says nothing: this is exactly how the external scraper's
-      # "Hourly Job Scraper" stopped on 2026-08-26. Re-enabling the workflow
-      # through the API counts as activity and resets that timer, so ingestion
-      # can't be switched off by a quiet month. Harmless when already enabled.
-      - name: Keep the schedule alive
+      # Inactivity check. GitHub disables scheduled workflows in a public repo
+      # after 60 days without a commit, and says nothing: this is exactly how
+      # the external scraper's "Hourly Job Scraper" stopped on 2026-08-26. A
+      # disabled workflow can't warn about itself, so from day 50 this step
+      # fails and the last step turns the run red (a failed scheduled run
+      # emails the maintainer), which leaves ~10 days to push a commit or to
+      # move scheduling to an external cron (docs/ingestion-pipeline.md,
+      # "Schedules"). A commit's committer date is at or before its push, so
+      # the alarm can come early but never late.
+      #
+      # There is deliberately no automatic re-enable or keepalive commit. It
+      # is unconfirmed that toggling the workflow resets GitHub's timer,
+      # GitHub has blocked keepalive tooling on ToS grounds, and the toggle
+      # needed actions: write on a job that runs third-party PyPI code.
+      - name: Check the 60-day inactivity clock
+        id: inactivity
         continue-on-error: true
+        timeout-minutes: 2
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ALERT_AFTER_DAYS: 50
         run: |
-          gh api -X PUT "repos/${{ github.repository }}/actions/workflows/scrape-jobs.yml/enable"
-          echo "workflow re-enabled (60-day inactivity timer reset)"
+          if ! branch=$(gh api "repos/$REPO" --jq .default_branch) || [ -z "$branch" ] ||
+             ! last=$(gh api "repos/$REPO/commits/$branch" --jq .commit.committer.date) || [ -z "$last" ]; then
+            echo "::error::Could not read the newest commit on the default branch, so the 60-day inactivity check did not run."
+            exit 1
+          fi
+          last_s=$(date -u -d "$last" +%s)
+          now_s=$(date -u +%s)
+          age=$(( (now_s - last_s) / 86400 ))
+          off=$(date -u -d "@$(( last_s + 60 * 86400 ))" +%Y-%m-%d)
+          echo "newest commit on $branch: $last ($age days ago); without a new commit GitHub disables this schedule around $off"
+          if [ "$age" -ge "$ALERT_AFTER_DAYS" ]; then
+            echo "::error::The newest commit on $branch is $age days old. GitHub disables scheduled workflows in a public repo after 60 days without a commit, silently, so ingestion stops around $off. Push any commit to $branch to reset the clock, or move scheduling to an external cron (docs/ingestion-pipeline.md, Schedules)."
+            exit 1
+          fi
 
       # JobSpy + LinkedIn were parked from e1177e6 until the batched ingest
       # endpoint existed: they used to POST /jobs/create once per job with no
@@ -69,11 +99,16 @@ jobs:
       # They stay continue-on-error: LinkedIn and Indeed block scrapers often
       # enough that a red run from them would drown out a real outage.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # Pinned to what this job resolved as of 2026-09 (the latest releases
+      # then). The scripts run with CRON_SECRET in their env, so a new PyPI
+      # release must not reach them unreviewed: bump these deliberately.
       - name: Install dependencies
-        run: pip install python-jobspy httpx
+        run: pip install python-jobspy==1.1.82 httpx==0.28.1
       - name: Run JobSpy scraper (Indeed + LinkedIn)
         run: python scripts/scrape_jobspy.py
         continue-on-error: true
@@ -194,11 +229,13 @@ jobs:
           case "$code" in 2*) ;; *) exit 1 ;; esac
 
       # continue-on-error keeps a failed step from stopping the run but also
-      # leaves the job green; this step makes any endpoint failure visible.
-      - name: Fail the run if an endpoint failed
+      # leaves the job green; this step makes any endpoint failure, and the
+      # inactivity alarm, visible.
+      - name: Fail the run if a checked step failed
         if: ${{ !cancelled() }}
         env:
           OUTCOMES: >-
+            inactivity=${{ steps.inactivity.outcome }}
             cron-ats=${{ steps.cron_ats.outcome }}
             cron-poll=${{ steps.cron_poll.outcome }}
             cron-backfill=${{ steps.cron_backfill.outcome }}
@@ -208,6 +245,6 @@ jobs:
           echo "$OUTCOMES" | tr ' ' '\n'
           failed=$(echo "$OUTCOMES" | tr ' ' '\n' | grep -v '=success$' | tr '\n' ' ' || true)
           if [ -n "$failed" ]; then
-            echo "::error::endpoint step(s) failed: $failed"
+            echo "::error::step(s) failed: $failed"
             exit 1
           fi

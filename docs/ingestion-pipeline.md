@@ -11,7 +11,7 @@ goal; a smaller catalogue where every listing is real and current is.
 ```
 GitHub Actions (minutes 17 and 47)          Vercel serverless (FastAPI)
 ┌──────────────────────────────┐            ┌─────────────────────────────────┐
-│ keepalive (re-enable wf)     │            │                                 │
+│ 60-day inactivity check      │            │                                 │
 │ scripts/scrape_jobspy.py     │──POST────▶│ /jobs/ingest-batch   (Tier 3)   │
 │ scripts/scrape_linkedin.py   │──POST────▶│                                 │
 │                              │            │ /github-sources/cron-ats        │
@@ -369,11 +369,9 @@ and every budget is sized for irregular firing (least-recently-crawled
 shard, least-recently-probed verification). A `concurrency` group
 (`cancel-in-progress: false`) keeps two deliveries from ever running at once.
 
-1. **Keepalive:** `gh api -X PUT .../actions/workflows/scrape-jobs.yml/enable`
-   with the job token (`permissions: actions: write`). GitHub disables
-   scheduled workflows in a public repo after 60 days without repository
-   activity, silently (the external scraper died that way on 2026-08-26);
-   re-enabling resets the timer on every run.
+1. **Inactivity check:** reads the newest commit on the default branch and
+   fails from day 50 of GitHub's 60-day inactivity clock (see "The 60-day
+   inactivity rule" below). Read-only, never re-enables anything.
 2. JobSpy + LinkedIn scripts: `/jobs/ingest-batch` (Tier 3). These stay
    `continue-on-error`: blocked scrapers are routine.
 3. `/github-sources/cron-ats`: the least-recently-crawled **shard** of the
@@ -384,7 +382,8 @@ shard, least-recently-probed verification). A `concurrency` group
 6. `/jobs/cron-freshness`: board_key adoption, stale/aggregator/terminal
    sweeps, platform liveness verification, ghost scoring.
 7. `/jobs/ingest-metrics`: logged snapshot, runs even after a failure.
-8. A final step fails the run if any endpoint step failed.
+8. A final step fails the run if the inactivity check or any endpoint step
+   failed.
 
 Every endpoint call prints its HTTP status, time and response body and fails
 its step on anything but 2xx; the steps are `continue-on-error` so the rest of
@@ -396,6 +395,67 @@ every curl ended in `|| true` and a 401 or 500 showed green.) `--max-time` is
 box. A curl timeout at 300 s means the function itself hit Vercel's ceiling.
 The job has a 40-minute timeout so a hung run can't hold the concurrency
 group.
+
+The job token is `contents: read` and nothing more. Its only users are
+`actions/checkout` (with `persist-credentials: false`, so the token is not
+left in `.git/config`) and the inactivity check (two REST reads). The
+scrapers and the endpoint steps authenticate to Tailrd with `CRON_SECRET`,
+never with the GitHub token. Because the scripts run with `CRON_SECRET` in
+their env, `python-jobspy` and `httpx` are pinned to exact versions (the
+ones the job resolved in 2026-09); bump them deliberately. Their transitive
+dependencies still float within python-jobspy's own ranges; a hashed
+requirements file (`pip install --require-hashes`) is the next step if that
+ever matters.
+
+### The 60-day inactivity rule
+
+GitHub disables scheduled workflows in a public repository after 60 days
+without repository activity (in practice, without a commit), and it does so
+silently: the runs just stop. That is how the external scraper's "Hourly Job
+Scraper" died on 2026-08-26, 60 days after its last commit. This repository
+is public, so the same clock runs on `scrape-jobs.yml`, and every push to the
+default branch resets it.
+
+- **The detector.** The workflow's first step reads the newest commit on the
+  default branch (`gh api`, `contents: read`) and fails once it is 50 days
+  old; the final step then turns the run red. A failed scheduled run emails
+  the user who last changed the workflow's `schedule` (or whoever last
+  re-enabled the workflow), provided their Actions notifications are on.
+  That leaves about 10 days, and the error names the day the schedule turns
+  off. The response is either to push any commit to the default branch
+  (another 60 days) or to make the durable fix below. The check uses the
+  committer date, which is at or before the push, so it can fire early but
+  never late.
+- **No automated keepalive.** An earlier draft re-enabled the workflow on
+  every run (`PUT .../actions/workflows/scrape-jobs.yml/enable`). It was
+  removed: nobody has confirmed that re-enabling resets the timer
+  (efrecon/gh-action-keepalive found that toggling does not), GitHub has
+  blocked the best-known keepalive action's repository on ToS grounds, and
+  the call needed `actions: write` on a job that runs third-party PyPI code.
+  Don't replace it with automated dummy commits either.
+- **A disabled workflow can't alert about itself.** The detector only speaks
+  while the workflow still runs. For an alarm that survives the workflow
+  being off, point an external uptime monitor at `GET /jobs/ingest-metrics`
+  (header `x-cron-secret`) and alert when `ingested_24h` is 0.
+- **Already disabled?** Actions tab, "Scrape Jobs", "Enable workflow", then
+  push a commit.
+
+The durable fix is to stop depending on GitHub's scheduler:
+
+1. **An external cron calling the endpoints.** A scheduler such as
+   cron-job.org POSTs `/github-sources/cron-ats`, `/github-sources/cron-poll`,
+   `/jobs/cron-backfill` and `/jobs/cron-freshness` with the `x-cron-secret`
+   header, one at a time. Its request timeout has to cover the up to 300 s
+   each can take. This doesn't run the JobSpy and LinkedIn scripts (they
+   need a Python runner), so on its own it drops Tier 3.
+2. **An external cron dispatching this workflow.** A scheduler calls
+   `POST /repos/{owner}/{repo}/actions/workflows/scrape-jobs.yml/dispatches`
+   with `{"ref": "main"}` and a fine-grained token limited to this
+   repository with Actions: write (the workflow already has
+   `workflow_dispatch`). Every step keeps running, scrapers included. Once
+   the dispatches arrive, delete the `schedule:` block: the 60-day rule is
+   about scheduled workflows, so a dispatch-only workflow has no clock to
+   run out.
 
 ### Environment variables (all optional)
 
