@@ -169,6 +169,22 @@ def test_dry_run_without_the_logo_table(catalogue, monkeypatch):
     assert db.execute(text("SELECT count(*) FROM scraped_jobs WHERE company_logo LIKE '/jobs/logo/%'")).scalar() == 1
 
 
+@pytest.mark.parametrize("argv", [[], ["--apply"]])
+def test_no_connection_is_held_while_harvesting(catalogue, argv):
+    """Harvest batches run for minutes; Neon's pooler drops idle connections,
+    so the script must not sit on one (prod dry run died closing it)."""
+    engine = catalogue.get_bind()
+    held: list[int] = []
+    inner = _harvest([])
+
+    async def harvest(client, hints):
+        held.append(engine.pool.checkedout())
+        return await inner(client, hints)
+
+    _run(catalogue, argv + ["--timeout", "0.2"], harvest)
+    assert held and set(held) == {0}
+
+
 def test_read_only_guard_refuses_writes(db_session):
     engine = db_session.get_bind()
     with script.read_only(engine):

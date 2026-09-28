@@ -291,6 +291,10 @@ async def run(
                     f"({outcome.plan.rows} rows)")
 
             for batch in _chunked(plans, max(args.concurrency * 10, 1)):
+                # Hand the connection back before minutes of network work:
+                # Neon's pooler drops idle ones, and the next query checks
+                # out a fresh, pre-pinged connection instead.
+                db.rollback()
                 got = await run_harvest(
                     client, batch, harvest, budget_s=math.inf,
                     concurrency=args.concurrency, per_company_timeout=args.timeout,
@@ -339,7 +343,10 @@ async def run(
         logo_harvester.LINKEDIN_BLOCK_COOLDOWN = previous_cooldown
         if own_client:
             await client.aclose()
-        db.close()
+        try:
+            db.close()
+        except Exception as exc:  # a dropped connection must not eat the report
+            out(f"(closing the session failed: {exc.__class__.__name__})")
 
     table = _print_sources(outcomes, out)
     _print_coverage(_totals(before), after, after_label, out)
