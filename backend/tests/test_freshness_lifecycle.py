@@ -104,6 +104,23 @@ class TestReconcileBoard:
         assert stats["revived"] == 1
         assert db_session.get(ScrapedJob, row.id).listing_status == LISTING_ACTIVE
 
+    def test_workday_apply_link_matches_its_listed_posting(self, db_session):
+        """The crawl lists '/job/<slug>'; a row stored as '/job/<slug>/apply'
+        is that posting, not a vanished one."""
+        board = "workday:roche"
+        base = "https://roche.wd3.myworkdayjobs.com/roche-ext/job/Mississauga/Analyst_202606-115566"
+        apply_row = _row(db_session, url=base + "/apply", board_key=board,
+                         listing_status=LISTING_STALE)
+        gone = _row(db_session, url=base.replace("115566", "999999") + "/apply", board_key=board)
+
+        stats = reconcile_board(db_session, board, {base}, now=NOW)
+
+        db_session.expire_all()
+        kept = db_session.get(ScrapedJob, apply_row.id)
+        assert kept.listing_status == LISTING_ACTIVE and kept.last_seen_at == NOW
+        assert db_session.get(ScrapedJob, gone.id).listing_status == LISTING_REMOVED
+        assert stats == {"confirmed": 1, "revived": 1, "removed": 1}
+
     def test_does_not_touch_other_boards(self, db_session):
         other = _row(db_session, url="https://jobs.lever.co/other/1", board_key="lever:other")
         reconcile_board(db_session, BOARD, set(), now=NOW)
@@ -314,7 +331,7 @@ class TestTerminalLifecycle:
 
         long_ago = NOW - datetime.timedelta(days=UNRECONCILABLE_MAX_AGE_DAYS + 1)
         orphan = _row(db_session, url="https://jobs.bombardier.com/job/11101", board_key="unknown",
-                      last_seen_at=long_ago)
+                      last_seen_at=long_ago, last_probed_at=NOW - datetime.timedelta(hours=2))
         orphan_recent = _row(db_session, url="https://jobs.bombardier.com/job/11102",
                              board_key="unknown", last_seen_at=NOW - datetime.timedelta(days=10))
         on_board = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/5",
@@ -332,6 +349,44 @@ class TestTerminalLifecycle:
         assert db_session.get(ScrapedJob, on_board.id).listing_status == LISTING_ACTIVE
         # aggregator rows run on sweep_aggregator_expiry's clock instead
         assert db_session.get(ScrapedJob, list_row.id).listing_status == LISTING_ACTIVE
+
+    def test_terminal_expiry_needs_a_check_since_the_evidence(self, db_session):
+        """Nothing ages out unchecked: a row the verifier never reached
+        (budget, time box, a skipped host), or last checked before its last
+        evidence, stays for the next run to check. A check that came back
+        without a verdict (a bot wall) still lets it end on schedule."""
+        from backend.services.listing_freshness import (
+            STALE_TERMINAL_DAYS,
+            UNRECONCILABLE_MAX_AGE_DAYS,
+            sweep_terminal_expiry,
+        )
+
+        stale_seen = NOW - datetime.timedelta(days=STALE_TERMINAL_DAYS + 5)
+        orphan_seen = NOW - datetime.timedelta(days=UNRECONCILABLE_MAX_AGE_DAYS + 5)
+        never_checked = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/21",
+                             listing_status=LISTING_STALE, last_seen_at=stale_seen)
+        checked_before = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/22",
+                              listing_status=LISTING_STALE, last_seen_at=stale_seen,
+                              last_probed_at=stale_seen - datetime.timedelta(days=1))
+        walled = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/23",
+                      listing_status=LISTING_STALE, last_seen_at=stale_seen,
+                      last_probed_at=NOW - datetime.timedelta(hours=1))
+        orphan_unchecked = _row(db_session, url="https://jobs.bombardier.com/job/1",
+                                board_key="unknown", last_seen_at=orphan_seen)
+        # no last_seen_at at all: first_seen_at is the evidence
+        orphan_checked = _row(db_session, url="https://jobs.bombardier.com/job/2",
+                              board_key="unknown", last_seen_at=None,
+                              first_seen_at=orphan_seen, scraped_at=orphan_seen,
+                              last_probed_at=NOW - datetime.timedelta(hours=1))
+
+        stats = sweep_terminal_expiry(db_session, now=NOW)
+        db_session.expire_all()
+        assert stats == {"stale_expired": 1, "unreconcilable_expired": 1}
+        assert db_session.get(ScrapedJob, never_checked.id).listing_status == LISTING_STALE
+        assert db_session.get(ScrapedJob, checked_before.id).listing_status == LISTING_STALE
+        assert db_session.get(ScrapedJob, walled.id).listing_status == LISTING_EXPIRED
+        assert db_session.get(ScrapedJob, orphan_unchecked.id).listing_status == LISTING_ACTIVE
+        assert db_session.get(ScrapedJob, orphan_checked.id).listing_status == LISTING_EXPIRED
 
 
 # ─── Ghost scoring ───────────────────────────────────────────────────────────
@@ -947,6 +1002,161 @@ class TestVerifyUnconfirmedActive:
         assert db_session.get(ScrapedJob, linkedin.id).last_probed_at is None
 
 
+def _mock_client(handler):
+    import httpx
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+class TestVerifyStampsOnlyRealChecks:
+    """last_probed_at means "a check came back": a row the check never sent
+    a request for (host skipped, LinkedIn's per-run budget spent, no turn at
+    the gate) or that the host rate-limited keeps its place in line."""
+
+    @pytest.fixture(autouse=True)
+    def _no_pacing(self, monkeypatch):
+        from backend.services import platform_liveness
+        monkeypatch.setattr(platform_liveness, "_LINKEDIN_MIN_INTERVAL", 0)
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_and_skipped_rows_are_deferred_not_stamped(self, db_session):
+        import httpx
+        from backend.services.listing_freshness import verify_recent_aggregator_listings
+
+        rows = [_row(db_session, url=f"https://{host}.linkedin.com/jobs/view/{i}",
+                     source_platform="linkedin", board_key="", last_seen_at=None)
+                for i in range(10) for host in ("www", "ca")]
+        sent: list[str] = []
+
+        def handler(request):
+            sent.append(str(request.url))
+            return httpx.Response(429, text="slow down")
+
+        async with _mock_client(handler) as client:
+            stats = await verify_recent_aggregator_listings(db_session, client, now=NOW)
+
+        db_session.expire_all()
+        # www and ca are one LinkedIn: three 429s trip the breaker for both
+        assert len(sent) == 3
+        assert stats["checked"] == 0 and stats["deferred"] == 20
+        assert stats["reasons"] == {"bot_wall_429": 3, "host_skipped": 17}
+        assert all(db_session.get(ScrapedJob, r.id).last_probed_at is None for r in rows)
+
+    @pytest.mark.asyncio
+    async def test_network_errors_are_stamped_breaker_skips_are_not(self, db_session):
+        import httpx
+        from backend.services import platform_liveness
+        from backend.services.listing_freshness import verify_stale_listings
+
+        rows = [_row(db_session, url=f"https://careers.hang.com/jobs/{i}",
+                     listing_status=LISTING_STALE, posted_date=NOW - datetime.timedelta(days=i))
+                for i in range(8)]
+        sent: list[str] = []
+
+        def handler(request):
+            sent.append(str(request.url))
+            raise httpx.ConnectError("boom")
+
+        async with _mock_client(handler) as client:
+            stats = await verify_stale_listings(db_session, client, now=NOW)
+
+        db_session.expire_all()
+        stamped = {r.url for r in rows if db_session.get(ScrapedJob, r.id).last_probed_at == NOW}
+        # a request went out for exactly the stamped rows (two in flight at a
+        # time, so the breaker trips after three or four)
+        assert platform_liveness._HOST_FAILURE_LIMIT <= len(sent) < 8
+        assert stamped == set(sent)
+        assert stats["checked"] == len(sent) and stats["deferred"] == 8 - len(sent)
+        assert stats["reasons"]["host_skipped"] == 8 - len(sent)
+
+    @pytest.mark.asyncio
+    async def test_coverage_moves_forward_across_runs(self, db_session):
+        """A walled host answers a few requests per run: the rows it never
+        answered lead the next run instead of the same head rows being
+        checked every cycle while the rest never are."""
+        import httpx
+        from backend.services.listing_freshness import verify_recent_aggregator_listings
+
+        rows = [_row(db_session, url=f"https://www.linkedin.com/jobs/view/{i}",
+                     source_platform="linkedin", board_key="", last_seen_at=None,
+                     posted_date=NOW - datetime.timedelta(hours=i))
+                for i in range(12)]
+        answered: list[str] = []
+        budget = {"left": 4}
+
+        def handler(request):
+            if budget["left"] > 0:
+                budget["left"] -= 1
+                answered.append(str(request.url))
+                return httpx.Response(200, text='<a class="apply-button">Apply</a>')
+            return httpx.Response(429)
+
+        for run in range(3):
+            budget["left"] = 4
+            async with _mock_client(handler) as client:
+                await verify_recent_aggregator_listings(
+                    db_session, client, now=NOW + datetime.timedelta(hours=21 * run))
+
+        assert len(answered) == 12
+        assert len(set(answered)) == 12  # every row got a real check, none twice
+        db_session.expire_all()
+        assert all(db_session.get(ScrapedJob, r.id).last_probed_at is not None for r in rows)
+
+    @pytest.mark.asyncio
+    async def test_linkedin_rows_cannot_crowd_out_the_other_rows(self, db_session):
+        import httpx
+        from backend.services.listing_freshness import verify_recent_aggregator_listings
+
+        for i in range(30):
+            _row(db_session, url=f"https://www.linkedin.com/jobs/view/{i}",
+                 source_platform="linkedin", board_key="", last_seen_at=None,
+                 posted_date=NOW - datetime.timedelta(hours=i))
+        github = _row(db_session, url="https://careers.example.com/jobs/list-row",
+                      source_platform="github", board_key="", last_seen_at=None,
+                      posted_date=NOW - datetime.timedelta(days=10))
+
+        def handler(request):
+            if request.url.host.endswith("linkedin.com"):
+                return httpx.Response(429)  # walled all day
+            return httpx.Response(200, text="<h1>Intern</h1>")
+
+        async with _mock_client(handler) as client:
+            stats = await verify_recent_aggregator_listings(db_session, client, now=NOW,
+                                                            limit=12, linkedin_quota=5)
+
+        db_session.expire_all()
+        # 5 LinkedIn rows (all walled, deferred) + the GitHub row, which was
+        # older than every LinkedIn row but still got its check
+        assert stats["checked"] + stats["deferred"] == 6
+        assert db_session.get(ScrapedJob, github.id).last_probed_at == NOW
+
+    @pytest.mark.asyncio
+    async def test_board_key_reaches_the_platform_check(self, db_session):
+        """A Jane Street gh_jid row checked through its own board's API, not
+        the embed Jane Street switched off."""
+        import httpx
+        from backend.services.listing_freshness import verify_stale_listings
+
+        row = _row(db_session,
+                   url="https://www.janestreet.com/join-jane-street/apply/8631912002?gh_jid=8631912002",
+                   board_key="greenhouse:janestreet", listing_status=LISTING_STALE)
+        sent: list[str] = []
+
+        def handler(request):
+            sent.append(str(request.url))
+            if "boards-api.greenhouse.io/v1/boards/janestreet/jobs/8631912002" in str(request.url):
+                return httpx.Response(200, json={"id": 8631912002})
+            return httpx.Response(404)
+
+        async with _mock_client(handler) as client:
+            stats = await verify_stale_listings(db_session, client, now=NOW)
+
+        db_session.expire_all()
+        assert stats["revived"] == 1
+        assert db_session.get(ScrapedJob, row.id).listing_status == LISTING_ACTIVE
+        assert sent == ["https://boards-api.greenhouse.io/v1/boards/janestreet/jobs/8631912002"]
+
+
 class TestAggregatorIngestProbe:
     def test_dead_url_stored_as_removed(self, db_session):
         """A list row whose apply URL already 404s must never surface."""
@@ -1049,8 +1259,9 @@ class TestFreshnessEndpoints:
         assert db_session.get(ScrapedJob, aged.id).listing_status == LISTING_EXPIRED
 
     def test_cron_freshness_verifies_with_platform_apis(self, client, db_session, monkeypatch):
-        """End to end: terminal sweep, then the three time-boxed verify phases
-        through the platform checks (mock transport, no network)."""
+        """End to end: the three time-boxed verify phases through the platform
+        checks (mock transport, no network), then terminal expiry, which ends
+        only a row this run's check reached."""
         import httpx
         from backend.services import platform_liveness
 
@@ -1072,7 +1283,7 @@ class TestFreshnessEndpoints:
                 return httpx.Response(403, json={"errorCode": "S22"})
             if "Open_R2" in str(request.url):
                 return httpx.Response(200, json={"jobPostingInfo": {"id": "2"}})
-            return httpx.Response(404)
+            return httpx.Response(200, text="<h1>Careers</h1>")  # proves nothing
 
         real_make_client = platform_liveness.make_client
         monkeypatch.setattr(platform_liveness, "make_client",
@@ -1083,16 +1294,72 @@ class TestFreshnessEndpoints:
         body = res.json()
         assert body["terminal_expired"]["stale_expired"] == 1
         assert body["stale_verified"]["removed"] == 1
+        assert body["stale_verified"]["unverified"] == 1
         assert body["unconfirmed_verified"]["confirmed"] == 1
         assert body["recent_verified"]["checked"] == 0
         assert body["verify_seconds"] >= 0
 
         db_session.expire_all()
-        assert db_session.get(ScrapedJob, abandoned.id).listing_status == LISTING_EXPIRED
+        ended = db_session.get(ScrapedJob, abandoned.id)
+        assert ended.listing_status == LISTING_EXPIRED
+        assert ended.last_probed_at is not None  # checked first, then ended
         assert db_session.get(ScrapedJob, dead_wd.id).listing_status == LISTING_REMOVED
         still_open = db_session.get(ScrapedJob, unconfirmed.id)
         assert still_open.listing_status == LISTING_ACTIVE
         assert still_open.last_seen_at > utcnow - datetime.timedelta(minutes=5)
+
+    def test_cron_checks_before_terminal_expiry(self, client, db_session, monkeypatch):
+        """A stale row past STALE_TERMINAL_DAYS that its platform says is
+        open is revived by this run's check; before, the terminal sweep ran
+        first and expired it unchecked, and nothing ever checked it again."""
+        import httpx
+        from backend.services import platform_liveness
+
+        utcnow = datetime.datetime.utcnow()
+        live_old = _row(db_session,
+                        url="https://hitachi.wd1.myworkdayjobs.com/hitachi/job/Toronto/Eng_R0135776",
+                        board_key="workday:hitachi", listing_status=LISTING_STALE,
+                        last_seen_at=utcnow - datetime.timedelta(days=25))
+        calls: list[str] = []
+
+        def handler(request):
+            calls.append(str(request.url))
+            return httpx.Response(200, json={"jobPostingInfo": {"id": "R0135776"}})
+
+        real_make_client = platform_liveness.make_client
+        monkeypatch.setattr(platform_liveness, "make_client",
+                            lambda **kw: real_make_client(transport=httpx.MockTransport(handler)))
+
+        body = client.post("/jobs/cron-freshness",
+                           headers=self._cron_headers(monkeypatch)).json()
+
+        assert body["terminal_expired"]["stale_expired"] == 0
+        assert body["stale_verified"]["revived"] == 1
+        assert calls and "/wday/cxs/hitachi/hitachi/job/" in calls[0]
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, live_old.id)
+        assert row.listing_status == LISTING_ACTIVE
+        assert row.last_seen_at > utcnow - datetime.timedelta(minutes=5)
+
+    def test_cron_phases_share_one_liveness_state(self, client, db_session, monkeypatch):
+        """One run is one set of host breakers and one LinkedIn budget, not
+        three: the phases hand the same cache along."""
+        from backend.services import listing_freshness
+
+        seen: list = []
+
+        async def fake_verify(db, client_, limit=0, now=None, *, deadline=None, cache=None, **kw):
+            seen.append(cache)
+            return {"checked": 0}
+
+        for name in ("verify_stale_listings", "verify_unconfirmed_active_listings",
+                     "verify_recent_aggregator_listings"):
+            monkeypatch.setattr(listing_freshness, name, fake_verify)
+
+        res = client.post("/jobs/cron-freshness", headers=self._cron_headers(monkeypatch))
+        assert res.status_code == 200, res.text
+        assert len(seen) == 3
+        assert isinstance(seen[0], dict) and all(cache is seen[0] for cache in seen)
 
     def test_ingest_metrics_shape(self, client, db_session, monkeypatch):
         from backend.db.models import SourceHealth

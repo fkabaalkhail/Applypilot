@@ -36,12 +36,15 @@ def public_dns(monkeypatch):
 
 @pytest.fixture
 def probes(monkeypatch):
-    """Stub the platform check: returns the queued result and records URLs."""
+    """Stub the platform check: returns the queued result and records URLs
+    (and, third, the board_key each check was given)."""
     calls: list[str] = []
+    board_keys: list[str] = []
     state = {"result": LivenessResult("unknown", "http_200")}
 
-    async def fake_check_listing(client, url, *, cache=None):
+    async def fake_check_listing(client, url, *, cache=None, board_key=""):
         calls.append(url)
+        board_keys.append(board_key)
         result = state["result"]
         if isinstance(result, Exception):
             raise result
@@ -52,7 +55,7 @@ def probes(monkeypatch):
     def set_result(result):
         state["result"] = result
 
-    return calls, set_result
+    return calls, set_result, board_keys
 
 
 def _job(db_session, url="https://jobs.lever.co/acme/0f7b3c1e-1d2a-4b5c-8d9e-0a1b2c3d4e5f", **fields):
@@ -91,7 +94,10 @@ class TestCheckLive:
         assert probes[0] == []
         assert _reload(db_session, job.id).last_probed_at is None
 
-    def test_recent_probe_answers_from_stored_state(self, client, db_session, probes):
+    def test_only_a_conclusive_stored_state_answers_without_a_probe(self, client, db_session, probes):
+        """A row its board vouched for within a day is alive, no request. A
+        recent probe that learned nothing is not an answer: a sweep may have
+        been rate-limited on it, so the click asks the platform."""
         fresh = _job(db_session, url="https://example.com/jobs/1",
                      listing_status="active", last_probed_at=NOW() - datetime.timedelta(hours=1),
                      last_seen_at=NOW() - datetime.timedelta(hours=2))
@@ -101,6 +107,7 @@ class TestCheckLive:
         stale = _job(db_session, url="https://example.com/jobs/3",
                      listing_status="stale", last_probed_at=NOW() - datetime.timedelta(hours=5),
                      last_seen_at=NOW() - datetime.timedelta(hours=2))
+        probes[1](LivenessResult("dead", "lever_api_404", True))
 
         answers = {
             job.id: client.post(f"/jobs/{job.id}/check-live").json()
@@ -108,9 +115,9 @@ class TestCheckLive:
         }
 
         assert answers[fresh.id] == {"id": fresh.id, "listing_status": "active", "verdict": "alive"}
-        assert answers[unseen.id]["verdict"] == "unknown"
-        assert answers[stale.id] == {"id": stale.id, "listing_status": "stale", "verdict": "unknown"}
-        assert probes[0] == []
+        assert answers[unseen.id] == {"id": unseen.id, "listing_status": "removed", "verdict": "dead"}
+        assert answers[stale.id] == {"id": stale.id, "listing_status": "removed", "verdict": "dead"}
+        assert probes[0] == [unseen.url, stale.url]
 
     def test_probe_older_than_recheck_window_asks_again(self, client, db_session, probes):
         job = _job(db_session, last_probed_at=NOW() - datetime.timedelta(hours=7))
@@ -118,6 +125,29 @@ class TestCheckLive:
         client.post(f"/jobs/{job.id}/check-live")
 
         assert probes[0] == [job.url]
+
+    @pytest.mark.parametrize("reason", [
+        "bot_wall_429", "bot_wall_999", "network_error", "timeout", "error",
+        "host_skipped", "gate_queue_timeout", "host_budget_spent", "url_not_allowed",
+    ])
+    def test_a_probe_that_got_no_answer_is_not_recorded(self, client, db_session, probes, reason):
+        """A rate limit or a network miss learned nothing: stamping it would
+        push the row back in the sweeps' queue as if it had been checked."""
+        probes[1](LivenessResult("unknown", reason))
+        job = _job(db_session, listing_status="active")
+
+        resp = client.post(f"/jobs/{job.id}/check-live")
+
+        assert resp.json() == {"id": job.id, "listing_status": "active", "verdict": "unknown"}
+        assert _reload(db_session, job.id).last_probed_at is None
+
+    def test_board_key_reaches_the_check(self, client, db_session, probes):
+        job = _job(db_session, url="https://www.janestreet.com/join-jane-street/apply/1?gh_jid=1",
+                   board_key="greenhouse:janestreet")
+
+        client.post(f"/jobs/{job.id}/check-live")
+
+        assert probes[2] == ["greenhouse:janestreet"]
 
     def test_dead_marks_removed(self, client, db_session, probes):
         probes[1](LivenessResult("dead", "lever_api_404", True))
@@ -172,16 +202,28 @@ class TestCheckLive:
         assert row.last_seen_at == old_seen
         assert row.last_probed_at is not None
 
-    def test_repeat_click_is_served_from_the_stamp(self, client, db_session, probes):
+    def test_repeat_click_after_a_platform_confirmation_is_served_from_the_db(
+        self, client, db_session, probes,
+    ):
+        probes[1](LivenessResult("alive", "lever_api_200", True))
+        job = _job(db_session)
+
+        first = client.post(f"/jobs/{job.id}/check-live").json()
+        second = client.post(f"/jobs/{job.id}/check-live").json()
+
+        assert first["verdict"] == second["verdict"] == "alive"
+        assert probes[0] == [job.url]
+
+    def test_repeat_click_after_an_inconclusive_probe_asks_again(self, client, db_session, probes):
         job = _job(db_session)
 
         client.post(f"/jobs/{job.id}/check-live")
         client.post(f"/jobs/{job.id}/check-live")
 
-        assert probes[0] == [job.url]
+        assert probes[0] == [job.url, job.url]
 
     def test_timeout_is_unknown_not_an_error(self, client, db_session, monkeypatch):
-        async def slow_check(client, url, *, cache=None):
+        async def slow_check(client, url, *, cache=None, board_key=""):
             await asyncio.sleep(5)
             return LivenessResult("dead", "late")
 
@@ -195,7 +237,7 @@ class TestCheckLive:
         assert resp.json() == {"id": job.id, "listing_status": "active", "verdict": "unknown"}
         row = _reload(db_session, job.id)
         assert row.listing_status == "active"
-        assert row.last_probed_at is not None
+        assert row.last_probed_at is None  # nothing came back: not a probe
 
     def test_probe_crash_is_unknown_not_500(self, client, db_session, probes):
         probes[1](RuntimeError("boom"))
@@ -227,14 +269,15 @@ class TestCheckLive:
         monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
         # The daily cap: a minute bucket could roll over mid-test.
         monkeypatch.setattr(jobs_router, "CHECK_LIVE_PER_DAY", 2)
+        probes[1](LivenessResult("alive", "lever_api_200", True))
         rows = [_job(db_session, url=f"https://example.com/jobs/{n}") for n in range(3)]
 
         codes = [client.post(f"/jobs/{row.id}/check-live").status_code for row in rows]
 
         assert codes == [200, 200, 429]
         assert len(probes[0]) == 2
-        # Answers from stored state are free: already-probed rows still answer.
-        assert client.post(f"/jobs/{rows[0].id}/check-live").status_code == 200
+        # Answers from stored state are free: a platform-confirmed row still answers.
+        assert client.post(f"/jobs/{rows[0].id}/check-live").json()["verdict"] == "alive"
         closed = _job(db_session, url="https://example.com/jobs/closed", listing_status="removed")
         assert client.post(f"/jobs/{closed.id}/check-live").json()["verdict"] == "dead"
 
@@ -260,6 +303,64 @@ class TestCheckLive:
 
         assert resp.json() == {"id": job.id, "listing_status": "removed", "verdict": "dead"}
         assert seen and "/wday/cxs/acme/External/job/" in seen[0]
+
+    def test_gh_jid_row_on_a_known_board_is_asked_through_its_api(
+        self, client, db_session, monkeypatch,
+    ):
+        """Jane Street switched its Greenhouse embed off (404 for every open
+        posting): a click used to read that as closed and remove the row."""
+        seen = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            if request.url.host == "boards-api.greenhouse.io":
+                return httpx.Response(200, json={"id": 8631912002, "title": "Trader"})
+            return httpx.Response(404, text="Not found")
+
+        real_make_client = platform_liveness.make_client
+        monkeypatch.setattr(
+            platform_liveness, "make_client",
+            lambda **kw: real_make_client(transport=httpx.MockTransport(handler)),
+        )
+        job = _job(db_session,
+                   url="https://www.janestreet.com/join-jane-street/apply/8631912002?gh_jid=8631912002",
+                   board_key="greenhouse:janestreet", listing_status="stale",
+                   last_seen_at=NOW() - datetime.timedelta(days=3))
+
+        resp = client.post(f"/jobs/{job.id}/check-live")
+
+        assert resp.json() == {"id": job.id, "listing_status": "active", "verdict": "alive"}
+        assert seen == ["https://boards-api.greenhouse.io/v1/boards/janestreet/jobs/8631912002"]
+
+    def test_redirect_into_a_private_address_is_refused(self, client, db_session, monkeypatch):
+        """The SSRF check used to see only the first URL; a posting that
+        redirects into loopback must not be fetched (and its answer must not
+        decide the row's fate)."""
+        seen = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            if request.url.host == "careers.example.com":
+                return httpx.Response(302, headers={"location": "http://127.0.0.1:8799/internal-admin"})
+            return httpx.Response(404, text="internal")
+
+        async def public(host, port):
+            return ["93.184.216.34"]
+
+        monkeypatch.setattr(platform_liveness, "_resolve", public)
+        real_make_client = platform_liveness.make_client
+        # The production client, guard included, on a transport that records.
+        monkeypatch.setattr(
+            platform_liveness, "make_client",
+            lambda **kw: real_make_client(transport=httpx.MockTransport(handler), ssrf_guard=True),
+        )
+        job = _job(db_session, url="https://careers.example.com/job/12345", listing_status="active")
+
+        resp = client.post(f"/jobs/{job.id}/check-live")
+
+        assert resp.json() == {"id": job.id, "listing_status": "active", "verdict": "unknown"}
+        assert seen == ["https://careers.example.com/job/12345"]
+        assert _reload(db_session, job.id).listing_status == "active"
 
     def test_route_does_not_shadow_neighbours(self, client, db_session, probes):
         job = _job(db_session)

@@ -214,10 +214,12 @@ def _lifecycle_rows(db):
         # active, no board confirmation for 5 days -> stale (still visible)
         "to_stale": _row(db, "https://boards.greenhouse.io/acme/jobs/10",
                          last_seen_at=NOW - 5 * DAY),
-        # stale with no positive evidence for 40 days -> expired
+        # stale with no positive evidence for 40 days, checked since -> expired
+        # (by the terminal step after phase c)
         "terminal": _row(db, "https://boards.greenhouse.io/acme/jobs/11",
                          listing_status=LISTING_STALE, last_seen_at=NOW - 40 * DAY,
-                         first_seen_at=NOW - 60 * DAY, scraped_at=NOW - 60 * DAY),
+                         first_seen_at=NOW - 60 * DAY, scraped_at=NOW - 60 * DAY,
+                         last_probed_at=NOW - DAY),
         # LinkedIn row 30 days old -> expired (21-day fast expiry)
         "linkedin": _row(db, "https://www.linkedin.com/jobs/view/123", source_platform="linkedin",
                          board_key="", first_seen_at=NOW - 30 * DAY,
@@ -235,17 +237,46 @@ class TestPhaseB:
         db_session.expire_all()
         assert rows["to_stale"].listing_status == LISTING_ACTIVE  # nothing written
         assert stats["sweep_stale"]["rows"] == 1
+        # terminal expiry is not part of the pre-check sweeps any more
+        assert "sweep_terminal_expiry" not in stats
         projected = set(dry.hidden)
-        assert projected == {rows["terminal"].id, rows["linkedin"].id}
+        assert projected == {rows["linkedin"].id}
 
         applied = _report(db_session, dry_run=False)
         cleanup_feed.phase_b(db_session, applied, write=True, now=NOW)
         db_session.expire_all()
         assert set(applied.hidden) == projected
         assert rows["to_stale"].listing_status == LISTING_STALE
-        assert rows["terminal"].listing_status == LISTING_EXPIRED
+        assert rows["terminal"].listing_status == LISTING_STALE
         assert rows["linkedin"].listing_status == LISTING_EXPIRED
         assert rows["fresh"].listing_status == LISTING_ACTIVE
+
+    def test_terminal_step_dry_run_projects_what_apply_does(self, db_session):
+        rows = _lifecycle_rows(db_session)
+        dry = _report(db_session)
+        cleanup_feed.phase_terminal(db_session, dry, write=False, now=NOW)
+        db_session.expire_all()
+        assert rows["terminal"].listing_status == LISTING_STALE  # nothing written
+        assert dry.hidden == {rows["terminal"].id: "b:sweep_terminal_expiry"}
+
+        applied = _report(db_session, dry_run=False)
+        cleanup_feed.phase_terminal(db_session, applied, write=True, now=NOW)
+        db_session.expire_all()
+        assert applied.hidden == dry.hidden
+        assert rows["terminal"].listing_status == LISTING_EXPIRED
+
+    def test_terminal_step_needs_the_probe_column(self, db_session, monkeypatch):
+        rows = _lifecycle_rows(db_session)
+        monkeypatch.setattr(cleanup_feed, "has_probe_column", lambda db: False)
+        stats = cleanup_feed.phase_terminal(db_session, _report(db_session, dry_run=False),
+                                            write=True, now=NOW)
+        db_session.expire_all()
+        assert stats == {"skipped": "last_probed_at missing"}
+        assert rows["terminal"].listing_status == LISTING_STALE
+        # a dry run still reports the reset, never names the missing column
+        dry_stats = cleanup_feed.phase_terminal(db_session, _report(db_session), write=False,
+                                                now=NOW)
+        assert set(dry_stats) == {"reset_legacy_seen"}
 
 
 # ─── phase c ─────────────────────────────────────────────────────────────────
@@ -261,6 +292,7 @@ VERDICTS = {
     INDEED: LivenessResult("unknown", "indeed_unprobeable"),
     LINKEDIN: LivenessResult("alive", "linkedin_apply_cta"),
 }
+CALLS: list[dict] = []  # what each fake check_listings call was handed
 
 
 @pytest.fixture
@@ -270,9 +302,13 @@ def fake_checks(monkeypatch):
     asked: list[str] = []
     recorded: list[tuple[int, str, str]] = []
 
-    async def fake_check_listings(client, urls, *, concurrency=8, deadline=None, cache=None):
+    async def fake_check_listings(client, urls, *, concurrency=8, deadline=None, cache=None,
+                                  board_keys=None):
         asked.extend(urls)
+        CALLS.append({"cache": cache, "board_keys": dict(board_keys or {})})
         return {url: VERDICTS[url] for url in urls if url in VERDICTS}
+
+    CALLS.clear()
 
     real_record = listing_freshness.record_liveness
 
@@ -365,10 +401,114 @@ class TestPhaseC:
         asked, _recorded = fake_checks
         rows = _liveness_rows(db_session)
         report = _report(db_session)
-        report.hide([rows["dead"].id], "b:sweep_terminal_expiry")
+        report.hide([rows["dead"].id], "b:sweep_aggregator_expiry")
         await cleanup_feed.phase_c(db_session, report, cleanup_feed.ProbeOptions(),
                                    write=False, now=NOW)
         assert GH_DEAD not in asked
+
+    @pytest.mark.asyncio
+    async def test_checks_that_got_no_answer_are_deferred_not_stamped(
+        self, db_session, fake_checks, monkeypatch,
+    ):
+        """A rate-limited or skipped check never sent a usable request: it
+        is not recorded, and the row keeps its place for the next run."""
+        _asked, recorded = fake_checks
+        walled = "https://www.linkedin.com/jobs/view/7"
+        skipped = "https://www.linkedin.com/jobs/view/8"
+        monkeypatch.setitem(VERDICTS, walled, LivenessResult("unknown", "bot_wall_429"))
+        monkeypatch.setitem(VERDICTS, skipped, LivenessResult("unknown", "host_skipped"))
+        rows = {name: _row(db_session, url, source_platform="linkedin", board_key="")
+                for name, url in (("walled", walled), ("skipped", skipped))}
+        rows["dead"] = _row(db_session, GH_DEAD)
+
+        stats = await cleanup_feed.phase_c(db_session, _report(db_session, dry_run=False),
+                                           cleanup_feed.ProbeOptions(), write=True, now=NOW)
+        db_session.expire_all()
+
+        assert [r[0] for r in recorded] == [rows["dead"].id]
+        assert stats["deferred"] == 2
+        assert stats["deferred_reasons"] == {"bot_wall_429": 1, "host_skipped": 1}
+        assert rows["walled"].last_probed_at is None
+        assert rows["skipped"].last_probed_at is None
+        assert rows["dead"].last_probed_at == NOW
+
+    @pytest.mark.asyncio
+    async def test_board_keys_and_an_uncapped_run_state_reach_the_checks(
+        self, db_session, fake_checks,
+    ):
+        jane = "https://www.janestreet.com/join-jane-street/apply/8631912002?gh_jid=8631912002"
+        _row(db_session, jane, board_key="greenhouse:janestreet")
+        _row(db_session, LINKEDIN, source_platform="linkedin", board_key="")
+
+        await cleanup_feed.phase_c(db_session, _report(db_session), cleanup_feed.ProbeOptions(),
+                                   write=False, now=NOW)
+
+        (call,) = CALLS
+        assert call["board_keys"] == {jane: "greenhouse:janestreet", LINKEDIN: ""}
+        # paced, but not held to the cron's per-run LinkedIn budget
+        assert platform_liveness._run_state(call["cache"]).caps == {}
+
+
+# ─── run(): terminal expiry after the checks ─────────────────────────────────
+
+class TestRunOrder:
+    @pytest.mark.asyncio
+    async def test_terminal_expiry_counts_phase_c_checks_and_spares_unchecked_rows(
+        self, db_session, fake_checks, monkeypatch,
+    ):
+        """Phase c's checks run before terminal expiry: a stale row the check
+        reached (and couldn't judge) ends; one it never reached stays for
+        cron-freshness to check; one its platform says is open comes back."""
+        checked = "https://careers.acme.com/job/1"
+        unreached = "https://careers.acme.com/job/2"
+        monkeypatch.setitem(VERDICTS, checked, LivenessResult("unknown", "http_200"))
+        stale = dict(listing_status=LISTING_STALE, last_seen_at=NOW - 40 * DAY,
+                     first_seen_at=NOW - 60 * DAY, scraped_at=NOW - 60 * DAY,
+                     listing_status_changed_at=NOW - 45 * DAY)
+        rows = {
+            "checked": _row(db_session, checked, **stale),
+            "unreached": _row(db_session, unreached, **stale),  # no verdict: deadline
+            "open": _row(db_session, GH_OPEN, **stale),
+        }
+
+        report = await cleanup_feed.run(db_session, write=True, phases="bc", now=NOW)
+        db_session.expire_all()
+
+        assert rows["checked"].listing_status == LISTING_EXPIRED
+        assert report.hidden[rows["checked"].id] == "b:sweep_terminal_expiry"
+        assert rows["unreached"].listing_status == LISTING_STALE
+        assert rows["unreached"].last_probed_at is None
+        assert rows["open"].listing_status == LISTING_ACTIVE
+
+    @pytest.mark.asyncio
+    async def test_legacy_verifier_stamps_are_not_evidence(self, db_session, fake_checks,
+                                                           monkeypatch):
+        """The old verifier bumped last_seen_at on every probe. On a board no
+        crawl reconciles, a stale row's stamp after it went stale is one of
+        those: it goes back to when the row went stale, so the row ends now
+        instead of three weeks from its last legacy stamp."""
+        legacy = "https://jobs.molsoncoors.com/job/MQX1"
+        real_board = "https://boards.greenhouse.io/acme/jobs/77"
+        for url in (legacy, real_board):
+            monkeypatch.setitem(VERDICTS, url, LivenessResult("unknown", "http_200"))
+        went_stale = NOW - 40 * DAY
+        shape = dict(listing_status=LISTING_STALE, listing_status_changed_at=went_stale,
+                     last_seen_at=NOW - 2 * DAY, first_seen_at=NOW - 90 * DAY,
+                     scraped_at=NOW - 90 * DAY)
+        rows = {
+            "legacy": _row(db_session, legacy, board_key="unknown", **shape),
+            # a crawled board's last_seen_at is real evidence: untouched
+            "real_board": _row(db_session, real_board, board_key="greenhouse:acme", **shape),
+        }
+
+        report = await cleanup_feed.run(db_session, write=True, phases="bc", now=NOW)
+        db_session.expire_all()
+
+        assert rows["legacy"].last_seen_at == went_stale
+        assert rows["legacy"].listing_status == LISTING_EXPIRED
+        assert rows["real_board"].last_seen_at == NOW - 2 * DAY
+        assert rows["real_board"].listing_status == LISTING_STALE
+        assert report.phase_b["reset_legacy_seen"]["rows"] == 1
 
 
 # ─── the dry-run guard ───────────────────────────────────────────────────────

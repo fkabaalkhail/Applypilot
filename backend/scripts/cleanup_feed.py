@@ -12,12 +12,18 @@ Phases (each idempotent, column-only reads, descriptions never selected):
      delete, saved-job and application FKs untouched).
   b  The lifecycle sweeps cron-freshness runs, called straight from
      listing_freshness: legacy board_key adoption, stale sweep, aggregator
-     expiry, terminal expiry.
+     expiry. Its last step, terminal expiry, runs after phase c (as
+     cron-freshness runs it after its checks): it only ends a row a check
+     has reached since its last positive evidence. Right before it, stale
+     rows on boards no crawl reconciles get ``last_seen_at`` set back to when
+     they went stale: the old verifier stamped it on every probe, so those
+     stamps are not evidence.
   c  Every still-visible row checked against its platform
      (platform_liveness.check_listings, per-host politeness built in) and the
      verdict applied by listing_freshness.record_liveness: dead -> removed,
      authoritative alive -> confirmed (a stale row revives), anything else
-     only stamps ``last_probed_at``.
+     only stamps ``last_probed_at``. A check that got no answer (host
+     skipped, never got its turn, rate-limited) is deferred, not stamped.
   d  Report only: rows still visible whose verdict was unknown, by host, i.e.
      what nothing can verify (Indeed, bot-walled career sites).
 
@@ -72,7 +78,7 @@ _DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from sqlalchemy import event, func, inspect, nulls_first  # noqa: E402
+from sqlalchemy import event, func, inspect, nulls_first, or_  # noqa: E402
 from sqlalchemy.orm import Query, Session  # noqa: E402
 from sqlalchemy.sql import operators  # noqa: E402
 from sqlalchemy.sql.elements import BinaryExpression, BindParameter  # noqa: E402
@@ -575,12 +581,34 @@ def collapse_utm_twins(db: Session, session: RecordingSession, report: Report,
 
 # ─── Phase b: lifecycle sweeps ───────────────────────────────────────────────
 
+def _run_steps(db: Session, report: Report, recorder: Recorder, steps, stats: dict,
+               *, write: bool) -> None:
+    """Run lifecycle steps against the recording session, recording and
+    reporting what each changed (or would)."""
+    for name, call in steps:
+        recorder.step = name
+        start = len(recorder.writes)
+        result = call()
+        writes = recorder.since(start)
+        ids = sorted({row_id for w in writes for row_id in w.ids})
+        hiding = sorted({row_id for w in writes if w.values.get("listing_status")
+                         in HIDDEN_LISTING_STATUSES for row_id in w.ids})
+        newly_hidden = report.hide(hiding, f"b:{name}")
+        stats[name] = {"rows": len(ids), "result": result, "hidden_visible": newly_hidden}
+        # A dry run counts each UPDATE against the unchanged table, so the
+        # per-statement counts of one sweep can overlap; ``rows`` is the union.
+        detail = result if write else f"per-statement matches, may overlap: {result}"
+        print(f"  [b] {name}: {len(ids)} rows ({detail}), "
+              f"{newly_hidden} leave the visible feed")
+        _print_samples(db, ids)
+
+
 def phase_b(db: Session, report: Report, *, write: bool, now: datetime.datetime) -> dict:
-    """The sweeps cron-freshness runs, in its order, from listing_freshness
-    itself. The dry run counts each against the current state, so knock-on
-    effects inside one pass (a row sweep_stale would stale that terminal
-    expiry would then end) are not simulated: its projection is a lower
-    bound."""
+    """The sweeps cron-freshness runs before its checks, in its order, from
+    listing_freshness itself (terminal expiry comes after phase c, see
+    phase_terminal). The dry run counts each against the current state, so
+    knock-on effects inside one pass are not simulated: its projection is a
+    lower bound."""
     recorder = Recorder()
     session = RecordingSession(db, recorder, write=write)
     stats: dict = {}
@@ -608,25 +636,53 @@ def phase_b(db: Session, report: Report, *, write: bool, now: datetime.datetime)
         ("sweep_stale", lambda: listing_freshness.sweep_stale(session, now=now)),
         ("sweep_aggregator_expiry",
          lambda: listing_freshness.sweep_aggregator_expiry(session, now=now)),
-        ("sweep_terminal_expiry",
-         lambda: listing_freshness.sweep_terminal_expiry(session, now=now)),
     )
-    for name, call in steps:
-        recorder.step = name
-        start = len(recorder.writes)
-        result = call()
-        writes = recorder.since(start)
-        ids = sorted({row_id for w in writes for row_id in w.ids})
-        hiding = sorted({row_id for w in writes if w.values.get("listing_status")
-                         in HIDDEN_LISTING_STATUSES for row_id in w.ids})
-        newly_hidden = report.hide(hiding, f"b:{name}")
-        stats[name] = {"rows": len(ids), "result": result, "hidden_visible": newly_hidden}
-        # A dry run counts each UPDATE against the unchanged table, so the
-        # per-statement counts of one sweep can overlap; ``rows`` is the union.
-        detail = result if write else f"per-statement matches, may overlap: {result}"
-        print(f"  [b] {name}: {len(ids)} rows ({detail}), "
-              f"{newly_hidden} leave the visible feed")
-        _print_samples(db, ids)
+    _run_steps(db, report, recorder, steps, stats, write=write)
+    return stats
+
+
+def reset_legacy_seen(session) -> int:
+    """Stale rows on boards no crawl reconciles: ``last_seen_at`` back to
+    when the row went stale. The old verifier stamped ``last_seen_at`` on
+    every probe, and on these boards nothing else writes it except an
+    authoritative alive, which revives the row to active; so on a row still
+    stale, a stamp after it went stale is one of those, not evidence.
+    Column-only UPDATE through ``session``."""
+    return (
+        session.query(ScrapedJob)
+        .filter(
+            ScrapedJob.listing_status == LISTING_STALE,
+            or_(ScrapedJob.board_key.is_(None), ScrapedJob.board_key.in_(("", "unknown"))),
+            ScrapedJob.last_seen_at > ScrapedJob.listing_status_changed_at,
+        )
+        .update({"last_seen_at": ScrapedJob.listing_status_changed_at},
+                synchronize_session=False)
+    )
+
+
+def phase_terminal(db: Session, report: Report, *, write: bool,
+                   now: datetime.datetime) -> dict:
+    """Phase b's last step, run after phase c: the legacy last_seen_at reset,
+    then listing_freshness.sweep_terminal_expiry, which ends only rows a
+    check has reached since their last positive evidence (phase c's checks
+    count). A dry run records both against the unchanged table: it can't
+    see phase c's stamps or the reset, so its count is a lower bound."""
+    recorder = Recorder()
+    session = RecordingSession(db, recorder, write=write)
+    stats: dict = {}
+    if not has_probe_column(db):
+        print("  [b] sweep_terminal_expiry skipped: scraped_jobs.last_probed_at is missing "
+              "(run the migration); nothing expires unchecked")
+        if write:
+            return {"skipped": "last_probed_at missing"}
+        steps = (("reset_legacy_seen", lambda: reset_legacy_seen(session)),)
+    else:
+        steps = (
+            ("reset_legacy_seen", lambda: reset_legacy_seen(session)),
+            ("sweep_terminal_expiry",
+             lambda: listing_freshness.sweep_terminal_expiry(session, now=now)),
+        )
+    _run_steps(db, report, recorder, steps, stats, write=write)
     return stats
 
 
@@ -646,9 +702,9 @@ class ProbeOptions:
 def phase_c_candidates(db: Session, report: Report, options: ProbeOptions,
                        *, probe_column: bool, now: datetime.datetime) -> tuple[list, int]:
     """(rows to check, how many visible rows were eligible before --limit).
-    Rows are (id, url, listing_status). Column-only."""
-    query = db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status).filter(
-        *_visible_filters())
+    Rows are (id, url, listing_status, board_key). Column-only."""
+    query = db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status,
+                     ScrapedJob.board_key).filter(*_visible_filters())
     if options.host_filter:
         query = query.filter(ScrapedJob.url.ilike(f"%{options.host_filter}%"))
     if probe_column and options.recheck_hours > 0:
@@ -698,6 +754,7 @@ async def phase_c(db: Session, report: Report, options: ProbeOptions, *,
     dead_buckets: dict[str, list] = {}
     alive_buckets: dict[str, list] = {}
     deferred = 0
+    deferred_reasons: Counter = Counter()
     started = time.monotonic()
     deadline = started + options.deadline_minutes * 60
 
@@ -705,15 +762,24 @@ async def phase_c(db: Session, report: Report, options: ProbeOptions, *,
         for index, chunk in enumerate(_chunks(rows, CHUNK)):
             # A fresh per-run state per chunk: a host that walled us (LinkedIn
             # 429s) gets another chance next chunk instead of being skipped
-            # for the rest of a long run.
+            # for the rest of a long run. LinkedIn stays paced, but this long
+            # one-time run lifts the cron's per-run LinkedIn budget.
             results = await platform_liveness.check_listings(
-                client, [url for _id, url, _status in chunk],
-                concurrency=options.concurrency, deadline=deadline, cache={},
+                client, [row[1] for row in chunk],
+                concurrency=options.concurrency, deadline=deadline,
+                cache=platform_liveness.run_cache(linkedin_cap=None),
+                board_keys={row[1]: row[3] or "" for row in chunk},
             )
-            for row_id, url, listing_status in chunk:
+            for row_id, url, listing_status, _board_key in chunk:
                 result = results.get(url)
                 if result is None:
                     deferred += 1
+                    deferred_reasons["deadline"] += 1
+                    continue
+                if platform_liveness.is_deferred(result):
+                    # No answer came back: not a probe, the row keeps its place.
+                    deferred += 1
+                    deferred_reasons[result.reason] += 1
                     continue
                 family = host_family(url)
                 combos[(result.verdict, result.reason, family)] += 1
@@ -750,11 +816,12 @@ async def phase_c(db: Session, report: Report, options: ProbeOptions, *,
     checked = sum(outcomes.values())
     stats = {
         "eligible": eligible, "selected": len(rows), "checked": checked,
-        "deferred": deferred, "outcomes": dict(outcomes),
+        "deferred": deferred, "deferred_reasons": dict(deferred_reasons),
+        "outcomes": dict(outcomes),
         "seconds": round(time.monotonic() - started, 1),
     }
     verb = "" if write else "would be "
-    print(f"  [c] {checked} checked, {deferred} deferred (deadline): "
+    print(f"  [c] {checked} checked, {deferred} deferred {dict(deferred_reasons)}: "
           f"{outcomes['removed']} {verb}removed, {outcomes['confirmed']} {verb}confirmed, "
           f"{outcomes['revived']} {verb}revived, {outcomes['unverified']} unverified "
           f"({stats['seconds']}s)")
@@ -836,6 +903,12 @@ async def run(db: Session, *, write: bool, phases: str = PHASES,
     if "c" in phases:
         print("== phase c: platform liveness ==")
         report.phase_c = await phase_c(db, report, options, write=write, now=now)
+    after_c = report.visible_after
+    if "b" in phases:
+        # After the checks, as cron-freshness runs it: terminal expiry only
+        # ends rows a check has reached since their last positive evidence.
+        print("== phase b (last step): terminal expiry ==")
+        report.phase_b.update(phase_terminal(db, report, write=write, now=now))
     if "d" in phases:
         print("== phase d: unverifiable rows still visible ==")
         phase_d(report)
@@ -843,11 +916,12 @@ async def run(db: Session, *, write: bool, phases: str = PHASES,
     print("== projection ==" if not write else "== result ==")
     print(f"  visible at start:         {len(report.visible_start)}")
     print(f"  after phases a+b:         {after_ab}")
-    print(f"  after phase c (measured): {report.visible_after}")
+    print(f"  after phase c (measured): {after_c}")
+    print(f"  after terminal expiry:    {report.visible_after}")
     extra = report.phase_c.get("extrapolated_dead") if report.phase_c else None
     if extra:
         print(f"  after phase c (whole pool at the measured dead rate): "
-              f"~{report.visible_after - extra}")
+              f"~{after_c - extra}")
     by_phase = Counter(why for why in report.hidden.values())
     print(f"  hidden by: {dict(by_phase)}")
     if write:
