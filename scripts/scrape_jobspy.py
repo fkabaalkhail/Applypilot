@@ -102,6 +102,11 @@ def to_payload(job_data: dict) -> dict | None:
     logo = job_data.get("company_logo") or job_data.get("logo_photo_url") or ""
     if logo and str(logo).startswith("http"):
         payload["company_logo"] = str(logo)
+    # The employer's own website (Indeed's corporateWebsite). The API derives
+    # company_domain from it instead of guessing "<name>.com".
+    website = job_data.get("company_url_direct") or ""
+    if website and str(website).startswith("http"):
+        payload["company_url"] = str(website)
     return payload
 
 

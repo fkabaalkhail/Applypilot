@@ -384,3 +384,58 @@ def test_absorb_fuzzy_never_merges_actually_different_jobs(db_session):
     absorb_new_aggregator_rows(db_session)
     db_session.refresh(different)
     assert different.duplicate_of is None
+
+
+# --- logo inheritance ---------------------------------------------------------
+
+_S2 = "https://www.google.com/s2/favicons?domain=kinaxis.com&sz=256"
+_LICDN = ("https://media.licdn.com/dms/image/v2/C4D0BAQE/company-logo_100_100/"
+          "company-logo_100_100/0/1/kinaxis_logo?e=2147483647&v=beta&t=abc")
+
+
+def test_mark_inferior_twins_hands_the_real_logo_to_a_generated_winner(db_session):
+    twin = _mk(db_session, "https://linkedin.com/jobs/view/logo-1", source="linkedin")
+    twin.company_logo = _LICDN
+    winner = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/logo-1", source="ats")
+    winner.company_logo = _S2
+    db_session.commit()
+    assert mark_inferior_twins(db_session, winner) == 1
+    db_session.refresh(winner)
+    assert winner.company_logo == _LICDN
+
+
+def test_mark_inferior_twins_keeps_a_real_or_stored_winner_logo(db_session):
+    stored = "/jobs/logo/" + "a" * 40 + ".png"
+    twin = _mk(db_session, "https://linkedin.com/jobs/view/logo-2", source="linkedin")
+    twin.company_logo = _LICDN
+    winner = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/logo-2", source="ats")
+    winner.company_logo = stored
+    db_session.commit()
+    mark_inferior_twins(db_session, winner)
+    db_session.refresh(winner)
+    assert winner.company_logo == stored
+
+
+def test_mark_inferior_twins_never_copies_a_generated_logo(db_session):
+    twin = _mk(db_session, "https://linkedin.com/jobs/view/logo-3", source="linkedin")
+    twin.company_logo = "https://logo.clearbit.com/kinaxis.com"
+    winner = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/logo-3", source="ats")
+    winner.company_logo = ""
+    db_session.commit()
+    mark_inferior_twins(db_session, winner)
+    db_session.refresh(winner)
+    assert winner.company_logo == ""
+
+
+def test_absorb_hands_the_real_logo_to_the_surviving_twin(db_session):
+    survivor = _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/logo-4",
+                   source="ats", description="Full description " * 30)
+    survivor.company_logo = _S2
+    newcomer = _mk(db_session, "https://ca.linkedin.com/jobs/view/logo-4", source="linkedin")
+    newcomer.company_logo = _LICDN
+    db_session.commit()
+    assert absorb_new_aggregator_rows(db_session) == 1
+    db_session.refresh(survivor)
+    db_session.refresh(newcomer)
+    assert newcomer.duplicate_of == survivor.id
+    assert survivor.company_logo == _LICDN

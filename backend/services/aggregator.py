@@ -18,7 +18,8 @@ from backend.db.models import GitHubSource, ScrapedJob
 from backend.services.markdown_parser import MarkdownParser, ParsedJob
 from backend.services.country_filter import CountryFilter
 from backend.services.work_type_classifier import WorkTypeClassifier
-from backend.services.logo_resolver import resolve_logo
+from backend.services.logo_cache import brand, load_branding, logo_quality
+from backend.services.logo_resolver import domain_from_url, resolve_logo
 from backend.services.location_parser import location_fields
 
 logger = logging.getLogger(__name__)
@@ -563,12 +564,17 @@ class AggregatorService:
         experience_level = self._get_experience_level(source)
 
         # Resolve an accurate company logo + domain. The parser already resolves
-        # these from the company website URL; resolve again as a safety net for
-        # rows that lacked a website link.
+        # these from the company website URL; without one its domain is a name
+        # guess, and an employer-hosted apply link (carvana.com/careers/...)
+        # is better evidence.
         company_logo = job.company_logo or ""
         company_domain = job.company_domain or ""
-        if not company_domain:
-            company_logo, company_domain = resolve_logo(job.company, job.company_url)
+        if not company_domain or not domain_from_url(job.company_url):
+            resolved_logo, company_domain = resolve_logo(
+                job.company, job.company_url, apply_url=job.url
+            )
+            if logo_quality(company_logo) == 0:
+                company_logo = resolved_logo
 
         # Deduplication: check if URL already exists. Query the column, not the
         # entity: loading the row pulls its description over the wire for a boolean.
@@ -586,6 +592,10 @@ class AggregatorService:
 
         now = datetime.datetime.utcnow()
         is_dead = job.url in dead_urls
+        # A self-hosted logo (and verified domain) from the logo store wins.
+        company_logo, company_domain = brand(
+            load_branding(self.db, [job.company]), job.company, company_logo, company_domain
+        )
 
         scraped_job = ScrapedJob(
             title=job.title,

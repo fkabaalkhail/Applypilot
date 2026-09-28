@@ -87,6 +87,10 @@ class IngestJobIn(BaseModel):
     # media.licdn.com company image). Preferred over a name-guessed favicon.
     company_logo: str = ""
     company_domain: str = ""
+    # The employer's own website when the source lists one (JobSpy's
+    # company_url_direct, Indeed's corporateWebsite). Its domain beats the
+    # name guess; LinkedIn company pages and ATS links are ignored.
+    company_url: str = ""
 
 
 class IngestBatchIn(BaseModel):

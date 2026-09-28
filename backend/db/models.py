@@ -15,8 +15,9 @@ import enum
 import datetime
 from sqlalchemy import (
     Boolean, Column, Integer, String, Text, DateTime, Enum, JSON, Float,
-    ForeignKey, UniqueConstraint, func,
+    ForeignKey, LargeBinary, UniqueConstraint, func,
 )
+from sqlalchemy.orm import deferred
 from backend.db.database import Base
 
 
@@ -853,5 +854,47 @@ class SourceHealth(Base):
     # Listing count seen on the last successful crawl, a sudden drop to zero
     # on a board that had jobs is itself an alert-worthy signal.
     last_job_count = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                        onupdate=datetime.datetime.utcnow)
+
+
+# ─── Self-hosted company logos (one validated image per employer) ────────────
+
+class CompanyLogo(Base):
+    """One row per employer, keyed by a normalized company name
+    (services/logo_cache.company_key), so "**Tesla**", "Tesla" and "Tesla, Inc."
+    share one logo. `status` is 'ok' once a real logo was harvested, normalized
+    to a small square PNG (or sanitized SVG) and stored here; scraped_jobs rows
+    then point at it as '/jobs/logo/<sha>.png', served from our own origin with
+    an immutable cache. A 'miss' is never permanent: `next_retry_at` backs off
+    with `attempts` and the cron harvester tries again once it is due.
+    """
+    __tablename__ = "company_logos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_key = Column(String, unique=True, nullable=False, index=True)
+    display_name = Column(String, default="")
+    # Registrable domain the harvester verified (homepage reachable, not
+    # parked, names the company). NULL until one is proven.
+    domain = Column(String, nullable=True)
+    status = Column(String, default="miss", nullable=False)  # ok | miss
+    # sha1 of `data`; the served URL is keyed by it, so it changes whenever
+    # the image does.
+    sha = Column(String, nullable=True, index=True)
+    fmt = Column(String, nullable=True)  # png | svg
+    # Normalized bytes, ~2-8 KB. Deferred: a whole-row load never pulls them
+    # over the wire; only the serving endpoint selects this column.
+    data = deferred(Column(LargeBinary, nullable=True))
+    source = Column(String, default="")
+    source_url = Column(String, default="")
+    width = Column(Integer, nullable=True)  # original decoded size
+    height = Column(Integer, nullable=True)
+    attempts = Column(Integer, default=0, nullable=False)
+    # Name-guessed domains proven bogus (NXDOMAIN or a parked page), so ingest
+    # never plants them on this employer's rows again.
+    rejected_domains = Column(JSON, nullable=True)
+    checked_at = Column(DateTime, nullable=True)
+    next_retry_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow,
                         onupdate=datetime.datetime.utcnow)

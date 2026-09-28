@@ -124,9 +124,11 @@ def parse_job_cards(html: str) -> list[Job]:
             # Company logo: the card lazy-loads it via data-delayed-url (falls
             # back to src). Capturing the real media.licdn.com image avoids the
             # name-guessed favicon that renders as a letter avatar downstream.
+            # Only the company image: cards can also carry other media.licdn
+            # images, and the logo store seeds the employer's logo from this.
             logo = ""
             logo_m = re.search(
-                r'(?:data-delayed-url|src)="(https://media\.licdn\.com/[^"]+)"', card)
+                r'(?:data-delayed-url|src)="(https://media\.licdn\.com/dms/image/[^"]+)"', card)
             if logo_m:
                 logo = logo_m.group(1).replace("&amp;", "&")
 

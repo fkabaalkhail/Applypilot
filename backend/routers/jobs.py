@@ -4,6 +4,7 @@ Job listing endpoints (data only, no bot automation).
 GET  /jobs, list scraped jobs with filters
 GET  /jobs/{id}, get a single job
 GET  /jobs/stats, aggregate stats
+GET  /jobs/logo/{sha}.png, a self-hosted company logo (public, immutable)
 POST /jobs/{id}/save, save a job
 POST /jobs/{id}/unsave, unsave a job
 """
@@ -33,7 +34,8 @@ from backend.services.description_extractor import (
     extract_description_from_url,
 )
 from backend.services.location_parser import location_fields
-from backend.services.logo_resolver import resolve_logo
+from backend.services.logo_cache import brand, load_branding, logo_quality
+from backend.services.logo_resolver import company_website_url, resolve_logo
 from backend.services.cross_source_dedup import (
     canonical_url,
     has_direct_twin,
@@ -300,6 +302,11 @@ def ingest_batch(
         rows = db.query(ScrapedJob.url).filter(ScrapedJob.url.in_(unique.keys())).all()
         existing = {row[0] for row in rows}
 
+    # Self-hosted logos + verified domains for the whole batch, one query.
+    branding = load_branding(
+        db, {job.company for url, job in unique.items() if url not in existing}
+    )
+
     to_insert = []
     twins_skipped = 0
     for url, job in unique.items():
@@ -314,12 +321,21 @@ def ingest_batch(
             except (ValueError, TypeError):
                 posted_date = None
 
-        resolved_logo, resolved_domain = resolve_logo(job.company)
+        # The employer website the scraper saw (Indeed's corporateWebsite via
+        # JobSpy) beats the name guess, which is wrong for most employers.
+        # (The job URL itself is the LinkedIn/Indeed page, never a hint.)
+        company_url = company_website_url(job.company_url)
+        resolved_logo, resolved_domain = resolve_logo(job.company, company_url)
         # Prefer a real logo/domain the scraper captured (e.g. LinkedIn's
         # media.licdn.com company image) over the name-guessed favicon, which
         # frequently resolves to a wrong domain and renders as a letter avatar.
-        company_logo = (job.company_logo or "").strip() or resolved_logo
-        company_domain = (job.company_domain or "").strip() or resolved_domain
+        supplied_logo = (job.company_logo or "").strip()
+        if not (supplied_logo.lower().startswith(("https://", "http://"))
+                and logo_quality(supplied_logo) > 0):
+            supplied_logo = ""
+        company_logo = supplied_logo or resolved_logo
+        company_domain = (job.company_domain or "").strip().lower() or resolved_domain
+        company_logo, company_domain = brand(branding, job.company, company_logo, company_domain)
         fields = location_fields(job.location)
 
         # A direct (ats/github) row for this employer+title+city already in
@@ -353,6 +369,7 @@ def ingest_batch(
                 experience_level=job.experience_level,
                 company_logo=company_logo,
                 company_domain=company_domain,
+                company_url=company_url,
                 title_norm=normalize_title(job.title),
                 # Aggregator rows: nobody re-confirms them, so they enter as
                 # low-trust and age out via sweep_aggregator_expiry. Rich
@@ -401,11 +418,11 @@ async def cron_backfill(
 ):
     """Bounded repair pass: fetch missing descriptions (<=3 attempts/job,
     direct-URL rows before login-walled LinkedIn/Indeed ones), fill structured
-    location + company_domain, and harvest real logos for companies stuck on
-    tiny favicons."""
+    location + company_domain, and harvest self-hosted logos for employers
+    that have none yet (services/logo_cache.py)."""
     import asyncio
     import httpx
-    from backend.services.logo_harvester import harvest_logo
+    from backend.services import logo_cache
 
     needs_description = or_(
         ScrapedJob.description.is_(None),
@@ -457,6 +474,12 @@ async def cron_backfill(
             parse_salary,
         )
 
+        # The logo store knows verified domains, and guesses it proved bogus
+        # that the repair below must not plant again.
+        branding = load_branding(
+            db, {job.company for job in jobs if not (job.company_domain or "")}
+        )
+
         for job in jobs:
             job.desc_fetch_attempts = (job.desc_fetch_attempts or 0) + 1
             text = fetched.get(job.id, "")
@@ -482,7 +505,9 @@ async def cron_backfill(
                     setattr(job, key, value)
                 locations_fixed += 1
             if not (job.company_domain or ""):
-                logo, domain = resolve_logo(job.company, job.company_url)
+                logo, domain = brand(
+                    branding, job.company, *resolve_logo(job.company, job.company_url)
+                )
                 if domain:
                     job.company_domain = domain
                     if not (job.company_logo or "") or "icon.horse" in (job.company_logo or ""):
@@ -490,66 +515,16 @@ async def cron_backfill(
                     domains_fixed += 1
         db.commit()
 
-        # Phase 3: real-logo harvest for companies still on tiny favicons.
-        # sz=128 marks "never probed"; success stores the real logo URL,
-        # failure stores the sz=256 favicon as a "probed, favicon-only"
-        # sentinel so no domain is fetched twice.
-        unprobed = or_(
-            ScrapedJob.company_logo.is_(None),
-            ScrapedJob.company_logo == "",
-            ScrapedJob.company_logo.like("%google.com/s2/favicons%sz=128%"),
-            ScrapedJob.company_logo.like("%icon.horse%"),
-            ScrapedJob.company_logo.like("%apistemic%"),
-        )
-        domains = [
-            row[0] for row in (
-                db.query(ScrapedJob.company_domain)
-                .filter(
-                    unprobed,
-                    ScrapedJob.company_domain.isnot(None),
-                    ScrapedJob.company_domain != "",
-                    ScrapedJob.duplicate_of.is_(None),
-                )
-                .group_by(ScrapedJob.company_domain)
-                .order_by(func.count(ScrapedJob.id).desc())
-                .limit(8)
-                .all()
-            )
-        ]
-        logos_harvested = 0
-        for domain in domains:
-            company = (
-                db.query(ScrapedJob.company)
-                .filter(ScrapedJob.company_domain == domain)
-                .order_by(ScrapedJob.id.desc())
-                .limit(1)
-                .scalar()
-            ) or ""
-            # A LinkedIn job page for this company carries its logo when the
-            # homepage and Wikidata have nothing.
-            linkedin_url = (
-                db.query(ScrapedJob.url)
-                .filter(
-                    ScrapedJob.company_domain == domain,
-                    ScrapedJob.url.ilike("%linkedin.com/jobs%"),
-                )
-                .order_by(ScrapedJob.id.desc())
-                .limit(1)
-                .scalar()
-            ) or ""
-            try:
-                harvested = await harvest_logo(client, domain, company, linkedin_url)
-            except Exception:
-                harvested = ""
-            new_logo = harvested or (
-                f"https://www.google.com/s2/favicons?domain={domain}&sz=256"
-            )
-            db.query(ScrapedJob).filter(
-                ScrapedJob.company_domain == domain, unprobed
-            ).update({"company_logo": new_logo}, synchronize_session=False)
-            db.commit()
-            if harvested:
-                logos_harvested += 1
+        # Phase 3: self-hosted logos. Rows of employers whose logo is already
+        # stored get re-pointed at it; employers with none are harvested
+        # (busiest first, misses on a 14d-per-attempt backoff) inside a
+        # wall-clock budget, and a hit is propagated to all their rows.
+        try:
+            logo_stats = await logo_cache.harvest_missing_logos(db, client)
+        except Exception:
+            db.rollback()
+            logger.exception("cron-backfill logo harvest failed")
+            logo_stats = {"error": True}
 
     # New LinkedIn/Indeed rows that duplicate an existing better posting keep
     # arriving between sweeps; absorb them incrementally.
@@ -574,8 +549,10 @@ async def cron_backfill(
         "descriptions_fixed": descriptions_fixed,
         "locations_fixed": locations_fixed,
         "domains_fixed": domains_fixed,
-        "logo_domains_probed": len(domains),
-        "logos_harvested": logos_harvested,
+        # Back-compat names: companies harvested, logos stored.
+        "logo_domains_probed": logo_stats.get("companies_attempted", 0),
+        "logos_harvested": logo_stats.get("stored", 0),
+        "logo_harvest": logo_stats,
         "twins_absorbed": twins_absorbed,
         "remaining": remaining,
     }
@@ -900,6 +877,42 @@ def list_cities(
         {"city": " ".join(w.capitalize() for w in city.split(" ")), "count": count}
         for city, count in rows
     ]
+
+
+_LOGO_FILE = re.compile(r"^([0-9a-f]{40})\.(png|svg)$")
+_LOGO_MEDIA_TYPES = {"png": "image/png", "svg": "image/svg+xml"}
+
+
+@router.get("/logo/{name}")
+def serve_company_logo(name: str, db: Session = Depends(get_db)):
+    """A self-hosted company logo by content hash (services/logo_cache.py).
+
+    Public (feed cards load it as a plain <img>) and immutable: the hash
+    changes whenever the image does, so browsers and the CDN keep it for a
+    year and Neon serves each logo about once per edge. SVGs are sanitized at
+    harvest and additionally sandboxed here.
+    """
+    from fastapi import Response
+    from backend.db.models import CompanyLogo
+
+    match = _LOGO_FILE.match(name or "")
+    if not match:
+        raise HTTPException(status_code=404, detail="Logo not found.")
+    sha, ext = match.groups()
+    row = (
+        db.query(CompanyLogo.data, CompanyLogo.fmt)
+        .filter(CompanyLogo.sha == sha, CompanyLogo.status == "ok")
+        .first()
+    )
+    if row is None or not row.data or (row.fmt or "png") != ext:
+        raise HTTPException(status_code=404, detail="Logo not found.")
+    headers = {
+        "Cache-Control": "public, max-age=31536000, s-maxage=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if ext == "svg":
+        headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+    return Response(content=bytes(row.data), media_type=_LOGO_MEDIA_TYPES[ext], headers=headers)
 
 
 @router.get("/{job_id}", response_model=ScrapedJobOut)
