@@ -415,6 +415,73 @@ async def test_linkedin_429_skips_linkedin_for_the_rest_of_the_run():
     assert sum("linkedin.com" in u for u in log) == 1  # no second job page, no search
 
 
+async def _reported(routes, hints, **kw):
+    """(result, report) of one harvest with a HarvestReport set, as
+    logo_cache.run_harvest sets one."""
+    report = lh.HarvestReport()
+    token = lh.harvest_report.set(report)
+    try:
+        return await _harvest(routes, hints, **kw), report
+    finally:
+        lh.harvest_report.reset(token)
+
+
+async def _tarpit(request):
+    await asyncio.sleep(3600)
+
+
+async def _refused(request):
+    raise httpx.ConnectError("reset by peer")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("search", [(200, b"<ul></ul>"), (200, b"")], ids=["no-match", "empty"])
+async def test_report_says_linkedin_answered_when_its_search_did(search):
+    result, report = await _reported(
+        [(r"jobs-guest/jobs/api/jobPosting/", (404, b"")), (r"seeMoreJobPostings", search)],
+        LogoHints(company="Acme", job_urls=["https://www.linkedin.com/jobs/view/4470193130"]),
+    )
+    assert result is None
+    assert (report.linkedin_asked, report.linkedin_answered, report.linkedin_missing) == (True, True, False)
+    assert report.timed_out is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("search", [(503, b""), (429, b""), _refused], ids=["5xx", "429", "refused"])
+async def test_report_says_linkedin_missing_when_its_search_got_no_answer(search):
+    # The job posting answering does not count: the name search never did.
+    result, report = await _reported(
+        [(r"jobs-guest/jobs/api/jobPosting/", (200, _li_job_page("Unrelated Corp"))),
+         (r"seeMoreJobPostings", search),
+         (r"https://acme\.example/$", (200, b"<title>Acme</title>")),
+         (r"google\.com/s2", (200, _png(256), "image/png"))],
+        LogoHints(company="Acme", domains=["acme.example"],
+                  job_urls=["https://www.linkedin.com/jobs/view/4470193130"]),
+    )
+    assert result.source == "s2"  # the cascade still finishes: the caller decides
+    assert report.linkedin_missing is True and report.timed_out is False
+
+
+@pytest.mark.asyncio
+async def test_report_time_cap_and_the_steps_linkedin_was_never_needed_for():
+    started = time.monotonic()
+    result, report = await _reported([(r"seeMoreJobPostings", _tarpit)], LogoHints(company="Acme"),
+                                      time_cap=0.2)
+    assert result is None and time.monotonic() - started < 2  # still never raises
+    assert report.timed_out is True and report.linkedin_missing is True
+
+    # A logo found before LinkedIn's turn never needed it.
+    result, report = await _reported(
+        [(r"cloudfront\.net/s/_squarelogo", (200, LOGO, "image/png"))],
+        LogoHints(company="Acme",
+                  existing_logo_urls=["https://d2q79iu7y748jz.cloudfront.net/s/_squarelogo/a.png"]),
+    )
+    assert result.source == "existing"
+    assert (report.linkedin_asked, report.linkedin_missing, report.timed_out) == (False, False, False)
+    # Without a report set (the legacy URL API) nothing is recorded, nothing breaks.
+    assert await _harvest([(r"seeMoreJobPostings", (503, b""))], LogoHints(company="Acme")) is None
+
+
 @pytest.mark.asyncio
 async def test_linkedin_calls_are_paced(monkeypatch):
     monkeypatch.setattr(lh, "LINKEDIN_MIN_INTERVAL", 0.25)

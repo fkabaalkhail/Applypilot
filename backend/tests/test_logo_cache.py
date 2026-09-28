@@ -421,6 +421,8 @@ def test_demote_restores_rows_blocks_the_image_and_reharvests_prior_urls_first(d
     record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
     assert (record.status, record.attempts, record.domain, record.next_retry_at) == ("miss", 0, None, None)
     assert record.blocked_shas == [wrong.logo.sha]
+    # A LinkedIn pick says nothing about the domain: it is forgotten, not rejected.
+    assert done["rejected_domain"] == "" and not record.rejected_domains
     assert lookup_logo(db_session, "Acme") is None
     assert logo_cache.demote_logo(db_session, "Acme") is None  # nothing stored any more
 
@@ -429,6 +431,54 @@ def test_demote_restores_rows_blocks_the_image_and_reharvests_prior_urls_first(d
     assert acme.hints.existing_logo_urls[:2] == [HOME, WIKI]
     assert LICDN in acme.hints.existing_logo_urls
     assert acme.hints.blocked_shas == [wrong.logo.sha]
+
+
+FAST_ICON = "https://fast.com/assets/favicons/apple-icon-180x180.png"
+
+
+@pytest.mark.parametrize("source", ["homepage", "wikidata", "s2"])
+def test_demoting_a_pick_its_domain_chose_rejects_that_domain(db_session, monkeypatch, source):
+    """'Fast' verified fast.com (Netflix's speed test) and stored its icon:
+    blocking that one image is not enough, the same site has an icon at
+    every size, and the rows' fast.com would keep the s2 fallback alive."""
+    rows = [_row(db_session, "https://x.test/fast-1", company="Fast", logo=S2.format("fast.com"),
+                 domain="fast.com"),
+            _row(db_session, "https://x.test/fast-2", company="Fast")]
+    other = _row(db_session, "https://x.test/other", company="Other Co", logo=S2.format("fast.com"),
+                 domain="fast.com")
+    wrong = FakeResult(_logo(b"netflix"), source=source, source_url=FAST_ICON,
+                       verified_domain="fast.com")
+    path = store_logo(db_session, "Fast", wrong)
+    db_session.expire_all()
+    assert {_logo_of(db_session, r) for r in rows} == {path}
+    assert {db_session.get(ScrapedJob, r.id).company_domain for r in rows} == {"fast.com"}
+
+    # Planning the re-harvest (the script's dry run) already avoids the site.
+    fast = _plans(db_session, monkeypatch, reharvest=["Fast"])["fast"]
+    assert "fast.com" not in fast.hints.domains
+    assert fast.hints.blocked_shas == [wrong.logo.sha]
+
+    assert logo_cache.demote_logo(db_session, "Fast", dry_run=True)["rejected_domain"] == "fast.com"
+    db_session.expire_all()
+    assert db_session.get(ScrapedJob, rows[0].id).company_domain == "fast.com"  # dry: nothing written
+
+    done = logo_cache.demote_logo(db_session, "Fast")
+    assert done["rejected_domain"] == "fast.com" and done["rows"] == 2
+    db_session.expire_all()
+    for row in rows:
+        stored = db_session.get(ScrapedJob, row.id)
+        assert (stored.company_logo, stored.company_domain) == ("", "")
+    other_row = db_session.get(ScrapedJob, other.id)  # another employer's row is untouched
+    assert (other_row.company_logo, other_row.company_domain) == (S2.format("fast.com"), "fast.com")
+    record = db_session.query(CompanyLogo).filter_by(company_key="fast").one()
+    assert (record.status, record.domain, record.rejected_domains) == ("miss", None, ["fast.com"])
+
+    # The next harvest never tries the site again, not even as the name guess...
+    fast = _plans(db_session, monkeypatch)["fast"]
+    assert "fast.com" not in fast.hints.domains and "fast.com" not in fast.suspect_domains
+    assert fast.hints.blocked_shas == [wrong.logo.sha]
+    # ...and insert paths stop planting it.
+    assert brand(load_branding(db_session, ["Fast"]), "Fast", S2.format("fast.com"), "fast.com") == ("", "")
 
 
 def test_provisional_logo_fills_only_rows_without_a_real_logo(db_session):
@@ -459,8 +509,15 @@ def test_provisional_logo_fills_only_rows_without_a_real_logo(db_session):
     assert record.status == "ok" and record.attempts == 2
     assert record.next_retry_at - before > datetime.timedelta(days=1, hours=23)
 
-    # LinkedIn answered and had nothing better: final, and propagated fully.
+    # A miss nobody confirmed LinkedIn answered (a timeout) proves nothing either.
     record_miss(db_session, "Acme")
+    db_session.expire_all()
+    record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
+    assert record.status == "ok" and record.attempts == 3 and record.next_retry_at is not None
+    assert _logo_of(db_session, rows["home"][0]) == HOME
+
+    # LinkedIn answered and had nothing better: final, and propagated fully.
+    record_miss(db_session, "Acme", linkedin_answered=True)
     db_session.expire_all()
     record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
     assert (record.status, record.next_retry_at, record.attempts) == ("ok", None, 0)
@@ -1009,3 +1066,151 @@ def test_phase3_with_the_real_harvester_seeds_magna_from_its_longer_name(db_sess
     for row in rows:
         assert db_session.get(ScrapedJob, row.id).company_logo == path
     assert db_session.get(ScrapedJob, donor.id).company_logo == LICDN  # another key, untouched
+
+
+# --- a provisional logo's re-check when LinkedIn never answers ---------------------
+
+ACME_MARK = "https://www.acme.com/static/acme-mark.png"
+
+
+def _due_provisional_acme(db):
+    """Acme: a real hotlink on one row, nothing on the other, and a
+    provisional s2 pick (stored while LinkedIn was rate-limited) due for
+    its re-check now."""
+    shown = _row(db, "https://x.test/acme-1", company="Acme", logo=ACME_MARK)
+    blank = _row(db, "https://x.test/acme-2", company="Acme")
+    path = store_logo(db, "Acme", FakeResult(_logo(b"s2"), source="s2"), provisional=True)
+    db.query(CompanyLogo).filter_by(company_key="acme").update(
+        {"next_retry_at": datetime.datetime.utcnow() - datetime.timedelta(minutes=1)})
+    db.commit()
+    return shown, blank, path
+
+
+async def _tarpit(request):
+    """Never answers and never sends a 429: nothing trips the LinkedIn gate."""
+    await asyncio.sleep(3600)
+
+
+def _answers(status, body=b""):
+    async def answer(request):
+        return httpx.Response(status, content=body)
+    return answer
+
+
+async def _refused(request):
+    raise httpx.ConnectError("reset by peer")
+
+
+def _cron_pass(db, monkeypatch, routes: dict):
+    """One Phase 3 pass with the real harvester and no network: each URL
+    containing a `routes` key gets that handler, everything else a 404."""
+    async def no_dns(host):
+        return False
+
+    async def never_bogus(client, domain):
+        return False
+
+    monkeypatch.setattr(logo_harvester, "_resolves", no_dns)
+    monkeypatch.setattr(logo_harvester, "LINKEDIN_MIN_INTERVAL", 0)
+    monkeypatch.setattr(logo_cache, "domain_is_bogus", never_bogus)
+    monkeypatch.setattr(company_registry, "load_logo_map", lambda: {})
+
+    async def handler(request):
+        for marker, answer in routes.items():
+            if marker in str(request.url):
+                return await answer(request)
+        return httpx.Response(404)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            stats = await logo_cache.harvest_missing_logos(db, client)
+            assert logo_harvester.linkedin_stats(client)["blocked"] is False  # no 429, ever
+            return stats
+
+    return asyncio.run(run())
+
+
+def _backstop(seconds):
+    """run_harvest with its per-company backstop at `seconds`."""
+    real = logo_cache.run_harvest
+
+    async def run_harvest(client, plans, harvest, **kw):
+        return await real(client, plans, harvest, **{**kw, "per_company_timeout": seconds})
+    return run_harvest
+
+
+@pytest.mark.parametrize("linkedin,cut", [
+    (_tarpit, "harvester cap"),
+    (_tarpit, "backstop"),
+    (_refused, None),
+    (_answers(503), None),
+], ids=["tarpit-harvester-cap", "tarpit-backstop", "connection-refused", "server-error"])
+def test_a_provisional_logo_stays_provisional_when_linkedin_never_answers(
+        db_session, monkeypatch, linkedin, cut):
+    shown, blank, path = _due_provisional_acme(db_session)
+    if cut == "harvester cap":
+        monkeypatch.setattr(logo_harvester, "HARVEST_TIME_CAP", 0.3)
+    elif cut == "backstop":
+        monkeypatch.setattr(logo_cache, "run_harvest", _backstop(0.3))
+    before = datetime.datetime.utcnow()
+    stats = _cron_pass(db_session, monkeypatch, {"seeMoreJobPostings": linkedin})
+    assert stats["companies_attempted"] == 1 and stats["linkedin_deferred"] == 1
+
+    db_session.expire_all()
+    record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
+    assert record.status == "ok" and record.attempts == 2
+    assert record.next_retry_at is not None and record.next_retry_at > before  # re-checked again
+    assert not record.prior_logo_urls
+    assert _logo_of(db_session, shown) == ACME_MARK  # the real hotlink stays
+    assert _logo_of(db_session, blank) == path
+    assert load_branding(db_session, ["Acme"])["acme"].provisional
+
+
+def test_a_timeout_never_makes_a_provisional_logo_final(db_session, monkeypatch):
+    """LinkedIn answered (nothing by that name) but the cap ended the
+    cascade before the rest of it ran: no proof nothing better exists."""
+    shown, _blank, _path = _due_provisional_acme(db_session)
+    monkeypatch.setattr(logo_harvester, "HARVEST_TIME_CAP", 0.3)
+    stats = _cron_pass(db_session, monkeypatch, {
+        "seeMoreJobPostings": _answers(200, b"<ul></ul>"),
+        "wikidata.org": _tarpit,
+    })
+    assert stats["timeouts"] == 1 and stats["linkedin_deferred"] == 0
+    db_session.expire_all()
+    record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
+    assert record.status == "ok" and record.next_retry_at is not None
+    assert _logo_of(db_session, shown) == ACME_MARK
+
+
+def test_a_provisional_logo_becomes_final_once_linkedin_answered(db_session, monkeypatch):
+    shown, blank, path = _due_provisional_acme(db_session)
+    stats = _cron_pass(db_session, monkeypatch, {"seeMoreJobPostings": _answers(200, b"<ul></ul>")})
+    assert stats["missed"] == 1 and stats["linkedin_deferred"] == 0 and stats["timeouts"] == 0
+    db_session.expire_all()
+    record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
+    assert (record.status, record.next_retry_at, record.attempts) == ("ok", None, 0)
+    assert {_logo_of(db_session, shown), _logo_of(db_session, blank)} == {path}
+    assert record.prior_logo_urls == [ACME_MARK]  # demote_logo can still give it back
+
+
+def test_run_harvest_keeps_each_concurrent_harvests_linkedin_report(db_session, monkeypatch):
+    for name in ("Answered Co", "Silent Co"):
+        _row(db_session, f"https://x.test/{name[0]}", company=name)
+    monkeypatch.setattr(company_registry, "load_logo_map", lambda: {})
+    plans = logo_cache.plan_harvest(db_session, company_names_by_key(db_session), LogoHints)
+
+    async def harvest(client, hints):
+        report = logo_harvester.harvest_report.get()
+        report.linkedin_asked = True
+        await asyncio.sleep(0.05)  # both in flight at once
+        report.linkedin_answered = hints.company == "Answered Co"
+
+    async def never_bogus(client, domain):
+        return False
+
+    monkeypatch.setattr(logo_cache, "domain_is_bogus", never_bogus)
+    outcomes = asyncio.run(logo_cache.run_harvest(None, plans, harvest, budget_s=60))
+    assert {o.plan.display: (o.status, o.linkedin_missing) for o in outcomes} == {
+        "Answered Co": ("miss", False), "Silent Co": ("miss", True),
+    }
+    assert logo_harvester.harvest_report.get() is None  # nothing leaks out of run_harvest

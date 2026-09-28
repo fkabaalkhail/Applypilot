@@ -3,6 +3,7 @@ write-free guarantee (it is meant to run against production), and --apply.
 The harvest itself is faked; no network."""
 
 import asyncio
+import datetime
 import hashlib
 import time
 from dataclasses import dataclass
@@ -285,6 +286,71 @@ def test_linkedin_giving_up_stops_the_run_and_stores_nothing_degraded(catalogue,
     # deferred misses are not recorded either: the next run retries them
     assert db.query(CompanyLogo).filter_by(company_key="no logo").count() == 0
     assert "LinkedIn stopped answering" in "\n".join(lines)
+
+
+def _silent_linkedin_harvest(seen: list):
+    """Every harvest needs LinkedIn and it never answers (no 429, so the gate
+    never gives up on it): the harvester's report says so."""
+    async def harvest(client, hints):
+        seen.append(hints.company)
+        lh.harvest_report.get().linkedin_asked = True
+        if hints.company == "Magna":
+            return FakeResult(_logo(b"m"), "homepage", "https://www.magna.com/apple-touch-icon.png",
+                              "magna.com")
+        if hints.company == "Slow Co":
+            await asyncio.sleep(5)
+        return None
+    return harvest
+
+
+def test_what_linkedin_never_answered_is_deferred_not_stored(catalogue):
+    db = catalogue
+    before = _snapshot(db)
+    seen: list = []
+    lines: list[str] = []
+    report = _run(db, ["--apply", "--timeout", "0.2"], _silent_linkedin_harvest(seen), lines)
+    assert seen == ["Magna", "No Logo Co", "Slow Co"]  # the run went on: no 429 stopped it
+    statuses = {o.plan.display: o.status for o in report["outcomes"]}
+    assert statuses == {"Magna": "deferred", "No Logo Co": "deferred", "Slow Co": "deferred"}
+    assert report["sources"]["deferred"] == [3, 6]
+    assert "LinkedIn stopped answering" not in "\n".join(lines)
+    # Nothing written for them but step 0's re-point of the planted Kinaxis row;
+    # the next run tries them all again.
+    rows, logos = _snapshot(db)
+    assert logos == before[1] and len(rows) == len(before[0])
+    assert logo_cache.lookup_logo(db, "Magna") is None
+
+    # --linkedin-cooldown 0 means "skip LinkedIn instead": stored, and the
+    # miss is retried soon rather than after the 14-day step.
+    seen.clear()
+    _run(db, ["--apply", "--timeout", "0.2", "--linkedin-cooldown", "0"], _silent_linkedin_harvest(seen))
+    db.expire_all()
+    assert logo_cache.lookup_logo(db, "Magna") is not None
+    miss = db.query(CompanyLogo).filter_by(company_key="no logo").one()
+    assert miss.status == "miss" and miss.next_retry_at - miss.checked_at < datetime.timedelta(days=2)
+
+
+def test_reharvest_rejects_the_site_a_homepage_pick_came_from(catalogue):
+    db = catalogue
+    rows = [_row(db, f"https://x.test/fast-{i}", "Fast", S2.format("fast.com"), "fast.com") for i in range(2)]
+    logo_cache.store_logo(db, "Fast", FakeResult(_logo(b"netflix"), "homepage",
+                                                 "https://fast.com/assets/favicons/apple-icon-180x180.png",
+                                                 "fast.com"))
+    seen: list = []
+    lines: list[str] = []
+    _run(db, ["--timeout", "0.2", "--reharvest", "Fast"], _harvest(seen), lines)
+    assert [h.company for h in seen] == ["Fast"] and "fast.com" not in seen[0].domains
+    assert any("would reject its domain fast.com" in line for line in lines)
+
+    seen.clear()
+    lines.clear()
+    _run(db, ["--apply", "--timeout", "0.2", "--reharvest", "Fast"], _harvest(seen), lines)
+    assert "fast.com" not in seen[0].domains
+    assert any("demoted homepage" in line and "rejected its domain fast.com" in line for line in lines)
+    db.expire_all()
+    assert {(db.get(ScrapedJob, r.id).company_logo, db.get(ScrapedJob, r.id).company_domain)
+            for r in rows} == {("", "")}
+    assert db.query(CompanyLogo).filter_by(company_key="fast").one().rejected_domains == ["fast.com"]
 
 
 HOME = "https://www.acme.com/apple-touch-icon.png"

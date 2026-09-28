@@ -257,8 +257,7 @@ BYPASS_SVGS = {
     "css-font-face": _svg('<style>@font-face{font-family:x;src:local(Arial)}path{fill:red}</style>'
                           '<path d="M0 0h9v9z"/>'),
     "xml-base": _svg('<path d="M0 0h9v9z"/>', 'viewBox="0 0 100 100" xml:base="https://evil.example/"'),
-    "foreign-namespace-attribute": _svg('<path xmlns:ev="http://www.w3.org/2001/xml-events" ev:event="click" '
-                                        'd="M0 0h9v9z"/>'),
+    "xlink-attribute-off-the-allowlist": _svg('<path xlink:foo="x" d="M0 0h9v9z"/>'),
     "set-element": _svg('<path d="M0 0h9v9z"><set attributeName="fill" to="red"/></path>'),
     "unknown-svg-element": _svg('<blink/><path d="M0 0h9v9z"/>'),
     "utf16": _svg('<path d="M0 0h9v9z"/>').decode().encode("utf-16"),
@@ -318,6 +317,77 @@ def test_svg_is_stored_as_the_sanitized_tree_not_the_input():
     # Idempotent: the stored copy passes the sanitizer unchanged.
     again = normalize_logo(logo.data, "image/svg+xml")
     assert again is not None and again.data == logo.data
+
+
+_SQUARE = '<path d="M0 0h100v100H0z" fill="#123456"/>'
+# Ordinary editor exports: attributes in a namespace that is neither SVG's,
+# xlink nor xml can neither render nor run, so they are dropped, never fatal.
+FOREIGN_ATTRIBUTE_SVGS = {
+    "inkscape-osb-paint": _svg(
+        '<defs><linearGradient id="g" osb:paint="solid"><stop offset="0" stop-color="#123456"/>'
+        f'</linearGradient></defs>{_SQUARE}',
+        'viewBox="0 0 100 100" xmlns:osb="http://www.openswatchbook.org/uri/2009/osb"'),
+    "svgjs-data": _svg(f'<g svgjs:data="{{&quot;leading&quot;:&quot;1.3&quot;}}">{_SQUARE}</g>',
+                       'viewBox="0 0 100 100" xmlns:svgjs="http://svgjs.dev/svgjs"'),
+    "vectornator-layer": _svg(f'<g vectornator:layerName="Layer 1">{_SQUARE}</g>',
+                              'viewBox="0 0 100 100" xmlns:vectornator="http://vectornator.io"'),
+    "xml-events": _svg(f'<g ev:event="click">{_SQUARE}</g>',
+                       'viewBox="0 0 100 100" xmlns:ev="http://www.w3.org/2001/xml-events"'),
+}
+
+
+@pytest.mark.parametrize("raw", list(FOREIGN_ATTRIBUTE_SVGS.values()), ids=list(FOREIGN_ATTRIBUTE_SVGS))
+def test_svg_foreign_namespace_attributes_are_dropped_not_fatal(raw):
+    logo = normalize_logo(raw, "image/svg+xml")
+    assert logo is not None and (logo.width, logo.height) == (100, 100)
+    for gone in (b"osb", b"openswatchbook", b"svgjs", b"vectornator", b"layerName",
+                 b"xml-events", b"event", b"leading"):
+        assert gone not in logo.data
+    root = ET.fromstring(logo.data)
+    assert root.tag == "{http://www.w3.org/2000/svg}svg"
+    assert root.find(".//{http://www.w3.org/2000/svg}path").get("fill") == "#123456"
+    again = normalize_logo(logo.data, "image/svg+xml")  # the stored copy is stable
+    assert again is not None and again.data == logo.data
+
+
+def _declared(encoding: str, body: str, codec: str | None = None) -> bytes:
+    return (f'<?xml version="1.0" encoding="{encoding}"?>\n<!-- © 2014 Café Inc. -->\n'
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">{body}</svg>'
+            ).encode(codec or encoding)
+
+
+def test_svg_in_a_declared_single_byte_encoding_is_read_as_declared():
+    title = "<title>Café €</title>"
+    for encoding, codec, expected in (("ISO-8859-1", "latin-1", "Café"),
+                                      ("windows-1252", "cp1252", "Café €")):
+        body = (title if codec == "cp1252" else "<title>Café</title>") + _SQUARE
+        raw = _declared(encoding, body, codec)
+        with pytest.raises(UnicodeDecodeError):
+            raw.decode("utf-8")
+        logo = normalize_logo(raw, "image/svg+xml")
+        assert logo is not None, encoding
+        assert b"<?xml" not in logo.data and b"<!--" not in logo.data
+        root = ET.fromstring(logo.data)  # stored as UTF-8
+        assert root.find("{http://www.w3.org/2000/svg}title").text == expected
+        assert image_size(raw) == (100, 100)
+
+
+def test_svg_encoding_fallback_keeps_every_check():
+    # Not UTF-8 and nothing (or something other than a single-byte
+    # encoding) declared: unreadable, rejected.
+    undeclared = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+                  f'<title>Café</title>{_SQUARE}</svg>').encode("latin-1")
+    assert normalize_logo(undeclared, "image/svg+xml") is None
+    assert normalize_logo(_declared("Shift_JIS", _SQUARE, "latin-1"), "image/svg+xml") is None
+    # A declared single-byte file is held to the same rules as UTF-8.
+    assert normalize_logo(_declared("ISO-8859-1", '<script>alert(1)</script>' + _SQUARE, "latin-1"),
+                          "image/svg+xml") is None
+    entity = ('<?xml version="1.0" encoding="ISO-8859-1"?><!DOCTYPE svg [<!ENTITY a "é">]>'
+              '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 9"><text>&a;</text></svg>')
+    assert normalize_logo(entity.encode("latin-1"), "image/svg+xml") is None
+    pi = _declared("ISO-8859-1", _SQUARE, "latin-1").replace(
+        b"?>\n", b'?>\n<?xml-stylesheet href="https://evil.example/x.css"?>\n', 1)
+    assert normalize_logo(pi, "image/svg+xml") is None
 
 
 def test_svg_all_white_or_banner_rejected():

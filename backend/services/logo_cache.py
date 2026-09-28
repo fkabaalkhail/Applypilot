@@ -17,8 +17,9 @@ cache can never serve a stale one.
 
 Nothing a store replaces is lost: the real hotlinks propagation overwrites
 are kept on the record (prior_logo_urls), a re-harvest tries them first, and
-demote_logo undoes a wrong pick. A pick the cron made while LinkedIn was
-rate-limiting it is provisional until a later run had LinkedIn's answer.
+demote_logo undoes a wrong pick. A pick the cron made without LinkedIn's
+answer (rate-limited, or no answer at all) is provisional until a later run
+had it.
 
 Reads are column-only (Neon egress): logo bytes are only ever selected by the
 serving endpoint, one row at a time.
@@ -71,7 +72,7 @@ HARVEST_BUDGET_S = 150.0
 HARVEST_CONCURRENCY = 6
 HARVEST_MAX_COMPANIES = 150
 # Backstop only: the harvester's own cap (logo_harvester.HARVEST_TIME_CAP,
-# 30s) ends a slow company first, and that reads as a miss.
+# 30s) ends a slow company first, and that reads as a timeout too.
 HARVEST_PER_COMPANY_TIMEOUT_S = 45.0
 _REPROPAGATE_MAX_COMPANIES = 200
 _SUSPECT_DOMAINS_PER_COMPANY = 3
@@ -491,17 +492,21 @@ def record_miss(
     rejected_domains: Iterable[str] = (),
     names: list[str] | None = None,
     linkedin_skipped: bool = False,
+    linkedin_answered: bool = False,
 ) -> None:
     """Remember that nothing usable was found, and when to try again. Guessed
     domains proven bogus are cleared from the employer's rows (with the
     favicon URLs built from them) so the frontend stops rendering a parked
     domain's icon. Commits.
 
-    linkedin_skipped: LinkedIn was rate-limited before this employer's turn,
-    so the miss proves little and is retried after recheck_delay instead of
-    retry_delay. A stored logo is never demoted by a miss: a final one is
-    left alone; a provisional one is re-checked later again (LinkedIn
-    skipped) or becomes final (LinkedIn answered and had nothing better)."""
+    linkedin_skipped: LinkedIn never answered for this employer (rate-limited
+    before its turn, or no answer at all), so the miss proves little and is
+    retried after recheck_delay instead of retry_delay.
+    linkedin_answered: the harvest ran to the end and LinkedIn answered it.
+    A stored logo is never demoted by a miss: a final one is left alone; a
+    provisional one becomes final only on that confirmation (LinkedIn had
+    its say and nothing better), and is re-checked later otherwise (a
+    timeout, or LinkedIn skipped)."""
     key = company_key(company)
     if not key:
         return
@@ -517,7 +522,7 @@ def record_miss(
     if row is not None and row.status == STATUS_OK:
         if row.next_retry_at is None:
             return
-        if linkedin_skipped:
+        if linkedin_skipped or not linkedin_answered:
             attempts = (row.attempts or 0) + 1
             _upsert(db, key, {
                 "attempts": attempts, "checked_at": now,
@@ -544,16 +549,30 @@ def record_miss(
     })
     if not bogus:
         return
+    _forget_domains(db, company, names, bogus)
+    db.commit()
+
+
+def _forget_domains(db: Session, company: str, names: list[str] | None, domains: list[str]) -> None:
+    """Clear these domains from the employer's rows, with the favicon URLs
+    built from them, so the frontend stops rendering that site's icon. No
+    commit."""
     # '' rather than NULL: ScrapedJobOut.company_domain is a plain str.
     for chunk in _chunks(_names_for(db, company, names)):
         rows = db.query(ScrapedJob).filter(
-            ScrapedJob.company.in_(chunk), ScrapedJob.company_domain.in_(bogus)
+            ScrapedJob.company.in_(chunk), ScrapedJob.company_domain.in_(domains)
         )
         rows.filter(
             or_(*[ScrapedJob.company_logo.like(f"%{m}%") for m in _GENERATED_LOGO_MARKERS])
         ).update({"company_logo": ""}, synchronize_session=False)
         rows.update({"company_domain": ""}, synchronize_session=False)
-    db.commit()
+
+
+# Sources whose pick the verified domain itself chose (its homepage icons,
+# the Wikidata entity whose official website it is, its s2 favicon). When
+# such a pick is wrong, so is the domain (fast.com for 'Fast'): another icon
+# from the same site would come back on the next harvest.
+_DOMAIN_SOURCES = frozenset({"homepage", "wikidata", "s2"})
 
 
 def demote_logo(
@@ -563,15 +582,19 @@ def demote_logo(
     with its verified domain forgotten and its image blocked for good (the
     harvester skips any candidate that normalizes to it); rows still showing
     it get back the first real hotlink it replaced, or '' when it replaced
-    none (the endpoint stops serving a demoted image). The next harvest
-    tries the remembered hotlinks first. Returns what was done (with
-    dry_run: what would be), None when nothing is stored for the company.
-    Commits, except with dry_run."""
+    none (the endpoint stops serving a demoted image). A pick its verified
+    domain chose (_DOMAIN_SOURCES) also rejects that domain: no harvest
+    tries it again, and it is cleared from the employer's rows with the
+    favicon URLs built from it. The next harvest tries the remembered
+    hotlinks first. Returns what was done (with dry_run: what would be),
+    None when nothing is stored for the company. Commits, except with
+    dry_run."""
     key = company_key(company)
     record = (
         db.query(
             CompanyLogo.status, CompanyLogo.sha, CompanyLogo.fmt, CompanyLogo.source,
             CompanyLogo.source_url, CompanyLogo.prior_logo_urls, CompanyLogo.blocked_shas,
+            CompanyLogo.domain, CompanyLogo.rejected_domains,
         )
         .filter(CompanyLogo.company_key == key)
         .first()
@@ -581,6 +604,9 @@ def demote_logo(
     path = logo_path(record.sha, record.fmt or "png")
     prior = [u for u in (record.prior_logo_urls or []) if logo_quality(u) > 0]
     restore = prior[0] if prior else ""
+    wrong_domain = (
+        (record.domain or "").strip().lower() if record.source in _DOMAIN_SOURCES else ""
+    )
     rows = 0
     for chunk in _chunks(_names_for(db, company, names)):
         showing = db.query(ScrapedJob).filter(
@@ -592,7 +618,7 @@ def demote_logo(
             rows += showing.update({"company_logo": restore}, synchronize_session=False)
     if not dry_run:
         now = _now()
-        db.query(CompanyLogo).filter(CompanyLogo.company_key == key).update({
+        fields = {
             "status": STATUS_MISS,
             "attempts": 0,
             "domain": None,
@@ -600,7 +626,13 @@ def demote_logo(
             "blocked_shas": sorted(set(record.blocked_shas or ()) | {record.sha}),
             "checked_at": now,
             "updated_at": now,
-        }, synchronize_session=False)
+        }
+        if wrong_domain:
+            fields["rejected_domains"] = sorted(set(record.rejected_domains or ()) | {wrong_domain})
+            _forget_domains(db, company, names, [wrong_domain])
+        db.query(CompanyLogo).filter(CompanyLogo.company_key == key).update(
+            fields, synchronize_session=False
+        )
         db.commit()
     return {
         "key": key,
@@ -609,6 +641,7 @@ def demote_logo(
         "source_url": record.source_url or "",
         "restored_to": restore,
         "rows": rows,
+        "rejected_domain": wrong_domain,
     }
 
 
@@ -851,6 +884,9 @@ class HarvestOutcome(NamedTuple):
     status: str
     result: object  # a logo_harvester.HarvestResult when ok/provisional
     bogus: list[str]  # name-guessed domains proven bogus on a miss
+    # The harvest needed LinkedIn and it never answered (the harvester's
+    # HarvestReport): as good as finishing after a LinkedIn block.
+    linkedin_missing: bool = False
 
 
 class _Record(NamedTuple):
@@ -862,6 +898,7 @@ class _Record(NamedTuple):
     prior: tuple = ()
     blocked: frozenset = frozenset()
     sha: str = ""
+    source: str = ""
 
     @property
     def provisional(self) -> bool:
@@ -976,18 +1013,19 @@ def _pick_companies(
     records: dict[str, _Record] = {}
     # Without the table (a dry run before the deploy) nothing is stored yet.
     for chunk in _chunks(sorted(counts) if has_store else []):
-        for key, status, next_retry_at, domain, rejected, prior, blocked, sha in (
+        for key, status, next_retry_at, domain, rejected, prior, blocked, sha, source in (
             db.query(
                 CompanyLogo.company_key, CompanyLogo.status, CompanyLogo.next_retry_at,
                 CompanyLogo.domain, CompanyLogo.rejected_domains,
                 CompanyLogo.prior_logo_urls, CompanyLogo.blocked_shas, CompanyLogo.sha,
+                CompanyLogo.source,
             )
             .filter(CompanyLogo.company_key.in_(chunk))
             .all()
         ):
             records[key] = _Record(
                 status, next_retry_at, domain or "", frozenset(rejected or ()),
-                tuple(prior or ()), frozenset(blocked or ()), sha or "",
+                tuple(prior or ()), frozenset(blocked or ()), sha or "", source or "",
             )
 
     now = _now()
@@ -1025,7 +1063,9 @@ def _build_plans(
     the hotlinks an earlier store replaced on its rows (prior_logo_urls)
     first, then the employer's own rows, then its longer name's ('Magna
     International' rows for 'Magna'). Demoted images are passed as
-    blocked_shas; a forced (re-harvested) employer's current one too."""
+    blocked_shas; a forced (re-harvested) employer is planned as if
+    demote_logo had run: its current image blocked too, and the domain a
+    domain-chosen pick came from rejected."""
     force = force or set()
     scope = {key: names_by_key.get(key) or [display] for key, display, _rows in picked}
     all_names = sorted({name for names in scope.values() for name in names})
@@ -1090,6 +1130,11 @@ def _build_plans(
         names = scope[key]
         record = records.get(key, _Record())
         verified, rejected = record.domain, record.rejected
+        blocked = set(record.blocked)
+        if key in force and record.status == STATUS_OK and record.sha:
+            blocked.add(record.sha)  # a re-harvest must not land on the same image
+            if record.source in _DOMAIN_SOURCES and verified:
+                rejected, verified = rejected | {verified}, ""  # nor on the same site
         guesses = {domain_from_name(n) for n in names} | {domain_from_name(display)}
         guesses.discard(None)
         aliases = accepted.get(key, [])
@@ -1140,9 +1185,6 @@ def _build_plans(
         ][:_PRIOR_SEEDS]
         own = [u for u in seeds.get(key, []) if u not in prior]
         existing = prior + own + [u for u in borrowed if u not in prior and u not in own][:_ALIAS_SEEDS]
-        blocked = set(record.blocked)
-        if key in force and record.status == STATUS_OK and record.sha:
-            blocked.add(record.sha)  # a re-harvest must not land on the same image
 
         trusted_here = {registry.get(key), verified, curated_domain(display)} | {
             domain_from_url(url) for name in names for url in company_urls.get(name, [])
@@ -1190,7 +1232,8 @@ def plan_harvest(
     `only` takes company names; has_store=False plans against a database
     whose company_logos table does not exist yet (a dry run). `reharvest`
     names are planned as if demote_logo had run: due whatever is stored,
-    and never landing on their current image."""
+    and never landing on their current image, nor on the site a
+    domain-chosen pick came from."""
     keys = {company_key(name) for name in only} - {""} if only is not None else None
     force = {company_key(name) for name in reharvest} - {""}
     picked, records = _pick_companies(
@@ -1218,7 +1261,14 @@ async def run_harvest(
     bounded concurrency inside a wall-clock budget, and on a miss test the
     employer's guessed domains for proof they are bogus. `harvest` is
     logo_harvester.harvest_company_logo (or a stand-in); `on_done` is called
-    with each outcome as it lands (progress output)."""
+    with each outcome as it lands (progress output).
+
+    Each harvest runs with its own logo_harvester.HarvestReport: a company
+    the harvester's own time cap ended is a 'timeout' (not a miss), and an
+    outcome LinkedIn never answered carries linkedin_missing. A stand-in
+    that ignores the report reads as a complete harvest."""
+    from backend.services.logo_harvester import HarvestReport, harvest_report
+
     loop = asyncio.get_running_loop()
     deadline = loop.time() + budget_s
     semaphore = asyncio.Semaphore(concurrency)
@@ -1229,6 +1279,9 @@ async def run_harvest(
             if remaining <= 1:
                 return HarvestOutcome(plan, "skipped", None, [])
             cut_by_budget = remaining < per_company_timeout
+            # Set in this plan's own task: concurrent harvests never share one.
+            report = HarvestReport()
+            token = harvest_report.set(report)
             try:
                 result = await asyncio.wait_for(
                     harvest(client, plan.hints),
@@ -1236,12 +1289,16 @@ async def run_harvest(
                 )
             except asyncio.TimeoutError:
                 # The run ran out (skipped, retried next run), or the company did.
-                return HarvestOutcome(plan, "skipped" if cut_by_budget else "timeout", None, [])
+                status = "skipped" if cut_by_budget else "timeout"
+                return HarvestOutcome(plan, status, None, [], report.linkedin_missing)
             except Exception:
                 logger.exception("logo harvest failed for %r", plan.display)
                 return HarvestOutcome(plan, "error", None, [])
+            finally:
+                harvest_report.reset(token)
+            missing = report.linkedin_missing
             if result is not None and getattr(result, "logo", None) is not None:
-                return HarvestOutcome(plan, "ok", result, [])
+                return HarvestOutcome(plan, "ok", result, [], missing)
             bogus = []
             for domain in plan.suspect_domains:
                 if deadline - loop.time() <= 0:
@@ -1251,7 +1308,9 @@ async def run_harvest(
                         bogus.append(domain)
                 except Exception:
                     continue
-            return HarvestOutcome(plan, "miss", None, bogus)
+            # A harvest its own cap ended never saw the rest of the cascade.
+            status = "timeout" if report.timed_out else "miss"
+            return HarvestOutcome(plan, status, None, bogus, missing)
 
     async def tracked(plan: _Plan) -> HarvestOutcome:
         outcome = await attempt(plan)
@@ -1288,18 +1347,25 @@ _FINAL_AFTER_LINKEDIN_BLOCK = ("existing", "linkedin_job", "linkedin_search")
 def after_linkedin_block(
     outcomes: Iterable[HarvestOutcome], finished: dict[str, float], blocked_at: float | None
 ) -> list[HarvestOutcome]:
-    """Outcomes that finished once LinkedIn was given up on for the run
-    (the harvester's gate time `blocked_at`; `finished` maps plan keys to
-    time.monotonic() at completion) never had LinkedIn's say, and LinkedIn
-    is the best source. A homepage/Wikidata/s2 pick becomes 'provisional'
-    (stored and shown, re-checked after recheck_delay); a miss or a timeout
-    becomes 'retry' (retried after recheck_delay, not the 14-day step).
-    Existing, LinkedIn and ATS-board picks, and anything that finished
-    earlier, stand. Nothing is dropped: dropping would re-harvest the same
-    busiest employers on every run while LinkedIn keeps refusing."""
+    """Outcomes that never had LinkedIn's say, and LinkedIn is the best
+    source: those that finished once LinkedIn was given up on for the run
+    (the harvester's gate time `blocked_at`, None when it never was;
+    `finished` maps plan keys to time.monotonic() at completion), and those
+    whose harvest needed LinkedIn and got no answer (linkedin_missing: a
+    tarpit or errors, which never trip the gate). A homepage/Wikidata/s2
+    pick becomes 'provisional' (stored and shown, re-checked after
+    recheck_delay); a miss or a timeout becomes 'retry' (retried after
+    recheck_delay, not the 14-day step). Existing, LinkedIn and ATS-board
+    picks, and anything else, stand. Nothing is dropped: dropping would
+    re-harvest the same busiest employers on every run while LinkedIn keeps
+    refusing."""
     out: list[HarvestOutcome] = []
     for outcome in outcomes:
-        if blocked_at is None or finished.get(outcome.plan.key, float("-inf")) < blocked_at:
+        after_block = (
+            blocked_at is not None
+            and finished.get(outcome.plan.key, float("-inf")) >= blocked_at
+        )
+        if not (after_block or outcome.linkedin_missing):
             out.append(outcome)
         elif outcome.status == "ok":
             source = getattr(outcome.result, "source", "") or ""
@@ -1321,10 +1387,12 @@ def apply_outcomes(
 ) -> None:
     """Write harvest outcomes, one at a time (the Session is not task safe):
     store + propagate each hit (provisionally for 'provisional'), record
-    each miss with its backoff (short for 'retry') and its proven-bogus
-    domains. A company that ran out of time is recorded as a miss only with
-    record_timeouts (the cron; the backfill retries it on the next run
-    instead). Budget skips are never recorded."""
+    each miss with its backoff (short for 'retry' or when LinkedIn never
+    answered) and its proven-bogus domains. A company that ran out of time
+    is recorded as a miss only with record_timeouts (the cron; the backfill
+    retries it on the next run instead). Only a complete harvest LinkedIn
+    answered (a plain 'miss') makes a provisional logo final: a timeout is
+    no proof that nothing better exists. Budget skips are never recorded."""
     for outcome in outcomes:
         plan = outcome.plan
         if outcome.status == "skipped":
@@ -1349,9 +1417,10 @@ def apply_outcomes(
                     stats["provisional"] += provisional
                     stats["rows_updated"] += replaced
                     continue
-            skipped = outcome.status == "retry"
+            skipped = outcome.status == "retry" or outcome.linkedin_missing
             record_miss(db, plan.display, rejected_domains=outcome.bogus, names=plan.names,
-                        linkedin_skipped=skipped)
+                        linkedin_skipped=skipped,
+                        linkedin_answered=outcome.status == "miss" and not skipped)
             stats["missed"] += 1
             stats["linkedin_deferred"] += skipped
             stats["domains_rejected"] += len(outcome.bogus)
@@ -1376,13 +1445,15 @@ async def harvest_missing_logos(
     happens afterwards, sequentially (the Session is not task safe).
 
     The harvester's own per-company cap (logo_harvester.HARVEST_TIME_CAP)
-    ends a slow company first and reads as a miss here (retried after the
-    backoff); HARVEST_PER_COMPANY_TIMEOUT_S is the backstop around it.
+    ends a slow company first and reads as a timeout here (retried after the
+    backoff, never making a provisional logo final);
+    HARVEST_PER_COMPANY_TIMEOUT_S is the backstop around it.
 
     A LinkedIn 429 makes the harvester skip LinkedIn for the rest of the run
-    (LINKEDIN_BLOCK_COOLDOWN is None here); what finished after that is
-    written through after_linkedin_block, so no lower-tier pick is final
-    before LinkedIn had its say."""
+    (LINKEDIN_BLOCK_COOLDOWN is None here); what finished after that, and
+    whatever LinkedIn never answered without a 429, is written through
+    after_linkedin_block, so no lower-tier pick is final before LinkedIn
+    had its say."""
     stats = new_harvest_stats()
     try:
         from backend.services.logo_harvester import (
@@ -1418,7 +1489,7 @@ async def harvest_missing_logos(
         on_done=mark,
     )
     linkedin = linkedin_stats(client)
-    if linkedin["blocked"]:
-        outcomes = after_linkedin_block(outcomes, finished, linkedin["blocked_at"])
+    blocked_at = linkedin["blocked_at"] if linkedin["blocked"] else None
+    outcomes = after_linkedin_block(outcomes, finished, blocked_at)
     apply_outcomes(db, outcomes, stats)
     return stats

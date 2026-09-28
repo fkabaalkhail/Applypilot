@@ -416,6 +416,22 @@ def test_after_linkedin_block_keeps_what_finished_before_it():
     assert logo_cache.after_linkedin_block(outcomes, finished, None) == outcomes
 
 
+def test_after_linkedin_block_covers_harvests_linkedin_never_answered():
+    """No 429 ever tripped the gate (blocked_at None), but LinkedIn gave
+    these harvests no answer (a tarpit, errors): same rule."""
+    def outcome(key, status, source=None, missing=True):
+        plan = logo_cache._Plan(key=key, display=key, names=[key], hints=None)
+        result = FakeResult(_fake_logo(), source=source) if source else None
+        return logo_cache.HarvestOutcome(plan, status, result, [], missing)
+
+    outcomes = [outcome("home", "ok", "homepage"), outcome("ats", "ok", "ats_lever"),
+                outcome("gone", "miss"), outcome("slow", "timeout"),
+                outcome("answered", "miss", missing=False), outcome("capped", "timeout", missing=False)]
+    got = {o.plan.key: o.status for o in logo_cache.after_linkedin_block(outcomes, {}, None)}
+    assert got == {"home": "provisional", "ats": "ok", "gone": "retry", "slow": "retry",
+                   "answered": "miss", "capped": "timeout"}
+
+
 def test_backfill_without_the_harvester_contract_still_succeeds(client, db_session, monkeypatch):
     _mk(db_session, "https://x.test/nh-1")
     monkeypatch.delattr(logo_harvester, "harvest_company_logo", raising=False)

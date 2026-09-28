@@ -260,9 +260,10 @@ _SVG_ELEMENTS = frozenset({
     "fegaussianblur", "femerge", "femergenode", "femorphology", "feoffset",
     "fepointlight", "fespecularlighting", "fespotlight", "fetile", "feturbulence",
 })
-# Editor bookkeeping that never renders (Inkscape, Sodipodi, RDF metadata,
-# Illustrator, Sketch, Serif, Figma): dropped from the stored copy, elements
-# and attributes alike, as is <metadata>.
+# Editor bookkeeping elements that never render (Inkscape, Sodipodi, RDF
+# metadata, Illustrator, Sketch, Serif, Figma): dropped from the stored copy,
+# as is <metadata>. Any other element outside the SVG namespace rejects the
+# file.
 _EDITOR_NAMESPACES = frozenset({
     "http://www.inkscape.org/namespaces/inkscape",
     "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd",
@@ -280,7 +281,11 @@ _EDITOR_NAMESPACES = frozenset({
     "http://www.figma.com/figma/ns",
 })
 # Attribute namespaces kept: none, a few xlink ones, xml:space/lang (never
-# xml:base). Any other namespace rejects the file.
+# xml:base: any other xlink or xml attribute rejects the file). An attribute
+# in any other namespace (editor bookkeeping: Inkscape's osb:paint,
+# svgjs:data, vectornator:layerName) can neither render nor run, since event
+# handlers and presentation attributes have no namespace: it is dropped from
+# the stored copy.
 _ATTR_NAMESPACES = {
     "": frozenset(),
     _XLINK_NS: frozenset({"href", "title", "type", "role", "arcrole", "show", "actuate"}),
@@ -288,6 +293,16 @@ _ATTR_NAMESPACES = {
 }
 # An internal DTD subset declares entities or default attributes.
 _DTD_SUBSET = re.compile(r"<!DOCTYPE[^>]*\[", re.IGNORECASE)
+# Single-byte encodings an SVG that is not UTF-8 may declare (older editor
+# exports with a (c) or accented name in a comment or title): every byte is
+# one character, so no byte sequence can hide markup from the checks, and
+# the stored copy is serialized as UTF-8 from the very text inspected.
+_XML_ENCODING = re.compile(
+    rb"\A[ \t\r\n]*<\?xml[^>]*?\bencoding\s*=\s*[\"']([A-Za-z0-9._-]+)[\"']"
+)
+_SINGLE_BYTE_ENCODINGS = frozenset({
+    "iso-8859-1", "latin-1", "latin1", "windows-1252", "cp1252", "us-ascii",
+})
 _CSS_URL = re.compile(r"url\(\s*['\"]?\s*([^'\")\s]+)", re.IGNORECASE)
 _RASTER_DATA_URI = re.compile(r"data:image/(?:png|jpe?g|gif|webp);base64,", re.IGNORECASE)
 # CSS that can fetch, or hide a fetch from the url() check: escapes (u\72l(
@@ -356,17 +371,35 @@ class _SvgTarget:
         return self._builder.close()
 
 
-def _parse_svg(raw: bytes) -> ET.Element | None:
-    """The root <svg> element, or None: too big, not UTF-8, a DTD internal
-    subset (entities, default attributes), a processing instruction, or not
-    an SVG document. The parser gets the text as decoded here, so an
-    encoding declaration cannot change what was inspected."""
-    if len(raw) > MAX_SVG_BYTES:
+def _decode_svg(raw: bytes) -> str | None:
+    """The document's text: UTF-8, else the single-byte encoding its XML
+    declaration names (_SINGLE_BYTE_ENCODINGS). None for anything else."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    declared = _XML_ENCODING.match(raw)
+    encoding = declared.group(1).decode("ascii").lower() if declared else ""
+    if encoding not in _SINGLE_BYTE_ENCODINGS:
         return None
     try:
-        text = raw.decode("utf-8").lstrip("\ufeff \t\r\n")
+        return raw.decode(encoding)
     except UnicodeDecodeError:
         return None
+
+
+def _parse_svg(raw: bytes) -> ET.Element | None:
+    """The root <svg> element, or None: too big, neither UTF-8 nor a
+    declared single-byte encoding, a DTD internal subset (entities, default
+    attributes), a processing instruction, or not an SVG document. The
+    parser gets the text as decoded here, so an encoding declaration cannot
+    change what was inspected."""
+    if len(raw) > MAX_SVG_BYTES:
+        return None
+    text = _decode_svg(raw)
+    if text is None:
+        return None
+    text = text.lstrip("\ufeff \t\r\n")
     if _DTD_SUBSET.search(text) or "<!ENTITY" in text.upper():
         return None
     target = _SvgTarget()
@@ -413,9 +446,9 @@ def _hex_luma(color: str) -> int | None:
 
 def _sanitize_svg(root: ET.Element) -> bool:
     """Prepare the tree the stored copy is serialized from: editor
-    bookkeeping is removed in place. False when anything left is not an
-    allowlisted SVG element or attribute, or could run code or fetch a
-    resource."""
+    bookkeeping elements and attributes in foreign namespaces are removed
+    in place. False when anything left is not an allowlisted SVG element or
+    attribute, or could run code or fetch a resource."""
     for parent in list(root.iter()):
         for child in list(parent):
             if (_namespace(child.tag) in _EDITOR_NAMESPACES
@@ -427,12 +460,10 @@ def _sanitize_svg(root: ET.Element) -> bool:
         tag = _local(el.tag)
         for name in list(el.attrib):
             namespace, attr, value = _namespace(name), _local(name), el.attrib[name]
-            if namespace in _EDITOR_NAMESPACES:
+            if namespace not in _ATTR_NAMESPACES:
                 del el.attrib[name]
                 continue
-            if namespace not in _ATTR_NAMESPACES or (
-                namespace and attr not in _ATTR_NAMESPACES[namespace]
-            ):
+            if namespace and attr not in _ATTR_NAMESPACES[namespace]:
                 return False
             squeezed = _CONTROL_OR_SPACE.sub("", value).lower()
             if attr.startswith("on") or "javascript:" in squeezed or "vbscript:" in squeezed:
