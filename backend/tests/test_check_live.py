@@ -659,3 +659,18 @@ class TestFetchDetailsLiveness:
 
         assert (body["dead"], body["listing_status"]) == (True, "expired")
         assert body["apply_url"] == job.url
+
+
+def test_linkedin_logo_needs_a_usable_company_name():
+    """A blank or placeholder company has nothing to match the alt text
+    against, so no image on the page (possibly another employer's card after
+    an expired-job redirect) may be taken as its logo."""
+    from backend.routers.jobs import _linkedin_company_logo
+
+    licdn = ("https://media.licdn.com/dms/image/v2/C4E0BAQ/company-logo_100_100/0/1?"
+             "e=2147483647&amp;v=beta&amp;t=abc")
+    page = (f'<html><body><img class="artdeco-entity-image" '
+            f'data-delayed-url="{licdn}" alt="Initech"></body></html>')
+    assert _linkedin_company_logo(page, "") == ""
+    assert _linkedin_company_logo(page, "nan") == ""
+    assert _linkedin_company_logo(page, "Initech").startswith("https://media.licdn.com/")

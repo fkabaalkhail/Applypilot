@@ -1227,9 +1227,13 @@ def _linkedin_company_logo(page: str, company: str) -> str:
     shape (a search list after an expired-job redirect shows dozens of other
     employers' logos) must not lend its first image to this company."""
     wanted = company_key(company)
+    if not wanted:
+        # No usable name (blank or a placeholder like 'nan'): nothing to
+        # match the alt text against, so no image can be proven ours.
+        return ""
     for tag in _LINKEDIN_LOGO_TAG_RE.findall(page):
         alt = _IMG_ALT_RE.search(tag)
-        if wanted and company_key(html.unescape(alt.group(1)) if alt else "") != wanted:
+        if company_key(html.unescape(alt.group(1)) if alt else "") != wanted:
             continue
         for raw in _IMG_URL_ATTR_RE.findall(tag):
             url = html.unescape(raw)

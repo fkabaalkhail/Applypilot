@@ -104,9 +104,12 @@ def run_migration(engine=None) -> None:
             conn.execute(text(ddl))
             logger.info("Created company_logos.")
         else:
+            # The inspection ran before the advisory lock, so on Postgres a
+            # concurrent cold start may have added the column since.
+            add = "ADD COLUMN" if _is_sqlite(engine) else "ADD COLUMN IF NOT EXISTS"
             for column, kind in _ADDED_COLUMNS.items():
                 if column not in existing:
-                    conn.execute(text(f"ALTER TABLE company_logos ADD COLUMN {column} {kind}"))
+                    conn.execute(text(f"ALTER TABLE company_logos {add} {column} {kind}"))
                     logger.info("Added company_logos.%s.", column)
         for index in _INDEXES:
             conn.execute(text(index))
