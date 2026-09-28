@@ -893,6 +893,7 @@ def list_applications(
             out.company_logo = job.company_logo
             out.company_domain = job.company_domain
             out.company_url = job.company_url
+            out.listing_status = job.listing_status
         results.append(out)
     return results
 

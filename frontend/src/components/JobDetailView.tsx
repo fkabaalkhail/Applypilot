@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import CompanyLogo from "./CompanyLogo";
 import { displayLocation } from "../lib/jobLocation";
 import { getPrimaryResumeText, skillCovered } from "../lib/resumeCoverage";
 import {
   checkListingLive,
+  handleApplyLinkClick,
   isListingClosed,
   listingStatusFromLiveCheck,
   postedAgo,
@@ -263,6 +264,10 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
   // listing_status from the click-time live check; null until it answers.
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const { registerApplyClick } = useApplyTracking();
+  // The job on screen. The parent reuses this panel across jobs, so a request
+  // started for an earlier job must not write its answer onto this one.
+  const activeJobIdRef = useRef(job.id);
+  activeJobIdRef.current = job.id;
 
   // Primary resume text (session-cached) powers the qualification-tag
   // coverage highlighting; no resume just means neutral tags.
@@ -285,6 +290,10 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
     setBreakdown(null);
     setError("");
     setStructured(null);
+    // A previous job's fetch or analysis may still be running; its spinner
+    // is not this job's.
+    setFetchingDetails(false);
+    setLoading(false);
 
     if (job.description && job.description.length > 50) {
       const parsed = parseDescriptionClientSide(job.description);
@@ -339,8 +348,9 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
   }, [job.id]);
 
   // Click-time liveness: re-verify the listing against its source in the
-  // background (once per job per session). Apply stays usable while it runs;
-  // a dead answer switches the panel to the closed state.
+  // background (once per job per session). Apply stays usable while it runs
+  // (a click waits briefly for the answer, see onApplyClick); a dead answer
+  // switches the panel to the closed state.
   useEffect(() => {
     let cancelled = false;
     setLiveStatus(null);
@@ -365,16 +375,20 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
 
   async function fetchJobDetails(): Promise<string> {
     if (job.description && job.description.length > 50) return job.description;
+    const requestedId = job.id;
+    const stillOnScreen = () => activeJobIdRef.current === requestedId;
     setFetchingDetails(true);
     try {
-      const { data } = await api.post(`/jobs/${job.id}/fetch-details`);
+      const { data } = await api.post(`/jobs/${requestedId}/fetch-details`);
       // The fetch found the posting closed (404, error landing, closed
       // notice): the backend already marked it removed, so show it closed.
+      // The feed hears about it even when another job is on screen now.
       if (data.dead) {
         const status = data.listing_status || "removed";
-        setLiveStatus(status);
-        onListingStatusChange?.(job.id, status);
+        onListingStatusChange?.(requestedId, status);
+        if (stillOnScreen()) setLiveStatus(status);
       }
+      if (!stillOnScreen()) return "";
       if (data.apply_url) setApplyUrl(data.apply_url);
       if (data.description) setDescription(data.description);
       if (data.company_logo) setCompanyLogo(data.company_logo);
@@ -382,18 +396,21 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
     } catch {
       // Keep original URL if fetch fails
     } finally {
-      setFetchingDetails(false);
+      if (stillOnScreen()) setFetchingDetails(false);
     }
     return "";
   }
 
   async function triggerAnalysis() {
+    const requestedId = job.id;
+    const stillOnScreen = () => activeJobIdRef.current === requestedId;
     setLoading(true);
     setError("");
     try {
-      const { data } = await api.post<MatchBreakdown>(`/ai/match-breakdown/${job.id}`);
-      setBreakdown(data);
+      const { data } = await api.post<MatchBreakdown>(`/ai/match-breakdown/${requestedId}`);
+      if (stillOnScreen()) setBreakdown(data);
     } catch (err: unknown) {
+      if (!stillOnScreen()) return;
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 503) {
         setError("AI analysis unavailable. Connect Gemini or Ollama to enable match scoring.");
@@ -405,8 +422,21 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
         setError("Failed to connect to the server.");
       }
     } finally {
-      setLoading(false);
+      if (stillOnScreen()) setLoading(false);
     }
+  }
+
+  // Apply while the live check is still out waits briefly for it, so a dead
+  // listing closes here instead of opening its dead link.
+  function onApplyClick(event: Parameters<typeof handleApplyLinkClick>[0]) {
+    const requestedId = job.id;
+    const url = applyUrl;
+    handleApplyLinkClick(event, requestedId, url, {
+      onOpened: () => registerApplyClick({ id: requestedId, title: job.title, company: job.company, url }),
+      onClosed: (status) => {
+        if (activeJobIdRef.current === requestedId) setLiveStatus(status);
+      },
+    });
   }
 
   const closed = isListingClosed(liveStatus ?? job.listing_status);
@@ -517,7 +547,7 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-apply-detail"
-                onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
+                onClick={onApplyClick}
               >
                 <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
               </a>
@@ -526,7 +556,7 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-outline-detail"
-                onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
+                onClick={onApplyClick}
               >
                 <ArrowSquareOut size={16} weight="bold" /> View Original Post
               </a>
@@ -631,7 +661,7 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
                     rel="noopener noreferrer"
                     className="btn-outline-detail"
                     style={{ marginTop: 12 }}
-                    onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
+                    onClick={onApplyClick}
                   >
                     <ArrowSquareOut size={16} weight="bold" /> View Original Post
                   </a>

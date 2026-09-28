@@ -22,6 +22,9 @@ class ApplicationOut(BaseModel):
     company_logo: Optional[str] = None
     company_domain: Optional[str] = None
     company_url: Optional[str] = None
+    # Lifecycle of the linked listing (active | stale | removed | expired);
+    # None when the application is not linked to a listing we track.
+    listing_status: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

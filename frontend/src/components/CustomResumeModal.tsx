@@ -24,6 +24,8 @@ export interface AIJob {
   title: string;
   company: string;
   url: string;
+  /** The posting no longer accepts applications: never offer its dead link. */
+  closed?: boolean;
 }
 
 export interface AttachFile {
@@ -692,6 +694,10 @@ export default function CustomResumeModal({
   }
 
   function renderFooter() {
+    // A closed posting's link is dead (or lands on a careers home page).
+    const applyNow = job.closed
+      ? <button className="ai-btn ai-btn-primary" disabled>Posting closed</button>
+      : <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>;
     if (step === 1) {
       return (
         <div className="ai-modal-foot">
@@ -727,7 +733,7 @@ export default function CustomResumeModal({
           <button className="ai-btn ai-btn-soft" onClick={downloadDocxFile} disabled={!rewrite}>Download DOCX</button>
           {onAttach
             ? <button className="ai-btn ai-btn-primary" onClick={() => void onAttach()} disabled={!rewrite}>Attach to application</button>
-            : <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>}
+            : applyNow}
         </div>
       );
     }
@@ -740,7 +746,7 @@ export default function CustomResumeModal({
         <button className="ai-btn ai-btn-soft" onClick={downloadDocxFile} disabled={!rewrite}>Download DOCX</button>
         {onAttach
           ? <button className="ai-btn ai-btn-primary" onClick={() => void onAttach()} disabled={!rewrite}>Attach to application</button>
-          : <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>}
+          : applyNow}
       </div>
     );
   }

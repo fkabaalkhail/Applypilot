@@ -55,6 +55,60 @@ describe("CustomResumeModal", () => {
     expect(screen.queryByRole("link", { name: /Apply Now/i })).toBeNull();
   });
 
+  it("never links a closed posting from the review footer", async () => {
+    get.mockResolvedValue({ data: [{ id: 3, name: "CV", is_primary: true }] });
+    const analyze = vi.fn().mockResolvedValue(analysis);
+    const rewrite = {
+      document: { header: {}, sections: [], theme: {} },
+      original_document: { header: {}, sections: [], theme: {} },
+      tailored_text: "t", original_text: "o", diff_summary: "",
+      original_overall_score: 60, new_overall_score: 75, new_ats_score: 70, new_keyword_coverage: 80,
+      version_id: null,
+    };
+    const generate = vi.fn().mockResolvedValue(rewrite);
+    render(
+      <CustomResumeModal
+        job={{ id: 9, title: "SWE", company: "Acme", url: "https://dead.example/9", closed: true }}
+        onClose={() => {}}
+        analyze={analyze}
+        generate={generate}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Improve My Resume/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Generate My New Resume/i }));
+    await waitFor(() => expect(generate).toHaveBeenCalled());
+    const closed = await screen.findByRole("button", { name: /Posting closed/i });
+    expect((closed as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("link", { name: /Apply Now/i })).toBeNull();
+    expect(document.querySelector("a[href='https://dead.example/9']")).toBeNull();
+  });
+
+  it("keeps Apply Now for an open posting", async () => {
+    get.mockResolvedValue({ data: [{ id: 3, name: "CV", is_primary: true }] });
+    const analyze = vi.fn().mockResolvedValue(analysis);
+    const rewrite = {
+      document: { header: {}, sections: [], theme: {} },
+      original_document: { header: {}, sections: [], theme: {} },
+      tailored_text: "t", original_text: "o", diff_summary: "",
+      original_overall_score: 60, new_overall_score: 75, new_ats_score: 70, new_keyword_coverage: 80,
+      version_id: null,
+    };
+    const generate = vi.fn().mockResolvedValue(rewrite);
+    render(
+      <CustomResumeModal
+        job={{ id: 9, title: "SWE", company: "Acme", url: "https://live.example/9" }}
+        onClose={() => {}}
+        analyze={analyze}
+        generate={generate}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Improve My Resume/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Generate My New Resume/i }));
+    const link = await screen.findByRole("link", { name: /Apply Now/i });
+    expect(link.getAttribute("href")).toBe("https://live.example/9");
+    expect(screen.queryByRole("button", { name: /Posting closed/i })).toBeNull();
+  });
+
   it("renders honest gaps and figures-to-verify at review", async () => {
     get.mockResolvedValue({ data: [{ id: 3, name: "CV", is_primary: true }] });
     const analyze = vi.fn().mockResolvedValue(analysis);

@@ -8,7 +8,7 @@ import { useApplyTracking } from "../context/ApplyTracking";
 import CompanyLogo from "../components/CompanyLogo";
 import { cleanCompanyName } from "../lib/companyLogo";
 import { displayLocation } from "../lib/jobLocation";
-import { isListingClosed, postedAgo } from "../lib/jobListing";
+import { handleApplyLinkClick, isListingClosed, postedAgo } from "../lib/jobListing";
 import {
   MagnifyingGlass,
   Sliders,
@@ -110,6 +110,12 @@ export default function Jobs() {
   // A selected job that is expected to be missing from the current page (a
   // deep link, or a listing the live check just closed): exempt from auto-close.
   const pinnedJobIdRef = useRef<number | null>(null);
+  // Current tab and selected job, for live-check answers that arrive after
+  // the render that asked for them.
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  const selectedJobIdRef = useRef<number | null>(null);
+  selectedJobIdRef.current = selectedJob?.id ?? null;
 
   const [filters] = useState<Filters>({
     source: "",
@@ -285,19 +291,52 @@ export default function Jobs() {
     }
   }
 
-  // The detail panel's live check found the listing's status changed.
-  function handleListingStatusChange(jobId: number, listingStatus: string) {
+  // A live check (the detail panel's, or an Apply click's) found the
+  // listing's status changed. Verdicts can land after the user has moved on to
+  // another job or tab, so this reads the current ones through refs, never
+  // from the render that started the check.
+  function handleListingStatusChange(
+    jobId: number,
+    listingStatus: string,
+    options: { keepInFeed?: boolean } = {},
+  ) {
     const closed = isListingClosed(listingStatus);
-    // The panel stays open on the closed state even as the row leaves the feed.
-    if (closed) pinnedJobIdRef.current = jobId;
+    // The panel stays open on the closed state even as the row leaves the
+    // feed, but only the job on screen may take the pin.
+    if (closed && selectedJobIdRef.current === jobId) pinnedJobIdRef.current = jobId;
     setSelectedJob((s) => (s && s.id === jobId ? { ...s, listing_status: listingStatus } : s));
     setJobs((prev) =>
       // A dead listing drops out of the feed; the Liked tab keeps saved jobs
-      // and shows them as closed instead.
-      closed && activeTab !== "Liked"
+      // and shows them as closed instead, and so does a card whose own Apply
+      // click just found it closed.
+      closed && activeTabRef.current !== "Liked" && !options.keepInFeed
         ? prev.filter((j) => j.id !== jobId)
         : prev.map((j) => (j.id === jobId ? { ...j, listing_status: listingStatus } : j))
     );
+    // An open AI modal for this job must stop offering its dead link.
+    const markClosed = (job: AIJob | null) =>
+      job && job.id === jobId ? { ...job, closed } : job;
+    setRewriteJob(markClosed);
+    setCoverJob(markClosed);
+  }
+
+  // Card Apply: a short live check first, so a dead listing never opens.
+  function onCardApplyClick(event: Parameters<typeof handleApplyLinkClick>[0], job: Job) {
+    handleApplyLinkClick(event, job.id, job.url, {
+      onOpened: () => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: job.url }),
+      // Keep the card where the user clicked it, now marked closed.
+      onClosed: (status) => handleListingStatusChange(job.id, status, { keepInFeed: true }),
+    });
+  }
+
+  function aiJob(job: Job): AIJob {
+    return {
+      id: job.id,
+      title: job.title,
+      company: job.company,
+      url: job.url,
+      closed: isListingClosed(job.listing_status),
+    };
   }
 
   const TABS = [
@@ -480,13 +519,13 @@ export default function Jobs() {
                     </button>
                     <button
                       className="btn-ai"
-                      onClick={(e) => { e.stopPropagation(); setRewriteJob({ id: job.id, title: job.title, company: job.company, url: job.url }); }}
+                      onClick={(e) => { e.stopPropagation(); setRewriteJob(aiJob(job)); }}
                     >
                       <MagicWand size={15} weight="fill" /> Custom Resume
                     </button>
                     <button
                       className="btn-ai"
-                      onClick={(e) => { e.stopPropagation(); setCoverJob({ id: job.id, title: job.title, company: job.company, url: job.url }); }}
+                      onClick={(e) => { e.stopPropagation(); setCoverJob(aiJob(job)); }}
                     >
                       <Envelope size={15} weight="fill" /> Cover Letter
                     </button>
@@ -501,7 +540,7 @@ export default function Jobs() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="btn-apply"
-                        onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: job.url })}
+                        onClick={(e) => onCardApplyClick(e, job)}
                       >
                         APPLY WITH AUTOFILL
                       </a>

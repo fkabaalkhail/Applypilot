@@ -101,6 +101,13 @@ export const MIN_NATURAL_WIDTH = 40;
 // unreadable strip inside a square tile.
 export const MAX_LOGO_ASPECT = 2.2;
 
+// A large image wider than 1.6:1 is social-share art (og:image is 1200x630,
+// 1.91:1; 16:9 and 2:1 heroes are common too), not a logo. Mirrors
+// backend/services/logo_image.py (BANNER_ASPECT, BANNER_MIN_WIDTH). Small wide
+// wordmarks, such as Wikimedia renders 330px wide, stay under the 2.2 cap.
+export const BANNER_ASPECT = 1.6;
+export const BANNER_MIN_WIDTH = 600;
+
 const PLAUSIBLE_DOMAIN = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i;
 
 function normalizeName(name: string): string {
@@ -162,8 +169,10 @@ export function isSelfHostedLogo(url?: string | null): boolean {
  */
 export function isUsableLogoImage(naturalWidth: number, naturalHeight: number): boolean {
   if (naturalWidth > 0 && naturalWidth < MIN_NATURAL_WIDTH) return false;
-  if (naturalWidth > 0 && naturalHeight > 0 && naturalWidth / naturalHeight > MAX_LOGO_ASPECT) {
-    return false;
+  if (naturalWidth > 0 && naturalHeight > 0) {
+    const aspect = naturalWidth / naturalHeight;
+    if (aspect > MAX_LOGO_ASPECT) return false;
+    if (naturalWidth >= BANNER_MIN_WIDTH && aspect > BANNER_ASPECT) return false;
   }
   return true;
 }
