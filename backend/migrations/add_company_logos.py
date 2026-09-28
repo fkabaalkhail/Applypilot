@@ -68,6 +68,15 @@ def _is_sqlite(engine) -> bool:
     return engine.dialect.name == "sqlite"
 
 
+# Postgres only. Every cold-starting lambda runs this at once on the first
+# deploy: lock waits are capped (a timed-out instance leaves the work to the
+# next cold start instead of stalling), and the instances take turns on an
+# advisory lock so IF NOT EXISTS turns the losers' DDL into no-ops; two
+# concurrent CREATE TABLE IF NOT EXISTS can still collide without it.
+LOCK_TIMEOUT = "5s"
+_ADVISORY_LOCK_KEY = 7_311_027_530_002  # arbitrary, unique to this migration
+
+
 def run_migration(engine=None) -> None:
     """Create company_logos and its indexes if missing, and add any column
     a table created before it existed lacks."""
@@ -80,12 +89,18 @@ def run_migration(engine=None) -> None:
     )
 
     with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            conn.execute(text(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT}'"))
+            conn.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _ADVISORY_LOCK_KEY})
         if "company_logos" not in tables:
             ddl = _TABLE_DDL
             if _is_sqlite(engine):
                 # SQLite (tests) has no SERIAL, BYTEA or NOW().
                 ddl = ddl.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
                 ddl = ddl.replace("BYTEA", "BLOB").replace("DEFAULT NOW()", "DEFAULT CURRENT_TIMESTAMP")
+            else:
+                # Another instance may have created it since we inspected.
+                ddl = ddl.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1)
             conn.execute(text(ddl))
             logger.info("Created company_logos.")
         else:

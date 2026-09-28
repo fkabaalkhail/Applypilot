@@ -239,3 +239,74 @@ class TestCronAtsUsesShard:
         assert resp.status_code == 200
         assert resp.json()["shard"]["index"] == 1
         assert sorted(scraped) == sorted(shard1)
+
+
+class TestCronAtsBudget:
+    """The crawl shares one request with the workflow's 300 s curl: no board
+    starts after the list budget, and the boards that had to wait go first
+    next time so the same tail can't be deferred run after run."""
+
+    @pytest.fixture
+    def cron(self, client, monkeypatch):
+        import backend.auth.dependencies as auth_deps
+        from backend.services.ats_scraper import ATSScraper, BoardSnapshot
+
+        monkeypatch.setattr(auth_deps, "CRON_SECRET", "test-cron-secret")
+        scraped: list[str] = []
+
+        async def fake_scrape_board(self, client, platform, slug, company_name):
+            scraped.append(slug)
+            return BoardSnapshot(platform=platform, slug=slug, company=company_name,
+                                 complete=True)
+
+        monkeypatch.setattr(ATSScraper, "scrape_board", fake_scrape_board)
+
+        def run():
+            resp = client.post(
+                "/github-sources/cron-ats",
+                headers={"x-cron-secret": "test-cron-secret"},
+            )
+            assert resp.status_code == 200, resp.text
+            return resp.json()
+
+        return run, scraped
+
+    def test_boards_past_the_budget_are_deferred_not_crawled(self, cron, db_session, monkeypatch):
+        from backend.data import company_registry
+        from backend.db.models import SourceHealth
+        from backend.services.ats_scraper import ATSScraper
+
+        run, scraped = cron
+        companies = _fake_companies(5)
+        monkeypatch.setattr(company_registry, "load_companies", lambda **kw: companies)
+        monkeypatch.setattr(ATSScraper, "_out_of_time", lambda self: True)
+
+        data = run()
+
+        assert scraped == []
+        assert data["boards_deferred"] == 5
+        assert data["boards_failed"] == 0
+        # No success stamp: a deferred board must not read as crawled.
+        assert db_session.query(SourceHealth).count() == 0
+
+    def test_least_recently_crawled_boards_start_first(self, cron, db_session, monkeypatch):
+        from backend.data import company_registry
+        from backend.db.models import SourceHealth
+
+        run, scraped = cron
+        companies = _fake_companies(4)
+        monkeypatch.setattr(company_registry, "load_companies", lambda **kw: companies)
+        now = datetime.datetime.utcnow()
+        for slug, age_hours in (("board-0", 1), ("board-2", 30), ("board-3", 5)):
+            db_session.add(SourceHealth(
+                board_key=f"greenhouse:{slug}", platform="greenhouse", slug=slug,
+                last_success_at=now - datetime.timedelta(hours=age_hours),
+            ))
+        db_session.commit()
+
+        data = run()
+
+        # One Greenhouse host, so the boards run in launch order: the never
+        # crawled one, then the oldest stamp first.
+        assert scraped == ["board-1", "board-2", "board-3", "board-0"]
+        assert data["boards_deferred"] == 0

@@ -51,16 +51,24 @@ def _unfiltered(**kwargs) -> ATSScraper:
     return ATSScraper(filter_entry_level=False, filter_north_america=False, **kwargs)
 
 
+# A posting CxS counts in "total" but lists without a title or externalPath
+# (P&G carried exactly this one, live, 2026-09).
+WORKDAY_STUB = {"title": None, "externalPath": None, "bulletFields": ["R000159260"], "postedOn": None}
+
+
 class WorkdayBoard(httpx.AsyncBaseTransport):
     """A CxS list endpoint over ``n`` postings, paged by the request offset.
 
     ``total_on_first_page_only`` mimics BMO, which reports "total" on the
     first page and 0 afterwards. ``close_first_after`` removes the newest
     posting once that many pages were served, so the list shifts up by one
-    mid-crawl the way a live board does when a posting closes.
+    mid-crawl the way a live board does when a posting closes;
+    ``open_new_after`` adds one at the top, shifting the list down by one.
+    ``stub_at`` puts WORKDAY_STUB at that index (and in "total").
     """
 
-    def __init__(self, n, total=None, total_on_first_page_only=False, close_first_after=None):
+    def __init__(self, n, total=None, total_on_first_page_only=False, close_first_after=None,
+                 stub_at=None, open_new_after=None):
         self.postings = [
             {
                 "title": f"Software Intern {i}",
@@ -71,15 +79,26 @@ class WorkdayBoard(httpx.AsyncBaseTransport):
             }
             for i in range(n)
         ]
-        self.total = n if total is None else total
+        if stub_at is not None:
+            self.postings.insert(stub_at, dict(WORKDAY_STUB))
+        self.total = len(self.postings) if total is None else total
         self.total_on_first_page_only = total_on_first_page_only
         self.close_first_after = close_first_after
+        self.open_new_after = open_new_after
         self.offsets: list[int] = []
 
     async def handle_async_request(self, request):
         body = json.loads(request.content)
         if self.close_first_after is not None and len(self.offsets) == self.close_first_after:
             del self.postings[0]
+        if self.open_new_after is not None and len(self.offsets) == self.open_new_after:
+            self.postings.insert(0, {
+                "title": "Software Intern New",
+                "externalPath": "/job/Toronto-ON-CAN/Software-Intern-New_R-NEW",
+                "locationsText": "Toronto, ON, CAN",
+                "postedOn": "Posted Today",
+                "bulletFields": ["R-NEW"],
+            })
         offset, limit = body["offset"], body["limit"]
         self.offsets.append(offset)
         total = self.total
@@ -198,6 +217,33 @@ class TestWorkdayPaging:
         assert not snapshot.complete
         assert len(snapshot.all_urls) == 15
 
+    @pytest.mark.asyncio
+    async def test_untitled_stub_does_not_keep_the_board_partial(self, acme_workday):
+        # "total" counts the stub but it can't be listed as a job. It used to
+        # leave the unique count one short forever, so the board never
+        # reconciled and its takedowns waited out the stale TTL.
+        board = WorkdayBoard(45, stub_at=10)
+        async with httpx.AsyncClient(transport=board) as client:
+            snapshot = await _unfiltered().scrape_board(client, "workday", "acme", "Acme")
+
+        assert snapshot.total_listed == 46
+        assert len(snapshot.all_urls) == 45
+        assert all(job.title for job in snapshot.jobs)
+        assert snapshot.complete
+
+    @pytest.mark.asyncio
+    async def test_stub_read_twice_cannot_cover_a_skipped_posting(self, acme_workday):
+        # A close after page one skips Software-Intern-20 (live); an opening
+        # after page two shifts the stub onto page three as well. Counting the
+        # stub once per read would reach "total" and remove the live row.
+        board = WorkdayBoard(59, stub_at=40, close_first_after=1, open_new_after=2)
+        async with httpx.AsyncClient(transport=board) as client:
+            snapshot = await _unfiltered().scrape_board(client, "workday", "acme", "Acme")
+
+        assert board.offsets == [0, 20, 40]
+        assert not any(url.endswith("Software-Intern-20_R-20") for url in snapshot.all_urls)
+        assert not snapshot.complete
+
 
 # ─── SmartRecruiters paging + URL shape ──────────────────────────────────────
 
@@ -264,16 +310,28 @@ class _RecordingScraper:
         self.max_per_host = 0
         self.max_total = 0
         self.started: list[str] = []
+        self.start_times: list[float] = []
         self.fail_slug = fail_slug
+        self.expired = False  # flips the run's crawl budget
+        self.finish_on_cancel = False  # a crawl whose answer was already in
+        self.delays: dict[str, float] = {}  # slug -> crawl seconds (0.01)
+
+    def _out_of_time(self) -> bool:
+        return self.expired
 
     async def scrape_board(self, client, platform, slug, company_name):
         host = ats_scraper.board_host(platform, slug)
         self.started.append(platform)
+        self.start_times.append(time.monotonic())
         self.in_flight[host] = self.in_flight.get(host, 0) + 1
         self.max_per_host = max(self.max_per_host, self.in_flight[host])
         self.max_total = max(self.max_total, sum(self.in_flight.values()))
         try:
-            await asyncio.sleep(0.01)
+            try:
+                await asyncio.sleep(self.delays.get(slug, 0.01))
+            except asyncio.CancelledError:
+                if not self.finish_on_cancel:
+                    raise
             if slug == self.fail_slug:
                 raise RuntimeError("board renamed")
             return BoardSnapshot(platform=platform, slug=slug, company=company_name)
@@ -294,9 +352,11 @@ class TestCrawlPool:
         monkeypatch.setattr(company_registry, "load_workday_bases",
                             lambda: {**BB_BASES, "acme": ACME_CXS})
 
-    async def _drain(self, scraper, concurrency=6):
+    async def _drain(self, scraper, concurrency=6, boards=None, deferred=None):
         from backend.routers.github_sources import _crawl_boards
-        return [item async for item in _crawl_boards(scraper, None, self.BOARDS, concurrency)]
+        return [item async for item in _crawl_boards(
+            scraper, None, boards or self.BOARDS, concurrency, deferred=deferred,
+        )]
 
     @pytest.mark.asyncio
     async def test_one_board_per_host_in_flight(self):
@@ -314,10 +374,87 @@ class TestCrawlPool:
         assert scraper.max_total <= 2
 
     @pytest.mark.asyncio
-    async def test_workday_launches_first(self):
+    async def test_shared_host_chains_launch_before_workday(self):
+        # Greenhouse/Lever/Ashby boards go one at a time per API host, so
+        # their chains are the run's critical path. Workday tenants (one host
+        # each) used to take every slot first and start the chains late.
+        scraper = _RecordingScraper()
+        await self._drain(scraper)
+        assert scraper.started[:2] == ["greenhouse", "lever"]
+        assert scraper.started[2:4] == ["workday", "workday"]
+
         scraper = _RecordingScraper()
         await self._drain(scraper, concurrency=1)
-        assert scraper.started[0] == "workday"
+        assert scraper.started[0] == "greenhouse"
+
+    @pytest.mark.asyncio
+    async def test_a_freed_slot_refills_while_the_consumer_is_busy(self):
+        # The consumer spends seconds on each snapshot (Workday detail calls,
+        # commits). A crawl finishing meanwhile must hand its slot on at once,
+        # not when the consumer next asks for a result.
+        from backend.routers.github_sources import _crawl_boards
+
+        scraper = _RecordingScraper()
+        boards = [("greenhouse", "one", "One"), ("lever", "three", "Three"),
+                  ("workday", "acme", "Acme")]
+        processed_first_at = None
+        async for _board, _snapshot, _error in _crawl_boards(scraper, None, boards, 1):
+            if processed_first_at is None:
+                await asyncio.sleep(0.15)  # the consumer's work on board one
+                processed_first_at = time.monotonic()
+
+        assert len(scraper.start_times) == 3
+        # Lever finished during that work, so Workday started during it too.
+        assert scraper.start_times[2] < processed_first_at
+
+    @pytest.mark.asyncio
+    async def test_closing_early_cancels_crawls_and_starts_no_more(self):
+        # The cron body raising closes the crawl mid-run: in-flight crawls
+        # are cancelled, and their cancellation must not launch the queue.
+        from contextlib import aclosing
+        from backend.routers.github_sources import _crawl_boards
+
+        for finish_on_cancel in (False, True):
+            scraper = _RecordingScraper()
+            scraper.delays["three"] = 5.0  # Lever still crawling at close
+            # True: a crawl already holding its answer completes normally
+            # anyway; its slot must not go to the next board either.
+            scraper.finish_on_cancel = finish_on_cancel
+            async with aclosing(_crawl_boards(scraper, None, self.BOARDS, 2)) as crawl:
+                async for _item in crawl:
+                    break
+            await asyncio.sleep(0.05)
+
+            assert scraper.started == ["greenhouse", "lever"]
+            assert all(count == 0 for count in scraper.in_flight.values())
+
+    @pytest.mark.asyncio
+    async def test_no_board_starts_once_the_budget_is_spent(self):
+        # Past the run's deadline the queue is deferred, never launched: a
+        # Greenhouse chain started at 150 s would run on past the workflow's
+        # 300 s curl.
+        from backend.routers.github_sources import _crawl_boards
+
+        scraper = _RecordingScraper()
+        boards = [("greenhouse", "one", "One"), ("greenhouse", "two", "Two"),
+                  ("greenhouse", "four", "Four")]
+        deferred: list = []
+        results = []
+        async for board, snapshot, error in _crawl_boards(scraper, None, boards, 1,
+                                                          deferred=deferred):
+            results.append(board)
+            scraper.expired = True
+
+        # Board two was already running when the budget ran out; four waits.
+        assert results == boards[:2]
+        assert deferred == boards[2:]
+
+        scraper = _RecordingScraper()
+        scraper.expired = True
+        deferred = []
+        assert await self._drain(scraper, deferred=deferred) == []
+        assert scraper.started == []
+        assert sorted(deferred) == sorted(self.BOARDS)
 
     @pytest.mark.asyncio
     async def test_failed_board_is_yielded_as_an_error(self):
