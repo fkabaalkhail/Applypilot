@@ -62,6 +62,10 @@ export default function Applications() {
 
           {applications.map((application) => {
             const closed = isListingClosed(application.listing_status);
+            // Only "removed" is proven gone (a check of the posting, or its
+            // board no longer lists it). "expired" is age alone and is never
+            // rechecked, so that posting may still be up.
+            const gone = (application.listing_status || "").toLowerCase() === "removed";
             return (
               <div key={application.id} className="job-card">
                 <div className="job-card-body">
@@ -90,14 +94,20 @@ export default function Applications() {
                   </div>
 
                   <div className="job-card-footer">
-                    {application.url && (closed ? (
+                    {application.url && (gone ? (
                       // The posting is gone: its link is dead or lands on a
                       // careers home page, so keep the action but never navigate.
                       <button type="button" className="btn-outline-detail" disabled>
                         <ArrowSquareOut size={16} weight="bold" /> View Posting
                       </button>
                     ) : (
-                      <a href={application.url} target="_blank" rel="noopener noreferrer" className="btn-outline-detail">
+                      <a
+                        href={application.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-outline-detail"
+                        title={closed ? "This posting may be closed" : undefined}
+                      >
                         <ArrowSquareOut size={16} weight="bold" /> View Posting
                       </a>
                     ))}

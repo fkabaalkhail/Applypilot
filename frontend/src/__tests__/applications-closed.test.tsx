@@ -24,7 +24,7 @@ describe("Applications closed state", () => {
     apiGet.mockReset();
   });
 
-  it("marks an application whose posting closed and never links the dead posting", async () => {
+  it("marks an application whose posting is gone and never links the dead posting", async () => {
     apiGet.mockResolvedValue({
       data: [
         { ...base, id: 1, role: "Closed Role", url: "https://dead.example/1", listing_status: "removed" },
@@ -52,5 +52,26 @@ describe("Applications closed state", () => {
     expect(openCard.querySelector("a[href='https://live.example/2']")).not.toBeNull();
     expect(externalCard.querySelector(".listing-closed-badge")).toBeNull();
     expect(externalCard.querySelector("a[href='https://ext.example/3']")).not.toBeNull();
+    expect(openCard.querySelector("a[href='https://live.example/2']")?.getAttribute("title")).toBeNull();
+  });
+
+  it("keeps the link to a posting closed on age alone, with a warning", async () => {
+    // "expired" comes from the posting's age, never from a check of the
+    // posting itself, so the page may still be up.
+    apiGet.mockResolvedValue({
+      data: [{ ...base, id: 4, role: "Aged Role", url: "https://aged.example/4", listing_status: "expired" }],
+    });
+    const { container } = render(<Applications />);
+    await screen.findByText("Aged Role");
+
+    const card = container.querySelector(".job-card") as HTMLElement;
+    expect(card.querySelector(".listing-closed-badge")?.textContent).toContain(
+      "No longer accepting applications",
+    );
+    const viewPosting = card.querySelector("a[href='https://aged.example/4']") as HTMLAnchorElement;
+    expect(viewPosting.textContent).toContain("View Posting");
+    expect(viewPosting.getAttribute("title")).toBe("This posting may be closed");
+    expect(viewPosting.target).toBe("_blank");
+    expect(card.querySelector("button.btn-outline-detail")).toBeNull();
   });
 });

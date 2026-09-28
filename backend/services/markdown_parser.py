@@ -79,6 +79,11 @@ _FUTURE_TOLERANCE = datetime.timedelta(days=1)
 # (vansh lists its closed rows after the open ones) fails the second test.
 _WRAP_JUMP = datetime.timedelta(days=183)
 _WRAP_SLACK = datetime.timedelta(days=31)
+# Strays: at most this many rows (a mistyped date, a row dated past the
+# commit), fewer than the run they break into, that the table then jumps
+# back up from by more than _WRAP_JUMP. Taken as the row above, a stray
+# would move every row under it back a year.
+_STRAY_MAX_ROWS = 3
 # Share of consecutive dated rows that must run newest-first before a table
 # is treated as sorted that way (alphabetical or oldest-first tables are
 # left alone).
@@ -214,6 +219,12 @@ def unwrap_yearless_dates(rows: list[tuple["ParsedJob", bool]]) -> None:
     above, and only when that lands within half a year below it. A row that
     fits nowhere starts a new run and is left alone, and so are tables that
     don't run newest first (alphabetical, oldest first).
+
+    Up to _STRAY_MAX_ROWS rows, fewer than the run they break into, that
+    the table then jumps back up from by more than half a year ('Feb 10' on
+    top of or among 'Sep 26' rows, 'Sep 30' in a list committed Sep 28) are
+    strays: left as they are, and never the row above. Measured from a
+    stray, every row under it would pass for a wrap and move back a year.
     """
     dated = [(job, yearless) for job, yearless in rows if job.posted_date is not None]
     if len(dated) < _NEWEST_FIRST_MIN_ROWS:
@@ -226,19 +237,36 @@ def unwrap_yearless_dates(rows: list[tuple["ParsedJob", bool]]) -> None:
     if later > max(1, (1 - _NEWEST_FIRST_SHARE) * len(pairs)):
         return
 
-    above = dated[0][0].posted_date
-    for job, yearless in dated[1:]:
-        if yearless and job.posted_date - above > _WRAP_JUMP:
-            for years_back in range(1, 8):
-                try:
-                    candidate = job.posted_date.replace(year=job.posted_date.year - years_back)
-                except ValueError:  # Feb 29 outside a leap year
-                    continue
-                if candidate <= above + _WRAP_SLACK:
-                    if above - candidate <= _WRAP_JUMP:
-                        job.posted_date = candidate
-                    break
-        above = job.posted_date
+    # Runs of rows less than half a year apart, as listed: a wrap, a long
+    # gap and a stray each start a new run.
+    runs = [[dated[0]]]
+    for (prev, _), (job, yearless) in zip(dated, dated[1:]):
+        if abs(job.posted_date - prev.posted_date) > _WRAP_JUMP:
+            runs.append([])
+        runs[-1].append((job, yearless))
+
+    above = None
+    for i, run in enumerate(runs):
+        next_run = runs[i + 1] if i + 1 < len(runs) else None
+        # A stray is left as it is and is never the row above. The run it
+        # breaks into is the one above it, or on top of the table the one below.
+        broken_run = runs[i - 1] if i else next_run
+        if (next_run is not None
+                and next_run[0][0].posted_date > run[-1][0].posted_date
+                and len(run) <= _STRAY_MAX_ROWS and len(run) < len(broken_run)):
+            continue
+        for job, yearless in run:
+            if above is not None and yearless and job.posted_date - above > _WRAP_JUMP:
+                for years_back in range(1, 8):
+                    try:
+                        candidate = job.posted_date.replace(year=job.posted_date.year - years_back)
+                    except ValueError:  # Feb 29 outside a leap year
+                        continue
+                    if candidate <= above + _WRAP_SLACK:
+                        if above - candidate <= _WRAP_JUMP:
+                            job.posted_date = candidate
+                        break
+            above = job.posted_date
 
 
 # Maps lowercase section header text to canonical role category names
