@@ -69,9 +69,21 @@ _RELATIVE_AGE_RE = re.compile(
     r"^(\d+)\s*(h|hrs?|hours?|d|days?|w|wks?|weeks?|mo|mos|months?|y|yrs?|years?)$",
     re.IGNORECASE,
 )
-# Clock skew between the list's timezone and ours: 'Sep 29' posted late on
-# the 28th in US time is not a year-old posting.
-_FUTURE_TOLERANCE = datetime.timedelta(days=2)
+# Clock skew between the list's timezone and UTC: a date written in UTC+14
+# runs at most a day ahead of the commit that published it.
+_FUTURE_TOLERANCE = datetime.timedelta(days=1)
+# A newest-first table that runs past a year boundary: a year-less row dated
+# more than _WRAP_JUMP AFTER the row above it belongs to the year before when
+# a year earlier puts it at most _WRAP_SLACK after that row. Out-of-order rows
+# are days or weeks apart; a wrap is most of a year. A new newest-first run
+# (vansh lists its closed rows after the open ones) fails the second test.
+_WRAP_JUMP = datetime.timedelta(days=183)
+_WRAP_SLACK = datetime.timedelta(days=31)
+# Share of consecutive dated rows that must run newest-first before a table
+# is treated as sorted that way (alphabetical or oldest-first tables are
+# left alone).
+_NEWEST_FIRST_SHARE = 0.9
+_NEWEST_FIRST_MIN_ROWS = 5
 
 
 def is_job_url(url: str) -> bool:
@@ -169,6 +181,66 @@ def parse_listing_date(date_str: str,
     return None
 
 
+def is_yearless_date(date_str: str) -> bool:
+    """True for a date cell with a day and month but no year ('Sep 26', '9/26')."""
+    date_str = clean_cell_text(date_str)
+    if not date_str:
+        return False
+    for fmt in _DATED_FORMATS:
+        try:
+            datetime.datetime.strptime(date_str, fmt)
+            return False
+        except ValueError:
+            continue
+    for fmt in _YEARLESS_FORMATS:
+        try:
+            datetime.datetime.strptime(f"{date_str} 2000", f"{fmt} %Y")
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def unwrap_yearless_dates(rows: list[tuple["ParsedJob", bool]]) -> None:
+    """Fix year-less dates in a newest-first table that runs past a year
+    boundary, in place. ``rows`` is (job, date_was_yearless) in table order.
+
+    Each year-less date is the latest such day not past the anchor (the
+    commit time, plus a day of clock skew), so rows below the wrap whose day
+    comes before the anchor's ('Aug 20' under 'Sep 26' 2025 in a list
+    committed Aug 21 2026) land a year late. In a table whose dated rows run
+    newest first, such a row (more than half a year after the row above it)
+    moves back by whole years to the first date at or just below the row
+    above, and only when that lands within half a year below it. A row that
+    fits nowhere starts a new run and is left alone, and so are tables that
+    don't run newest first (alphabetical, oldest first).
+    """
+    dated = [(job, yearless) for job, yearless in rows if job.posted_date is not None]
+    if len(dated) < _NEWEST_FIRST_MIN_ROWS:
+        return
+    pairs = list(zip(dated, dated[1:]))
+    # A wrap is itself one row later than the row above; beyond that, later
+    # rows must be rare.
+    later = sum(1 for (above, _), (below, _) in pairs
+                if below.posted_date > above.posted_date)
+    if later > max(1, (1 - _NEWEST_FIRST_SHARE) * len(pairs)):
+        return
+
+    above = dated[0][0].posted_date
+    for job, yearless in dated[1:]:
+        if yearless and job.posted_date - above > _WRAP_JUMP:
+            for years_back in range(1, 8):
+                try:
+                    candidate = job.posted_date.replace(year=job.posted_date.year - years_back)
+                except ValueError:  # Feb 29 outside a leap year
+                    continue
+                if candidate <= above + _WRAP_SLACK:
+                    if above - candidate <= _WRAP_JUMP:
+                        job.posted_date = candidate
+                    break
+        above = job.posted_date
+
+
 # Maps lowercase section header text to canonical role category names
 SECTION_CATEGORY_MAP = {
     "software engineering": "Software Engineering",
@@ -212,15 +284,19 @@ class MarkdownParser:
     """Parses jobright-ai GitHub README markdown into structured job records."""
 
     def parse(self, content: str, is_mega_repo: bool = False,
-              include_closed: bool = False) -> list[ParsedJob]:
+              include_closed: bool = False,
+              now: Optional[datetime.datetime] = None) -> list[ParsedJob]:
         """Parse full README content. If is_mega_repo, tracks section headers.
 
         Closed rows are left out unless ``include_closed``; then they come back
         with ``closed=True`` (and usually no url) so the caller can retire the
         rows it stored while they were open.
+
+        ``now`` anchors year-less dates and ages: the time of the commit that
+        published the README (default: the wall clock).
         """
         if not is_mega_repo:
-            return self.parse_markdown_table(content, include_closed=include_closed)
+            return self.parse_markdown_table(content, include_closed=include_closed, now=now)
 
         lines = content.strip().split("\n")
         section_headers = self._detect_section_headers(lines)
@@ -228,7 +304,7 @@ class MarkdownParser:
 
         if not section_headers:
             # No section headers found, parse as a single table
-            return self.parse_markdown_table(content, include_closed=include_closed)
+            return self.parse_markdown_table(content, include_closed=include_closed, now=now)
 
         # Process content between section headers
         for i, (line_idx, category) in enumerate(section_headers):
@@ -242,7 +318,7 @@ class MarkdownParser:
             section_content = "\n".join(lines[line_idx + 1 : end_idx])
             section_jobs = self.parse_markdown_table(
                 section_content, section_category=category,
-                include_closed=include_closed,
+                include_closed=include_closed, now=now,
             )
             jobs.extend(section_jobs)
 
@@ -250,14 +326,15 @@ class MarkdownParser:
 
     def parse_markdown_table(
         self, content: str, section_category: Optional[str] = None,
-        include_closed: bool = False,
+        include_closed: bool = False, now: Optional[datetime.datetime] = None,
     ) -> list[ParsedJob]:
         """Parse the pipe-delimited tables in ``content``.
 
         Every header row (a pipe row followed by a |---| separator) starts a
         table with its own column map, so a README that splits roles over
         several tables with different columns parses whole. HTML <table>s are
-        converted to pipe tables first.
+        converted to pipe tables first. Year-less dates in a newest-first
+        table that runs past a year boundary are corrected per table.
         """
         lines = self._html_tables_to_pipes(content).strip().split("\n")
         jobs: list[ParsedJob] = []
@@ -265,6 +342,10 @@ class MarkdownParser:
         column_map: Optional[dict[int, str]] = None
         width = 0
         prev_company = ""
+        date_idx: Optional[int] = None
+        # Every extracted row of the current table, in table order, for the
+        # year-wrap pass (closed rows too, run as their own sequence).
+        table_rows: list[tuple[ParsedJob, bool]] = []
 
         for i, line in enumerate(lines):
             stripped = line.strip()
@@ -275,10 +356,14 @@ class MarkdownParser:
 
             next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
             if self._is_separator_row(next_line):
+                self._unwrap_table_dates(table_rows)
+                table_rows = []
                 headers = self._split_row(stripped)
                 mapped = self._map_columns_to_fields(headers)
                 # Tables without a title column (link indexes, legends) aren't job tables.
                 column_map = mapped if "title" in mapped.values() else None
+                date_idx = (self._get_field_index(column_map, "posted_date")
+                            if column_map else None)
                 width = len(headers)
                 prev_company = ""
                 continue
@@ -299,12 +384,16 @@ class MarkdownParser:
                     cells[company_idx] = company_text
 
             closed = self._is_closed_row(cells, column_map)
-            job = self._extract_job_from_cells(cells, column_map, closed=closed)
+            job = self._extract_job_from_cells(cells, column_map, closed=closed, now=now)
             if job is None:
                 logger.warning(
                     "Skipping row with missing title or URL: %s", stripped[:100],
                 )
                 continue
+            table_rows.append(
+                (job, date_idx is not None and date_idx < len(cells)
+                 and is_yearless_date(cells[date_idx]))
+            )
 
             # Track company for continuation rows, closed parents included:
             # a closed row's ↳ children still belong to that company.
@@ -315,7 +404,16 @@ class MarkdownParser:
             job.section_category = section_category
             jobs.append(job)
 
+        self._unwrap_table_dates(table_rows)
         return jobs
+
+    @staticmethod
+    def _unwrap_table_dates(rows: list[tuple[ParsedJob, bool]]) -> None:
+        """Year-wrap correction, open and closed rows as separate runs: a
+        list may group its closed rows after the open ones, each run newest
+        first."""
+        for closed in (False, True):
+            unwrap_yearless_dates([row for row in rows if row[0].closed is closed])
 
     @staticmethod
     def _split_row(line: str) -> list[str]:
@@ -505,7 +603,8 @@ class MarkdownParser:
         return None
 
     def _extract_job_from_cells(
-        self, cells: list[str], column_map: dict[int, str], closed: bool = False
+        self, cells: list[str], column_map: dict[int, str], closed: bool = False,
+        now: Optional[datetime.datetime] = None,
     ) -> Optional[ParsedJob]:
         """Extract a ParsedJob from table cells using the column map.
 
@@ -527,7 +626,7 @@ class MarkdownParser:
                 if url or not data.get(field):
                     data[field] = url
             elif field == "posted_date":
-                data[field] = self._parse_date(cell)
+                data[field] = self._parse_date(cell, now=now)
             elif field == "company":
                 # Company cell may contain image (logo) and/or link
                 logo_url = self._extract_image_url(cell)
@@ -617,6 +716,7 @@ class MarkdownParser:
             return "onsite"
         return None
 
-    def _parse_date(self, date_str: str) -> Optional[datetime.datetime]:
+    def _parse_date(self, date_str: str,
+                    now: Optional[datetime.datetime] = None) -> Optional[datetime.datetime]:
         """Parse various date formats from GitHub job tables."""
-        return parse_listing_date(date_str)
+        return parse_listing_date(date_str, now=now)

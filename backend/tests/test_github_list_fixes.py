@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from backend.db.models import GitHubSource, ScrapedJob
+from backend.services import aggregator as aggregator_module
 from backend.services import markdown_parser
 from backend.services.aggregator import (
     AggregatorService,
@@ -23,6 +24,8 @@ from backend.services.listing_freshness import (
     LISTING_ACTIVE,
     LISTING_EXPIRED,
     LISTING_REMOVED,
+    reconcile_board,
+    sweep_aggregator_expiry,
 )
 from backend.services.markdown_parser import (
     MarkdownParser,
@@ -83,8 +86,11 @@ class TestListingDates:
         assert parse_listing_date("Nov 30", now=NOW) == datetime.datetime(2025, 11, 30)
         assert parse_listing_date("Sep 26", now=NOW) == datetime.datetime(2026, 9, 26)
 
-    def test_two_day_tolerance_for_timezone_skew(self):
-        assert parse_listing_date("Sep 29", now=NOW) == datetime.datetime(2026, 9, 29)
+    def test_one_day_tolerance_for_timezone_skew(self):
+        # UTC+14 runs at most a day ahead of the commit; two days misdated
+        # a year-old row as brand new.
+        assert parse_listing_date("Sep 28", now=NOW) == datetime.datetime(2026, 9, 28)
+        assert parse_listing_date("Sep 29", now=NOW) == datetime.datetime(2025, 9, 29)
         assert parse_listing_date("Sep 30", now=NOW) == datetime.datetime(2025, 9, 30)
 
     def test_feb_29_lands_on_a_leap_year(self):
@@ -444,7 +450,7 @@ README = (
     "| Company | Role | Location | Application/Link | Date Posted |\n"
     "| --- | --- | --- | --- | --- |\n"
     "| **Tesla** | Software Engineer | Palo Alto, CA | "
-    '<a href="https://www.tesla.com/careers/search/job/256719?utm_source=vansh"><img src="x.png" alt="Apply"></a> | Nov 10 |\n'
+    '<a href="https://www.tesla.com/careers/search/job/256719?utm_source=vansh"><img src="x.png" alt="Apply"></a> | Sep 20 |\n'
     "| **NorthMark Strategies** | New Grad: Software Engineer 🛂 | New York, NY | 🔒 | Aug 20 |\n"
 )
 
@@ -487,6 +493,7 @@ def github(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", factory)
     monkeypatch.setattr(markdown_parser, "_utcnow", lambda: NOW)
+    monkeypatch.setattr(aggregator_module, "_utcnow", lambda: NOW)
     return state
 
 
@@ -507,7 +514,7 @@ class TestPolling:
         assert (source.status, source.last_commit_sha, source.error_message) == ("active", "abc", "")
         tesla = db_session.query(ScrapedJob).filter(ScrapedJob.company == "Tesla").one()
         assert tesla.url == "https://www.tesla.com/careers/search/job/256719"
-        assert tesla.posted_date == datetime.datetime(2025, 11, 10)
+        assert tesla.posted_date == datetime.datetime(2026, 9, 20)
         assert db_session.get(ScrapedJob, stale.id).listing_status == LISTING_REMOVED
         # Every client the poll opened follows redirects (renamed repos answer
         # 301; job pages redirect before they reveal a 404).
@@ -599,6 +606,7 @@ class TestRetryRotation:
         ("HTTP 429: Too Many Requests", True),
         ("Timeout: ReadTimeout", True),
         ("Network: ConnectError", True),
+        ("Error: Expecting value: line 1 column 1 (char 0)", True),
         ("HTTP 404: Client error '404 Not Found'", False),
         ("HTTP 410: Gone", False),
         ("Renamed to a/b, already tracked by source 3", False),
@@ -668,3 +676,362 @@ class TestCronPoll:
 
         assert resp.status_code == 200, resp.text
         assert polled == [errored.repo_url]
+
+
+# ─── review fixes: stale rows, insert order ──────────────────────────────────
+
+# speedyapply's layout: newest first, relative ages.
+SPEEDY_README = (
+    "| Company | Position | Location | Posting | Age |\n"
+    "|---|---|---|---|---|\n"
+    '| <a href="https://amazon.com"><strong>Amazon</strong></a> | SDE Intern | Seattle, WA | '
+    '<a href="https://www.amazon.jobs/en/jobs/111"><img src="x.png" alt="Apply" width="70"/></a> | 2d |\n'
+    '| <a href="https://ramp.com"><strong>Ramp</strong></a> | SWE Intern | New York, NY | '
+    '<a href="https://jobs.ashbyhq.com/ramp/abc"><img src="x.png" alt="Apply" width="70"/></a> | 3d |\n'
+    '| <a href="https://palantir.com"><strong>Palantir</strong></a> | SWE Intern | New York, NY | '
+    '<a href="https://jobs.lever.co/palantir/xyz"><img src="x.png" alt="Apply" width="70"/></a> | 94d |\n'
+    '| <a href="https://beaconsoftware.com"><strong>Beacon Software</strong></a> | SWE Intern | '
+    'San Francisco, CA | <a href="https://job-boards.greenhouse.io/beacon/jobs/42">'
+    '<img src="x.png" alt="Apply" width="70"/></a> | 117d |\n'
+)
+
+
+def _commits(sha: str, when: str | None = None) -> list[dict]:
+    commit = {"sha": sha}
+    if when:
+        commit["commit"] = {"committer": {"date": when}}
+    return [commit]
+
+
+class TestStaleListRows:
+    @pytest.mark.asyncio
+    async def test_postings_past_max_age_never_become_rows(self, db_session, github, monkeypatch):
+        from backend.services import description_extractor
+
+        source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")
+        github["routes"].update({
+            "/repos/speedyapply/2027-SWE-College-Jobs/commits?per_page=1":
+                (200, _commits("s1", "2026-09-27T12:00:00Z")),
+            "/repos/speedyapply/2027-SWE-College-Jobs/contents/README.md": (200, SPEEDY_README),
+        })
+        enriched: list[str] = []
+
+        async def fake_extract(client, url):
+            enriched.append(url)
+            return "x" * 100
+
+        monkeypatch.setattr(description_extractor, "extract_description_from_url", fake_extract)
+
+        assert await AggregatorService(db_session).poll_source(source) == 2
+
+        rows = db_session.query(ScrapedJob.id, ScrapedJob.company, ScrapedJob.listing_status) \
+            .order_by(ScrapedJob.id).all()
+        # The 94d and 117d postings are not stored at all (not even hidden),
+        # and the fresher of the two stored rows gets the higher id.
+        assert [(r.company, r.listing_status) for r in rows] == [
+            ("Ramp", LISTING_ACTIVE), ("Amazon", LISTING_ACTIVE)]
+        # No probe budget went on them, and enrichment works newest first.
+        assert not any("palantir" in c or "beacon" in c for c in github["calls"])
+        assert enriched == ["https://www.amazon.jobs/en/jobs/111", "https://jobs.ashbyhq.com/ramp/abc"]
+        # Nothing stored is already due for the expiry sweep.
+        assert sweep_aggregator_expiry(db_session, now=NOW) == 0
+
+    def test_classify_and_store_skips_posting_past_max_age(self, db_session, monkeypatch):
+        monkeypatch.setattr(aggregator_module, "_utcnow", lambda: NOW)
+        source = _source(db_session)
+        svc = AggregatorService(db_session)
+        old = ParsedJob(title="Software Engineer", company="Acme", location="Austin, TX",
+                        url="https://jobs.lever.co/acme/old",
+                        posted_date=NOW - datetime.timedelta(days=31))
+        undated = ParsedJob(title="Software Engineer", company="Acme", location="Austin, TX",
+                            url="https://jobs.lever.co/acme/undated")
+        edge = ParsedJob(title="Software Engineer", company="Acme", location="Austin, TX",
+                         url="https://jobs.lever.co/acme/edge",
+                         posted_date=NOW - datetime.timedelta(days=29))
+        assert svc._classify_and_store(old, source) is False
+        assert svc._classify_and_store(undated, source) is True
+        assert svc._classify_and_store(edge, source) is True
+        assert {r.url for r in db_session.query(ScrapedJob.url)} == {
+            "https://jobs.lever.co/acme/undated", "https://jobs.lever.co/acme/edge"}
+
+    def test_insert_order_is_oldest_first(self):
+        day = datetime.datetime(2026, 9, 20)
+        jobs = [ParsedJob(title=t, company="A", location="", url=f"https://x.io/{t}", posted_date=d)
+                for t, d in [("new", day), ("same_top", day - datetime.timedelta(days=1)),
+                             ("same_below", day - datetime.timedelta(days=1)),
+                             ("undated", None), ("old", day - datetime.timedelta(days=9))]]
+        order = [j.title for j in AggregatorService._oldest_first(jobs)]
+        # Same-day ties keep reversed README order (the lists add at the top).
+        assert order == ["undated", "old", "same_below", "same_top", "new"]
+
+
+# ─── review fixes: retirement vs board reconciliation ───────────────────────
+
+class TestRetireRespectsBoards:
+    def test_board_reconciled_row_is_left_to_its_board(self, db_session):
+        source = _source(db_session)
+        listed = _row(db_session, source, "https://jobs.lever.co/acme/listed", title="Listed")
+        on_board = _row(db_session, source, "https://job-boards.greenhouse.io/acme/jobs/1", title="Board")
+        on_board.board_key = "greenhouse:acme"
+        unknown = _row(db_session, source, "https://acme.com/careers/2", title="Unknown")
+        unknown.board_key = "unknown"
+        plain = _row(db_session, source, "https://acme.com/careers/3", title="Plain")
+        db_session.commit()
+        svc = AggregatorService(db_session)
+
+        states = []
+        for _ in range(2):
+            svc._retire_delisted_rows(source, {listed.url}, [])
+            db_session.commit()
+            db_session.refresh(on_board)
+            states.append(on_board.listing_status)
+            reconcile_board(db_session, "greenhouse:acme", {on_board.url})
+            db_session.refresh(on_board)
+            states.append(on_board.listing_status)
+
+        # The board still lists it: no removed/active flip-flop.
+        assert states == [LISTING_ACTIVE] * 4
+        assert db_session.get(ScrapedJob, unknown.id).listing_status == LISTING_REMOVED
+        assert db_session.get(ScrapedJob, plain.id).listing_status == LISTING_REMOVED
+        assert db_session.get(ScrapedJob, listed.id).listing_status == LISTING_ACTIVE
+
+
+# ─── review fixes: renames and seeding ───────────────────────────────────────
+
+# The prod sources parked with 'HTTP 301' on their pre-rename URLs.
+PROD_RENAMED = {
+    "https://github.com/Ouckah/Summer2025-Internships": "https://github.com/vanshb03/Summer2027-Internships",
+    "https://github.com/zapplyjobs/New-Grad-Jobs-2026": "https://github.com/zapplyjobs/underclassmen-internships",
+    "https://github.com/zapplyjobs/New-Grad-Software-Engineering-Jobs-2026":
+        "https://github.com/zapplyjobs/New-Grad-Software-Engineering-Jobs-2027",
+    "https://github.com/zapplyjobs/New-Grad-Data-Science-Jobs-2026":
+        "https://github.com/zapplyjobs/New-Grad-Data-Science-Jobs-2027",
+    "https://github.com/zapplyjobs/Internships-2026": "https://github.com/zapplyjobs/Internships-2027",
+    "https://github.com/speedyapply/2026-SWE-College-Jobs": "https://github.com/speedyapply/2027-SWE-College-Jobs",
+    "https://github.com/negarprh/Canadian-Tech-Internships-2026":
+        "https://github.com/negarprh/Canadian-Tech-Internships-2027",
+}
+
+SUMMER_RENAME_ROUTES = {
+    "/repos/Ouckah/Summer2025-Internships/commits?per_page=1":
+        (301, "https://api.github.com/repositories/7/commits?per_page=1"),
+    "/repositories/7/commits?per_page=1": (200, [{"sha": "s"}]),
+    "/repos/Ouckah/Summer2025-Internships": (301, "https://api.github.com/repositories/7"),
+    "/repositories/7": (200, {"full_name": "vanshb03/Summer2027-Internships"}),
+    "/repos/vanshb03/Summer2027-Internships/contents/README.md": (200, "no table"),
+}
+
+
+class TestRenameSeeding:
+    def test_seed_list_carries_current_names_and_former_ones(self):
+        by_url = {repo["url"]: repo for repo in AggregatorService.REPOS}
+        for old, new in PROD_RENAMED.items():
+            assert old not in by_url
+            assert old in by_url[new]["renamed_from"]
+            assert new.rsplit("/", 1)[-1] in AggregatorService.REPO_CATEGORY_MAP
+
+    @pytest.mark.asyncio
+    async def test_seed_sees_a_source_still_on_a_former_name(self, db_session):
+        # Prod today: every renamed list still sits on its old URL (matched
+        # case-insensitively, as GitHub does).
+        for old in PROD_RENAMED:
+            _source(db_session, url=old.lower() if "Ouckah" in old else old,
+                    status="error", error_message="HTTP 301: Moved Permanently")
+        svc = AggregatorService(db_session)
+
+        result = await svc.seed_sources()
+
+        assert result["created"] == len(AggregatorService.REPOS) - len(PROD_RENAMED)
+        assert result["existing"] == len(PROD_RENAMED)
+        urls = {s.repo_url for s in db_session.query(GitHubSource)}
+        assert not urls & set(PROD_RENAMED.values())
+
+    @pytest.mark.asyncio
+    async def test_seed_after_rename_adoption_creates_nothing(self, db_session, github):
+        svc = AggregatorService(db_session)
+        svc.REPOS = [{"url": "https://github.com/vanshb03/Summer2027-Internships",
+                      "renamed_from": ["https://github.com/Ouckah/Summer2025-Internships"],
+                      "category": "Software Engineering", "level": "internship"}]
+        owner = _source(db_session, url="https://github.com/Ouckah/Summer2025-Internships",
+                        status="error", error_message="HTTP 301: Moved Permanently")
+        assert (await svc.seed_sources())["created"] == 0
+        github["routes"].update(SUMMER_RENAME_ROUTES)
+
+        await svc.poll_source(owner)
+        db_session.refresh(owner)
+        assert (owner.status, owner.repo_url) == (
+            "active", "https://github.com/vanshb03/Summer2027-Internships")
+
+        assert (await svc.seed_sources()) == {"created": 0, "existing": 1}
+        assert db_session.query(GitHubSource).count() == 1
+
+    @pytest.mark.asyncio
+    async def test_rename_onto_tracked_source_hands_it_the_rows(self, db_session, github):
+        owner = _source(db_session, url="https://github.com/Ouckah/Summer2025-Internships")
+        rows = [_row(db_session, owner, f"https://jobs.lever.co/acme/{i}") for i in range(3)]
+        # A new-name source seeded first and parked by a 404 from before the
+        # repo took that name.
+        tracked = _source(db_session, url="https://github.com/vanshb03/Summer2027-Internships",
+                          status="error", error_message="HTTP 404: Not Found")
+        github["routes"].update(SUMMER_RENAME_ROUTES)
+
+        assert await AggregatorService(db_session).poll_source(owner) == 0
+
+        db_session.refresh(owner)
+        db_session.refresh(tracked)
+        assert owner.status == "error"
+        assert owner.error_message.startswith("Renamed to vanshb03/Summer2027-Internships")
+        assert {db_session.get(ScrapedJob, r.id).github_source_id for r in rows} == {tracked.id}
+        # The API just answered for that name: back in rotation.
+        assert (tracked.status, tracked.error_message) == ("active", "")
+        assert [s.id for s in AggregatorService(db_session).sources_due()] == [tracked.id]
+
+
+# ─── review fixes: generic failure on a retried source ──────────────────────
+
+class TestGenericErrorRetry:
+    @pytest.mark.asyncio
+    async def test_generic_error_on_retried_source_stays_retryable(self, db_session, github):
+        long_ago = NOW - ERROR_RETRY_COOLDOWN - datetime.timedelta(days=30)
+        source = _source(db_session, url="https://github.com/jobright-ai/2026-Consultant-New-Grad",
+                         status="error", error_message="HTTP 504: Gateway Timeout",
+                         last_polled_at=long_ago)
+        svc = AggregatorService(db_session)
+        assert [s.id for s in svc.sources_due(now=NOW)] == [source.id]
+        # 200 with a body that isn't JSON: the generic handler.
+        github["routes"]["/repos/jobright-ai/2026-Consultant-New-Grad/commits?per_page=1"] = (
+            200, "<html>oops</html>")
+
+        await svc.poll_source(source)
+
+        db_session.refresh(source)
+        assert source.error_message.startswith("Error:")
+        later = source.last_polled_at + ERROR_RETRY_COOLDOWN + datetime.timedelta(hours=1)
+        assert [s.id for s in svc.sources_due(now=later)] == [source.id]
+
+
+# ─── review fixes: category and level from the title ────────────────────────
+
+class TestTitleClassification:
+    @pytest.mark.parametrize("title, category", [
+        ("Data Analytics Intern (Winter 2027)", "Data Analysis"),
+        ("Firmware Engineer Intern", "Engineering and Development"),
+        ("Software Developer Co-op", "Software Engineering"),
+        # A title that says nothing falls back to the list's category.
+        ("Intern, Winter 2027", "Software Engineering"),
+    ])
+    def test_broad_list_rows_classified_by_title(self, db_session, title, category):
+        source = _source(db_session, url="https://github.com/negarprh/Canadian-Tech-Internships-2027")
+        job = ParsedJob(title=title, company="Kinaxis", location="Ottawa, ON",
+                        url="https://kinaxis.wd3.myworkdayjobs.com/x/job/1")
+        assert AggregatorService(db_session)._classify_and_store(job, source) is True
+        assert db_session.query(ScrapedJob).one().role_category == category
+
+    def test_section_header_still_wins(self, db_session):
+        source = _source(db_session, url="https://github.com/jobright-ai/2026-Software-Engineer-Internship")
+        job = ParsedJob(title="Data Analytics Intern", company="Acme", location="Austin, TX",
+                        url="https://jobs.lever.co/acme/sec", section_category="Marketing")
+        AggregatorService(db_session)._classify_and_store(job, source)
+        assert db_session.query(ScrapedJob).one().role_category == "Marketing"
+
+    @pytest.mark.parametrize("title", [
+        "Software Engineer, Internal Tools",
+        "ABAD Systems Engineer (International Assignment)",
+        "Software Engineer 1 - OS Internals",
+        "Cooperative Systems Engineer",
+    ])
+    def test_intern_substrings_are_not_internships(self, db_session, title):
+        source = _source(db_session, url="https://github.com/vanshb03/New-Grad-2027")
+        assert AggregatorService(db_session)._get_experience_level(source, title) == "new_grad"
+
+    @pytest.mark.parametrize("title", [
+        "Software Engineer Intern", "SWE Internship - Summer 2027", "Interns 2027",
+        "Software Developer Co-op", "Coop - Firmware", "Intern-Summer 2027",
+    ])
+    def test_internship_words_are_internships(self, db_session, title):
+        source = _source(db_session, url="https://github.com/vanshb03/New-Grad-2027")
+        assert AggregatorService(db_session)._get_experience_level(source, title) == "internship"
+
+    def test_lowercase_internship_repo_name(self, db_session):
+        source = _source(db_session, url="https://github.com/zapplyjobs/underclassmen-internships")
+        assert AggregatorService(db_session)._get_experience_level(source, "Analyst") == "internship"
+
+
+# ─── review fixes: year-less dates across a year boundary ───────────────────
+
+def _dated_table(rows: list[tuple[str, str, bool]]) -> str:
+    """vansh layout; rows are (title, date, closed)."""
+    lines = ["| Company | Role | Location | Application/Link | Date Posted |",
+             "| --- | --- | --- | --- | --- |"]
+    for i, (title, date, closed) in enumerate(rows):
+        link = "🔒" if closed else f'<a href="https://jobs.lever.co/acme/{i}"><img src="x.png" alt="Apply"></a>'
+        lines.append(f"| **Acme** | {title} | Austin, TX | {link} | {date} |")
+    return "\n".join(lines) + "\n"
+
+
+def _dates(jobs) -> dict[str, datetime.date]:
+    return {job.title: job.posted_date.date() for job in jobs}
+
+
+class TestYearWrap:
+    # vanshb03/New-Grad-2027 (last commit Aug 21 2026): newest first from
+    # Aug 05 2026 down through Oct 16 / Sep 26 (2025) to Apr 12 (2025).
+    WRAPPED = [("A", "Aug 05", False), ("B", "Jan 02", False), ("C", "Dec 30", False),
+               ("D", "Oct 16", False), ("E", "Sep 26", False), ("F", "Aug 20", False),
+               ("G", "Apr 12", False)]
+    COMMIT = datetime.datetime(2026, 8, 21, 15, 30)
+
+    def test_rows_below_the_wrap_move_back_a_year(self):
+        jobs = parser.parse(_dated_table(self.WRAPPED), now=self.COMMIT)
+        assert _dates(jobs) == {
+            "A": datetime.date(2026, 8, 5), "B": datetime.date(2026, 1, 2),
+            "C": datetime.date(2025, 12, 30), "D": datetime.date(2025, 10, 16),
+            "E": datetime.date(2025, 9, 26), "F": datetime.date(2025, 8, 20),
+            "G": datetime.date(2025, 4, 12),
+        }
+
+    def test_wall_clock_anchor_gets_the_same_dates(self, frozen_now):
+        # Without the commit time, 'Sep 26' used to become 2026-09-26.
+        jobs = parser.parse(_dated_table(self.WRAPPED))
+        assert _dates(jobs)["E"] == datetime.date(2025, 9, 26)
+        assert _dates(jobs)["F"] == datetime.date(2025, 8, 20)
+
+    def test_closed_rows_listed_after_the_open_ones_are_their_own_run(self):
+        # vansh lists open rows first, then closed rows, each newest first.
+        rows = self.WRAPPED + [("H", "Jul 31", True), ("I", "Apr 25", True),
+                               ("J", "Feb 15", True), ("K", "Dec 12", True),
+                               ("L", "Aug 10", True)]
+        jobs = parser.parse(_dated_table(rows), include_closed=True, now=self.COMMIT)
+        dates = _dates(jobs)
+        assert dates["G"] == datetime.date(2025, 4, 12)
+        assert (dates["H"], dates["I"], dates["J"]) == (
+            datetime.date(2026, 7, 31), datetime.date(2026, 4, 25), datetime.date(2026, 2, 15))
+        assert (dates["K"], dates["L"]) == (datetime.date(2025, 12, 12), datetime.date(2025, 8, 10))
+
+    def test_unsorted_table_left_alone(self):
+        rows = [("A", "Jan 05", False), ("B", "Aug 15", False), ("C", "Mar 03", False),
+                ("D", "Aug 01", False), ("E", "Feb 02", False), ("F", "Jul 20", False)]
+        jobs = parser.parse(_dated_table(rows), now=self.COMMIT)
+        assert all(d.year == 2026 for d in _dates(jobs).values())
+
+    def test_out_of_order_fresh_row_keeps_its_year(self):
+        # A new row slipped in under older ones is weeks off, not a wrap.
+        rows = [("A", "Aug 18", False), ("B", "Jul 10", False), ("C", "Aug 15", False),
+                ("D", "Jul 01", False), ("E", "Jun 20", False), ("F", "Jun 01", False)]
+        jobs = parser.parse(_dated_table(rows), now=self.COMMIT)
+        assert _dates(jobs)["C"] == datetime.date(2026, 8, 15)
+
+    @pytest.mark.asyncio
+    async def test_poll_reads_dates_as_of_the_commit(self, db_session, github):
+        source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")
+        github["routes"].update({
+            "/repos/speedyapply/2027-SWE-College-Jobs/commits?per_page=1":
+                (200, _commits("s2", "2026-09-20T12:00:00Z")),
+            "/repos/speedyapply/2027-SWE-College-Jobs/contents/README.md": (200, SPEEDY_README),
+        })
+
+        await AggregatorService(db_session).poll_source(source)
+
+        amazon = db_session.query(ScrapedJob).filter(ScrapedJob.company == "Amazon").one()
+        # '2d' in a README committed Sep 20 is Sep 18, not two days before this poll.
+        assert amazon.posted_date == datetime.datetime(2026, 9, 18)

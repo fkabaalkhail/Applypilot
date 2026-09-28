@@ -50,6 +50,15 @@ _VANISHED_GUARD_RATIO = 0.5
 _VANISHED_GUARD_MIN = 10
 
 
+# Internship wording in a title: whole words only, so 'Internal Tools',
+# 'International Assignment' and 'OS Internals' stay new-grad roles.
+_INTERNSHIP_TITLE_RE = re.compile(r"\bintern(?:ship)?s?\b|\bco-?ops?\b", re.IGNORECASE)
+
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.utcnow()
+
+
 class RepoMovedError(Exception):
     """The repo was renamed to one another source already tracks."""
 
@@ -57,11 +66,28 @@ class RepoMovedError(Exception):
 def is_retryable_error(message: str) -> bool:
     """True when a source parked in 'error' failed for a reason a later poll
     can clear. Includes the 301s recorded before redirects were followed:
-    those repos were renamed, and the rename is now adopted on poll."""
+    those repos were renamed, and the rename is now adopted on poll. An
+    unexpected exception ('Error: ...', a non-JSON body, a parser crash) is
+    retried too: an active source that hits one is polled again next run, so
+    a retried one must not be parked for good by it."""
     match = re.match(r"HTTP (\d{3})\b", message or "")
     if match:
         return int(match.group(1)) not in PERMANENT_HTTP_STATUSES
-    return (message or "").startswith(("Timeout", "Network"))
+    return (message or "").startswith(("Timeout", "Network", "Error:"))
+
+
+def _commit_time(commit: dict) -> Optional[datetime.datetime]:
+    """Naive-UTC committer time of a GitHub commits-API entry, or None."""
+    raw = (((commit or {}).get("commit") or {}).get("committer") or {}).get("date")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 def _listing_key(company: str, title: str) -> tuple[str, str]:
@@ -76,8 +102,13 @@ class AggregatorService:
 
     REPOS: list[dict] = [
         # === Community repos with DIRECT company apply links ===
+        # These lists rename every season (2026 -> 2027). "renamed_from" keeps
+        # the former URLs: a source still on one is the same list (it adopts
+        # the new name on its next poll), so seeding never creates a second
+        # source for it. Add the new name here when a list renames.
         {
-            "url": "https://github.com/Ouckah/Summer2025-Internships",
+            "url": "https://github.com/vanshb03/Summer2027-Internships",
+            "renamed_from": ["https://github.com/Ouckah/Summer2025-Internships"],
             "category": "Software Engineering",
             "level": "internship",
         },
@@ -87,32 +118,38 @@ class AggregatorService:
             "level": "new_grad",
         },
         {
-            "url": "https://github.com/speedyapply/2026-SWE-College-Jobs",
+            "url": "https://github.com/speedyapply/2027-SWE-College-Jobs",
+            "renamed_from": ["https://github.com/speedyapply/2026-SWE-College-Jobs"],
             "category": "Software Engineering",
             "level": "new_grad",
         },
         {
-            "url": "https://github.com/negarprh/Canadian-Tech-Internships-2026",
+            "url": "https://github.com/negarprh/Canadian-Tech-Internships-2027",
+            "renamed_from": ["https://github.com/negarprh/Canadian-Tech-Internships-2026"],
             "category": "Software Engineering",
             "level": "internship",
         },
         {
-            "url": "https://github.com/zapplyjobs/New-Grad-Jobs-2026",
+            "url": "https://github.com/zapplyjobs/underclassmen-internships",
+            "renamed_from": ["https://github.com/zapplyjobs/New-Grad-Jobs-2026"],
             "category": "",
-            "level": "new_grad",
+            "level": "internship",
         },
         {
-            "url": "https://github.com/zapplyjobs/New-Grad-Software-Engineering-Jobs-2026",
+            "url": "https://github.com/zapplyjobs/New-Grad-Software-Engineering-Jobs-2027",
+            "renamed_from": ["https://github.com/zapplyjobs/New-Grad-Software-Engineering-Jobs-2026"],
             "category": "Software Engineering",
             "level": "new_grad",
         },
         {
-            "url": "https://github.com/zapplyjobs/New-Grad-Data-Science-Jobs-2026",
+            "url": "https://github.com/zapplyjobs/New-Grad-Data-Science-Jobs-2027",
+            "renamed_from": ["https://github.com/zapplyjobs/New-Grad-Data-Science-Jobs-2026"],
             "category": "Data Analysis",
             "level": "new_grad",
         },
         {
-            "url": "https://github.com/zapplyjobs/Internships-2026",
+            "url": "https://github.com/zapplyjobs/Internships-2027",
+            "renamed_from": ["https://github.com/zapplyjobs/Internships-2026"],
             "category": "",
             "level": "internship",
         },
@@ -297,14 +334,14 @@ class AggregatorService:
     ]
 
     REPO_CATEGORY_MAP: dict[str, str] = {
-        "Summer2025-Internships": "Software Engineering",
+        "Summer2027-Internships": "Software Engineering",
         "New-Grad-2027": "Software Engineering",
-        "2026-SWE-College-Jobs": "Software Engineering",
-        "Canadian-Tech-Internships-2026": "Software Engineering",
-        "New-Grad-Jobs-2026": "",
-        "New-Grad-Software-Engineering-Jobs-2026": "Software Engineering",
-        "New-Grad-Data-Science-Jobs-2026": "Data Analysis",
-        "Internships-2026": "",
+        "2027-SWE-College-Jobs": "Software Engineering",
+        "Canadian-Tech-Internships-2027": "Software Engineering",
+        "underclassmen-internships": "",
+        "New-Grad-Software-Engineering-Jobs-2027": "Software Engineering",
+        "New-Grad-Data-Science-Jobs-2027": "Data Analysis",
+        "Internships-2027": "",
         # Jobright-AI repos
         "2026-Software-Engineer-Internship": "Software Engineering",
         "2026-Data-Analysis-Internship": "Data Analysis",
@@ -352,6 +389,11 @@ class AggregatorService:
     async def seed_sources(self) -> dict[str, int]:
         """Create GitHubSource records for all configured repos. Idempotent.
 
+        A repo counts as seeded when a source tracks its URL or any of its
+        ``renamed_from`` URLs (case-insensitive, as GitHub treats them): a
+        second source for a renamed list would park the one that owns its
+        rows, or be parked itself, after one wasted poll.
+
         Returns {"created": N, "existing": M}
         """
         created = 0
@@ -359,11 +401,12 @@ class AggregatorService:
 
         for repo_config in self.REPOS:
             repo_url = repo_config["url"]
+            known_urls = [repo_url, *repo_config.get("renamed_from", ())]
 
             # Check if source already exists
             source = (
-                self.db.query(GitHubSource)
-                .filter(GitHubSource.repo_url == repo_url)
+                self.db.query(GitHubSource.id)
+                .filter(func.lower(GitHubSource.repo_url).in_([u.lower() for u in known_urls]))
                 .first()
             )
 
@@ -402,25 +445,37 @@ class AggregatorService:
         rotation advances even when the README commit has not changed.
         """
         try:
-            changed, new_sha = await self._check_commit_sha(source)
+            changed, new_sha, committed_at = await self._check_commit_sha(source)
             new_count = 0
 
             if changed:
                 content = await self._fetch_readme(source)
                 is_mega_repo = "Internship" in source.repo_name
+                # Year-less dates ('Sep 26') and ages ('3d') are read as of the
+                # commit that published them, not as of this poll.
                 listed = self.parser.parse(
-                    content, is_mega_repo=is_mega_repo, include_closed=True
+                    content, is_mega_repo=is_mega_repo, include_closed=True,
+                    now=min(committed_at, _utcnow()) if committed_at else None,
                 )
                 parsed_jobs = [job for job in listed if not job.closed]
                 closed_jobs = [job for job in listed if job.closed]
                 listed_urls = self._listed_urls(parsed_jobs)
 
+                # Postings past the aggregator max age never become rows (the
+                # expiry sweep would hide them on its next run), and the rest
+                # go in oldest first: the lists run newest first, and ids must
+                # follow recency for the id-ordered enrichment and alert windows.
+                insertable = self._oldest_first(
+                    [job for job in parsed_jobs if not self._past_max_age(job)]
+                )
+
                 # The lists re-publish postings employers already closed,
                 # verify genuinely-new URLs before they become catalogue rows
-                # a user can click into a 404.
-                dead_urls = await self._probe_new_urls(parsed_jobs)
+                # a user can click into a 404. Freshest first, so the probe
+                # budget goes on the rows users will see first.
+                dead_urls = await self._probe_new_urls(insertable[::-1])
 
-                for job in parsed_jobs:
+                for job in insertable:
                     stored = self._classify_and_store(job, source, dead_urls=dead_urls)
                     if stored:
                         new_count += 1
@@ -525,11 +580,14 @@ class AggregatorService:
         """GitHub API client. Follows redirects: a renamed repo answers 301."""
         return httpx.AsyncClient(follow_redirects=True, timeout=timeout)
 
-    async def _check_commit_sha(self, source: GitHubSource) -> tuple[bool, str]:
+    async def _check_commit_sha(
+        self, source: GitHubSource
+    ) -> tuple[bool, str, Optional[datetime.datetime]]:
         """Check if commit SHA has changed using GitHub API.
 
-        Returns (changed, new_sha). If the SHA is the same as stored,
-        returns (False, current_sha).
+        Returns (changed, new_sha, committed_at). If the SHA is the same as
+        stored, returns (False, current_sha, ...). ``committed_at`` is the head
+        commit's committer time (naive UTC), or None when the API omits it.
         """
         url = (
             f"{GITHUB_API_BASE}/repos/{source.repo_owner}/"
@@ -548,17 +606,23 @@ class AggregatorService:
                 await self._adopt_repo_rename(client, source, headers)
 
         if not commits:
-            return False, source.last_commit_sha or ""
+            return False, source.last_commit_sha or "", None
 
         new_sha = commits[0]["sha"]
         changed = new_sha != source.last_commit_sha
-        return changed, new_sha
+        return changed, new_sha, _commit_time(commits[0])
 
     async def _adopt_repo_rename(self, client: httpx.AsyncClient,
                                  source: GitHubSource, headers: dict) -> None:
         """Point ``source`` at its repo's current owner/name (the API's
         ``full_name``). Raises RepoMovedError when another source already
-        tracks the new name, so the two never poll the same README."""
+        tracks the new name, so the two never poll the same README.
+
+        In that case this source's rows move to the tracking source first:
+        only the source that keeps polling the README can retire them. A
+        tracking source parked in 'error' is put back in rotation, since the
+        API just answered for its name (a 404 from before the repo took the
+        name no longer holds)."""
         response = await client.get(
             f"{GITHUB_API_BASE}/repos/{source.repo_owner}/{source.repo_name}",
             headers=headers,
@@ -573,13 +637,26 @@ class AggregatorService:
 
         repo_url = f"https://github.com/{owner}/{name}"
         tracked = (
-            self.db.query(GitHubSource.id)
+            self.db.query(GitHubSource.id, GitHubSource.status)
             .filter(func.lower(GitHubSource.repo_url) == repo_url.lower(),
                     GitHubSource.id != source.id)
             .first()
         )
         if tracked:
-            raise RepoMovedError(f"Renamed to {full_name}, already tracked by source {tracked[0]}")
+            tracked_id, tracked_status = tracked
+            moved = (
+                self.db.query(ScrapedJob)
+                .filter(ScrapedJob.github_source_id == source.id)
+                .update({"github_source_id": tracked_id}, synchronize_session=False)
+            )
+            if tracked_status == "error":
+                self.db.query(GitHubSource).filter(GitHubSource.id == tracked_id).update(
+                    {"status": "active", "error_message": ""}, synchronize_session=False,
+                )
+            if moved:
+                logger.info("GitHub source %s: moved %d rows to source %s (%s)",
+                            source.repo_url, moved, tracked_id, full_name)
+            raise RepoMovedError(f"Renamed to {full_name}, already tracked by source {tracked_id}")
 
         logger.info("GitHub source %s renamed to %s", source.repo_url, full_name)
         source.repo_owner = owner
@@ -614,12 +691,32 @@ class AggregatorService:
     def _get_experience_level(self, source: GitHubSource, title: str = "") -> str:
         """Returns 'internship' or 'new_grad' based on source repo name, or on
         the title for mixed lists (speedyapply's README is all internships)."""
-        if "Internship" in source.repo_name:
+        if "internship" in (source.repo_name or "").lower():
             return "internship"
-        title_lower = (title or "").lower()
-        if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
+        if _INTERNSHIP_TITLE_RE.search(title or ""):
             return "internship"
         return "new_grad"
+
+    @staticmethod
+    def _past_max_age(job: ParsedJob, now: Optional[datetime.datetime] = None) -> bool:
+        """True when the list dates the posting past the aggregator max age:
+        the expiry sweep would hide a row for it on its next run."""
+        from backend.services.listing_freshness import AGGREGATOR_MAX_AGE_DAYS
+
+        if job.posted_date is None:
+            return False
+        cutoff = (now or _utcnow()) - datetime.timedelta(days=AGGREGATOR_MAX_AGE_DAYS)
+        return job.posted_date < cutoff
+
+    @staticmethod
+    def _oldest_first(jobs: list[ParsedJob]) -> list[ParsedJob]:
+        """Insert order: undated rows first, then by date ascending. Ties keep
+        reversed README order, since the lists add new rows at the top."""
+        return sorted(
+            reversed(jobs),
+            key=lambda job: (job.posted_date is not None,
+                             job.posted_date or datetime.datetime.min),
+        )
 
     async def _probe_new_urls(self, parsed_jobs: list[ParsedJob]) -> set[str]:
         """Liveness-check the parsed URLs that aren't in the catalogue yet.
@@ -682,18 +779,26 @@ class AggregatorService:
           Those rows drop the link, so they match on company + title.
         - vanished: the URL is gone from the README we just re-parsed in full.
 
-        A URL the list still shows open is never touched. A re-parse that would
-        retire most of the source's rows as vanished is a README format change,
-        not a mass closure, so only the closed matches are applied then.
+        A URL the list still shows open is never touched, and neither is a row
+        a first-party board reconciles (a board_key other than ''/'unknown'):
+        that board's crawl decides whether it is live, or the two would flip
+        it between removed and active. A re-parse that would retire most of
+        the source's rows as vanished is a README format change, not a mass
+        closure, so only the closed matches are applied then.
         Column-only reads and updates; the caller commits.
         """
         from backend.services.cross_source_dedup import canonical_url
-        from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES, LISTING_REMOVED
+        from backend.services.listing_freshness import (
+            HIDDEN_LISTING_STATUSES,
+            LISTING_REMOVED,
+            _unreconcilable_board,
+        )
 
         rows = (
             self.db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title)
             .filter(
                 ScrapedJob.github_source_id == source.id,
+                _unreconcilable_board(),
                 or_(ScrapedJob.listing_status.is_(None),
                     ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES)),
             )
@@ -762,8 +867,13 @@ class AggregatorService:
 
         # A list date is a publish date, never a future one: a future date tops
         # the date-sorted feed and never ages past the expiry cutoff.
-        if job.posted_date and job.posted_date > datetime.datetime.utcnow():
-            job.posted_date = datetime.datetime.utcnow()
+        now = _utcnow()
+        if job.posted_date and job.posted_date > now:
+            job.posted_date = now
+        # A posting the list dates past the aggregator max age is not a new
+        # job: stored active, the expiry sweep would hide it on its next run.
+        if self._past_max_age(job, now):
+            return False
 
         # Classify country
         country = self.country_filter.classify(job.location)
@@ -777,16 +887,16 @@ class AggregatorService:
 
         # Determine role category, normalised to the canonical taxonomy:
         #   1. section header from the parser (mega-repos), else
-        #   2. the source repo's configured category, else
-        #   3. classify from the job title.
+        #   2. classify from the job title, falling back to the source repo's
+        #      configured category only when the title says nothing. Broad
+        #      lists (negarprh, Summer2027) are configured 'Software
+        #      Engineering' but carry data, hardware and PM roles too.
         from backend.services.role_classifier import classify, normalize_category
 
-        raw_category = job.section_category or source.role_category or ""
-        role_category = normalize_category(raw_category) or (
-            raw_category if raw_category else ""
-        )
-        if not role_category:
-            role_category = classify(job.title)
+        if job.section_category:
+            role_category = normalize_category(job.section_category) or job.section_category
+        else:
+            role_category = classify(job.title, source.role_category or "")
 
         # Determine experience level
         experience_level = self._get_experience_level(source, job.title)
