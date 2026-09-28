@@ -21,7 +21,9 @@ catalogue self-correcting:
 
 ``last_seen_at`` is positive evidence only (a board listed the row, or the
 platform's API said the posting is open). A probe that learned nothing
-stamps ``last_probed_at`` instead, so it can never pass for a confirmation.
+stamps ``last_probed_at`` instead, so it can never pass for a confirmation;
+a check that got no answer at all (never sent, or rate-limited) stamps
+nothing, so the row keeps its place in line.
 
 All states are soft: rows are never deleted (saved-job and application records
 reference them), and the row's user-facing ``status`` workflow is untouched.
@@ -42,7 +44,14 @@ from sqlalchemy import case, func, not_, nulls_first, or_
 from sqlalchemy.orm import Session
 
 from backend.db.models import ScrapedJob
-from backend.services.platform_liveness import ALIVE, DEAD, check_listings
+from backend.services.platform_liveness import (
+    ALIVE,
+    DEAD,
+    LINKEDIN_RUN_CAP,
+    check_listings,
+    is_deferred,
+    strip_workday_apply,
+)
 from backend.services.structured_extraction import (
     compute_raw_hash,
     detect_employment_type,
@@ -77,19 +86,19 @@ _FAST_AGGREGATOR_SOURCES = ("linkedin", "indeed")
 _AGGREGATOR_SOURCES = _FAST_AGGREGATOR_SOURCES + ("github",)
 # LinkedIn/Indeed rows by URL host: the retired external scraper stored its
 # LinkedIn cards as source_platform='ats'.
-_FAST_AGGREGATOR_URL_PATTERNS = (
-    "http%://linkedin.com/%", "http%://%.linkedin.com/%",
+_LINKEDIN_URL_PATTERNS = ("http%://linkedin.com/%", "http%://%.linkedin.com/%")
+_FAST_AGGREGATOR_URL_PATTERNS = _LINKEDIN_URL_PATTERNS + (
     "http%://indeed.com/%", "http%://%.indeed.com/%",
 )
 # Board keys no crawl will ever reconcile.
 _UNRECONCILABLE_BOARD_KEYS = ("", "unknown")
 
 # A stale row nothing has vouched for (no board listing, no platform "open")
-# in this long is presumed dead: the verifier had ~6 runs a day to prove
-# otherwise.
+# in this long is presumed dead, once the verifier has checked it since:
+# it had ~6 runs a day to prove otherwise.
 STALE_TERMINAL_DAYS = 21
 # Direct rows on a board no crawl reconciles age out this long after their
-# last positive evidence.
+# last positive evidence, again only once a check has come back since.
 UNRECONCILABLE_MAX_AGE_DAYS = 30
 
 # Per-run verification budgets, sized for the ~6 runs/day the "hourly"
@@ -101,6 +110,10 @@ RECENT_VERIFY_BUDGET = 200
 UNCONFIRMED_VERIFY_BUDGET = 150
 VERIFY_TIME_BOX_SECONDS = 150
 VERIFY_RECHECK_HOURS = 20
+# LinkedIn answers a paced trickle per run (platform_liveness caps it):
+# selecting more of its rows would only defer them, and rows that are never
+# stamped would crowd the GitHub rows out of every run's budget.
+RECENT_LINKEDIN_QUOTA = LINKEDIN_RUN_CAP
 # An active direct row no board has re-listed for this long gets checked
 # before it goes stale (partial Workday/SmartRecruiters crawls, and rows the
 # old verifier revived on a bare 200).
@@ -183,7 +196,8 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
     revive_ids: list[int] = []
     gone_ids: list[int] = []
     for row_id, url, listing_status in rows:
-        if url in live_urls:
+        # A stored Workday '/job/<slug>/apply' link is the listed posting.
+        if url in live_urls or strip_workday_apply(url or "") in live_urls:
             live_ids.append(row_id)
             if listing_status in (LISTING_REMOVED, LISTING_STALE, LISTING_EXPIRED):
                 revive_ids.append(row_id)
@@ -350,6 +364,11 @@ def _fast_aggregator_row():
     )
 
 
+def _linkedin_row():
+    """Rows whose URL is a LinkedIn page (what the liveness check asks)."""
+    return or_(*[ScrapedJob.url.ilike(pattern) for pattern in _LINKEDIN_URL_PATTERNS])
+
+
 def _older_than(cutoff: datetime.datetime, *columns):
     """least(columns) < cutoff, NULLs ignored, portable: SQLite's min()
     returns NULL when any argument is NULL, Postgres' LEAST skips them."""
@@ -411,7 +430,12 @@ def sweep_terminal_expiry(db: Session, now: datetime.datetime | None = None,
       (board_key '' / 'unknown') → expired ``unreconcilable_days`` after its
       last positive evidence.
 
-    Board-confirmed rows are untouched: a crawl keeps bumping their
+    Both only once a check has come back since that evidence
+    (``last_probed_at`` after it): a row the verifier never reached (budget,
+    time box, a host skipped or rate-limiting) is not aged out unchecked,
+    while a row a check could not judge (a bot wall, an SPA shell) still
+    ends on schedule. Run it after the verify sweeps, so this run's checks
+    count. Board-confirmed rows are untouched: a crawl keeps bumping their
     ``last_seen_at``, and a board that lists an expired row again revives it.
     Column-only UPDATEs. Commits.
     """
@@ -419,12 +443,14 @@ def sweep_terminal_expiry(db: Session, now: datetime.datetime | None = None,
     expire = {"listing_status": LISTING_EXPIRED, "listing_status_changed_at": now}
     evidence = func.coalesce(ScrapedJob.last_seen_at, ScrapedJob.first_seen_at,
                              ScrapedJob.scraped_at)
+    checked_since = (ScrapedJob.last_probed_at.isnot(None), ScrapedJob.last_probed_at > evidence)
 
     stale = (
         db.query(ScrapedJob)
         .filter(
             ScrapedJob.listing_status == LISTING_STALE,
             evidence < now - datetime.timedelta(days=stale_days),
+            *checked_since,
         )
         .update(expire, synchronize_session=False)
     )
@@ -436,6 +462,7 @@ def sweep_terminal_expiry(db: Session, now: datetime.datetime | None = None,
             ScrapedJob.source_platform.notin_(_AGGREGATOR_SOURCES),
             not_(_fast_aggregator_row()),
             evidence < now - datetime.timedelta(days=unreconcilable_days),
+            *checked_since,
         )
         .update(expire, synchronize_session=False)
     )
@@ -718,9 +745,16 @@ def _verify_candidates(now: datetime.datetime, recheck_hours: int):
     )
 
 
+def _verify_columns():
+    """What a verify sweep reads per row (column-only)."""
+    return (ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status, ScrapedJob.board_key)
+
+
 async def _verify_rows(db: Session, client, rows: list, *, now: datetime.datetime,
-                       deadline: float | None, label: str) -> dict:
-    """Check ``rows`` ((id, url, listing_status)) and apply the verdicts:
+                       deadline: float | None, label: str,
+                       cache: dict | None = None) -> dict:
+    """Check ``rows`` ((id, url, listing_status, board_key)) and apply the
+    verdicts:
 
       - dead → ``removed``
       - authoritative alive (the platform's own API/board) → ``last_seen_at``
@@ -728,30 +762,38 @@ async def _verify_rows(db: Session, client, rows: list, *, now: datetime.datetim
       - anything else (bot wall, SPA shell, a page that merely loaded) → only
         ``last_probed_at``, never a revival
 
-    Every checked row gets ``last_probed_at``. Chunked, each chunk commits;
-    once ``deadline`` passes no new checks start and the rest stay first in
-    line for the next run. Returns counts.
+    Every checked row gets ``last_probed_at``. A check that got no answer
+    (host skipped after failures, the run's budget for the host spent, no
+    turn at its gate, a 429/999 rate limit) is deferred like a row the
+    deadline cut off: no stamp, so it stays first in line for the next run.
+    Chunked, each chunk commits; once ``deadline`` passes no new checks
+    start. ``cache`` shares per-run liveness state (host breakers, LinkedIn
+    budget, Ashby boards) with other sweeps of the same run. Returns counts.
     """
     stats = {"checked": 0, "removed": 0, "revived": 0, "confirmed": 0,
              "unverified": 0, "deferred": 0}
     reasons: Counter = Counter()
-    cache: dict = {}
+    cache = {} if cache is None else cache
     for index, chunk in enumerate(_chunks(rows, _VERIFY_CHUNK)):
         if deadline is not None and time.monotonic() >= deadline:
             stats["deferred"] += len(rows) - index * _VERIFY_CHUNK
             break
         results = await check_listings(
-            client, [url for _id, url, _status in chunk],
+            client, [row[1] for row in chunk],
             concurrency=_VERIFY_CONCURRENCY, deadline=deadline, cache=cache,
+            board_keys={row[1]: row[3] or "" for row in chunk},
         )
         probed, removed, confirmed, revived = [], [], [], []
-        for row_id, url, listing_status in chunk:
+        for row_id, url, listing_status, _board_key in chunk:
             result = results.get(url)
             if result is None:
                 stats["deferred"] += 1
                 continue
-            probed.append(row_id)
             reasons[result.reason] += 1
+            if is_deferred(result):
+                stats["deferred"] += 1
+                continue
+            probed.append(row_id)
             outcome = _liveness_outcome(listing_status, result)
             if outcome == "removed":
                 removed.append(row_id)
@@ -784,7 +826,9 @@ async def verify_recent_aggregator_listings(db: Session, client,
                                             limit: int = RECENT_VERIFY_BUDGET,
                                             now: datetime.datetime | None = None,
                                             *, deadline: float | None = None,
-                                            recheck_hours: int = VERIFY_RECHECK_HOURS) -> dict:
+                                            recheck_hours: int = VERIFY_RECHECK_HOURS,
+                                            linkedin_quota: int = RECENT_LINKEDIN_QUOTA,
+                                            cache: dict | None = None) -> dict:
     """Probe visible aggregator rows no board reconciles: GitHub-list rows
     (the curated lists re-publish already-closed roles, and their links point
     at Ashby/Greenhouse/Workday, which the platform checks read honestly) and
@@ -792,13 +836,14 @@ async def verify_recent_aggregator_listings(db: Session, client,
     accepting applications"). Indeed is excluded: Cloudflare walls the probe.
 
     Least-recently-probed first (newest first among never-probed), so the
-    whole backlog rotates instead of the newest rows eating every run.
-    Commits. Returns counts.
+    whole backlog rotates instead of the newest rows eating every run. At
+    most ``linkedin_quota`` LinkedIn rows per run, the rest of the budget
+    goes to the other rows. Commits. Returns counts.
     """
     now = now or _utcnow()
     effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
-    rows = (
-        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
+    candidates = (
+        db.query(*_verify_columns())
         .filter(
             ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
             ScrapedJob.source_platform.in_(("github", "linkedin")),
@@ -806,11 +851,11 @@ async def verify_recent_aggregator_listings(db: Session, client,
         )
         .order_by(nulls_first(ScrapedJob.last_probed_at.asc()),
                   effective_date.desc(), ScrapedJob.id.desc())
-        .limit(limit)
-        .all()
     )
-    return await _verify_rows(db, client, rows, now=now, deadline=deadline,
-                              label="recent_aggregator")
+    linkedin = candidates.filter(_linkedin_row()).limit(max(0, min(limit, linkedin_quota))).all()
+    others = candidates.filter(not_(_linkedin_row())).limit(max(0, limit - len(linkedin))).all()
+    return await _verify_rows(db, client, linkedin + others, now=now, deadline=deadline,
+                              label="recent_aggregator", cache=cache)
 
 
 # ─── Direct-row URL verification ─────────────────────────────────────────────
@@ -818,7 +863,8 @@ async def verify_recent_aggregator_listings(db: Session, client,
 async def verify_stale_listings(db: Session, client, limit: int = STALE_VERIFY_BUDGET,
                                 now: datetime.datetime | None = None,
                                 *, deadline: float | None = None,
-                                recheck_hours: int = VERIFY_RECHECK_HOURS) -> dict:
+                                recheck_hours: int = VERIFY_RECHECK_HOURS,
+                                cache: dict | None = None) -> dict:
     """Work through the stale backlog, least-recently-probed first (newest
     first among never-probed), so every stale row gets its turn even at ~6
     runs a day. Dead → removed; revived ONLY when the platform's own API or
@@ -829,7 +875,7 @@ async def verify_stale_listings(db: Session, client, limit: int = STALE_VERIFY_B
     now = now or _utcnow()
     effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
     rows = (
-        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
+        db.query(*_verify_columns())
         .filter(
             ScrapedJob.listing_status == LISTING_STALE,
             *_verify_candidates(now, recheck_hours),
@@ -839,7 +885,8 @@ async def verify_stale_listings(db: Session, client, limit: int = STALE_VERIFY_B
         .limit(limit)
         .all()
     )
-    return await _verify_rows(db, client, rows, now=now, deadline=deadline, label="stale")
+    return await _verify_rows(db, client, rows, now=now, deadline=deadline, label="stale",
+                              cache=cache)
 
 
 async def verify_unconfirmed_active_listings(db: Session, client,
@@ -847,7 +894,8 @@ async def verify_unconfirmed_active_listings(db: Session, client,
                                              now: datetime.datetime | None = None,
                                              *, deadline: float | None = None,
                                              unconfirmed_hours: int = UNCONFIRMED_AFTER_HOURS,
-                                             recheck_hours: int = VERIFY_RECHECK_HOURS) -> dict:
+                                             recheck_hours: int = VERIFY_RECHECK_HOURS,
+                                             cache: dict | None = None) -> dict:
     """Active direct-board rows no crawl has re-listed for
     ``unconfirmed_hours``: rows past a partial crawl's page cap (big Workday
     and SmartRecruiters boards never complete), boards we don't crawl, and
@@ -858,7 +906,7 @@ async def verify_unconfirmed_active_listings(db: Session, client,
     now = now or _utcnow()
     unconfirmed_cutoff = now - datetime.timedelta(hours=unconfirmed_hours)
     rows = (
-        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
+        db.query(*_verify_columns())
         .filter(
             ScrapedJob.listing_status == LISTING_ACTIVE,
             ScrapedJob.source_platform == "ats",
@@ -872,4 +920,4 @@ async def verify_unconfirmed_active_listings(db: Session, client,
         .all()
     )
     return await _verify_rows(db, client, rows, now=now, deadline=deadline,
-                              label="unconfirmed_active")
+                              label="unconfirmed_active", cache=cache)

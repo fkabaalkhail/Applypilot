@@ -631,23 +631,25 @@ async def cron_freshness(
     adopted = listing_freshness.backfill_board_keys(db)
     stale = listing_freshness.sweep_stale(db)
     expired = listing_freshness.sweep_aggregator_expiry(db)
-    terminal = listing_freshness.sweep_terminal_expiry(db)
 
     # The probes share one wall-clock box (the "hourly" schedule really fires
     # ~6x/day, so budgets are big and hosts can hang). Each phase stops
     # starting checks at its mark; time a phase doesn't use flows to the next.
+    # One liveness state for the whole run: host breakers, LinkedIn's
+    # per-run budget and Ashby boards carry across the phases.
     started = time.monotonic()
     box = listing_freshness.VERIFY_TIME_BOX_SECONDS
+    run_cache: dict = {}
     async with make_client() as client:
         verified = await listing_freshness.verify_stale_listings(
             db, client, limit=listing_freshness.STALE_VERIFY_BUDGET,
-            deadline=started + box * 0.6,
+            deadline=started + box * 0.6, cache=run_cache,
         )
         # Active rows past a partial crawl's page cap (big Workday/SR boards)
         # or on boards we don't crawl: kill the dead ones before the 72h TTL.
         unconfirmed = await listing_freshness.verify_unconfirmed_active_listings(
             db, client, limit=listing_freshness.UNCONFIRMED_VERIFY_BUDGET,
-            deadline=started + box * 0.8,
+            deadline=started + box * 0.8, cache=run_cache,
         )
         # GitHub lists re-publish closed postings and aged LinkedIn rows go
         # soft-dead (200 + "no longer accepting applications"); rotate through
@@ -655,9 +657,13 @@ async def cron_freshness(
         # 404 complaints.
         recent = await listing_freshness.verify_recent_aggregator_listings(
             db, client, limit=listing_freshness.RECENT_VERIFY_BUDGET,
-            deadline=started + box,
+            deadline=started + box, cache=run_cache,
         )
     verify_seconds = round(time.monotonic() - started, 1)
+
+    # After the checks, so this run's probes count: terminal expiry only ends
+    # a row a check has reached since its last positive evidence.
+    terminal = listing_freshness.sweep_terminal_expiry(db)
 
     ghost = listing_freshness.score_ghost_risk(db)
 
@@ -1025,11 +1031,10 @@ def get_job(
 
 # ─── Click-time liveness ─────────────────────────────────────────────────────
 
-# A row probed this recently answers from the database: the sweeps or an
-# earlier click already asked the platform, and asking again learns nothing.
-CHECK_LIVE_RECHECK = datetime.timedelta(hours=6)
-# A cached answer says "alive" only for an active row its board (or the
-# platform's API) vouched for this recently.
+# The database answers without a probe only when what it holds is
+# conclusive: a closed row (dead), or an active row its board (or the
+# platform's API) vouched for this recently (alive). A recent probe that
+# learned nothing is not an answer, so it doesn't stop a new one.
 CHECK_LIVE_SEEN_FRESH = datetime.timedelta(hours=24)
 # Per request. The detail panel never waits on this, but it must still end.
 CHECK_LIVE_TIMEOUT_S = 8.0
@@ -1082,11 +1087,20 @@ def _probe_allowed(url: str) -> bool:
     return _is_url_allowed(url)
 
 
-async def _probe_listing(url: str) -> LivenessResult:
+async def _probe_listing(url: str, board_key: str = "") -> LivenessResult:
     if not await asyncio.to_thread(_probe_allowed, url):
         return LivenessResult(UNKNOWN, "url_not_allowed")
+    # make_client refuses every hop (redirects included) to a non-public
+    # address; the check above only saw the first URL.
     async with platform_liveness.make_client() as client:
-        return await platform_liveness.check_listing(client, url)
+        return await platform_liveness.check_listing(client, url, board_key=board_key)
+
+
+def _learned_nothing(result: LivenessResult) -> bool:
+    """A click-time probe that got no answer: rate-limited, a network miss,
+    or never sent. Recording it would only push the row back in the sweeps'
+    queue as if it had been checked."""
+    return platform_liveness.is_miss(result) or result.reason == "url_not_allowed"
 
 
 @router.post("/{job_id}/check-live")
@@ -1102,17 +1116,18 @@ async def check_job_live(
     it is still open and applies the answer by the sweeps' rules
     (listing_freshness.record_liveness): dead → removed, an authoritative
     alive → last_seen_at (and a stale row revives), anything else only
-    stamps last_probed_at. A row already closed, or probed within
-    CHECK_LIVE_RECHECK, answers from the database without a request. A probe
-    that fails or runs past CHECK_LIVE_TIMEOUT_S is verdict unknown, never
-    an error.
+    stamps last_probed_at. The database answers without a request only when
+    it is conclusive: a closed row is dead, an active row confirmed within
+    CHECK_LIVE_SEEN_FRESH is alive. A probe that got no answer (rate limit,
+    network miss, timeout past CHECK_LIVE_TIMEOUT_S) is verdict unknown,
+    never an error, and is not recorded.
 
     Returns {"id", "listing_status", "verdict"} (alive | dead | unknown).
     """
     row = (
         db.query(
             ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status,
-            ScrapedJob.last_seen_at, ScrapedJob.last_probed_at,
+            ScrapedJob.last_seen_at, ScrapedJob.board_key,
         )
         .filter(ScrapedJob.id == job_id)
         .first()
@@ -1127,32 +1142,28 @@ async def check_job_live(
         return _live_answer(row.id, status, DEAD)
 
     now = datetime.datetime.utcnow()
-    probed_at = _naive_utc(row.last_probed_at)
-    if probed_at is not None and now - probed_at < CHECK_LIVE_RECHECK:
-        seen_at = _naive_utc(row.last_seen_at)
-        fresh = (
-            status == LISTING_ACTIVE
-            and seen_at is not None
-            and now - seen_at < CHECK_LIVE_SEEN_FRESH
-        )
-        return _live_answer(row.id, status, ALIVE if fresh else UNKNOWN)
+    seen_at = _naive_utc(row.last_seen_at)
+    if status == LISTING_ACTIVE and seen_at is not None and now - seen_at < CHECK_LIVE_SEEN_FRESH:
+        return _live_answer(row.id, status, ALIVE)
 
     _enforce_check_live_limits(db, request, user_id)
 
     try:
-        result = await asyncio.wait_for(_probe_listing(row.url or ""), CHECK_LIVE_TIMEOUT_S)
+        result = await asyncio.wait_for(_probe_listing(row.url or "", row.board_key or ""),
+                                        CHECK_LIVE_TIMEOUT_S)
     except asyncio.TimeoutError:
         result = LivenessResult(UNKNOWN, "timeout")
     except Exception as exc:
         logger.warning("check-live probe failed for job %s: %s", job_id, exc)
         result = LivenessResult(UNKNOWN, "error")
 
-    try:
-        status = record_liveness(db, row.id, status, result)
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        logger.warning("check-live could not record job %s: %s", job_id, exc)
+    if not _learned_nothing(result):
+        try:
+            status = record_liveness(db, row.id, status, result)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.warning("check-live could not record job %s: %s", job_id, exc)
     logger.info("check-live job %s: %s (%s), now %s", job_id, result.verdict, result.reason, status)
     return _live_answer(row.id, status, result.verdict)
 
