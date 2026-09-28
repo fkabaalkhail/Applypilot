@@ -248,6 +248,114 @@ async def test_linkedin_search_rejects_ambiguous_name():
     assert result is None
 
 
+@pytest.mark.parametrize("longer,company,expected", [
+    ("Magna International", "Magna", True),
+    ("Magna International Inc.", "**Magna**", True),
+    ("BMO Financial Group", "BMO", True),
+    ("Bell Canada", "Bell", True),
+    ("Intact Financial Corporation", "Intact", True),
+    ("Bell Flight", "Bell", False),            # another employer
+    ("Bell Textron Canada", "Bell", False),
+    ("The Bell Company", "Bell", False),       # prefix + 'Company'
+    ("The Bell Group", "Bell", False),         # a leading 'The' is a different name
+    ("Magnaporthe oryzae", "Magna", False),
+    ("Magna", "Magna", False),                 # not longer
+    ("Bell", "Bell Canada", False),            # one direction only
+    ("Magna International Group Canada", "Magna", False),  # at most two words
+    ("Global Group", "Global", False),         # the base must say more than a generic word
+    ("BMO Capital Markets", "BMO", False),
+])
+def test_suffix_variants(longer, company, expected):
+    assert lh.is_suffix_variant(longer, company) is expected
+
+
+def _search_page(*cards: tuple[str, str, str]) -> bytes:
+    return ("<ul>" + "".join(_li_card(*card) for card in cards) + "</ul>").encode()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("company,cards,logo_id", [
+    # prod shapes: 'Magna' (181 rows, no logo) vs LinkedIn's 'Magna International'
+    ("Magna", [("Magna International", "magna-international", "MAG"),
+               ("Magnachip", "magnachip", "CHIP")], "MAG"),
+    ("BMO", [("BMO Capital Markets", "bmo-capital-markets", "CAP"),
+             ("BMO Financial Group", "bmo-financial-group", "BFG"),
+             ("BMO Financial Group", "bmo-financial-group", "BFG")], "BFG"),
+    ("Bell", [("Bell Flight", "bell-flight", "FLT"), ("Bell Canada", "bell-canada", "BCE")], "BCE"),
+])
+async def test_linkedin_search_accepts_the_longer_name(company, cards, logo_id):
+    result = await _harvest(
+        [(r"seeMoreJobPostings", (200, _search_page(*cards))), (LICDN, (200, LOGO, "image/png"))],
+        LogoHints(company=company),
+    )
+    assert result.source == "linkedin_search" and f"/{logo_id}/" in result.source_url
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("company,cards", [
+    ("Bell", [("Bell Flight", "bell-flight", "FLT"), ("The Bell Company", "the-bell-company", "TBC")]),
+    ("Bell", [("Bell Textron", "bell-textron", "TX")]),
+    # two different employers answer to the longer name: neither is safe
+    ("Magna", [("Magna International", "magna-international", "MAG"),
+               ("MAGNA Global", "magna-global", "MG")]),
+    ("Magna", [("Magna International", "magna-international", "MAG"),
+               ("Magna International", "magna-intl-duplicate", "MG2")]),
+])
+async def test_linkedin_search_rejects_other_employers_and_ambiguous_longer_names(company, cards):
+    log: list[str] = []
+    result = await _harvest(
+        [(r"seeMoreJobPostings", (200, _search_page(*cards))), (LICDN, (200, LOGO, "image/png"))],
+        LogoHints(company=company),
+        log,
+    )
+    assert result is None
+    assert not any("licdn" in u for u in log)
+
+
+@pytest.mark.asyncio
+async def test_linkedin_search_exact_name_beats_a_longer_one():
+    cards = _search_page(("Magna Global", "magna-global", "MG"), ("Magna", "magna", "EXACT"))
+    result = await _harvest(
+        [(r"seeMoreJobPostings", (200, cards)), (LICDN, (200, LOGO, "image/png"))],
+        LogoHints(company="Magna"),
+    )
+    assert "/EXACT/" in result.source_url
+
+
+@pytest.mark.asyncio
+async def test_linkedin_cooldown_waits_out_a_block_instead_of_skipping(monkeypatch):
+    monkeypatch.setattr(lh, "LINKEDIN_BLOCK_COOLDOWN", 0.05)
+    answers = iter([429, 200])
+
+    async def job_page(request):
+        status = next(answers)
+        return httpx.Response(status, content=_li_job_page("Kinaxis") if status == 200 else b"")
+
+    routes = [(r"jobs-guest/jobs/api/jobPosting/", job_page), (LICDN + "AAA", (200, LOGO, "image/png"))]
+    async with httpx.AsyncClient(transport=_router(routes)) as client:
+        started = time.monotonic()
+        result = await harvest_company_logo(client, LogoHints(
+            company="Kinaxis", job_urls=["https://www.linkedin.com/jobs/view/4470193130"]))
+        assert result.source == "linkedin_job"
+        assert time.monotonic() - started >= 0.05
+        assert lh.linkedin_stats(client) == {"calls": 2, "blocks": 1, "blocked": False,
+                                             "blocked_at": None}
+
+
+@pytest.mark.asyncio
+async def test_linkedin_cooldown_gives_up_after_repeated_blocks(monkeypatch):
+    monkeypatch.setattr(lh, "LINKEDIN_BLOCK_COOLDOWN", 0.001)
+    log: list[str] = []
+    async with httpx.AsyncClient(transport=_router([(r"linkedin\.com", (429, b""))], log)) as client:
+        result = await harvest_company_logo(client, LogoHints(
+            company="Acme", job_urls=["https://www.linkedin.com/jobs/view/4470193130"]))
+        assert result is None
+        stats = lh.linkedin_stats(client)
+        assert stats["blocked"] is True and stats["blocks"] == lh._LINKEDIN_MAX_BLOCKS + 1
+        assert stats["blocked_at"] is not None
+    assert sum("linkedin.com" in u for u in log) == lh._LINKEDIN_MAX_BLOCKS + 1
+
+
 @pytest.mark.asyncio
 async def test_linkedin_429_skips_linkedin_for_the_rest_of_the_run():
     log: list[str] = []
@@ -611,18 +719,95 @@ async def test_wikidata_rejects_entity_with_other_website():
 
 
 @pytest.mark.asyncio
-async def test_wikidata_without_verified_domain_needs_exact_label():
+async def test_wikidata_without_verified_domain_needs_the_name_or_its_longer_name():
+    # W2 change: 'Magna' (prod: 181 rows, no logo) used to be refused here;
+    # 'Magna International' is its longer name, the fungus never was.
     magna = _entity("Q697311", "Magna International", ["https://www.magna.com/"], [("Magna logo.svg", "normal", False)])
     fungus = _entity("Q2", "Magnaporthe oryzae", [], [("Fungus.svg", "normal", False)])
     NXDOMAINS.add("magnaguess.com")
-    assert await _harvest(_wd_routes([], [fungus, magna]),
+    assert await _harvest(_wd_routes([], [fungus]),
                           LogoHints(company="Magna", domains=["magnaguess.com"])) is None
+    hit = await _harvest(_wd_routes([], [fungus, magna]),
+                         LogoHints(company="Magna", domains=["magnaguess.com"]))
+    assert hit.source == "wikidata" and "Magna%20logo.svg" in hit.source_url
+    assert hit.verified_domain is None
     hit = await _harvest(_wd_routes([], [fungus, magna]),
                          LogoHints(company="**Magna International**", domains=["magnaguess.com"]))
     assert hit.source == "wikidata" and hit.verified_domain is None
     async with httpx.AsyncClient(transport=_router(_wd_routes([], [fungus, magna]))) as client:
         assert "Magna%20logo.svg" in await harvest_from_wikidata(client, "Magna International")
-        assert await harvest_from_wikidata(client, "Magna") == ""
+        assert "Magna%20logo.svg" in await harvest_from_wikidata(client, "Magna")
+        # a shorter label never stands in for a longer company name
+        assert await harvest_from_wikidata(client, "Magna International Group Canada") == ""
+
+
+def _wd_search_routes(hits_for: dict[str, list[dict]], logo_bytes=LOGO, log=None):
+    """Wikidata answering each name search with its own entities."""
+    entities = {e["id"]: e for found in hits_for.values() for e in found}
+
+    async def search(request):
+        query = request.url.params.get("search", "")
+        found = hits_for.get(query, [])
+        body = {"search": [{"id": e["id"], "label": e["labels"]["en"]["value"]} for e in found]}
+        if log is not None:
+            log.append(query)
+        return httpx.Response(200, json=body)
+
+    async def get(request):
+        ids = request.url.params.get("ids", "").split("|")
+        return httpx.Response(200, json={"entities": {i: entities[i] for i in ids if i in entities}})
+
+    return [
+        (r"list=search", (200, b'{"query": {"search": []}}', "application/json")),
+        (r"wbsearchentities", search),
+        (r"wbgetentities", get),
+        (r"commons\.wikimedia\.org/wiki/Special:FilePath/", (200, logo_bytes, "image/png")),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_wikidata_searches_the_longer_name_when_the_name_finds_nothing():
+    # 'Bell' only finds bells, a surname and a town; 'Bell Canada' is the employer.
+    surname = _entity("Q1444604", "Bell", [], [])
+    bell_canada = _entity("Q815694", "Bell Canada", ["https://www.bell.ca/"], [("Bell logo.svg", "normal", False)])
+    bell_flight = _entity("Q3", "Bell Flight", ["https://www.bellflight.com/"], [("Bell Flight.svg", "normal", False)])
+    queries: list[str] = []
+    routes = _wd_search_routes({
+        "Bell": [surname, bell_flight],
+        "Bell Canada": [bell_canada, bell_flight],
+        "Bell Group": [bell_flight],
+    }, log=queries)
+    hit = await _harvest(routes, LogoHints(company="Bell"))
+    assert hit.source == "wikidata" and "Bell%20logo.svg" in hit.source_url
+    assert "Bell Canada" in queries and "Bell International" in queries
+    # 'Bell Flight' answers every search and is never a longer name for Bell
+    only_flight = _wd_search_routes({"Bell": [surname, bell_flight], "Bell Canada": [bell_flight]})
+    assert await _harvest(only_flight, LogoHints(company="Bell")) is None
+
+
+@pytest.mark.asyncio
+async def test_wikidata_two_longer_names_are_ambiguous():
+    intl = _entity("Q697311", "Magna International", [], [("Magna logo.svg", "normal", False)])
+    agency = _entity("Q9", "Magna Global", [], [("Magna Global.svg", "normal", False)])
+    routes = _wd_search_routes({"Magna": [intl, agency]})
+    assert await _harvest(routes, LogoHints(company="Magna")) is None
+    # an exact label still wins over longer ones
+    exact = _entity("Q10", "Magna", [], [("Magna exact.svg", "normal", False)])
+    routes = _wd_search_routes({"Magna": [intl, agency, exact]})
+    hit = await _harvest(routes, LogoHints(company="Magna"))
+    assert "Magna%20exact.svg" in hit.source_url
+
+
+@pytest.mark.asyncio
+async def test_wikidata_large_entity_payload_still_parses():
+    # Ten big companies' claims top the 300KB page cap that used to truncate
+    # the JSON into a silent miss.
+    magna = _entity("Q697311", "Magna International", ["https://www.magna.com/"], [("Magna logo.svg", "normal", False)])
+    magna["claims"]["P999"] = [{"mainsnak": {"datavalue": {"value": "x" * 1000}}}] * 450
+    routes = [(r"https://magna\.com/$", (200, b"<title>Magna International</title>"))]
+    routes += _wd_routes(["Q697311"], [magna])
+    hit = await _harvest(routes, LogoHints(company="Magna", domains=["magna.com"]))
+    assert hit is not None and hit.source == "wikidata" and hit.verified_domain == "magna.com"
 
 
 # --- 6. google s2 -------------------------------------------------------------------

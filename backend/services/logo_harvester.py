@@ -8,10 +8,14 @@ downloaded and normalized, so the caller self-hosts the bytes instead of
 hotlinking a third party. Order and hit rates (prod, 250 no-logo companies):
 
 0. logos already stored on other rows of the same company (licdn, Indeed
-   squarelogo): half of the no-logo rows had one on a sibling row;
+   squarelogo): half of the no-logo rows had one on a sibling row; the
+   caller may add rows of the company's longer name ('Magna International'
+   for 'Magna') after them;
 1. LinkedIn's public job endpoint for one of the company's LinkedIn jobs
    (89%): accepted only when the posting's org name is the company;
-2. LinkedIn's public job search, exact normalized company-name match (33%);
+2. LinkedIn's public job search, exact normalized company-name match (33%),
+   else the company's longer name ('Magna' -> 'Magna International', see
+   ALIAS_SUFFIXES) when only one employer answers to it;
 3. the ATS board's own logo (Ashby, Workday, Lever, Greenhouse,
    SmartRecruiters, BambooHR, Workable), authoritative but often a wordmark;
 4. homepage icons, ONLY on a domain verify_domain() accepted: most stored
@@ -19,7 +23,7 @@ hotlinking a third party. Order and hit rates (prod, 250 no-logo companies):
    another company's site;
 5. Wikidata P154, only when the entity's official website (P856) is a
    verified domain, or with no verified domain when its label is exactly
-   the company name;
+   the company name (or its one unambiguous longer name);
 6. google s2 at 256px on a verified domain (normalize_logo rejects the
    globe/GoDaddy placeholders and tiny favicons).
 
@@ -56,6 +60,7 @@ _MAX_PAGE_BYTES = 900_000     # Lever's header logo sits ~700KB into the page
 _MAX_HOME_BYTES = 600_000
 _MAX_JSON_BYTES = 300_000
 _MAX_HOMEPAGE_TRIES = 6
+_MAX_EXISTING = 6             # the company's own seeds, then its longer name's
 _DNS_TIMEOUT = 4.0
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
@@ -154,6 +159,52 @@ def name_key(name: str | None) -> str:
     return "".join(words)
 
 
+# Generic corporate words an employer's longer name adds to its short one:
+# 'Magna' is 'Magna International', 'BMO' is 'BMO Financial Group', 'Bell' is
+# 'Bell Canada'. A closed list on purpose: 'Bell Flight' (flight), 'Bell
+# Industries' and 'The Bell Company' are other employers. Shared with
+# logo_cache's cross-name seeding.
+ALIAS_SUFFIXES = frozenset({
+    "international", "intl", "group", "financial", "corporation", "corp",
+    "incorporated", "inc", "limited", "ltd", "llc", "plc", "holdings", "holding",
+    "global", "worldwide", "canada", "usa", "us", "america", "americas",
+})
+_MAX_ALIAS_WORDS = 2
+# Wikidata searches tried when the plain name finds nothing ('Bell' ->
+# 'Bell Canada'); every hit still has to be a suffix variant.
+_ALIAS_QUERY_SUFFIXES = ("International", "Group", "Canada", "Holdings")
+
+
+def name_words(name: str | None) -> list[str]:
+    """Lowercase alphanumeric words of a company name without trailing legal
+    suffixes. Unlike name_key a leading 'the' is kept: 'The Bell Company' is
+    not a longer name for 'Bell'."""
+    n = clean_company_name(name).lower().replace("&", " and ")
+    words = [t for t in re.split(r"[^a-z0-9]+", n) if t]
+    while len(words) > 1 and words[-1] in _LEGAL_SUFFIXES:
+        words.pop()
+    return words
+
+
+def is_suffix_variant_words(longer: list[str], base: list[str]) -> bool:
+    """True when `longer` is `base` plus one or two ALIAS_SUFFIXES words, and
+    `base` itself says more than a generic word."""
+    extra = len(longer) - len(base)
+    return (
+        bool(base)
+        and 1 <= extra <= _MAX_ALIAS_WORDS
+        and longer[:len(base)] == base
+        and all(w in ALIAS_SUFFIXES for w in longer[len(base):])
+        and any(w not in ALIAS_SUFFIXES and w != "the" for w in base)
+    )
+
+
+def is_suffix_variant(longer: str | None, company: str | None) -> bool:
+    """'Magna International' / 'BMO Financial Group' / 'Bell Canada' for
+    'Magna' / 'BMO' / 'Bell'; never 'Bell Flight' or 'The Bell Company'."""
+    return is_suffix_variant_words(name_words(longer), name_words(company))
+
+
 def _company_tokens(name: str | None) -> list[str]:
     words = [t for t in re.split(r"[^a-z0-9]+", clean_company_name(name).lower()) if t]
     tokens = [t for t in words if t not in _TOKEN_STOPWORDS and len(t) >= 3]
@@ -244,9 +295,12 @@ async def _fetch_page(
         return None
 
 
-async def _fetch_json(client: httpx.AsyncClient, url: str, params: dict | None = None):
+async def _fetch_json(
+    client: httpx.AsyncClient, url: str, params: dict | None = None,
+    max_bytes: int = _MAX_JSON_BYTES,
+):
     headers = _WIKIMEDIA_HEADERS if "wikidata.org" in url else _JSON_HEADERS
-    page = await _fetch_page(client, url, headers, _MAX_JSON_BYTES, params)
+    page = await _fetch_page(client, url, headers, max_bytes, params)
     if page is None or page.status != 200:
         return None
     try:
@@ -262,17 +316,41 @@ async def _try_logo(
     return normalize_logo(got[0], got[1], allow_wide=allow_wide) if got else None
 
 
+# What a 429/999 does to the rest of a client's run. None (the cron): LinkedIn
+# is skipped for the rest of the run. Seconds (the one-time backfill, where a
+# skipped LinkedIn step means a worse logo stored for good): LinkedIn pauses
+# that long, doubling on each block in a row, and queued calls wait instead of
+# falling through; after _LINKEDIN_MAX_BLOCKS blocks in a row it is skipped.
+LINKEDIN_BLOCK_COOLDOWN: float | None = None
+_LINKEDIN_MAX_BLOCKS = 4
+_LINKEDIN_MAX_COOLDOWN = 600.0
+
+
 class _LinkedInGate:
-    """Paces one client's LinkedIn calls and remembers a rate-limit hit."""
+    """Paces one client's LinkedIn calls and remembers rate-limit hits."""
 
     def __init__(self) -> None:
         self.lock = asyncio.Lock()
         self.last = 0.0
         self.blocked = False
+        self.blocked_at: float | None = None  # time.monotonic() when given up on
+        self.in_a_row = 0
+        self.blocks = 0
+        self.calls = 0
 
 
-# Keyed by client so a 429 only skips LinkedIn for the rest of that run.
+# Keyed by client so a 429 only affects the rest of that run.
 _linkedin_gates: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def linkedin_stats(client: httpx.AsyncClient) -> dict:
+    """LinkedIn calls made, rate-limit blocks hit, and whether LinkedIn was
+    given up on, for one client's run (the backfill report)."""
+    gate = _linkedin_gates.get(client)
+    if gate is None:
+        return {"calls": 0, "blocks": 0, "blocked": False, "blocked_at": None}
+    return {"calls": gate.calls, "blocks": gate.blocks, "blocked": gate.blocked,
+            "blocked_at": gate.blocked_at}
 
 
 async def _linkedin_get(
@@ -284,25 +362,37 @@ async def _linkedin_get(
     if gate.blocked:
         return None
     async with gate.lock:
-        if gate.blocked:
-            return None
-        wait = gate.last + LINKEDIN_MIN_INTERVAL - time.monotonic()
-        if wait > 0:
-            await asyncio.sleep(wait)
-        try:
-            resp = await client.get(
-                url, params=params, headers=_HARVEST_HEADERS,
-                timeout=_TIMEOUT, follow_redirects=True,
-            )
-        except Exception:
-            resp = None
-        gate.last = time.monotonic()
-    if resp is not None and resp.status_code in (429, 999):
-        gate.blocked = True
-        logger.info("logo harvest: LinkedIn rate-limited (%s), skipping it for this run",
-                    resp.status_code)
-        return None
-    return resp
+        while not gate.blocked:
+            wait = gate.last + LINKEDIN_MIN_INTERVAL - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            try:
+                resp = await client.get(
+                    url, params=params, headers=_HARVEST_HEADERS,
+                    timeout=_TIMEOUT, follow_redirects=True,
+                )
+            except Exception:
+                resp = None
+            gate.last = time.monotonic()
+            gate.calls += 1
+            if resp is None or resp.status_code not in (429, 999):
+                gate.in_a_row = 0
+                return resp
+            gate.blocks += 1
+            gate.in_a_row += 1
+            cooldown = LINKEDIN_BLOCK_COOLDOWN
+            if not cooldown or gate.in_a_row > _LINKEDIN_MAX_BLOCKS:
+                gate.blocked = True
+                gate.blocked_at = time.monotonic()
+                logger.info("logo harvest: LinkedIn rate-limited (%s), skipping it for this run",
+                            resp.status_code)
+                break
+            pause = min(cooldown * 2 ** (gate.in_a_row - 1), _LINKEDIN_MAX_COOLDOWN)
+            logger.info("logo harvest: LinkedIn rate-limited (%s), pausing %.0fs",
+                        resp.status_code, pause)
+            # The lock stays held: every queued LinkedIn call waits this out.
+            await asyncio.sleep(pause)
+    return None
 
 
 async def _resolves(host: str) -> bool:
@@ -318,7 +408,7 @@ async def _resolves(host: str) -> bool:
 # --- 0. logos already on other rows -----------------------------------------
 
 async def _from_existing(client: httpx.AsyncClient, urls: list[str]) -> HarvestResult | None:
-    for url in _dedupe(urls)[:4]:
+    for url in _dedupe(urls)[:_MAX_EXISTING]:
         if any(marker in url for marker in _GENERATED_LOGO_MARKERS):
             continue
         logo = await _try_logo(client, url)
@@ -383,17 +473,30 @@ async def _linkedin_search_logo(
     if resp is None or resp.status_code != 200:
         return None
     key = name_key(company)
-    matches: list[tuple[str, str]] = []  # (company page, logo url)
+    # (company page, card name key, logo url): exact names first; failing
+    # that, the company's longer name ('Magna' -> 'Magna International').
+    exact: list[tuple[str, str, str]] = []
+    longer: list[tuple[str, str, str]] = []
     for card in resp.text.split("<li")[1:]:
         sub = _LI_SUBTITLE.search(card)
         logo_m = _LI_CARD_LOGO.search(card)
-        if sub and logo_m and name_key(html.unescape(sub.group(1))) == key:
-            page = _LI_COMPANY_PAGE.search(card)
-            matches.append((page.group(1) if page else "", html.unescape(logo_m.group(1))))
-    # Two different employers answering to the same name: neither is safe.
-    if len({page for page, _ in matches if page}) > 1:
+        if not (sub and logo_m):
+            continue
+        card_name = html.unescape(sub.group(1))
+        page = _LI_COMPANY_PAGE.search(card)
+        entry = (page.group(1) if page else "", name_key(card_name), html.unescape(logo_m.group(1)))
+        if entry[1] == key:
+            exact.append(entry)
+        elif is_suffix_variant(card_name, company):
+            longer.append(entry)
+    matches = exact or longer
+    # Two different employers answering to the name ('Bell' pages for two
+    # companies, or 'Magna International' and 'Magna Global'): neither is safe.
+    if len({page for page, _, _ in matches if page}) > 1:
         return None
-    for url in _dedupe(url for _, url in matches)[:2]:
+    if len({name for _, name, _ in matches}) > 1:
+        return None
+    for url in _dedupe(url for _, _, url in matches)[:2]:
         logo = await _try_logo(client, url)
         if logo:
             return logo, url
@@ -754,13 +857,17 @@ async def _wikidata_ids_by_domain(client: httpx.AsyncClient, domain: str) -> lis
     return [h["title"] for h in hits if isinstance(h, dict) and str(h.get("title", "")).startswith("Q")]
 
 
-async def _wikidata_ids_by_name(client: httpx.AsyncClient, name: str) -> list[str]:
+async def _wikidata_hits_by_name(client: httpx.AsyncClient, name: str) -> list[tuple[str, str]]:
+    """(qid, English label) of the entities a name search returns."""
     data = await _fetch_json(client, _WIKIDATA_API, {
         "action": "wbsearchentities", "search": name, "language": "en",
         "type": "item", "limit": 5, "format": "json",
     })
     hits = (data or {}).get("search") or [] if isinstance(data, dict) else []
-    return [h["id"] for h in hits if isinstance(h, dict) and h.get("id")]
+    return [
+        (h["id"], str(h.get("label") or ""))
+        for h in hits if isinstance(h, dict) and h.get("id")
+    ]
 
 
 def _name_variants(company: str) -> list[str]:
@@ -771,6 +878,17 @@ def _name_variants(company: str) -> list[str]:
         no_paren, flags=re.IGNORECASE,
     ).strip()
     return _dedupe([base, no_paren, no_suffix])[:3]
+
+
+def _suffix_queries(company: str) -> list[str]:
+    """Longer names worth searching when the plain name finds nothing:
+    'Bell' -> 'Bell Canada' (a 'Bell' search only returns bells and people).
+    Nothing for a name that already ends in a generic word."""
+    base = _name_variants(company)[-1]
+    words = name_words(base)
+    if not words or words[-1] in ALIAS_SUFFIXES:
+        return []
+    return [f"{base} {suffix}" for suffix in _ALIAS_QUERY_SUFFIXES]
 
 
 def _current_logo_file(entity: dict) -> str:
@@ -808,28 +926,36 @@ async def _wikidata_pick(
     ids = _dedupe(ids)[:10]
     if not ids:
         return None
+    # Big companies carry hundreds of claims: ten entities can top 300KB.
     data = await _fetch_json(client, _WIKIDATA_API, {
         "action": "wbgetentities", "ids": "|".join(ids), "props": "claims|labels",
         "languages": "en", "format": "json",
-    })
+    }, max_bytes=_MAX_IMAGE_BYTES)
     entities = (data or {}).get("entities") or {} if isinstance(data, dict) else {}
     key = name_key(company)
 
     def label(qid: str) -> str:
         return (((entities.get(qid) or {}).get("labels") or {}).get("en") or {}).get("value") or ""
 
-    # Among equally valid entities, the one named exactly like the company wins.
-    for qid in sorted((q for q in ids if q in entities), key=lambda q: name_key(label(q)) != key):
-        entity = entities[qid]
-        if domains:
-            matched = next((d for d in domains if d in _entity_sites(entity)), None)
-            if not matched:
-                continue
-        else:
-            matched = None
-            if not key or name_key(label(qid)) != key:
-                continue
-        filename = _current_logo_file(entity)
+    candidates: list[tuple[str, str | None]] = []  # (qid, matched verified domain)
+    if domains:
+        # Among equally valid entities, the one named exactly like the company wins.
+        for qid in sorted((q for q in ids if q in entities), key=lambda q: name_key(label(q)) != key):
+            matched = next((d for d in domains if d in _entity_sites(entities[qid])), None)
+            if matched:
+                candidates.append((qid, matched))
+    elif key:
+        # No verified website to compare: the label has to BE the company, or
+        # its longer name when exactly one employer answers to that
+        # ('Magna' -> 'Magna International', never the fungus 'Magnaporthe').
+        present = [q for q in ids if q in entities and _current_logo_file(entities[q])]
+        exact = [q for q in present if name_key(label(q)) == key]
+        longer = [q for q in present if is_suffix_variant(label(q), company)]
+        if not exact and len({name_key(label(q)) for q in longer}) > 1:
+            longer = []
+        candidates = [(q, None) for q in exact or longer]
+    for qid, matched in candidates:
+        filename = _current_logo_file(entities[qid])
         if not filename:
             continue
         url = (
@@ -853,7 +979,17 @@ async def _wikidata_logo(
         return hit
     ids = []
     for variant in _name_variants(company):
-        ids += await _wikidata_ids_by_name(client, variant)
+        ids += [qid for qid, _ in await _wikidata_hits_by_name(client, variant)]
+    hit = await _wikidata_pick(client, ids, company, domains)
+    if hit:
+        return hit
+    # The longer names: only hits labelled exactly so are worth fetching.
+    ids = []
+    for query in _suffix_queries(company):
+        ids += [
+            qid for qid, label in await _wikidata_hits_by_name(client, query)
+            if is_suffix_variant(label, company)
+        ]
     return await _wikidata_pick(client, ids, company, domains)
 
 
