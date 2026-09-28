@@ -1,12 +1,17 @@
 /**
  * Unified company-logo resolution for the dashboard.
  *
- * Goal: never show a broken image. We resolve the most accurate logo we can
- * (preferring the backend-resolved `company_domain`, then a known-company map,
- * then a name heuristic) and always provide a deterministic letter-avatar
- * fallback for when no logo image is available.
+ * Goal: never show a broken or misleading image. The backend stores one logo
+ * per company: ideally a self-hosted, pre-verified square under /jobs/logo/,
+ * otherwise a real hotlinked logo on older rows. When that is missing or
+ * unusable we try Google's favicon service for the company's known domain, and
+ * always fall back to a deterministic letter avatar.
  *
- * This mirrors backend/services/logo_resolver.py so frontend and backend agree.
+ * Domains are never guessed from the name here ("Bell Canada" is not bell.com):
+ * a guessed domain showed parked-domain icons or wasted requests on
+ * nonexistent hosts. Only the backend-verified company_domain, a real company
+ * website URL, or the curated KNOWN_DOMAINS map (mirrors
+ * backend/services/logo_resolver.py) are trusted.
  */
 
 const MULTI_PART_TLDS = new Set([
@@ -73,8 +78,30 @@ const KNOWN_DOMAINS: Record<string, string> = {
   "huawei canada": "huawei.com", "fortinet": "fortinet.com",
 };
 
-const NAME_NOISE =
-  /\b(inc|incorporated|llc|ltd|limited|corp|corporation|co|company|group|holdings|technologies|technology|tech|solutions|solution|systems|labs|laboratories|services|service|software|the|and|of)\b/gi;
+// Logo URLs that are generated from a (possibly guessed) domain rather than
+// captured from a real source. Never render them as the stored logo.
+const GENERATED_LOGO_HOSTS = [
+  "clearbit", "icon.horse", "google.com/s2", "gstatic.com/favicon",
+  "apistemic", "hunter.io", "unavatar.io",
+];
+
+// Self-hosted logos: the backend downloads, validates and squares them, then
+// stores the relative path in company_logo. Served by GET /jobs/logo/{sha}.
+const SELF_HOSTED_LOGO_PREFIX = "/jobs/logo/";
+
+// Same base the API client uses, so a split-origin dev setup still resolves.
+const API_BASE: string = import.meta.env.VITE_API_URL || "";
+
+// The favicon service serves whatever resolution the site actually has, and
+// hotlinked stored logos can be tiny icons; anything narrower than this would
+// render as an upscaled blur at our display sizes (40-52px).
+export const MIN_NATURAL_WIDTH = 40;
+
+// Wider than this is a social banner or a long wordmark, which shrinks to an
+// unreadable strip inside a square tile.
+export const MAX_LOGO_ASPECT = 2.2;
+
+const PLAUSIBLE_DOMAIN = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i;
 
 function normalizeName(name: string): string {
   return (name || "")
@@ -111,36 +138,34 @@ export function domainFromUrl(url?: string | null): string | null {
   return registrable;
 }
 
-/** Best-effort domain from a company name (known map first, then heuristic). */
-export function domainFromName(company?: string | null): string | null {
-  if (!company) return null;
-  const normalized = normalizeName(company);
-  if (!normalized) return null;
-  if (KNOWN_DOMAINS[normalized]) return KNOWN_DOMAINS[normalized];
-  let token = normalized.replace(NAME_NOISE, " ").replace(/[^a-z0-9]/g, "");
-  if (token.length < 2) token = normalized.replace(/[^a-z0-9]/g, "");
-  if (token.length < 2) return null;
-  return `${token}.com`;
+/** Curated domain for a well-known company name, or null. Never guesses. */
+export function knownDomainForName(company?: string | null): string | null {
+  const normalized = normalizeName(cleanCompanyName(company));
+  return (normalized && KNOWN_DOMAINS[normalized]) || null;
+}
+
+/** True for a logo URL generated from a domain (favicon/logo services). */
+export function isGeneratedLogo(url?: string | null): boolean {
+  const u = url || "";
+  return GENERATED_LOGO_HOSTS.some((host) => u.includes(host));
+}
+
+/** True for a backend self-hosted logo path ('/jobs/logo/<sha>.png'). */
+export function isSelfHostedLogo(url?: string | null): boolean {
+  return (url || "").startsWith(SELF_HOSTED_LOGO_PREFIX);
 }
 
 /**
- * Extract a domain from a legacy stored logo URL (icon.horse, clearbit,
- * apistemic, google favicons). Lets us salvage older rows.
+ * Whether a loaded image is fit to show in a square logo tile. A 0 dimension
+ * means the browser could not tell (an SVG without an intrinsic size), which
+ * is kept rather than guessed at.
  */
-function domainFromLegacyLogo(logo?: string | null): string | null {
-  if (!logo) return null;
-  if (logo.includes("logo.clearbit.com/")) return logo.split("logo.clearbit.com/")[1] || null;
-  if (logo.includes("icon.horse/icon/")) return (logo.split("icon.horse/icon/")[1] || "").replace(/\?.*$/, "") || null;
-  if (logo.includes("apistemic.com/domain:")) return logo.match(/domain:([^?]+)/)?.[1] || null;
-  if (logo.includes("hunter.io/")) return logo.split("hunter.io/")[1]?.replace(/\?.*$/, "") || null;
-  const favicon = logo.match(/[?&]domain=([^&]+)/);
-  if (favicon) return favicon[1];
-  return null;
-}
-
-/** Build a logo image URL for a resolved domain. */
-export function logoUrlForDomain(domain: string): string {
-  return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+export function isUsableLogoImage(naturalWidth: number, naturalHeight: number): boolean {
+  if (naturalWidth > 0 && naturalWidth < MIN_NATURAL_WIDTH) return false;
+  if (naturalWidth > 0 && naturalHeight > 0 && naturalWidth / naturalHeight > MAX_LOGO_ASPECT) {
+    return false;
+  }
+  return true;
 }
 
 export interface JobLike {
@@ -150,60 +175,52 @@ export interface JobLike {
   company_url?: string | null;
 }
 
-/**
- * Ordered logo-source candidates; CompanyLogo walks them on error/low-res.
- * (Clearbit was removed 2026-07-15: logo.clearbit.com no longer resolves.)
- */
-export function logoProviderChain(job: JobLike): string[] {
-  const chain: string[] = [];
-  const stored = job.company_logo || "";
-  const isGenerated =
-    stored.includes("clearbit") ||
-    stored.includes("icon.horse") ||
-    stored.includes("google.com/s2") ||
-    stored.includes("apistemic") ||
-    stored.includes("hunter.io");
-  if (stored.startsWith("http") && !isGenerated) chain.push(stored);
+export interface LogoSource {
+  src: string;
+  // Pre-verified by the backend (self-hosted): render as-is, no size checks.
+  verified: boolean;
+}
 
-  let domain = (job.company_domain || "").trim();
+/**
+ * Ordered logo-source candidates; CompanyLogo walks them on error or when a
+ * loaded image is too small or too wide, then shows the letter avatar.
+ * (Clearbit was removed 2026-07-15: logo.clearbit.com no longer resolves.
+ * unavatar was removed too: 25 anonymous requests/day per IP, and what it
+ * returned was mostly 16px favicons.)
+ */
+export function logoProviderChain(job: JobLike): LogoSource[] {
+  const chain: LogoSource[] = [];
+  const stored = (job.company_logo || "").trim();
+  if (isSelfHostedLogo(stored)) {
+    chain.push({ src: API_BASE + stored, verified: true });
+  } else if (/^https?:\/\//i.test(stored) && !isGeneratedLogo(stored)) {
+    chain.push({ src: stored, verified: false });
+  }
+
+  let domain = (job.company_domain || "").trim().toLowerCase();
   if (!domain) domain = domainFromUrl(job.company_url) || "";
-  if (!domain) domain = domainFromName(job.company) || "";
-  if (domain) {
-    // Google's favicon service is fast and cached but misses (or returns a tiny
-    // 16px globe) for a large share of company domains, the main reason so
-    // many cards fall through to a letter avatar. If it misses, try unavatar,
-    // which aggregates several logo sources and 404s cleanly (fallback=false)
-    // when it truly has nothing, so a real logo shows before the letter avatar.
-    chain.push(`https://www.google.com/s2/favicons?domain=${domain}&sz=256`);
-    chain.push(`https://unavatar.io/${encodeURIComponent(domain)}?fallback=false`);
+  if (!domain) domain = knownDomainForName(job.company) || "";
+  if (domain && PLAUSIBLE_DOMAIN.test(domain)) {
+    chain.push({
+      src: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=256`,
+      verified: false,
+    });
   }
   return chain;
 }
 
 /**
- * Resolve the best logo image URL for a job, or null if none is available
- * (caller should render the letter avatar).
+ * Display form of a company name. Legacy GitHub-list rows wrap the name in
+ * markdown emphasis ("**Tesla**"); strip the markers so the name, its letter
+ * avatar and its color are the same as the plain spelling.
  */
-export function resolveLogoUrl(job: JobLike): string | null {
-  // 1. A direct, non-generated logo URL (e.g. jobright CDN, LinkedIn CDN).
-  const stored = job.company_logo || "";
-  const isGenerated =
-    stored.includes("clearbit") ||
-    stored.includes("icon.horse") ||
-    stored.includes("google.com/s2") ||
-    stored.includes("apistemic") ||
-    stored.includes("hunter.io");
-  if (stored.startsWith("http") && !isGenerated) return stored;
-
-  // 2. Backend-resolved domain (most accurate).
-  let domain = (job.company_domain || "").trim();
-
-  // 3. Known map / website URL / legacy logo / name heuristic.
-  if (!domain) domain = domainFromUrl(job.company_url) || "";
-  if (!domain) domain = domainFromName(job.company) || "";
-  if (!domain) domain = domainFromLegacyLogo(stored) || "";
-
-  return domain ? logoUrlForDomain(domain) : null;
+export function cleanCompanyName(name?: string | null): string {
+  let s = (name || "").trim();
+  s = s.replace(/^(?:\*{2,}|_{2,})\s*/, "").replace(/\s*(?:\*{2,}|_{2,})$/, "");
+  // A balanced single-marker wrap ("*Tesla*") is italics too.
+  const italic = s.match(/^([*_])(.+)\1$/);
+  if (italic) s = italic[2];
+  return s.trim();
 }
 
 // Deterministic letter-avatar palette (stable per company name).
@@ -216,13 +233,13 @@ const AVATAR_COLORS = [
 /** Stable background color for a company's letter avatar. */
 export function avatarColor(company: string): string {
   let hash = 0;
-  const s = company || "?";
+  const s = cleanCompanyName(company) || "?";
   for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
-/** First letter (uppercased) for the letter avatar. */
+/** First letter or digit (uppercased) for the letter avatar; "?" when there is none. */
 export function avatarLetter(company: string): string {
-  const c = (company || "").trim();
-  return c ? c.charAt(0).toUpperCase() : "?";
+  const first = cleanCompanyName(company).match(/[\p{L}\p{N}]/u);
+  return first ? first[0].toUpperCase() : "?";
 }

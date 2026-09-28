@@ -3,6 +3,13 @@ import CompanyLogo from "./CompanyLogo";
 import { displayLocation } from "../lib/jobLocation";
 import { getPrimaryResumeText, skillCovered } from "../lib/resumeCoverage";
 import {
+  checkListingLive,
+  isListingClosed,
+  listingStatusFromLiveCheck,
+  postedAgo,
+  sourceLabel,
+} from "../lib/jobListing";
+import {
   X,
   MapPin,
   House,
@@ -13,6 +20,7 @@ import {
   LinkedinLogo,
   PaperPlaneTilt,
   ArrowSquareOut,
+  Prohibit,
   Users,
   ThumbsUp,
   ClipboardText,
@@ -62,9 +70,11 @@ interface Job {
   industry_score: number;
   applicant_count: number | null;
   source_platform: string;
+  ats_type?: string;
   scraped_at: string;
   salary_range: string;
   status: string;
+  listing_status?: string | null;
   company_logo?: string;
   company_domain?: string;
   company_url?: string;
@@ -86,17 +96,6 @@ function getMatchLabel(score: number): string {
   if (score >= 80) return "STRONG MATCH";
   if (score >= 60) return "GOOD MATCH";
   return "FAIR MATCH";
-}
-
-function timeAgo(dateStr: string): string {
-  if (!dateStr) return "";
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const hours = Math.floor(diff / 3600000);
-  if (hours < 1) return "Just now";
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "1 day ago";
-  return `${days} days ago`;
 }
 
 function formatWorkType(wt: string): string {
@@ -121,6 +120,8 @@ function formatExperienceLevel(level: string): string {
 interface Props {
   job: Job;
   onClose?: () => void;
+  /** Called when the click-time live check changes the listing's status. */
+  onListingStatusChange?: (jobId: number, listingStatus: string) => void;
 }
 
 /**
@@ -249,7 +250,7 @@ function extractSkills(text: string): string[] {
   return found;
 }
 
-export default function JobDetailView({ job, onClose }: Props) {
+export default function JobDetailView({ job, onClose, onListingStatusChange }: Props) {
   const [breakdown, setBreakdown] = useState<MatchBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -259,6 +260,8 @@ export default function JobDetailView({ job, onClose }: Props) {
   const [fetchingDetails, setFetchingDetails] = useState(false);
   const [structured, setStructured] = useState<any>(null);
   const [resumeText, setResumeText] = useState("");
+  // listing_status from the click-time live check; null until it answers.
+  const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const { registerApplyClick } = useApplyTracking();
 
   // Primary resume text (session-cached) powers the qualification-tag
@@ -335,6 +338,24 @@ export default function JobDetailView({ job, onClose }: Props) {
     };
   }, [job.id]);
 
+  // Click-time liveness: re-verify the listing against its source in the
+  // background (once per job per session). Apply stays usable while it runs;
+  // a dead answer switches the panel to the closed state.
+  useEffect(() => {
+    let cancelled = false;
+    setLiveStatus(null);
+    const knownStatus = job.listing_status || "active";
+    checkListingLive(job.id).then((result) => {
+      if (!result) return;
+      const status = listingStatusFromLiveCheck(result);
+      if (!cancelled) setLiveStatus(status);
+      if (status !== knownStatus) onListingStatusChange?.(job.id, status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [job.id]);
+
   useEffect(() => {
     if (description && description.length > 50 && !structured) {
       const parsed = parseDescriptionClientSide(description);
@@ -381,6 +402,8 @@ export default function JobDetailView({ job, onClose }: Props) {
     }
   }
 
+  const closed = isListingClosed(liveStatus ?? job.listing_status);
+  const source = sourceLabel(job);
   const score = breakdown?.overall_score ?? job.match_score;
   const label = breakdown?.match_label ?? getMatchLabel(score);
   const color = getMatchColor(score);
@@ -406,11 +429,17 @@ export default function JobDetailView({ job, onClose }: Props) {
           />
           <div className="detail-company-info">
             <span className="job-detail-company">{job.company}</span>
-            <span className="job-detail-posted">{job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}</span>
+            <span className="job-detail-posted">{postedAgo(job.posted_date || job.scraped_at)}</span>
           </div>
         </div>
 
         <h1 className="job-detail-title">{job.title}</h1>
+
+        {closed && (
+          <p className="listing-closed-badge" role="status">
+            <Prohibit size={14} weight="bold" /> No longer accepting applications
+          </p>
+        )}
 
         {/* Tags row */}
         <div className="job-detail-tags">
@@ -449,35 +478,53 @@ export default function JobDetailView({ job, onClose }: Props) {
           )}
           {job.source_platform && (
             <span className="detail-tag">
-              {job.source_platform === "github" ? (
-                <><GithubLogo size={14} weight="fill" /> GitHub</>
+              {source.kind === "github" ? (
+                <GithubLogo size={14} weight="fill" />
+              ) : source.kind === "linkedin" ? (
+                <LinkedinLogo size={14} weight="fill" />
               ) : (
-                <><LinkedinLogo size={14} weight="fill" /> LinkedIn</>
-              )}
+                <Buildings size={14} weight="duotone" />
+              )}{" "}
+              {source.label}
             </span>
           )}
         </div>
 
         {/* Action buttons */}
         <div className="job-detail-actions">
-          <a
-            href={applyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-apply-detail"
-            onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
-          >
-            <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
-          </a>
-          <a
-            href={applyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-outline-detail"
-            onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
-          >
-            <ArrowSquareOut size={16} weight="bold" /> View Original Post
-          </a>
+          {closed ? (
+            // A closed listing's link is dead (or lands on a careers home
+            // page): keep the actions in place but never navigate.
+            <>
+              <button type="button" className="btn-apply-detail" disabled>
+                <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
+              </button>
+              <button type="button" className="btn-outline-detail" disabled>
+                <ArrowSquareOut size={16} weight="bold" /> View Original Post
+              </button>
+            </>
+          ) : (
+            <>
+              <a
+                href={applyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-apply-detail"
+                onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
+              >
+                <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
+              </a>
+              <a
+                href={applyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-outline-detail"
+                onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
+              >
+                <ArrowSquareOut size={16} weight="bold" /> View Original Post
+              </a>
+            </>
+          )}
         </div>
       </div>
 
@@ -566,18 +613,22 @@ export default function JobDetailView({ job, onClose }: Props) {
                 </div>
                 <p className="description-empty-title">No description available</p>
                 <p className="description-empty-subtitle">
-                  We couldn't pull this posting's text automatically. The original post has the full details.
+                  {closed
+                    ? "This posting has closed, so its full text is no longer available."
+                    : "We couldn't pull this posting's text automatically. The original post has the full details."}
                 </p>
-                <a
-                  href={applyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-outline-detail"
-                  style={{ marginTop: 12 }}
-                  onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
-                >
-                  <ArrowSquareOut size={16} weight="bold" /> View Original Post
-                </a>
+                {!closed && (
+                  <a
+                    href={applyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-outline-detail"
+                    style={{ marginTop: 12 }}
+                    onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: applyUrl })}
+                  >
+                    <ArrowSquareOut size={16} weight="bold" /> View Original Post
+                  </a>
+                )}
               </div>
             )}
           </div>

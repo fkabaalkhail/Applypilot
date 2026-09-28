@@ -6,7 +6,9 @@ import CoverLetterModal from "../components/CoverLetterModal";
 import api from "../auth/api";
 import { useApplyTracking } from "../context/ApplyTracking";
 import CompanyLogo from "../components/CompanyLogo";
+import { cleanCompanyName } from "../lib/companyLogo";
 import { displayLocation } from "../lib/jobLocation";
+import { isListingClosed, postedAgo } from "../lib/jobListing";
 import {
   MagnifyingGlass,
   Sliders,
@@ -24,6 +26,7 @@ import {
   Envelope,
   CaretLeft,
   CaretRight,
+  Prohibit,
 } from "@phosphor-icons/react";
 
 
@@ -59,6 +62,9 @@ interface Job {
   experience_level: string;
   posted_date: string | null;
   locations_json?: { city?: string; region?: string; region_name?: string; country?: string }[] | null;
+  // active | stale | removed | expired. The feed only lists active and stale
+  // rows; removed/expired ones arrive via the Liked tab, deep links, or a live check.
+  listing_status?: string | null;
 }
 
 interface Stats {
@@ -75,20 +81,10 @@ interface Filters {
   experience_level: string;
 }
 
-function timeAgo(dateStr: string): string {
-  if (!dateStr) return "";
-  const date = new Date(dateStr);
-  const diff = Date.now() - date.getTime();
-  const hours = Math.floor(diff / 3600000);
-  if (hours < 0) return "Today"; // future date (timezone issue)
-  if (hours < 1) return "Just now";
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "1 day ago";
-  if (days < 7) return `${days} days ago`;
-  if (days < 30) return `${Math.floor(days / 7)}w ago`;
-  // For older dates, show the actual date
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+// Legacy GitHub-list rows store "**Company**"; clean once at the API boundary
+// so the card, the detail panel and the AI modals all show the plain name.
+function normalizeJob(job: Job): Job {
+  return { ...job, company: cleanCompanyName(job.company) };
 }
 
 const FILTER_STORAGE_KEY = "job-aggregator-filters";
@@ -111,6 +107,9 @@ export default function Jobs() {
 
   const jobsListRef = useRef<HTMLDivElement>(null);
   const prevSelectedJobRef = useRef<Job | null>(null);
+  // A selected job that is expected to be missing from the current page (a
+  // deep link, or a listing the live check just closed): exempt from auto-close.
+  const pinnedJobIdRef = useRef<number | null>(null);
 
   const [filters] = useState<Filters>({
     source: "",
@@ -184,7 +183,9 @@ export default function Jobs() {
       try {
         if (Number.isFinite(jobId)) {
           const res = await api.get(`/jobs/${jobId}`);
-          setSelectedJob(res.data);
+          // The linked job is rarely on the first page; keep it open anyway.
+          pinnedJobIdRef.current = jobId;
+          setSelectedJob(normalizeJob(res.data));
         }
       } catch {
         // Job not found or not accessible, fall back to the list.
@@ -231,7 +232,7 @@ export default function Jobs() {
 
     try {
       const res = await api.get("/jobs", { params });
-      setJobs(res.data);
+      setJobs((res.data as Job[]).map(normalizeJob));
       setHasMore(res.data.length === pageSize);
     } catch {
       // Silently fail
@@ -282,6 +283,21 @@ export default function Jobs() {
     }
   }
 
+  // The detail panel's live check found the listing's status changed.
+  function handleListingStatusChange(jobId: number, listingStatus: string) {
+    const closed = isListingClosed(listingStatus);
+    // The panel stays open on the closed state even as the row leaves the feed.
+    if (closed) pinnedJobIdRef.current = jobId;
+    setSelectedJob((s) => (s && s.id === jobId ? { ...s, listing_status: listingStatus } : s));
+    setJobs((prev) =>
+      // A dead listing drops out of the feed; the Liked tab keeps saved jobs
+      // and shows them as closed instead.
+      closed && activeTab !== "Liked"
+        ? prev.filter((j) => j.id !== jobId)
+        : prev.map((j) => (j.id === jobId ? { ...j, listing_status: listingStatus } : j))
+    );
+  }
+
   const TABS = [
     { label: "All", count: null },
     { label: "Liked", count: stats.saved_count },
@@ -292,9 +308,14 @@ export default function Jobs() {
     return true;
   });
 
-  // Auto-close detail panel when selected job is filtered out
+  // Auto-close detail panel when selected job is filtered out (a pinned job is
+  // not expected on this page, so it stays open)
   useEffect(() => {
-    if (selectedJob && !filteredJobs.some((j) => j.id === selectedJob.id)) {
+    if (
+      selectedJob &&
+      selectedJob.id !== pinnedJobIdRef.current &&
+      !filteredJobs.some((j) => j.id === selectedJob.id)
+    ) {
       setSelectedJob(null);
     }
   }, [filteredJobs, selectedJob]);
@@ -373,7 +394,10 @@ export default function Jobs() {
               key={job.id}
               data-tour={jobIndex === 0 ? "job-card" : undefined}
               className={`job-card${selectedJob?.id === job.id ? " selected" : ""}`}
-              onClick={() => setSelectedJob(job)}
+              onClick={() => {
+                pinnedJobIdRef.current = null;
+                setSelectedJob(job);
+              }}
               style={{ cursor: "pointer" }}
             >
               <div className="job-card-body">
@@ -389,8 +413,13 @@ export default function Jobs() {
                   <div className="job-card-info">
                     <div className="job-card-badges">
                       <span className="badge-time">
-                        <Clock size={13} weight="duotone" /> {job.posted_date ? timeAgo(job.posted_date) : timeAgo(job.scraped_at)}
+                        <Clock size={13} weight="duotone" /> {postedAgo(job.posted_date || job.scraped_at)}
                       </span>
+                      {isListingClosed(job.listing_status) && (
+                        <span className="listing-closed-badge">
+                          <Prohibit size={12} weight="bold" /> No longer accepting applications
+                        </span>
+                      )}
                     </div>
                     <h2 className="job-title">{job.title}</h2>
                     <p className="job-company">
@@ -459,15 +488,22 @@ export default function Jobs() {
                     >
                       <Envelope size={15} weight="fill" /> Cover Letter
                     </button>
-                    <a
-                      href={job.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-apply"
-                      onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: job.url })}
-                    >
-                      APPLY WITH AUTOFILL
-                    </a>
+                    {isListingClosed(job.listing_status) ? (
+                      // Closed listing: never navigate to its dead link.
+                      <button type="button" className="btn-apply" disabled>
+                        APPLY WITH AUTOFILL
+                      </button>
+                    ) : (
+                      <a
+                        href={job.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-apply"
+                        onClick={() => registerApplyClick({ id: job.id, title: job.title, company: job.company, url: job.url })}
+                      >
+                        APPLY WITH AUTOFILL
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>
@@ -519,7 +555,11 @@ export default function Jobs() {
         {/* Inline Job Detail Panel */}
         {selectedJob && (
           <div className="job-detail-inline">
-            <JobDetailView job={selectedJob} onClose={() => setSelectedJob(null)} />
+            <JobDetailView
+              job={selectedJob}
+              onClose={() => setSelectedJob(null)}
+              onListingStatusChange={handleListingStatusChange}
+            />
           </div>
         )}
       </div>
