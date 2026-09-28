@@ -254,6 +254,8 @@ async def test_linkedin_search_rejects_ambiguous_name():
     ("BMO Financial Group", "BMO", True),
     ("Bell Canada", "Bell", True),
     ("Intact Financial Corporation", "Intact", True),
+    ("Palantir Technologies", "Palantir", True),
+    ("Palantir Solutions", "Palantir", False),      # only 'technologies' of the sector words
     ("Bell Flight", "Bell", False),            # another employer
     ("Bell Textron Canada", "Bell", False),
     ("The Bell Company", "Bell", False),       # prefix + 'Company'
@@ -282,6 +284,8 @@ def _search_page(*cards: tuple[str, str, str]) -> bytes:
              ("BMO Financial Group", "bmo-financial-group", "BFG"),
              ("BMO Financial Group", "bmo-financial-group", "BFG")], "BFG"),
     ("Bell", [("Bell Flight", "bell-flight", "FLT"), ("Bell Canada", "bell-canada", "BCE")], "BCE"),
+    # prod's biggest remaining miss: LinkedIn only has 'Palantir Technologies'
+    ("Palantir", [("Palantir Technologies", "palantir-technologies", "PLTR")], "PLTR"),
 ])
 async def test_linkedin_search_accepts_the_longer_name(company, cards, logo_id):
     result = await _harvest(

@@ -162,12 +162,15 @@ def name_key(name: str | None) -> str:
 # Generic corporate words an employer's longer name adds to its short one:
 # 'Magna' is 'Magna International', 'BMO' is 'BMO Financial Group', 'Bell' is
 # 'Bell Canada'. A closed list on purpose: 'Bell Flight' (flight), 'Bell
-# Industries' and 'The Bell Company' are other employers. Shared with
-# logo_cache's cross-name seeding.
+# Industries' and 'The Bell Company' are other employers. 'Technologies' is
+# the one sector word in it: LinkedIn only knows 'Palantir Technologies'
+# (89 prod rows as plain 'Palantir'). Shared with logo_cache's cross-name
+# seeding.
 ALIAS_SUFFIXES = frozenset({
     "international", "intl", "group", "financial", "corporation", "corp",
     "incorporated", "inc", "limited", "ltd", "llc", "plc", "holdings", "holding",
     "global", "worldwide", "canada", "usa", "us", "america", "americas",
+    "technologies",
 })
 _MAX_ALIAS_WORDS = 2
 # Wikidata searches tried when the plain name finds nothing ('Bell' ->
