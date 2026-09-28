@@ -61,6 +61,8 @@ RETRY_CAP = datetime.timedelta(days=90)
 HARVEST_BUDGET_S = 150.0
 HARVEST_CONCURRENCY = 6
 HARVEST_MAX_COMPANIES = 150
+# Backstop only: the harvester's own cap (logo_harvester.HARVEST_TIME_CAP,
+# 30s) ends a slow company first, and that reads as a miss.
 HARVEST_PER_COMPANY_TIMEOUT_S = 45.0
 _REPROPAGATE_MAX_COMPANIES = 200
 _SUSPECT_DOMAINS_PER_COMPANY = 3
@@ -278,10 +280,13 @@ def _names_for(db: Session, company: str, names: list[str] | None) -> list[str]:
     return company_names_by_key(db).get(company_key(company), [])
 
 
-def propagate_logo(db: Session, company: str, *, names: list[str] | None = None) -> int:
+def propagate_logo(
+    db: Session, company: str, *, names: list[str] | None = None, dry_run: bool = False
+) -> int:
     """Point every row of this employer (visible or hidden) at its stored
     logo, unless the row already has it or a trusted square hotlink; write
-    the verified domain too. Returns the number of logos replaced. Commits."""
+    the verified domain too. Returns the number of logos replaced. Commits,
+    except with dry_run, which only counts the rows it would replace."""
     key = company_key(company)
     record = (
         db.query(CompanyLogo.status, CompanyLogo.sha, CompanyLogo.fmt, CompanyLogo.domain)
@@ -294,11 +299,11 @@ def propagate_logo(db: Session, company: str, *, names: list[str] | None = None)
 
     replaced = 0
     for chunk in _chunks(_names_for(db, company, names)):
-        replaced += (
-            db.query(ScrapedJob)
-            .filter(ScrapedJob.company.in_(chunk), _replaceable_logo(path))
-            .update({"company_logo": path}, synchronize_session=False)
-        )
+        stale = db.query(ScrapedJob).filter(ScrapedJob.company.in_(chunk), _replaceable_logo(path))
+        if dry_run:
+            replaced += stale.with_entities(func.count(ScrapedJob.id)).scalar() or 0
+            continue
+        replaced += stale.update({"company_logo": path}, synchronize_session=False)
         if record.domain:
             # A verified domain fixes the name guesses (notionashby.com ->
             # notion.so) that every domain-keyed fallback depends on.
@@ -309,7 +314,8 @@ def propagate_logo(db: Session, company: str, *, names: list[str] | None = None)
                     ScrapedJob.company_domain != record.domain,
                 ),
             ).update({"company_domain": record.domain}, synchronize_session=False)
-    db.commit()
+    if not dry_run:
+        db.commit()
     return replaced
 
 
@@ -540,7 +546,102 @@ async def domain_is_bogus(client, domain: str) -> bool:
     return resp.status_code == 200 and bool(_PARKED_PAGE.search(resp.text[:20000]))
 
 
-# ─── cron-backfill Phase 3 ───────────────────────────────────────────────────
+# ─── Longer names of the same employer ───────────────────────────────────────
+
+# Seeds taken from an employer's longer name ('Magna International' rows for
+# 'Magna'), tried after the employer's own.
+_ALIAS_SEEDS = 2
+
+
+def alias_keys(keys: Iterable[str]) -> dict[str, list[str]]:
+    """{company_key: keys of the same employer's longer names}: the key plus
+    one or two generic corporate words ('magna' -> ['magna international'],
+    'bmo' -> ['bmo financial group'], 'bell' -> ['bell canada']), never
+    'bell flight' or 'the bell company' (logo_harvester.ALIAS_SUFFIXES).
+    One direction only: a bare name is too thin to lend its logo to a
+    longer one ('Magna' rows would pass for 'Magna Global')."""
+    from backend.services.logo_harvester import is_suffix_variant_words
+
+    keyset = {k for k in keys if k}
+    out: dict[str, list[str]] = {}
+    for key in sorted(keyset):
+        words = key.split()
+        for extra in (1, 2):
+            base = words[:-extra]
+            base_key = " ".join(base)
+            if base_key in keyset and is_suffix_variant_words(words, base):
+                out.setdefault(base_key, []).append(key)
+    return out
+
+
+def _trusted_domains(
+    db: Session,
+    keys: Iterable[str],
+    names_by_key: dict[str, list[str]],
+    registry: dict[str, str],
+    has_store: bool = True,
+) -> dict[str, str]:
+    """{company_key: domain} proven for an employer: the curated registry's,
+    the one the harvester verified, or the curated KNOWN_DOMAINS entry.
+    Never the name guess on its rows ('bell.com' for Bell Canada)."""
+    keys = sorted({k for k in keys if k})
+    verified: dict[str, str] = {}
+    if has_store:
+        for chunk in _chunks(keys):
+            for key, domain in (
+                db.query(CompanyLogo.company_key, CompanyLogo.domain)
+                .filter(
+                    CompanyLogo.company_key.in_(chunk),
+                    CompanyLogo.domain.isnot(None),
+                    CompanyLogo.domain != "",
+                )
+                .all()
+            ):
+                verified[key] = domain.strip().lower()
+    out: dict[str, str] = {}
+    for key in keys:
+        names = names_by_key.get(key) or []
+        domain = (
+            registry.get(key)
+            or verified.get(key)
+            or (curated_domain(clean_company_name(names[0])) if names else None)
+        )
+        if domain:
+            out[key] = domain.strip().lower()
+    return out
+
+
+def _accepted_aliases(key: str, candidates: list[str], trusted: dict[str, str]) -> list[str]:
+    """The longer names allowed to seed `key`. A proven domain that disagrees
+    vetoes one (Magna Global's own site is not magna.com). When two or more
+    are left, only those sharing the key's proven domain stay: otherwise
+    'Magna International' and 'Magna Global' are two employers as far as
+    anything shows, the name is ambiguous, and none is used."""
+    own = trusted.get(key)
+    kept = [a for a in candidates if not (own and trusted.get(a) and trusted[a] != own)]
+    if len(kept) > 1:
+        kept = [a for a in kept if own and trusted.get(a) == own]
+    return kept
+
+
+def _alias_stored_urls(db: Session, keys: list[str]) -> dict[str, str]:
+    """Where each of these employers' stored logos was downloaded from. A
+    stored logo already passed normalize_logo, so its source is the best
+    seed the shorter name can borrow ('Bell Canada' for 'Bell')."""
+    out: dict[str, str] = {}
+    for chunk in _chunks(sorted(keys)):
+        for key, url in (
+            db.query(CompanyLogo.company_key, CompanyLogo.source_url)
+            .filter(CompanyLogo.company_key.in_(chunk), CompanyLogo.status == STATUS_OK)
+            .all()
+        ):
+            url = (url or "").strip()
+            if url.startswith(("https://", "http://")) and logo_quality(url) > 0:
+                out[key] = url
+    return out
+
+
+# ─── cron-backfill Phase 3 (and scripts/backfill_logos_v2.py) ────────────────
 
 @dataclass
 class _Plan:
@@ -549,12 +650,28 @@ class _Plan:
     names: list[str]
     hints: object
     suspect_domains: list[str] = field(default_factory=list)
+    rows: int = 0  # visible rows, for ordering and reports
+    aliases: list[str] = field(default_factory=list)  # longer names that seeded it
 
 
-def repropagate_known_logos(db: Session, names_by_key: dict[str, list[str]]) -> int:
+class HarvestOutcome(NamedTuple):
+    plan: _Plan
+    status: str  # ok | miss | timeout | skipped (budget) | error
+    result: object  # a logo_harvester.HarvestResult when ok
+    bogus: list[str]  # name-guessed domains proven bogus on a miss
+
+
+def repropagate_known_logos(
+    db: Session,
+    names_by_key: dict[str, list[str]],
+    *,
+    max_companies: int | None = _REPROPAGATE_MAX_COMPANIES,
+    dry_run: bool = False,
+) -> int:
     """Rows planted with a generated or unverified logo after their employer's
     logo was stored (writers that don't consult the store) get it now. No
-    network. Returns the number of rows updated."""
+    network. Returns the number of rows updated (with dry_run: that would
+    be, nothing written)."""
     stray = (
         db.query(ScrapedJob.company)
         .filter(
@@ -572,10 +689,10 @@ def repropagate_known_logos(db: Session, names_by_key: dict[str, list[str]]) -> 
     )
     stored = load_branding(db, [name for (name,) in stray])
     updated = 0
-    for key in sorted(k for k, record in stored.items() if record.logo)[:_REPROPAGATE_MAX_COMPANIES]:
+    for key in sorted(k for k, record in stored.items() if record.logo)[:max_companies]:
         names = names_by_key.get(key, [])
         if names:
-            updated += propagate_logo(db, names[0], names=names)
+            updated += propagate_logo(db, names[0], names=names, dry_run=dry_run)
     return updated
 
 
@@ -613,10 +730,17 @@ def _registry_domains() -> dict[str, str]:
 
 
 def _pick_companies(
-    db: Session, names_by_key: dict[str, list[str]], limit: int
-) -> tuple[list[tuple[str, str]], dict[str, tuple]]:
-    """[(key, display name)] of employers with visible rows and no stored
-    logo whose retry is due, most visible rows first; plus their records."""
+    db: Session,
+    names_by_key: dict[str, list[str]],
+    limit: int | None,
+    *,
+    only: set[str] | None = None,
+    retry_misses: bool = False,
+    has_store: bool = True,
+) -> tuple[list[tuple[str, str, int]], dict[str, tuple]]:
+    """[(key, display name, visible rows)] of employers with visible rows and
+    no stored logo whose retry is due (any miss with retry_misses), most
+    visible rows first, optionally only the `only` keys; plus their records."""
     counts: Counter = Counter()
     spellings: dict[str, Counter] = {}
     rows = (
@@ -627,13 +751,14 @@ def _pick_companies(
     )
     for name, count in rows:
         key = company_key(name)
-        if not key:
+        if not key or (only is not None and key not in only):
             continue
         counts[key] += count
         spellings.setdefault(key, Counter())[name] += count
 
     records: dict[str, tuple] = {}
-    for chunk in _chunks(sorted(counts)):
+    # Without the table (a dry run before the deploy) nothing is stored yet.
+    for chunk in _chunks(sorted(counts) if has_store else []):
         for key, status, next_retry_at, domain, rejected in (
             db.query(
                 CompanyLogo.company_key, CompanyLogo.status, CompanyLogo.next_retry_at,
@@ -649,23 +774,27 @@ def _pick_companies(
         key for key in counts
         if key not in records
         or (records[key][0] != STATUS_OK
-            and (records[key][1] is None or records[key][1] <= now))
+            and (retry_misses or records[key][1] is None or records[key][1] <= now))
     ]
     due.sort(key=lambda k: (-counts[k], k))
     picked = [
-        (key, clean_company_name(spellings[key].most_common(1)[0][0]))
-        for key in due[:limit]
+        (key, clean_company_name(spellings[key].most_common(1)[0][0]), counts[key])
+        for key in (due if limit is None else due[:limit])
     ]
     return picked, records
 
 
-def _build_plans(db: Session, picked, records, names_by_key, hints_type) -> list[_Plan]:
+def _build_plans(
+    db: Session, picked, records, names_by_key, hints_type, *, has_store: bool = True
+) -> list[_Plan]:
     """Harvest hints per employer, from column-only reads: candidate domains
-    (registry/verified first, company website, employer-hosted apply links,
-    stored non-guess domains, the name guess last), a few job URLs (LinkedIn
-    postings from any row, hidden duplicates included, then ATS/direct), and
-    real logos already stored somewhere in the catalogue."""
-    scope = {key: names_by_key.get(key) or [display] for key, display in picked}
+    (registry/verified first, company website, proven domains of its longer
+    names, employer-hosted apply links, stored non-guess domains, the name
+    guess last), a few job URLs (LinkedIn postings from any row, hidden
+    duplicates included, then ATS/direct), and real logos already stored
+    somewhere in the catalogue: the employer's own rows first, then its
+    longer name's ('Magna International' rows for 'Magna')."""
+    scope = {key: names_by_key.get(key) or [display] for key, display, _rows in picked}
     all_names = sorted({name for names in scope.values() for name in names})
 
     stored_domains: dict[str, Counter] = {}
@@ -709,12 +838,27 @@ def _build_plans(db: Session, picked, records, names_by_key, hints_type) -> list
     seeds = seed_logo_urls(db, scope)
     registry = _registry_domains()
 
+    # Longer names of the same employer: their proven domains and logos.
+    longer_names = alias_keys(names_by_key)
+    candidates = {key: longer_names.get(key, []) for key in scope}
+    trusted = _trusted_domains(
+        db, set(scope) | {a for found in candidates.values() for a in found},
+        names_by_key, registry, has_store,
+    )
+    accepted = {
+        key: _accepted_aliases(key, found, trusted) for key, found in candidates.items() if found
+    }
+    used = sorted({a for found in accepted.values() for a in found})
+    alias_seeds = seed_logo_urls(db, {a: names_by_key.get(a, []) for a in used}, per_key=_ALIAS_SEEDS)
+    alias_stored = _alias_stored_urls(db, used) if has_store and used else {}
+
     plans: list[_Plan] = []
-    for key, display in picked:
+    for key, display, visible_rows in picked:
         names = scope[key]
         _status, _retry, verified, rejected = records.get(key, (None, None, "", set()))
         guesses = {domain_from_name(n) for n in names} | {domain_from_name(display)}
         guesses.discard(None)
+        aliases = accepted.get(key, [])
 
         domains: list[str] = []
 
@@ -729,6 +873,8 @@ def _build_plans(db: Session, picked, records, names_by_key, hints_type) -> list
             for url in company_urls.get(name, []):
                 add(domain_from_url(url))
         add(curated_domain(display))
+        for alias in aliases:
+            add(trusted.get(alias))
         for name in names:
             for url in direct_urls.get(name, []):
                 add(domain_from_url(url))
@@ -749,15 +895,23 @@ def _build_plans(db: Session, picked, records, names_by_key, hints_type) -> list
                         found.append(url)
             job_urls += found[:3]
 
-        trusted = {registry.get(key), verified, curated_domain(display)} | {
+        borrowed: list[str] = []
+        for alias in aliases:
+            for url in [alias_stored.get(alias, "")] + alias_seeds.get(alias, []):
+                if url and url not in borrowed:
+                    borrowed.append(url)
+        own = seeds.get(key, [])
+        existing = own + [u for u in borrowed if u not in own][:_ALIAS_SEEDS]
+
+        trusted_here = {registry.get(key), verified, curated_domain(display)} | {
             domain_from_url(url) for name in names for url in company_urls.get(name, [])
         }
         suspects = [
             d for d, _count in stored.most_common()
-            if d in guesses and d not in trusted and d not in rejected
+            if d in guesses and d not in trusted_here and d not in rejected
         ]
         guess = domain_from_name(display)
-        if guess and guess not in trusted and guess not in rejected and guess not in suspects:
+        if guess and guess not in trusted_here and guess not in rejected and guess not in suspects:
             suspects.append(guess)
 
         plans.append(_Plan(
@@ -768,11 +922,152 @@ def _build_plans(db: Session, picked, records, names_by_key, hints_type) -> list
                 company=display,
                 domains=domains,
                 job_urls=job_urls,
-                existing_logo_urls=seeds.get(key, []),
+                existing_logo_urls=existing,
             ),
             suspect_domains=suspects[:_SUSPECT_DOMAINS_PER_COMPANY],
+            rows=visible_rows,
+            aliases=aliases,
         ))
     return plans
+
+
+def plan_harvest(
+    db: Session,
+    names_by_key: dict[str, list[str]],
+    hints_type,
+    *,
+    limit: int | None = HARVEST_MAX_COMPANIES,
+    only: Iterable[str] | None = None,
+    retry_misses: bool = False,
+    has_store: bool = True,
+) -> list[_Plan]:
+    """The work list, busiest employer first, each with the hints the
+    harvester gets. Read-only (column-only queries); shared by cron-backfill
+    Phase 3 and the one-time backfill script so both harvest identically.
+    `only` takes company names; has_store=False plans against a database
+    whose company_logos table does not exist yet (a dry run)."""
+    keys = {company_key(name) for name in only} - {""} if only is not None else None
+    picked, records = _pick_companies(
+        db, names_by_key, limit, only=keys, retry_misses=retry_misses, has_store=has_store
+    )
+    if not picked:
+        return []
+    return _build_plans(db, picked, records, names_by_key, hints_type, has_store=has_store)
+
+
+async def run_harvest(
+    client,
+    plans: list[_Plan],
+    harvest,
+    *,
+    budget_s: float = HARVEST_BUDGET_S,
+    concurrency: int = HARVEST_CONCURRENCY,
+    per_company_timeout: float = HARVEST_PER_COMPANY_TIMEOUT_S,
+    on_done=None,
+) -> list[HarvestOutcome]:
+    """Network only, never touches the database: harvest every plan with
+    bounded concurrency inside a wall-clock budget, and on a miss test the
+    employer's guessed domains for proof they are bogus. `harvest` is
+    logo_harvester.harvest_company_logo (or a stand-in); `on_done` is called
+    with each outcome as it lands (progress output)."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + budget_s
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def attempt(plan: _Plan) -> HarvestOutcome:
+        async with semaphore:
+            remaining = deadline - loop.time()
+            if remaining <= 1:
+                return HarvestOutcome(plan, "skipped", None, [])
+            cut_by_budget = remaining < per_company_timeout
+            try:
+                result = await asyncio.wait_for(
+                    harvest(client, plan.hints),
+                    timeout=min(remaining, per_company_timeout),
+                )
+            except asyncio.TimeoutError:
+                # The run ran out (skipped, retried next run), or the company did.
+                return HarvestOutcome(plan, "skipped" if cut_by_budget else "timeout", None, [])
+            except Exception:
+                logger.exception("logo harvest failed for %r", plan.display)
+                return HarvestOutcome(plan, "error", None, [])
+            if result is not None and getattr(result, "logo", None) is not None:
+                return HarvestOutcome(plan, "ok", result, [])
+            bogus = []
+            for domain in plan.suspect_domains:
+                if deadline - loop.time() <= 0:
+                    break
+                try:
+                    if await asyncio.wait_for(domain_is_bogus(client, domain), timeout=15):
+                        bogus.append(domain)
+                except Exception:
+                    continue
+            return HarvestOutcome(plan, "miss", None, bogus)
+
+    async def tracked(plan: _Plan) -> HarvestOutcome:
+        outcome = await attempt(plan)
+        if on_done is not None:
+            on_done(outcome)
+        return outcome
+
+    return list(await asyncio.gather(*[tracked(plan) for plan in plans]))
+
+
+def new_harvest_stats() -> dict:
+    return {
+        "harvester_available": True,
+        "repropagated_rows": 0,
+        "companies_considered": 0,
+        "companies_attempted": 0,
+        "stored": 0,
+        "missed": 0,
+        "timeouts": 0,
+        "errors": 0,
+        "skipped_budget": 0,
+        "rows_updated": 0,
+        "domains_rejected": 0,
+    }
+
+
+def apply_outcomes(
+    db: Session,
+    outcomes: Iterable[HarvestOutcome],
+    stats: dict,
+    *,
+    record_timeouts: bool = True,
+) -> None:
+    """Write harvest outcomes, one at a time (the Session is not task safe):
+    store + propagate each hit, record each miss with its backoff (and its
+    proven-bogus domains). A company that ran out of time is recorded as a
+    miss only with record_timeouts (the cron; the backfill retries it on the
+    next run instead). Budget skips are never recorded."""
+    for outcome in outcomes:
+        plan = outcome.plan
+        if outcome.status == "skipped":
+            stats["skipped_budget"] += 1
+            continue
+        stats["companies_attempted"] += 1
+        if outcome.status == "error":
+            stats["errors"] += 1
+            continue
+        if outcome.status == "timeout":
+            stats["timeouts"] += 1
+            if not record_timeouts:
+                continue
+        try:
+            if outcome.status == "ok":
+                path, replaced = _store(db, plan.display, outcome.result, plan.names)
+                if path:
+                    stats["stored"] += 1
+                    stats["rows_updated"] += replaced
+                    continue
+            record_miss(db, plan.display, rejected_domains=outcome.bogus, names=plan.names)
+            stats["missed"] += 1
+            stats["domains_rejected"] += len(outcome.bogus)
+        except Exception:
+            db.rollback()
+            logger.exception("logo store failed for %r", plan.display)
+            stats["errors"] += 1
 
 
 async def harvest_missing_logos(
@@ -787,19 +1082,12 @@ async def harvest_missing_logos(
     harvest employers that have visible rows and no stored logo (most rows
     first, misses only once their backoff is due) with bounded concurrency
     inside a wall-clock budget. Network happens concurrently; every DB write
-    happens afterwards, sequentially (the Session is not task safe)."""
-    stats = {
-        "harvester_available": True,
-        "repropagated_rows": 0,
-        "companies_considered": 0,
-        "companies_attempted": 0,
-        "stored": 0,
-        "missed": 0,
-        "errors": 0,
-        "skipped_budget": 0,
-        "rows_updated": 0,
-        "domains_rejected": 0,
-    }
+    happens afterwards, sequentially (the Session is not task safe).
+
+    The harvester's own per-company cap (logo_harvester.HARVEST_TIME_CAP)
+    ends a slow company first and reads as a miss here (retried after the
+    backoff); HARVEST_PER_COMPANY_TIMEOUT_S is the backstop around it."""
+    stats = new_harvest_stats()
     try:
         from backend.services.logo_harvester import LogoHints, harvest_company_logo
     except ImportError:  # the harvester contract is not deployed yet
@@ -809,69 +1097,13 @@ async def harvest_missing_logos(
     names_by_key = company_names_by_key(db)
     stats["repropagated_rows"] = repropagate_known_logos(db, names_by_key)
 
-    picked, records = _pick_companies(db, names_by_key, max_companies)
-    stats["companies_considered"] = len(picked)
-    if not picked:
+    plans = plan_harvest(db, names_by_key, LogoHints, limit=max_companies)
+    stats["companies_considered"] = len(plans)
+    if not plans:
         return stats
-    plans = _build_plans(db, picked, records, names_by_key, LogoHints)
 
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + budget_s
-    semaphore = asyncio.Semaphore(concurrency)
-
-    async def attempt(plan: _Plan):
-        async with semaphore:
-            remaining = deadline - loop.time()
-            if remaining <= 1:
-                return plan, "skipped", None, []
-            cut_by_budget = remaining < HARVEST_PER_COMPANY_TIMEOUT_S
-            try:
-                result = await asyncio.wait_for(
-                    harvest_company_logo(client, plan.hints),
-                    timeout=min(remaining, HARVEST_PER_COMPANY_TIMEOUT_S),
-                )
-            except asyncio.TimeoutError:
-                if cut_by_budget:
-                    return plan, "skipped", None, []  # the run ran out, not the company
-                result = None
-            except Exception:
-                logger.exception("logo harvest failed for %r", plan.display)
-                return plan, "error", None, []
-            if result is not None and getattr(result, "logo", None) is not None:
-                return plan, "ok", result, []
-            bogus = []
-            for domain in plan.suspect_domains:
-                if deadline - loop.time() <= 0:
-                    break
-                try:
-                    if await asyncio.wait_for(domain_is_bogus(client, domain), timeout=15):
-                        bogus.append(domain)
-                except Exception:
-                    continue
-            return plan, "miss", None, bogus
-
-    outcomes = await asyncio.gather(*[attempt(plan) for plan in plans])
-
-    for plan, outcome, result, bogus in outcomes:
-        if outcome == "skipped":
-            stats["skipped_budget"] += 1
-            continue
-        stats["companies_attempted"] += 1
-        if outcome == "error":
-            stats["errors"] += 1
-            continue
-        try:
-            if outcome == "ok":
-                path, replaced = _store(db, plan.display, result, plan.names)
-                if path:
-                    stats["stored"] += 1
-                    stats["rows_updated"] += replaced
-                    continue
-            record_miss(db, plan.display, rejected_domains=bogus, names=plan.names)
-            stats["missed"] += 1
-            stats["domains_rejected"] += len(bogus)
-        except Exception:
-            db.rollback()
-            logger.exception("logo store failed for %r", plan.display)
-            stats["errors"] += 1
+    outcomes = await run_harvest(
+        client, plans, harvest_company_logo, budget_s=budget_s, concurrency=concurrency,
+    )
+    apply_outcomes(db, outcomes, stats)
     return stats

@@ -4,16 +4,20 @@ serving endpoint, and every insert path consulting the store."""
 import asyncio
 import datetime
 import hashlib
+import io
 from dataclasses import dataclass
 from typing import NamedTuple
 
 import httpx
 import pytest
+from PIL import Image, ImageDraw
 from sqlalchemy import create_engine, inspect
 
 import backend.auth.dependencies as auth_deps
+from backend.data import company_registry
 from backend.db.models import CompanyLogo, ScrapedJob
-from backend.services import logo_cache
+from backend.services import logo_cache, logo_harvester
+from backend.services.logo_harvester import LogoHints
 from backend.services.logo_cache import (
     brand,
     clean_company_name,
@@ -602,3 +606,214 @@ def test_domain_is_bogus_never_on_mere_failures(monkeypatch):
         return httpx.Response(200, text="<title>Namecheap</title>")
 
     assert _bogus(monkeypatch, "namecheap.com", own_site) is False
+
+
+# --- longer names of the same employer (W2) ---------------------------------------
+
+BCE_LICDN = ("https://media.licdn.com/dms/image/v2/D4E0BAQ/company-logo_100_100/"
+             "company-logo_100_100/0/1/bell_canada_logo?e=2147483647&v=beta&t=bce")
+FLIGHT_LICDN = ("https://media.licdn.com/dms/image/v2/C4E0BAQ/company-logo_100_100/"
+                "company-logo_100_100/0/1/bell_flight_logo?e=2147483647&v=beta&t=flt")
+
+
+def _plans(db, monkeypatch, registry=None, **kw):
+    monkeypatch.setattr(company_registry, "load_logo_map", lambda: registry or {})
+    plans = logo_cache.plan_harvest(db, company_names_by_key(db), LogoHints, **kw)
+    return {plan.key: plan for plan in plans}
+
+
+def test_alias_keys_are_the_name_plus_generic_corporate_words():
+    keys = ["magna", "magna international", "bmo", "bmo financial group",
+            "bmo capital markets", "bell", "bell canada", "bell flight", "the bell",
+            "intact", "intact financial", "global group", "global"]
+    assert logo_cache.alias_keys(keys) == {
+        "magna": ["magna international"],
+        "bmo": ["bmo financial group"],
+        "bell": ["bell canada"],
+        "intact": ["intact financial"],
+    }
+
+
+def test_magna_is_seeded_from_magna_international_rows(db_session, monkeypatch):
+    for i in range(3):
+        _row(db_session, f"https://magna.wd3.myworkdayjobs.com/Magna/job/{i}",
+             company="Magna", logo=S2.format("magna.com"), domain="magna.com")
+    first = _row(db_session, "https://x.test/mi-1", company="Magna International",
+                 logo=LICDN, domain="magnainternational.com", listing_status="removed")
+    _row(db_session, "https://x.test/mi-2", company="Magna International Inc.",
+         logo=INDEED, duplicate_of=first.id)
+    plans = _plans(db_session, monkeypatch, {"Magna": S2.format("magna.com")})
+    magna = plans["magna"]
+    assert magna.aliases == ["magna international"]
+    assert magna.hints.existing_logo_urls == [LICDN, INDEED]
+    assert magna.hints.domains[0] == "magna.com"
+    assert magna.rows == 3
+    assert "magna international" not in plans  # no visible rows of its own
+
+
+def test_own_logos_come_before_the_longer_names(db_session, monkeypatch):
+    _row(db_session, "https://x.test/bmo-1", company="BMO", logo=LICDN, domain="bmo.com")
+    _row(db_session, "https://x.test/bmo-2", company="BMO", logo=S2.format("bmo.com"), domain="bmo.com")
+    _row(db_session, "https://x.test/bfg-1", company="BMO Financial Group", logo=INDEED,
+         domain="bmofinancialgroup.com", listing_status="expired")
+    _row(db_session, "https://x.test/cap-1", company="BMO Capital Markets", logo=BCE_LICDN,
+         listing_status="expired")
+    bmo = _plans(db_session, monkeypatch)["bmo"]
+    assert bmo.aliases == ["bmo financial group"]
+    assert bmo.hints.existing_logo_urls == [LICDN, INDEED]  # never Capital Markets'
+    # a name-guessed domain on the longer name's rows proves nothing
+    assert "bmofinancialgroup.com" not in bmo.hints.domains
+
+
+def test_bell_never_takes_another_employers_logo(db_session, monkeypatch):
+    _row(db_session, "https://x.test/bell-1", company="Bell", logo=S2.format("bell.com"), domain="bell.com")
+    _row(db_session, "https://x.test/flt-1", company="Bell Flight", logo=FLIGHT_LICDN)
+    _row(db_session, "https://x.test/tbc-1", company="The Bell Company", logo=INDEED)
+    plans = _plans(db_session, monkeypatch)
+    assert plans["bell"].aliases == []
+    assert plans["bell"].hints.existing_logo_urls == []
+    assert plans["bell flight"].hints.existing_logo_urls == [FLIGHT_LICDN]
+
+    # Bell Canada is Bell's longer name: its stored logo's source and its
+    # verified domain seed Bell.
+    _row(db_session, "https://x.test/bce-1", company="Bell Canada", listing_status="expired")
+    store_logo(db_session, "Bell Canada", FakeResult(_logo(b"bce"), source="linkedin_job",
+                                                     source_url=BCE_LICDN, verified_domain="bell.ca"))
+    bell = _plans(db_session, monkeypatch)["bell"]
+    assert bell.aliases == ["bell canada"]
+    assert bell.hints.existing_logo_urls == [BCE_LICDN]
+    assert "bell.ca" in bell.hints.domains
+    assert bell.hints.domains.index("bell.ca") < bell.hints.domains.index("bell.com")
+
+
+def test_two_longer_names_are_ambiguous_unless_a_proven_domain_says_so(db_session, monkeypatch):
+    _row(db_session, "https://x.test/m-1", company="Magna", logo=S2.format("magna.com"))
+    _row(db_session, "https://x.test/mi-1", company="Magna International", logo=LICDN,
+         listing_status="expired")
+    _row(db_session, "https://x.test/mg-1", company="Magna Global", logo=INDEED,
+         listing_status="expired")
+    magna = _plans(db_session, monkeypatch)["magna"]
+    assert magna.aliases == [] and magna.hints.existing_logo_urls == []
+
+    # Magna's registry domain is the one verified for Magna International.
+    db_session.add(CompanyLogo(company_key="magna international", status="miss",
+                               domain="magna.com"))
+    db_session.commit()
+    magna = _plans(db_session, monkeypatch, {"Magna": S2.format("magna.com")})["magna"]
+    assert magna.aliases == ["magna international"]
+    assert magna.hints.existing_logo_urls == [LICDN]
+
+
+def test_a_conflicting_proven_domain_vetoes_the_longer_name(db_session, monkeypatch):
+    _row(db_session, "https://x.test/m-1", company="Magna", logo=S2.format("magna.com"))
+    _row(db_session, "https://x.test/mg-1", company="Magna Global", logo=INDEED,
+         listing_status="expired")
+    db_session.add(CompanyLogo(company_key="magna global", status="miss", domain="magnaglobal.com"))
+    db_session.commit()
+    # With nothing proven for Magna itself, nothing contradicts the name.
+    assert _plans(db_session, monkeypatch)["magna"].aliases == ["magna global"]
+    magna = _plans(db_session, monkeypatch, {"Magna": S2.format("magna.com")})["magna"]
+    assert magna.aliases == [] and magna.hints.existing_logo_urls == []
+
+
+def test_plan_harvest_work_list(db_session, monkeypatch):
+    monkeypatch.setattr(company_registry, "load_logo_map", lambda: {})
+    for i in range(3):
+        _row(db_session, f"https://x.test/big-{i}", company="Big Co")
+    _row(db_session, "https://x.test/small-1", company="Small Co")
+    _row(db_session, "https://x.test/hidden-1", company="Hidden Co", listing_status="removed")
+    _row(db_session, "https://x.test/done-1", company="Done Co")
+    _row(db_session, "https://x.test/wait-1", company="Waiting Co")
+    _row(db_session, "https://x.test/blank-1", company="  ")
+    store_logo(db_session, "Done Co", FakeResult(_logo()))
+    record_miss(db_session, "Waiting Co")
+    names = company_names_by_key(db_session)
+
+    plans = logo_cache.plan_harvest(db_session, names, LogoHints)
+    assert [p.display for p in plans] == ["Big Co", "Small Co"]
+    assert [p.rows for p in plans] == [3, 1]
+    plans = logo_cache.plan_harvest(db_session, names, LogoHints, retry_misses=True, limit=None)
+    assert [p.display for p in plans] == ["Big Co", "Small Co", "Waiting Co"]
+    plans = logo_cache.plan_harvest(db_session, names, LogoHints, only=["**Small Co**", "Done Co"])
+    assert [p.display for p in plans] == ["Small Co"]
+    assert len(logo_cache.plan_harvest(db_session, names, LogoHints, limit=1)) == 1
+
+
+def test_repropagate_dry_run_counts_without_writing(db_session):
+    _row(db_session, "https://x.test/kx-1", company="Kinaxis")
+    store_logo(db_session, "Kinaxis", FakeResult(_logo()))
+    planted = _row(db_session, "https://x.test/kx-2", company="Kinaxis",
+                   logo="https://www.kinaxis.com/og/share.jpg")
+    names = company_names_by_key(db_session)
+    assert logo_cache.repropagate_known_logos(db_session, names, dry_run=True) == 1
+    db_session.expire_all()
+    assert db_session.get(ScrapedJob, planted.id).company_logo.endswith("share.jpg")
+    assert logo_cache.repropagate_known_logos(db_session, names, max_companies=None) == 1
+    db_session.expire_all()
+    assert db_session.get(ScrapedJob, planted.id).company_logo == lookup_logo(db_session, "Kinaxis")
+
+
+def test_timeouts_are_reported_and_recorded_only_when_asked(db_session, monkeypatch):
+    monkeypatch.setattr(company_registry, "load_logo_map", lambda: {})
+    _row(db_session, "https://x.test/slow-1", company="Slow Co")
+    plans = logo_cache.plan_harvest(db_session, company_names_by_key(db_session), LogoHints)
+
+    async def slow(client, hints):
+        await asyncio.sleep(2)
+
+    outcomes = asyncio.run(logo_cache.run_harvest(None, plans, slow, budget_s=60,
+                                                  per_company_timeout=0.05))
+    assert [o.status for o in outcomes] == ["timeout"]
+    stats = logo_cache.new_harvest_stats()
+    logo_cache.apply_outcomes(db_session, outcomes, stats, record_timeouts=False)
+    assert stats["timeouts"] == 1 and stats["missed"] == 0
+    assert db_session.query(CompanyLogo).count() == 0  # the next backfill run retries it
+    logo_cache.apply_outcomes(db_session, outcomes, logo_cache.new_harvest_stats())
+    assert db_session.query(CompanyLogo).one().status == "miss"  # the cron's rule
+
+
+# --- Phase 3 end to end with the real harvester ----------------------------------
+
+def _real_png(size=120) -> bytes:
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(im).rectangle((20, 20, size - 20, size - 20), fill=(200, 20, 20, 255))
+    out = io.BytesIO()
+    im.save(out, format="PNG")
+    return out.getvalue()
+
+
+def test_phase3_with_the_real_harvester_seeds_magna_from_its_longer_name(db_session, monkeypatch):
+    async def no_dns(host):
+        return False
+
+    monkeypatch.setattr(logo_harvester, "_resolves", no_dns)
+    monkeypatch.setattr(company_registry, "load_logo_map", lambda: {"Magna": S2.format("magna.com")})
+    rows = [_row(db_session, f"https://magna.wd3.myworkdayjobs.com/Magna/job/{i}", company="Magna",
+                 logo=S2.format("magna.com"), domain="magna.com") for i in range(3)]
+    donor = _row(db_session, "https://x.test/mi-1", company="Magna International", logo=LICDN,
+                 listing_status="expired")
+    fetched: list[str] = []
+    png = _real_png()
+
+    def handler(request):
+        fetched.append(str(request.url))
+        if str(request.url).startswith("https://media.licdn.com/"):
+            return httpx.Response(200, content=png, headers={"content-type": "image/png"})
+        return httpx.Response(404)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await logo_cache.harvest_missing_logos(db_session, client)
+
+    stats = asyncio.run(run())
+    assert stats["harvester_available"] is True
+    assert stats["stored"] == 1 and stats["companies_attempted"] == 1
+    assert fetched == [LICDN]  # the borrowed seed won before any other source ran
+    record = db_session.query(CompanyLogo).filter_by(company_key="magna").one()
+    assert record.status == "ok" and record.source == "existing" and record.source_url == LICDN
+    assert record.width == 120 and record.fmt == "png"
+    path = lookup_logo(db_session, "Magna")
+    db_session.expire_all()
+    for row in rows:
+        assert db_session.get(ScrapedJob, row.id).company_logo == path
+    assert db_session.get(ScrapedJob, donor.id).company_logo == LICDN  # another key, untouched

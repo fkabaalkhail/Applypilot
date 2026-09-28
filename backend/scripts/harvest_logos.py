@@ -1,86 +1,26 @@
 """
-One-time exhaustive logo harvest for every domain still on a tiny favicon.
+Retired: use backend/scripts/backfill_logos_v2.py.
 
-Same sources and guards as the hourly cron (homepage icons → Wikidata P154,
-byte-verified >= 64px); the cron's 8-domains-per-run then only maintains new
-companies. Failure writes the sz=256 favicon sentinel = "probed, favicon-only".
+The v1 script harvested per guessed company_domain and wrote Google's sz=256
+favicon URL onto every row it could not improve, which is exactly the
+letter-avatar/wrong-logo state the self-hosted logo store replaces. This
+entry point now forwards to the v2 backfill (a dry run unless --apply is
+given); --sentinels maps to --retry-misses.
 
 Usage:
-    DATABASE_URL=postgres://... python backend/scripts/harvest_logos.py [--limit N]
+    DATABASE_URL=postgres://... python backend/scripts/harvest_logos.py [--limit N] [--apply]
 """
 
-import asyncio
 import os
 import sys
 
-# Harvested URLs can contain non-ASCII (Commons filenames); never let a
-# Windows cp1252 console kill the run over a progress print.
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-import httpx  # noqa: E402
-from sqlalchemy import text  # noqa: E402
-
-from backend.db.database import engine  # noqa: E402
-from backend.services.logo_harvester import harvest_logo  # noqa: E402
-
-UNPROBED_SQL = (
-    "company_logo IS NULL OR company_logo = '' "
-    "OR company_logo LIKE '%google.com/s2/favicons%sz=128%' "
-    "OR company_logo LIKE '%icon.horse%' OR company_logo LIKE '%apistemic%'"
-)
-
-# --sentinels mode: re-probe domains previously marked favicon-only (sz=256).
-# Useful after transient Wikidata/Commons rate limiting marked real-logo
-# companies as favicon-only.
-SENTINEL_SQL = "company_logo LIKE '%google.com/s2/favicons%sz=256%'"
-
-
-async def main(limit: int, target_sql: str = UNPROBED_SQL) -> None:
-    with engine.connect() as conn:
-        domains = conn.execute(text(
-            f"SELECT company_domain, count(*) AS n, max(company) AS company "
-            f"FROM scraped_jobs WHERE ({target_sql}) "
-            f"AND company_domain IS NOT NULL AND company_domain <> '' "
-            f"GROUP BY company_domain ORDER BY n DESC LIMIT :lim"
-        ), {"lim": limit}).fetchall()
-    print(f"domains to probe: {len(domains)}")
-
-    harvested = probed = 0
-    async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
-        for row in domains:
-            domain, company = row.company_domain, row.company or ""
-            with engine.connect() as conn:
-                linkedin_url = conn.execute(text(
-                    "SELECT url FROM scraped_jobs WHERE company_domain = :d "
-                    "AND url ILIKE '%linkedin.com/jobs%' ORDER BY id DESC LIMIT 1"
-                ), {"d": domain}).scalar() or ""
-            try:
-                logo = await harvest_logo(client, domain, company, linkedin_url)
-            except Exception:
-                logo = ""
-            new_logo = logo or f"https://www.google.com/s2/favicons?domain={domain}&sz=256"
-            with engine.begin() as conn:
-                conn.execute(text(
-                    f"UPDATE scraped_jobs SET company_logo = :logo "
-                    f"WHERE company_domain = :domain AND ({target_sql})"
-                ), {"logo": new_logo, "domain": domain})
-            probed += 1
-            if logo:
-                harvested += 1
-                print(f"  [{probed}/{len(domains)}] {domain}: {logo[:80]}")
-            if probed % 50 == 0:
-                print(f"  progress: {probed} probed, {harvested} real logos")
-            await asyncio.sleep(0.2)  # be polite to Wikidata/Commons
-    print(f"done: {probed} domains probed, {harvested} real logos harvested")
-
-
 if __name__ == "__main__":
-    if not os.environ.get("DATABASE_URL", ""):
-        sys.exit("DATABASE_URL is required")
-    lim = 4000
-    if "--limit" in sys.argv:
-        lim = int(sys.argv[sys.argv.index("--limit") + 1])
-    sql = SENTINEL_SQL if "--sentinels" in sys.argv else UNPROBED_SQL
-    asyncio.run(main(lim, sql))
+    if not os.environ.get("DATABASE_URL"):
+        sys.exit("DATABASE_URL is required (set it for this command only)")
+    from backend.scripts import backfill_logos_v2
+
+    argv = ["--retry-misses" if a == "--sentinels" else a for a in sys.argv[1:]]
+    print("harvest_logos.py is retired; running backfill_logos_v2.py " + " ".join(argv))
+    sys.exit(backfill_logos_v2.main(argv))
