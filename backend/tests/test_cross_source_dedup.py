@@ -571,6 +571,85 @@ def test_release_leaves_mirrors_of_a_removed_direct_row_and_closed_rows(db_sessi
     assert closed_repost.duplicate_of == old.id
 
 
+# One LinkedIn posting under two host spellings (prod TD 61534/62435,
+# Deloitte 61647/61682, Skyworks 61937/61963).
+_SAME_SLUG = "https://ca.linkedin.com/jobs/view/software-engineer-intern-at-kinaxis-4464900190"
+_SAME_BARE = "https://www.linkedin.com/jobs/view/4464900190"
+
+
+def _release_pair(db_session, first, second):
+    """Hide two copies (created in this order, so ``first`` has the lower id)
+    behind an older copy that has since expired, then release them. Returns
+    the rows refreshed, the move list, and the ids left in the feed."""
+    from backend.services.cross_source_dedup import release_from_closed_winners
+
+    old = _closed(db_session, _mk(db_session, _LI_OLD, description=_DESC), "expired")
+    rows = [_mk(db_session, url, source=source, description=description)
+            for url, source, description in (first, second)]
+    for row in rows:
+        row.duplicate_of = old.id
+    db_session.commit()
+
+    moved = release_from_closed_winners(db_session)
+
+    for row in rows:
+        db_session.refresh(row)
+    visible = [row.id for row in rows if row.duplicate_of is None]
+    return old, rows, moved, visible
+
+
+def test_release_shows_one_posting_once_when_the_lower_id_has_no_description(db_session):
+    # By id, the bare copy came back first while its described twin was
+    # still hidden, then the described copy found no better twin (the bare
+    # one isn't): the same posting showed in the feed twice.
+    old, (bare, described), moved, visible = _release_pair(
+        db_session, (_SAME_SLUG, "linkedin", ""), (_SAME_BARE, "linkedin", _DESC))
+
+    assert visible == [described.id]
+    assert bare.duplicate_of == described.id
+    assert sorted(moved) == sorted([(described.id, old.id, None),
+                                    (bare.id, old.id, described.id)])
+
+
+def test_release_shows_one_posting_once_when_neither_copy_has_a_description(db_session):
+    # Neither copy is `better` than the other, in any order: only the
+    # posting id says they are one posting.
+    _old, (first, second), _moved, visible = _release_pair(
+        db_session, (_SAME_BARE, "linkedin", ""), (_SAME_SLUG, "linkedin", ""))
+
+    assert visible == [first.id]
+    assert second.duplicate_of == first.id
+
+
+def test_release_keeps_the_older_described_copy_whatever_the_lengths(db_session):
+    # `better` prefers the older of two described copies, not the longer:
+    # releasing the longer one first would leave the older one no better
+    # twin, and the posting would show twice.
+    _old, (older, longer), _moved, visible = _release_pair(
+        db_session, (_SAME_SLUG, "linkedin", _DESC), (_SAME_BARE, "linkedin", _DESC * 2))
+
+    assert visible == [older.id]
+    assert longer.duplicate_of == older.id
+
+
+def test_release_order_mirrors_the_better_twin(db_session):
+    # Two reposts with posting ids of their own: the described one comes back
+    # first and the bare one goes under it, even when the bare one is older.
+    _old, (bare, described), _moved, visible = _release_pair(
+        db_session, (_LI_NEW, "linkedin", ""),
+        ("https://www.linkedin.com/jobs/view/4470027999", "linkedin", _DESC))
+    assert visible == [described.id]
+    assert bare.duplicate_of == described.id
+
+
+def test_release_order_puts_linkedin_before_an_older_indeed_copy(db_session):
+    _old, (indeed, linkedin), _moved, visible = _release_pair(
+        db_session, ("https://ca.indeed.com/viewjob?jk=kin02", "indeed", _DESC),
+        (_LI_NEW, "linkedin", ""))
+    assert visible == [linkedin.id]
+    assert indeed.duplicate_of == linkedin.id
+
+
 def test_absorb_pass_runs_the_release(db_session):
     # The hourly cron keeps it converged: a winner that closes after it
     # absorbed a repost hands the repost back on the next pass.

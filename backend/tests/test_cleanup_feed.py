@@ -243,6 +243,34 @@ class TestPhaseA:
         seed.expire_all()
         assert rows["repost"].duplicate_of == rows["old"].id
 
+    @pytest.mark.parametrize("write", [False, True])
+    def test_one_posting_behind_a_closed_winner_comes_back_once(self, db_session, write):
+        # Prod TD 61534/62435: one posting under two host spellings, the
+        # lower id without a description. Both modes report one row back in
+        # the feed and one under it, never the same posting twice.
+        linkedin = dict(source_platform="linkedin", board_key="", last_seen_at=None,
+                        title_norm="software engineer new grad")
+        old = _row(db_session, LI_OLD, listing_status=LISTING_EXPIRED,
+                   description="A real description of the posting. " * 5, **linkedin)
+        bare = _row(db_session, "https://ca.linkedin.com/jobs/view/"
+                    "software-engineer-new-grad-at-acme-4464900190",
+                    duplicate_of=old.id, **linkedin)
+        described = _row(db_session, "https://www.linkedin.com/jobs/view/4464900190",
+                         duplicate_of=old.id,
+                         description="The same posting, described in full. " * 5, **linkedin)
+
+        stats = cleanup_feed.phase_a(db_session, _report(db_session, dry_run=not write),
+                                     write=write)
+        db_session.expire_all()
+
+        assert stats["closed_winner_twins_released"] == 1
+        assert stats["closed_winner_twins_repointed"] == 1
+        if write:
+            assert described.duplicate_of is None
+            assert bare.duplicate_of == described.id
+        else:
+            assert bare.duplicate_of == described.duplicate_of == old.id
+
 
 LI_OLD = "https://ca.linkedin.com/jobs/view/software-engineer-new-grad-at-acme-4440083739"
 LI_NEW = "https://ca.linkedin.com/jobs/view/software-engineer-new-grad-at-acme-4470027097"

@@ -411,6 +411,12 @@ def release_from_closed_winners(db: Session, *, clear_probe: bool = True) -> lis
     id stay hidden: that posting's closure is theirs too. ``clear_probe``
     False skips the probe stamp (a database without the column yet).
 
+    Order-proof: rows go best first, in _find_absorber's own ``better``
+    order, so a copy released early is the better twin its later same-job
+    rows find; and one posting (posting_key) comes back once, its other
+    copies going under the one released, even when neither copy is
+    ``better`` (no description on either).
+
     Returns (row id, old winner id, new winner id or None) per row moved.
     Column-only reads; one UPDATE per row by id. Commits."""
     winner = aliased(ScrapedJob)
@@ -427,11 +433,19 @@ def release_from_closed_winners(db: Session, *, clear_probe: bool = True) -> lis
             ScrapedJob.listing_status.in_(_VISIBLE_LISTING_STATUSES),
             winner.listing_status.in_(HIDDEN_LISTING_STATUSES),
         )
-        .order_by(ScrapedJob.id)
         .all()
     )
+    # Mirrors ``better`` in _find_absorber: lower tier, then a description,
+    # then the older id. Not the longer description: the older of two
+    # described copies is the better one, so it must come back first.
+    rows.sort(key=lambda r: (
+        _SOURCE_TIER.get(effective_source(r[2] or "", r[1] or ""), 3),
+        0 if (r[9] or 0) >= 50 else 1,
+        r[0],
+    ))
 
     moved: list[tuple] = []
+    released: dict[str, int] = {}  # posting_key -> the copy this pass released
     for (row_id, url, source, company, domain, title, title_norm, city, country,
          desc_len, winner_id, winner_url, winner_source, winner_status) in rows:
         row_source = effective_source(source or "", url or "")
@@ -439,11 +453,12 @@ def release_from_closed_winners(db: Session, *, clear_probe: bool = True) -> lis
             continue  # direct rows are only ever hidden as URL twins
         if stands_in_for_twins(winner_status, winner_source, winner_url):
             continue
-        if posting_key(url) == posting_key(winner_url):
+        key = posting_key(url)
+        if key == posting_key(winner_url):
             continue
         norm = title_norm or normalize_title(title or "")
-        new_home = None
-        if norm and norm != "\x01":
+        new_home = released.get(key) if key else None
+        if new_home is None and norm and norm != "\x01":
             new_home = _find_absorber(
                 db, row_id=row_id, source=row_source, title_norm=norm,
                 company=company or "", company_domain=domain or "",
@@ -454,6 +469,8 @@ def release_from_closed_winners(db: Session, *, clear_probe: bool = True) -> lis
             values["last_probed_at"] = None
         db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(values)
         moved.append((row_id, winner_id, new_home))
+        if new_home is None and key:
+            released[key] = row_id
     if moved:
         db.commit()
     return moved
