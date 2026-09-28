@@ -88,8 +88,25 @@ describe("isUsableLogoImage", () => {
     expect(isUsableLogoImage(16, 16)).toBe(false);
     expect(isUsableLogoImage(330, 56)).toBe(false); // wide wordmark strip
     expect(isUsableLogoImage(128, 128)).toBe(true);
-    expect(isUsableLogoImage(1200, 630)).toBe(true); // 1.9:1 is still under the cap
     expect(isUsableLogoImage(0, 0)).toBe(true); // SVG without an intrinsic size
+  });
+
+  it("rejects large social-share images the way the backend does", () => {
+    // Shapes measured on visible prod rows (og:image hotlinks).
+    expect(isUsableLogoImage(1200, 630)).toBe(false); // standard 1.91:1 og:image
+    expect(isUsableLogoImage(1024, 537)).toBe(false); // Salesforce
+    expect(isUsableLogoImage(1280, 720)).toBe(false); // 16:9 stock photo
+    expect(isUsableLogoImage(2000, 1000)).toBe(false); // Kinaxis tagline banner
+    expect(isUsableLogoImage(2048, 1024)).toBe(false); // Stripe
+    expect(isUsableLogoImage(800, 400)).toBe(false);
+  });
+
+  it("keeps small wide wordmarks and large square images", () => {
+    expect(isUsableLogoImage(300, 160)).toBe(true);
+    expect(isUsableLogoImage(330, 204)).toBe(true); // Wikimedia Mastercard, 1.62:1
+    expect(isUsableLogoImage(330, 180)).toBe(true); // Wikimedia Eli Lilly, 1.83:1
+    expect(isUsableLogoImage(1200, 1200)).toBe(true);
+    expect(isUsableLogoImage(2996, 1955)).toBe(true); // 1.53:1 is not a banner
   });
 });
 
@@ -200,6 +217,20 @@ describe("CompanyLogo", () => {
     setNaturalSize(img, 330, 35);
     fireEvent.load(img);
     expect((screen.getByRole("img") as HTMLImageElement).src).toContain("domain=parsons.com");
+  });
+
+  it("treats a stored 1200x630 og:image as a miss and tries the favicon service", () => {
+    render(
+      <CompanyLogo
+        company="Hitachi"
+        company_logo="https://www.hitachi.com/content/dam/hitachi/common/image/og/og_hitachi_logo.png"
+        company_domain="hitachi.com"
+      />,
+    );
+    const img = screen.getByRole("img") as HTMLImageElement;
+    setNaturalSize(img, 1200, 630);
+    fireEvent.load(img);
+    expect((screen.getByRole("img") as HTMLImageElement).src).toContain("domain=hitachi.com");
   });
 
   it("keeps a logo that is large enough and roughly square", () => {

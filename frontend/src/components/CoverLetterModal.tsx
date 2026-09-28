@@ -220,7 +220,10 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
           <button className="ai-btn ai-btn-soft" onClick={download} disabled={busy || !text}>Download .docx</button>
           {onAttach
             ? <button className="ai-btn ai-btn-primary" onClick={() => void onAttach()} disabled={busy || !text}>Attach to application</button>
-            : <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>}
+            : job.closed
+              // A closed posting's link is dead (or lands on a careers home page).
+              ? <button className="ai-btn ai-btn-primary" disabled>Posting closed</button>
+              : <a className="ai-btn ai-btn-primary" href={job.url} target="_blank" rel="noopener noreferrer">Apply Now</a>}
         </div>
       </div>
     </div>
