@@ -1,5 +1,6 @@
 """Tests for high-match job alert emails and the notifier's gating logic."""
 
+import asyncio
 import datetime
 import types
 
@@ -88,7 +89,9 @@ def test_alert_card_renders_logo_image_when_present():
 
 def test_alert_card_falls_back_to_letter_avatar_without_logo():
     jobs = [{"title": "Engineer", "company": "Zeta", "match_score": 81, "apply_url": "#"}]
-    html = EmailService()._build_job_alert_html(jobs)
+    svc = EmailService()
+    svc.frontend_url = None  # no Tailrd brand <img> either, whatever the env says
+    html = svc._build_job_alert_html(jobs)
     # No <img>, but a letter-avatar tile showing the first initial.
     assert "<img" not in html
     assert ">Z</div>" in html
@@ -307,6 +310,9 @@ def test_notify_respects_daily_budget(db_session, verified_user, capture_email, 
 # ─── Cron endpoint ───────────────────────────────────────────────────────────
 
 def test_cron_match_alerts_endpoint(client, db_session, monkeypatch):
+    from backend.auth import dependencies as auth_deps
+
+    monkeypatch.setattr(auth_deps, "CRON_SECRET", "test-cron-secret")
     user = User(
         email="cron@example.com", first_name="Cron", email_verified=True,
         auth_provider="local",
@@ -333,7 +339,7 @@ def test_cron_match_alerts_endpoint(client, db_session, monkeypatch):
         lambda to, jobs, name=None: (sent.append((to, jobs)) or True),
     )
 
-    resp = client.post("/ai/cron-match-alerts")
+    resp = client.post("/ai/cron-match-alerts", headers={"x-cron-secret": "test-cron-secret"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "completed"
@@ -344,3 +350,182 @@ def test_cron_match_alerts_endpoint(client, db_session, monkeypatch):
     assert db_session.query(JobMatchNotification).filter_by(
         user_id=user.id, job_id=job.id
     ).count() == 1
+
+
+# ─── Alerts only for rows the feed shows ─────────────────────────────────────
+
+def _job(db_session, title, company="Globex", **fields):
+    job = ScrapedJob(
+        title=title,
+        company=company,
+        url=f"https://jobs.example.com/{title}".replace(" ", "-"),
+        description=f"{title} description " + "x" * 200,
+        posted_date=datetime.datetime.utcnow(),
+        **fields,
+    )
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+    return job
+
+
+def _feed_variants(db_session):
+    """One row per visibility case; returns (visible titles, all rows)."""
+    active = _job(db_session, "Active Role")
+    stale = _job(db_session, "Stale Role", listing_status="stale")
+    rows = [
+        active,
+        stale,
+        _job(db_session, "Duplicate Role", duplicate_of=active.id),
+        _job(db_session, "Removed Role", listing_status="removed"),
+        _job(db_session, "Expired Role", listing_status="expired"),
+        _job(db_session, "Blank Company Role", company="  "),
+        _job(db_session, "Unknown Company Role", company="Unknown"),
+    ]
+    return {"Active Role", "Stale Role"}, rows
+
+
+def test_sweep_window_only_scores_rows_the_feed_shows(db_session, monkeypatch):
+    user = User(email="feed@example.com", first_name="Feed", email_verified=True,
+                auth_provider="local")
+    db_session.add(user)
+    db_session.commit()
+    db_session.add(ResumeProfileDB(user_id=user.id, raw_text="resume body text"))
+    db_session.commit()
+    visible, _rows = _feed_variants(db_session)
+
+    scored_titles = []
+
+    async def fake_breakdown(self, resume_text, job_description):
+        scored_titles.append(job_description.split(" description ")[0])
+        return types.SimpleNamespace(overall_score=91)
+
+    monkeypatch.setattr(
+        "backend.services.match_engine.MatchEngine.compute_breakdown", fake_breakdown
+    )
+    sent = []
+    monkeypatch.setattr(
+        match_notifier.email_service,
+        "send_job_match_alert",
+        lambda to, jobs, name=None: (sent.append(jobs) or True),
+    )
+
+    result = asyncio.run(match_notifier.sweep_match_alerts(db_session))
+
+    assert set(scored_titles) == visible
+    assert result["jobs_notified"] == 2
+    assert {j["title"] for j in sent[0]} == visible
+    notified = {
+        db_session.get(ScrapedJob, row.job_id).title
+        for row in db_session.query(JobMatchNotification).all()
+    }
+    assert notified == visible
+
+
+def test_notify_drops_hidden_and_closed_candidates(db_session, verified_user, capture_email):
+    # The resume-upload path hands over whatever it scored; hidden duplicates
+    # and closed listings must still never reach an email.
+    visible, rows = _feed_variants(db_session)
+
+    count = match_notifier.notify_high_matches(
+        db_session, verified_user.id, [(row, 95) for row in rows]
+    )
+
+    assert count == 2
+    assert {j["title"] for j in capture_email[0]["jobs"]} == visible
+    recorded = {r.job_id for r in db_session.query(JobMatchNotification).all()}
+    assert recorded == {row.id for row in rows if row.title in visible}
+
+
+def test_notify_with_only_hidden_candidates_sends_nothing(db_session, verified_user, capture_email):
+    active = _job(db_session, "Canonical Role")
+    twin = _job(db_session, "Twin Role", duplicate_of=active.id)
+
+    assert match_notifier.notify_high_matches(db_session, verified_user.id, [(twin, 99)]) == 0
+    assert capture_email == []
+    assert db_session.query(JobMatchNotification).count() == 0
+
+
+# ─── Email logos and company names ───────────────────────────────────────────
+
+SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+def test_resolve_logo_url_self_hosted_png_becomes_absolute(db_session, monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "https://www.tailrd.ca/")
+    job = _job(db_session, "Logo Role", company="Kinaxis",
+               company_logo=f"/jobs/logo/{SHA}.png", company_domain="kinaxis.com")
+
+    assert match_notifier._resolve_logo_url(job) == f"https://www.tailrd.ca/jobs/logo/{SHA}.png"
+
+
+def test_resolve_logo_url_self_hosted_without_base_uses_favicon(db_session, monkeypatch):
+    monkeypatch.delenv("FRONTEND_URL", raising=False)
+    job = _job(db_session, "Logo Role", company="Kinaxis",
+               company_logo=f"/jobs/logo/{SHA}.png", company_domain="kinaxis.com")
+
+    url = match_notifier._resolve_logo_url(job)
+    # A relative path can't load in a mail client; the favicon can.
+    assert url.startswith("https://") and "kinaxis.com" in url
+    assert "/jobs/logo/" not in url
+
+
+def test_resolve_logo_url_self_hosted_svg_uses_favicon(db_session, monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "https://www.tailrd.ca")
+    job = _job(db_session, "Logo Role", company="Kinaxis",
+               company_logo=f"/jobs/logo/{SHA}.svg", company_domain="kinaxis.com")
+
+    url = match_notifier._resolve_logo_url(job)
+    assert "kinaxis.com" in url
+    assert not url.endswith(".svg")
+
+
+def test_resolve_logo_url_skips_parked_hotlinks(db_session):
+    job = _job(db_session, "Logo Role", company="AGAT Laboratories",
+               company_logo="https://static.hugedomains.com/images/og_hugedomains.png",
+               company_domain="agatlabs.com")
+
+    url = match_notifier._resolve_logo_url(job)
+    assert "hugedomains" not in url
+    assert "agatlabs.com" in url
+
+
+def test_alert_uses_clean_company_name_and_matching_avatar(db_session, monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "https://www.tailrd.ca")
+    job = _job(db_session, "Bold Role", company="**Acme**")
+
+    alert = match_notifier._job_to_alert_dict(job, 90)
+    assert alert["company"] == "Acme"
+
+    svc = EmailService()
+    svc.frontend_url = None
+    html = svc._build_job_alert_html([dict(alert, logo_url="")])
+    assert "**" not in html
+    assert ">A</div>" in html
+    # The avatar colour is the plain name's, as on the dashboard.
+    assert svc._avatar_color("**Acme**") == svc._avatar_color("Acme")
+    assert svc._avatar_color("Acme") in html
+
+
+def test_alert_subject_strips_markdown_from_company(monkeypatch):
+    svc = EmailService()
+    svc.api_key = "re_test"
+    svc.from_email = "alerts@tailrd.com"
+    captured = {}
+
+    import backend.services.email_service as es
+    monkeypatch.setattr(
+        es.resend.Emails, "send", staticmethod(lambda payload: captured.update(payload))
+    )
+
+    jobs = [{"title": "Engineer", "company": "**Acme**", "match_score": 90, "apply_url": "#"}]
+    assert svc.send_job_match_alert("u@example.com", jobs) is True
+    assert captured["subject"].startswith("Acme just posted a 90% match")
+
+
+def test_avatar_letter_skips_markup_and_punctuation():
+    svc = EmailService()
+    assert svc._avatar_letter("**tesla**") == "T"
+    assert svc._avatar_letter("(ycs23) pure") == "Y"
+    assert svc._avatar_letter("***") == "?"
+    assert svc._avatar_letter("") == "?"

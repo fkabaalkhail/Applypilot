@@ -2,19 +2,25 @@
 Job listing endpoints (data only, no bot automation).
 
 GET  /jobs, list scraped jobs with filters
-GET  /jobs/{id}, get a single job
+GET  /jobs/{id}, get a single job (a hidden duplicate answers with its visible twin)
 GET  /jobs/stats, aggregate stats
 GET  /jobs/logo/{sha}.png, a self-hosted company logo (public, immutable)
+POST /jobs/{id}/check-live, re-verify a listing when a user opens it
 POST /jobs/{id}/save, save a job
 POST /jobs/{id}/unsave, unsave a job
 """
 
+import asyncio
 import datetime
+import html
+import ipaddress
 import logging
 import re
+import socket
 from typing import Optional
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, or_
 
@@ -34,14 +40,26 @@ from backend.services.description_extractor import (
     extract_description_from_url,
 )
 from backend.services.location_parser import location_fields
-from backend.services.logo_cache import brand, load_branding, logo_quality
+from backend.services.logo_cache import (
+    brand,
+    company_key,
+    load_branding,
+    logo_quality,
+    lookup_logo,
+)
 from backend.services.logo_resolver import company_website_url, resolve_logo
 from backend.services.cross_source_dedup import (
     canonical_url,
     has_direct_twin,
     normalize_title,
 )
-from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES
+from backend.services import platform_liveness
+from backend.services.listing_freshness import (
+    HIDDEN_LISTING_STATUSES,
+    LISTING_ACTIVE,
+    record_liveness,
+)
+from backend.services.platform_liveness import ALIVE, DEAD, UNKNOWN, LivenessResult
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -75,6 +93,44 @@ def _sanitize_description(text: str) -> str:
     import nh3
     # Strip all HTML tags, keeping only safe text content
     return nh3.clean(text, tags=set())
+
+
+def _ip_is_internal(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True
+    return (
+        ip.is_private or ip.is_loopback or ip.is_link_local
+        or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+    )
+
+
+def _is_url_allowed(url: str) -> bool:
+    """SSRF guard for a fetch made on a user's behalf: http(s) only, and the
+    host (an IP literal or every address it resolves to) must be public.
+    Resolves DNS, which blocks, so async callers run it in a thread."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = parsed.hostname or ""
+        if not host:
+            return False
+        try:
+            ipaddress.ip_address(host)
+            return not _ip_is_internal(host)
+        except ValueError:
+            pass
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except Exception:
+            return False
+        if not infos:
+            return False
+        return not any(_ip_is_internal(info[4][0]) for info in infos)
+    except Exception:
+        return False
 
 
 @router.get("", response_model=list[ScrapedJobOut])
@@ -915,17 +971,258 @@ def serve_company_logo(name: str, db: Session = Depends(get_db)):
     return Response(content=bytes(row.data), media_type=_LOGO_MEDIA_TYPES[ext], headers=headers)
 
 
+# duplicate_of points straight at the surviving row by construction; the cap
+# only stops a corrupted chain or cycle from looping.
+_MAX_TWIN_HOPS = 3
+
+
+def _canonical_twin_id(db: Session, job_id: int, duplicate_of: Optional[int]) -> int:
+    """The visible row a hidden cross-source duplicate points at, following
+    duplicate_of column-only, or ``job_id`` itself when it isn't a duplicate
+    or its twin is gone."""
+    seen = {job_id}
+    target, next_id = job_id, duplicate_of
+    for _ in range(_MAX_TWIN_HOPS):
+        if not next_id or next_id in seen:
+            break
+        hop = (
+            db.query(ScrapedJob.id, ScrapedJob.duplicate_of)
+            .filter(ScrapedJob.id == next_id)
+            .first()
+        )
+        if hop is None:
+            break
+        seen.add(hop.id)
+        target, next_id = hop.id, hop.duplicate_of
+    return target
+
+
 @router.get("/{job_id}", response_model=ScrapedJobOut)
 def get_job(
     job_id: int,
     user_id: Optional[int] = Depends(get_optional_user_id),
     db: Session = Depends(get_db),
 ):
-    """Get a single job by ID."""
+    """Get a single job by ID.
+
+    A hidden cross-source duplicate answers with its visible twin (a match
+    email or a shared link to the LinkedIn copy lands on the row the feed
+    shows, not on a hidden one), so the returned id can differ from the one
+    asked for. listing_status comes back as stored, closed rows included, so
+    the client can show the closed state.
+    """
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
+    if job.duplicate_of:
+        canonical_id = _canonical_twin_id(db, job.id, job.duplicate_of)
+        if canonical_id != job.id:
+            canonical = db.query(ScrapedJob).filter(ScrapedJob.id == canonical_id).first()
+            if canonical is not None:
+                job = canonical
     return _overlay_saved(db, [job], user_id)[0]
+
+
+# ─── Click-time liveness ─────────────────────────────────────────────────────
+
+# A row probed this recently answers from the database: the sweeps or an
+# earlier click already asked the platform, and asking again learns nothing.
+CHECK_LIVE_RECHECK = datetime.timedelta(hours=6)
+# A cached answer says "alive" only for an active row its board (or the
+# platform's API) vouched for this recently.
+CHECK_LIVE_SEEN_FRESH = datetime.timedelta(hours=24)
+# Per request. The detail panel never waits on this, but it must still end.
+CHECK_LIVE_TIMEOUT_S = 8.0
+# Per user, real probes only. The feed asks once per job per session, so a
+# person reading it never gets close; a script walking job ids does.
+CHECK_LIVE_PER_MINUTE = 30
+CHECK_LIVE_PER_DAY = 500
+
+
+def _naive_utc(value: Optional[datetime.datetime]) -> Optional[datetime.datetime]:
+    """Stored timestamps are naive UTC; tolerate an aware one from a driver."""
+    if value is not None and value.tzinfo is not None:
+        value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return value
+
+
+def _live_answer(job_id: int, listing_status: str, verdict: str) -> dict:
+    return {"id": job_id, "listing_status": listing_status, "verdict": verdict}
+
+
+def _enforce_check_live_limits(db: Session, request: Request, user_id: int) -> None:
+    """Per-user caps on click-time probes, on the same database-backed
+    counters the AI routes use (an in-memory count would reset per serverless
+    instance). Answers served from stored state are free and never counted."""
+    from backend.services import usage_limiter
+
+    if not usage_limiter._enabled():
+        return
+    identity = usage_limiter.client_identity(request, user_id)
+    for name, limit, window in (
+        ("live_min", CHECK_LIVE_PER_MINUTE, 60),
+        ("live_day", CHECK_LIVE_PER_DAY, 86_400),
+    ):
+        retry_after = usage_limiter._hit(db, name, identity, limit, window)
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many requests. Please try again later.",
+                headers={"Retry-After": str(retry_after)},
+            )
+
+
+def _probe_allowed(url: str) -> bool:
+    """SSRF guard for a probe a user triggers: public http(s) hosts only. A
+    URL with no host is left to the liveness check, which calls it dead
+    without making a request."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return True
+    return _is_url_allowed(url)
+
+
+async def _probe_listing(url: str) -> LivenessResult:
+    if not await asyncio.to_thread(_probe_allowed, url):
+        return LivenessResult(UNKNOWN, "url_not_allowed")
+    async with platform_liveness.make_client() as client:
+        return await platform_liveness.check_listing(client, url)
+
+
+@router.post("/{job_id}/check-live")
+async def check_job_live(
+    job_id: int,
+    request: Request,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+):
+    """Re-verify one listing when a user opens it.
+
+    Asks the posting's own platform (services/platform_liveness.py) whether
+    it is still open and applies the answer by the sweeps' rules
+    (listing_freshness.record_liveness): dead → removed, an authoritative
+    alive → last_seen_at (and a stale row revives), anything else only
+    stamps last_probed_at. A row already closed, or probed within
+    CHECK_LIVE_RECHECK, answers from the database without a request. A probe
+    that fails or runs past CHECK_LIVE_TIMEOUT_S is verdict unknown, never
+    an error.
+
+    Returns {"id", "listing_status", "verdict"} (alive | dead | unknown).
+    """
+    row = (
+        db.query(
+            ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status,
+            ScrapedJob.last_seen_at, ScrapedJob.last_probed_at,
+        )
+        .filter(ScrapedJob.id == job_id)
+        .first()
+    )
+    if row is None:
+        # Not FastAPI's bare "Not Found": the client reads that as "this
+        # endpoint doesn't exist" and stops asking for the session.
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    status = row.listing_status or LISTING_ACTIVE
+    if status in HIDDEN_LISTING_STATUSES:
+        return _live_answer(row.id, status, DEAD)
+
+    now = datetime.datetime.utcnow()
+    probed_at = _naive_utc(row.last_probed_at)
+    if probed_at is not None and now - probed_at < CHECK_LIVE_RECHECK:
+        seen_at = _naive_utc(row.last_seen_at)
+        fresh = (
+            status == LISTING_ACTIVE
+            and seen_at is not None
+            and now - seen_at < CHECK_LIVE_SEEN_FRESH
+        )
+        return _live_answer(row.id, status, ALIVE if fresh else UNKNOWN)
+
+    _enforce_check_live_limits(db, request, user_id)
+
+    try:
+        result = await asyncio.wait_for(_probe_listing(row.url or ""), CHECK_LIVE_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        result = LivenessResult(UNKNOWN, "timeout")
+    except Exception as exc:
+        logger.warning("check-live probe failed for job %s: %s", job_id, exc)
+        result = LivenessResult(UNKNOWN, "error")
+
+    try:
+        status = record_liveness(db, row.id, status, result)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("check-live could not record job %s: %s", job_id, exc)
+    logger.info("check-live job %s: %s (%s), now %s", job_id, result.verdict, result.reason, status)
+    return _live_answer(row.id, status, result.verdict)
+
+
+def _details_client():
+    """The page fetch fetch-details makes (a seam for tests)."""
+    import httpx
+
+    return httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS)
+
+
+# LinkedIn's own company image on a guest job page. og:image is never used as
+# a logo: on most job pages it is a banner, a job card or the ATS vendor's art.
+_LINKEDIN_LOGO_TAG_RE = re.compile(r"<img\b[^>]*\bartdeco-entity-image\b[^>]*>", re.IGNORECASE)
+_IMG_URL_ATTR_RE = re.compile(r'\b(?:data-delayed-url|src)="([^"]+)"', re.IGNORECASE)
+_IMG_ALT_RE = re.compile(r'\balt="([^"]*)"', re.IGNORECASE)
+
+
+def _linkedin_company_logo(page: str, company: str) -> str:
+    """The posting's own company logo from a LinkedIn guest job page. The
+    top card's images carry the company name as alt text; any other page
+    shape (a search list after an expired-job redirect shows dozens of other
+    employers' logos) must not lend its first image to this company."""
+    wanted = company_key(company)
+    for tag in _LINKEDIN_LOGO_TAG_RE.findall(page):
+        alt = _IMG_ALT_RE.search(tag)
+        if wanted and company_key(html.unescape(alt.group(1)) if alt else "") != wanted:
+            continue
+        for raw in _IMG_URL_ATTR_RE.findall(tag):
+            url = html.unescape(raw)
+            # A trusted licdn company logo, never a poster's profile photo
+            # or the ghost placeholder.
+            if "company-logo" in url and logo_quality(url) >= 2:
+                return url
+    return ""
+
+
+def _page_death_reason(status: int, final_url: str, text: str) -> str:
+    """Why a fetched job page shows the posting is gone, or "" when it
+    doesn't: 404/410, a landing on an error page (error=404, errortype=404,
+    /errorpage), or a closed notice (LinkedIn's markers, or a dead phrase in
+    the visible text). Bot walls (401/403/429/999) prove nothing, and Indeed,
+    which walls every non-browser fetch, is never judged (as in
+    platform_liveness)."""
+    host = (urlparse(final_url).hostname or "").lower()
+    if host == "indeed.com" or host.endswith(".indeed.com"):
+        return ""
+    if status in platform_liveness.DEAD_HTTP_STATUSES:
+        return f"http_{status}"
+    if status != 200:
+        return ""
+    if platform_liveness._ERROR_URL_RE.search(final_url):
+        return "error_redirect"
+    if host.endswith("linkedin.com") and (
+        "expired_jd_redirect" in final_url
+        or any(marker in text for marker in platform_liveness._LINKEDIN_DEAD_MARKERS)
+    ):
+        return "linkedin_closed"
+    if platform_liveness.says_dead(text):
+        return "body_closed"
+    return ""
+
+
+def _left_posting(original_url: str, final_url: str) -> bool:
+    """A redirect that dropped the posting's own id: it landed on a careers
+    home or a job list, not on the same job at a new address."""
+    if final_url == original_url:
+        return False
+    token = platform_liveness._job_token(urlparse(original_url))
+    return not token or token.lower() not in final_url.lower()
 
 
 @router.post("/{job_id}/fetch-details")
@@ -934,56 +1231,38 @@ async def fetch_job_details(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Fetch job description from the apply URL on-demand and cache it."""
+    """Fetch job description from the apply URL on-demand and cache it.
+
+    The page fetch doubles as a liveness read. A posting whose page 404s,
+    lands on an error page or shows a closed notice, or that redirected away
+    from its own id to where the platform check (services/platform_liveness.py)
+    calls it dead, is marked removed, and the answer carries ``dead: true``
+    with the original apply URL. Handing back the redirect target instead is
+    what turned Apply into a careers-homepage link; a redirect is only adopted
+    as the apply URL when it kept the posting's id.
+
+    Logos: a missing or generated one is filled only from the self-hosted
+    store (services/logo_cache.py) or LinkedIn's own company image. Job-page
+    og:image and name-guessed logo services are never written; the harvester
+    (cron-backfill Phase 3) covers the rest.
+    """
     import json
-    import httpx
-    import ipaddress
-    import socket
-    from urllib.parse import urlparse
-
-    def _ip_is_internal(ip_str: str) -> bool:
-        try:
-            ip = ipaddress.ip_address(ip_str)
-        except ValueError:
-            return True
-        return (
-            ip.is_private or ip.is_loopback or ip.is_link_local
-            or ip.is_reserved or ip.is_multicast or ip.is_unspecified
-        )
-
-    def _is_url_allowed(url: str) -> bool:
-        try:
-            parsed = urlparse(url)
-            if parsed.scheme not in ("http", "https"):
-                return False
-            host = parsed.hostname or ""
-            if not host:
-                return False
-            try:
-                ipaddress.ip_address(host)
-                return not _ip_is_internal(host)
-            except ValueError:
-                pass
-            try:
-                infos = socket.getaddrinfo(host, None)
-            except Exception:
-                return False
-            if not infos:
-                return False
-            return not any(_ip_is_internal(info[4][0]) for info in infos)
-        except Exception:
-            return False
 
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    if not job.url or not _is_url_allowed(job.url):
+    def _listing_state() -> dict:
+        status = job.listing_status or LISTING_ACTIVE
+        return {"listing_status": status, "dead": status in HIDDEN_LISTING_STATUSES}
+
+    if not job.url or not await asyncio.to_thread(_is_url_allowed, job.url):
         return {
             "id": job.id,
             "description": job.description or "",
             "apply_url": job.url or "",
             "company_logo": job.company_logo or "",
+            **_listing_state(),
         }
 
     if job.description and len(job.description) > 50:
@@ -993,6 +1272,7 @@ async def fetch_job_details(
                 "description": job.description,
                 "apply_url": job.url,
                 "company_logo": job.company_logo,
+                **_listing_state(),
             }
         job.description = ""
         db.commit()
@@ -1003,15 +1283,44 @@ async def fetch_job_details(
     db.commit()
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
+        async with _details_client() as client:
             response = await client.get(job.url)
             text = response.text
             final_url = str(response.url)
+            linkedin_url = "linkedin.com/jobs" in job.url or "linkedin.com/jobs" in final_url
+            left_posting = _left_posting(job.url, final_url)
+
+            reason = _page_death_reason(response.status_code, final_url, text)
+            if not reason and left_posting and response.status_code == 200 and not linkedin_url:
+                # Bounced off its own id: a closed posting's careers-home
+                # landing, or (SmartRecruiters) a live one's. Only the
+                # platform can tell which.
+                try:
+                    verdict = await asyncio.wait_for(
+                        platform_liveness.check_listing(client, job.url), CHECK_LIVE_TIMEOUT_S,
+                    )
+                except asyncio.TimeoutError:
+                    verdict = LivenessResult(UNKNOWN, "timeout")
+                if verdict.verdict == DEAD:
+                    reason = verdict.reason
+            if reason:
+                status = record_liveness(
+                    db, job.id, job.listing_status or LISTING_ACTIVE, LivenessResult(DEAD, reason),
+                )
+                db.commit()
+                logger.info("fetch-details: job %s is gone (%s)", job_id, reason)
+                return {
+                    "id": job.id,
+                    "description": job.description or "",
+                    "apply_url": job.url,
+                    "company_logo": job.company_logo or "",
+                    "listing_status": status,
+                    "dead": True,
+                }
 
             description = await extract_description_from_html(client, job.url, text, final_url)
-            apply_url = final_url if final_url != job.url else job.url
+            apply_url = job.url if (linkedin_url or left_posting) else final_url
 
-            linkedin_url = "linkedin.com/jobs" in job.url or "linkedin.com/jobs" in final_url
             if linkedin_url:
                 if not job.company or job.company.strip() == "":
                     og_title_match = re.search(
@@ -1027,24 +1336,12 @@ async def fetch_job_details(
                         elif hiring_match:
                             job.company = hiring_match.group(1).strip()
 
-                if not job.company_logo:
-                    logo_match = re.search(
-                        r'<img[^>]*class="[^"]*artdeco-entity-image[^"]*"[^>]*src="([^"]+)"',
-                        text, re.IGNORECASE,
-                    )
-                    if not logo_match:
-                        logo_match = re.search(
-                            r'<meta\s+property="og:image"\s+content="([^"]*)"',
-                            text, re.IGNORECASE,
-                        )
-                    if logo_match:
-                        logo_url = logo_match.group(1)
-                        if logo_url.startswith("http") and "linkedin" not in logo_url.lower():
-                            job.company_logo = logo_url
-                    if not job.company_logo and job.company:
-                        cleaned = re.sub(r'[^a-z0-9]', '', job.company.lower())
-                        if len(cleaned) >= 2:
-                            job.company_logo = f"https://logos-api.apistemic.com/domain:{cleaned}.com?fallback=404"
+            if logo_quality(job.company_logo) == 0:
+                logo = (lookup_logo(db, job.company) if job.company else None) or ""
+                if not logo and linkedin_url:
+                    logo = _linkedin_company_logo(text, job.company or "")
+                if logo:
+                    job.company_logo = logo
 
             next_match = re.search(
                 r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
@@ -1061,7 +1358,8 @@ async def fetch_job_details(
                     ) or {}
                     if job_result:
                         logo = job_result.get("jdLogo", "")
-                        if logo and isinstance(logo, str) and logo.startswith("http") and not job.company_logo:
+                        if (isinstance(logo, str) and logo_quality(logo) > 0
+                                and logo_quality(job.company_logo) == 0):
                             job.company_logo = logo
                         salary = job_result.get("salaryDesc", "")
                         if salary and not job.salary_range:
@@ -1080,16 +1378,6 @@ async def fetch_job_details(
                 except (json.JSONDecodeError, KeyError, TypeError):
                     pass
 
-            if not job.company_logo:
-                logo_match = re.search(
-                    r'<meta\s+property="og:image"\s+content="([^"]*)"',
-                    text, re.IGNORECASE,
-                )
-                if logo_match:
-                    logo_url = logo_match.group(1)
-                    if logo_url.startswith("http"):
-                        job.company_logo = logo_url
-
             if description:
                 job.description = _sanitize_description(description)
                 job.description_sections = None  # re-structure the new text
@@ -1099,21 +1387,24 @@ async def fetch_job_details(
             return {
                 "id": job.id,
                 "description": job.description or "",
-                "apply_url": apply_url if not linkedin_url else job.url,
+                "apply_url": apply_url,
                 "company_logo": job.company_logo or "",
                 "company": job.company or "",
                 "company_domain": job.company_domain or "",
                 "salary_range": job.salary_range or "",
                 "applicant_count": job.applicant_count,
                 "work_type": job.work_type or "",
+                **_listing_state(),
             }
     except Exception as e:
         logger.warning(f"Failed to fetch details for job {job_id}: {e}")
+        db.rollback()
         return {
             "id": job.id,
             "description": job.description or "",
             "apply_url": job.url,
             "company_logo": job.company_logo or "",
+            **_listing_state(),
         }
 
 
@@ -1272,8 +1563,10 @@ async def fix_empty_companies(
     import re
     import httpx
 
+    # Columns only: whole rows would drag 50 descriptions over the wire just
+    # to read a URL.
     jobs_with_empty_company = (
-        db.query(ScrapedJob)
+        db.query(ScrapedJob.id, ScrapedJob.url)
         .filter(ScrapedJob.company == "")
         .limit(50)
         .all()
@@ -1310,8 +1603,15 @@ async def fix_empty_companies(
                 pass
 
         if company_name:
-            job.company = company_name
-            job.company_logo, job.company_domain = resolve_logo(company_name)
+            # The stored self-hosted logo and verified domain win over the
+            # name-guessed favicon, the same rule every insert path follows.
+            logo, domain = brand(
+                load_branding(db, [company_name]), company_name, *resolve_logo(company_name)
+            )
+            db.query(ScrapedJob).filter(ScrapedJob.id == job.id).update(
+                {"company": company_name, "company_logo": logo, "company_domain": domain},
+                synchronize_session=False,
+            )
             db.commit()
             fixed += 1
 
