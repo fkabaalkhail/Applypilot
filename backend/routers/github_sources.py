@@ -167,7 +167,8 @@ WORKDAY_DETAIL_BUDGET = 40
 # their newest-first head. Full lists are what let Workday boards reconcile
 # (BMO is ~50 list POSTs, Parsons ~100), but the whole run shares one request
 # with the workflow's 300 s curl. Boards still paging at the deadline finish
-# partial: they confirm what they listed and remove nothing.
+# partial: they confirm what they listed and remove nothing. No board starts
+# after it either; those wait for the shard's next run.
 CRON_ATS_LIST_BUDGET_SECONDS = float(os.getenv("CRON_ATS_LIST_BUDGET_SECONDS", "150"))
 
 # Boards crawled at once. Never two on one API host, so Greenhouse, Lever,
@@ -177,24 +178,45 @@ CRON_ATS_CONCURRENCY = max(1, int(os.getenv("CRON_ATS_CONCURRENCY", "6")))
 
 _IN_CHUNK = 400  # keep IN () lists comfortably under driver parameter limits
 
-# Launch order: the boards that page the longest go first, so they page while
-# the single-request boards stream through the remaining slots.
-_LAUNCH_ORDER = {"workday": 0, "smartrecruiters": 1}
+# Launch order: the shared-host chains first. Greenhouse, Ashby and Lever
+# (and SmartRecruiters) boards each share one API host, so a platform crawls
+# one board at a time and its chain (~70 Greenhouse boards a shard) is the
+# run's critical path. Workday tenants are a host each and fill the slots the
+# chains leave; launched first, they held every slot for the first ~35 s.
+_LAUNCH_ORDER = {"greenhouse": 0, "ashby": 0, "lever": 0, "smartrecruiters": 1, "workday": 2}
+
+
+def _crawled_at(health) -> datetime.datetime:
+    """A board's last successful crawl as naive UTC; never crawled sorts first."""
+    stamp = getattr(health, "last_success_at", None)
+    if stamp is None:
+        return datetime.datetime.min
+    if stamp.tzinfo is not None:
+        stamp = stamp.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return stamp
 
 
 async def _crawl_boards(scraper, client, boards: list[tuple[str, str, str]],
-                        concurrency: int = CRON_ATS_CONCURRENCY):
+                        concurrency: int = CRON_ATS_CONCURRENCY,
+                        deferred: Optional[list] = None):
     """Crawl boards concurrently, yielding ((platform, slug, name), snapshot,
     error) as each one finishes. At most ``concurrency`` crawls are in flight
     and never two on the same API host. A failed crawl yields its exception
-    in place of a snapshot, so one bad board never sinks the run."""
+    in place of a snapshot, so one bad board never sinks the run.
+
+    A slot is handed on the moment its crawl finishes, not when the consumer
+    next asks for a result, so the seconds spent processing a snapshot never
+    leave slots idle. Once the scraper's deadline has passed no board starts:
+    the rest of the queue goes to ``deferred`` for the shard's next run."""
     from backend.services.ats_scraper import board_host
 
     queue = [
         (board, board_host(board[0], board[1]))
         for board in sorted(boards, key=lambda board: _LAUNCH_ORDER.get(board[0], 2))
     ]
-    running: dict[asyncio.Task, tuple[tuple[str, str, str], str]] = {}
+    running: dict[asyncio.Future, tuple[tuple[str, str, str], str]] = {}
+    finished: asyncio.Queue = asyncio.Queue()
+    closing = False
 
     async def crawl(board):
         try:
@@ -203,6 +225,13 @@ async def _crawl_boards(scraper, client, boards: list[tuple[str, str, str]],
             return None, e
 
     def launch():
+        if closing:
+            return
+        if queue and scraper._out_of_time():
+            if deferred is not None:
+                deferred.extend(board for board, _host in queue)
+            queue.clear()
+            return
         busy = {host for _board, host in running.values()}
         i = 0
         while i < len(queue) and len(running) < concurrency:
@@ -212,21 +241,27 @@ async def _crawl_boards(scraper, client, boards: list[tuple[str, str, str]],
                 continue
             queue.pop(i)
             busy.add(host)
-            running[asyncio.ensure_future(crawl(board))] = (board, host)
+            task = asyncio.ensure_future(crawl(board))
+            running[task] = (board, host)
+            task.add_done_callback(finish)
+
+    def finish(task):
+        board, _host = running.pop(task)
+        if task.cancelled():
+            return
+        finished.put_nowait((board, *task.result()))
+        launch()
 
     try:
         launch()
-        while running:
-            done, _pending = await asyncio.wait(set(running), return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                board, _host = running.pop(task)
-                launch()
-                snapshot, error = task.result()
-                yield board, snapshot, error
+        while running or not finished.empty():
+            yield await finished.get()
     finally:
-        for task in running:
+        closing = True
+        tasks = list(running)
+        for task in tasks:
             task.cancel()
-        await asyncio.gather(*running, return_exceptions=True)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _confirm_listed(db: Session, board_key: str, urls: set[str],
@@ -405,6 +440,7 @@ async def cron_ats(
             "removed": 0, "revived": 0, "cross_source_twins_hidden": 0,
             "boards_failed": 0, "boards_skipped_cooldown": 0,
             "boards_partial": 0, "partial_confirmed": 0, "urls_migrated": 0,
+            "boards_deferred": 0,
         }
         workday_detail_budget = WORKDAY_DETAIL_BUDGET
 
@@ -414,9 +450,14 @@ async def cron_ats(
                 totals["boards_skipped_cooldown"] += 1
             else:
                 runnable.append((platform, slug, company_name))
+        # Least recently crawled first (the launch sort keeps this order within
+        # a platform), so boards a spent budget deferred last run start first
+        # instead of being the same deferred tail every time.
+        runnable.sort(key=lambda board: _crawled_at(health_map.get(f"{board[0]}:{board[1]}")))
+        deferred: list[tuple[str, str, str]] = []
 
         async with httpx.AsyncClient(timeout=30) as client, aclosing(
-            _crawl_boards(scraper, client, runnable)
+            _crawl_boards(scraper, client, runnable, deferred=deferred)
         ) as crawl:
             async for (platform, slug, company_name), snapshot, error in crawl:
                 board_key = f"{platform}:{slug}"
@@ -544,6 +585,14 @@ async def cron_ats(
                     totals["revived"] += seen["revived"]
 
                 source_health.record_success(db, board_key, platform, slug, len(snapshot.jobs))
+
+        # Never started: no success stamp, and first in line next time.
+        totals["boards_deferred"] = len(deferred)
+        if deferred:
+            logger.warning(
+                "cron-ats: crawl budget spent, deferred %d boards to the next run: %s",
+                len(deferred), ", ".join(f"{p}:{s}" for p, s, _ in deferred),
+            )
 
         return {
             "status": "completed",

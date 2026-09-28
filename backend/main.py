@@ -5,6 +5,7 @@ Serves AI endpoints for the Chrome extension and React frontend.
 Runs as Vercel serverless function or standalone with uvicorn.
 """
 
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -45,6 +46,8 @@ from backend.routers import health, resumes, jobs, settings, fill, ai, apply, co
 from backend.routers import auth, auth_extension, extension, tailor, cover_letter, auth_linkedin
 from backend.routers.feedback import router as feedback_router
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -68,8 +71,17 @@ async def lifespan(app: FastAPI):
     run_autofill_field_outcomes_migration()
     run_drop_saved_answers_migration()
     run_autofill_diagnostic_capture_migration()
-    run_listing_probe_columns_migration()
-    run_company_logos_migration()
+    # First-deploy DDL that every cold-starting instance runs at once: a lock
+    # timeout or a lost race must not kill startup. The schema is shared, so
+    # the next instance to start retries and every instance sees the result.
+    for name, first_deploy_migration in (
+        ("add_listing_probe_columns", run_listing_probe_columns_migration),
+        ("add_company_logos", run_company_logos_migration),
+    ):
+        try:
+            first_deploy_migration()
+        except Exception:
+            logger.exception("Startup migration %s failed; continuing", name)
     yield
 
 

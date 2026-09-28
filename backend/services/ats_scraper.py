@@ -23,6 +23,7 @@ Two consumption shapes:
 """
 
 import asyncio
+import json
 import logging
 import datetime
 import os
@@ -431,6 +432,14 @@ def smartrecruiters_legacy_url(url: str) -> str:
     if not (url or "").startswith(SMARTRECRUITERS_POSTING_BASE):
         return ""
     return SMARTRECRUITERS_LEGACY_BASE + url[len(SMARTRECRUITERS_POSTING_BASE):]
+
+
+def _workday_unlisted_key(posting: dict) -> str:
+    """Identity of a CxS posting that can't be listed as a job (no title or
+    no externalPath): its path or req-id bullets when it has them, else the
+    whole payload. Stable across pages, so a stub read twice counts once."""
+    ident = posting.get("externalPath") or posting.get("bulletFields") or posting
+    return json.dumps(ident, sort_keys=True, default=str)
 
 
 def _workday_external_id(external_path: str, bullet_fields: list) -> str:
@@ -854,6 +863,12 @@ class ATSScraper:
 
         jobs: list[ATSJob] = []
         seen_urls: set[str] = set()
+        # Postings "total" counts that can't be listed as jobs (P&G carries a
+        # stub with no title and no externalPath). Without them the unique
+        # count stays one short and the board never reconciles. Keyed by
+        # identity: a stub read twice across a page shift counts once, so it
+        # can't stand in for a live posting the shift skipped.
+        unlisted: set[str] = set()
         total = 0
         fetched = 0
         stopped_early = False
@@ -886,6 +901,7 @@ class ATSScraper:
                 title = posting.get("title", "") or ""
                 location = posting.get("locationsText", "") or ""
                 if not title or not external_path:
+                    unlisted.add(_workday_unlisted_key(posting))
                     continue
                 job_url = f"{public_base}{external_path}"
                 if job_url in seen_urls:
@@ -908,16 +924,16 @@ class ATSScraper:
             if not postings or fetched >= total:
                 break
 
-        # Complete only when every posting the board counts is in hand. A
-        # removal between two page requests shifts the list up by one and
-        # skips a live posting, which leaves the unique count short of
-        # "total"; that must read as partial, never as a takedown. A board
-        # that never reported a total can't prove completeness either.
+        # Complete only when every posting the board counts is accounted for,
+        # listed or unlistable. A removal between two page requests shifts
+        # the list up by one and skips a live posting, which leaves the count
+        # short of "total"; that must read as partial, never as a takedown. A
+        # board that never reported a total can't prove completeness either.
         complete = (
             not stopped_early
             and total < _WORKDAY_LIST_CEILING
-            and len(seen_urls) >= total
-            and (total > 0 or not seen_urls)
+            and len(seen_urls) + len(unlisted) >= total
+            and (total > 0 or not (seen_urls or unlisted))
         )
         return jobs, complete, total
 
