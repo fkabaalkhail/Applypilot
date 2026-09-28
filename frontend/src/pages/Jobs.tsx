@@ -184,7 +184,9 @@ export default function Jobs() {
         if (Number.isFinite(jobId)) {
           const res = await api.get(`/jobs/${jobId}`);
           // The linked job is rarely on the first page; keep it open anyway.
-          pinnedJobIdRef.current = jobId;
+          // A hidden duplicate resolves to its visible twin, so pin the id
+          // the API actually returned.
+          pinnedJobIdRef.current = res.data?.id ?? jobId;
           setSelectedJob(normalizeJob(res.data));
         }
       } catch {

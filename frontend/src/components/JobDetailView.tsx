@@ -368,6 +368,13 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
     setFetchingDetails(true);
     try {
       const { data } = await api.post(`/jobs/${job.id}/fetch-details`);
+      // The fetch found the posting closed (404, error landing, closed
+      // notice): the backend already marked it removed, so show it closed.
+      if (data.dead) {
+        const status = data.listing_status || "removed";
+        setLiveStatus(status);
+        onListingStatusChange?.(job.id, status);
+      }
       if (data.apply_url) setApplyUrl(data.apply_url);
       if (data.description) setDescription(data.description);
       if (data.company_logo) setCompanyLogo(data.company_logo);
