@@ -85,7 +85,7 @@ def test_seed_creates_correct_categories():
 
         for source in sources:
             # Verify experience_level
-            if "Internship" in source.repo_name:
+            if "internship" in source.repo_name.lower():
                 assert source.experience_level == "internship"
             else:
                 assert source.experience_level == "new_grad"
