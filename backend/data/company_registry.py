@@ -13,10 +13,19 @@ with the backend package (so it is available in serverless deploys). Each entry:
     }
 
 To add coverage, edit that JSON file, no code changes required.
+
+Workday entries also carry ``workday_url_template`` (the tenant's CxS base,
+"https://{tenant}.wd{n}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"). Their
+``board_slug`` is the tenant subdomain, so the board key matches what
+listing_freshness.board_key_from_url() derives for rows stored from URLs and
+those rows get reconciled. When one tenant hosts several career sites
+(BlackBerry and QNX both on "bb"), each site takes its own slug instead and
+cron-ats moves the tenant-keyed rows onto the site whose URLs they carry.
 """
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
@@ -102,18 +111,9 @@ def load_companies(
     return out
 
 
-def shard_for_hour(
-    companies: list[tuple[str, str, str]],
-    hour: int,
-) -> tuple[int, int, list[tuple[str, str, str]]]:
-    """Return (shard_index, shard_count, subset) for this hour's cron run.
-
-    Shard count comes from ``CRON_ATS_SHARDS`` when set, otherwise it is sized
-    so a run scrapes ~CRON_ATS_SHARD_TARGET companies. Assignment hashes the
-    board slug with crc32, Python's ``hash()`` is salted per process, and the
-    assignment must be stable across serverless invocations so every board
-    lands in exactly one shard and gets refreshed every ``shard_count`` hours.
-    """
+def _shard_count(companies: list[tuple[str, str, str]]) -> int:
+    """``CRON_ATS_SHARDS`` when set, otherwise sized so a run scrapes
+    ~CRON_ATS_SHARD_TARGET companies."""
     shard_count = 0
     raw = os.getenv("CRON_ATS_SHARDS", "").strip()
     if raw:
@@ -123,17 +123,76 @@ def shard_for_hour(
             logger.warning("CRON_ATS_SHARDS=%r is not an integer; ignoring", raw)
     if shard_count < 1:
         shard_count = max(1, -(-len(companies) // CRON_ATS_SHARD_TARGET))
+    return shard_count
 
-    shard_index = hour % shard_count
+
+def _shard_subset(
+    companies: list[tuple[str, str, str]], shard_index: int, shard_count: int,
+) -> list[tuple[str, str, str]]:
+    """Assignment hashes the board slug with crc32, Python's ``hash()`` is
+    salted per process, and the assignment must be stable across serverless
+    invocations so every board lands in exactly one shard."""
     if shard_count == 1:
-        return 0, 1, list(companies)
-
-    subset = [
+        return list(companies)
+    return [
         entry
         for entry in companies
         if zlib.crc32(entry[1].lower().encode("utf-8")) % shard_count == shard_index
     ]
-    return shard_index, shard_count, subset
+
+
+def shard_for_hour(
+    companies: list[tuple[str, str, str]],
+    hour: int,
+) -> tuple[int, int, list[tuple[str, str, str]]]:
+    """Return (shard_index, shard_count, subset) for this hour's cron run.
+
+    Hour-based rotation assumes the cron fires every hour. It doesn't (the
+    GitHub schedule fires ~6x a day at irregular gaps), so cron-ats uses
+    ``pick_shard`` instead; this stays as the fixed-rotation primitive.
+    """
+    shard_count = _shard_count(companies)
+    shard_index = hour % shard_count
+    return shard_index, shard_count, _shard_subset(companies, shard_index, shard_count)
+
+
+def pick_shard(
+    companies: list[tuple[str, str, str]],
+    last_crawled: dict[str, datetime.datetime],
+) -> tuple[int, int, list[tuple[str, str, str]]]:
+    """Return (shard_index, shard_count, subset) for the shard crawled least
+    recently, so irregular cron firing can't starve a shard the way
+    ``hour % shard_count`` does when the same hours keep getting skipped.
+
+    ``last_crawled`` maps board_key ("platform:slug") → last successful crawl
+    (source_health.last_success_at). A shard's last crawl is the NEWEST stamp
+    among its boards: a permanently failing board keeps an ancient stamp and
+    must not make its shard look overdue forever. A shard none of whose boards
+    was ever crawled goes first; an empty shard goes last; ties go to the
+    lowest index so the choice is deterministic.
+    """
+    shard_count = _shard_count(companies)
+    if shard_count == 1:
+        return 0, 1, list(companies)
+
+    def _naive(stamp: datetime.datetime) -> datetime.datetime:
+        if stamp.tzinfo is not None:
+            stamp = stamp.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        return stamp
+
+    subsets = [_shard_subset(companies, i, shard_count) for i in range(shard_count)]
+
+    def _order(index: int):
+        stamps = [
+            _naive(last_crawled[key])
+            for key in (f"{platform}:{slug}" for platform, slug, _ in subsets[index])
+            if last_crawled.get(key) is not None
+        ]
+        last_run = max(stamps) if stamps else datetime.datetime.min
+        return (not subsets[index], last_run, index)
+
+    shard_index = min(range(shard_count), key=_order)
+    return shard_index, shard_count, subsets[shard_index]
 
 
 def load_workday_bases() -> dict[str, str]:

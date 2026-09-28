@@ -9,10 +9,14 @@ DELETE /github-sources/{id}      → None
 POST   /github-sources/{id}/poll → PollResult
 """
 
+import asyncio
+import os
 import re
 import datetime
 import logging
+import time
 import traceback
+from contextlib import aclosing
 
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
@@ -159,15 +163,203 @@ def cleanup_blank_companies(
 # un-inserted and surface as "new" again on the board's next shard pass.
 WORKDAY_DETAIL_BUDGET = 40
 
+# Wall-clock budget, from the start of the run, for paging big boards past
+# their newest-first head. Full lists are what let Workday boards reconcile
+# (BMO is ~50 list POSTs, Parsons ~100), but the whole run shares one request
+# with the workflow's 300 s curl. Boards still paging at the deadline finish
+# partial: they confirm what they listed and remove nothing.
+CRON_ATS_LIST_BUDGET_SECONDS = float(os.getenv("CRON_ATS_LIST_BUDGET_SECONDS", "150"))
+
+# Boards crawled at once. Never two on one API host, so Greenhouse, Lever,
+# Ashby and SmartRecruiters boards still go one after another at the per-host
+# pace; the parallelism is mostly Workday tenants, each its own host.
+CRON_ATS_CONCURRENCY = max(1, int(os.getenv("CRON_ATS_CONCURRENCY", "6")))
+
+_IN_CHUNK = 400  # keep IN () lists comfortably under driver parameter limits
+
+# Launch order: the boards that page the longest go first, so they page while
+# the single-request boards stream through the remaining slots.
+_LAUNCH_ORDER = {"workday": 0, "smartrecruiters": 1}
+
+
+async def _crawl_boards(scraper, client, boards: list[tuple[str, str, str]],
+                        concurrency: int = CRON_ATS_CONCURRENCY):
+    """Crawl boards concurrently, yielding ((platform, slug, name), snapshot,
+    error) as each one finishes. At most ``concurrency`` crawls are in flight
+    and never two on the same API host. A failed crawl yields its exception
+    in place of a snapshot, so one bad board never sinks the run."""
+    from backend.services.ats_scraper import board_host
+
+    queue = [
+        (board, board_host(board[0], board[1]))
+        for board in sorted(boards, key=lambda board: _LAUNCH_ORDER.get(board[0], 2))
+    ]
+    running: dict[asyncio.Task, tuple[tuple[str, str, str], str]] = {}
+
+    async def crawl(board):
+        try:
+            return await scraper.scrape_board(client, *board), None
+        except Exception as e:
+            return None, e
+
+    def launch():
+        busy = {host for _board, host in running.values()}
+        i = 0
+        while i < len(queue) and len(running) < concurrency:
+            board, host = queue[i]
+            if host in busy:
+                i += 1
+                continue
+            queue.pop(i)
+            busy.add(host)
+            running[asyncio.ensure_future(crawl(board))] = (board, host)
+
+    try:
+        launch()
+        while running:
+            done, _pending = await asyncio.wait(set(running), return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                board, _host = running.pop(task)
+                launch()
+                snapshot, error = task.result()
+                yield board, snapshot, error
+    finally:
+        for task in running:
+            task.cancel()
+        await asyncio.gather(*running, return_exceptions=True)
+
+
+def _confirm_listed(db: Session, board_key: str, urls: set[str],
+                    now: Optional[datetime.datetime] = None) -> dict:
+    """The confirm half of reconciliation, for partial snapshots.
+
+    Every URL a board lists is live, even when the crawl couldn't list the
+    whole board: bump those rows' ``last_seen_at`` and bring any stale or
+    removed ones back to active. Rows the partial list didn't mention are left
+    alone, its silence is not evidence of removal (reconcile_board's remove
+    half only ever runs on complete snapshots). UPDATEs only, nothing is read
+    back. Commits. Returns counts.
+    """
+    from backend.db.models import ScrapedJob
+    from backend.services.listing_freshness import (
+        LISTING_ACTIVE, LISTING_EXPIRED, LISTING_REMOVED, LISTING_STALE,
+    )
+
+    now = now or datetime.datetime.utcnow()
+    stats = {"confirmed": 0, "revived": 0}
+    listed = sorted(url for url in urls if url)
+    for i in range(0, len(listed), _IN_CHUNK):
+        on_board = (ScrapedJob.board_key == board_key,
+                    ScrapedJob.url.in_(listed[i:i + _IN_CHUNK]))
+        stats["revived"] += (
+            db.query(ScrapedJob)
+            .filter(*on_board, ScrapedJob.listing_status.in_(
+                (LISTING_REMOVED, LISTING_STALE, LISTING_EXPIRED)))
+            .update({"listing_status": LISTING_ACTIVE, "listing_status_changed_at": now},
+                    synchronize_session=False)
+        )
+        stats["confirmed"] += (
+            db.query(ScrapedJob)
+            .filter(*on_board)
+            .update({"last_seen_at": now}, synchronize_session=False)
+        )
+    if listed:
+        db.commit()
+    return stats
+
+
+def _adopt_site_rows(db: Session, platform: str, slug: str, board_key: str) -> int:
+    """Give a shared Workday tenant's rows to the career site that lists them.
+
+    One tenant can host several sites (BlackBerry and QNX both live on tenant
+    "bb"), but board_key_from_url() only names the tenant, so legacy rows of
+    both sites share "workday:bb". Such sites get their own registry slugs;
+    this moves the rows under this site's URL root onto its key before the
+    crawl matches or reconciles, so one site's complete crawl can never mark
+    the other site's rows removed. A no-op for single-site tenants, whose
+    slug already is the tenant. Commits when it moves anything.
+    """
+    if platform != "workday":
+        return 0
+    from backend.data.company_registry import load_workday_bases
+    from backend.db.models import ScrapedJob
+    from backend.services.ats_scraper import workday_public_base
+    from backend.services.listing_freshness import board_key_from_url
+
+    site_root = workday_public_base(load_workday_bases().get(slug, ""))
+    if not site_root:
+        return 0
+    site_root += "/"
+    tenant_key = board_key_from_url(site_root)
+    if not tenant_key or tenant_key == board_key:
+        return 0
+
+    moved = (
+        db.query(ScrapedJob)
+        .filter(ScrapedJob.board_key == tenant_key,
+                ScrapedJob.url.startswith(site_root, autoescape=True))
+        .update({"board_key": board_key}, synchronize_session=False)
+    )
+    if moved:
+        db.commit()
+    return moved
+
+
+def _migrate_smartrecruiters_urls(db: Session, snapshot) -> int:
+    """Point legacy SmartRecruiters rows at their real posting page.
+
+    Rows stored before the URL fix carry careers.smartrecruiters.com URLs,
+    which redirect to the company careers home. When the board lists the
+    posting, rewrite the row to the jobs.smartrecruiters.com URL the crawl now
+    builds, so refresh and reconcile match it instead of inserting a twin and
+    (on a complete board) removing the original. A row whose new URL another
+    row already holds (url is UNIQUE) is left for reconciliation to settle.
+    Commits when it rewrites anything. Returns the count.
+    """
+    if snapshot.platform != "smartrecruiters":
+        return 0
+    from backend.db.models import ScrapedJob
+    from backend.services.ats_scraper import smartrecruiters_legacy_url
+
+    legacy_to_new = {smartrecruiters_legacy_url(url): url for url in snapshot.all_urls}
+    legacy_to_new.pop("", None)
+    legacy = sorted(legacy_to_new)
+
+    migrated = 0
+    for i in range(0, len(legacy), _IN_CHUNK):
+        found = (
+            db.query(ScrapedJob.id, ScrapedJob.url)
+            .filter(ScrapedJob.url.in_(legacy[i:i + _IN_CHUNK]))
+            .all()
+        )
+        if not found:
+            continue
+        wanted = [legacy_to_new[url] for _row_id, url in found]
+        taken = {
+            url for (url,) in
+            db.query(ScrapedJob.url).filter(ScrapedJob.url.in_(wanted)).all()
+        }
+        for row_id, url in found:
+            if legacy_to_new[url] in taken:
+                continue
+            db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
+                {"url": legacy_to_new[url]}, synchronize_session=False,
+            )
+            migrated += 1
+    if migrated:
+        db.commit()
+    return migrated
+
 
 @router.post("/cron-ats")
 async def cron_ats(
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
 ):
-    """Crawl this hour's shard of ATS boards: ingest new listings, re-confirm
-    known ones (last_seen_at), and reconcile each board so vanished postings
-    are marked removed the same hour, the freshness edge over aggregators.
+    """Crawl the least-recently-crawled shard of ATS boards: ingest new
+    listings, re-confirm known ones (last_seen_at), and reconcile each board
+    so vanished postings are marked removed the same run, the freshness edge
+    over aggregators.
 
     Per-board failures are isolated and recorded in source_health; a board
     failing repeatedly is skipped for a cooldown (circuit breaker) instead of
@@ -182,14 +374,19 @@ async def cron_ats(
         from backend.services import listing_freshness, source_health
         from backend.data import company_registry
 
-        scraper = ATSScraper(filter_entry_level=True, filter_north_america=True)
+        scraper = ATSScraper(
+            filter_entry_level=True, filter_north_america=True,
+            deadline=time.monotonic() + CRON_ATS_LIST_BUDGET_SECONDS,
+        )
         country_filter = CountryFilter()
         work_type_classifier = WorkTypeClassifier()
         logo_map = company_registry.load_logo_map()
 
-        hour = datetime.datetime.now(datetime.timezone.utc).hour
-        shard_index, shard_count, companies = company_registry.shard_for_hour(
-            company_registry.load_companies(), hour
+        # The workflow's "hourly" schedule really fires ~6x a day at uneven
+        # gaps, so hour % shard_count can hand the same shard several runs in
+        # a row. Crawl whichever shard has waited longest instead.
+        shard_index, shard_count, companies = company_registry.pick_shard(
+            company_registry.load_companies(), source_health.last_success_times(db)
         )
 
         import httpx
@@ -206,25 +403,34 @@ async def cron_ats(
             "total_found": 0, "new_jobs": 0, "refreshed": 0, "edited": 0,
             "removed": 0, "revived": 0, "cross_source_twins_hidden": 0,
             "boards_failed": 0, "boards_skipped_cooldown": 0,
+            "boards_partial": 0, "partial_confirmed": 0, "urls_migrated": 0,
         }
         workday_detail_budget = WORKDAY_DETAIL_BUDGET
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            for platform, slug, company_name in companies:
+        runnable = []
+        for platform, slug, company_name in companies:
+            if source_health.in_cooldown(health_map.get(f"{platform}:{slug}")):
+                totals["boards_skipped_cooldown"] += 1
+            else:
+                runnable.append((platform, slug, company_name))
+
+        async with httpx.AsyncClient(timeout=30) as client, aclosing(
+            _crawl_boards(scraper, client, runnable)
+        ) as crawl:
+            async for (platform, slug, company_name), snapshot, error in crawl:
                 board_key = f"{platform}:{slug}"
 
-                if source_health.in_cooldown(health_map.get(board_key)):
-                    totals["boards_skipped_cooldown"] += 1
-                    continue
-
-                try:
-                    snapshot = await scraper.scrape_board(client, platform, slug, company_name)
-                except Exception as e:
+                if error is not None:
                     totals["boards_failed"] += 1
-                    source_health.record_failure(db, board_key, platform, slug, repr(e))
+                    source_health.record_failure(db, board_key, platform, slug, repr(error))
                     continue
 
                 totals["total_found"] += len(snapshot.jobs)
+
+                # Pull legacy rows onto the key and URL this crawl uses, so
+                # they are matched below rather than duplicated or removed.
+                _adopt_site_rows(db, platform, slug, board_key)
+                totals["urls_migrated"] += _migrate_smartrecruiters_urls(db, snapshot)
 
                 # Re-confirm known listings (and detect edits); get the new ones.
                 new_jobs, refresh_stats = listing_freshness.refresh_known_listings(
@@ -311,11 +517,18 @@ async def cron_ats(
                         db.rollback()
 
                 # Reconcile the board's stored rows against what it just listed.
-                # Partial crawls (huge Workday boards) must not vote on removals.
+                # Only a complete listing votes on removals; a partial one (a
+                # board past Workday's ceiling, a spent crawl budget) still
+                # proves every URL it listed is live.
                 if snapshot.complete:
                     rec = listing_freshness.reconcile_board(db, board_key, snapshot.all_urls)
                     totals["removed"] += rec["removed"]
                     totals["revived"] += rec["revived"]
+                else:
+                    totals["boards_partial"] += 1
+                    seen = _confirm_listed(db, board_key, snapshot.all_urls)
+                    totals["partial_confirmed"] += seen["confirmed"]
+                    totals["revived"] += seen["revived"]
 
                 source_health.record_success(db, board_key, platform, slug, len(snapshot.jobs))
 
