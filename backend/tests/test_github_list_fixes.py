@@ -1021,6 +1021,56 @@ class TestYearWrap:
         jobs = parser.parse(_dated_table(rows), now=self.COMMIT)
         assert _dates(jobs)["C"] == datetime.date(2026, 8, 15)
 
+    # A few rows the table jumps back up from are strays, not a wrap. Taken as
+    # the row above, one moved every row under it back a year, and the max-age
+    # skip then dropped them all before insert.
+    POLLED = datetime.datetime(2026, 9, 28, 12, 0)
+    RECENT = [("R1", "Sep 27", False), ("R2", "Sep 26", False), ("R3", "Sep 25", False),
+              ("R4", "Sep 24", False), ("R5", "Sep 23", False), ("R6", "Sep 22", False)]
+
+    def _assert_recent_rows_kept(self, jobs):
+        recent = [job for job in jobs if job.title.startswith("R")]
+        assert [job.posted_date.date() for job in recent] == [
+            datetime.date(2026, 9, day) for day in (27, 26, 25, 24, 23, 22)]
+        assert not any(AggregatorService._past_max_age(job, self.POLLED) for job in recent)
+
+    @pytest.mark.parametrize("stray", [
+        ["Sep 30"],  # two days past the commit, so read as last year's
+        ["Sep 30", "Sep 30"],
+        ["Feb 10"],
+    ])
+    def test_stray_rows_on_top_leave_the_rows_below_alone(self, stray):
+        rows = [(f"S{i}", date, False) for i, date in enumerate(stray)] + self.RECENT
+        self._assert_recent_rows_kept(parser.parse(_dated_table(rows), now=self.POLLED))
+
+    @pytest.mark.parametrize("stray, left_as", [
+        (["Feb 10"], datetime.date(2026, 2, 10)),
+        (["Mar 01"], datetime.date(2026, 3, 1)),
+        (["Feb 10", "Feb 10", "Feb 09"], datetime.date(2026, 2, 10)),
+    ])
+    def test_stray_rows_in_the_middle_leave_the_rows_below_alone(self, stray, left_as):
+        rows = (self.RECENT[:4] + [(f"S{i}", date, False) for i, date in enumerate(stray)]
+                + self.RECENT[4:])
+        jobs = parser.parse(_dated_table(rows), now=self.POLLED)
+        self._assert_recent_rows_kept(jobs)
+        assert _dates(jobs)["S0"] == left_as
+
+    def test_list_gone_quiet_still_wraps(self):
+        # vansh's newest row is Aug 05 2026. A commit five months later that
+        # adds no rows moves the wrap up under less than half a year of rows;
+        # the rows below it are still last year's, not fresh postings.
+        rows = [("A", "Aug 05", False), ("B", "Jul 10", False), ("C", "Jun 02", False),
+                ("D", "May 15", False), ("E", "Apr 20", False), ("F", "Mar 25", False),
+                ("G", "Mar 01", False), ("H", "Feb 10", False), ("I", "Jan 12", False),
+                ("J", "Dec 15", False), ("K", "Nov 20", False), ("L", "Oct 16", False),
+                ("M", "Sep 26", False)]
+        quiet_commit = datetime.datetime(2027, 2, 25, 12, 0)
+        jobs = parser.parse(_dated_table(rows), now=quiet_commit)
+        assert _dates(jobs) == _dates(parser.parse(_dated_table(rows), now=self.COMMIT))
+        assert _dates(jobs)["H"] == datetime.date(2026, 2, 10)
+        assert _dates(jobs)["M"] == datetime.date(2025, 9, 26)
+        assert all(AggregatorService._past_max_age(job, quiet_commit) for job in jobs)
+
     @pytest.mark.asyncio
     async def test_poll_reads_dates_as_of_the_commit(self, db_session, github):
         source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")
