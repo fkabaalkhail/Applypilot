@@ -587,25 +587,44 @@ async def cron_freshness(
     db: Session = Depends(get_db),
 ):
     """Hourly lifecycle sweep, the half of freshness that board crawls can't
-    do: age out rows nothing re-confirms, spot-check stale URLs against
-    reality, keep ghost-risk scores current, and adopt legacy rows into board
-    reconciliation."""
-    import httpx
+    do: age out rows nothing re-confirms, check unconfirmed URLs against each
+    platform's own API, keep ghost-risk scores current, and adopt legacy rows
+    into board reconciliation."""
+    import time
+
     from backend.services import listing_freshness
+    from backend.services.platform_liveness import make_client
 
     adopted = listing_freshness.backfill_board_keys(db)
     stale = listing_freshness.sweep_stale(db)
     expired = listing_freshness.sweep_aggregator_expiry(db)
+    terminal = listing_freshness.sweep_terminal_expiry(db)
 
-    async with httpx.AsyncClient(
-        follow_redirects=True, timeout=10, headers=BROWSER_HEADERS
-    ) as client:
-        verified = await listing_freshness.verify_stale_listings(db, client)
+    # The probes share one wall-clock box (the "hourly" schedule really fires
+    # ~6x/day, so budgets are big and hosts can hang). Each phase stops
+    # starting checks at its mark; time a phase doesn't use flows to the next.
+    started = time.monotonic()
+    box = listing_freshness.VERIFY_TIME_BOX_SECONDS
+    async with make_client() as client:
+        verified = await listing_freshness.verify_stale_listings(
+            db, client, limit=listing_freshness.STALE_VERIFY_BUDGET,
+            deadline=started + box * 0.6,
+        )
+        # Active rows past a partial crawl's page cap (big Workday/SR boards)
+        # or on boards we don't crawl: kill the dead ones before the 72h TTL.
+        unconfirmed = await listing_freshness.verify_unconfirmed_active_listings(
+            db, client, limit=listing_freshness.UNCONFIRMED_VERIFY_BUDGET,
+            deadline=started + box * 0.8,
+        )
         # GitHub lists re-publish closed postings and aged LinkedIn rows go
-        # soft-dead (200 + "no longer accepting applications"); probe the newest
-        # rows (the ones users actually click) so dead apply links leave the
-        # catalogue within the hour instead of collecting 404 complaints.
-        recent = await listing_freshness.verify_recent_aggregator_listings(db, client)
+        # soft-dead (200 + "no longer accepting applications"); rotate through
+        # them so dead apply links leave the catalogue instead of collecting
+        # 404 complaints.
+        recent = await listing_freshness.verify_recent_aggregator_listings(
+            db, client, limit=listing_freshness.RECENT_VERIFY_BUDGET,
+            deadline=started + box,
+        )
+    verify_seconds = round(time.monotonic() - started, 1)
 
     ghost = listing_freshness.score_ghost_risk(db)
 
@@ -613,8 +632,11 @@ async def cron_freshness(
         "board_keys_adopted": adopted,
         "marked_stale": stale,
         "expired": expired,
+        "terminal_expired": terminal,
         "stale_verified": verified,
+        "unconfirmed_verified": unconfirmed,
         "recent_verified": recent,
+        "verify_seconds": verify_seconds,
         "ghost_scoring": ghost,
     }
 

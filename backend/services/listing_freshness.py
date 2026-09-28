@@ -9,12 +9,19 @@ catalogue self-correcting:
     ``last_seen_at`` bumped (and revived if previously removed), vanished rows
     are marked ``removed`` the same hour, not on some future full sweep
   - rows a board stopped vouching for (partial crawls, broken boards) go
-    ``stale`` after STALE_AFTER_HOURS, and a small per-run budget of stale
-    rows gets URL-verified (an honest 404 → removed immediately)
+    ``stale`` after STALE_AFTER_HOURS, and a time-boxed per-run budget of
+    rows gets checked against the platform's own API (services/
+    platform_liveness.py): dead → removed, alive → revived, anything
+    inconclusive only stamps ``last_probed_at``
   - aggregator rows (LinkedIn/Indeed/GitHub lists), which no board will ever
-    re-confirm, EXPIRE by age
+    re-confirm, EXPIRE by age; stale rows nothing vouches for, and rows on
+    boards we can't reconcile, age out too
   - active rows carry a ``ghost_risk_score`` heuristic, surfaced as data,
     never silently filtered, so the product decides hide vs badge
+
+``last_seen_at`` is positive evidence only (a board listed the row, or the
+platform's API said the posting is open). A probe that learned nothing
+stamps ``last_probed_at`` instead, so it can never pass for a confirmation.
 
 All states are soft: rows are never deleted (saved-job and application records
 reference them), and the row's user-facing ``status`` workflow is untouched.
@@ -28,12 +35,14 @@ from __future__ import annotations
 import datetime
 import logging
 import re
-from urllib.parse import urlparse
+import time
+from collections import Counter
 
-from sqlalchemy import case, func, or_
+from sqlalchemy import case, func, not_, nulls_first, or_
 from sqlalchemy.orm import Session
 
 from backend.db.models import ScrapedJob
+from backend.services.platform_liveness import ALIVE, DEAD, check_listings
 from backend.services.structured_extraction import (
     compute_raw_hash,
     detect_employment_type,
@@ -65,6 +74,39 @@ STALE_AFTER_HOURS = 72
 AGGREGATOR_MAX_AGE_DAYS = 30
 AGGREGATOR_FAST_MAX_AGE_DAYS = 21
 _FAST_AGGREGATOR_SOURCES = ("linkedin", "indeed")
+_AGGREGATOR_SOURCES = _FAST_AGGREGATOR_SOURCES + ("github",)
+# LinkedIn/Indeed rows by URL host: the retired external scraper stored its
+# LinkedIn cards as source_platform='ats'.
+_FAST_AGGREGATOR_URL_PATTERNS = (
+    "http%://linkedin.com/%", "http%://%.linkedin.com/%",
+    "http%://indeed.com/%", "http%://%.indeed.com/%",
+)
+# Board keys no crawl will ever reconcile.
+_UNRECONCILABLE_BOARD_KEYS = ("", "unknown")
+
+# A stale row nothing has vouched for (no board listing, no platform "open")
+# in this long is presumed dead: the verifier had ~6 runs a day to prove
+# otherwise.
+STALE_TERMINAL_DAYS = 21
+# Direct rows on a board no crawl reconciles age out this long after their
+# last positive evidence.
+UNRECONCILABLE_MAX_AGE_DAYS = 30
+
+# Per-run verification budgets, sized for the ~6 runs/day the "hourly"
+# GitHub schedule actually delivers, and a wall-clock box so a run of hanging
+# hosts can't push the cron past Vercel's 300s limit. Rows are worked
+# least-recently-probed first, so the whole backlog rotates.
+STALE_VERIFY_BUDGET = 600
+RECENT_VERIFY_BUDGET = 200
+UNCONFIRMED_VERIFY_BUDGET = 150
+VERIFY_TIME_BOX_SECONDS = 150
+VERIFY_RECHECK_HOURS = 20
+# An active direct row no board has re-listed for this long gets checked
+# before it goes stale (partial Workday/SmartRecruiters crawls, and rows the
+# old verifier revived on a bare 200).
+UNCONFIRMED_AFTER_HOURS = 48
+_VERIFY_CHUNK = 100  # probe + commit in chunks, a timeout loses one chunk
+_VERIFY_CONCURRENCY = 8
 
 GHOST_DAYS_OPEN = 45
 CHANGE_LOG_CAP = 20
@@ -295,41 +337,110 @@ def sweep_stale(db: Session, now: datetime.datetime | None = None,
     return count
 
 
+def _unreconcilable_board():
+    return or_(ScrapedJob.board_key.is_(None),
+               ScrapedJob.board_key.in_(_UNRECONCILABLE_BOARD_KEYS))
+
+
+def _fast_aggregator_row():
+    """LinkedIn/Indeed rows, by source or by URL host."""
+    return or_(
+        ScrapedJob.source_platform.in_(_FAST_AGGREGATOR_SOURCES),
+        *[ScrapedJob.url.ilike(pattern) for pattern in _FAST_AGGREGATOR_URL_PATTERNS],
+    )
+
+
+def _older_than(cutoff: datetime.datetime, *columns):
+    """least(columns) < cutoff, NULLs ignored, portable: SQLite's min()
+    returns NULL when any argument is NULL, Postgres' LEAST skips them."""
+    return or_(*[column < cutoff for column in columns])
+
+
 def sweep_aggregator_expiry(db: Session, now: datetime.datetime | None = None,
                             max_age_days: int = AGGREGATOR_MAX_AGE_DAYS,
                             fast_max_age_days: int = AGGREGATOR_FAST_MAX_AGE_DAYS) -> int:
     """Age out aggregator rows nothing will ever re-confirm.
 
     LinkedIn/Indeed postings churn fast and can't be board-reconciled, so they
-    expire at ``fast_max_age_days``; the curated GitHub lists (which re-publish
-    still-open roles) keep the longer ``max_age_days``.
+    expire at ``fast_max_age_days``, keyed on the URL host as well as the
+    source (the external scraper's LinkedIn rows say 'ats'); the curated
+    GitHub lists (which re-publish still-open roles) keep the longer
+    ``max_age_days``. Age runs from the EARLIEST of posted/first-seen/scraped,
+    so a year-less list date parsed into the future can't keep a row forever.
+    Rows a real board reconciles are never touched.
     """
     now = now or _utcnow()
-    effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
-    total = 0
-    # (source filter, cutoff days, whether the filter is a NOT-IN)
-    for sources, days, negate in (
-        (_FAST_AGGREGATOR_SOURCES, fast_max_age_days, False),
-        (("ats",) + _FAST_AGGREGATOR_SOURCES, max_age_days, True),
-    ):
-        cutoff = now - datetime.timedelta(days=days)
-        src_filter = (
-            ScrapedJob.source_platform.notin_(sources) if negate
-            else ScrapedJob.source_platform.in_(sources)
+    dates = (ScrapedJob.posted_date, ScrapedJob.first_seen_at, ScrapedJob.scraped_at)
+    visible = ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE))
+    expire = {"listing_status": LISTING_EXPIRED, "listing_status_changed_at": now}
+
+    fast = (
+        db.query(ScrapedJob)
+        .filter(
+            visible,
+            _unreconcilable_board(),
+            _fast_aggregator_row(),
+            _older_than(now - datetime.timedelta(days=fast_max_age_days), *dates),
         )
-        total += (
-            db.query(ScrapedJob)
-            .filter(
-                ScrapedJob.listing_status == LISTING_ACTIVE,
-                ScrapedJob.board_key == "",
-                src_filter,
-                effective_date < cutoff,
-            )
-            .update({"listing_status": LISTING_EXPIRED, "listing_status_changed_at": now},
-                    synchronize_session=False)
+        .update(expire, synchronize_session=False)
+    )
+    lists = (
+        db.query(ScrapedJob)
+        .filter(
+            visible,
+            _unreconcilable_board(),
+            ScrapedJob.source_platform.notin_(("ats",) + _FAST_AGGREGATOR_SOURCES),
+            not_(_fast_aggregator_row()),
+            _older_than(now - datetime.timedelta(days=max_age_days), *dates),
         )
+        .update(expire, synchronize_session=False)
+    )
     db.commit()
-    return total
+    return fast + lists
+
+
+def sweep_terminal_expiry(db: Session, now: datetime.datetime | None = None,
+                          stale_days: int = STALE_TERMINAL_DAYS,
+                          unreconcilable_days: int = UNRECONCILABLE_MAX_AGE_DAYS) -> dict:
+    """End the rows nothing will ever confirm again.
+
+    - a ``stale`` row with no positive evidence (``last_seen_at``) for
+      ``stale_days`` → expired. A live one had ~6 verifier runs a day and
+      every board crawl in that time to prove it.
+    - a direct (non-aggregator) row on a board no crawl reconciles
+      (board_key '' / 'unknown') → expired ``unreconcilable_days`` after its
+      last positive evidence.
+
+    Board-confirmed rows are untouched: a crawl keeps bumping their
+    ``last_seen_at``, and a board that lists an expired row again revives it.
+    Column-only UPDATEs. Commits.
+    """
+    now = now or _utcnow()
+    expire = {"listing_status": LISTING_EXPIRED, "listing_status_changed_at": now}
+    evidence = func.coalesce(ScrapedJob.last_seen_at, ScrapedJob.first_seen_at,
+                             ScrapedJob.scraped_at)
+
+    stale = (
+        db.query(ScrapedJob)
+        .filter(
+            ScrapedJob.listing_status == LISTING_STALE,
+            evidence < now - datetime.timedelta(days=stale_days),
+        )
+        .update(expire, synchronize_session=False)
+    )
+    unreconcilable = (
+        db.query(ScrapedJob)
+        .filter(
+            ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
+            _unreconcilable_board(),
+            ScrapedJob.source_platform.notin_(_AGGREGATOR_SOURCES),
+            not_(_fast_aggregator_row()),
+            evidence < now - datetime.timedelta(days=unreconcilable_days),
+        )
+        .update(expire, synchronize_session=False)
+    )
+    db.commit()
+    return {"stale_expired": stale, "unreconcilable_expired": unreconcilable}
 
 
 # ─── Ghost-risk scoring ──────────────────────────────────────────────────────
@@ -523,90 +634,25 @@ def backfill_board_keys(db: Session, limit: int = 500) -> int:
 
 # ─── URL liveness probing ────────────────────────────────────────────────────
 
-# Only these statuses are evidence of death. Bot walls answer 401/403/405/406/
-# 429/999 and some employers 5xx under load, none of that means the job is
-# gone, and a real user's browser usually gets through where our probe can't.
-DEAD_HTTP_STATUSES = (404, 410)
-
-# Server-rendered hosts whose closed/expired postings return HTTP 200 with the
-# "gone" message baked into the HTML (a soft 404). Only these hosts get a body
-# verdict: SPA hosts (Workday/Ashby/most career sites) render that message
-# client-side, so their 200 body never carries the signal and can't false-match.
-# The biggest payoff is LinkedIn, 57% of aged rows answer 200 + the banner
-# below while never returning an honest 404.
-_SOFT_404_HOSTS = (
-    "linkedin.com", "greenhouse.io", "lever.co",
-    "smartrecruiters.com", "taleo.net", "icims.com",
-)
-
-# Phrases that appear only on a dead posting, kept specific so a live page's
-# boilerplate (footers, "similar jobs") never trips them.
-# ``expired_jd_redirect`` is LinkedIn's own marker: an expired job redirects the
-# guest page to a jobs search and stamps that trk token into the nav links, a
-# live posting never carries it. LinkedIn serves the "no longer accepting
-# applications" banner on some hits and the expired-redirect on others, so we
-# match both to catch a dead row on whichever variant a given probe lands on.
-_DEAD_BODY_RE = re.compile(
-    r"no longer accepting applications"
-    r"|expired_jd_redirect"
-    r"|this (?:job|position|posting|role) is no longer (?:available|active|open)"
-    r"|(?:job|position|posting) (?:has been|has|is) (?:filled|closed)"
-    r"|position has been filled"
-    r"|the job you(?:'re| are| were)?\s+(?:looking for|requested)"
-    r"|job is no longer available"
-    r"|this posting has (?:closed|expired|been removed)",
-    re.IGNORECASE,
-)
-
-_MAX_BODY_SCAN = 200_000  # cap the HTML we scan for a dead-message
-
-
-def _body_says_dead(final_url: str, body: str) -> bool:
-    """True when a 200 response is really a soft 404 (dead posting served with
-    a 'no longer available' message), trusted only on server-rendered hosts."""
-    host = (urlparse(final_url or "").hostname or "").lower()
-    if not any(h in host for h in _SOFT_404_HOSTS):
-        return False
-    return bool(_DEAD_BODY_RE.search(body[:_MAX_BODY_SCAN]))
-
-
 async def probe_url_liveness(client, url: str) -> str:
-    """One GET, three verdicts: 'dead' (honest 404/410, or a soft-404 body on a
-    trusted host), 'alive' (200), 'unknown' (everything else / network noise)."""
-    if not url:
-        return "unknown"
-    try:
-        response = await client.get(url, follow_redirects=True)
-    except Exception:
-        return "unknown"
-    if response.status_code in DEAD_HTTP_STATUSES:
-        return "dead"
-    if response.status_code == 200:
-        try:
-            if _body_says_dead(str(response.url), response.text):
-                return "dead"
-        except Exception:
-            pass
-        return "alive"
-    return "unknown"
+    """One posting's verdict as a plain string: 'dead', 'alive' or 'unknown'.
+    Platform-aware (Workday CXS, SmartRecruiters/Greenhouse/Lever/Oracle APIs,
+    Ashby board membership, LinkedIn's closed banner); see
+    services/platform_liveness.py for what each verdict rests on."""
+    results = await check_listings(client, [url] if url else [], concurrency=1)
+    result = results.get(url)
+    return result.verdict if result else "unknown"
 
 
 async def probe_urls_liveness(client, urls: list[str], *, concurrency: int = 8,
                               budget: int = 80) -> dict[str, str]:
     """Probe up to ``budget`` URLs concurrently. Returns {url: verdict};
     URLs past the budget are simply absent (treated as unverified)."""
-    import asyncio
-
     urls = [u for u in urls if u][:budget]
     if not urls:
         return {}
-    semaphore = asyncio.Semaphore(concurrency)
-
-    async def one(u: str) -> tuple[str, str]:
-        async with semaphore:
-            return u, await probe_url_liveness(client, u)
-
-    return dict(await asyncio.gather(*[one(u) for u in urls]))
+    results = await check_listings(client, urls, concurrency=concurrency)
+    return {url: result.verdict for url, result in results.items()}
 
 
 def mark_listing_removed(db: Session, row_id: int,
@@ -619,128 +665,211 @@ def mark_listing_removed(db: Session, row_id: int,
     )
 
 
-async def verify_recent_aggregator_listings(db: Session, client, limit: int = 150,
-                                            now: datetime.datetime | None = None) -> dict:
-    """Probe the NEWEST visible aggregator rows, the ones users actually click.
-    Covers GitHub-list rows (the curated lists re-publish already-closed roles)
-    AND LinkedIn rows (no board reconciliation ever covers either, and a huge
-    share of aged LinkedIn actives are soft-dead, 200 + "no longer accepting
-    applications"). Indeed is excluded: Cloudflare 403s the probe.
+def _update_ids(db: Session, ids: list[int], values: dict) -> None:
+    for chunk in _chunks(ids):
+        db.query(ScrapedJob).filter(ScrapedJob.id.in_(chunk)).update(
+            values, synchronize_session=False,
+        )
 
-    An honest 404/410 or a soft-404 body → removed. Anything else stamps
-    ``last_seen_at`` (here it means "probed", not board-confirmed, nothing
-    else reads it for aggregator rows) so each row is re-checked ~daily instead
-    of every run. Commits. Returns counts.
+
+def _liveness_outcome(listing_status: str, result) -> str:
+    """What a check means for a row: 'removed' (dead), 'revived' (a
+    non-active row the platform's own API/board vouched for), 'confirmed'
+    (an active one it vouched for) or 'unverified' (anything else, including
+    a page that merely loaded)."""
+    if result.verdict == DEAD:
+        return "removed"
+    if result.verdict == ALIVE and result.authoritative:
+        return "confirmed" if listing_status == LISTING_ACTIVE else "revived"
+    return "unverified"
+
+
+def record_liveness(db: Session, row_id: int, listing_status: str, result,
+                    now: datetime.datetime | None = None) -> str:
+    """Apply one platform_liveness result to one row, by the same rules as
+    the verify sweeps: stamp ``last_probed_at``; dead → removed; only an
+    authoritative alive bumps ``last_seen_at`` and revives. Returns the row's
+    listing_status afterwards. Commit is the caller's."""
+    now = now or _utcnow()
+    outcome = _liveness_outcome(listing_status, result)
+    values: dict = {"last_probed_at": now}
+    if outcome == "removed":
+        values.update(listing_status=LISTING_REMOVED, listing_status_changed_at=now)
+    elif outcome in ("confirmed", "revived"):
+        values["last_seen_at"] = now
+        if outcome == "revived":
+            values.update(listing_status=LISTING_ACTIVE, listing_status_changed_at=now)
+    db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
+        values, synchronize_session=False,
+    )
+    return values.get("listing_status", listing_status)
+
+
+def _verify_candidates(now: datetime.datetime, recheck_hours: int):
+    """Filters every verify sweep shares: rows the feed can show, not probed
+    within the recheck window, and not on a host we never judge."""
+    recheck_cutoff = now - datetime.timedelta(hours=recheck_hours)
+    return (
+        ScrapedJob.duplicate_of.is_(None),
+        func.trim(func.coalesce(ScrapedJob.company, "")) != "",
+        or_(ScrapedJob.last_probed_at.is_(None),
+            ScrapedJob.last_probed_at < recheck_cutoff),
+        ScrapedJob.url.notilike("%indeed.com/%"),
+    )
+
+
+async def _verify_rows(db: Session, client, rows: list, *, now: datetime.datetime,
+                       deadline: float | None, label: str) -> dict:
+    """Check ``rows`` ((id, url, listing_status)) and apply the verdicts:
+
+      - dead → ``removed``
+      - authoritative alive (the platform's own API/board) → ``last_seen_at``
+        bumped, and a stale row comes back to ``active``
+      - anything else (bot wall, SPA shell, a page that merely loaded) → only
+        ``last_probed_at``, never a revival
+
+    Every checked row gets ``last_probed_at``. Chunked, each chunk commits;
+    once ``deadline`` passes no new checks start and the rest stay first in
+    line for the next run. Returns counts.
+    """
+    stats = {"checked": 0, "removed": 0, "revived": 0, "confirmed": 0,
+             "unverified": 0, "deferred": 0}
+    reasons: Counter = Counter()
+    cache: dict = {}
+    for index, chunk in enumerate(_chunks(rows, _VERIFY_CHUNK)):
+        if deadline is not None and time.monotonic() >= deadline:
+            stats["deferred"] += len(rows) - index * _VERIFY_CHUNK
+            break
+        results = await check_listings(
+            client, [url for _id, url, _status in chunk],
+            concurrency=_VERIFY_CONCURRENCY, deadline=deadline, cache=cache,
+        )
+        probed, removed, confirmed, revived = [], [], [], []
+        for row_id, url, listing_status in chunk:
+            result = results.get(url)
+            if result is None:
+                stats["deferred"] += 1
+                continue
+            probed.append(row_id)
+            reasons[result.reason] += 1
+            outcome = _liveness_outcome(listing_status, result)
+            if outcome == "removed":
+                removed.append(row_id)
+            elif outcome in ("confirmed", "revived"):
+                confirmed.append(row_id)
+                if outcome == "revived":
+                    revived.append(row_id)
+            else:
+                stats["unverified"] += 1
+
+        _update_ids(db, probed, {"last_probed_at": now})
+        _update_ids(db, removed, {"listing_status": LISTING_REMOVED,
+                                  "listing_status_changed_at": now})
+        _update_ids(db, confirmed, {"last_seen_at": now})
+        _update_ids(db, revived, {"listing_status": LISTING_ACTIVE,
+                                  "listing_status_changed_at": now})
+        if probed:
+            db.commit()
+        stats["checked"] += len(probed)
+        stats["removed"] += len(removed)
+        stats["confirmed"] += len(confirmed)
+        stats["revived"] += len(revived)
+
+    stats["reasons"] = dict(reasons.most_common(12))
+    logger.info("verify %s: %s", label, stats)
+    return stats
+
+
+async def verify_recent_aggregator_listings(db: Session, client,
+                                            limit: int = RECENT_VERIFY_BUDGET,
+                                            now: datetime.datetime | None = None,
+                                            *, deadline: float | None = None,
+                                            recheck_hours: int = VERIFY_RECHECK_HOURS) -> dict:
+    """Probe visible aggregator rows no board reconciles: GitHub-list rows
+    (the curated lists re-publish already-closed roles, and their links point
+    at Ashby/Greenhouse/Workday, which the platform checks read honestly) and
+    LinkedIn rows (a big share of aged ones are soft-dead, 200 + "no longer
+    accepting applications"). Indeed is excluded: Cloudflare walls the probe.
+
+    Least-recently-probed first (newest first among never-probed), so the
+    whole backlog rotates instead of the newest rows eating every run.
+    Commits. Returns counts.
     """
     now = now or _utcnow()
-    recheck_cutoff = now - datetime.timedelta(hours=20)
     effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
-
     rows = (
-        db.query(ScrapedJob.id, ScrapedJob.url)
+        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
         .filter(
             ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
             ScrapedJob.source_platform.in_(("github", "linkedin")),
-            ScrapedJob.duplicate_of.is_(None),
-            or_(ScrapedJob.last_seen_at.is_(None),
-                ScrapedJob.last_seen_at < recheck_cutoff),
+            *_verify_candidates(now, recheck_hours),
         )
-        .order_by(effective_date.desc(), ScrapedJob.id.desc())
+        .order_by(nulls_first(ScrapedJob.last_probed_at.asc()),
+                  effective_date.desc(), ScrapedJob.id.desc())
         .limit(limit)
         .all()
     )
-    stats = {"checked": 0, "removed": 0}
-    if not rows:
-        return stats
-
-    verdicts = await probe_urls_liveness(client, [url for _id, url in rows],
-                                         budget=limit)
-    for row_id, url in rows:
-        verdict = verdicts.get(url)
-        if verdict is None:
-            continue
-        stats["checked"] += 1
-        if verdict == "dead":
-            mark_listing_removed(db, row_id, now)
-            stats["removed"] += 1
-        else:
-            db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
-                {"last_seen_at": now}, synchronize_session=False,
-            )
-    db.commit()
-    return stats
+    return await _verify_rows(db, client, rows, now=now, deadline=deadline,
+                              label="recent_aggregator")
 
 
-# ─── Stale-row URL verification ──────────────────────────────────────────────
+# ─── Direct-row URL verification ─────────────────────────────────────────────
 
-# Hosts whose job URLs return honest status codes BOTH ways, a 200 here
-# really means the posting is live, so it may revive a stale row. SPAs
-# (Ashby, most company career sites) 200 on everything, so a 200 from them
-# proves nothing; only the honest 404/410 verdict applies everywhere.
-_REVIVABLE_HOSTS = ("greenhouse.io", "jobs.lever.co", "smartrecruiters.com",
-                    "myworkdayjobs.com")
-
-# Indeed sits behind Cloudflare and answers our probe with 403, indeterminate
-# in either direction, so we never probe it. LinkedIn is NOT here: its public
-# guest job page returns 200 with an explicit "no longer accepting applications"
-# banner for closed roles, which the soft-404 body check reads as dead.
-_UNPROBEABLE_HOSTS = ("indeed.com",)
-
-
-async def verify_stale_listings(db: Session, client, limit: int = 200,
-                                now: datetime.datetime | None = None) -> dict:
-    """Work through the stale backlog with real requests, newest-first (the
-    rows a search can still surface). An honest 404/410, or a soft-404 body on
-    a trusted host (incl. LinkedIn's "no longer accepting applications"),
-    removes the row on ANY host; a 200 revives it only on hosts that 404
-    honestly for dead postings. Everything else stamps ``last_seen_at`` so the
-    next run moves on to unchecked rows instead of re-probing the same bot
-    walls."""
+async def verify_stale_listings(db: Session, client, limit: int = STALE_VERIFY_BUDGET,
+                                now: datetime.datetime | None = None,
+                                *, deadline: float | None = None,
+                                recheck_hours: int = VERIFY_RECHECK_HOURS) -> dict:
+    """Work through the stale backlog, least-recently-probed first (newest
+    first among never-probed), so every stale row gets its turn even at ~6
+    runs a day. Dead → removed; revived ONLY when the platform's own API or
+    board says the posting is open (a Workday or SmartRecruiters page answers
+    200 for closed postings too). Anything inconclusive stamps
+    ``last_probed_at`` and waits out the recheck window; STALE_TERMINAL_DAYS
+    without positive evidence ends it (sweep_terminal_expiry). Commits."""
     now = now or _utcnow()
-    stats = {"checked": 0, "removed": 0, "revived": 0}
-    recheck_cutoff = now - datetime.timedelta(hours=20)
     effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
-
     rows = (
-        db.query(ScrapedJob.id, ScrapedJob.url)
+        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
         .filter(
             ScrapedJob.listing_status == LISTING_STALE,
-            or_(ScrapedJob.last_seen_at.is_(None),
-                ScrapedJob.last_seen_at < recheck_cutoff),
+            *_verify_candidates(now, recheck_hours),
         )
-        .order_by(effective_date.desc(), ScrapedJob.id.desc())
-        .limit(limit * 2)
+        .order_by(nulls_first(ScrapedJob.last_probed_at.asc()),
+                  effective_date.desc(), ScrapedJob.id.desc())
+        .limit(limit)
         .all()
     )
-    probeable = [
-        (row_id, url) for row_id, url in rows
-        if url and not any(host in url for host in _UNPROBEABLE_HOSTS)
-    ][:limit]
-    if not probeable:
-        return stats
+    return await _verify_rows(db, client, rows, now=now, deadline=deadline, label="stale")
 
-    verdicts = await probe_urls_liveness(client, [u for _i, u in probeable],
-                                         budget=limit)
-    for row_id, url in probeable:
-        verdict = verdicts.get(url)
-        if verdict is None:
-            continue
-        stats["checked"] += 1
-        if verdict == "dead":
-            mark_listing_removed(db, row_id, now)
-            stats["removed"] += 1
-        elif verdict == "alive" and any(h in url for h in _REVIVABLE_HOSTS):
-            db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
-                {"listing_status": LISTING_ACTIVE, "listing_status_changed_at": now,
-                 "last_seen_at": now},
-                synchronize_session=False,
-            )
-            stats["revived"] += 1
-        else:
-            db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
-                {"last_seen_at": now}, synchronize_session=False,
-            )
 
-    if stats["checked"]:
-        db.commit()
-    return stats
+async def verify_unconfirmed_active_listings(db: Session, client,
+                                             limit: int = UNCONFIRMED_VERIFY_BUDGET,
+                                             now: datetime.datetime | None = None,
+                                             *, deadline: float | None = None,
+                                             unconfirmed_hours: int = UNCONFIRMED_AFTER_HOURS,
+                                             recheck_hours: int = VERIFY_RECHECK_HOURS) -> dict:
+    """Active direct-board rows no crawl has re-listed for
+    ``unconfirmed_hours``: rows past a partial crawl's page cap (big Workday
+    and SmartRecruiters boards never complete), boards we don't crawl, and
+    rows the old verifier revived on a bare 200. Checking them here kills the
+    dead ones before they sit visible for the 72h stale TTL; an authoritative
+    alive bumps ``last_seen_at`` so live ones never go stale. Oldest
+    confirmation first. Commits."""
+    now = now or _utcnow()
+    unconfirmed_cutoff = now - datetime.timedelta(hours=unconfirmed_hours)
+    rows = (
+        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
+        .filter(
+            ScrapedJob.listing_status == LISTING_ACTIVE,
+            ScrapedJob.source_platform == "ats",
+            or_(ScrapedJob.last_seen_at.is_(None),
+                ScrapedJob.last_seen_at < unconfirmed_cutoff),
+            *_verify_candidates(now, recheck_hours),
+        )
+        .order_by(nulls_first(ScrapedJob.last_probed_at.asc()),
+                  nulls_first(ScrapedJob.last_seen_at.asc()), ScrapedJob.id.asc())
+        .limit(limit)
+        .all()
+    )
+    return await _verify_rows(db, client, rows, now=now, deadline=deadline,
+                              label="unconfirmed_active")
