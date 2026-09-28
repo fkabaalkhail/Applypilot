@@ -2,31 +2,72 @@ name: Scrape Jobs
 
 on:
   schedule:
-    # Hourly. A run costs the database well under 1 MB: every dedup site is a
-    # column query (`SELECT scraped_jobs.url`), verified against prod.
+    # "Hourly", twice. A run costs the database well under 1 MB: every dedup
+    # site is a column query (`SELECT scraped_jobs.url`), verified against prod.
     #
     # The Neon transfer overage was never this workflow. It was a stale
     # resumate-scraper deployment connecting straight to Neon with the DB
     # password, running a pre-2026-05-11 ScrapedJob model whose dedup fetched
-    # whole rows -- ~6,000 x ~2.3 KB = ~14 MB every hour. Killed on 2026-07-13
+    # whole rows (~6,000 x ~2.3 KB = ~14 MB every hour). Killed on 2026-07-13
     # by rotating the neondb_owner password; it had also been the source of
     # ~all new jobs since 2026-06-26, so cron-ats now carries the feed.
-    # Minute 17, not 0: GitHub fires scheduled workflows on a shared queue and
-    # top-of-hour is its most contended slot -- fires there get delayed or
-    # silently dropped (observed: the 00:00Z and 02:00Z fires on 2026-07-13
-    # never ran at all). An off-peak minute makes the hourly cadence real.
+    #
+    # Off-peak minutes, never 0: GitHub fires scheduled workflows on a shared
+    # queue and top-of-hour is its most contended slot, fires there get
+    # delayed or silently dropped (the 00:00Z and 02:00Z fires on 2026-07-13
+    # never ran at all). Even at minute 17 the schedule delivered only ~5.7
+    # runs a day from 2026-08-27 (23/day before), so a second entry at :47
+    # doubles the chances; the concurrency group below keeps two deliveries
+    # from ever crawling at the same time, and every per-run budget is sized
+    # for the irregular cadence (least-recently-crawled shard,
+    # least-recently-probed verification).
     - cron: '17 * * * *'
+    - cron: '47 * * * *'
   workflow_dispatch:
+
+# actions: write is for the keepalive step (re-enabling this workflow through
+# the REST API); nothing else needs more than read.
+permissions:
+  contents: read
+  actions: write
+
+# One run at a time. A delivery that lands while a run is in flight waits
+# (cancel-in-progress: false), so a crawl is never cut off half way and two
+# runs never double-crawl the same shard or double-probe the same rows.
+concurrency:
+  group: scrape-jobs
+  cancel-in-progress: false
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    # A normal run takes 7-8 minutes; the steps' own caps add up to ~33.
+    # Anything longer is hung and would block the concurrency group.
+    timeout-minutes: 40
+    env:
+      API_BASE: https://www.tailrd.ca
     steps:
+      # Keepalive. GitHub disables scheduled workflows in a public repo after
+      # 60 days without repository activity (last commit 2026-08-14, so ~Oct
+      # 13) and says nothing: this is exactly how the external scraper's
+      # "Hourly Job Scraper" stopped on 2026-08-26. Re-enabling the workflow
+      # through the API counts as activity and resets that timer, so ingestion
+      # can't be switched off by a quiet month. Harmless when already enabled.
+      - name: Keep the schedule alive
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PUT "repos/${{ github.repository }}/actions/workflows/scrape-jobs.yml/enable"
+          echo "workflow re-enabled (60-day inactivity timer reset)"
+
       # JobSpy + LinkedIn were parked from e1177e6 until the batched ingest
       # endpoint existed: they used to POST /jobs/create once per job with no
       # auth, and every request 401'd. They now collect everything and POST
-      # /jobs/ingest-batch in chunks of 100 with the cron secret — a handful
+      # /jobs/ingest-batch in chunks of 100 with the cron secret: a handful
       # of authenticated requests per run instead of thousands of dead ones.
+      # They stay continue-on-error: LinkedIn and Indeed block scrapers often
+      # enough that a red run from them would drown out a real outage.
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -36,49 +77,137 @@ jobs:
       - name: Run JobSpy scraper (Indeed + LinkedIn)
         run: python scripts/scrape_jobspy.py
         continue-on-error: true
+        timeout-minutes: 6
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
       - name: Run LinkedIn guest API scraper
         run: python scripts/scrape_linkedin.py
         continue-on-error: true
+        timeout-minutes: 6
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
+      # Every endpoint call below prints its HTTP status, time and response
+      # body, and fails its step on anything but 2xx. The steps are
+      # continue-on-error so one failing endpoint never stops the rest of the
+      # run; the last step turns the run red if any of them failed. Before
+      # this, every curl ended in `|| true`, so a 401 or 500 showed green.
+      #
+      # --max-time 300 on the four crons = Vercel's function limit. The
+      # server-side budgets all finish well inside it: cron-ats pages boards
+      # for at most CRON_ATS_LIST_BUDGET_SECONDS (150 s) plus processing;
+      # cron-backfill runs ~20 s of descriptions plus a 150 s logo harvest
+      # budget; cron-freshness runs its sweeps plus a 150 s verification box.
+      # A curl timeout at 300 s therefore means the function itself hit
+      # Vercel's ceiling, which is worth a red run. Never raise it past 300:
+      # Vercel kills the function there anyway.
       - name: Trigger ATS scraper
+        id: cron_ats
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -X POST "https://www.tailrd.ca/github-sources/cron-ats" \
+          rm -f response.json
+          code=$(curl -sS -X POST "$API_BASE/github-sources/cron-ats" \
             -H "Content-Type: application/json" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            --max-time 300 || true
+            -H "x-cron-secret: $CRON_SECRET" \
+            -o response.json -w '%{http_code} %{time_total}s' \
+            --max-time 300) || code="000 curl-exit-$?"
+          echo "HTTP $code"
+          head -c 6000 response.json 2>/dev/null || true; echo
+          case "$code" in 2*) ;; *) exit 1 ;; esac
 
       - name: Trigger GitHub aggregator
+        id: cron_poll
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -X POST "https://www.tailrd.ca/github-sources/cron-poll" \
+          rm -f response.json
+          code=$(curl -sS -X POST "$API_BASE/github-sources/cron-poll" \
             -H "Content-Type: application/json" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            --max-time 300 || true
+            -H "x-cron-secret: $CRON_SECRET" \
+            -o response.json -w '%{http_code} %{time_total}s' \
+            --max-time 300) || code="000 curl-exit-$?"
+          echo "HTTP $code"
+          head -c 6000 response.json 2>/dev/null || true; echo
+          case "$code" in 2*) ;; *) exit 1 ;; esac
 
-      - name: Backfill descriptions + locations
+      - name: Backfill descriptions + locations + logos
+        id: cron_backfill
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -X POST "https://www.tailrd.ca/jobs/cron-backfill" \
+          rm -f response.json
+          code=$(curl -sS -X POST "$API_BASE/jobs/cron-backfill" \
             -H "Content-Type: application/json" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            --max-time 300 || true
+            -H "x-cron-secret: $CRON_SECRET" \
+            -o response.json -w '%{http_code} %{time_total}s' \
+            --max-time 300) || code="000 curl-exit-$?"
+          echo "HTTP $code"
+          head -c 6000 response.json 2>/dev/null || true; echo
+          case "$code" in 2*) ;; *) exit 1 ;; esac
 
-      # Lifecycle sweep: age out unconfirmed/old listings, verify stale URLs,
-      # refresh ghost-risk scores. The removal of jobs that vanished from
-      # their board already happened inside cron-ats reconciliation.
-      - name: Freshness sweep (expiry + ghost scoring)
+      # Lifecycle: age out rows nothing re-confirms (stale, terminal and
+      # aggregator expiry), check unconfirmed rows against each platform's
+      # own API (Workday CXS, SmartRecruiters, Greenhouse, Lever, Ashby,
+      # Oracle), refresh ghost-risk scores. Removal of jobs that vanished
+      # from their board already happened inside cron-ats reconciliation.
+      - name: Freshness sweep (expiry + verification + ghost scoring)
+        id: cron_freshness
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -X POST "https://www.tailrd.ca/jobs/cron-freshness" \
+          rm -f response.json
+          code=$(curl -sS -X POST "$API_BASE/jobs/cron-freshness" \
             -H "Content-Type: application/json" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            --max-time 300 || true
+            -H "x-cron-secret: $CRON_SECRET" \
+            -o response.json -w '%{http_code} %{time_total}s' \
+            --max-time 300) || code="000 curl-exit-$?"
+          echo "HTTP $code"
+          head -c 6000 response.json 2>/dev/null || true; echo
+          case "$code" in 2*) ;; *) exit 1 ;; esac
 
       # Snapshot pipeline health into the workflow log so a broken board or a
-      # feed drop is visible without opening the database.
+      # feed drop is visible without opening the database. Runs even when an
+      # earlier step failed: that is when the snapshot matters most.
       - name: Log ingest metrics
+        id: ingest_metrics
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -s "https://www.tailrd.ca/jobs/ingest-metrics" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            --max-time 60 || true
+          rm -f response.json
+          code=$(curl -sS "$API_BASE/jobs/ingest-metrics" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            -o response.json -w '%{http_code} %{time_total}s' \
+            --max-time 60) || code="000 curl-exit-$?"
+          echo "HTTP $code"
+          head -c 12000 response.json 2>/dev/null || true; echo
+          case "$code" in 2*) ;; *) exit 1 ;; esac
+
+      # continue-on-error keeps a failed step from stopping the run but also
+      # leaves the job green; this step makes any endpoint failure visible.
+      - name: Fail the run if an endpoint failed
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOMES: >-
+            cron-ats=${{ steps.cron_ats.outcome }}
+            cron-poll=${{ steps.cron_poll.outcome }}
+            cron-backfill=${{ steps.cron_backfill.outcome }}
+            cron-freshness=${{ steps.cron_freshness.outcome }}
+            ingest-metrics=${{ steps.ingest_metrics.outcome }}
+        run: |
+          echo "$OUTCOMES" | tr ' ' '\n'
+          failed=$(echo "$OUTCOMES" | tr ' ' '\n' | grep -v '=success$' | tr '\n' ' ' || true)
+          if [ -n "$failed" ]; then
+            echo "::error::endpoint step(s) failed: $failed"
+            exit 1
+          fi

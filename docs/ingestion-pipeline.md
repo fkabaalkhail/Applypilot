@@ -1,6 +1,6 @@
 # Job Ingestion Pipeline
 
-How Tailrd sources, structures, deduplicates, and — most importantly —
+How Tailrd sources, structures, deduplicates, and (most importantly)
 **keeps fresh** its job catalogue. The design goal is to beat aggregator
 competitors (Jobright et al.) on the axes they are weakest: ghost/expired
 listings, low-trust reposted data, and unexplained matching. Volume is not the
@@ -9,20 +9,25 @@ goal; a smaller catalogue where every listing is real and current is.
 ## Architecture at a glance
 
 ```
-GitHub Actions (hourly, minute 17)          Vercel serverless (FastAPI)
+GitHub Actions (minutes 17 and 47)          Vercel serverless (FastAPI)
 ┌──────────────────────────────┐            ┌─────────────────────────────────┐
+│ keepalive (re-enable wf)     │            │                                 │
 │ scripts/scrape_jobspy.py     │──POST────▶│ /jobs/ingest-batch   (Tier 3)   │
 │ scripts/scrape_linkedin.py   │──POST────▶│                                 │
 │                              │            │ /github-sources/cron-ats        │
-│ curl cron-ats  ──────────────┼───────────▶│   shard of ATS boards (Tier 1) │
+│ curl cron-ats  ──────────────┼───────────▶│   least-recently-crawled shard │
 │ curl cron-poll ──────────────┼───────────▶│   GitHub lists       (Tier 2)  │
 │ curl cron-backfill ──────────┼───────────▶│   descriptions/locations/logos │
-│ curl cron-freshness ─────────┼───────────▶│   expiry + ghost scoring       │
+│ curl cron-freshness ─────────┼───────────▶│   expiry + platform liveness   │
 │ curl ingest-metrics (log) ───┼───────────▶│   pipeline health snapshot     │
-└──────────────────────────────┘            └────────────────┬────────────────┘
+│ fail the run on any non-2xx  │            │                                 │
+└──────────────────────────────┘            │ GET  /jobs/logo/{sha}.png|svg   │
+                                            │ POST /jobs/{id}/check-live      │
+Browser (job feed) ─────────────────────────▶│   (logos, click-time liveness) │
+                                            └────────────────┬────────────────┘
                                                              ▼
                                                      Neon Postgres
-                                                     (scraped_jobs, source_health)
+                                        (scraped_jobs, source_health, company_logos)
 ```
 
 Key modules:
@@ -30,14 +35,18 @@ Key modules:
 | Path | Role |
 |---|---|
 | `backend/services/ats_scraper.py` | Tier-1 connectors (Greenhouse, Lever, Ashby, SmartRecruiters, Workday), `BoardSnapshot` |
-| `backend/data/ats_companies.json` + `company_registry.py` | Which boards to crawl; hourly sharding |
+| `backend/data/ats_companies.json` + `company_registry.py` | Which boards to crawl; sharding (`pick_shard`) |
 | `backend/services/structured_extraction.py` | Deterministic salary/visa/skills/employment extraction, content hashing |
-| `backend/services/listing_freshness.py` | Lifecycle: reconcile, stale/expiry sweeps, ghost scoring, URL verification |
+| `backend/services/listing_freshness.py` | Lifecycle: reconcile, stale/terminal/aggregator sweeps, verify sweeps, `record_liveness`, ghost scoring |
+| `backend/services/platform_liveness.py` | Is this posting still open? Asked through each platform's own API (`check_listing`, `check_listings`) |
 | `backend/services/source_health.py` | Per-board circuit breaker + dead-letter view |
-| `backend/services/cross_source_dedup.py` | Cross-source twin collapsing (exact + conservative fuzzy) |
-| `backend/routers/github_sources.py` (`cron-ats`) | Board crawl orchestration |
+| `backend/services/cross_source_dedup.py` | Cross-source twin collapsing (exact + conservative fuzzy), `canonical_url` |
+| `backend/services/logo_cache.py` | Self-hosted logo store (`company_logos`), propagation by company, `/jobs/logo` serving |
+| `backend/services/logo_harvester.py` + `logo_image.py` | Logo source cascade; image validation and normalization |
+| `backend/routers/github_sources.py` (`cron-ats`, `cron-poll`) | Board crawl orchestration, GitHub-list polling |
 | `backend/routers/jobs.py` (`ingest-batch`, `cron-backfill`, `cron-freshness`, `ingest-metrics`) | Aggregator ingest, repair, lifecycle cron, metrics |
-| `backend/migrations/add_ingestion_freshness.py` | Schema migration (idempotent, runs at app startup) |
+| `backend/migrations/add_ingestion_freshness.py`, `add_listing_probe_columns.py`, `add_company_logos.py` | Schema migrations (idempotent DDL, run at app startup) |
+| `backend/scripts/cleanup_feed.py` | One-time catalogue cleanup (see "One-time scripts") |
 
 ## Source tiers and trust
 
@@ -49,13 +58,28 @@ Key modules:
 
 All Tier-1 fetches use official/public JSON board APIs (the ones built for job
 boards to consume), never rendered-HTML scraping of the ATS UI. Requests to a
-given API host are spaced by `ATS_PER_HOST_INTERVAL` (default 0.35 s).
-`apply_url`/`source_url` always point at the original posting — we never
-present another platform's listing as ours.
+given API host are spaced by `ATS_PER_HOST_INTERVAL` (default 0.35 s, one
+lock per host). `apply_url`/`source_url` always point at the original
+posting: we never present another platform's listing as ours.
+
+### Crawl orchestration (cron-ats)
+
+- **Shard choice:** the registry is split into `CRON_ATS_SHARDS` shards
+  (default: sized so a run crawls ~150 boards). Each run crawls the shard
+  whose most recent `source_health.last_success_at` is OLDEST
+  (`pick_shard`); a never-crawled shard goes first. The old
+  `hour % shard_count` starved a shard whenever GitHub kept skipping the
+  same hours (shard 1 once went 38.5 h without a crawl).
+- **Concurrency:** up to `CRON_ATS_CONCURRENCY` (default 6) boards crawl at
+  once, never two on the same API host, Workday and SmartRecruiters first
+  (they page the longest).
+- **List budget:** paging past a board's newest-first head stops once
+  `CRON_ATS_LIST_BUDGET_SECONDS` (default 150 s, from the start of the run)
+  is spent. Such a board finishes partial for this run.
 
 ### Workday specifics
 
-Workday has no global board API — each tenant exposes a CxS JSON endpoint.
+Workday has no global board API; each tenant exposes a CxS JSON endpoint.
 A registry entry is scrapeable only when it carries the endpoint base:
 
 ```json
@@ -71,151 +95,387 @@ A registry entry is scrapeable only when it carries the endpoint base:
 To find a tenant's base: open the company's careers site, watch the network
 tab for a POST to `/wday/cxs/{tenant}/{site}/jobs`, and copy everything up to
 `/jobs`. Entries without a template are kept in the registry but skipped.
+(All 16 tenants that had rows but no template, Magna, Parsons, Hitachi,
+Lilly and others, got one in 2026-09; BlackBerry and QNX share tenant `bb`
+and are split into two slugs.)
 
-The connector pages 20 postings at a time (`WORKDAY_MAX_PAGES`, default 8) and
-fetches descriptions per NEW job only (budgeted at 40/run) — huge boards mark
-their snapshot `complete=false`, which disables removal reconciliation for
-that board (absence from a partial crawl is not evidence of removal; the
-stale sweep + URL verification cover those rows instead).
+The connector pages the WHOLE list, 20 postings per POST, up to
+`WORKDAY_MAX_PAGES` (default **100**; prod must not pin it to the old 8).
+The first 8 pages are always fetched so new jobs are found; later pages stop
+at the run's list budget or at Workday's 2,000-posting listing ceiling. A
+snapshot counts as **complete** only when nothing stopped it early, the
+reported total is under 2,000, and the distinct URLs cover the total; a list
+that shifts mid-crawl reads as partial, never as a takedown. Descriptions
+are fetched per NEW job only (`WORKDAY_DETAIL_BUDGET`, 40 per run).
+
+SmartRecruiters works the same way: up to `SMARTRECRUITERS_MAX_PAGES`
+(default 20) pages of 100. Apply URLs are
+`https://jobs.smartrecruiters.com/{company}/{id}`; the old
+`careers.smartrecruiters.com` links 302 to the employer's careers home for
+live and closed postings alike, and legacy rows are migrated to the new URL
+when the board lists them.
+
+**Partial snapshots confirm, complete ones reconcile.** A complete snapshot
+goes through `reconcile_board` (listed rows confirmed or revived, vanished
+rows `removed`). A partial one still bumps `last_seen_at` for every stored
+row of that board it DID list (`_confirm_listed`, positive evidence is safe)
+and only skips the removal half: absence from a partial crawl is not
+evidence of removal. Before this, rows past page 8 of BMO (1,012 postings)
+or CIBC (513) were never confirmed and never removed.
 
 ## The listing lifecycle (freshness)
 
 Every row has a `listing_status` separate from the user's workflow `status`:
 
 ```
-              board still lists it              board stopped listing it
-   ┌────────┐ ──────────────────────▶ last_seen_at bumped
-   │ active │
-   └────────┘ ◀── revived ──┐          ┌─────────┐
-        │                   ├──────────│ removed │  (same hour it vanished)
-        │ not re-confirmed  │          └─────────┘
-        │ for 72h           │               ▲ 404/410 on URL spot-check
-        ▼                   │               │
-   ┌────────┐───────────────┘          ┌─────────┐
-   │ stale  │─────────────────────────▶│ expired │  (aggregator rows > 30 days)
-   └────────┘  still visible           └─────────┘
+          board lists it / platform API says open         board stopped listing it
+   ┌────────┐ ─────────────────────────▶ last_seen_at bumped   ┌─────────┐
+   │ active │ ──────────────────────────────────────────────▶ │ removed │
+   └────────┘ ◀── revived (board lists it again, or the        └─────────┘
+        │           platform's own API says open)                   ▲
+        │ not re-confirmed for 72h                                 │ platform API / honest
+        ▼                                                          │ page says dead
+   ┌────────┐ ─────────────────────────────────────────────────────┘
+   │ stale  │ ──── 21 days without positive evidence ───▶ ┌─────────┐
+   └────────┘      (also: aggregator age, unreconcilable) │ expired │
+     still visible                                        └─────────┘
 ```
 
-- **Reconcile (cron-ats):** each board crawl carries `BoardSnapshot.all_urls`
-  — every live posting on the board *including ones our entry-level/NA
-  filters rejected*. Stored rows for that `board_key` whose URL is missing are
-  marked `removed` immediately; rows that reappear are revived. A complete-but-
-  empty response on a board that had >10 live rows degrades to the stale sweep
-  (API hiccup protection).
-- **Stale sweep (cron-freshness):** direct rows not re-confirmed in 72 h
-  (broken board, partial Workday crawls) go `stale` — still visible.
-- **URL verification (cron-freshness):** up to 30 stale rows per run get a
-  real GET; honest 404/410 → `removed`, 200 → back to `active`. Hosts that
-  200-everything (Ashby SPA) are excluded.
-- **Aggregator expiry (cron-freshness):** LinkedIn/Indeed/GitHub rows older
-  than 30 days go `expired` — nothing will ever re-confirm them.
-- Rows are **never deleted** (saved jobs and applications reference them), and
-  `removed`/`expired` rows stay visible in a user's Liked list.
+Feed visibility: `duplicate_of IS NULL AND listing_status IN ('active',
+'stale') AND trim(company) != ''`. Rows are **never deleted** (saved jobs and
+applications reference them); `removed`/`expired` rows stay in a user's Liked
+list with a "No longer accepting applications" badge and a disabled Apply.
 
-`/jobs` hides `removed` + `expired`; `stale` stays visible.
+### Two timestamps: `last_seen_at` vs `last_probed_at`
+
+- `last_seen_at` is **positive evidence only**: a board crawl listed the row,
+  or the platform's own API said the posting is open. The sweeps key on it.
+- `last_probed_at` is stamped by EVERY liveness check, whatever the answer.
+  The verify sweeps rotate on it (least-recently-probed first).
+
+The old verifier stamped `last_seen_at` on every probe, so a bot wall or an
+SPA shell passed for a confirmation and kept dead rows alive for weeks.
+
+### Platform-aware liveness (`platform_liveness.py`)
+
+A plain GET cannot tell a live posting from a dead one on most of the
+catalogue: Workday serves the same ~6.5 KB app shell (HTTP 200) for live,
+closed and made-up job ids, and Ashby/Oracle HCM pages are SPAs. So each
+known ATS is asked through its own public API:
+
+| Platform | Check | Dead when |
+|---|---|---|
+| Workday (`myworkdayjobs.com`, `myworkdaysite.com`) | CxS job endpoint `/wday/cxs/{tenant}/{site}/job/...` | JSON `errorCode` S21 / S22, or 404/410 |
+| SmartRecruiters | `api.smartrecruiters.com/v1/companies/{co}/postings/{id}` | 404, or `active: false` |
+| Greenhouse boards | `boards-api.greenhouse.io/v1/boards/{token}/jobs/{id}` | 404 |
+| Any `gh_jid` URL (custom career domains) | `boards.greenhouse.io/embed/job_app?token={id}` | 404 |
+| Lever (incl. EU) | `api.lever.co/v0/postings/{company}/{id}` | 404 |
+| Ashby | membership in the org's posting-api board (fetched once per org per run) | not listed (an empty board is `unknown`) |
+| Oracle HCM | `recruitingCEJobRequisitionDetails` finder by id | `items: []` |
+| LinkedIn guest page | closed banner / `expired_jd_redirect` | banner, trk token, or 404 |
+| Anything else | the page itself | 404/410, redirect to an error page, an off-site redirect to a careers home, or a dead phrase in the VISIBLE text |
+
+Three verdicts: `dead`; `alive`, which is `authoritative` only when the
+platform's own API or board said so (the only answer allowed to revive a
+row); `unknown` for everything inconclusive.
+
+**The 403 rule and its one exception.** A page answering 401, 403, 429 or 999
+is a bot wall and never evidence of death. The single exception is Workday's
+CxS JSON `errorCode: "S22"` (posting unpublished) returned with a 403: an
+API-level signal a bot wall never produces, checked 85/85 against a board
+search by requisition id. Indeed is never requested at all (Cloudflare walls
+every probe).
+
+Politeness: at most 2 requests in flight per host, 8 overall; a host that
+fails 3 times in a row is skipped for the rest of the run; 25 s cap per URL;
+bodies are size-capped. `check_listings(client, urls, concurrency=8,
+deadline=, cache=)` never raises: URLs not started by the deadline are simply
+absent from the result and wait for the next run.
+
+`listing_freshness.record_liveness(db, row_id, listing_status, result)`
+applies one verdict with the sweep rules: always stamp `last_probed_at`;
+dead: `removed`; authoritative alive: bump `last_seen_at` (and revive a
+stale/removed row to `active`); anything else changes nothing more.
+
+### The sweeps (cron-freshness, in order)
+
+1. **Legacy board_key adoption:** direct rows with no `board_key` get one
+   derived from their URL (`greenhouse:acme`), or `unknown`.
+2. **Stale sweep:** direct rows not re-confirmed in 72 h go `stale` (still
+   visible).
+3. **Aggregator expiry:** LinkedIn/Indeed rows (by source OR by URL host: the
+   retired external scraper stored LinkedIn cards as `source_platform='ats'`)
+   expire after 21 days; GitHub-list and other non-ATS rows after 30. Age
+   runs from the EARLIEST of posted date, first seen and scraped, so a
+   future-dated row cannot escape. Rows on a real board are never touched.
+4. **Terminal expiry:**
+   - a `stale` row with no positive evidence for 21 days: `expired` (it had
+     every board crawl and ~6 verifier runs a day to prove otherwise);
+   - a direct row on a board no crawl reconciles (`board_key` `''` or
+     `unknown`): `expired` 30 days after its last positive evidence.
+5. **Verification, one shared 150 s box** (each phase stops starting checks at
+   60/80/100% of it; unused time flows on):
+   - stale backlog, 600 rows per run;
+   - active direct rows no crawl has confirmed for 48 h, 150 per run (rows
+     past a partial crawl, boards we don't crawl);
+   - visible GitHub-list and LinkedIn rows, 200 per run.
+
+   All three work least-recently-probed first, skip rows probed in the last
+   20 h, hidden duplicates, blank-company rows and Indeed, and commit every
+   100 rows.
+6. **Ghost-risk scoring** (below).
+
+Removal of jobs that vanished from their board happens earlier, inside
+cron-ats reconciliation. GitHub-list rows also leave when their list marks
+them closed (a lock or strikethrough, matched on company + title) or drops
+the URL from the README, checked on every full re-parse of a source (skipped
+if it would remove more than half of the source's rows).
+
+### Click-time check (`POST /jobs/{id}/check-live`)
+
+When a user opens a job, the frontend asks once per job per browser session.
+The endpoint runs `check_listing` on that row and applies the verdict with
+`record_liveness`, so a posting that died since the last sweep is caught the
+moment someone looks at it. The response carries `{listing_status,
+verdict}`; a `dead` verdict (or a removed/expired status) switches the panel
+to the closed state and drops the card from the feed. The frontend ignores
+errors and stops asking for the session if the route is missing (405, or a
+404 whose detail is exactly `Not Found`), so an unknown job id must answer
+404 with a different detail (e.g. `Job not found.`).
+
+## Company logos
+
+Logos are **self-hosted**: one validated, squared image per employer in the
+`company_logos` table, keyed by a normalized company name (`company_key`:
+markdown, `(Ashby)`-style tags, punctuation, accents and legal suffixes
+folded away). Rows point at `/jobs/logo/<sha1>.png` (or `.svg`), served by
+`GET /jobs/logo/{sha}.png|svg` with no auth, an immutable year-long cache
+header, nosniff, and a sandboxing CSP for SVG. A re-harvest that changes the
+image changes the URL, so the cache can never serve a stale logo.
+
+- **Harvester cascade** (`harvest_company_logo`), first hit wins: an existing
+  real logo URL on any row; the LinkedIn guest job page; LinkedIn guest
+  search; the ATS board's own logo (Ashby, Workday, Lever, Greenhouse,
+  SmartRecruiters, BambooHR, Workable); homepage icons on VERIFIED domains
+  only (DNS, no unrelated redirect, not parked, company token match); Wikidata
+  P154; Google s2 at 256 px. Every candidate goes through
+  `logo_image.normalize_logo`: decoded, at least 64 px, not a known
+  placeholder, visible on white, aspect ratio within 4:1, trimmed, padded to a
+  square, 128x128 PNG. SVGs are sanitized (no script, no external refs).
+- **Propagation:** a stored logo is written to every row of that company,
+  visible or hidden, so one LinkedIn row's logo covers the 1,000 Workday rows
+  of the same employer.
+- **Misses** back off 14 days per attempt, capped at 90, and never demote a
+  stored logo.
+- **Where it runs:** cron-backfill Phase 3 first re-points rows of already
+  stored companies (no network), then harvests companies with visible rows
+  and no stored logo, busiest first: 6 at once, 45 s per company, at most
+  150 companies and 150 s per run.
+- **Frontend chain:** stored logo; else Google s2 (`sz=256`) only for a real
+  domain (never a name guess); else a letter avatar from the cleaned name.
+  Anything under 40 px or wider than 2.2:1 counts as a miss. unavatar is gone
+  (25 requests per day per IP, tiny favicons).
 
 ## Ghost-job scoring
 
-`ghost_risk_score` (0–100) + `ghost_risk_factors` are **surfaced, not
-silently filtered** — the product decides hide vs badge. Factors:
+`ghost_risk_score` (0-100) + `ghost_risk_factors` are **surfaced, not
+silently filtered**: the product decides hide vs badge. Factors:
 
 | Factor | Points |
 |---|---|
 | Open > 45 days (`> 90` days) | +25 (+40) |
-| Evergreen description ("always accepting applications", "talent pool", …) | +25 |
+| Evergreen description ("always accepting applications", "talent pool", ...) | +25 |
 | Repost pattern (same employer+title previously removed) | +20 |
 | Company has ≥5 active listings and >50% open >45 days | +15 |
 
 Scoring is incremental: new rows are scored once (the only pass that reads
-descriptions — the evergreen flag is cached in the factors JSON), and aging
+descriptions; the evergreen flag is cached in the factors JSON), and aging
 rows are re-scored column-only as their age factors move.
 
 ## Structured extraction
 
-`structured_extraction.py` is **deliberately regex/taxonomy based — no model
+`structured_extraction.py` is **deliberately regex/taxonomy based, no model
 calls**. The ingest crons touch thousands of listings per hour; per-listing
 LLM calls are how the OpenAI bill melted once already. Extracted at ingest
 (Tier 1) or when the backfill lands a description (Tier 3):
 
-- `salary_min/max/currency/period` — from source-structured pay fields
+- `salary_min/max/currency/period`: from source-structured pay fields
   (Greenhouse `pay_input_ranges`, Lever `salaryRange`, Ashby
   `compensationTierSummary`) or description text; magnitude sanity checks
   reject years/metrics masquerading as pay
-- `employment_type` — source commitment field wins, then title, then text
-- `visa_sponsorship` — `yes`/`no` only on explicit statements (negative
+- `employment_type`: source commitment field wins, then title, then text
+- `visa_sponsorship`: `yes`/`no` only on explicit statements (negative
   patterns checked first); silence stays `unknown`
-- `skills` — curated ~150-term taxonomy, word-boundary matched, capped at 20;
+- `skills`: curated ~150-term taxonomy, word-boundary matched, capped at 20;
   ambiguous single tokens (`r`, `go`, `ui`) only count in titles
-- `raw_hash` — whitespace-insensitive content fingerprint
+- `raw_hash`: whitespace-insensitive content fingerprint
 
 ## Change detection (bait-and-switch)
 
 Re-crawls diff stored rows against fresh board data: title/location/salary
 changes and description-hash changes append to a capped `change_log` and bump
 `edit_count`. A posting whose salary statement disappears gets a
-`salary_removed` entry — an edit-frequency/trust signal the UI can surface.
+`salary_removed` entry: an edit-frequency/trust signal the UI can surface.
 
 ## Deduplication
 
-1. **URL identity** — `scraped_jobs.url` is UNIQUE; `canonical_url()` strips
-   only `utm_*` params (functional params like `gh_jid` survive).
-2. **Stable external id** — Tier-1 rows carry
+1. **URL identity:** `scraped_jobs.url` is UNIQUE; `canonical_url()` strips
+   only `utm_*` params (functional params like `gh_jid` survive). Rows stored
+   before that existed (`?utm_source=vansh` copies) are collapsed onto the
+   clean URL by `scripts/cleanup_feed.py` phase a.
+2. **Stable external id:** Tier-1 rows carry
    `external_id = {platform}:{slug}:{source's own id}`, so re-crawls update in
    place even if the apply URL changes shape.
-3. **Cross-source twins** — exact match on normalized employer + normalized
+3. **Cross-source twins:** exact match on normalized employer + normalized
    title + city containment; the highest-trust copy wins, losers get
    `duplicate_of` (soft-hidden, never deleted). Direct rows never merge with
-   each other — identical titles on one board are distinct requisitions.
-4. **Fuzzy fallback** — aggregator rows whose *normalized* title is
+   each other: identical titles on one board are distinct requisitions. A
+   hidden twin's real logo is inherited by a winner whose logo is generated.
+4. **Fuzzy fallback:** aggregator rows whose *normalized* title is
    near-identical (SequenceMatcher ≥ 0.93, small length gap) to a direct row's
    may be absorbed. Deliberately not embeddings: deterministic, free, and a
-   wrong merge hides a real job. A qualifier word ("… Infrastructure") blocks
+   wrong merge hides a real job. A qualifier word ("... Infrastructure") blocks
    the merge by design.
+
+## GitHub-list sources (cron-poll)
+
+The parser (`markdown_parser.py`) reads pipe tables, several tables per
+README and HTML `<table>` READMEs; takes the OUTER link of a badge-wrapped
+link (never the shields.io image); strips markdown/HTML emphasis and legend
+emoji from company and title cells (`**Tesla**` rendered a `*` avatar); and
+gives a year-less date ("Nov 30") the most recent such day not more than 2
+days in the future (the current year made 2025 postings into Oct-Dec 2026
+ones that topped the date-sorted feed). Closed rows (lock, strikethrough) are
+never inserted. Renamed repos are followed (the source's owner/name update in
+place); only 404/410/451 park a source in `error`, other failures keep it
+`active`, and retryable errors are retried after a 12-hour cooldown
+(`sources_due`).
 
 ## Per-board health + circuit breaker
 
 Every board outcome lands in `source_health`. Five consecutive failures open
 the breaker: the board is skipped for 24 h, then retried. `GET
-/jobs/ingest-metrics` (cron-secret) is the dead-letter view — failing boards
-with their last error — plus the day-one metrics: listings ingested/24 h and
+/jobs/ingest-metrics` (cron-secret) is the dead-letter view (failing boards
+with their last error) plus the day-one metrics: listings ingested/24 h and
 7 d, removed/24 h, dedup rate, % ghost-flagged, median active listing age,
 active-by-trust. The workflow logs it every run.
 
 ## Schedules
 
-`.github/workflows/scrape-jobs.yml`, hourly at minute 17 (top-of-hour fires
-get dropped on GitHub's shared queue):
+`.github/workflows/scrape-jobs.yml`, cron `17 * * * *` and `47 * * * *`.
+GitHub's scheduler is best-effort: from 2026-08-27 the single minute-17 entry
+delivered ~5.7 runs a day (23 before), so a second entry doubles the chances
+and every budget is sized for irregular firing (least-recently-crawled
+shard, least-recently-probed verification). A `concurrency` group
+(`cancel-in-progress: false`) keeps two deliveries from ever running at once.
 
-1. JobSpy + LinkedIn scripts → `/jobs/ingest-batch` (Tier 3)
-2. `/github-sources/cron-ats` — this hour's **shard** of the registry
-   (~150 boards/run, every board every 2–3 h) — ingests + reconciles
-3. `/github-sources/cron-poll` — GitHub lists
-4. `/jobs/cron-backfill` — descriptions, locations, logos, twin absorption,
-   extraction-on-description-arrival
-5. `/jobs/cron-freshness` — stale/expiry sweeps, URL verification, ghost
-   scoring, legacy `board_key` adoption
-6. `/jobs/ingest-metrics` — logged snapshot
+1. **Keepalive:** `gh api -X PUT .../actions/workflows/scrape-jobs.yml/enable`
+   with the job token (`permissions: actions: write`). GitHub disables
+   scheduled workflows in a public repo after 60 days without repository
+   activity, silently (the external scraper died that way on 2026-08-26);
+   re-enabling resets the timer on every run.
+2. JobSpy + LinkedIn scripts: `/jobs/ingest-batch` (Tier 3). These stay
+   `continue-on-error`: blocked scrapers are routine.
+3. `/github-sources/cron-ats`: the least-recently-crawled **shard** of the
+   registry; ingests, confirms and reconciles.
+4. `/github-sources/cron-poll`: GitHub lists.
+5. `/jobs/cron-backfill`: descriptions, locations, logos (Phase 3), twin
+   absorption, extraction-on-description-arrival.
+6. `/jobs/cron-freshness`: board_key adoption, stale/aggregator/terminal
+   sweeps, platform liveness verification, ghost scoring.
+7. `/jobs/ingest-metrics`: logged snapshot, runs even after a failure.
+8. A final step fails the run if any endpoint step failed.
+
+Every endpoint call prints its HTTP status, time and response body and fails
+its step on anything but 2xx; the steps are `continue-on-error` so the rest of
+the run still happens, and the final step turns the run red. (Before this,
+every curl ended in `|| true` and a 401 or 500 showed green.) `--max-time` is
+300 s on the four crons, Vercel's function limit: cron-ats pages for at most
+150 s plus processing, cron-backfill spends ~20 s on descriptions plus a
+150 s logo budget, cron-freshness runs its sweeps plus a 150 s verification
+box. A curl timeout at 300 s means the function itself hit Vercel's ceiling.
+The job has a 40-minute timeout so a hung run can't hold the concurrency
+group.
+
+### Environment variables (all optional)
+
+| Variable | Default | Effect |
+|---|---|---|
+| `CRON_ATS_SHARDS` | sized to ~150 boards/run | Number of registry shards |
+| `CRON_ATS_LIST_BUDGET_SECONDS` | 150 | Wall-clock budget for paging big boards past their head pages |
+| `CRON_ATS_CONCURRENCY` | 6 | Boards crawled at once (never two per API host) |
+| `WORKDAY_MAX_PAGES` | 100 | Workday list pages (20 postings each) per board; do not pin to 8 |
+| `SMARTRECRUITERS_MAX_PAGES` | 20 | SmartRecruiters list pages (100 postings each) per board |
+| `ATS_PER_HOST_INTERVAL` | 0.35 | Seconds between requests to one ATS API host |
+
+## One-time scripts
+
+All take `DATABASE_URL` from the environment (set it explicitly for the run;
+never rely on a `.env`), read column-only and are idempotent.
+
+- **`backend/scripts/cleanup_feed.py`** brings the catalogue, in one pass, to
+  the state the lifecycle code converges to over days of cron runs:
+  - phase a: GitHub-list data fixes (year-less dates stamped with the wrong
+    year go back a year, markdown stripped from company/title through the
+    parser's own clean-up, `utm_*` URL twins get `duplicate_of` on the utm
+    copy);
+  - phase b: the cron-freshness sweeps, called from `listing_freshness`;
+  - phase c: every still-visible row checked with `check_listings` and the
+    verdicts applied with `record_liveness`;
+  - phase d: report of what stays visible with verdict `unknown`, by host.
+
+  It is a **dry run by default**: no writes and no migrations, enforced by a
+  statement guard (only SELECT/SHOW get through) and by the database itself
+  (`SET TRANSACTION READ ONLY` on Postgres, `PRAGMA query_only` on SQLite).
+  Phase c still makes its outbound HTTP checks so the report shows real
+  verdicts. Typical use:
+
+  ```
+  # representative read-only projection on prod
+  DATABASE_URL=... python backend/scripts/cleanup_feed.py --limit 300 --sample
+  # the real thing (runs the idempotent last_probed_at migration first)
+  DATABASE_URL=... python backend/scripts/cleanup_feed.py --apply
+  # only Workday rows, or only some phases
+  DATABASE_URL=... python backend/scripts/cleanup_feed.py --apply --phase c,d --host-filter myworkdayjobs.com
+  # resume an interrupted apply without re-checking what it already did
+  DATABASE_URL=... python backend/scripts/cleanup_feed.py --apply --phase c,d --recheck-hours 6
+  ```
+
+  Options: `--phase`, `--limit`, `--sample`/`--seed`, `--host-filter`,
+  `--concurrency` (8), `--deadline-minutes` (90), `--recheck-hours`,
+  `--no-migrate`. Deploy the wave-1/2 code first: the script uses the same
+  `listing_freshness` / `platform_liveness` the crons use.
+- `backend/scripts/dedup_jobs.py`: whole-catalogue cross-source dedup sweep.
+- `backend/scripts/harvest_logos.py`: legacy exhaustive favicon harvest
+  (superseded by cron-backfill Phase 3 and the logo store).
+- `backend/scripts/backfill_descriptions.py`, `backfill_locations.py`:
+  description and location repair.
 
 ## Adding a new source connector
 
 1. **Find the JSON API.** Prefer the platform's public board API over HTML.
    Check the careers page's network tab for XHR JSON.
 2. **Fetcher in `ats_scraper.py`:** add `_fetch_<platform>(client, slug,
-   company_name)` returning unfiltered `list[ATSJob]` — set `external_id`
+   company_name)` returning unfiltered `list[ATSJob]`; set `external_id`
    (the source's own posting id), `salary_text`/`employment_type` when the
    source structures them, and `detail_ref` if descriptions need a per-job
-   detail call. Paginating fetchers return `(listings, complete, total)`.
-3. **Route it in `scrape_board()`** — this is what gives cron-ats the
+   detail call. Paginating fetchers return `(listings, complete, total)` and
+   honour the run's `deadline`.
+3. **Route it in `scrape_board()`:** this is what gives cron-ats the
    `BoardSnapshot` (filtered jobs + full live-URL set). If your fetch can be
-   partial, return `complete=False` so reconciliation stands down.
-4. **Registry:** add the platform to `SUPPORTED_PLATFORMS` in
+   partial, return `complete=False`: the board then confirms what it listed
+   and removes nothing.
+4. **Liveness:** if the platform's job pages can't tell live from dead (SPA,
+   redirect-to-home), add an API check in `platform_liveness._route`, and
+   only return `authoritative=True` for an answer from the platform itself.
+5. **Registry:** add the platform to `SUPPORTED_PLATFORMS` in
    `company_registry.py` and entries to `ats_companies.json`
    (`ats_platform`, `board_slug`, `company_name`, `enabled`).
-5. **Fixtures + tests:** save a real (sanitized) board payload under
+6. **Fixtures + tests:** save a real (sanitized) board payload under
    `backend/tests/fixtures/` and add parse tests in
-   `test_connector_fixtures.py` — including one asserting that filtered-out
+   `test_connector_fixtures.py`, including one asserting that filtered-out
    jobs still appear in `all_urls`.
-6. Board keys, freshness, health tracking, and dedup come for free — they key
+7. Board keys, freshness, health tracking, and dedup come for free: they key
    off `BoardSnapshot`.
 
 Everything else (crawl cadence, circuit breaking, removal reconciliation) is
@@ -225,6 +485,8 @@ generic. A connector is ~60 lines plus fixtures.
 
 - Tier-1 uses public JSON board APIs intended for consumption; no login-walled
   scraping. Per-host request pacing.
+- Liveness checks use the same public APIs (or the public posting page), at
+  most 2 requests in flight per host, and never judge a bot wall.
 - LinkedIn data comes only from the guest API/JobSpy at low trust, is never
   reposted elsewhere, and always links back to the original source.
 - `robots.txt`-sensitive HTML fetching happens only in the description
