@@ -165,9 +165,10 @@ lower bound was **≥3,200 dead-but-visible rows, about a third of the feed**.
   name guesses; frontend chain without unavatar, size-checked, cleaned names.
 - **Frontend**: closed-job badge + disabled Apply, click-time
   `POST /jobs/{id}/check-live`, deep links that stay open.
-- **Workflow**: second cron entry (`:47`), concurrency group, keepalive via
-  the enable-workflow API, every endpoint's status and body logged and the run
-  turned red on any non-2xx.
+- **Workflow**: second cron entry (`:47`), concurrency group, a read-only
+  check that turns the run red from day 50 of GitHub's 60-day inactivity
+  clock (no automated re-enable; read-only token), every endpoint's status
+  and body logged and the run turned red on any non-2xx.
 - **One-time cleanup**: `backend/scripts/cleanup_feed.py` (dry run by default,
   see `docs/ingestion-pipeline.md`).
 
