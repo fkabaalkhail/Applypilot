@@ -206,6 +206,66 @@ class TestPhaseA:
         assert canonical.company == "**Tesla**"
         assert utm_copy.duplicate_of is None
 
+    def test_reposts_behind_closed_dedup_winners_come_back(self, db_session):
+        rows = _closed_winner_rows(db_session)
+
+        stats = cleanup_feed.phase_a(db_session, _report(db_session, dry_run=False), write=True)
+        db_session.expire_all()
+
+        assert stats["closed_winner_twins_released"] == 1
+        assert stats["closed_winner_twins_repointed"] == 0
+        # Back in the feed, first in line for the verifier; status untouched.
+        assert rows["repost"].duplicate_of is None
+        assert rows["repost"].last_probed_at is None
+        assert rows["repost"].listing_status == LISTING_ACTIVE
+        # Same LinkedIn posting as the expired winner: stays hidden.
+        assert rows["same_posting"].duplicate_of == rows["old"].id
+        # A mirror of a requisition its board removed: stays hidden.
+        assert rows["mirror"].duplicate_of == rows["direct"].id
+        again = cleanup_feed.phase_a(db_session, _report(db_session, dry_run=False), write=True)
+        assert again["closed_winner_twins_released"] == 0
+
+    def test_closed_winner_dry_run_reports_without_writing(self, guarded_db):
+        plain, seed, guarded = guarded_db
+        rows = _closed_winner_rows(seed)
+        before = _snapshot(plain)
+
+        seen = cleanup_feed.install_read_only_guard(guarded)
+        db = sessionmaker(bind=guarded)()
+        try:
+            stats = cleanup_feed.phase_a(db, _report(db), write=False)
+        finally:
+            db.close()
+
+        assert stats["closed_winner_twins_released"] == 1
+        assert _snapshot(plain) == before
+        assert seen and all(cleanup_feed.is_read_only_statement(s) for s in seen)
+        seed.expire_all()
+        assert rows["repost"].duplicate_of == rows["old"].id
+
+
+LI_OLD = "https://ca.linkedin.com/jobs/view/software-engineer-new-grad-at-acme-4440083739"
+LI_NEW = "https://ca.linkedin.com/jobs/view/software-engineer-new-grad-at-acme-4470027097"
+
+
+def _closed_winner_rows(db):
+    """A LinkedIn repost hidden behind an older copy that has since expired,
+    a same-posting copy, and a LinkedIn mirror of a removed board row."""
+    linkedin = dict(source_platform="linkedin", board_key="", last_seen_at=None)
+    old = _row(db, LI_OLD, listing_status=LISTING_EXPIRED,
+               description="A real description of the posting. " * 5, **linkedin)
+    direct = _row(db, "https://boards.greenhouse.io/acme/jobs/77", title="QA Intern",
+                  listing_status=LISTING_REMOVED)
+    return {
+        "old": old,
+        "direct": direct,
+        "repost": _row(db, LI_NEW, duplicate_of=old.id, last_probed_at=NOW - DAY, **linkedin),
+        "same_posting": _row(db, "https://www.linkedin.com/jobs/view/4440083739",
+                             duplicate_of=old.id, **linkedin),
+        "mirror": _row(db, "https://ca.linkedin.com/jobs/view/4465089143", title="QA Intern",
+                       duplicate_of=direct.id, **linkedin),
+    }
+
 
 # ─── phase b ─────────────────────────────────────────────────────────────────
 

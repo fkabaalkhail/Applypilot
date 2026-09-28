@@ -52,6 +52,7 @@ from backend.services.cross_source_dedup import (
     canonical_url,
     has_direct_twin,
     normalize_title,
+    stands_in_for_twins,
 )
 from backend.services import platform_liveness
 from backend.services.listing_freshness import (
@@ -100,9 +101,12 @@ def _ip_is_internal(ip_str: str) -> bool:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return True
+    # not is_global catches what the named checks miss, carrier-grade NAT
+    # (100.64.0.0/10) among them.
     return (
         ip.is_private or ip.is_loopback or ip.is_link_local
         or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+        or not ip.is_global
     )
 
 
@@ -978,15 +982,20 @@ _MAX_TWIN_HOPS = 3
 
 def _canonical_twin_id(db: Session, job_id: int, duplicate_of: Optional[int]) -> int:
     """The visible row a hidden cross-source duplicate points at, following
-    duplicate_of column-only, or ``job_id`` itself when it isn't a duplicate
-    or its twin is gone."""
+    duplicate_of column-only, or ``job_id`` itself when it isn't a duplicate,
+    its twin is gone, or its twin has closed and can't answer for it
+    (cross_source_dedup.stands_in_for_twins): a live LinkedIn repost hidden
+    behind an older, since-expired copy must open as itself, not as the
+    closed row."""
     seen = {job_id}
     target, next_id = job_id, duplicate_of
+    status, source, url = None, "", ""
     for _ in range(_MAX_TWIN_HOPS):
         if not next_id or next_id in seen:
             break
         hop = (
-            db.query(ScrapedJob.id, ScrapedJob.duplicate_of)
+            db.query(ScrapedJob.id, ScrapedJob.duplicate_of, ScrapedJob.listing_status,
+                     ScrapedJob.source_platform, ScrapedJob.url)
             .filter(ScrapedJob.id == next_id)
             .first()
         )
@@ -994,6 +1003,9 @@ def _canonical_twin_id(db: Session, job_id: int, duplicate_of: Optional[int]) ->
             break
         seen.add(hop.id)
         target, next_id = hop.id, hop.duplicate_of
+        status, source, url = hop.listing_status, hop.source_platform, hop.url
+    if target != job_id and not stands_in_for_twins(status, source or "", url or ""):
+        return job_id
     return target
 
 
@@ -1008,8 +1020,10 @@ def get_job(
     A hidden cross-source duplicate answers with its visible twin (a match
     email or a shared link to the LinkedIn copy lands on the row the feed
     shows, not on a hidden one), so the returned id can differ from the one
-    asked for. listing_status comes back as stored, closed rows included, so
-    the client can show the closed state.
+    asked for. A twin that has closed answers only when it still speaks for
+    the duplicate (a direct row its board removed); otherwise the duplicate
+    answers as itself, with its own status. listing_status comes back as
+    stored, closed rows included, so the client can show the closed state.
     """
     job = db.query(ScrapedJob).filter(ScrapedJob.id == job_id).first()
     if not job:
@@ -1157,11 +1171,35 @@ async def check_job_live(
     return _live_answer(row.id, status, result.verdict)
 
 
-def _details_client():
-    """The page fetch fetch-details makes (a seam for tests)."""
+async def _refuse_non_public_request(request) -> None:
+    """Request hook on fetch-details' client. httpx runs it for every request
+    the client sends: each redirect hop, and the follow-ups the description
+    extractor and the platform check make on the same client. Checking only
+    the stored URL let a public page 302 the server into loopback, a private
+    network or cloud metadata, and the landing page's text was then saved as
+    the description."""
     import httpx
 
-    return httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS)
+    if not await asyncio.to_thread(_is_url_allowed, str(request.url)):
+        raise httpx.RequestError(
+            f"blocked request to a non-public address: {request.url.host}", request=request,
+        )
+
+
+def _details_client(transport=None):
+    """The page fetch fetch-details makes (tests pass ``transport``). Every
+    request it sends, redirect hops included, passes the SSRF guard."""
+    import httpx
+
+    options: dict = {
+        "follow_redirects": True,
+        "timeout": 15,
+        "headers": BROWSER_HEADERS,
+        "event_hooks": {"request": [_refuse_non_public_request]},
+    }
+    if transport is not None:
+        options["transport"] = transport
+    return httpx.AsyncClient(**options)
 
 
 # LinkedIn's own company image on a guest job page. og:image is never used as

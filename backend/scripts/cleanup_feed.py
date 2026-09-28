@@ -515,6 +515,7 @@ def phase_a(db: Session, report: Report, *, write: bool) -> dict:
           f"({stats['utm_twins_hidden_visible']} of them visible)")
     for row_id, keeper_id, url in utm_hidden[:SAMPLE_SIZE]:
         print(f"      id={row_id} -> {keeper_id} {url[:150]}")
+    release_closed_winner_twins(db, session, stats)
     return stats
 
 
@@ -571,6 +572,30 @@ def collapse_utm_twins(db: Session, session: RecordingSession, report: Report,
             pending = 0
     session.commit()
     return hidden
+
+
+def release_closed_winner_twins(db: Session, session: RecordingSession, stats: dict) -> list:
+    """a4: LinkedIn/Indeed reposts hidden behind a dedup winner that has since
+    closed (an older copy that aged out, or whose own posting died). Through
+    cross_source_dedup.release_from_closed_winners: each one moves under a
+    better twin that is still visible, or comes back to the feed with
+    ``last_probed_at`` cleared so phase c and the verifier check it first.
+    Rows sharing the closed winner's posting id, and mirrors of a direct row
+    its board removed, stay hidden. Returns (id, old winner, new winner)."""
+    from backend.services.cross_source_dedup import release_from_closed_winners
+
+    moved = release_from_closed_winners(session, clear_probe=has_probe_column(db))
+    back = [move for move in moved if move[2] is None]
+    stats["closed_winner_twins_released"] = len(back)
+    stats["closed_winner_twins_repointed"] = len(moved) - len(back)
+    verb = "released" if session.write else "would release"
+    print(f"  [a] closed dedup winners: {verb} {len(back)} hidden reposts back to the feed, "
+          f"{len(moved) - len(back)} moved under a live twin")
+    urls = _urls_for(db, [move[0] for move in moved[:SAMPLE_SIZE]])
+    for row_id, old_winner, new_winner in moved[:SAMPLE_SIZE]:
+        target = f"-> {new_winner}" if new_winner is not None else "-> feed"
+        print(f"      id={row_id} (was under {old_winner}) {target} {urls.get(row_id, '')[:150]}")
+    return moved
 
 
 # ─── Phase b: lifecycle sweeps ───────────────────────────────────────────────

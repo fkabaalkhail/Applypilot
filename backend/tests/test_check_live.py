@@ -282,14 +282,50 @@ class TestGetJobCanonical:
         assert body["url"] == canonical.url
         assert body["listing_status"] == "active"
 
-    def test_closed_canonical_keeps_its_status(self, client, db_session):
-        canonical = _job(db_session, url="https://jobs.lever.co/acme/2222", listing_status="removed")
+    def test_removed_direct_canonical_still_answers_closed(self, client, db_session):
+        # The board removed the employer's own requisition; the LinkedIn
+        # mirror of it is closed too, whatever LinkedIn's page still shows.
+        canonical = _job(db_session, url="https://jobs.lever.co/acme/2222",
+                         source_platform="ats", listing_status="removed")
         twin = _job(db_session, url="https://www.linkedin.com/jobs/view/2", duplicate_of=canonical.id)
 
         body = client.get(f"/jobs/{twin.id}").json()
 
         assert body["id"] == canonical.id
         assert body["listing_status"] == "removed"
+
+    @pytest.mark.parametrize("status", ["expired", "removed"])
+    def test_closed_aggregator_canonical_leaves_the_duplicate_as_itself(
+        self, client, db_session, status,
+    ):
+        # A live LinkedIn repost hidden behind an older copy that has since
+        # aged out or died: the deep link opens the repost, not the closed row.
+        canonical = _job(
+            db_session, source_platform="linkedin", listing_status=status,
+            url="https://www.linkedin.com/jobs/view/software-engineer-ii-at-affirm-4440083739",
+            title="Software Engineer II, Data Platform",
+        )
+        dup = _job(
+            db_session, source_platform="linkedin", listing_status="active",
+            url="https://www.linkedin.com/jobs/view/software-engineer-ii-at-affirm-4470027097",
+            title="Software Engineer II, Identity", duplicate_of=canonical.id,
+        )
+
+        body = client.get(f"/jobs/{dup.id}").json()
+
+        assert (body["id"], body["listing_status"], body["title"]) == \
+            (dup.id, "active", "Software Engineer II, Identity")
+
+    def test_expired_direct_canonical_leaves_the_duplicate_as_itself(self, client, db_session):
+        # Expiry is age or missing evidence, not a death verdict.
+        canonical = _job(db_session, url="https://boards.greenhouse.io/acme/jobs/3333",
+                         source_platform="ats", listing_status="expired")
+        dup = _job(db_session, url="https://www.linkedin.com/jobs/view/3333",
+                   source_platform="linkedin", duplicate_of=canonical.id)
+
+        body = client.get(f"/jobs/{dup.id}").json()
+
+        assert (body["id"], body["listing_status"]) == (dup.id, "active")
 
     def test_missing_twin_falls_back_to_the_row_itself(self, client, db_session):
         orphan = _job(db_session, url="https://www.linkedin.com/jobs/view/3", duplicate_of=987654)

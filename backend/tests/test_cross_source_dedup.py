@@ -439,3 +439,163 @@ def test_absorb_hands_the_real_logo_to_the_surviving_twin(db_session):
     db_session.refresh(newcomer)
     assert newcomer.duplicate_of == survivor.id
     assert survivor.company_logo == _LICDN
+
+
+# --- closed winners (a live repost must not hide behind a closed copy) -------
+
+_LI_OLD = "https://ca.linkedin.com/jobs/view/software-engineer-intern-at-kinaxis-4440083739"
+_LI_NEW = "https://ca.linkedin.com/jobs/view/software-engineer-intern-at-kinaxis-4470027097"
+_DESC = "Kinaxis builds supply chain planning software for the world " * 10
+
+
+def _closed(db_session, row, status):
+    row.listing_status = status
+    db_session.commit()
+    return row
+
+
+def test_posting_key_ignores_host_spelling_and_slugs():
+    from backend.services.cross_source_dedup import posting_key
+    assert posting_key("https://www.linkedin.com/jobs/view/4462216626") == \
+        posting_key("https://ca.linkedin.com/jobs/view/software-developer-at-ibm-4462216626/?trk=x")
+    assert posting_key("https://www.linkedin.com/jobs/search?currentJobId=4462216626") == \
+        "linkedin:4462216626"
+    assert posting_key(_LI_OLD) != posting_key(_LI_NEW)
+    assert posting_key("https://ca.indeed.com/viewjob?jk=AB12") == \
+        posting_key("https://www.indeed.com/viewjob?jk=ab12&from=serp")
+    assert posting_key("https://boards.greenhouse.io/acme/jobs/1?utm_source=x") == \
+        posting_key("https://boards.greenhouse.io/acme/jobs/1")
+
+
+def test_absorb_skips_a_closed_aggregator_twin(db_session):
+    # The Affirm case: an older, described LinkedIn copy that has closed
+    # must not absorb a newer live repost that carries its own posting id.
+    for status in ("expired", "removed"):
+        old = _closed(db_session, _mk(db_session, _LI_OLD + status, description=_DESC), status)
+        repost = _mk(db_session, _LI_NEW + status, description=_DESC)
+
+        assert absorb_new_aggregator_rows(db_session) == 0
+        db_session.refresh(repost)
+        assert repost.duplicate_of is None
+        # Out of the next round's way.
+        old.title = old.title_norm = repost.title = repost.title_norm = "retired " + status
+        db_session.commit()
+
+
+def test_absorb_skips_an_expired_direct_twin_but_not_a_removed_one(db_session):
+    direct = _closed(db_session, _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/70",
+                                     source="ats", description=_DESC), "expired")
+    fresh = _mk(db_session, "https://ca.linkedin.com/jobs/view/4470000070")
+    assert absorb_new_aggregator_rows(db_session) == 0
+    db_session.refresh(fresh)
+    assert fresh.duplicate_of is None
+
+    # A removed direct row is the board's death verdict on the requisition
+    # its LinkedIn mirrors copy: they stay hidden behind it.
+    _closed(db_session, direct, "removed")
+    assert absorb_new_aggregator_rows(db_session) == 1
+    db_session.refresh(fresh)
+    assert fresh.duplicate_of == direct.id
+
+
+def test_absorb_fuzzy_fallback_skips_a_closed_direct_twin(db_session):
+    _closed(db_session, _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/71",
+                            source="ats", title="Software Developer Intern, Analytics",
+                            description=_DESC), "expired")
+    loser = _mk(db_session, "https://linkedin.com/jobs/view/4470000071",
+                title="Software Developer Intern, Analytic")
+    assert absorb_new_aggregator_rows(db_session) == 0
+    db_session.refresh(loser)
+    assert loser.duplicate_of is None
+
+
+def test_has_direct_twin_ignores_an_expired_direct_row(db_session):
+    row = _closed(db_session, _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/72",
+                                  source="ats"), "expired")
+    kwargs = dict(company="Kinaxis", company_domain="kinaxis.com",
+                  title="Software Engineer Intern", city="ottawa")
+    assert not has_direct_twin(db_session, **kwargs)
+    _closed(db_session, row, "removed")
+    assert has_direct_twin(db_session, **kwargs)
+    _closed(db_session, row, "stale")
+    assert has_direct_twin(db_session, **kwargs)
+
+
+def test_release_gives_back_a_repost_hidden_behind_a_closed_copy(db_session):
+    import datetime
+
+    from backend.services.cross_source_dedup import release_from_closed_winners
+
+    old = _closed(db_session, _mk(db_session, _LI_OLD, description=_DESC), "expired")
+    repost = _mk(db_session, _LI_NEW, description=_DESC)
+    indeed = _mk(db_session, "https://ca.indeed.com/viewjob?jk=kin01", source="indeed")
+    same_posting = _mk(db_session, "https://www.linkedin.com/jobs/view/4440083739")
+    for row in (repost, indeed, same_posting):
+        row.duplicate_of = old.id
+        row.last_probed_at = datetime.datetime(2026, 9, 1)
+    db_session.commit()
+
+    moved = release_from_closed_winners(db_session)
+
+    for row in (repost, indeed, same_posting):
+        db_session.refresh(row)
+    # The repost comes back, first in line for the verifier.
+    assert repost.duplicate_of is None and repost.last_probed_at is None
+    # The Indeed copy moves under the live repost (same job, better tier).
+    assert indeed.duplicate_of == repost.id
+    # Same LinkedIn posting id as the closed row: that closure is its own.
+    assert same_posting.duplicate_of == old.id
+    assert sorted(moved) == sorted([(repost.id, old.id, None), (indeed.id, old.id, repost.id)])
+    assert repost.listing_status == "active"  # status untouched, never deleted
+    assert release_from_closed_winners(db_session) == []  # idempotent
+
+
+def test_release_leaves_mirrors_of_a_removed_direct_row_and_closed_rows(db_session):
+    from backend.services.cross_source_dedup import release_from_closed_winners
+
+    direct = _closed(db_session, _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/73",
+                                     source="ats", description=_DESC), "removed")
+    mirror = _mk(db_session, "https://ca.linkedin.com/jobs/view/4465089143")
+    old = _closed(db_session, _mk(db_session, _LI_OLD, title="Data Analyst Intern",
+                                  description=_DESC), "expired")
+    closed_repost = _closed(db_session, _mk(db_session, _LI_NEW, title="Data Analyst Intern"),
+                            "expired")
+    mirror.duplicate_of = direct.id
+    closed_repost.duplicate_of = old.id
+    db_session.commit()
+
+    assert release_from_closed_winners(db_session) == []
+    db_session.refresh(mirror)
+    db_session.refresh(closed_repost)
+    assert mirror.duplicate_of == direct.id
+    assert closed_repost.duplicate_of == old.id
+
+
+def test_absorb_pass_runs_the_release(db_session):
+    # The hourly cron keeps it converged: a winner that closes after it
+    # absorbed a repost hands the repost back on the next pass.
+    old = _mk(db_session, _LI_OLD, description=_DESC)
+    repost = _mk(db_session, _LI_NEW, description=_DESC)
+    assert absorb_new_aggregator_rows(db_session) == 1
+    db_session.refresh(repost)
+    assert repost.duplicate_of == old.id
+
+    _closed(db_session, old, "expired")
+    absorb_new_aggregator_rows(db_session)
+    db_session.refresh(repost)
+    assert repost.duplicate_of is None
+
+
+def test_sweep_never_hides_a_live_copy_behind_a_closed_one(db_session):
+    old = _closed(db_session, _mk(db_session, _LI_OLD, description=_DESC), "expired")
+    repost = _mk(db_session, _LI_NEW, description="")
+    expired_direct = _closed(db_session, _mk(db_session, "https://boards.greenhouse.io/kinaxis/jobs/74",
+                                             source="ats", title="QA Intern",
+                                             description=_DESC), "expired")
+    copy = _mk(db_session, "https://ca.linkedin.com/jobs/view/4470000074", title="QA Intern")
+    dedup_sweep(db_session)
+    for row in (old, repost, expired_direct, copy):
+        db_session.refresh(row)
+    assert repost.duplicate_of is None
+    assert copy.duplicate_of is None
+    assert old.duplicate_of is None and expired_direct.duplicate_of is None
