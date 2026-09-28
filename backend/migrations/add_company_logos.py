@@ -11,7 +11,10 @@ startup stays fast on Vercel. Base.metadata.create_all normally creates the
 table first; this keeps databases created outside the app (and the indexes)
 in step.
 
-Idempotent: skips anything that already exists. Runs on app startup.
+Idempotent: skips anything that already exists, and once the table, its
+columns and its indexes all exist it sends no DDL at all (even CREATE INDEX
+IF NOT EXISTS locks company_logos before it finds the index, queueing behind
+any open write). Runs on app startup, which fails if this does.
 """
 
 import logging
@@ -56,12 +59,13 @@ _ADDED_COLUMNS = {
 
 # Same names SQLAlchemy gives the model's index=True columns, so a table that
 # create_all already built matches and IF NOT EXISTS skips them.
-_INDEXES = [
-    "CREATE UNIQUE INDEX IF NOT EXISTS ix_company_logos_company_key "
-    "ON company_logos (company_key)",
-    "CREATE INDEX IF NOT EXISTS ix_company_logos_sha ON company_logos (sha)",
-    "CREATE INDEX IF NOT EXISTS ix_company_logos_id ON company_logos (id)",
-]
+_INDEXES = {
+    "ix_company_logos_company_key":
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_company_logos_company_key "
+        "ON company_logos (company_key)",
+    "ix_company_logos_sha": "CREATE INDEX IF NOT EXISTS ix_company_logos_sha ON company_logos (sha)",
+    "ix_company_logos_id": "CREATE INDEX IF NOT EXISTS ix_company_logos_id ON company_logos (id)",
+}
 
 
 def _is_sqlite(engine) -> bool:
@@ -87,6 +91,10 @@ def run_migration(engine=None) -> None:
         {c["name"] for c in inspector.get_columns("company_logos")}
         if "company_logos" in tables else set()
     )
+    if "company_logos" in tables and not set(_ADDED_COLUMNS) - existing:
+        indexes = {index["name"] for index in inspector.get_indexes("company_logos")}
+        if not set(_INDEXES) - indexes:
+            return
 
     with engine.begin() as conn:
         if engine.dialect.name == "postgresql":
@@ -111,5 +119,5 @@ def run_migration(engine=None) -> None:
                 if column not in existing:
                     conn.execute(text(f"ALTER TABLE company_logos {add} {column} {kind}"))
                     logger.info("Added company_logos.%s.", column)
-        for index in _INDEXES:
+        for index in _INDEXES.values():
             conn.execute(text(index))

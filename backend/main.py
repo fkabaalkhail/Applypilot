@@ -5,13 +5,13 @@ Serves AI endpoints for the Chrome extension and React frontend.
 Runs as Vercel serverless function or standalone with uvicorn.
 """
 
-import logging
 import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 
 from backend.services.llm_cost import configure_logging
 
@@ -46,12 +46,40 @@ from backend.routers import health, resumes, jobs, settings, fill, ai, apply, co
 from backend.routers import auth, auth_extension, extension, tailor, cover_letter, auth_linkedin
 from backend.routers.feedback import router as feedback_router
 
-logger = logging.getLogger(__name__)
+# Postgres only: create_all's lock waits are capped like the first-deploy
+# migrations' (a CREATE queued behind an open transaction would otherwise
+# stall the cold start), and cold starts take turns on an advisory lock.
+CREATE_TABLES_LOCK_TIMEOUT = "5s"
+# Arbitrary, unique to create_all (the migrations use ...001 and ...002).
+_CREATE_TABLES_LOCK_KEY = 7_311_027_530_000
+
+
+def create_tables(bind=None) -> None:
+    """Base.metadata.create_all, safe for every cold start at once.
+
+    create_all checks each table, then sends a plain CREATE TABLE for the
+    missing ones. On Postgres two instances that both checked before either
+    created a table would collide (the loser fails on a duplicate pg_type
+    row), so the check and the CREATEs run under an advisory lock: the loser
+    checks after the winner commits and finds the table. Once every table
+    exists it sends no DDL and takes no lock. A lock timeout is not caught:
+    startup fails and the next cold start retries. SQLite is unchanged.
+    """
+    bind = bind or engine
+    if bind.dialect.name != "postgresql":
+        Base.metadata.create_all(bind=bind)
+        return
+    if not set(Base.metadata.tables) - set(inspect(bind).get_table_names()):
+        return
+    with bind.begin() as conn:
+        conn.execute(text(f"SET LOCAL lock_timeout = '{CREATE_TABLES_LOCK_TIMEOUT}'"))
+        conn.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _CREATE_TABLES_LOCK_KEY})
+        Base.metadata.create_all(bind=conn)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    create_tables()
     run_migration()
     run_admin_migration()
     run_security_migration()
@@ -71,17 +99,14 @@ async def lifespan(app: FastAPI):
     run_autofill_field_outcomes_migration()
     run_drop_saved_answers_migration()
     run_autofill_diagnostic_capture_migration()
-    # First-deploy DDL that every cold-starting instance runs at once: a lock
-    # timeout or a lost race must not kill startup. The schema is shared, so
-    # the next instance to start retries and every instance sees the result.
-    for name, first_deploy_migration in (
-        ("add_listing_probe_columns", run_listing_probe_columns_migration),
-        ("add_company_logos", run_company_logos_migration),
-    ):
-        try:
-            first_deploy_migration()
-        except Exception:
-            logger.exception("Startup migration %s failed; continuing", name)
+    # First-deploy DDL that every cold-starting instance runs at once. Each
+    # caps its lock waits, so a failure is fast, and it is never swallowed:
+    # an instance started without the column (or the logo store every insert
+    # path reads) would answer 500 for as long as it stays warm, and nothing
+    # would run the migration again. Failing startup leaves the retry to the
+    # next cold start.
+    run_listing_probe_columns_migration()
+    run_company_logos_migration()
     yield
 
 

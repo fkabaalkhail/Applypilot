@@ -98,7 +98,7 @@ class TestCheckLive:
         """A row its board vouched for within a day is alive, no request. A
         recent probe that learned nothing is not an answer: a sweep may have
         been rate-limited on it, so the click asks the platform."""
-        fresh = _job(db_session, url="https://example.com/jobs/1",
+        fresh = _job(db_session, url="https://example.com/jobs/1", board_key="lever:acme",
                      listing_status="active", last_probed_at=NOW() - datetime.timedelta(hours=1),
                      last_seen_at=NOW() - datetime.timedelta(hours=2))
         unseen = _job(db_session, url="https://example.com/jobs/2",
@@ -118,6 +118,52 @@ class TestCheckLive:
         assert answers[unseen.id] == {"id": unseen.id, "listing_status": "removed", "verdict": "dead"}
         assert answers[stale.id] == {"id": stale.id, "listing_status": "removed", "verdict": "dead"}
         assert probes[0] == [unseen.url, stale.url]
+
+    @pytest.mark.parametrize("url, source, board_key, seen_hours_ago, probed_hours_ago", [
+        # Ingested 14h ago, never probed: last_seen_at is only the insert time.
+        ("https://www.linkedin.com/jobs/view/4465855955", "linkedin", "", 14, None),
+        ("https://careers.acme.com/jobs/76", "github", "", 3, None),
+        # A URL shape no crawl reconciles.
+        ("https://careers.acme.com/jobs/77", "ats", "unknown", 3, None),
+        # The sweep's probe after insert learned nothing (an apply button is
+        # not the platform's word): last_seen_at is still the insert time.
+        ("https://www.linkedin.com/jobs/view/4465855956", "linkedin", "", 20, 12),
+    ])
+    def test_a_fresh_row_nothing_confirmed_is_probed(
+        self, client, db_session, probes, url, source, board_key, seen_hours_ago, probed_hours_ago,
+    ):
+        """Aggregator inserts stamp last_seen_at with the insert time and no
+        board ever reconciles them: a posting dead at ingest must still be
+        caught when a user opens it, not answered alive from the database."""
+        seen = NOW() - datetime.timedelta(hours=seen_hours_ago)
+        probed = (NOW() - datetime.timedelta(hours=probed_hours_ago)
+                  if probed_hours_ago is not None else None)
+        job = _job(db_session, url=url, source_platform=source, board_key=board_key,
+                   listing_status="active", first_seen_at=seen, last_seen_at=seen,
+                   last_probed_at=probed)
+        probes[1](LivenessResult("dead", "http_404", True))
+
+        resp = client.post(f"/jobs/{job.id}/check-live")
+
+        assert resp.json() == {"id": job.id, "listing_status": "removed", "verdict": "dead"}
+        assert probes[0] == [url]
+        assert _reload(db_session, job.id).listing_status == "removed"
+
+    def test_an_aggregator_row_the_platform_confirmed_is_served_from_the_db(
+        self, client, db_session, probes,
+    ):
+        """An authoritative alive stamps last_seen_at and last_probed_at with
+        the same instant: that confirmation answers the next click."""
+        confirmed_at = NOW() - datetime.timedelta(hours=3)
+        job = _job(db_session, url="https://www.linkedin.com/jobs/view/4465855957",
+                   source_platform="linkedin", board_key="", listing_status="active",
+                   first_seen_at=NOW() - datetime.timedelta(hours=30),
+                   last_seen_at=confirmed_at, last_probed_at=confirmed_at)
+
+        resp = client.post(f"/jobs/{job.id}/check-live")
+
+        assert resp.json() == {"id": job.id, "listing_status": "active", "verdict": "alive"}
+        assert probes[0] == []
 
     def test_probe_older_than_recheck_window_asks_again(self, client, db_session, probes):
         job = _job(db_session, last_probed_at=NOW() - datetime.timedelta(hours=7))

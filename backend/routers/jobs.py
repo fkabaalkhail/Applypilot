@@ -58,6 +58,7 @@ from backend.services import platform_liveness
 from backend.services.listing_freshness import (
     HIDDEN_LISTING_STATUSES,
     LISTING_ACTIVE,
+    _UNRECONCILABLE_BOARD_KEYS,
     record_liveness,
 )
 from backend.services.platform_liveness import ALIVE, DEAD, UNKNOWN, LivenessResult
@@ -1048,8 +1049,9 @@ def get_job(
 
 # The database answers without a probe only when what it holds is
 # conclusive: a closed row (dead), or an active row its board (or the
-# platform's API) vouched for this recently (alive). A recent probe that
-# learned nothing is not an answer, so it doesn't stop a new one.
+# platform's API) vouched for this recently (alive; see _vouched_for). A
+# recent probe that learned nothing is not an answer, so it doesn't stop a
+# new one.
 CHECK_LIVE_SEEN_FRESH = datetime.timedelta(hours=24)
 # Per request. The detail panel never waits on this, but it must still end.
 CHECK_LIVE_TIMEOUT_S = 8.0
@@ -1064,6 +1066,26 @@ def _naive_utc(value: Optional[datetime.datetime]) -> Optional[datetime.datetime
     if value is not None and value.tzinfo is not None:
         value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     return value
+
+
+def _vouched_for(row, now: datetime.datetime) -> bool:
+    """Whether the row's last_seen_at is a confirmation from the last
+    CHECK_LIVE_SEEN_FRESH, not just a timestamp.
+
+    It is one on a row its board reconciles (the crawl bumps it only while
+    the board lists the URL) and on a row whose latest probe was a platform
+    confirmation (record_liveness and the verify sweeps stamp last_seen_at
+    and last_probed_at with the same `now` on an authoritative alive).
+    Aggregator rows (LinkedIn, Indeed, GitHub lists) get last_seen_at at
+    insert and no board ever moves it; a later probe that learned nothing
+    stamps only last_probed_at, so it leaves last_seen_at behind it."""
+    seen_at = _naive_utc(row.last_seen_at)
+    if seen_at is None or now - seen_at >= CHECK_LIVE_SEEN_FRESH:
+        return False
+    if (row.board_key or "") not in _UNRECONCILABLE_BOARD_KEYS:
+        return True
+    probed_at = _naive_utc(row.last_probed_at)
+    return probed_at is not None and seen_at >= probed_at
 
 
 def _live_answer(job_id: int, listing_status: str, verdict: str) -> dict:
@@ -1132,17 +1154,18 @@ async def check_job_live(
     (listing_freshness.record_liveness): dead → removed, an authoritative
     alive → last_seen_at (and a stale row revives), anything else only
     stamps last_probed_at. The database answers without a request only when
-    it is conclusive: a closed row is dead, an active row confirmed within
-    CHECK_LIVE_SEEN_FRESH is alive. A probe that got no answer (rate limit,
-    network miss, timeout past CHECK_LIVE_TIMEOUT_S) is verdict unknown,
-    never an error, and is not recorded.
+    it is conclusive: a closed row is dead, an active row its board or the
+    platform confirmed within CHECK_LIVE_SEEN_FRESH is alive (a fresh
+    aggregator row nothing has confirmed is probed). A probe that got no
+    answer (rate limit, network miss, timeout past CHECK_LIVE_TIMEOUT_S) is
+    verdict unknown, never an error, and is not recorded.
 
     Returns {"id", "listing_status", "verdict"} (alive | dead | unknown).
     """
     row = (
         db.query(
             ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status,
-            ScrapedJob.last_seen_at, ScrapedJob.board_key,
+            ScrapedJob.last_seen_at, ScrapedJob.last_probed_at, ScrapedJob.board_key,
         )
         .filter(ScrapedJob.id == job_id)
         .first()
@@ -1156,9 +1179,7 @@ async def check_job_live(
     if status in HIDDEN_LISTING_STATUSES:
         return _live_answer(row.id, status, DEAD)
 
-    now = datetime.datetime.utcnow()
-    seen_at = _naive_utc(row.last_seen_at)
-    if status == LISTING_ACTIVE and seen_at is not None and now - seen_at < CHECK_LIVE_SEEN_FRESH:
+    if status == LISTING_ACTIVE and _vouched_for(row, datetime.datetime.utcnow()):
         return _live_answer(row.id, status, ALIVE)
 
     _enforce_check_live_limits(db, request, user_id)

@@ -3,19 +3,23 @@ instance at once. On Postgres it must cap its lock waits (an ALTER queued
 behind an open transaction would otherwise stall every scraped_jobs query
 queued behind it), let a losing instance skip instead of failing on a
 duplicate column or table, and take no table lock at all once applied. The
-lifespan must survive a migration that fails anyway: the schema is shared,
-so the next instance to start retries it.
+same goes for create_all, which builds a new model's table before any
+migration runs. A migration that fails anyway must fail startup: an
+instance serving without the schema answers 500 for as long as it stays
+warm and never retries, while a failed start leaves the retry to the next
+cold start.
 
 There's no Postgres in CI, so the Postgres path is checked against the SQL a
 recording engine receives; the SQLite path runs for real.
 """
 
 import contextlib
-import logging
 
 import pytest
 from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.exc import OperationalError
 
+from backend.db.database import Base
 from backend.migrations import add_company_logos, add_listing_probe_columns
 
 
@@ -163,34 +167,183 @@ def test_company_logos_migration_on_sqlite_is_unchanged(tmp_path):
     assert "company_logos" in inspect(engine).get_table_names()
 
 
+_LOGO_COLUMNS = ["id", "company_key", "sha", "prior_logo_urls", "blocked_shas"]
+_LOGO_INDEXES = ["ix_company_logos_company_key", "ix_company_logos_sha", "ix_company_logos_id"]
+
+
+def test_company_logos_ddl_takes_no_lock_once_applied(monkeypatch):
+    # Every cold start after the first. Startup fails when this migration
+    # does, so it must not queue CREATE INDEX IF NOT EXISTS (a SHARE lock on
+    # company_logos) behind a logo write on every start.
+    engine = _fake_postgres(monkeypatch, add_company_logos, {
+        "company_logos": {"columns": _LOGO_COLUMNS, "indexes": _LOGO_INDEXES},
+    })
+
+    add_company_logos.run_migration(engine)
+
+    assert engine.sql == []
+    assert engine.transactions == 0
+
+
+def test_company_logos_missing_index_alone_is_still_repaired(monkeypatch):
+    engine = _fake_postgres(monkeypatch, add_company_logos, {
+        "company_logos": {"columns": _LOGO_COLUMNS, "indexes": _LOGO_INDEXES[:2]},
+    })
+
+    add_company_logos.run_migration(engine)
+
+    assert engine.sql[0] == "SET LOCAL lock_timeout = '5s'"
+    assert not any("ALTER TABLE" in sql or "CREATE TABLE" in sql for sql in engine.sql)
+    assert "CREATE INDEX IF NOT EXISTS ix_company_logos_id ON company_logos (id)" in engine.sql
+
+
+def test_company_logos_missing_column_is_still_added(monkeypatch):
+    engine = _fake_postgres(monkeypatch, add_company_logos, {
+        "company_logos": {"columns": _LOGO_COLUMNS[:-1], "indexes": _LOGO_INDEXES},
+    })
+
+    add_company_logos.run_migration(engine)
+
+    assert "ALTER TABLE company_logos ADD COLUMN IF NOT EXISTS blocked_shas JSON" in engine.sql
+
+
+def test_company_logos_migration_sends_no_ddl_on_a_table_create_all_built(tmp_path):
+    # The index names match what create_all gives the model, so the table
+    # create_all builds on a first deploy takes the no-DDL path.
+    from backend.db.models import CompanyLogo
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'built.db'}")
+    Base.metadata.create_all(bind=engine, tables=[CompanyLogo.__table__])
+    sent: list[str] = []
+    event.listen(engine, "before_cursor_execute",
+                 lambda _c, _cur, statement, *_a: sent.append(statement))
+
+    add_company_logos.run_migration(engine)
+
+    assert not [s for s in sent if s.lstrip().upper().startswith(("ALTER", "CREATE", "SET"))]
+
+
+# --- create_all -------------------------------------------------------------------
+
+def _fake_create_all(monkeypatch, main, engine):
+    """Record create_all into the engine's SQL log, with the bind it got."""
+    binds: list = []
+
+    def create_all(bind=None, **_kw):
+        binds.append(bind)
+        engine.sql.append("<create_all>")
+
+    monkeypatch.setattr(main.Base.metadata, "create_all", create_all)
+    return binds
+
+
+def test_create_all_on_postgres_takes_turns_and_caps_lock_waits(monkeypatch):
+    """Two cold starts that both find company_logos missing must not both
+    send CREATE TABLE: the loser would fail on a duplicate pg_type row."""
+    import backend.main as main
+
+    engine = _RecordingPostgres()
+    tables = [name for name in Base.metadata.tables if name != "company_logos"]
+    monkeypatch.setattr(main, "inspect", lambda _engine: _Inspector(
+        {name: {"columns": [], "indexes": []} for name in tables}
+    ))
+    binds = _fake_create_all(monkeypatch, main, engine)
+
+    main.create_tables(engine)
+
+    assert engine.sql[0] == "SET LOCAL lock_timeout = '5s'"
+    assert engine.sql[1].startswith("SELECT pg_advisory_xact_lock(")
+    assert engine.sql[2:] == ["<create_all>"]
+    # Same transaction: the lock is held until the CREATEs commit.
+    assert engine.transactions == 1
+    assert len(binds) == 1 and binds[0] is not engine
+
+
+def test_create_all_on_postgres_takes_no_lock_once_every_table_exists(monkeypatch):
+    import backend.main as main
+
+    engine = _RecordingPostgres()
+    monkeypatch.setattr(main, "inspect", lambda _engine: _Inspector(
+        {name: {"columns": [], "indexes": []} for name in Base.metadata.tables}
+    ))
+    binds = _fake_create_all(monkeypatch, main, engine)
+
+    main.create_tables(engine)
+
+    assert engine.sql == []
+    assert engine.transactions == 0
+    assert binds == []
+
+
+def test_create_all_on_sqlite_is_unchanged(tmp_path):
+    import backend.main as main
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'all.db'}")
+    sent: list[str] = []
+    event.listen(engine, "before_cursor_execute",
+                 lambda _c, _cur, statement, *_a: sent.append(statement))
+
+    main.create_tables(engine)
+
+    assert not any(s.lstrip().upper().startswith(("SET", "SELECT PG_")) for s in sent)
+    assert set(Base.metadata.tables) <= set(inspect(engine).get_table_names())
+
+
 # --- lifespan -----------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_lifespan_survives_a_failing_first_deploy_migration(monkeypatch, caplog):
-    from sqlalchemy.exc import OperationalError
-
+async def test_lifespan_builds_tables_through_the_serialized_create_all(monkeypatch):
     import backend.main as main
 
-    attempted: list[str] = []
+    calls: list[str] = []
+    real_create_tables = main.create_tables
 
-    def lock_timeout():
-        attempted.append("probe")
-        raise OperationalError("ALTER TABLE scraped_jobs ...", {},
-                               Exception("canceling statement due to lock timeout"))
+    def create_tables(bind=None):
+        calls.append("create_tables")
+        real_create_tables(bind)
 
-    def lost_race():
-        attempted.append("logos")
-        raise OperationalError("CREATE TABLE company_logos ...", {},
-                               Exception("duplicate key value violates unique constraint"))
+    def probe_migration():
+        calls.append("probe")
 
-    monkeypatch.setattr(main, "run_listing_probe_columns_migration", lock_timeout)
-    monkeypatch.setattr(main, "run_company_logos_migration", lost_race)
+    monkeypatch.setattr(main, "create_tables", create_tables)
+    monkeypatch.setattr(main, "run_listing_probe_columns_migration", probe_migration)
 
-    with caplog.at_level(logging.ERROR, logger="backend.main"):
+    async with main.lifespan(main.app):
+        pass
+
+    assert calls == ["create_tables", "probe"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration", [
+    "run_listing_probe_columns_migration",
+    # Not swallowed either: every insert path (ingest-batch, cron-ats, the
+    # GitHub lists) reads company_logos through load_branding unguarded.
+    "run_company_logos_migration",
+])
+async def test_a_failed_first_deploy_migration_fails_startup_and_the_next_start_retries(
+    monkeypatch, migration,
+):
+    """Swallowing the failure left a warm instance answering 500 on every
+    ScrapedJob query (a missing mapped column) with nothing to run the
+    migration again. A failed start is retried by the next cold start."""
+    import backend.main as main
+
+    attempts: list[int] = []
+
+    def times_out_once():
+        attempts.append(len(attempts) + 1)
+        if len(attempts) == 1:
+            raise OperationalError("ALTER TABLE ...", {},
+                                   Exception("canceling statement due to lock timeout"))
+
+    monkeypatch.setattr(main, migration, times_out_once)
+
+    with pytest.raises(OperationalError):
         async with main.lifespan(main.app):
-            started = True
+            pytest.fail("an instance whose schema migration failed must not serve")
 
-    assert started
-    assert attempted == ["probe", "logos"]  # one failing never skips the other
-    logged = " ".join(record.getMessage() for record in caplog.records)
-    assert "add_listing_probe_columns" in logged and "add_company_logos" in logged
+    async with main.lifespan(main.app):  # the next cold start
+        pass
+
+    assert attempts == [1, 2]
