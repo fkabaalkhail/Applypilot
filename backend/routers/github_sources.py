@@ -178,8 +178,8 @@ async def cron_ats(
         from backend.services.ats_scraper import ATSScraper, fetch_workday_detail
         from backend.services.country_filter import CountryFilter
         from backend.services.work_type_classifier import WorkTypeClassifier
-        from backend.services.logo_resolver import resolve_logo
-        from backend.services import listing_freshness, source_health
+        from backend.services.logo_resolver import domain_from_logo_url, resolve_logo
+        from backend.services import listing_freshness, logo_cache, source_health
         from backend.data import company_registry
 
         scraper = ATSScraper(filter_entry_level=True, filter_north_america=True)
@@ -201,6 +201,7 @@ async def cron_ats(
         health_map = source_health.get_health_map(
             db, [f"{p}:{s}" for p, s, _ in companies]
         )
+        branding = logo_cache.load_branding(db, [name for _, _, name in companies])
 
         totals = {
             "total_found": 0, "new_jobs": 0, "refreshed": 0, "edited": 0,
@@ -271,10 +272,22 @@ async def cron_ats(
                     else:
                         experience_level = "new_grad"
 
-                    # Resolve an accurate logo: prefer the curated registry logo,
-                    # otherwise derive one from the company domain.
-                    resolved_logo, resolved_domain = resolve_logo(job.company)
-                    company_logo = logo_map.get(job.company.strip().lower()) or resolved_logo
+                    # Resolve an accurate logo: a self-hosted one from the logo
+                    # store, else the curated registry logo, else one derived
+                    # from the company domain. The registry's favicon URL
+                    # carries the curated domain (toasttab.com for Toast,
+                    # notion.so for Notion), which beats the name guess; an
+                    # employer-hosted apply link (gh_jid on carvana.com) is
+                    # next best.
+                    registry_logo = logo_map.get(job.company.strip().lower()) or ""
+                    resolved_logo, resolved_domain = resolve_logo(
+                        job.company,
+                        known_domain=domain_from_logo_url(registry_logo),
+                        apply_url=job.url,
+                    )
+                    company_logo, resolved_domain = logo_cache.brand(
+                        branding, job.company, registry_logo or resolved_logo, resolved_domain
+                    )
 
                     scraped_job = ScrapedJob(
                         title=job.title,
@@ -411,9 +424,13 @@ async def scrape_linkedin_jobs(
             else:
                 experience_level = "new_grad"
 
-            # Resolve logo from the company domain, never guess "<name>.com".
+            # Resolve logo from the company domain; a self-hosted logo (and
+            # verified domain) from the logo store wins.
             from backend.services.logo_resolver import resolve_logo as _resolve_logo
-            company_logo, company_domain = _resolve_logo(job.company)
+            from backend.services.logo_cache import brand, load_branding
+            company_logo, company_domain = brand(
+                load_branding(db, [job.company]), job.company, *_resolve_logo(job.company)
+            )
 
             # Parse the card's posted date (ISO "YYYY-MM-DD") when present.
             posted_date = None

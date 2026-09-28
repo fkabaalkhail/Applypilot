@@ -22,11 +22,14 @@ from __future__ import annotations
 
 import re
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 # Logo image provider. Google's favicon service is reliable and CORS-friendly.
 # sz=128 gives a crisp logo for card + detail views.
 _LOGO_TEMPLATE = "https://www.google.com/s2/favicons?domain={domain}&sz=128"
+
+# A bare hostname: labels of letters/digits/hyphens with a dotted suffix.
+_DOMAIN_SHAPE = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$")
 
 # Multi-part public suffixes we must keep intact when reducing to a
 # registrable domain (so "company.co.uk" doesn't collapse to "co.uk").
@@ -44,6 +47,33 @@ _NON_COMPANY_HOSTS = {
     "glassdoor.com", "github.com", "greenhouse.io", "lever.co",
     "myworkdayjobs.com", "ashbyhq.com", "smartrecruiters.com",
     "icims.com", "taleo.net", "bit.ly", "google.com",
+}
+
+# Hosted career-site and job-board platforms. An apply link on one of these
+# names the vendor, not the employer, so it is never a domain hint (an apply
+# link on carvana.com/careers is).
+_ATS_HOSTS = {
+    "myworkdaysite.com", "myworkday.com", "successfactors.com",
+    "successfactors.eu", "sapsf.com", "sapsf.eu", "oraclecloud.com",
+    "jobvite.com", "bamboohr.com", "workable.com", "recruitee.com",
+    "breezy.hr", "applytojob.com", "jazzhr.com", "eightfold.ai",
+    "phenompeople.com", "avature.net", "csod.com", "brassring.com",
+    "ultipro.com", "dayforcehcm.com", "paylocity.com", "paycomonline.net",
+    "adp.com", "rippling.com", "pinpointhq.com", "teamtailor.com",
+    "personio.de", "personio.com", "gem.com", "dover.com", "comeet.com",
+    "comeet.co", "zohorecruit.com", "freshteam.com", "hrmdirect.com",
+    "applicantpro.com", "jobscore.com", "careers-page.com", "trinethire.com",
+    "wellfound.com", "angel.co", "ycombinator.com", "workatastartup.com",
+    "simplify.jobs", "builtin.com", "ziprecruiter.com", "monster.com",
+    "careerbuilder.com", "joinhandshake.com", "notion.site", "github.io",
+    "lnkd.in", "tinyurl.com", "governmentjobs.com", "usajobs.gov",
+    "careerplug.com", "paycor.com", "recruitingbypaycor.com",
+    "clearcompany.com", "applicantstack.com", "jobdiva.com", "ceipal.com",
+    "bullhornstaffing.com", "hirebridge.com", "isolvedhire.com",
+    "silkroad.com", "catsone.com", "homerun.co", "join.com", "manatal.com",
+    "recruitcrm.io", "welcometothejungle.com", "otta.com", "ripplematch.com",
+    "dice.com", "hired.com", "remoteok.com", "weworkremotely.com",
+    "remotive.com",
 }
 
 # Curated map for companies whose display name does not map cleanly to a domain.
@@ -160,8 +190,45 @@ def domain_from_url(url: Optional[str]) -> Optional[str]:
     # Reject job boards / ATS / social hosts, not real company sites.
     if registrable in _NON_COMPANY_HOSTS or host in _NON_COMPANY_HOSTS:
         return None
+    if registrable in _ATS_HOSTS:
+        return None
 
     return registrable
+
+
+def domain_from_logo_url(logo_url: Optional[str]) -> Optional[str]:
+    """The company domain a favicon-service URL was built for.
+
+    Registry entries store ``https://www.google.com/s2/favicons?domain=notion.so``;
+    the ``domain=`` value is a curated, correct domain (toasttab.com for Toast,
+    notion.so for Notion) that the name guess gets wrong. None for any other URL.
+    """
+    if not logo_url or "domain=" not in logo_url:
+        return None
+    try:
+        query = urlparse(logo_url.strip()).query
+    except ValueError:
+        return None
+    values = parse_qs(query).get("domain") or []
+    if not values:
+        return None
+    candidate = values[0].strip().lower()
+    if not _DOMAIN_SHAPE.match(candidate):
+        return None
+    return domain_from_url(candidate)
+
+
+def company_website_url(url: Optional[str]) -> str:
+    """``url`` when it is an http(s) link to a real company website, else "".
+
+    Scraper payloads carry employer links of mixed quality (LinkedIn company
+    pages, ATS boards, bare hosts); only a real employer site is worth storing
+    as company_url, and only http(s) is safe to render as a link.
+    """
+    raw = (url or "").strip()
+    if not raw.lower().startswith(("https://", "http://")) or len(raw) > 500:
+        return ""
+    return raw if domain_from_url(raw) else ""
 
 
 def _registrable_domain(host: str) -> str:
@@ -174,6 +241,13 @@ def _registrable_domain(host: str) -> str:
     if last_two in _MULTI_PART_TLDS:
         return last_three
     return last_two
+
+
+def curated_domain(company: Optional[str]) -> Optional[str]:
+    """The KNOWN_DOMAINS entry for a company name, or None. Curated, so it
+    outranks evidence like an apply link on a careers-only domain
+    (lifeattiktok.com, amazon.jobs)."""
+    return KNOWN_DOMAINS.get(_normalize_name(company or "")) or None
 
 
 def domain_from_name(company: Optional[str]) -> Optional[str]:
@@ -205,12 +279,26 @@ def domain_from_name(company: Optional[str]) -> Optional[str]:
     return f"{token}.com"
 
 
-def resolve_domain(company: Optional[str], company_url: Optional[str] = None) -> Optional[str]:
+def resolve_domain(
+    company: Optional[str],
+    company_url: Optional[str] = None,
+    *,
+    known_domain: Optional[str] = None,
+    apply_url: Optional[str] = None,
+) -> Optional[str]:
     """Resolve the best company domain.
 
-    Priority: a real company website URL > curated known map / name guess.
+    Priority: a domain the caller already trusts (the curated registry) >
+    a real company website URL > curated known map > an employer-hosted
+    apply link > name guess.
     """
-    return domain_from_url(company_url) or domain_from_name(company)
+    return (
+        (known_domain or "").strip().lower()
+        or domain_from_url(company_url)
+        or curated_domain(company)
+        or domain_from_url(apply_url)
+        or domain_from_name(company)
+    )
 
 
 def logo_url_for_domain(domain: Optional[str]) -> str:
@@ -220,11 +308,19 @@ def logo_url_for_domain(domain: Optional[str]) -> str:
     return _LOGO_TEMPLATE.format(domain=domain)
 
 
-def resolve_logo(company: Optional[str], company_url: Optional[str] = None) -> tuple[str, str]:
+def resolve_logo(
+    company: Optional[str],
+    company_url: Optional[str] = None,
+    *,
+    known_domain: Optional[str] = None,
+    apply_url: Optional[str] = None,
+) -> tuple[str, str]:
     """Resolve (logo_url, domain) for a company.
 
     Both elements are "" when nothing could be resolved, letting callers fall
     back to a letter avatar instead of rendering a broken image.
     """
-    domain = resolve_domain(company, company_url)
+    domain = resolve_domain(
+        company, company_url, known_domain=known_domain, apply_url=apply_url
+    )
     return logo_url_for_domain(domain), (domain or "")

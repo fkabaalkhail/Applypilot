@@ -5,8 +5,9 @@ the employer's own board (ats/github sources).
 The direct row is strictly better (real description, direct apply link) so
 inferior twins are soft-hidden (`duplicate_of` = winner id, never deleted:
 saved-job and application records may reference them) and the winner inherits
-whatever the twin knew that it doesn't (applicant_count, salary_range, and a
-description when the winner has none).
+whatever the twin knew that it doesn't (applicant_count, salary_range, a
+description when the winner has none, and a real logo when the winner's is
+generated).
 
 Matching is deliberately exact, never fuzzy: normalized employer + normalized
 title + city containment. "Software Engineer Intern, Infrastructure" is a
@@ -24,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.models import ScrapedJob
 from backend.services.location_parser import fold
+from backend.services.logo_cache import logo_quality
 
 DIRECT_SOURCES = ("ats", "github")
 INFERIOR_SOURCES = ("linkedin", "indeed")
@@ -225,10 +227,19 @@ def mark_inferior_twins(db: Session, winner: ScrapedJob) -> int:
                 and len(twin.description or "") >= _MIN_COPY_DESC_LEN):
             winner.description = twin.description
             winner.description_sections = None
+        _inherit_logo(winner, twin)
         marked += 1
     if marked:
         db.commit()
     return marked
+
+
+def _inherit_logo(winner: ScrapedJob, twin: ScrapedJob) -> None:
+    """A LinkedIn twin often carries the employer's real logo while the direct
+    winner has only a generated favicon; hiding the twin must not hide the
+    logo too."""
+    if logo_quality(winner.company_logo) == 0 and logo_quality(twin.company_logo) > 0:
+        winner.company_logo = twin.company_logo
 
 
 def absorb_new_aggregator_rows(db: Session, limit: int = 300) -> int:
@@ -325,6 +336,7 @@ def absorb_new_aggregator_rows(db: Session, limit: int = 300) -> int:
                 and len(row.description or "") >= _MIN_COPY_DESC_LEN):
             best.description = row.description
             best.description_sections = None
+        _inherit_logo(best, row)
         marked += 1
 
     # A row absorbed early in the pass may itself absorb later (A→B, B→C):
