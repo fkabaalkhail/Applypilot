@@ -22,12 +22,15 @@ LinkedIn rate-limits even a residential IP now and then: a 429 pauses it
 (--linkedin-cooldown, doubling on repeats) and queued calls wait. If it
 keeps refusing, the run stops, stores nothing that finished without
 LinkedIn (a wordmark stored now would be kept for good), and a re-run
-picks up where it left off.
+picks up where it left off. An employer whose harvest LinkedIn never
+answered at all (errors or a tarpit, no 429) is deferred the same way.
 
 A wrong stored logo is undone with --reharvest NAME (implies --company
 NAME): the image is demoted and blocked for good, rows still showing it get
 back the hotlink it replaced, and the employer is harvested again, trying
-the hotlinks it replaced first (services/logo_cache.demote_logo).
+the hotlinks it replaced first (services/logo_cache.demote_logo). A pick
+its verified domain chose (homepage, Wikidata, s2) rejects that domain too,
+so no other icon from the same wrong site comes back.
 
 The default is a DRY RUN: it harvests and reports what WOULD be stored and
 writes nothing. It runs no migrations, uses a session that refuses to
@@ -271,10 +274,14 @@ async def run(
                 if done is None:
                     out(f"reharvest {name}: no stored logo, nothing to demote")
                     continue
+                rejected = (
+                    f"; {'would reject' if dry else 'rejected'} its domain {done['rejected_domain']}"
+                    if done["rejected_domain"] else ""
+                )
                 out(f"reharvest {name}: {'would demote' if dry else 'demoted'} "
                     f"{done['source'] or '?'} {done['source_url'][:100]} ({done['sha'][:12]}); "
                     f"{done['rows']} rows {'would get' if dry else 'got'} back "
-                    f"{done['restored_to'][:100] or 'no logo'}")
+                    f"{done['restored_to'][:100] or 'no logo'}{rejected}")
 
             # Step 0: rows of employers already stored.
             if has_store:
@@ -325,13 +332,20 @@ async def run(
                 )
                 li = logo_harvester.linkedin_stats(client)
                 gave_up = bool(args.linkedin_cooldown and li["blocked"])
-                if gave_up:
-                    # Whatever finished after LinkedIn was given up on went
-                    # without its best source: store none of it now (a
-                    # wordmark would be kept for good); the next run retries.
+                if args.linkedin_cooldown:
+                    # Whatever finished after LinkedIn was given up on, or
+                    # whose harvest LinkedIn never answered (a tarpit or
+                    # errors, no 429), went without its best source: store
+                    # none of it now (a wordmark would be kept for good, a
+                    # provisional logo made final); the next run retries.
+                    def without_linkedin(o: HarvestOutcome) -> bool:
+                        return o.linkedin_missing or (
+                            gave_up and finished.get(o.plan.key, 0.0) >= (li["blocked_at"] or 0.0)
+                        )
+
                     got = [
                         o._replace(status="deferred")
-                        if finished.get(o.plan.key, 0.0) >= (li["blocked_at"] or 0.0)
+                        if without_linkedin(o)
                         and not (o.status == "ok" and o.result.source.startswith("linkedin"))
                         else o
                         for o in got

@@ -325,6 +325,31 @@ _blocked_shas: contextvars.ContextVar[frozenset] = contextvars.ContextVar(
 )
 
 
+class HarvestReport:
+    """What one harvest tells its caller besides the logo. A miss or a
+    lower-tier pick proves little when LinkedIn, the best source, never
+    answered, or when the time cap ended the cascade early."""
+
+    def __init__(self) -> None:
+        self.linkedin_asked = False     # the cascade reached its LinkedIn step
+        self.linkedin_answered = False  # ... and LinkedIn's name search answered (HTTP 200)
+        self.timed_out = False          # the time cap (HARVEST_TIME_CAP) ended the harvest
+
+    @property
+    def linkedin_missing(self) -> bool:
+        """LinkedIn was needed and never answered: a tarpit, connection
+        errors, a 429 that gave up on it, or the time cap before its answer."""
+        return self.linkedin_asked and not self.linkedin_answered
+
+
+# A caller that needs the report (logo_cache.run_harvest) sets a fresh one
+# here around each harvest; the harvest fills it in. Unset (the legacy URL
+# API), nothing is recorded.
+harvest_report: contextvars.ContextVar[HarvestReport | None] = contextvars.ContextVar(
+    "logo_harvest_report", default=None
+)
+
+
 async def _try_logo(
     client: httpx.AsyncClient, url: str, *, allow_wide: bool = False
 ) -> NormalizedLogo | None:
@@ -496,7 +521,13 @@ async def _linkedin_search_logo(
         "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
         params={"keywords": company, "start": 0},
     )
-    if resp is None or resp.status_code != 200:
+    answered = resp is not None and resp.status_code == 200
+    report = harvest_report.get()
+    if report is not None:
+        # The search is the cascade's last LinkedIn call, and it answers 200
+        # even for a name with no postings: only this one decides.
+        report.linkedin_answered = answered
+    if not answered:
         return None
     key = name_key(company)
     # (company page, card name key, logo url): exact names first; failing
@@ -1028,6 +1059,9 @@ async def _harvest(client: httpx.AsyncClient, hints: LogoHints) -> HarvestResult
         return hit
 
     if name_key(company):
+        report = harvest_report.get()
+        if report is not None:
+            report.linkedin_asked = True
         for job_id in _linkedin_job_ids(hints.job_urls or [])[:2]:
             found = await _linkedin_job_logo(client, job_id, company)
             if found:
@@ -1072,10 +1106,17 @@ async def harvest_company_logo(
 ) -> HarvestResult | None:
     """Best real logo for a company, downloaded and normalized, or None.
 
-    Never raises; gives up after time_cap seconds (HARVEST_TIME_CAP)."""
+    Never raises; gives up after time_cap seconds (HARVEST_TIME_CAP), which
+    the current harvest_report records as timed_out."""
     token = _blocked_shas.set(frozenset(getattr(hints, "blocked_shas", None) or ()))
     try:
         result = await asyncio.wait_for(_harvest(client, hints), time_cap or HARVEST_TIME_CAP)
+    except asyncio.TimeoutError:
+        report = harvest_report.get()
+        if report is not None:
+            report.timed_out = True
+        logger.info("logo harvest: %r gave up at the time cap", hints.company)
+        return None
     except Exception as exc:
         logger.info("logo harvest: %r gave up: %r", hints.company, exc)
         return None
