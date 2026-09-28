@@ -2,9 +2,12 @@
 
 import hashlib
 import io
+import struct
+import xml.etree.ElementTree as ET
+import zlib
 
 import pytest
-from PIL import Image, ImageDraw
+from PIL import IcoImagePlugin, Image, ImageDraw
 
 import backend.services.logo_image as logo_image
 from backend.services.logo_image import image_size, is_placeholder, normalize_logo
@@ -124,6 +127,57 @@ def test_ico_uses_largest_frame():
     assert normalize_logo(small, "image/x-icon") is None
 
 
+def _png_claiming(width: int, height: int) -> bytes:
+    """A PNG whose IHDR declares width x height over a few bytes of data."""
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        crc = zlib.crc32(kind + body) & 0xFFFFFFFF
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(b"\x00" * 64)) + chunk(b"IEND", b""))
+
+
+def _ico_with(frame: bytes) -> bytes:
+    """A one-frame ICO whose directory says 256x256 (it cannot say more)."""
+    entry = struct.pack("<BBBBHHII", 0, 0, 0, 0, 1, 32, len(frame), 6 + 16)
+    return struct.pack("<HHH", 0, 1, 1) + entry + frame
+
+
+@pytest.mark.parametrize("frame", [
+    _png_claiming(8000, 8000),  # 64M px: under Pillow's own bomb check
+    struct.pack("<IiiHH", 40, 9000, 18000, 1, 32) + b"\x00" * 64,  # BMP frame
+], ids=["png-frame", "bmp-frame"])
+def test_ico_bomb_is_refused_before_any_frame_is_decoded(monkeypatch, frame):
+    """Pillow decodes an ICO's frame inside Image.open(), so the pixel cap
+    has to be read from the frame headers first."""
+    decoded = []
+    real_frame = IcoImagePlugin.IcoFile.frame
+
+    def spy(self, idx):
+        decoded.append(idx)
+        return real_frame(self, idx)
+
+    monkeypatch.setattr(IcoImagePlugin.IcoFile, "frame", spy)
+    ico = _ico_with(frame)
+    assert normalize_logo(ico, "image/x-icon") is None
+    assert image_size(ico) == (0, 0)
+    assert decoded == []
+
+
+def test_ico_with_a_normal_png_frame_still_decodes():
+    big = Image.open(io.BytesIO(_logo(256))).convert("RGBA")
+    logo = normalize_logo(_ico_with(_img_bytes(big)), "image/x-icon")
+    assert logo is not None and (logo.width, logo.height) == (256, 256)
+
+
+def test_only_logo_raster_formats_are_decoded():
+    im = Image.open(io.BytesIO(_logo(160))).convert("RGBA")
+    assert normalize_logo(_img_bytes(im, "BMP")) is not None
+    assert normalize_logo(_img_bytes(im, "TIFF")) is None  # no logo endpoint serves TIFF
+    assert normalize_logo(_img_bytes(im.convert("RGB"), "PPM")) is None
+
+
 def test_decodes_webp_and_gif():
     im = Image.open(io.BytesIO(_logo(160))).convert("RGBA")
     assert normalize_logo(_img_bytes(im, "WEBP")) is not None
@@ -176,10 +230,94 @@ UNSAFE_SVGS = {
     "too-big": _svg('<path d="M0 0h9v9z"/><!--' + "x" * 110_000 + "-->"),
 }
 
+_XHTML = 'xmlns:h="http://www.w3.org/1999/xhtml"'
+_EMBEDDED_SVG = "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLz4="
+# Each of these got past the old sanitizer (it checked the parsed tree, then
+# stored the raw bytes).
+BYPASS_SVGS = {
+    "xml-stylesheet-pi": b'<?xml-stylesheet type="text/xsl" href="https://evil.example/x.xsl"?>'
+                         + _svg('<path d="M0 0h9v9z"/>'),
+    "pi-after-xml-declaration": b'<?xml version="1.0"?><?xml-stylesheet href="https://evil.example/x.css"?>'
+                                + _svg('<path d="M0 0h9v9z"/>'),
+    "pi-in-body": _svg('<?evil payload?><path d="M0 0h9v9z"/>'),
+    "xhtml-meta-refresh": _svg('<h:meta http-equiv="refresh" content="0;url=https://evil.example"/>'
+                               '<path d="M0 0h9v9z"/>', f'viewBox="0 0 100 100" {_XHTML}'),
+    "xhtml-button-formaction": _svg('<h:form><h:button formaction="https://evil.example">x</h:button>'
+                                    '</h:form><path d="M0 0h9v9z"/>', f'viewBox="0 0 100 100" {_XHTML}'),
+    "xhtml-video-poster": _svg('<h:video poster="https://evil.example/p.png"/><path d="M0 0h9v9z"/>',
+                               f'viewBox="0 0 100 100" {_XHTML}'),
+    "use-svg-data-uri": _svg(f'<use href="data:image/svg+xml;base64,{_EMBEDDED_SVG}#x"/><path d="M0 0h9v9z"/>'),
+    "image-svg-data-uri": _svg(f'<image href="data:image/svg+xml;base64,{_EMBEDDED_SVG}" width="9" height="9"/>'
+                               '<path d="M0 0h9v9z"/>'),
+    "css-escape-style-attr": _svg('<path d="M0 0h9v9z" style="fill:u\\72l(https://evil.example/x)"/>'),
+    "css-escape-presentation-attr": _svg('<path d="M0 0h9v9z" fill="\\75 rl(https://evil.example/p.svg#g)"/>'),
+    "css-image-set": _svg('<style>path{fill:red;background:image-set("https://evil.example/x.png" 1x)}</style>'
+                          '<path d="M0 0h9v9z"/>'),
+    "style-attr-import": _svg('<path d="M0 0h9v9z" style="@import \'https://evil.example/x.css\'"/>'),
+    "css-font-face": _svg('<style>@font-face{font-family:x;src:local(Arial)}path{fill:red}</style>'
+                          '<path d="M0 0h9v9z"/>'),
+    "xml-base": _svg('<path d="M0 0h9v9z"/>', 'viewBox="0 0 100 100" xml:base="https://evil.example/"'),
+    "foreign-namespace-attribute": _svg('<path xmlns:ev="http://www.w3.org/2001/xml-events" ev:event="click" '
+                                        'd="M0 0h9v9z"/>'),
+    "set-element": _svg('<path d="M0 0h9v9z"><set attributeName="fill" to="red"/></path>'),
+    "unknown-svg-element": _svg('<blink/><path d="M0 0h9v9z"/>'),
+    "utf16": _svg('<path d="M0 0h9v9z"/>').decode().encode("utf-16"),
+    "utf16-entity": ('<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE svg [<!ENTITY a "x">]>'
+                     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 9"><text>&a;</text>'
+                     '<path d="M0 0h9v9z"/></svg>').encode("utf-16"),
+    "dtd-default-attribute": b'<!DOCTYPE svg [<!ATTLIST svg onload CDATA "alert(1)">]>'
+                             + _svg('<path d="M0 0h9v9z"/>'),
+}
+
 
 @pytest.mark.parametrize("raw", list(UNSAFE_SVGS.values()), ids=list(UNSAFE_SVGS))
 def test_svg_unsafe_or_broken_rejected(raw):
     assert normalize_logo(raw, "image/svg+xml") is None
+
+
+@pytest.mark.parametrize("raw", list(BYPASS_SVGS.values()), ids=list(BYPASS_SVGS))
+def test_svg_sanitizer_bypasses_rejected(raw):
+    assert normalize_logo(raw, "image/svg+xml") is None
+
+
+INKSCAPE_SVG = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+    '<!-- Created with Inkscape (http://www.inkscape.org/) -->\n'
+    '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n'
+    '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"'
+    ' xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"'
+    ' xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"'
+    ' xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:cc="http://creativecommons.org/ns#"'
+    ' viewBox="0 0 100 100" xml:space="preserve" inkscape:version="1.3">'
+    '<sodipodi:namedview id="nv" pagecolor="#ffffff"/>'
+    '<metadata><rdf:RDF><cc:Work rdf:about=""/></rdf:RDF></metadata>'
+    '<style><![CDATA[ g > path { fill: #123456 } '
+    '@media (prefers-color-scheme: dark) { g > path { fill: #fff } } ]]></style>'
+    '<defs><linearGradient id="a"><stop offset="0" stop-color="#123456"/></linearGradient>'
+    '<linearGradient id="b" xlink:href="#a"/></defs>'
+    '<g inkscape:label="Layer 1" inkscape:groupmode="layer">'
+    '<path d="M0 0h100v100H0z" fill="url(#b)"/><text x="1" y="9">A &amp; B</text></g>'
+    '</svg>'
+).encode()
+
+
+def test_svg_is_stored_as_the_sanitized_tree_not_the_input():
+    logo = normalize_logo(INKSCAPE_SVG, "image/svg+xml")
+    assert logo is not None and (logo.width, logo.height) == (100, 100)
+    assert logo.sha == hashlib.sha1(logo.data).hexdigest()
+    for gone in (b"<?", b"<!", b"inkscape", b"sodipodi", b"rdf", b"metadata", b"Created with"):
+        assert gone not in logo.data
+    root = ET.fromstring(logo.data)  # well-formed, and still an SVG document
+    svg = "{http://www.w3.org/2000/svg}"
+    assert root.tag == svg + "svg"
+    assert root.get("{http://www.w3.org/XML/1998/namespace}space") == "preserve"
+    linked = root.find(f"{svg}defs/{svg}linearGradient[@id='b']")
+    assert linked.get("{http://www.w3.org/1999/xlink}href") == "#a"
+    assert "g > path" in root.find(svg + "style").text  # CDATA kept as (escaped) text
+    assert root.find(f"{svg}g/{svg}text").text == "A & B"
+    # Idempotent: the stored copy passes the sanitizer unchanged.
+    again = normalize_logo(logo.data, "image/svg+xml")
+    assert again is not None and again.data == logo.data
 
 
 def test_svg_all_white_or_banner_rejected():

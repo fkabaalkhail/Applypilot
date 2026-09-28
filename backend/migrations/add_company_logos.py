@@ -38,12 +38,21 @@ CREATE TABLE company_logos (
     height INTEGER,
     attempts INTEGER NOT NULL DEFAULT 0,
     rejected_domains JSON,
+    prior_logo_urls JSON,
+    blocked_shas JSON,
     checked_at TIMESTAMP,
     next_retry_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 )
 """
+
+# Columns added after the table first shipped to a database (dev); nullable,
+# so adding them is instant.
+_ADDED_COLUMNS = {
+    "prior_logo_urls": "JSON",
+    "blocked_shas": "JSON",
+}
 
 # Same names SQLAlchemy gives the model's index=True columns, so a table that
 # create_all already built matches and IF NOT EXISTS skips them.
@@ -60,9 +69,15 @@ def _is_sqlite(engine) -> bool:
 
 
 def run_migration(engine=None) -> None:
-    """Create company_logos and its indexes if missing."""
+    """Create company_logos and its indexes if missing, and add any column
+    a table created before it existed lacks."""
     engine = engine or default_engine
-    tables = set(inspect(engine).get_table_names())
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    existing = (
+        {c["name"] for c in inspector.get_columns("company_logos")}
+        if "company_logos" in tables else set()
+    )
 
     with engine.begin() as conn:
         if "company_logos" not in tables:
@@ -73,5 +88,10 @@ def run_migration(engine=None) -> None:
                 ddl = ddl.replace("BYTEA", "BLOB").replace("DEFAULT NOW()", "DEFAULT CURRENT_TIMESTAMP")
             conn.execute(text(ddl))
             logger.info("Created company_logos.")
+        else:
+            for column, kind in _ADDED_COLUMNS.items():
+                if column not in existing:
+                    conn.execute(text(f"ALTER TABLE company_logos ADD COLUMN {column} {kind}"))
+                    logger.info("Added company_logos.%s.", column)
         for index in _INDEXES:
             conn.execute(text(index))

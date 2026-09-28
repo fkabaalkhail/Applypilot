@@ -17,6 +17,10 @@ actually rendered badly on prod:
   wordmarks are wide by design and get trimmed + padded instead).
 
 Single-colour logos are NOT rejected: most real logos are one colour.
+
+SVGs are stored as a re-serialization of the parsed, allowlisted tree, never
+as the downloaded bytes: whatever the parser drops (processing instructions,
+DOCTYPE, comments) cannot reach the stored copy.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ import io
 import logging
 import math
 import re
+import struct
 import xml.etree.ElementTree as ET
 from typing import NamedTuple
 
@@ -37,7 +42,14 @@ LOGO_SIZE = 128
 MIN_SIDE = 64
 MAX_RAW_BYTES = 5_000_000
 MAX_SVG_BYTES = 100_000
-_MAX_PIXELS = 40_000_000  # decompression-bomb guard, checked before decoding
+# Decompression-bomb guard, checked before decoding: from the header for
+# lazily decoded formats, from the frame headers for ICO (_ico_too_large).
+_MAX_PIXELS = 40_000_000
+# The only raster formats a logo arrives in. Pillow sniffs dozens more (EPS,
+# PSD, TIFF, ...) that no logo endpoint serves.
+_RASTER_FORMATS = ("PNG", "JPEG", "GIF", "WEBP", "ICO", "BMP")
+_ICO_MAGIC = b"\x00\x00\x01\x00"
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 # sha1(raw bytes)[:16] of images that are placeholders, not company logos.
 PLACEHOLDER_SHAS = frozenset({
@@ -106,10 +118,40 @@ def _aspect_ok(width: float, height: float, allow_wide: bool) -> bool:
 
 # --- raster ---------------------------------------------------------------
 
+def _ico_too_large(raw: bytes) -> bool:
+    """True when any frame of an ICO declares more than _MAX_PIXELS, or its
+    directory cannot be read. Only headers are read: Pillow decodes an ICO's
+    largest frame inside Image.open() itself, before a size check on the
+    opened image could run, and its own bomb check lets a PNG frame of up to
+    ~179M pixels through."""
+    try:
+        (count,) = struct.unpack_from("<H", raw, 4)
+        if count == 0:
+            return True
+        for index in range(count):
+            (offset,) = struct.unpack_from("<I", raw, 6 + 16 * index + 12)
+            head = raw[offset:offset + 24]
+            if head.startswith(_PNG_MAGIC):
+                width, height = struct.unpack_from(">II", head, 16)  # IHDR
+            elif struct.unpack_from("<I", head, 0)[0] == 12:  # BITMAPCOREHEADER
+                width, height = struct.unpack_from("<HH", head, 4)
+            else:
+                # BITMAPINFOHEADER: signed, and the height counts the AND
+                # mask too; Pillow's own check uses the same numbers.
+                width, height = struct.unpack_from("<ii", head, 4)
+            if abs(width) * abs(height) > _MAX_PIXELS:
+                return True
+    except struct.error:
+        return True
+    return False
+
+
 def _decode(raw: bytes) -> Image.Image | None:
     """Decoded image (largest frame for ICO, first frame otherwise), or None."""
     try:
-        im = Image.open(io.BytesIO(raw))
+        if raw.startswith(_ICO_MAGIC) and _ico_too_large(raw):
+            return None
+        im = Image.open(io.BytesIO(raw), formats=_RASTER_FORMATS)
         if im.width * im.height > _MAX_PIXELS:
             return None
         if (im.format or "").upper() == "ICO":
@@ -201,10 +243,63 @@ def _normalize_raster(raw: bytes, allow_wide: bool) -> NormalizedLogo | None:
 # --- svg ------------------------------------------------------------------
 
 _SVG_NS = "http://www.w3.org/2000/svg"
-# Elements that can run code, embed HTML or pull in other documents.
-_SVG_BANNED_TAGS = {"script", "foreignobject", "iframe", "embed", "object", "handler", "listener"}
-_DOCTYPE = re.compile(rb"<!DOCTYPE[^>\[]*>", re.IGNORECASE)
+_XLINK_NS = "http://www.w3.org/1999/xlink"
+_XML_NS = "http://www.w3.org/XML/1998/namespace"
+# What a logo is drawn with (lowercased local names in the SVG namespace).
+# Anything else rejects the file: script, foreignObject, animation elements
+# (<set>/<animate> can rewrite an href), feImage, fonts, and every element
+# outside the SVG namespace (XHTML meta/base/button/video, MathML).
+_SVG_ELEMENTS = frozenset({
+    "svg", "g", "defs", "symbol", "use", "switch", "a", "view", "title", "desc",
+    "path", "rect", "circle", "ellipse", "line", "polyline", "polygon",
+    "text", "tspan", "textpath", "style", "image",
+    "lineargradient", "radialgradient", "stop", "pattern", "clippath", "mask", "marker",
+    "filter", "feblend", "fecolormatrix", "fecomponenttransfer", "fecomposite",
+    "feconvolvematrix", "fediffuselighting", "fedisplacementmap", "fedistantlight",
+    "fedropshadow", "feflood", "fefunca", "fefuncb", "fefuncg", "fefuncr",
+    "fegaussianblur", "femerge", "femergenode", "femorphology", "feoffset",
+    "fepointlight", "fespecularlighting", "fespotlight", "fetile", "feturbulence",
+})
+# Editor bookkeeping that never renders (Inkscape, Sodipodi, RDF metadata,
+# Illustrator, Sketch, Serif, Figma): dropped from the stored copy, elements
+# and attributes alike, as is <metadata>.
+_EDITOR_NAMESPACES = frozenset({
+    "http://www.inkscape.org/namespaces/inkscape",
+    "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd",
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "http://creativecommons.org/ns#",
+    "http://purl.org/dc/elements/1.1/",
+    "http://ns.adobe.com/AdobeIllustrator/10.0/",
+    "http://ns.adobe.com/AdobeSVGViewerExtensions/3.0/",
+    "http://ns.adobe.com/Extensibility/1.0/",
+    "http://ns.adobe.com/Graphs/1.0/",
+    "http://ns.adobe.com/SaveForWeb/1.0/",
+    "http://ns.adobe.com/Variables/1.0/",
+    "http://www.bohemiancoding.com/sketch/ns",
+    "http://www.serif.com/",
+    "http://www.figma.com/figma/ns",
+})
+# Attribute namespaces kept: none, a few xlink ones, xml:space/lang (never
+# xml:base). Any other namespace rejects the file.
+_ATTR_NAMESPACES = {
+    "": frozenset(),
+    _XLINK_NS: frozenset({"href", "title", "type", "role", "arcrole", "show", "actuate"}),
+    _XML_NS: frozenset({"space", "lang"}),
+}
+# An internal DTD subset declares entities or default attributes.
+_DTD_SUBSET = re.compile(r"<!DOCTYPE[^>]*\[", re.IGNORECASE)
 _CSS_URL = re.compile(r"url\(\s*['\"]?\s*([^'\")\s]+)", re.IGNORECASE)
+_RASTER_DATA_URI = re.compile(r"data:image/(?:png|jpe?g|gif|webp);base64,", re.IGNORECASE)
+# CSS that can fetch, or hide a fetch from the url() check: escapes (u\72l(
+# spells url(), any at-rule but @media (@import, @font-face, @namespace),
+# image-set()/image()/element()/cross-fade()/src(), legacy expression() and
+# bindings.
+_CSS_BANNED = re.compile(
+    r"\\|@(?!media\b)|(?:image(?:-set)?|element|cross-fade|expression|src)\(|"
+    r"-moz-binding|behavior:|javascript:|vbscript:",
+    re.IGNORECASE,
+)
+_CONTROL_OR_SPACE = re.compile(r"[\s\x00-\x1f]+")
 _NUMBER = re.compile(r"[-+]?\d*\.?\d+")
 _COLOR_ATTRS = ("fill", "stroke", "stop-color", "color")
 _CSS_COLOR = re.compile(r"(?:fill|stroke|stop-color|color)\s*:\s*([^;}\"']+)", re.IGNORECASE)
@@ -216,18 +311,72 @@ def _local(name: str) -> str:
     return name.rsplit("}", 1)[-1].lower()
 
 
-def _safe_ref(value: str) -> bool:
-    """A reference an <img>-rendered SVG may keep: in-document or an inline image."""
-    v = re.sub(r"\s+", "", value).lower()
-    return v.startswith("#") or v.startswith("data:image/")
+def _namespace(name: str) -> str:
+    return name[1:].split("}", 1)[0] if name.startswith("{") else ""
+
+
+def _safe_ref(value: str, *, inline_image: bool = False) -> bool:
+    """A reference an <img>-rendered SVG may keep: in-document (#id), or on
+    an <image> an inline raster. Never an SVG data: URI, which is a whole
+    second document."""
+    v = _CONTROL_OR_SPACE.sub("", value)
+    return v.startswith("#") or (inline_image and bool(_RASTER_DATA_URI.match(v)))
+
+
+def _css_ok(css: str) -> bool:
+    """Style text that cannot fetch anything: url() only to #ids, and none
+    of _CSS_BANNED (checked with and without whitespace)."""
+    if _CSS_BANNED.search(css) or _CSS_BANNED.search(_CONTROL_OR_SPACE.sub("", css)):
+        return False
+    return all(ref.startswith("#") for ref in _CSS_URL.findall(css))
+
+
+class _SvgTarget:
+    """Parser target building the usual tree, counting processing
+    instructions on the way: the default target drops them silently, so a
+    prolog <?xml-stylesheet?> would never be inspected."""
+
+    def __init__(self) -> None:
+        self._builder = ET.TreeBuilder()
+        self.instructions = 0
+
+    def start(self, tag, attrs):
+        return self._builder.start(tag, attrs)
+
+    def end(self, tag):
+        return self._builder.end(tag)
+
+    def data(self, text):
+        self._builder.data(text)
+
+    def pi(self, target, text=None):
+        self.instructions += 1
+
+    def close(self):
+        return self._builder.close()
 
 
 def _parse_svg(raw: bytes) -> ET.Element | None:
-    if len(raw) > MAX_SVG_BYTES or b"<!ENTITY" in raw.upper():
+    """The root <svg> element, or None: too big, not UTF-8, a DTD internal
+    subset (entities, default attributes), a processing instruction, or not
+    an SVG document. The parser gets the text as decoded here, so an
+    encoding declaration cannot change what was inspected."""
+    if len(raw) > MAX_SVG_BYTES:
         return None
     try:
-        root = ET.fromstring(raw)
+        text = raw.decode("utf-8").lstrip("\ufeff \t\r\n")
+    except UnicodeDecodeError:
+        return None
+    if _DTD_SUBSET.search(text) or "<!ENTITY" in text.upper():
+        return None
+    target = _SvgTarget()
+    try:
+        parser = ET.XMLParser(target=target)
+        parser.feed(text)
+        root = parser.close()
     except Exception:
+        return None
+    if target.instructions or not isinstance(root, ET.Element):
         return None
     return root if root.tag == f"{{{_SVG_NS}}}svg" else None
 
@@ -262,27 +411,62 @@ def _hex_luma(color: str) -> int | None:
     return None  # named colours / gradients: assume visible
 
 
-def _svg_is_safe(root: ET.Element) -> bool:
+def _sanitize_svg(root: ET.Element) -> bool:
+    """Prepare the tree the stored copy is serialized from: editor
+    bookkeeping is removed in place. False when anything left is not an
+    allowlisted SVG element or attribute, or could run code or fetch a
+    resource."""
+    for parent in list(root.iter()):
+        for child in list(parent):
+            if (_namespace(child.tag) in _EDITOR_NAMESPACES
+                    or child.tag == f"{{{_SVG_NS}}}metadata"):
+                parent.remove(child)
     for el in root.iter():
-        if not isinstance(el.tag, str) or _local(el.tag) in _SVG_BANNED_TAGS:
+        if _namespace(el.tag) != _SVG_NS or _local(el.tag) not in _SVG_ELEMENTS:
             return False
-        for name, value in el.attrib.items():
-            attr = _local(name)
-            low = re.sub(r"[\s\x00-\x1f]+", "", value).lower()
-            if attr.startswith("on") or "javascript:" in low or "vbscript:" in low:
+        tag = _local(el.tag)
+        for name in list(el.attrib):
+            namespace, attr, value = _namespace(name), _local(name), el.attrib[name]
+            if namespace in _EDITOR_NAMESPACES:
+                del el.attrib[name]
+                continue
+            if namespace not in _ATTR_NAMESPACES or (
+                namespace and attr not in _ATTR_NAMESPACES[namespace]
+            ):
                 return False
-            if attr in ("href", "src") and not _safe_ref(value):
+            squeezed = _CONTROL_OR_SPACE.sub("", value).lower()
+            if attr.startswith("on") or "javascript:" in squeezed or "vbscript:" in squeezed:
                 return False
-            for ref in _CSS_URL.findall(value):
-                if not _safe_ref(ref):
+            if attr in ("href", "src") and not _safe_ref(value, inline_image=tag == "image"):
+                return False
+            if attr == "style":
+                if not _css_ok(value):
                     return False
-        if _local(el.tag) == "style":
-            css = "".join(el.itertext())
-            if "@import" in css.lower() or "javascript:" in css.lower():
+            # Presentation attributes are parsed as CSS too: no escapes, and
+            # url() only to #ids.
+            elif "\\" in value or any(not r.startswith("#") for r in _CSS_URL.findall(value)):
                 return False
-            if any(not _safe_ref(ref) for ref in _CSS_URL.findall(css)):
-                return False
+        if tag == "style" and not _css_ok("".join(el.itertext())):
+            return False
     return True
+
+
+def _serialize_svg(root: ET.Element) -> bytes:
+    """UTF-8 bytes of the sanitized tree, with plain SVG names and the two
+    namespaces declared on the root. Nothing the parser dropped (XML
+    declaration, DOCTYPE, comments, processing instructions) can survive.
+    Mutates the tree."""
+    uses_xlink = False
+    for el in root.iter():
+        el.tag = el.tag.rsplit("}", 1)[-1]
+        for name in list(el.attrib):
+            if _namespace(name) == _XLINK_NS:
+                el.attrib["xlink:" + name.rsplit("}", 1)[-1]] = el.attrib.pop(name)
+                uses_xlink = True
+    root.set("xmlns", _SVG_NS)
+    if uses_xlink:
+        root.set("xmlns:xlink", _XLINK_NS)
+    return ET.tostring(root, encoding="unicode").encode("utf-8")
 
 
 def _svg_all_white(root: ET.Element) -> bool:
@@ -304,15 +488,17 @@ def _svg_all_white(root: ET.Element) -> bool:
 
 
 def _normalize_svg(raw: bytes) -> NormalizedLogo | None:
-    body = raw.lstrip(b"\xef\xbb\xbf \t\r\n")
-    root = _parse_svg(body)
-    if root is None or not _svg_is_safe(root) or _svg_all_white(root):
+    root = _parse_svg(raw)
+    if root is None or not _sanitize_svg(root) or _svg_all_white(root):
         return None
     width, height = _svg_size(root)
     # Vector art passes the pixel-size check; the shape rules still apply.
     if width and height and not _aspect_ok(width, height, allow_wide=True):
         return None
-    data = _DOCTYPE.sub(b"", body, count=1)
+    # The stored copy is the checked tree, re-serialized: never the input.
+    data = _serialize_svg(root)
+    if len(data) > MAX_SVG_BYTES:
+        return None
     return NormalizedLogo(data, hashlib.sha1(data).hexdigest(), "svg", width, height)
 
 

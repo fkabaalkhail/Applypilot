@@ -6,13 +6,14 @@ plan_harvest -> run_harvest -> apply_outcomes, the same hints), but over
 every employer instead of a 150s slice, and from a developer machine:
 LinkedIn's public guest endpoints (the best source) answer a residential IP
 and are unmeasured from Vercel. Re-running it only touches employers that
-still have no stored logo.
+still have no stored logo, or a provisional one due for its re-check.
 
 Steps:
   0. re-point rows of employers whose logo is already stored (no network);
   1. work list: employers with visible rows and no stored logo, busiest
      first (misses only once their backoff is due, or all with
-     --retry-misses);
+     --retry-misses), then provisional logos the cron stored while LinkedIn
+     was rate-limiting it, once due for their re-check;
   2. harvest each with the Phase 3 hints (its own rows' logos, then its
      longer name's, LinkedIn, ATS boards, verified homepages, Wikidata, s2);
   3. store + propagate each hit, record each miss (--apply only).
@@ -23,6 +24,11 @@ keeps refusing, the run stops, stores nothing that finished without
 LinkedIn (a wordmark stored now would be kept for good), and a re-run
 picks up where it left off.
 
+A wrong stored logo is undone with --reharvest NAME (implies --company
+NAME): the image is demoted and blocked for good, rows still showing it get
+back the hotlink it replaced, and the employer is harvested again, trying
+the hotlinks it replaced first (services/logo_cache.demote_logo).
+
 The default is a DRY RUN: it harvests and reports what WOULD be stored and
 writes nothing. It runs no migrations, uses a session that refuses to
 flush or commit, and every SQL statement is checked before it is sent:
@@ -30,8 +36,8 @@ anything but SELECT/SHOW raises. That makes it safe against production.
 
 Usage:
     DATABASE_URL=postgres://... python backend/scripts/backfill_logos_v2.py
-        [--apply] [--limit N] [--company NAME ...] [--concurrency 4]
-        [--retry-misses] [--no-migrate] [--timeout 120]
+        [--apply] [--limit N] [--company NAME ...] [--reharvest NAME ...]
+        [--concurrency 4] [--retry-misses] [--no-migrate] [--timeout 120]
         [--linkedin-cooldown 60] [--dump DIR] [--top 25]
 """
 
@@ -254,6 +260,22 @@ async def run(
             names_by_key = company_names_by_key(db)
             before = coverage(db)
 
+            # Wrong picks named with --reharvest: demoted first, so step 0
+            # does not re-point rows at them and step 1 picks them up.
+            if args.reharvest and not has_store:
+                raise SystemExit("--reharvest: company_logos does not exist here, nothing is stored")
+            for name in args.reharvest:
+                done = logo_cache.demote_logo(
+                    db, name, names=names_by_key.get(company_key(name), []), dry_run=dry
+                )
+                if done is None:
+                    out(f"reharvest {name}: no stored logo, nothing to demote")
+                    continue
+                out(f"reharvest {name}: {'would demote' if dry else 'demoted'} "
+                    f"{done['source'] or '?'} {done['source_url'][:100]} ({done['sha'][:12]}); "
+                    f"{done['rows']} rows {'would get' if dry else 'got'} back "
+                    f"{done['restored_to'][:100] or 'no logo'}")
+
             # Step 0: rows of employers already stored.
             if has_store:
                 stats["repropagated_rows"] = repropagate_known_logos(
@@ -265,8 +287,9 @@ async def run(
             # Step 1: the work list.
             plans = plan_harvest(
                 db, names_by_key, logo_harvester.LogoHints,
-                limit=args.limit, only=args.company or None,
+                limit=args.limit, only=(args.company + args.reharvest) or None,
                 retry_misses=args.retry_misses, has_store=has_store,
+                reharvest=args.reharvest,
             )
             stats["companies_considered"] = len(plans)
             out(f"step 1: {len(plans)} employers to harvest, "
@@ -382,6 +405,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None, help="at most N employers")
     parser.add_argument("--company", action="append", default=[], metavar="NAME",
                         help="only this employer (repeatable)")
+    parser.add_argument("--reharvest", action="append", default=[], metavar="NAME",
+                        help="its stored logo is wrong: demote and block it, give its rows back "
+                             "the hotlink it replaced, and harvest it again (repeatable; "
+                             "implies --company NAME)")
     parser.add_argument("--concurrency", type=int, default=4,
                         help="employers harvested at once (LinkedIn is paced separately)")
     parser.add_argument("--retry-misses", action="store_true",

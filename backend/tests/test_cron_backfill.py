@@ -4,6 +4,7 @@ the self-hosted logo harvest (Phase 3)."""
 import asyncio
 import datetime
 import hashlib
+import time
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -28,6 +29,7 @@ class FakeHints:
     domains: list = field(default_factory=list)
     job_urls: list = field(default_factory=list)
     existing_logo_urls: list = field(default_factory=list)
+    blocked_shas: list = field(default_factory=list)
 
 
 class FakeLogo(NamedTuple):
@@ -301,6 +303,117 @@ def test_harvest_respects_the_wall_clock_budget(db_session, monkeypatch):
     assert calls == []
     # Skipped is not a miss: nothing recorded, so the next run tries it.
     assert db_session.query(CompanyLogo).count() == 0
+
+
+def test_harvest_holds_no_transaction_while_on_the_network(db_session, monkeypatch):
+    """Phase 3's reads end before the harvest: a pooled connection must not
+    sit idle in transaction for the whole budget."""
+    _mk(db_session, "https://x.test/tx-1", company="Acme")
+    in_transaction = []
+
+    async def fake_harvest(client_, hints):
+        in_transaction.append(db_session.in_transaction())
+        return None
+
+    monkeypatch.setattr(logo_harvester, "harvest_company_logo", fake_harvest, raising=False)
+    stats = asyncio.run(logo_cache.harvest_missing_logos(db_session, None, budget_s=10))
+    assert in_transaction == [False]
+    assert stats["missed"] == 1  # the write afterwards still lands
+    assert db_session.query(CompanyLogo).filter_by(company_key="acme").one().status == "miss"
+
+
+class _Client:
+    """Stands in for the HTTP client: the fakes never use it, and the
+    harvester's LinkedIn gate only needs something to key weakly."""
+
+
+def _linkedin_gives_up(results: dict):
+    """LinkedIn rate-limits the run's very first call, so it is skipped for
+    everyone (the cron's rule); each company then gets results.get(name)."""
+    async def harvest(client_, hints):
+        gate = logo_harvester._linkedin_gates.get(client_)
+        if gate is None:
+            gate = logo_harvester._linkedin_gates[client_] = logo_harvester._LinkedInGate()
+        if not gate.blocked:
+            gate.blocked, gate.blocked_at = True, time.monotonic()
+        return results.get(hints.company)
+    return harvest
+
+
+def test_after_a_linkedin_429_lower_tier_picks_are_not_final(db_session, monkeypatch):
+    home = "https://www.acme.com/apple-touch-icon.png"
+    shown = _mk(db_session, "https://x.test/acme-1", company="Acme")
+    shown.company_logo = home
+    blank = _mk(db_session, "https://x.test/acme-2", company="Acme")
+    for name in ("Beta", "Gamma", "Delta"):
+        _mk(db_session, f"https://x.test/{name.lower()}-1", company=name)
+    db_session.commit()
+    results = {
+        "Acme": FakeResult(_fake_logo(b"a"), source="homepage", verified_domain="acme.com"),
+        "Gamma": FakeResult(_fake_logo(b"g"), source="linkedin_search"),
+        "Delta": FakeResult(_fake_logo(b"d"), source="ats_greenhouse"),
+    }
+    monkeypatch.setattr(logo_harvester, "harvest_company_logo", _linkedin_gives_up(results),
+                        raising=False)
+    before = datetime.datetime.utcnow()
+    stats = asyncio.run(logo_cache.harvest_missing_logos(db_session, _Client(), budget_s=10))
+    assert (stats["stored"], stats["provisional"]) == (3, 1)
+    assert (stats["missed"], stats["linkedin_deferred"]) == (1, 1)
+
+    def record(key):
+        return db_session.query(CompanyLogo).filter_by(company_key=key).one()
+
+    db_session.expire_all()
+    # Acme's homepage pick is shown where nothing real was, and re-checked soon.
+    acme = record("acme")
+    assert acme.status == "ok" and acme.next_retry_at - before < datetime.timedelta(days=2)
+    path = logo_cache.lookup_logo(db_session, "Acme")
+    assert db_session.get(ScrapedJob, blank.id).company_logo == path
+    assert db_session.get(ScrapedJob, shown.id).company_logo == home
+    # LinkedIn's own and the ATS board's picks stand; Beta's miss proves little.
+    assert record("gamma").next_retry_at is None and record("delta").next_retry_at is None
+    beta = record("beta")
+    assert beta.status == "miss" and beta.next_retry_at - before < datetime.timedelta(days=2)
+
+    # A day later LinkedIn answers: the re-check makes Acme's logo final.
+    db_session.query(CompanyLogo).filter(CompanyLogo.company_key.in_(["acme", "beta"])).update(
+        {"next_retry_at": datetime.datetime.utcnow() - datetime.timedelta(minutes=1)},
+        synchronize_session=False,
+    )
+    db_session.commit()
+    seen = []
+
+    async def linkedin_answers(client_, hints):
+        seen.append(hints.company)
+        return FakeResult(_fake_logo(b"li"), source="linkedin_job") if hints.company == "Acme" else None
+
+    monkeypatch.setattr(logo_harvester, "harvest_company_logo", linkedin_answers, raising=False)
+    asyncio.run(logo_cache.harvest_missing_logos(db_session, _Client(), budget_s=10))
+    assert seen == ["Beta", "Acme"]  # an employer with no logo first, the re-check after
+    db_session.expire_all()
+    acme = record("acme")
+    assert acme.next_retry_at is None and acme.source == "linkedin_job"
+    path = logo_cache.lookup_logo(db_session, "Acme")
+    assert {db_session.get(ScrapedJob, r.id).company_logo for r in (shown, blank)} == {path}
+    assert acme.prior_logo_urls == [home]
+    assert record("beta").next_retry_at > datetime.datetime.utcnow() + datetime.timedelta(days=13)
+
+
+def test_after_linkedin_block_keeps_what_finished_before_it():
+    def outcome(key, status, source=None):
+        plan = logo_cache._Plan(key=key, display=key, names=[key], hints=None)
+        result = FakeResult(_fake_logo(), source=source) if source else None
+        return logo_cache.HarvestOutcome(plan, status, result, [])
+
+    outcomes = [outcome("early", "ok", "homepage"), outcome("s2", "ok", "s2"),
+                outcome("wiki", "ok", "wikidata"), outcome("ats", "ok", "ats_lever"),
+                outcome("seed", "ok", "existing"), outcome("gone", "miss"),
+                outcome("slow", "timeout")]
+    finished = {"early": 1.0, "s2": 5.0, "wiki": 5.0, "ats": 5.0, "seed": 5.0, "gone": 5.0, "slow": 5.0}
+    got = {o.plan.key: o.status for o in logo_cache.after_linkedin_block(outcomes, finished, 2.0)}
+    assert got == {"early": "ok", "s2": "provisional", "wiki": "provisional", "ats": "ok",
+                   "seed": "ok", "gone": "retry", "slow": "retry"}
+    assert logo_cache.after_linkedin_block(outcomes, finished, None) == outcomes
 
 
 def test_backfill_without_the_harvester_contract_still_succeeds(client, db_session, monkeypatch):

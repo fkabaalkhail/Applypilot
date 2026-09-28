@@ -112,9 +112,37 @@ def _cron_headers(monkeypatch):
     ("  Acme   Widgets  ", "acme widgets"),
     ("", ""),
     (None, ""),
+    # Placeholders name nobody: no key, so no store and no harvest.
+    ("nan", ""),
+    ("NaN", ""),
+    ("None", ""),
+    ("null", ""),
+    ("N/A", ""),
+    ("Unknown", ""),
+    ("Unknown Inc.", ""),
+    ("**Undisclosed**", ""),
+    ("Confidential", ""),
+    ("Confidential Company", ""),
+    ("Nando's", "nando s"),  # only an exact placeholder
+    ("Unknown Worlds", "unknown worlds"),
 ])
 def test_company_key(name, key):
     assert company_key(name) == key
+
+
+def test_placeholder_employers_are_never_harvested_or_stored(db_session, monkeypatch):
+    monkeypatch.setattr(company_registry, "load_logo_map", lambda: {})
+    for i in range(3):
+        _row(db_session, f"https://x.test/nan-{i}", company="nan", logo=S2.format("nan.com"),
+             domain="nan.com")
+    _row(db_session, "https://x.test/real-1", company="Real Co")
+    names = company_names_by_key(db_session)
+    assert "nan" not in names
+    plans = logo_cache.plan_harvest(db_session, names, LogoHints)
+    assert [p.display for p in plans] == ["Real Co"]
+    assert store_logo(db_session, "nan", FakeResult(_logo())) == ""
+    record_miss(db_session, "N/A")
+    assert db_session.query(CompanyLogo).count() == 0
 
 
 def test_clean_company_name_keeps_case():
@@ -328,6 +356,147 @@ def test_record_miss_clears_bogus_guessed_domains(db_session):
     assert record.rejected_domains == ["bdocanada.com"]
 
 
+# --- replaced hotlinks, demotion, provisional logos ---------------------------------
+
+HOME = "https://www.acme.com/apple-touch-icon.png"
+WIKI = "https://commons.wikimedia.org/wiki/Special:FilePath/Acme.svg?width=256"
+WRONG = ("https://media.licdn.com/dms/image/v2/C4D0BAQ/company-logo_100_100/"
+         "company-logo_100_100/0/1/acme_widgets_logo?e=2147483647&v=beta&t=wrong")
+
+
+def _acme_rows(db):
+    """Acme rows with two real hotlinks, a generated favicon, nothing, and a
+    LinkedIn logo; returns them by kind."""
+    return {
+        "home": [_row(db, f"https://x.test/home-{i}", company="Acme", logo=HOME) for i in range(2)],
+        "wiki": _row(db, "https://x.test/wiki", company="Acme Inc.", logo=WIKI, listing_status="removed"),
+        "generated": _row(db, "https://x.test/gen", company="Acme", logo=S2.format("acme.com")),
+        "blank": _row(db, "https://x.test/blank", company="**Acme**"),
+        "licdn": _row(db, "https://x.test/li", company="Acme", logo=LICDN),
+    }
+
+
+def _logo_of(db, row):
+    return db.get(ScrapedJob, row.id).company_logo
+
+
+def test_store_remembers_the_real_hotlinks_it_replaces(db_session):
+    rows = _acme_rows(db_session)
+    path = store_logo(db_session, "Acme", FakeResult(_logo(), source="linkedin_search", source_url=WRONG))
+    db_session.expire_all()
+    record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
+    # Most-used first; generated favicons and trusted hotlinks are not "replaced".
+    assert record.prior_logo_urls == [HOME, WIKI]
+    assert _logo_of(db_session, rows["home"][0]) == path  # still broad propagation
+    assert _logo_of(db_session, rows["licdn"]) == LICDN
+
+    # Storing again keeps what the first store replaced.
+    store_logo(db_session, "Acme", FakeResult(_logo(b"again")))
+    db_session.expire_all()
+    assert db_session.query(CompanyLogo).filter_by(company_key="acme").one().prior_logo_urls == [HOME, WIKI]
+
+
+def test_demote_restores_rows_blocks_the_image_and_reharvests_prior_urls_first(db_session, monkeypatch):
+    rows = _acme_rows(db_session)
+    wrong = FakeResult(_logo(b"wrong"), source="linkedin_search", source_url=WRONG,
+                       verified_domain="acmewidgets.com")
+    path = store_logo(db_session, "Acme", wrong)
+    assert "acme" not in _plans(db_session, monkeypatch)  # an ok logo is never planned again
+
+    # Planning a re-harvest (the script's dry run) already avoids the image.
+    acme = _plans(db_session, monkeypatch, reharvest=["Acme"])["acme"]
+    assert acme.hints.existing_logo_urls[:2] == [HOME, WIKI]
+    assert acme.hints.blocked_shas == [wrong.logo.sha]
+
+    assert logo_cache.demote_logo(db_session, "Acme", dry_run=True)["rows"] == 5
+    db_session.expire_all()
+    assert _logo_of(db_session, rows["blank"]) == path  # a dry run writes nothing
+
+    done = logo_cache.demote_logo(db_session, "Acme")
+    assert done["rows"] == 5 and done["restored_to"] == HOME and done["source_url"] == WRONG
+    db_session.expire_all()
+    for row in rows["home"] + [rows["wiki"], rows["generated"], rows["blank"]]:
+        assert _logo_of(db_session, row) == HOME
+    assert _logo_of(db_session, rows["licdn"]) == LICDN
+    record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
+    assert (record.status, record.attempts, record.domain, record.next_retry_at) == ("miss", 0, None, None)
+    assert record.blocked_shas == [wrong.logo.sha]
+    assert lookup_logo(db_session, "Acme") is None
+    assert logo_cache.demote_logo(db_session, "Acme") is None  # nothing stored any more
+
+    # Due now, trying what the rows showed before anything else.
+    acme = _plans(db_session, monkeypatch)["acme"]
+    assert acme.hints.existing_logo_urls[:2] == [HOME, WIKI]
+    assert LICDN in acme.hints.existing_logo_urls
+    assert acme.hints.blocked_shas == [wrong.logo.sha]
+
+
+def test_provisional_logo_fills_only_rows_without_a_real_logo(db_session):
+    rows = _acme_rows(db_session)
+    before = datetime.datetime.utcnow()
+    path = store_logo(db_session, "Acme", FakeResult(_logo(), source="homepage"), provisional=True)
+    db_session.expire_all()
+    assert _logo_of(db_session, rows["generated"]) == path
+    assert _logo_of(db_session, rows["blank"]) == path
+    assert _logo_of(db_session, rows["home"][0]) == HOME  # real hotlinks wait for the final logo
+    assert _logo_of(db_session, rows["wiki"]) == WIKI
+    record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
+    assert record.status == "ok" and record.attempts == 1 and not record.prior_logo_urls
+    assert datetime.timedelta(hours=23) < record.next_retry_at - before < datetime.timedelta(days=2)
+    assert lookup_logo(db_session, "Acme") == path  # served meanwhile
+
+    # Insert paths keep a real logo over a provisional one, never a generated one.
+    branding = load_branding(db_session, ["Acme"])
+    assert branding["acme"].provisional
+    assert brand(branding, "Acme", LICDN, "")[0] == LICDN
+    assert brand(branding, "Acme", HOME, "")[0] == HOME
+    assert brand(branding, "Acme", S2.format("acme.com"), "")[0] == path
+
+    # LinkedIn skipped again: re-checked later, still provisional.
+    record_miss(db_session, "Acme", linkedin_skipped=True)
+    db_session.expire_all()
+    record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
+    assert record.status == "ok" and record.attempts == 2
+    assert record.next_retry_at - before > datetime.timedelta(days=1, hours=23)
+
+    # LinkedIn answered and had nothing better: final, and propagated fully.
+    record_miss(db_session, "Acme")
+    db_session.expire_all()
+    record = db_session.query(CompanyLogo).filter_by(company_key="acme").one()
+    assert (record.status, record.next_retry_at, record.attempts) == ("ok", None, 0)
+    assert _logo_of(db_session, rows["home"][0]) == path
+    assert record.prior_logo_urls == [HOME, WIKI]
+    assert not load_branding(db_session, ["Acme"])["acme"].provisional
+
+
+def test_provisional_logos_are_rechecked_after_employers_with_none(db_session, monkeypatch):
+    for i in range(3):
+        _row(db_session, f"https://x.test/p-{i}", company="Provisional Co")
+    _row(db_session, "https://x.test/n-1", company="No Logo Co")
+    store_logo(db_session, "Provisional Co", FakeResult(_logo(), source="s2"), provisional=True)
+    assert list(_plans(db_session, monkeypatch)) == ["no logo"]  # not due yet
+    assert list(_plans(db_session, monkeypatch, retry_misses=True)) == ["no logo", "provisional"]
+    db_session.query(CompanyLogo).filter_by(company_key="provisional").update(
+        {"next_retry_at": datetime.datetime.utcnow() - datetime.timedelta(minutes=1)})
+    db_session.commit()
+    plans = logo_cache.plan_harvest(db_session, company_names_by_key(db_session), LogoHints)
+    assert [p.display for p in plans] == ["No Logo Co", "Provisional Co"]  # fewer rows, still first
+
+
+def test_recheck_delay_is_short_and_capped():
+    assert logo_cache.recheck_delay(1) == datetime.timedelta(days=1)
+    assert logo_cache.recheck_delay(3) == datetime.timedelta(days=4)
+    assert logo_cache.recheck_delay(10_000) == logo_cache.RETRY_CAP
+
+
+def test_record_miss_after_a_linkedin_block_retries_soon(db_session):
+    before = datetime.datetime.utcnow()
+    record_miss(db_session, "Nobody", linkedin_skipped=True)
+    record = db_session.query(CompanyLogo).filter_by(company_key="nobody").one()
+    assert record.status == "miss" and record.attempts == 1
+    assert record.next_retry_at - before < datetime.timedelta(days=2)
+
+
 # --- lookups ------------------------------------------------------------------
 
 def test_lookup_logo_hit_and_miss(db_session):
@@ -383,9 +552,32 @@ def test_migration_creates_table_idempotently(tmp_path):
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("company_logos")}
     assert {"company_key", "domain", "status", "sha", "fmt", "data", "attempts",
-            "rejected_domains", "next_retry_at"} <= cols
+            "rejected_domains", "prior_logo_urls", "blocked_shas", "next_retry_at"} <= cols
     indexes = {i["name"] for i in inspector.get_indexes("company_logos")}
     assert {"ix_company_logos_company_key", "ix_company_logos_sha"} <= indexes
+
+
+def test_migration_adds_new_columns_to_a_table_created_before_them(tmp_path):
+    """Dev already has company_logos from the first version of this migration."""
+    from sqlalchemy import text
+
+    from backend.migrations.add_company_logos import run_migration
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE company_logos (id INTEGER PRIMARY KEY, company_key VARCHAR NOT NULL, "
+            "status VARCHAR NOT NULL DEFAULT 'miss', sha VARCHAR, rejected_domains JSON)"
+        ))
+        conn.execute(text("INSERT INTO company_logos (company_key, status) VALUES ('acme', 'ok')"))
+    run_migration(engine)
+    run_migration(engine)  # idempotent
+    cols = {c["name"] for c in inspect(engine).get_columns("company_logos")}
+    assert {"prior_logo_urls", "blocked_shas"} <= cols
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT company_key, prior_logo_urls FROM company_logos")).all() == [
+            ("acme", None)
+        ]
 
 
 # --- insert paths ---------------------------------------------------------------

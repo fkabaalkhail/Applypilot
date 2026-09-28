@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextvars
 import html
 import json
 import logging
@@ -60,7 +61,9 @@ _MAX_PAGE_BYTES = 900_000     # Lever's header logo sits ~700KB into the page
 _MAX_HOME_BYTES = 600_000
 _MAX_JSON_BYTES = 300_000
 _MAX_HOMEPAGE_TRIES = 6
-_MAX_EXISTING = 6             # the company's own seeds, then its longer name's
+# Logos the employer's rows showed before a store replaced them, the
+# company's own seeds, then its longer name's.
+_MAX_EXISTING = 8
 _DNS_TIMEOUT = 4.0
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
@@ -102,6 +105,9 @@ class LogoHints:
     domains: list[str] = field(default_factory=list)
     job_urls: list[str] = field(default_factory=list)
     existing_logo_urls: list[str] = field(default_factory=list)
+    # sha1s of normalized images demoted as wrong picks for this company: a
+    # candidate that normalizes to one of them is skipped, whatever its URL.
+    blocked_shas: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -312,18 +318,32 @@ async def _fetch_json(
         return None
 
 
+# The current harvest's LogoHints.blocked_shas. Set per harvest_company_logo
+# call; each concurrent harvest runs in its own task, so its own context.
+_blocked_shas: contextvars.ContextVar[frozenset] = contextvars.ContextVar(
+    "logo_blocked_shas", default=frozenset()
+)
+
+
 async def _try_logo(
     client: httpx.AsyncClient, url: str, *, allow_wide: bool = False
 ) -> NormalizedLogo | None:
     got = await _download(client, url)
-    return normalize_logo(got[0], got[1], allow_wide=allow_wide) if got else None
+    logo = normalize_logo(got[0], got[1], allow_wide=allow_wide) if got else None
+    if logo is not None and logo.sha in _blocked_shas.get():
+        logger.info("logo harvest: skipping a demoted image from %s", url[:120])
+        return None
+    return logo
 
 
 # What a 429/999 does to the rest of a client's run. None (the cron): LinkedIn
-# is skipped for the rest of the run. Seconds (the one-time backfill, where a
-# skipped LinkedIn step means a worse logo stored for good): LinkedIn pauses
-# that long, doubling on each block in a row, and queued calls wait instead of
-# falling through; after _LINKEDIN_MAX_BLOCKS blocks in a row it is skipped.
+# is skipped for the rest of the run, and logo_cache.after_linkedin_block
+# keeps what finished after that from being final (a lower-tier pick is
+# stored provisionally and re-checked, a miss is retried soon). Seconds (the
+# one-time backfill, where a skipped LinkedIn step means a worse logo stored
+# for good): LinkedIn pauses that long, doubling on each block in a row, and
+# queued calls wait instead of falling through; after _LINKEDIN_MAX_BLOCKS
+# blocks in a row it is skipped.
 LINKEDIN_BLOCK_COOLDOWN: float | None = None
 _LINKEDIN_MAX_BLOCKS = 4
 _LINKEDIN_MAX_COOLDOWN = 600.0
@@ -349,7 +369,10 @@ _linkedin_gates: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 def linkedin_stats(client: httpx.AsyncClient) -> dict:
     """LinkedIn calls made, rate-limit blocks hit, and whether LinkedIn was
     given up on, for one client's run (the backfill report)."""
-    gate = _linkedin_gates.get(client)
+    try:
+        gate = _linkedin_gates.get(client)
+    except TypeError:  # None (no client in tests) cannot be a weak key
+        gate = None
     if gate is None:
         return {"calls": 0, "blocks": 0, "blocked": False, "blocked_at": None}
     return {"calls": gate.calls, "blocks": gate.blocks, "blocked": gate.blocked,
@@ -1050,11 +1073,14 @@ async def harvest_company_logo(
     """Best real logo for a company, downloaded and normalized, or None.
 
     Never raises; gives up after time_cap seconds (HARVEST_TIME_CAP)."""
+    token = _blocked_shas.set(frozenset(getattr(hints, "blocked_shas", None) or ()))
     try:
         result = await asyncio.wait_for(_harvest(client, hints), time_cap or HARVEST_TIME_CAP)
     except Exception as exc:
         logger.info("logo harvest: %r gave up: %r", hints.company, exc)
         return None
+    finally:
+        _blocked_shas.reset(token)
     if result:
         logger.info("logo harvest: %r -> %s %s", hints.company, result.source,
                     result.source_url[:120])
