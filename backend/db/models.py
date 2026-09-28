@@ -893,7 +893,18 @@ class CompanyLogo(Base):
     # Name-guessed domains proven bogus (NXDOMAIN or a parked page), so ingest
     # never plants them on this employer's rows again.
     rejected_domains = Column(JSON, nullable=True)
+    # Real hotlinks (logo_quality 1: homepage/CDN/Commons images) this
+    # employer's rows showed before propagation replaced them, most used
+    # first. A re-harvest tries them before anything else, and demoting a
+    # wrong pick (backfill_logos_v2.py --reharvest) puts the first one back.
+    prior_logo_urls = Column(JSON, nullable=True)
+    # sha1s of normalized images demoted as wrong picks: the harvester skips
+    # a candidate that normalizes to one of them.
+    blocked_shas = Column(JSON, nullable=True)
     checked_at = Column(DateTime, nullable=True)
+    # status 'miss': when to try again. status 'ok': NULL once final; set when
+    # the logo is provisional (the cron stored a lower-tier pick because
+    # LinkedIn was rate-limited) and due for a re-check then.
     next_retry_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow,

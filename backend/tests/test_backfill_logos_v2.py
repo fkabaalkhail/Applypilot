@@ -287,6 +287,69 @@ def test_linkedin_giving_up_stops_the_run_and_stores_nothing_degraded(catalogue,
     assert "LinkedIn stopped answering" in "\n".join(lines)
 
 
+HOME = "https://www.acme.com/apple-touch-icon.png"
+WRONG = ("https://media.licdn.com/dms/image/v2/C4D0BAQ/company-logo_100_100/"
+         "company-logo_100_100/0/1/acme_widgets_logo?e=2147483647&v=beta&t=wrong")
+
+
+def _wrongly_stored_acme(db):
+    """Acme's rows showed its homepage icon until a LinkedIn name search
+    stored another company's logo over them."""
+    rows = [_row(db, f"https://x.test/acme-{i}", "Acme", HOME) for i in range(2)]
+    wrong = _logo(b"w")
+    path = logo_cache.store_logo(db, "Acme", FakeResult(wrong, "linkedin_search", WRONG))
+    return rows, wrong, path
+
+
+def _reharvest_fake(seen: list, db, rows_seen: list):
+    async def harvest(client, hints):
+        seen.append(hints)
+        db.expire_all()
+        rows_seen.append({r.company_logo for r in db.query(ScrapedJob.company_logo)
+                          .filter(ScrapedJob.company == "Acme")})
+        if hints.existing_logo_urls[:1] == [HOME]:
+            return FakeResult(_logo(b"home"), "existing", HOME)
+        return None
+    return harvest
+
+
+def test_reharvest_undoes_a_wrong_pick(catalogue):
+    db = catalogue
+    rows, wrong, wrong_path = _wrongly_stored_acme(db)
+    seen: list = []
+    rows_seen: list = []
+    lines: list[str] = []
+    report = _run(db, ["--apply", "--timeout", "0.2", "--reharvest", "Acme"],
+                  _reharvest_fake(seen, db, rows_seen), lines)
+    # Only Acme is harvested, from what its rows showed before, never the demoted image.
+    assert [h.company for h in seen] == ["Acme"]
+    assert seen[0].existing_logo_urls[0] == HOME
+    assert seen[0].blocked_shas == [wrong.sha]
+    assert rows_seen == [{HOME}]  # rows were given their hotlink back before the harvest
+    assert report["stats"]["stored"] == 1
+    db.expire_all()
+    record = db.query(CompanyLogo).filter_by(company_key="acme").one()
+    assert (record.status, record.source, record.source_url) == ("ok", "existing", HOME)
+    assert record.blocked_shas == [wrong.sha] and record.prior_logo_urls == [HOME]
+    path = logo_cache.lookup_logo(db, "Acme")
+    assert path != wrong_path
+    assert {db.get(ScrapedJob, r.id).company_logo for r in rows} == {path}
+    assert any("reharvest Acme: demoted linkedin_search" in line for line in lines)
+
+
+def test_reharvest_dry_run_writes_nothing(catalogue):
+    db = catalogue
+    _rows, wrong, _path = _wrongly_stored_acme(db)
+    before = _snapshot(db)
+    seen: list = []
+    lines: list[str] = []
+    _run(db, ["--timeout", "0.2", "--reharvest", "Acme"], _reharvest_fake(seen, db, []), lines)
+    assert _snapshot(db) == before
+    assert [h.company for h in seen] == ["Acme"]
+    assert seen[0].existing_logo_urls[0] == HOME and seen[0].blocked_shas == [wrong.sha]
+    assert any("would demote" in line and "2 rows would get back" in line for line in lines)
+
+
 def test_apply_can_skip_migrations(catalogue, monkeypatch):
     called = []
     monkeypatch.setattr(add_company_logos, "run_migration", lambda engine=None: called.append(engine))

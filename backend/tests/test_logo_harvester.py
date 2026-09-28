@@ -183,6 +183,42 @@ async def test_existing_banner_is_skipped():
     assert result is None
 
 
+@pytest.mark.asyncio
+async def test_a_demoted_image_is_skipped_whatever_its_url():
+    """blocked_shas: a demoted pick must not come back, even from another
+    URL or another step of the cascade."""
+    demoted = logo_image.normalize_logo(LOGO, "image/png").sha
+    routes = [(r"squarelogo/a", (200, LOGO, "image/png")),
+              (r"squarelogo/b", (200, LOGO, "image/png")),  # same image, other URL
+              (r"squarelogo/c", (200, LOGO_B, "image/png"))]
+    seeds = [f"https://d2q79iu7y748jz.cloudfront.net/s/_squarelogo/{x}.png" for x in "abc"]
+    result = await _harvest(routes, LogoHints(company="Acme", existing_logo_urls=seeds,
+                                              blocked_shas=[demoted]))
+    assert result.source_url == seeds[2] and result.logo.sha != demoted
+    # Scoped to that harvest: the next one, without a block, takes the first seed.
+    result = await _harvest(routes, LogoHints(company="Acme", existing_logo_urls=seeds))
+    assert result.source_url == seeds[0]
+
+
+@pytest.mark.asyncio
+async def test_blocked_shas_stay_with_their_own_concurrent_harvest():
+    demoted = logo_image.normalize_logo(LOGO, "image/png").sha
+    routes = [(r"squarelogo/a", (200, LOGO, "image/png")),
+              (r"squarelogo/c", (200, LOGO_B, "image/png"))]
+    seeds = [f"https://d2q79iu7y748jz.cloudfront.net/s/_squarelogo/{x}.png" for x in "ac"]
+    async with httpx.AsyncClient(transport=_router(routes)) as client:
+        blocked, free = await asyncio.gather(
+            harvest_company_logo(client, LogoHints(company="A", existing_logo_urls=seeds,
+                                                   blocked_shas=[demoted])),
+            harvest_company_logo(client, LogoHints(company="B", existing_logo_urls=seeds)),
+        )
+    assert blocked.source_url == seeds[1] and free.source_url == seeds[0]
+
+
+def test_linkedin_stats_without_a_client():
+    assert lh.linkedin_stats(None)["blocked"] is False
+
+
 # --- 1. LinkedIn job page -------------------------------------------------------
 
 @pytest.mark.asyncio

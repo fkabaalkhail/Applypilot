@@ -15,6 +15,11 @@ Rows reference a logo by content hash ('/jobs/logo/<sha1>.png'), so a
 re-harvest that changes the image changes the URL, and the year-long CDN
 cache can never serve a stale one.
 
+Nothing a store replaces is lost: the real hotlinks propagation overwrites
+are kept on the record (prior_logo_urls), a re-harvest tries them first, and
+demote_logo undoes a wrong pick. A pick the cron made while LinkedIn was
+rate-limiting it is provisional until a later run had LinkedIn's answer.
+
 Reads are column-only (Neon egress): logo bytes are only ever selected by the
 serving endpoint, one row at a time.
 """
@@ -26,6 +31,7 @@ import datetime
 import logging
 import re
 import socket
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Iterable, NamedTuple
@@ -54,6 +60,9 @@ STATUS_MISS = "miss"
 # most employers, so no company is ever written off for good.
 RETRY_STEP = datetime.timedelta(days=14)
 RETRY_CAP = datetime.timedelta(days=90)
+# A result LinkedIn had no say in (it rate-limited the cron first) is looked
+# at again soon: see recheck_delay.
+RECHECK_STEP = datetime.timedelta(days=1)
 
 # cron-backfill Phase 3 budget. The "hourly" workflow really fires ~6x/day at
 # irregular gaps, so each run has to make real progress on its own; busiest
@@ -84,6 +93,14 @@ _LEGAL_SUFFIXES = {
     "inc", "incorporated", "llc", "ltd", "limited", "corp", "corporation",
     "co", "company", "plc", "gmbh", "sa", "ag", "lp", "llp",
 }
+# Placeholders scrapers write when the employer is missing ('nan' is pandas'
+# NaN as text). They name nobody, so they get no key: no stored logo, no
+# harvest, and no logo shared across unrelated postings.
+_PLACEHOLDER_KEYS = frozenset({
+    "nan", "none", "null", "nil", "na", "n a", "unknown", "unknown company",
+    "undisclosed", "undisclosed company", "confidential", "confidential company",
+    "company confidential", "not disclosed", "not specified", "anonymous",
+})
 
 
 def clean_company_name(name: str | None) -> str:
@@ -98,12 +115,14 @@ def clean_company_name(name: str | None) -> str:
 def company_key(name: str | None) -> str:
     """Normalized employer identity: "**Tesla**", "Tesla" and "Tesla, Inc."
     all map to "tesla". Lowercase, diacritics folded, punctuation to spaces,
-    trailing legal suffixes dropped (never the last remaining word)."""
+    trailing legal suffixes dropped (never the last remaining word). ""
+    for a blank or placeholder name ('nan', 'N/A', 'Unknown', ...)."""
     text = re.sub(r"[^a-z0-9]+", " ", fold(clean_company_name(name)))
     tokens = text.split()
     while len(tokens) > 1 and tokens[-1] in _LEGAL_SUFFIXES:
         tokens.pop()
-    return " ".join(tokens)
+    key = " ".join(tokens)
+    return "" if key in _PLACEHOLDER_KEYS else key
 
 
 def logo_path(sha: str, fmt: str) -> str:
@@ -209,6 +228,9 @@ class CompanyBranding(NamedTuple):
     logo: str  # self-hosted path, "" while nothing is stored
     domain: str  # verified registrable domain, "" when unknown
     rejected: frozenset  # name-guessed domains proven bogus
+    # The logo is a lower-tier pick stored while LinkedIn was rate-limited,
+    # due for a re-check (next_retry_at is set on an 'ok' record).
+    provisional: bool = False
 
 
 def load_branding(db: Session, companies: Iterable[str]) -> dict[str, CompanyBranding]:
@@ -221,13 +243,19 @@ def load_branding(db: Session, companies: Iterable[str]) -> dict[str, CompanyBra
             db.query(
                 CompanyLogo.company_key, CompanyLogo.status, CompanyLogo.sha,
                 CompanyLogo.fmt, CompanyLogo.domain, CompanyLogo.rejected_domains,
+                CompanyLogo.next_retry_at,
             )
             .filter(CompanyLogo.company_key.in_(chunk))
             .all()
         )
-        for key, status, sha, fmt, domain, rejected in rows:
-            logo = logo_path(sha, fmt or "png") if status == STATUS_OK and sha else ""
-            out[key] = CompanyBranding(logo, domain or "", frozenset(rejected or ()))
+        for key, status, sha, fmt, domain, rejected, next_retry_at in rows:
+            stored = status == STATUS_OK and bool(sha)
+            out[key] = CompanyBranding(
+                logo_path(sha, fmt or "png") if stored else "",
+                domain or "",
+                frozenset(rejected or ()),
+                stored and next_retry_at is not None,
+            )
     return out
 
 
@@ -243,8 +271,9 @@ def brand(
     """Final (company_logo, company_domain) for a row about to be inserted.
 
     The stored logo and verified domain beat whatever the insert path
-    resolved; a guessed domain the harvester proved bogus is dropped, along
-    with any favicon URL built from it."""
+    resolved (a provisional logo only beats a missing, generated or known-bad
+    one, as in propagate_logo); a guessed domain the harvester proved bogus
+    is dropped, along with any favicon URL built from it."""
     logo, domain = logo or "", domain or ""
     record = branding.get(company_key(company))
     if record is None:
@@ -255,7 +284,7 @@ def brand(
         domain = ""
         if logo_quality(logo) == 0:
             logo = ""
-    if record.logo:
+    if record.logo and not (record.provisional and logo_quality(logo) in (1, 2)):
         logo = record.logo
     return logo, domain
 
@@ -280,26 +309,72 @@ def _names_for(db: Session, company: str, names: list[str] | None) -> list[str]:
     return company_names_by_key(db).get(company_key(company), [])
 
 
+# Displaced hotlinks remembered per employer (company_logos.prior_logo_urls),
+# and how many of them a re-harvest tries first.
+_PRIOR_MAX = 8
+_PRIOR_SEEDS = 2
+_MAX_URL = 2000
+
+
+def _remember_prior_urls(db: Session, key: str, current, displaced: Counter) -> None:
+    """Append the real hotlinks propagation is about to replace (most rows
+    first) to the record's prior_logo_urls. No commit."""
+    urls = [u for u in (current or []) if u]
+    for url, _count in displaced.most_common():
+        if url and len(url) <= _MAX_URL and url not in urls:
+            urls.append(url)
+    urls = urls[:_PRIOR_MAX]
+    if urls != list(current or []):
+        db.query(CompanyLogo).filter(CompanyLogo.company_key == key).update(
+            {"prior_logo_urls": urls}, synchronize_session=False
+        )
+
+
 def propagate_logo(
     db: Session, company: str, *, names: list[str] | None = None, dry_run: bool = False
 ) -> int:
     """Point every row of this employer (visible or hidden) at its stored
     logo, unless the row already has it or a trusted square hotlink; write
-    the verified domain too. Returns the number of logos replaced. Commits,
-    except with dry_run, which only counts the rows it would replace."""
+    the verified domain too. The real hotlinks it replaces (logo_quality 1)
+    are saved on the record first (prior_logo_urls): a re-harvest tries them
+    before anything else and demote_logo puts them back. A provisional logo
+    replaces only missing, generated or known-bad logos; real hotlinks stay
+    until it is final. Returns the number of logos replaced. Commits, except
+    with dry_run, which only counts the rows it would replace."""
     key = company_key(company)
     record = (
-        db.query(CompanyLogo.status, CompanyLogo.sha, CompanyLogo.fmt, CompanyLogo.domain)
+        db.query(
+            CompanyLogo.status, CompanyLogo.sha, CompanyLogo.fmt, CompanyLogo.domain,
+            CompanyLogo.next_retry_at, CompanyLogo.prior_logo_urls,
+        )
         .filter(CompanyLogo.company_key == key)
         .first()
     ) if key else None
     if record is None or record.status != STATUS_OK or not record.sha:
         return 0
     path = logo_path(record.sha, record.fmt or "png")
+    provisional = record.next_retry_at is not None
 
     replaced = 0
+    displaced: Counter = Counter()
     for chunk in _chunks(_names_for(db, company, names)):
         stale = db.query(ScrapedJob).filter(ScrapedJob.company.in_(chunk), _replaceable_logo(path))
+        hotlinks = {
+            url: count
+            for url, count in (
+                stale.with_entities(ScrapedJob.company_logo, func.count(ScrapedJob.id))
+                .group_by(ScrapedJob.company_logo)
+                .all()
+            )
+            if logo_quality(url) == 1
+        }
+        if provisional and hotlinks:
+            stale = stale.filter(or_(
+                ScrapedJob.company_logo.is_(None),
+                ScrapedJob.company_logo.notin_(list(hotlinks)),
+            ))
+        elif not provisional:
+            displaced.update(hotlinks)
         if dry_run:
             replaced += stale.with_entities(func.count(ScrapedJob.id)).scalar() or 0
             continue
@@ -315,6 +390,8 @@ def propagate_logo(
                 ),
             ).update({"company_domain": record.domain}, synchronize_session=False)
     if not dry_run:
+        if displaced:
+            _remember_prior_urls(db, key, record.prior_logo_urls, displaced)
         db.commit()
     return replaced
 
@@ -337,13 +414,28 @@ def _upsert(db: Session, key: str, fields: dict) -> None:
     db.commit()
 
 
-def _store(db: Session, company: str, result, names: list[str] | None) -> tuple[str, int]:
+def _store(
+    db: Session, company: str, result, names: list[str] | None, *, provisional: bool = False
+) -> tuple[str, int]:
     key = company_key(company)
     logo = result.logo
     if not key or logo is None or not logo.sha or not logo.data:
         return "", 0
     fmt = "svg" if logo.fmt == "svg" else "png"
     now = _now()
+    attempts, next_retry_at = 0, None  # final
+    if provisional:
+        # attempts counts provisional picks in a row, for the re-check backoff.
+        row = (
+            db.query(CompanyLogo.status, CompanyLogo.attempts, CompanyLogo.next_retry_at)
+            .filter(CompanyLogo.company_key == key)
+            .first()
+        )
+        was_provisional = (
+            row is not None and row.status == STATUS_OK and row.next_retry_at is not None
+        )
+        attempts = (row.attempts or 0) + 1 if was_provisional else 1
+        next_retry_at = now + recheck_delay(attempts)
     fields = {
         "display_name": clean_company_name(company),
         "status": STATUS_OK,
@@ -354,9 +446,9 @@ def _store(db: Session, company: str, result, names: list[str] | None) -> tuple[
         "source_url": (result.source_url or "")[:2000],
         "width": logo.width,
         "height": logo.height,
-        "attempts": 0,
+        "attempts": attempts,
         "checked_at": now,
-        "next_retry_at": None,
+        "next_retry_at": next_retry_at,
         "updated_at": now,
     }
     if result.verified_domain:
@@ -366,16 +458,30 @@ def _store(db: Session, company: str, result, names: list[str] | None) -> tuple[
     return logo_path(logo.sha, fmt), replaced
 
 
-def store_logo(db: Session, company: str, result, *, names: list[str] | None = None) -> str:
+def store_logo(
+    db: Session, company: str, result, *, names: list[str] | None = None,
+    provisional: bool = False,
+) -> str:
     """Save a harvested logo (a logo_harvester.HarvestResult) for this
     employer, then propagate it to the employer's rows. Returns the served
-    path ('' when the result carries no usable image). Commits."""
-    return _store(db, company, result, names)[0]
+    path ('' when the result carries no usable image). Commits.
+
+    provisional: a lower-tier pick made while LinkedIn was rate-limited. It
+    is served and fills rows with no real logo, but stays due for a re-check
+    (recheck_delay) and replaces real hotlinks only once final."""
+    return _store(db, company, result, names, provisional=provisional)[0]
 
 
 def retry_delay(attempts: int) -> datetime.timedelta:
     """Backoff before re-harvesting a company after `attempts` misses."""
     return min(RETRY_STEP * max(attempts, 1), RETRY_CAP)
+
+
+def recheck_delay(attempts: int) -> datetime.timedelta:
+    """Backoff before re-harvesting a company whose last result LinkedIn had
+    no say in (rate-limited first): a day, doubling per repeat, capped like
+    any miss. LinkedIn blocks pass within hours."""
+    return min(RECHECK_STEP * 2 ** min(max(attempts, 1) - 1, 7), RETRY_CAP)
 
 
 def record_miss(
@@ -384,34 +490,56 @@ def record_miss(
     *,
     rejected_domains: Iterable[str] = (),
     names: list[str] | None = None,
+    linkedin_skipped: bool = False,
 ) -> None:
     """Remember that nothing usable was found, and when to try again. Guessed
     domains proven bogus are cleared from the employer's rows (with the
     favicon URLs built from them) so the frontend stops rendering a parked
-    domain's icon. A stored logo is never demoted by a later miss. Commits."""
+    domain's icon. Commits.
+
+    linkedin_skipped: LinkedIn was rate-limited before this employer's turn,
+    so the miss proves little and is retried after recheck_delay instead of
+    retry_delay. A stored logo is never demoted by a miss: a final one is
+    left alone; a provisional one is re-checked later again (LinkedIn
+    skipped) or becomes final (LinkedIn answered and had nothing better)."""
     key = company_key(company)
     if not key:
         return
     row = (
-        db.query(CompanyLogo.status, CompanyLogo.attempts, CompanyLogo.rejected_domains)
+        db.query(
+            CompanyLogo.status, CompanyLogo.attempts, CompanyLogo.rejected_domains,
+            CompanyLogo.next_retry_at,
+        )
         .filter(CompanyLogo.company_key == key)
         .first()
     )
+    now = _now()
     if row is not None and row.status == STATUS_OK:
+        if row.next_retry_at is None:
+            return
+        if linkedin_skipped:
+            attempts = (row.attempts or 0) + 1
+            _upsert(db, key, {
+                "attempts": attempts, "checked_at": now,
+                "next_retry_at": now + recheck_delay(attempts), "updated_at": now,
+            })
+            return
+        _upsert(db, key, {"attempts": 0, "checked_at": now, "next_retry_at": None, "updated_at": now})
+        propagate_logo(db, company, names=names)  # final now: real hotlinks too
         return
     bogus = sorted({d.strip().lower() for d in rejected_domains if d})
     previous_attempts, previous_rejected = (
         (row.attempts or 0, set(row.rejected_domains or ())) if row is not None else (0, set())
     )
     attempts = previous_attempts + 1
-    now = _now()
+    delay = recheck_delay(attempts) if linkedin_skipped else retry_delay(attempts)
     _upsert(db, key, {
         "display_name": clean_company_name(company),
         "status": STATUS_MISS,
         "attempts": attempts,
         "rejected_domains": sorted(previous_rejected | set(bogus)),
         "checked_at": now,
-        "next_retry_at": now + retry_delay(attempts),
+        "next_retry_at": now + delay,
         "updated_at": now,
     })
     if not bogus:
@@ -426,6 +554,62 @@ def record_miss(
         ).update({"company_logo": ""}, synchronize_session=False)
         rows.update({"company_domain": ""}, synchronize_session=False)
     db.commit()
+
+
+def demote_logo(
+    db: Session, company: str, *, names: list[str] | None = None, dry_run: bool = False
+) -> dict | None:
+    """Undo a wrong stored logo. The record becomes a miss that is due now,
+    with its verified domain forgotten and its image blocked for good (the
+    harvester skips any candidate that normalizes to it); rows still showing
+    it get back the first real hotlink it replaced, or '' when it replaced
+    none (the endpoint stops serving a demoted image). The next harvest
+    tries the remembered hotlinks first. Returns what was done (with
+    dry_run: what would be), None when nothing is stored for the company.
+    Commits, except with dry_run."""
+    key = company_key(company)
+    record = (
+        db.query(
+            CompanyLogo.status, CompanyLogo.sha, CompanyLogo.fmt, CompanyLogo.source,
+            CompanyLogo.source_url, CompanyLogo.prior_logo_urls, CompanyLogo.blocked_shas,
+        )
+        .filter(CompanyLogo.company_key == key)
+        .first()
+    ) if key else None
+    if record is None or record.status != STATUS_OK or not record.sha:
+        return None
+    path = logo_path(record.sha, record.fmt or "png")
+    prior = [u for u in (record.prior_logo_urls or []) if logo_quality(u) > 0]
+    restore = prior[0] if prior else ""
+    rows = 0
+    for chunk in _chunks(_names_for(db, company, names)):
+        showing = db.query(ScrapedJob).filter(
+            ScrapedJob.company.in_(chunk), ScrapedJob.company_logo == path
+        )
+        if dry_run:
+            rows += showing.with_entities(func.count(ScrapedJob.id)).scalar() or 0
+        else:
+            rows += showing.update({"company_logo": restore}, synchronize_session=False)
+    if not dry_run:
+        now = _now()
+        db.query(CompanyLogo).filter(CompanyLogo.company_key == key).update({
+            "status": STATUS_MISS,
+            "attempts": 0,
+            "domain": None,
+            "next_retry_at": None,
+            "blocked_shas": sorted(set(record.blocked_shas or ()) | {record.sha}),
+            "checked_at": now,
+            "updated_at": now,
+        }, synchronize_session=False)
+        db.commit()
+    return {
+        "key": key,
+        "sha": record.sha,
+        "source": record.source or "",
+        "source_url": record.source_url or "",
+        "restored_to": restore,
+        "rows": rows,
+    }
 
 
 # ─── Seeding from logos already in the catalogue ─────────────────────────────
@@ -627,12 +811,17 @@ def _accepted_aliases(key: str, candidates: list[str], trusted: dict[str, str]) 
 def _alias_stored_urls(db: Session, keys: list[str]) -> dict[str, str]:
     """Where each of these employers' stored logos was downloaded from. A
     stored logo already passed normalize_logo, so its source is the best
-    seed the shorter name can borrow ('Bell Canada' for 'Bell')."""
+    seed the shorter name can borrow ('Bell Canada' for 'Bell'). Never a
+    provisional one: it would come back as a final 'existing' pick."""
     out: dict[str, str] = {}
     for chunk in _chunks(sorted(keys)):
         for key, url in (
             db.query(CompanyLogo.company_key, CompanyLogo.source_url)
-            .filter(CompanyLogo.company_key.in_(chunk), CompanyLogo.status == STATUS_OK)
+            .filter(
+                CompanyLogo.company_key.in_(chunk),
+                CompanyLogo.status == STATUS_OK,
+                CompanyLogo.next_retry_at.is_(None),
+            )
             .all()
         ):
             url = (url or "").strip()
@@ -656,9 +845,27 @@ class _Plan:
 
 class HarvestOutcome(NamedTuple):
     plan: _Plan
-    status: str  # ok | miss | timeout | skipped (budget) | error
-    result: object  # a logo_harvester.HarvestResult when ok
+    # ok | miss | timeout | skipped (budget) | error; after_linkedin_block
+    # adds provisional (ok, stored for a re-check) and retry (a miss retried
+    # soon); the backfill adds deferred (not written at all)
+    status: str
+    result: object  # a logo_harvester.HarvestResult when ok/provisional
     bogus: list[str]  # name-guessed domains proven bogus on a miss
+
+
+class _Record(NamedTuple):
+    """The company_logos columns planning reads for one employer."""
+    status: str | None = None
+    next_retry_at: datetime.datetime | None = None
+    domain: str = ""
+    rejected: frozenset = frozenset()
+    prior: tuple = ()
+    blocked: frozenset = frozenset()
+    sha: str = ""
+
+    @property
+    def provisional(self) -> bool:
+        return self.status == STATUS_OK and self.next_retry_at is not None
 
 
 def repropagate_known_logos(
@@ -689,7 +896,13 @@ def repropagate_known_logos(
     )
     stored = load_branding(db, [name for (name,) in stray])
     updated = 0
-    for key in sorted(k for k, record in stored.items() if record.logo)[:max_companies]:
+    # A provisional logo leaves real hotlinks alone, so its employer looks
+    # stray on every run: those only get what the final ones leave of the cap.
+    keys = sorted(
+        (k for k, record in stored.items() if record.logo),
+        key=lambda k: (stored[k].provisional, k),
+    )
+    for key in keys[:max_companies]:
         names = names_by_key.get(key, [])
         if names:
             updated += propagate_logo(db, names[0], names=names, dry_run=dry_run)
@@ -737,10 +950,14 @@ def _pick_companies(
     only: set[str] | None = None,
     retry_misses: bool = False,
     has_store: bool = True,
-) -> tuple[list[tuple[str, str, int]], dict[str, tuple]]:
+    force: set[str] | None = None,
+) -> tuple[list[tuple[str, str, int]], dict[str, _Record]]:
     """[(key, display name, visible rows)] of employers with visible rows and
     no stored logo whose retry is due (any miss with retry_misses), most
-    visible rows first, optionally only the `only` keys; plus their records."""
+    visible rows first, then provisional logos due for a re-check; `force`
+    keys are due whatever is stored. Optionally only the `only` keys. Plus
+    their records."""
+    force = force or set()
     counts: Counter = Counter()
     spellings: dict[str, Counter] = {}
     rows = (
@@ -756,27 +973,39 @@ def _pick_companies(
         counts[key] += count
         spellings.setdefault(key, Counter())[name] += count
 
-    records: dict[str, tuple] = {}
+    records: dict[str, _Record] = {}
     # Without the table (a dry run before the deploy) nothing is stored yet.
     for chunk in _chunks(sorted(counts) if has_store else []):
-        for key, status, next_retry_at, domain, rejected in (
+        for key, status, next_retry_at, domain, rejected, prior, blocked, sha in (
             db.query(
                 CompanyLogo.company_key, CompanyLogo.status, CompanyLogo.next_retry_at,
                 CompanyLogo.domain, CompanyLogo.rejected_domains,
+                CompanyLogo.prior_logo_urls, CompanyLogo.blocked_shas, CompanyLogo.sha,
             )
             .filter(CompanyLogo.company_key.in_(chunk))
             .all()
         ):
-            records[key] = (status, next_retry_at, domain or "", set(rejected or ()))
+            records[key] = _Record(
+                status, next_retry_at, domain or "", frozenset(rejected or ()),
+                tuple(prior or ()), frozenset(blocked or ()), sha or "",
+            )
 
     now = _now()
-    due = [
-        key for key in counts
-        if key not in records
-        or (records[key][0] != STATUS_OK
-            and (retry_misses or records[key][1] is None or records[key][1] <= now))
-    ]
-    due.sort(key=lambda k: (-counts[k], k))
+
+    def is_due(key: str) -> bool:
+        record = records.get(key)
+        if record is None or key in force:
+            return True
+        if record.status == STATUS_OK:  # final never; provisional once due
+            return record.provisional and (retry_misses or record.next_retry_at <= now)
+        return retry_misses or record.next_retry_at is None or record.next_retry_at <= now
+
+    def recheck_only(key: str) -> bool:
+        return key in records and records[key].provisional and key not in force
+
+    due = [key for key in counts if is_due(key)]
+    # Employers showing no stored logo first; a provisional one already shows one.
+    due.sort(key=lambda k: (recheck_only(k), -counts[k], k))
     picked = [
         (key, clean_company_name(spellings[key].most_common(1)[0][0]), counts[key])
         for key in (due if limit is None else due[:limit])
@@ -785,15 +1014,19 @@ def _pick_companies(
 
 
 def _build_plans(
-    db: Session, picked, records, names_by_key, hints_type, *, has_store: bool = True
+    db: Session, picked, records, names_by_key, hints_type, *,
+    has_store: bool = True, force: set[str] | None = None,
 ) -> list[_Plan]:
     """Harvest hints per employer, from column-only reads: candidate domains
     (registry/verified first, company website, proven domains of its longer
     names, employer-hosted apply links, stored non-guess domains, the name
     guess last), a few job URLs (LinkedIn postings from any row, hidden
-    duplicates included, then ATS/direct), and real logos already stored
-    somewhere in the catalogue: the employer's own rows first, then its
-    longer name's ('Magna International' rows for 'Magna')."""
+    duplicates included, then ATS/direct), and real logos already known:
+    the hotlinks an earlier store replaced on its rows (prior_logo_urls)
+    first, then the employer's own rows, then its longer name's ('Magna
+    International' rows for 'Magna'). Demoted images are passed as
+    blocked_shas; a forced (re-harvested) employer's current one too."""
+    force = force or set()
     scope = {key: names_by_key.get(key) or [display] for key, display, _rows in picked}
     all_names = sorted({name for names in scope.values() for name in names})
 
@@ -855,7 +1088,8 @@ def _build_plans(
     plans: list[_Plan] = []
     for key, display, visible_rows in picked:
         names = scope[key]
-        _status, _retry, verified, rejected = records.get(key, (None, None, "", set()))
+        record = records.get(key, _Record())
+        verified, rejected = record.domain, record.rejected
         guesses = {domain_from_name(n) for n in names} | {domain_from_name(display)}
         guesses.discard(None)
         aliases = accepted.get(key, [])
@@ -900,8 +1134,15 @@ def _build_plans(
             for url in [alias_stored.get(alias, "")] + alias_seeds.get(alias, []):
                 if url and url not in borrowed:
                     borrowed.append(url)
-        own = seeds.get(key, [])
-        existing = own + [u for u in borrowed if u not in own][:_ALIAS_SEEDS]
+        prior = [
+            u for u in record.prior
+            if isinstance(u, str) and u.startswith(("https://", "http://")) and logo_quality(u) > 0
+        ][:_PRIOR_SEEDS]
+        own = [u for u in seeds.get(key, []) if u not in prior]
+        existing = prior + own + [u for u in borrowed if u not in prior and u not in own][:_ALIAS_SEEDS]
+        blocked = set(record.blocked)
+        if key in force and record.status == STATUS_OK and record.sha:
+            blocked.add(record.sha)  # a re-harvest must not land on the same image
 
         trusted_here = {registry.get(key), verified, curated_domain(display)} | {
             domain_from_url(url) for name in names for url in company_urls.get(name, [])
@@ -923,6 +1164,7 @@ def _build_plans(
                 domains=domains,
                 job_urls=job_urls,
                 existing_logo_urls=existing,
+                blocked_shas=sorted(blocked),
             ),
             suspect_domains=suspects[:_SUSPECT_DOMAINS_PER_COMPANY],
             rows=visible_rows,
@@ -940,19 +1182,26 @@ def plan_harvest(
     only: Iterable[str] | None = None,
     retry_misses: bool = False,
     has_store: bool = True,
+    reharvest: Iterable[str] = (),
 ) -> list[_Plan]:
     """The work list, busiest employer first, each with the hints the
     harvester gets. Read-only (column-only queries); shared by cron-backfill
     Phase 3 and the one-time backfill script so both harvest identically.
     `only` takes company names; has_store=False plans against a database
-    whose company_logos table does not exist yet (a dry run)."""
+    whose company_logos table does not exist yet (a dry run). `reharvest`
+    names are planned as if demote_logo had run: due whatever is stored,
+    and never landing on their current image."""
     keys = {company_key(name) for name in only} - {""} if only is not None else None
+    force = {company_key(name) for name in reharvest} - {""}
     picked, records = _pick_companies(
-        db, names_by_key, limit, only=keys, retry_misses=retry_misses, has_store=has_store
+        db, names_by_key, limit, only=keys, retry_misses=retry_misses, has_store=has_store,
+        force=force,
     )
     if not picked:
         return []
-    return _build_plans(db, picked, records, names_by_key, hints_type, has_store=has_store)
+    return _build_plans(
+        db, picked, records, names_by_key, hints_type, has_store=has_store, force=force
+    )
 
 
 async def run_harvest(
@@ -1020,13 +1269,47 @@ def new_harvest_stats() -> dict:
         "companies_considered": 0,
         "companies_attempted": 0,
         "stored": 0,
+        "provisional": 0,  # of stored: lower-tier picks made after a LinkedIn 429
         "missed": 0,
+        "linkedin_deferred": 0,  # of missed: retried soon, LinkedIn had no say
         "timeouts": 0,
         "errors": 0,
         "skipped_budget": 0,
         "rows_updated": 0,
         "domains_rejected": 0,
     }
+
+
+# Picks a LinkedIn rate limit cannot have made worse: found before LinkedIn
+# is asked (existing), by LinkedIn, or on the employer's own ATS board.
+_FINAL_AFTER_LINKEDIN_BLOCK = ("existing", "linkedin_job", "linkedin_search")
+
+
+def after_linkedin_block(
+    outcomes: Iterable[HarvestOutcome], finished: dict[str, float], blocked_at: float | None
+) -> list[HarvestOutcome]:
+    """Outcomes that finished once LinkedIn was given up on for the run
+    (the harvester's gate time `blocked_at`; `finished` maps plan keys to
+    time.monotonic() at completion) never had LinkedIn's say, and LinkedIn
+    is the best source. A homepage/Wikidata/s2 pick becomes 'provisional'
+    (stored and shown, re-checked after recheck_delay); a miss or a timeout
+    becomes 'retry' (retried after recheck_delay, not the 14-day step).
+    Existing, LinkedIn and ATS-board picks, and anything that finished
+    earlier, stand. Nothing is dropped: dropping would re-harvest the same
+    busiest employers on every run while LinkedIn keeps refusing."""
+    out: list[HarvestOutcome] = []
+    for outcome in outcomes:
+        if blocked_at is None or finished.get(outcome.plan.key, float("-inf")) < blocked_at:
+            out.append(outcome)
+        elif outcome.status == "ok":
+            source = getattr(outcome.result, "source", "") or ""
+            final = source in _FINAL_AFTER_LINKEDIN_BLOCK or source.startswith("ats_")
+            out.append(outcome if final else outcome._replace(status="provisional"))
+        elif outcome.status in ("miss", "timeout"):
+            out.append(outcome._replace(status="retry"))
+        else:
+            out.append(outcome)
+    return out
 
 
 def apply_outcomes(
@@ -1037,10 +1320,11 @@ def apply_outcomes(
     record_timeouts: bool = True,
 ) -> None:
     """Write harvest outcomes, one at a time (the Session is not task safe):
-    store + propagate each hit, record each miss with its backoff (and its
-    proven-bogus domains). A company that ran out of time is recorded as a
-    miss only with record_timeouts (the cron; the backfill retries it on the
-    next run instead). Budget skips are never recorded."""
+    store + propagate each hit (provisionally for 'provisional'), record
+    each miss with its backoff (short for 'retry') and its proven-bogus
+    domains. A company that ran out of time is recorded as a miss only with
+    record_timeouts (the cron; the backfill retries it on the next run
+    instead). Budget skips are never recorded."""
     for outcome in outcomes:
         plan = outcome.plan
         if outcome.status == "skipped":
@@ -1055,14 +1339,21 @@ def apply_outcomes(
             if not record_timeouts:
                 continue
         try:
-            if outcome.status == "ok":
-                path, replaced = _store(db, plan.display, outcome.result, plan.names)
+            if outcome.status in ("ok", "provisional"):
+                provisional = outcome.status == "provisional"
+                path, replaced = _store(
+                    db, plan.display, outcome.result, plan.names, provisional=provisional
+                )
                 if path:
                     stats["stored"] += 1
+                    stats["provisional"] += provisional
                     stats["rows_updated"] += replaced
                     continue
-            record_miss(db, plan.display, rejected_domains=outcome.bogus, names=plan.names)
+            skipped = outcome.status == "retry"
+            record_miss(db, plan.display, rejected_domains=outcome.bogus, names=plan.names,
+                        linkedin_skipped=skipped)
             stats["missed"] += 1
+            stats["linkedin_deferred"] += skipped
             stats["domains_rejected"] += len(outcome.bogus)
         except Exception:
             db.rollback()
@@ -1086,10 +1377,19 @@ async def harvest_missing_logos(
 
     The harvester's own per-company cap (logo_harvester.HARVEST_TIME_CAP)
     ends a slow company first and reads as a miss here (retried after the
-    backoff); HARVEST_PER_COMPANY_TIMEOUT_S is the backstop around it."""
+    backoff); HARVEST_PER_COMPANY_TIMEOUT_S is the backstop around it.
+
+    A LinkedIn 429 makes the harvester skip LinkedIn for the rest of the run
+    (LINKEDIN_BLOCK_COOLDOWN is None here); what finished after that is
+    written through after_linkedin_block, so no lower-tier pick is final
+    before LinkedIn had its say."""
     stats = new_harvest_stats()
     try:
-        from backend.services.logo_harvester import LogoHints, harvest_company_logo
+        from backend.services.logo_harvester import (
+            LogoHints,
+            harvest_company_logo,
+            linkedin_stats,
+        )
     except ImportError:  # the harvester contract is not deployed yet
         stats["harvester_available"] = False
         return stats
@@ -1099,11 +1399,26 @@ async def harvest_missing_logos(
 
     plans = plan_harvest(db, names_by_key, LogoHints, limit=max_companies)
     stats["companies_considered"] = len(plans)
+    # The reads are done: end the transaction before up to HARVEST_BUDGET_S
+    # of network work, or the pooled connection sits idle in transaction
+    # (holding locks that queue DDL behind it). apply_outcomes checks out a
+    # fresh one. commit, not rollback: nothing of ours is pending, and a
+    # caller's unflushed change would have been committed by our next write.
+    db.commit()
     if not plans:
         return stats
 
+    finished: dict[str, float] = {}
+
+    def mark(outcome: HarvestOutcome) -> None:
+        finished[outcome.plan.key] = time.monotonic()
+
     outcomes = await run_harvest(
         client, plans, harvest_company_logo, budget_s=budget_s, concurrency=concurrency,
+        on_done=mark,
     )
+    linkedin = linkedin_stats(client)
+    if linkedin["blocked"]:
+        outcomes = after_linkedin_block(outcomes, finished, linkedin["blocked_at"])
     apply_outcomes(db, outcomes, stats)
     return stats
