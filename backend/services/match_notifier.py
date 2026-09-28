@@ -12,11 +12,13 @@ import logging
 import os
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.db.models import JobMatchNotification, JobMatchScore, ScrapedJob, User
-from backend.services.email_service import email_service
+from backend.services.email_service import clean_company_name, email_service
+from backend.services.listing_freshness import LISTING_ACTIVE, LISTING_STALE
+from backend.services.logo_cache import LOGO_PATH_PREFIX, logo_quality
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,22 @@ def alerts_enabled() -> bool:
     but an env var.
     """
     return _env_flag("MATCH_ALERTS_ENABLED", True)
+
+
+def _alertable() -> tuple:
+    """SQL filters for rows worth an alert: exactly what the feed shows. A
+    hidden cross-source duplicate or a closed listing would deep-link the
+    user to a job they can't apply to (26 of the first 91 alerts pointed at
+    rows since hidden as duplicates)."""
+    return (
+        ScrapedJob.duplicate_of.is_(None),
+        or_(
+            ScrapedJob.listing_status.is_(None),
+            ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
+        ),
+        func.trim(func.coalesce(ScrapedJob.company, "")) != "",
+        ScrapedJob.company != "Unknown",
+    )
 
 
 def _recently_notified(db: Session, user_id: int, hours: int) -> bool:
@@ -170,17 +188,25 @@ def _relative_time(when: Optional[datetime.datetime]) -> str:
 
 
 def _resolve_logo_url(job: ScrapedJob) -> str:
-    """Best company logo URL for the email (mirrors frontend resolveLogoUrl).
+    """Best company logo URL for the email.
 
-    Priority: a real stored logo > backend-resolved domain > website URL / name
-    heuristic. Returns "" when nothing resolves so the email falls back to a
-    letter avatar.
+    Priority: our self-hosted logo > a real stored hotlink > the favicon of
+    the backend-resolved domain (website URL / name heuristic). Returns ""
+    when nothing resolves so the email falls back to a letter avatar.
+
+    A self-hosted logo is a relative '/jobs/logo/<sha>.png' path, served by
+    the API behind the app's own origin (the /jobs/* rewrite), so an email
+    gets it as an absolute FRONTEND_URL link. SVG ones fall through to the
+    favicon: Gmail and Outlook don't render SVG images.
     """
     from backend.services.logo_resolver import logo_url_for_domain, resolve_domain
 
     stored = (job.company_logo or "").strip()
-    generated_markers = ("clearbit", "icon.horse", "google.com/s2", "apistemic", "hunter.io")
-    if stored.startswith("http") and not any(m in stored for m in generated_markers):
+    if stored.startswith(LOGO_PATH_PREFIX):
+        base = _frontend_base()
+        if base and stored.lower().endswith(".png"):
+            return f"{base}{stored}"
+    elif logo_quality(stored) > 0:
         return stored
 
     domain = (job.company_domain or "").strip()
@@ -200,7 +226,7 @@ def _job_to_alert_dict(job: ScrapedJob, score: int) -> dict:
     apply_url = f"{base}/app?job={job.id}" if base else (job.url or "#")
     return {
         "title": job.title or "",
-        "company": job.company or "",
+        "company": clean_company_name(job.company),
         "match_score": int(score or 0),
         "location": job.location or "",
         "salary": job.salary_range or "",
@@ -254,6 +280,19 @@ def notify_high_matches(
             "Daily match-alert budget (%d) reached; skipping user %s.",
             budget, user_id,
         )
+        return 0
+
+    # Only rows the feed still shows (the upload path hands over whatever it
+    # scored, hidden or closed rows included). Ids only, never whole rows.
+    job_ids = [job.id for job, _ in candidates]
+    alertable = {
+        row.id
+        for row in db.query(ScrapedJob.id)
+        .filter(ScrapedJob.id.in_(job_ids), *_alertable())
+        .all()
+    }
+    candidates = [(job, score) for job, score in candidates if job.id in alertable]
+    if not candidates:
         return 0
 
     # Drop jobs this user was already alerted about.
@@ -379,13 +418,15 @@ async def sweep_match_alerts(
             .filter(JobMatchNotification.user_id == user.id)
             .subquery()
         )
-        # The scoring window: the newest N jobs this user hasn't been alerted
-        # about. Selected as ids first so the window stays anchored to "newest
-        # N": filtering by cache state before the LIMIT would make each run
-        # dig further into the backlog, growing the bill instead of capping it.
+        # The scoring window: the newest N jobs the feed shows that this user
+        # hasn't been alerted about. Selected as ids first so the window stays
+        # anchored to "newest N": filtering by cache state before the LIMIT
+        # would make each run dig further into the backlog, growing the bill
+        # instead of capping it.
         window = (
             db.query(ScrapedJob.id)
             .filter(
+                *_alertable(),
                 ScrapedJob.description != "",
                 ScrapedJob.description != None,  # noqa: E711
                 func.length(ScrapedJob.description) > 50,

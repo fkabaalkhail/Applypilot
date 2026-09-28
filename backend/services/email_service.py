@@ -3,12 +3,35 @@
 import html
 import logging
 import os
+import re
 from typing import Optional
 from urllib.parse import urlsplit
 
 import resend
 
 logger = logging.getLogger(__name__)
+
+_EDGE_EMPHASIS_START = re.compile(r"^(?:\*{2,}|_{2,})\s*")
+_EDGE_EMPHASIS_END = re.compile(r"\s*(?:\*{2,}|_{2,})\Z")
+_ITALIC_WRAP = re.compile(r"([*_])(.+)\1")
+
+
+def clean_company_name(name: Optional[str]) -> str:
+    """A company name without markdown emphasis ("**Tesla**" -> "Tesla").
+
+    The same cleanup the dashboard applies (frontend lib/companyLogo.ts
+    cleanCompanyName), so an email shows the name, avatar letter and avatar
+    colour the feed does. Scraped GitHub lists wrote the bold markers into
+    the stored name.
+    """
+    s = (name or "").strip()
+    s = _EDGE_EMPHASIS_START.sub("", s, count=1)
+    s = _EDGE_EMPHASIS_END.sub("", s, count=1)
+    # A balanced single-marker wrap ("*Tesla*") is italics too.
+    italic = _ITALIC_WRAP.fullmatch(s)
+    if italic:
+        s = italic.group(2)
+    return s.strip()
 
 
 class EmailService:
@@ -216,8 +239,8 @@ class EmailService:
 
         top = jobs[0]
         subject = (
-            f"{top['company']} just posted a {top['match_score']}% match "
-            f"{top['title']} role"
+            f"{clean_company_name(top['company'])} just posted a "
+            f"{top['match_score']}% match {top['title']} role"
         )
         html_content = self._build_job_alert_html(jobs, recipient_name)
 
@@ -344,15 +367,20 @@ class EmailService:
     )
 
     def _avatar_color(self, company: str) -> str:
-        s = company or "?"
+        s = clean_company_name(company) or "?"
+        # Hashed over UTF-16 code units, as the dashboard's charCodeAt() does.
+        units = s.encode("utf-16-le")
         h = 0
-        for ch in s:
-            h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+        for i in range(0, len(units), 2):
+            h = (h * 31 + (units[i] | units[i + 1] << 8)) & 0xFFFFFFFF
         return self._AVATAR_COLORS[h % len(self._AVATAR_COLORS)]
 
     def _avatar_letter(self, company: str) -> str:
-        c = (company or "").strip()
-        return c[0].upper() if c else "?"
+        """First letter or digit, uppercased; "?" when there is none."""
+        for ch in clean_company_name(company):
+            if ch.isalnum():
+                return ch.upper()
+        return "?"
 
     def _build_logo_cell(self, company_raw: str, logo_url: str) -> str:
         """A 40px rounded company logo, or a deterministic letter avatar.
@@ -361,7 +389,7 @@ class EmailService:
         favicon degrades to a clean colored tile rather than a broken image.
         """
         color = self._avatar_color(company_raw)
-        company = html.escape(company_raw)
+        company = html.escape(clean_company_name(company_raw))
         if logo_url:
             safe = html.escape(logo_url, quote=True)
             inner = (
@@ -384,7 +412,7 @@ class EmailService:
 
     def _build_job_card(self, job: dict, font: str) -> str:
         """Render a single job match as a Stripe-styled card."""
-        company_raw = str(job.get("company", ""))
+        company_raw = clean_company_name(str(job.get("company", "")))
         title = html.escape(str(job.get("title", "")))
         company = html.escape(company_raw)
         score = int(job.get("match_score", 0) or 0)
