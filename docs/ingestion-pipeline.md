@@ -390,8 +390,10 @@ its step on anything but 2xx; the steps are `continue-on-error` so the rest of
 the run still happens, and the final step turns the run red. (Before this,
 every curl ended in `|| true` and a 401 or 500 showed green.) `--max-time` is
 300 s on the four crons, Vercel's function limit: cron-ats pages for at most
-150 s plus processing, cron-backfill spends ~20 s on descriptions plus a
-150 s logo budget, cron-freshness runs its sweeps plus a 150 s verification
+150 s plus processing, cron-backfill plans its whole pass into
+`BACKFILL_BUDGET_S` (240 s: up to 75 s of descriptions, then a logo harvest
+of what is left, at most 150 s; a fetch the budget cuts off costs the row no
+attempt), cron-freshness runs its sweeps plus a 150 s verification
 box. A curl timeout at 300 s means the function itself hit Vercel's ceiling.
 The job has a 40-minute timeout so a hung run can't hold the concurrency
 group.

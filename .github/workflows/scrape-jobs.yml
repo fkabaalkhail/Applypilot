@@ -139,8 +139,10 @@ jobs:
       # --max-time 300 on the four crons = Vercel's function limit. The
       # server-side budgets all finish well inside it: cron-ats pages boards
       # for at most CRON_ATS_LIST_BUDGET_SECONDS (150 s) plus processing;
-      # cron-backfill runs ~20 s of descriptions plus a 150 s logo harvest
-      # budget; cron-freshness runs its sweeps plus a 150 s verification box.
+      # cron-backfill plans its whole pass into BACKFILL_BUDGET_S (240 s):
+      # up to 75 s of descriptions, then a logo harvest of what is left (at
+      # most 150 s); cron-freshness runs its sweeps plus a 150 s
+      # verification box.
       # A curl timeout at 300 s therefore means the function itself hit
       # Vercel's ceiling, which is worth a red run. Never raise it past 300:
       # Vercel kills the function there anyway.

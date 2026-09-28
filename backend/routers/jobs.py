@@ -471,6 +471,24 @@ def ingest_batch(
     }
 
 
+# cron-backfill's wall clock. Vercel kills the function at 300 s, the moment
+# the workflow's curl gives up too, so the whole pass is planned to finish by
+# BACKFILL_BUDGET_S and leave room for a cold start. Descriptions get the
+# first DESCRIPTION_BUDGET_S; the logo harvest gets what is left (at most
+# logo_cache.HARVEST_BUDGET_S), minus POST_HARVEST_RESERVE_S for the steps
+# after its network budget that have no clock of their own. Measured on prod
+# (2026-09-28): a last bogus-domain probe (<=15 s over), the harvest's writes
+# (~15 s for 150 employers), the twin sweep, the remaining count and the
+# response (~13 s). The rest covers the twin sweep's burst when many winners
+# close at once (release_from_closed_winners has no cap: ~35 s for 440 rows).
+BACKFILL_BUDGET_S = 240.0
+DESCRIPTION_BUDGET_S = 75.0
+POST_HARVEST_RESERVE_S = 75.0
+# Per job, all its requests together (the page, redirects, up to three ATS
+# API calls). httpx's 12 s applies to each connect/read, not to the whole.
+DESCRIPTION_FETCH_TIMEOUT_S = 30.0
+
+
 @router.post("/cron-backfill")
 async def cron_backfill(
     batch_size: int = Query(100, ge=1, le=150),
@@ -480,10 +498,13 @@ async def cron_backfill(
     """Bounded repair pass: fetch missing descriptions (<=3 attempts/job,
     direct-URL rows before login-walled LinkedIn/Indeed ones), fill structured
     location + company_domain, and harvest self-hosted logos for employers
-    that have none yet (services/logo_cache.py)."""
-    import asyncio
+    that have none yet (services/logo_cache.py). The network phases are
+    bounded, and the pass is planned to finish inside BACKFILL_BUDGET_S."""
     import httpx
     from backend.services import logo_cache
+
+    loop = asyncio.get_running_loop()
+    started = loop.time()
 
     needs_description = or_(
         ScrapedJob.description.is_(None),
@@ -514,11 +535,24 @@ async def cron_backfill(
         # Phase 1: concurrent HTTP only, the Session is not thread/task safe,
         # so every DB mutation happens sequentially in phase 2.
         semaphore = asyncio.Semaphore(6)
+        description_deadline = started + DESCRIPTION_BUDGET_S
 
-        async def fetch(job_id: int, url: str) -> tuple[int, str]:
+        async def fetch(job_id: int, url: str) -> tuple[int, str | None]:
+            # None: the budget ran out before this job had a fair try. It
+            # costs no attempt and keeps its place in the queue.
             async with semaphore:
+                remaining = description_deadline - loop.time()
+                if remaining <= 1:
+                    return job_id, None
+                cut_by_budget = remaining < DESCRIPTION_FETCH_TIMEOUT_S
                 try:
-                    return job_id, await extract_description_from_url(client, url)
+                    return job_id, await asyncio.wait_for(
+                        extract_description_from_url(client, url),
+                        timeout=min(remaining, DESCRIPTION_FETCH_TIMEOUT_S),
+                    )
+                except asyncio.TimeoutError:
+                    # The pass ran out, or the host was too slow (an attempt).
+                    return job_id, None if cut_by_budget else ""
                 except Exception:
                     return job_id, ""
 
@@ -526,6 +560,7 @@ async def cron_backfill(
             *[fetch(job.id, job.url) for job in jobs if job.url]
         )
         fetched = dict(results)
+        descriptions_deferred = sum(1 for text in fetched.values() if text is None)
 
         from backend.services.structured_extraction import (
             compute_raw_hash,
@@ -542,8 +577,10 @@ async def cron_backfill(
         )
 
         for job in jobs:
-            job.desc_fetch_attempts = (job.desc_fetch_attempts or 0) + 1
+            # A row with no URL has nothing to fetch: it spends its attempts.
             text = fetched.get(job.id, "")
+            if text is not None:
+                job.desc_fetch_attempts = (job.desc_fetch_attempts or 0) + 1
             if text:
                 job.description = _sanitize_description(text)
                 job.description_sections = None
@@ -579,9 +616,14 @@ async def cron_backfill(
         # Phase 3: self-hosted logos. Rows of employers whose logo is already
         # stored get re-pointed at it; employers with none are harvested
         # (busiest first, misses on a 14d-per-attempt backoff) inside a
-        # wall-clock budget, and a hit is propagated to all their rows.
+        # wall-clock budget, and a hit is propagated to all their rows. The
+        # budget is whatever the pass has left, so a slow description phase
+        # shortens the harvest instead of pushing the pass past Vercel's cap.
         try:
-            logo_stats = await logo_cache.harvest_missing_logos(db, client)
+            logo_stats = await logo_cache.harvest_missing_logos(
+                db, client,
+                deadline=started + BACKFILL_BUDGET_S - POST_HARVEST_RESERVE_S,
+            )
         except Exception:
             db.rollback()
             logger.exception("cron-backfill logo harvest failed")
@@ -608,6 +650,7 @@ async def cron_backfill(
     return {
         "processed": len(jobs),
         "descriptions_fixed": descriptions_fixed,
+        "descriptions_deferred": descriptions_deferred,
         "locations_fixed": locations_fixed,
         "domains_fixed": domains_fixed,
         # Back-compat names: companies harvested, logos stored.
@@ -616,6 +659,7 @@ async def cron_backfill(
         "logo_harvest": logo_stats,
         "twins_absorbed": twins_absorbed,
         "remaining": remaining,
+        "elapsed_s": round(loop.time() - started, 1),
     }
 
 

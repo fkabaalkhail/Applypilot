@@ -1437,12 +1437,17 @@ async def harvest_missing_logos(
     budget_s: float = HARVEST_BUDGET_S,
     concurrency: int = HARVEST_CONCURRENCY,
     max_companies: int = HARVEST_MAX_COMPANIES,
+    deadline: float | None = None,
 ) -> dict:
     """One bounded harvest pass: re-point rows at logos already stored, then
     harvest employers that have visible rows and no stored logo (most rows
     first, misses only once their backoff is due) with bounded concurrency
     inside a wall-clock budget. Network happens concurrently; every DB write
     happens afterwards, sequentially (the Session is not task safe).
+
+    `deadline` (event-loop time) caps the network budget further, measured
+    once the reads are done: a caller with its own wall clock (cron-backfill)
+    gets a shorter harvest, or none, rather than overrunning it.
 
     The harvester's own per-company cap (logo_harvester.HARVEST_TIME_CAP)
     ends a slow company first and reads as a timeout here (retried after the
@@ -1484,6 +1489,8 @@ async def harvest_missing_logos(
     def mark(outcome: HarvestOutcome) -> None:
         finished[outcome.plan.key] = time.monotonic()
 
+    if deadline is not None:
+        budget_s = min(budget_s, deadline - asyncio.get_running_loop().time())
     outcomes = await run_harvest(
         client, plans, harvest_company_logo, budget_s=budget_s, concurrency=concurrency,
         on_done=mark,

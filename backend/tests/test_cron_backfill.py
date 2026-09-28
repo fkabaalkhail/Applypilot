@@ -161,6 +161,72 @@ def test_backfill_prioritizes_direct_urls_over_linkedin(client, db_session, monk
     assert (linkedin.desc_fetch_attempts or 0) == 0
 
 
+def _hangs(started: list):
+    """An extractor whose host answers only after 5 s; logs each start."""
+    async def extract(client_, url):
+        started.append(url)
+        await asyncio.sleep(5)
+        return "A description that arrives far too late " * 5
+    return extract
+
+
+def test_backfill_defers_what_the_budget_cuts_off_uncharged(client, db_session, monkeypatch):
+    rows = [_mk(db_session, f"https://x.test/slow-{i}") for i in range(2)]
+    started = []
+    monkeypatch.setattr("backend.routers.jobs.extract_description_from_url", _hangs(started))
+    # Well over the 1 s floor even after the client's setup, so both fetches
+    # start and it is the budget, mid-flight, that cuts them off.
+    monkeypatch.setattr("backend.routers.jobs.DESCRIPTION_BUDGET_S", 3.0)
+
+    body = client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch)).json()
+    assert len(started) == 2
+    assert body["descriptions_deferred"] == 2
+    assert body["elapsed_s"] < 4.5  # ended with the budget, not with the host
+    for row in rows:
+        db_session.refresh(row)
+        # The budget's fault, not the job's: no attempt spent.
+        assert (row.desc_fetch_attempts or 0) == 0
+        assert (row.description or "") == ""
+        assert "|ottawa|" in row.location_search  # the repairs with no network still ran
+
+
+def test_backfill_defers_what_the_budget_never_reached(client, db_session, monkeypatch):
+    row = _mk(db_session, "https://x.test/unreached")
+    started = []
+    monkeypatch.setattr("backend.routers.jobs.extract_description_from_url", _hangs(started))
+    monkeypatch.setattr("backend.routers.jobs.DESCRIPTION_BUDGET_S", 0.0)
+
+    body = client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch)).json()
+    assert started == []
+    assert body["descriptions_deferred"] == 1
+    db_session.refresh(row)
+    assert (row.desc_fetch_attempts or 0) == 0
+
+
+def test_backfill_charges_a_fetch_that_hits_its_own_cap(client, db_session, monkeypatch):
+    row = _mk(db_session, "https://x.test/tarpit")
+    started = []
+    monkeypatch.setattr("backend.routers.jobs.extract_description_from_url", _hangs(started))
+    monkeypatch.setattr("backend.routers.jobs.DESCRIPTION_FETCH_TIMEOUT_S", 0.2)
+
+    body = client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch)).json()
+    assert started == [row.url]
+    assert body["descriptions_deferred"] == 0
+    assert body["descriptions_fixed"] == 0  # cut at the cap, never waited out
+    assert body["elapsed_s"] < 4
+    db_session.refresh(row)
+    assert row.desc_fetch_attempts == 1  # a slow host is a failed attempt
+    assert (row.description or "") == ""
+
+
+def test_backfill_charges_a_row_with_no_url(client, db_session, monkeypatch):
+    row = _mk(db_session, "")
+    monkeypatch.setattr("backend.routers.jobs.extract_description_from_url", _no_description)
+    client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch))
+    db_session.refresh(row)
+    assert row.desc_fetch_attempts == 1  # never deferred, or it holds a slot forever
+
+
 # --- Phase 3: self-hosted logos ------------------------------------------------
 
 def test_backfill_harvests_stores_and_propagates(client, db_session, monkeypatch):
@@ -303,6 +369,46 @@ def test_harvest_respects_the_wall_clock_budget(db_session, monkeypatch):
     assert calls == []
     # Skipped is not a miss: nothing recorded, so the next run tries it.
     assert db_session.query(CompanyLogo).count() == 0
+
+
+def _harvest_calls(monkeypatch) -> list:
+    calls = []
+
+    async def fake_harvest(client_, hints):
+        calls.append(hints.company)
+        return None
+
+    monkeypatch.setattr(logo_harvester, "harvest_company_logo", fake_harvest, raising=False)
+    return calls
+
+
+def test_backfill_harvest_gets_only_what_the_descriptions_left(client, db_session, monkeypatch):
+    _mk(db_session, "https://x.test/spent-1", company="Late Co")
+    calls = _harvest_calls(monkeypatch)
+    monkeypatch.setattr("backend.routers.jobs.extract_description_from_url", _hangs([]))
+    # Descriptions use 2.5 s of a 3 s pass: the harvest's budget is what
+    # the pass has left, not a fresh one of its own, so it never starts.
+    monkeypatch.setattr("backend.routers.jobs.DESCRIPTION_BUDGET_S", 2.5)
+    monkeypatch.setattr("backend.routers.jobs.BACKFILL_BUDGET_S", 3.0)
+    monkeypatch.setattr("backend.routers.jobs.POST_HARVEST_RESERVE_S", 0.0)
+
+    body = client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch)).json()
+    assert body["logo_harvest"]["skipped_budget"] == 1
+    assert calls == []
+    assert db_session.query(CompanyLogo).count() == 0  # retried next run, not a miss
+
+
+def test_backfill_harvest_leaves_the_reserve(client, db_session, monkeypatch):
+    _mk(db_session, "https://x.test/reserve-1", company="Late Co")
+    calls = _harvest_calls(monkeypatch)
+    monkeypatch.setattr("backend.routers.jobs.extract_description_from_url", _no_description)
+    # The whole pass is reserve: the harvest gets nothing.
+    monkeypatch.setattr("backend.routers.jobs.BACKFILL_BUDGET_S", 10.0)
+    monkeypatch.setattr("backend.routers.jobs.POST_HARVEST_RESERVE_S", 10.0)
+
+    body = client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch)).json()
+    assert body["logo_harvest"]["skipped_budget"] == 1
+    assert calls == []
 
 
 def test_harvest_holds_no_transaction_while_on_the_network(db_session, monkeypatch):
