@@ -154,7 +154,13 @@ class ScrapedJob(Base):
     listing_status = Column(String, default="active", index=True)
     listing_status_changed_at = Column(DateTime, nullable=True)
     first_seen_at = Column(DateTime, nullable=True)
+    # Positive evidence only: a board listed the row, or the platform's own
+    # API said the posting is open.
     last_seen_at = Column(DateTime, nullable=True, index=True)
+    # When the freshness verifier last checked the posting, whatever it
+    # learned. Drives the least-recently-probed-first rotation; never read as
+    # a confirmation.
+    last_probed_at = Column(DateTime, nullable=True, index=True)
     # "{platform}:{slug}" of the board this row was scraped from. Lets a board
     # re-crawl reconcile exactly its own rows (mark-removed / revive) without
     # URL-pattern guessing. Empty for aggregator rows and legacy ATS rows until

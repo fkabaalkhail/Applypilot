@@ -39,6 +39,7 @@ from backend.migrations.add_ingestion_freshness import run_migration as run_inge
 from backend.migrations.add_autofill_field_outcomes import run_migration as run_autofill_field_outcomes_migration
 from backend.migrations.drop_saved_answers import run_migration as run_drop_saved_answers_migration
 from backend.migrations.add_autofill_diagnostic_capture import run_migration as run_autofill_diagnostic_capture_migration
+from backend.migrations.add_listing_probe_columns import run_migration as run_listing_probe_columns_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile, autofill
 from backend.routers import auth, auth_extension, extension, tailor, cover_letter, auth_linkedin
 from backend.routers.feedback import router as feedback_router
@@ -66,6 +67,7 @@ async def lifespan(app: FastAPI):
     run_autofill_field_outcomes_migration()
     run_drop_saved_answers_migration()
     run_autofill_diagnostic_capture_migration()
+    run_listing_probe_columns_migration()
     yield
 
 

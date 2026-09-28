@@ -242,6 +242,98 @@ class TestSweeps:
         assert count == 1
 
 
+# ─── Terminal lifecycle rules ────────────────────────────────────────────────
+
+class TestTerminalLifecycle:
+    def test_fast_expiry_keys_on_url_host(self, db_session):
+        """The external scraper stored LinkedIn cards as source_platform='ats'
+        (board_key 'unknown', stale): the URL host puts them on the 21-day
+        clock regardless."""
+        old = NOW - datetime.timedelta(days=AGGREGATOR_FAST_MAX_AGE_DAYS + 5)
+        ext_li = _row(db_session, url="https://ca.linkedin.com/jobs/view/intern-at-acme-4384617179",
+                      board_key="unknown", listing_status=LISTING_STALE,
+                      first_seen_at=old, scraped_at=old, last_seen_at=NOW - datetime.timedelta(days=2))
+        count = sweep_aggregator_expiry(db_session, now=NOW)
+        db_session.expire_all()
+        assert count == 1
+        assert db_session.get(ScrapedJob, ext_li.id).listing_status == LISTING_EXPIRED
+
+    def test_future_dated_list_rows_cannot_escape(self, db_session):
+        """A year-less 'Nov 30' parsed into the future used to keep a GitHub
+        row fresh forever; age now runs from the earliest known date."""
+        seen_long_ago = NOW - datetime.timedelta(days=AGGREGATOR_MAX_AGE_DAYS + 10)
+        future = _row(db_session, url="https://careers.example.com/list/1",
+                      source_platform="github", board_key="",
+                      posted_date=NOW + datetime.timedelta(days=60),
+                      first_seen_at=seen_long_ago, scraped_at=seen_long_ago)
+        fresh = _row(db_session, url="https://careers.example.com/list/2",
+                     source_platform="github", board_key="",
+                     posted_date=NOW - datetime.timedelta(days=3),
+                     first_seen_at=NOW - datetime.timedelta(days=3),
+                     scraped_at=NOW - datetime.timedelta(days=3))
+        adopted = _row(db_session, url="https://jobs.ashbyhq.com/acme/1",
+                       source_platform="github", board_key="ashby:acme",
+                       posted_date=seen_long_ago, first_seen_at=seen_long_ago,
+                       scraped_at=seen_long_ago)
+        count = sweep_aggregator_expiry(db_session, now=NOW)
+        db_session.expire_all()
+        assert count == 1
+        assert db_session.get(ScrapedJob, future.id).listing_status == LISTING_EXPIRED
+        assert db_session.get(ScrapedJob, fresh.id).listing_status == LISTING_ACTIVE
+        # adopted into a real board: the crawl reconciles it, age doesn't
+        assert db_session.get(ScrapedJob, adopted.id).listing_status == LISTING_ACTIVE
+
+    def test_stale_without_evidence_expires(self, db_session):
+        from backend.services.listing_freshness import STALE_TERMINAL_DAYS, sweep_terminal_expiry
+
+        abandoned = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/1",
+                         listing_status=LISTING_STALE,
+                         last_seen_at=NOW - datetime.timedelta(days=STALE_TERMINAL_DAYS + 1),
+                         last_probed_at=NOW - datetime.timedelta(hours=3))
+        # a partial crawl still lists this one, so it keeps living
+        listed = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/2",
+                      listing_status=LISTING_STALE,
+                      last_seen_at=NOW - datetime.timedelta(days=1))
+        # board-confirmed active rows are never this sweep's business
+        board_row = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/3",
+                         last_seen_at=NOW - datetime.timedelta(days=STALE_TERMINAL_DAYS + 30))
+
+        stats = sweep_terminal_expiry(db_session, now=NOW)
+        db_session.expire_all()
+        assert stats["stale_expired"] == 1
+        assert db_session.get(ScrapedJob, abandoned.id).listing_status == LISTING_EXPIRED
+        assert db_session.get(ScrapedJob, abandoned.id).listing_status_changed_at == NOW
+        assert db_session.get(ScrapedJob, listed.id).listing_status == LISTING_STALE
+        assert db_session.get(ScrapedJob, board_row.id).listing_status == LISTING_ACTIVE
+
+    def test_unreconcilable_boards_age_out(self, db_session):
+        from backend.services.listing_freshness import (
+            UNRECONCILABLE_MAX_AGE_DAYS,
+            sweep_terminal_expiry,
+        )
+
+        long_ago = NOW - datetime.timedelta(days=UNRECONCILABLE_MAX_AGE_DAYS + 1)
+        orphan = _row(db_session, url="https://jobs.bombardier.com/job/11101", board_key="unknown",
+                      last_seen_at=long_ago)
+        orphan_recent = _row(db_session, url="https://jobs.bombardier.com/job/11102",
+                             board_key="unknown", last_seen_at=NOW - datetime.timedelta(days=10))
+        on_board = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/5",
+                        last_seen_at=long_ago)
+        list_row = _row(db_session, url="https://careers.example.com/list/9",
+                        source_platform="github", board_key="", last_seen_at=long_ago,
+                        posted_date=NOW - datetime.timedelta(days=2))
+
+        stats = sweep_terminal_expiry(db_session, now=NOW)
+        db_session.expire_all()
+        assert stats["unreconcilable_expired"] == 1
+        assert db_session.get(ScrapedJob, orphan.id).listing_status == LISTING_EXPIRED
+        assert db_session.get(ScrapedJob, orphan_recent.id).listing_status == LISTING_ACTIVE
+        # real board: sweep_stale + the verifier handle it, never an age cap
+        assert db_session.get(ScrapedJob, on_board.id).listing_status == LISTING_ACTIVE
+        # aggregator rows run on sweep_aggregator_expiry's clock instead
+        assert db_session.get(ScrapedJob, list_row.id).listing_status == LISTING_ACTIVE
+
+
 # ─── Ghost scoring ───────────────────────────────────────────────────────────
 
 class TestGhostScoring:
@@ -500,30 +592,35 @@ class TestUrlLiveness:
             assert await probe_url_liveness(client, "https://x.test/gone") == "dead"
             # Bot walls are not evidence of death, a real browser gets through.
             assert await probe_url_liveness(client, "https://x.test/wall") == "unknown"
-            assert await probe_url_liveness(client, "https://x.test/live") == "alive"
+            # A page that merely loads proves nothing (Workday answers 200 for
+            # made-up ids); only a platform API can say "alive".
+            assert await probe_url_liveness(client, "https://x.test/live") == "unknown"
 
     @pytest.mark.asyncio
-    async def test_soft_404_body_only_trusted_hosts(self):
-        """A 200 that says 'no longer accepting applications' is dead on a
-        server-rendered host (LinkedIn); the same phrase on an arbitrary career
-        SPA is ignored (that message renders client-side there, so a real 200
-        body carrying it would be a false match)."""
+    async def test_soft_404_body_read_from_visible_text(self):
+        """A 200 that says 'no longer accepting applications' is dead, on any
+        host now: the check reads only VISIBLE text (scripts/templates are
+        stripped), which is what made SPA hosts unsafe before. The same phrase
+        inside an SPA's script bundle is still ignored."""
         from backend.services.listing_freshness import probe_url_liveness
         closed = "<h1>Sorry, this job is no longer accepting applications.</h1>"
         # LinkedIn's other closed variant: the expired JD redirects to a search
         # page whose nav links carry this trk token (a live page never has it).
         expired = '<a href="/login?trk=expired_jd_redirect">Sign in</a>'
-        live = "<h1>Software Intern, Apply now</h1>"
+        live = '<h1 class="topcard__title">Software Intern</h1><a class="apply-button">Apply</a>'
+        bundled = "<script>t('no longer accepting applications')</script><h1>Intern</h1>"
         async with _body_client({
             "linkedin.com/jobs/view/1": (200, closed),
             "linkedin.com/jobs/view/2": (200, live),
             "linkedin.com/jobs/view/3": (200, expired),
             "spa-careers.example/1": (200, closed),
+            "spa-careers.example/2": (200, bundled),
         }) as client:
             assert await probe_url_liveness(client, "https://www.linkedin.com/jobs/view/1") == "dead"
             assert await probe_url_liveness(client, "https://www.linkedin.com/jobs/view/2") == "alive"
             assert await probe_url_liveness(client, "https://www.linkedin.com/jobs/view/3") == "dead"
-            assert await probe_url_liveness(client, "https://spa-careers.example/1") == "alive"
+            assert await probe_url_liveness(client, "https://spa-careers.example/1") == "dead"
+            assert await probe_url_liveness(client, "https://spa-careers.example/2") == "unknown"
 
     @pytest.mark.asyncio
     async def test_verify_recent_removes_dead_github_rows(self, db_session):
@@ -544,10 +641,14 @@ class TestUrlLiveness:
         db_session.expire_all()
         assert stats["removed"] == 1
         assert db_session.get(ScrapedJob, dead.id).listing_status == LISTING_REMOVED
-        assert db_session.get(ScrapedJob, alive.id).listing_status == LISTING_ACTIVE
-        assert db_session.get(ScrapedJob, alive.id).last_seen_at == NOW
+        loaded = db_session.get(ScrapedJob, alive.id)
+        assert loaded.listing_status == LISTING_ACTIVE
+        # A page that loaded is a probe, not a confirmation.
+        assert loaded.last_probed_at == NOW
+        assert loaded.last_seen_at is None
         assert db_session.get(ScrapedJob, walled.id).listing_status == LISTING_ACTIVE
         assert db_session.get(ScrapedJob, ats.id).listing_status == LISTING_ACTIVE
+        assert db_session.get(ScrapedJob, ats.id).last_probed_at is None
 
     @pytest.mark.asyncio
     async def test_verify_recent_skips_recently_probed(self, db_session):
@@ -555,7 +656,7 @@ class TestUrlLiveness:
 
         _row(db_session, url="https://careers.example.com/jobs/dead",
              source_platform="github", board_key="",
-             last_seen_at=NOW - datetime.timedelta(hours=1))
+             last_probed_at=NOW - datetime.timedelta(hours=1))
 
         async with _status_client({"/jobs/dead": 404}) as client:
             stats = await verify_recent_aggregator_listings(db_session, client, now=NOW)
@@ -573,49 +674,61 @@ class TestUrlLiveness:
                        source_platform="linkedin", board_key="", last_seen_at=None)
         async with _body_client({
             "/jobs/view/10": (200, "No longer accepting applications"),
-            "/jobs/view/20": (200, "Apply now, role is open"),
+            "/jobs/view/20": (200, '<a class="apply-button">Apply now</a>'),
         }) as client:
             stats = await verify_recent_aggregator_listings(db_session, client, now=NOW)
 
         db_session.expire_all()
         assert db_session.get(ScrapedJob, dead_li.id).listing_status == LISTING_REMOVED
-        assert db_session.get(ScrapedJob, live_li.id).listing_status == LISTING_ACTIVE
-        assert db_session.get(ScrapedJob, live_li.id).last_seen_at == NOW
+        live = db_session.get(ScrapedJob, live_li.id)
+        assert live.listing_status == LISTING_ACTIVE
+        # A guest page is never authoritative: stamped as probed only.
+        assert live.last_probed_at == NOW
+        assert live.last_seen_at is None
         assert stats["removed"] == 1
 
 
 class TestVerifyStaleListings:
     @pytest.mark.asyncio
-    async def test_dead_removes_anywhere_alive_revives_only_honest_hosts(self, db_session):
+    async def test_dead_removes_anywhere_alive_revives_only_on_platform_api(self, db_session):
         from backend.services.listing_freshness import verify_stale_listings
 
+        stale_seen = NOW - datetime.timedelta(days=4)
         dead_site = _row(db_session, url="https://careers.example.com/jobs/1",
-                         listing_status=LISTING_STALE, last_seen_at=None)
+                         listing_status=LISTING_STALE, last_seen_at=stale_seen)
         live_gh = _row(db_session, url="https://boards.greenhouse.io/acme/jobs/2",
-                       listing_status=LISTING_STALE, last_seen_at=None)
+                       listing_status=LISTING_STALE, last_seen_at=stale_seen)
         spa_site = _row(db_session, url="https://careers.spa-co.com/jobs/3",
-                        listing_status=LISTING_STALE, last_seen_at=None)
+                        listing_status=LISTING_STALE, last_seen_at=stale_seen)
         walled_li = _row(db_session, url="https://linkedin.com/jobs/view/4",
                          source_platform="linkedin", board_key="",
-                         listing_status=LISTING_STALE, last_seen_at=None)
+                         listing_status=LISTING_STALE, last_seen_at=stale_seen)
 
-        async with _status_client({"careers.example.com": 404}) as client:
+        async with _body_client({
+            "careers.example.com": (404, ""),
+            "boards-api.greenhouse.io/v1/boards/acme/jobs/2": (200, '{"id": 2}'),
+        }) as client:
             stats = await verify_stale_listings(db_session, client, now=NOW)
 
         db_session.expire_all()
         # Honest 404 on a plain company site → removed.
         assert db_session.get(ScrapedJob, dead_site.id).listing_status == LISTING_REMOVED
-        # 200 on greenhouse (honest host) → revived.
-        assert db_session.get(ScrapedJob, live_gh.id).listing_status == LISTING_ACTIVE
-        # 200 on an arbitrary site proves nothing, stays stale, probe stamped.
+        # Greenhouse's own API says open → revived, and that IS evidence.
+        gh = db_session.get(ScrapedJob, live_gh.id)
+        assert gh.listing_status == LISTING_ACTIVE
+        assert gh.last_seen_at == NOW and gh.listing_status_changed_at == NOW
+        # 200 on an arbitrary site proves nothing: stays stale, only the probe
+        # is stamped, last_seen_at keeps meaning "last positive evidence".
         spa = db_session.get(ScrapedJob, spa_site.id)
         assert spa.listing_status == LISTING_STALE
-        assert spa.last_seen_at == NOW
-        # LinkedIn IS now probed (guest page), but a live one (no dead banner)
-        # is never revived on a bare 200. It stays stale with last_seen stamped.
+        assert spa.last_probed_at == NOW
+        assert spa.last_seen_at == stale_seen
+        # LinkedIn IS probed (guest page), but a page with no dead banner is
+        # never revived. It stays stale with the probe stamped.
         li = db_session.get(ScrapedJob, walled_li.id)
         assert li.listing_status == LISTING_STALE
-        assert li.last_seen_at == NOW
+        assert li.last_probed_at == NOW
+        assert li.last_seen_at == stale_seen
         assert stats["removed"] == 1 and stats["revived"] == 1
 
     @pytest.mark.asyncio
@@ -635,6 +748,203 @@ class TestVerifyStaleListings:
         db_session.expire_all()
         assert db_session.get(ScrapedJob, dead_li.id).listing_status == LISTING_REMOVED
         assert stats["removed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_workday_revive_loop_is_broken(self, db_session):
+        """Workday pages answer 200 for closed postings, which used to revive
+        every dead stale row (and send it round the stale/revive loop). The
+        CXS API decides now: S22 removes, a live posting revives."""
+        from backend.services.listing_freshness import verify_stale_listings
+
+        base = "https://bmo.wd3.myworkdayjobs.com/external/job/Calgary-AB-CAN/"
+        closed = _row(db_session, url=base + "Client-Service-Associate_R260019629",
+                      board_key="workday:bmo", listing_status=LISTING_STALE)
+        live = _row(db_session, url=base + "Credit-Analyst-Intern_R260025783",
+                    board_key="workday:bmo", listing_status=LISTING_STALE)
+        bosch = _row(db_session, url="https://careers.smartrecruiters.com/BoschGroup/744000135554529",
+                     board_key="smartrecruiters:BoschGroup", listing_status=LISTING_STALE)
+
+        async with _body_client({
+            "/wday/cxs/bmo/external/job/Calgary-AB-CAN/Client-Service-Associate_R260019629":
+                (403, '{"errorCode": "S22", "httpStatus": 403}'),
+            "/wday/cxs/bmo/external/job/Calgary-AB-CAN/Credit-Analyst-Intern_R260025783":
+                (200, '{"jobPostingInfo": {"id": "abc"}}'),
+            "api.smartrecruiters.com": (200, '{"id": "744000135554529", "active": false}'),
+            # the public pages all "load", which must not matter
+            "myworkdayjobs.com/external": (200, "<html><div id='root'></div></html>"),
+            "careers.smartrecruiters.com": (200, "<h1>Careers at Bosch</h1>"),
+        }) as client:
+            stats = await verify_stale_listings(db_session, client, now=NOW)
+
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, closed.id).listing_status == LISTING_REMOVED
+        assert db_session.get(ScrapedJob, bosch.id).listing_status == LISTING_REMOVED
+        revived = db_session.get(ScrapedJob, live.id)
+        assert revived.listing_status == LISTING_ACTIVE
+        assert revived.last_seen_at == NOW
+        assert stats["removed"] == 2 and stats["revived"] == 1
+        assert stats["reasons"]["workday_cxs_S22"] == 1
+
+    @pytest.mark.asyncio
+    async def test_least_recently_probed_first_and_recheck_window(self, db_session):
+        from backend.services.listing_freshness import verify_stale_listings
+
+        never = _row(db_session, url="https://careers.example.com/jobs/never",
+                     listing_status=LISTING_STALE, last_probed_at=None)
+        oldest = _row(db_session, url="https://careers.example.com/jobs/oldest",
+                      listing_status=LISTING_STALE,
+                      last_probed_at=NOW - datetime.timedelta(days=9))
+        newer = _row(db_session, url="https://careers.example.com/jobs/newer",
+                     listing_status=LISTING_STALE,
+                     last_probed_at=NOW - datetime.timedelta(days=2))
+        recent = _row(db_session, url="https://careers.example.com/jobs/recent",
+                      listing_status=LISTING_STALE,
+                      last_probed_at=NOW - datetime.timedelta(hours=2))
+
+        async with _status_client({}) as client:
+            stats = await verify_stale_listings(db_session, client, limit=2, now=NOW)
+
+        db_session.expire_all()
+        assert stats["checked"] == 2
+        assert db_session.get(ScrapedJob, never.id).last_probed_at == NOW
+        assert db_session.get(ScrapedJob, oldest.id).last_probed_at == NOW
+        assert db_session.get(ScrapedJob, newer.id).last_probed_at == NOW - datetime.timedelta(days=2)
+
+        # Next run: the two just probed sit inside the recheck window, so the
+        # rotation reaches the next-oldest; the 2h-old probe is still skipped.
+        async with _status_client({}) as client:
+            stats = await verify_stale_listings(
+                db_session, client, limit=5, now=NOW + datetime.timedelta(hours=1))
+        db_session.expire_all()
+        assert stats["checked"] == 1
+        assert db_session.get(ScrapedJob, newer.id).last_probed_at == NOW + datetime.timedelta(hours=1)
+        assert db_session.get(ScrapedJob, recent.id).last_probed_at == NOW - datetime.timedelta(hours=2)
+
+    @pytest.mark.asyncio
+    async def test_hidden_rows_are_not_worth_a_probe(self, db_session):
+        from backend.services.listing_freshness import verify_stale_listings
+
+        winner = _row(db_session, url="https://careers.example.com/jobs/1")
+        _row(db_session, url="https://careers.example.com/jobs/twin",
+             listing_status=LISTING_STALE, duplicate_of=winner.id)
+        _row(db_session, url="https://careers.example.com/jobs/nameless",
+             listing_status=LISTING_STALE, company="  ")
+        _row(db_session, url="https://ca.indeed.com/viewjob?jk=1",
+             listing_status=LISTING_STALE)
+        async with _status_client({}) as client:
+            stats = await verify_stale_listings(db_session, client, now=NOW)
+        assert stats["checked"] == 0
+
+    @pytest.mark.asyncio
+    async def test_time_box_defers_the_rest(self, db_session, monkeypatch):
+        """Once the deadline passes no new probe starts; the unprobed rows keep
+        last_probed_at NULL and so lead the next run."""
+        import asyncio
+        import time
+
+        import httpx
+        from backend.services import listing_freshness
+        from backend.services.listing_freshness import verify_stale_listings
+
+        monkeypatch.setattr(listing_freshness, "_VERIFY_CHUNK", 1)
+        rows = [
+            _row(db_session, url=f"https://careers.example.com/jobs/{i}",
+                 listing_status=LISTING_STALE,
+                 posted_date=NOW - datetime.timedelta(days=i))
+            for i in range(3)
+        ]
+
+        class Slow(httpx.AsyncBaseTransport):
+            async def handle_async_request(self, request):
+                await asyncio.sleep(0.6)  # the first probe blows through the box
+                return httpx.Response(200, text="page")
+
+        async with httpx.AsyncClient(transport=Slow()) as client:
+            stats = await verify_stale_listings(db_session, client, now=NOW,
+                                                deadline=time.monotonic() + 0.3)
+
+        db_session.expire_all()
+        assert stats["checked"] == 1
+        assert stats["deferred"] == 2
+        probed = [r for r in rows if db_session.get(ScrapedJob, r.id).last_probed_at == NOW]
+        assert len(probed) == 1
+
+    @pytest.mark.asyncio
+    async def test_past_deadline_probes_nothing(self, db_session):
+        import time
+        from backend.services.listing_freshness import verify_stale_listings
+
+        row = _row(db_session, url="https://careers.example.com/jobs/1",
+                   listing_status=LISTING_STALE)
+        async with _status_client({"careers.example.com": 404}) as client:
+            stats = await verify_stale_listings(db_session, client, now=NOW,
+                                                deadline=time.monotonic() - 1)
+        db_session.expire_all()
+        assert stats["checked"] == 0 and stats["deferred"] == 1
+        assert db_session.get(ScrapedJob, row.id).listing_status == LISTING_STALE
+        assert db_session.get(ScrapedJob, row.id).last_probed_at is None
+
+
+def test_record_liveness_single_row_rules(db_session):
+    """The single-row path (a job detail's live check) follows the sweep's
+    rules: only the platform's own word revives or counts as evidence."""
+    from backend.services.listing_freshness import record_liveness
+    from backend.services.platform_liveness import LivenessResult
+
+    seen = NOW - datetime.timedelta(days=5)
+    stale = _row(db_session, listing_status=LISTING_STALE, last_seen_at=seen)
+    page_only = _row(db_session, url="https://careers.example.com/jobs/2",
+                     listing_status=LISTING_STALE, last_seen_at=seen)
+    dead = _row(db_session, url="https://careers.example.com/jobs/3")
+
+    assert record_liveness(db_session, stale.id, LISTING_STALE,
+                           LivenessResult("alive", "gh_api_200", True), now=NOW) == LISTING_ACTIVE
+    assert record_liveness(db_session, page_only.id, LISTING_STALE,
+                           LivenessResult("alive", "linkedin_apply_cta", False), now=NOW) == LISTING_STALE
+    assert record_liveness(db_session, dead.id, LISTING_ACTIVE,
+                           LivenessResult("dead", "http_404"), now=NOW) == LISTING_REMOVED
+    db_session.commit()
+    db_session.expire_all()
+
+    revived = db_session.get(ScrapedJob, stale.id)
+    assert revived.listing_status == LISTING_ACTIVE and revived.last_seen_at == NOW
+    weak = db_session.get(ScrapedJob, page_only.id)
+    assert weak.listing_status == LISTING_STALE
+    assert weak.last_seen_at == seen and weak.last_probed_at == NOW
+    assert db_session.get(ScrapedJob, dead.id).listing_status == LISTING_REMOVED
+
+
+class TestVerifyUnconfirmedActive:
+    @pytest.mark.asyncio
+    async def test_unconfirmed_direct_rows_checked_before_going_stale(self, db_session):
+        from backend.services.listing_freshness import verify_unconfirmed_active_listings
+
+        base = "https://cibc.wd3.myworkdayjobs.com/search/job/Paris-ON/"
+        unconfirmed = NOW - datetime.timedelta(hours=50)
+        dead = _row(db_session, url=base + "Client-Rep_2614006", board_key="workday:cibc",
+                    last_seen_at=unconfirmed)
+        live = _row(db_session, url=base + "Analyst-Intern_2614350", board_key="workday:cibc",
+                    last_seen_at=unconfirmed)
+        confirmed = _row(db_session, url=base + "Teller_2614999", board_key="workday:cibc",
+                         last_seen_at=NOW - datetime.timedelta(hours=1))
+        linkedin = _row(db_session, url="https://www.linkedin.com/jobs/view/77",
+                        source_platform="linkedin", board_key="", last_seen_at=unconfirmed)
+
+        async with _body_client({
+            "Client-Rep_2614006": (404, '{"errorCode": "S21", "httpStatus": 404}'),
+            "Analyst-Intern_2614350": (200, '{"jobPostingInfo": {"id": "x"}}'),
+        }) as client:
+            stats = await verify_unconfirmed_active_listings(db_session, client, now=NOW)
+
+        db_session.expire_all()
+        assert stats["checked"] == 2
+        assert db_session.get(ScrapedJob, dead.id).listing_status == LISTING_REMOVED
+        alive = db_session.get(ScrapedJob, live.id)
+        assert alive.listing_status == LISTING_ACTIVE
+        assert alive.last_seen_at == NOW  # API-confirmed: won't go stale at 72h
+        assert stats["revived"] == 0 and stats["confirmed"] == 1
+        assert db_session.get(ScrapedJob, confirmed.id).last_probed_at is None
+        assert db_session.get(ScrapedJob, linkedin.id).last_probed_at is None
 
 
 class TestAggregatorIngestProbe:
@@ -703,6 +1013,20 @@ def test_ingestion_freshness_migration_idempotent():
             "employment_type", "visa_sponsorship", "skills"} <= cols
 
 
+def test_listing_probe_migration_idempotent():
+    from sqlalchemy import inspect as sa_inspect
+    from backend.db.database import engine
+    from backend.migrations.add_listing_probe_columns import run_migration
+
+    run_migration()
+    run_migration()  # second run must be a no-op
+    inspector = sa_inspect(engine)
+    assert "last_probed_at" in {c["name"] for c in inspector.get_columns("scraped_jobs")}
+    assert "ix_scraped_jobs_last_probed_at" in {
+        i["name"] for i in inspector.get_indexes("scraped_jobs")
+    }
+
+
 # ─── cron-freshness + metrics endpoints ──────────────────────────────────────
 
 class TestFreshnessEndpoints:
@@ -723,6 +1047,52 @@ class TestFreshnessEndpoints:
         assert body["ghost_scoring"]["scored_new"] >= 0
         db_session.expire_all()
         assert db_session.get(ScrapedJob, aged.id).listing_status == LISTING_EXPIRED
+
+    def test_cron_freshness_verifies_with_platform_apis(self, client, db_session, monkeypatch):
+        """End to end: terminal sweep, then the three time-boxed verify phases
+        through the platform checks (mock transport, no network)."""
+        import httpx
+        from backend.services import platform_liveness
+
+        utcnow = datetime.datetime.utcnow()
+        dead_wd = _row(db_session,
+                       url="https://bmo.wd3.myworkdayjobs.com/external/job/X/Closed_R1",
+                       board_key="workday:bmo", listing_status=LISTING_STALE,
+                       last_seen_at=utcnow - datetime.timedelta(days=4))
+        unconfirmed = _row(db_session,
+                           url="https://bmo.wd3.myworkdayjobs.com/external/job/X/Open_R2",
+                           board_key="workday:bmo",
+                           last_seen_at=utcnow - datetime.timedelta(hours=50))
+        abandoned = _row(db_session, url="https://careers.example.com/jobs/old",
+                         board_key="unknown", listing_status=LISTING_STALE,
+                         last_seen_at=utcnow - datetime.timedelta(days=40))
+
+        def handler(request):
+            if "Closed_R1" in str(request.url):
+                return httpx.Response(403, json={"errorCode": "S22"})
+            if "Open_R2" in str(request.url):
+                return httpx.Response(200, json={"jobPostingInfo": {"id": "2"}})
+            return httpx.Response(404)
+
+        real_make_client = platform_liveness.make_client
+        monkeypatch.setattr(platform_liveness, "make_client",
+                            lambda **kw: real_make_client(transport=httpx.MockTransport(handler)))
+
+        res = client.post("/jobs/cron-freshness", headers=self._cron_headers(monkeypatch))
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["terminal_expired"]["stale_expired"] == 1
+        assert body["stale_verified"]["removed"] == 1
+        assert body["unconfirmed_verified"]["confirmed"] == 1
+        assert body["recent_verified"]["checked"] == 0
+        assert body["verify_seconds"] >= 0
+
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, abandoned.id).listing_status == LISTING_EXPIRED
+        assert db_session.get(ScrapedJob, dead_wd.id).listing_status == LISTING_REMOVED
+        still_open = db_session.get(ScrapedJob, unconfirmed.id)
+        assert still_open.listing_status == LISTING_ACTIVE
+        assert still_open.last_seen_at > utcnow - datetime.timedelta(minutes=5)
 
     def test_ingest_metrics_shape(self, client, db_session, monkeypatch):
         from backend.db.models import SourceHealth
