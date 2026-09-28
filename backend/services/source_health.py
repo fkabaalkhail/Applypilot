@@ -44,6 +44,18 @@ def get_health_map(db: Session, board_keys: list[str]) -> dict[str, SourceHealth
     return {row.board_key: row for row in rows}
 
 
+def last_success_times(db: Session) -> dict[str, datetime.datetime]:
+    """{board_key: last_success_at} for every board ever crawled OK, the
+    input cron-ats uses to pick its least-recently-crawled shard. Two
+    columns only; the table holds one row per registry board."""
+    rows = (
+        db.query(SourceHealth.board_key, SourceHealth.last_success_at)
+        .filter(SourceHealth.last_success_at.isnot(None))
+        .all()
+    )
+    return {board_key: last_success_at for board_key, last_success_at in rows}
+
+
 def record_success(db: Session, board_key: str, platform: str, slug: str,
                    job_count: int, now: datetime.datetime | None = None) -> None:
     """Reset the failure streak. Commits."""

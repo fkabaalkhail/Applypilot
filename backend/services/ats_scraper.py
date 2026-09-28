@@ -62,8 +62,9 @@ class BoardSnapshot:
     ``all_urls`` covers EVERY listing on the board, including ones the
     entry-level/NA filters rejected, reconciliation must never mistake
     "filtered out" for "taken down". ``complete`` is False when the fetch was
-    partial (huge Workday boards); an incomplete snapshot must not be used to
-    mark rows removed.
+    partial (a board past the page cap or Workday's listing ceiling, or a
+    crawl budget that ran out); an incomplete snapshot must not be used to
+    mark rows removed, though every URL it did list is still proof of life.
     """
     platform: str
     slug: str
@@ -317,17 +318,30 @@ CA_CITIES = [
 
 _HOST_MIN_INTERVAL = float(os.getenv("ATS_PER_HOST_INTERVAL", "0.35"))
 _host_last_request: dict[str, float] = {}
-_pace_lock: Optional[asyncio.Lock] = None
+# One lock per host, so a board waiting out its host's interval never stalls a
+# concurrent crawl of a different host. asyncio locks bind to the event loop
+# that first waits on them, so the table is rebuilt when the loop changes.
+_host_locks: dict[str, asyncio.Lock] = {}
+_host_locks_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def _host_lock(host: str) -> asyncio.Lock:
+    global _host_locks_loop
+    loop = asyncio.get_running_loop()
+    if loop is not _host_locks_loop:
+        _host_locks.clear()
+        _host_locks_loop = loop
+    lock = _host_locks.get(host)
+    if lock is None:
+        lock = _host_locks[host] = asyncio.Lock()
+    return lock
 
 
 async def _pace(host: str) -> None:
     """Enforce a minimum interval between requests to the same host."""
-    global _pace_lock
     if _HOST_MIN_INTERVAL <= 0 or not host:
         return
-    if _pace_lock is None:
-        _pace_lock = asyncio.Lock()
-    async with _pace_lock:
+    async with _host_lock(host):
         now = time.monotonic()
         wait = _host_last_request.get(host, 0.0) + _HOST_MIN_INTERVAL - now
         if wait > 0:
@@ -341,10 +355,38 @@ def _host_of(url: str) -> str:
     return m.group(1).lower() if m else ""
 
 
+_PLATFORM_API_HOSTS = {
+    "greenhouse": "boards-api.greenhouse.io",
+    "lever": "api.lever.co",
+    "ashby": "api.ashbyhq.com",
+    "smartrecruiters": "api.smartrecruiters.com",
+}
+
+
+def board_host(platform: str, slug: str) -> str:
+    """The API host a board's crawl hits. Greenhouse/Lever/Ashby/SmartRecruiters
+    boards share one host per platform; every Workday tenant is its own host.
+    Callers crawling boards concurrently keep one board in flight per host."""
+    if platform == "workday":
+        from backend.data.company_registry import load_workday_bases
+
+        return _host_of(load_workday_bases().get(slug, "")) or f"workday:{slug}"
+    return _PLATFORM_API_HOSTS.get(platform, platform)
+
+
 # ─── Workday helpers ─────────────────────────────────────────────────────────
 
-_WORKDAY_MAX_PAGES = max(1, int(os.getenv("WORKDAY_MAX_PAGES", "8")))
 _WORKDAY_PAGE_SIZE = 20  # CxS caps at 20
+# CxS never lists past 2000 postings ("total" pins at 2000 on Hitachi-sized
+# boards), so such a board can never be crawled completely; its rows rely on
+# per-row verification instead of list membership.
+_WORKDAY_LIST_CEILING = 2000
+# Per-board page cap: enough pages to list a board right up to the ceiling.
+_WORKDAY_MAX_PAGES = max(1, int(os.getenv("WORKDAY_MAX_PAGES", "100")))
+# The newest-first head of the list, where new postings land. Always fetched;
+# pages past it only serve reconciliation, so they stop when the crawl budget
+# runs out or the board is past the ceiling.
+_WORKDAY_HEAD_PAGES = min(_WORKDAY_MAX_PAGES, 8)
 _POSTED_AGO_RE = re.compile(r"posted\s+(today|yesterday|(\d+)\+?\s+days?\s+ago)", re.IGNORECASE)
 
 
@@ -377,6 +419,20 @@ def workday_public_base(cxs_base: str) -> str:
     return f"{m.group(1)}/{m.group(2)}"
 
 
+SMARTRECRUITERS_POSTING_BASE = "https://jobs.smartrecruiters.com/"
+# Rows stored before the URL fix point here instead; it redirects to the
+# company's careers home, so those rows are migrated when their board lists them.
+SMARTRECRUITERS_LEGACY_BASE = "https://careers.smartrecruiters.com/"
+
+
+def smartrecruiters_legacy_url(url: str) -> str:
+    """jobs.smartrecruiters.com posting URL → the careers.smartrecruiters.com
+    URL an older crawl stored for the same posting ("" for other URLs)."""
+    if not (url or "").startswith(SMARTRECRUITERS_POSTING_BASE):
+        return ""
+    return SMARTRECRUITERS_LEGACY_BASE + url[len(SMARTRECRUITERS_POSTING_BASE):]
+
+
 def _workday_external_id(external_path: str, bullet_fields: list) -> str:
     """Prefer the req id Workday appends to the path ("…_R-12345"); fall back
     to the first bulletField (usually the same req id)."""
@@ -391,12 +447,28 @@ def _workday_external_id(external_path: str, bullet_fields: list) -> str:
     return tail[:80]
 
 
-class ATSScraper:
-    """Scrapes job listings from public ATS APIs."""
+_SMARTRECRUITERS_PAGE_SIZE = 100  # API maximum
+_SMARTRECRUITERS_MAX_PAGES = max(1, int(os.getenv("SMARTRECRUITERS_MAX_PAGES", "20")))
+_SMARTRECRUITERS_HEAD_PAGES = min(_SMARTRECRUITERS_MAX_PAGES, 5)
 
-    def __init__(self, filter_entry_level: bool = True, filter_north_america: bool = True):
+
+class ATSScraper:
+    """Scrapes job listings from public ATS APIs.
+
+    ``deadline`` (a ``time.monotonic()`` instant) bounds the reconciliation-only
+    paging of big boards across one run: past it, a paged board stops after
+    its head pages and reports an incomplete snapshot instead of eating the
+    rest of the cron's time.
+    """
+
+    def __init__(self, filter_entry_level: bool = True, filter_north_america: bool = True,
+                 deadline: Optional[float] = None):
         self.filter_entry_level = filter_entry_level
         self.filter_north_america = filter_north_america
+        self.deadline = deadline
+
+    def _out_of_time(self) -> bool:
+        return self.deadline is not None and time.monotonic() >= self.deadline
 
     # ── Batch interfaces ────────────────────────────────────────────────────
 
@@ -666,24 +738,30 @@ class ATSScraper:
         """Fetch jobs from SmartRecruiters postings API, following pagination.
 
         API: https://api.smartrecruiters.com/v1/companies/{identifier}/postings
-        Returns (listings, complete, total_on_board).
+        Returns (listings, complete, total_on_board). Pages past the head stop
+        at the page cap or the crawl deadline; Bosch-sized boards (~4800)
+        stay partial and only confirm what they listed.
         """
         base_url = f"https://api.smartrecruiters.com/v1/companies/{identifier}/postings"
-        page_size = 100
-        max_pages = 5
 
         jobs: list[ATSJob] = []
+        seen_urls: set[str] = set()
         total_found = 0
         offset = 0
-        for _page in range(max_pages):
+        stopped_early = False
+        for page in range(_SMARTRECRUITERS_MAX_PAGES):
+            if page >= _SMARTRECRUITERS_HEAD_PAGES and self._out_of_time():
+                stopped_early = True
+                break
             await _pace(_host_of(base_url))
             response = await client.get(
-                base_url, params={"limit": str(page_size), "offset": str(offset)}
+                base_url,
+                params={"limit": str(_SMARTRECRUITERS_PAGE_SIZE), "offset": str(offset)},
             )
             response.raise_for_status()
             data = response.json()
             content = data.get("content", [])
-            total_found = int(data.get("totalFound") or len(content))
+            total_found = max(total_found, int(data.get("totalFound") or len(content)))
 
             for job_data in content:
                 title = job_data.get("name", "")
@@ -697,11 +775,17 @@ class ATSScraper:
                 ]
                 location = ", ".join(part for part in loc_parts if part)
 
-                # Use ref_url or construct from identifier + id
+                # The list payload carries no public URL ("ref" is the API
+                # resource). jobs.smartrecruiters.com is the posting page;
+                # careers.smartrecruiters.com redirects to the company's
+                # careers home for live and closed postings alike.
                 job_id = job_data.get("id", "")
-                job_url = job_data.get("ref_url", "")
-                if not job_url:
-                    job_url = f"https://careers.smartrecruiters.com/{identifier}/{job_id}"
+                if not job_id:
+                    continue
+                job_url = f"{SMARTRECRUITERS_POSTING_BASE}{identifier}/{job_id}"
+                if job_url in seen_urls:
+                    continue  # the list shifted under us between pages
+                seen_urls.add(job_url)
 
                 released_date = job_data.get("releasedDate", "")
                 department_info = job_data.get("department", {})
@@ -734,7 +818,11 @@ class ATSScraper:
             if not content or offset >= total_found:
                 break
 
-        return jobs, offset >= total_found, total_found
+        # Complete only when every posting the board counts was listed: a
+        # page cap, the deadline, or a posting shifting between pages
+        # (duplicates in, one skipped) all leave the unique count short.
+        complete = not stopped_early and len(seen_urls) >= total_found
+        return jobs, complete, total_found
 
     async def _fetch_workday(
         self, client: httpx.AsyncClient, slug: str, company_name: str
@@ -746,8 +834,11 @@ class ATSScraper:
         POST {base}/jobs pages 20 at a time, newest first. Descriptions are NOT
         in the list payload, fetch_workday_detail() fills them per new job.
 
-        Returns (listings, complete, total_on_board). Big boards (Amazon-sized)
-        exceed the page cap; complete=False tells reconciliation to stand down.
+        The whole list is paged (list POSTs only, no detail calls) so the
+        snapshot can reconcile the board: BMO's ~1000 postings are ~50 POSTs.
+        Returns (listings, complete, total_on_board). complete=False (board at
+        the 2000-posting ceiling, page cap or deadline hit, or the list moved
+        mid-crawl) tells reconciliation not to vote on removals.
         """
         from backend.data.company_registry import load_workday_bases
 
@@ -762,9 +853,16 @@ class ATSScraper:
         host = _host_of(list_url)
 
         jobs: list[ATSJob] = []
+        seen_urls: set[str] = set()
         total = 0
         fetched = 0
+        stopped_early = False
         for page in range(_WORKDAY_MAX_PAGES):
+            if page >= _WORKDAY_HEAD_PAGES and (
+                total >= _WORKDAY_LIST_CEILING or self._out_of_time()
+            ):
+                stopped_early = True
+                break
             await _pace(host)
             response = await client.post(
                 list_url,
@@ -789,11 +887,15 @@ class ATSScraper:
                 location = posting.get("locationsText", "") or ""
                 if not title or not external_path:
                     continue
+                job_url = f"{public_base}{external_path}"
+                if job_url in seen_urls:
+                    continue  # the list shifted under us between pages
+                seen_urls.add(job_url)
                 job = ATSJob(
                     title=title,
                     company=company_name,
                     location=location,
-                    url=f"{public_base}{external_path}",
+                    url=job_url,
                     posted_date=_parse_workday_posted(posting.get("postedOn", "") or ""),
                     department="",
                     work_type=self._detect_work_type(location, title),
@@ -806,7 +908,18 @@ class ATSScraper:
             if not postings or fetched >= total:
                 break
 
-        return jobs, fetched >= total, total
+        # Complete only when every posting the board counts is in hand. A
+        # removal between two page requests shifts the list up by one and
+        # skips a live posting, which leaves the unique count short of
+        # "total"; that must read as partial, never as a takedown. A board
+        # that never reported a total can't prove completeness either.
+        complete = (
+            not stopped_early
+            and total < _WORKDAY_LIST_CEILING
+            and len(seen_urls) >= total
+            and (total > 0 or not seen_urls)
+        )
+        return jobs, complete, total
 
 
     def _passes_filters(self, job: ATSJob) -> bool:

@@ -544,7 +544,8 @@
       "ats_platform": "greenhouse",
       "board_slug": "cerebral",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=cerebral.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
     },
     {
       "company_name": "Chime",
@@ -859,7 +860,8 @@
       "ats_platform": "greenhouse",
       "board_slug": "marqeta",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=marqeta.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
     },
     {
       "company_name": "MasterClass",
@@ -978,7 +980,8 @@
       "ats_platform": "greenhouse",
       "board_slug": "postman",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=postman.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
     },
     {
       "company_name": "Reddit",
@@ -1139,7 +1142,8 @@
       "ats_platform": "greenhouse",
       "board_slug": "unity3d",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=unity.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
     },
     {
       "company_name": "Vercel",
@@ -1237,7 +1241,8 @@
       "ats_platform": "lever",
       "board_slug": "netflix",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=netflix.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
     },
     {
       "company_name": "Palantir",
@@ -1251,7 +1256,8 @@
       "ats_platform": "lever",
       "board_slug": "plaid",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=plaid.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
     },
     {
       "company_name": "PointClickCare",
@@ -1761,7 +1767,8 @@
       "ats_platform": "greenhouse",
       "board_slug": "opendoor",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=opendoor.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
     },
     {
       "company_name": "ProCogia",
@@ -1822,114 +1829,138 @@
     {
       "company_name": "Air Liquide",
       "ats_platform": "workday",
-      "board_slug": "airliquidehr.wd3.myworkdayjobs.com",
+      "board_slug": "airliquidehr",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=airliquide.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://airliquidehr.wd3.myworkdayjobs.com/wday/cxs/airliquidehr/AirLiquideExternalCareer"
     },
     {
       "company_name": "Autodesk",
       "ats_platform": "workday",
-      "board_slug": "autodesk.wd1.myworkdayjobs.com",
+      "board_slug": "autodesk",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=autodesk.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://autodesk.wd1.myworkdayjobs.com/wday/cxs/autodesk/Ext"
+    },
+    {
+      "company_name": "BlackBerry",
+      "ats_platform": "workday",
+      "board_slug": "blackberry",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=blackberry.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://bb.wd3.myworkdayjobs.com/wday/cxs/bb/BlackBerry"
     },
     {
       "company_name": "QNX",
       "ats_platform": "workday",
-      "board_slug": "bb.wd3.myworkdayjobs.com",
+      "board_slug": "qnx",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=qnx.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://bb.wd3.myworkdayjobs.com/wday/cxs/bb/QNX"
     },
     {
       "company_name": "BDO",
       "ats_platform": "workday",
-      "board_slug": "bdo.wd3.myworkdayjobs.com",
+      "board_slug": "bdo",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=bdo.ca&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://bdo.wd3.myworkdayjobs.com/wday/cxs/bdo/Bdo"
     },
     {
       "company_name": "Hitachi",
       "ats_platform": "workday",
-      "board_slug": "hitachi.wd1.myworkdayjobs.com",
+      "board_slug": "hitachi",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=hitachi.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://hitachi.wd1.myworkdayjobs.com/wday/cxs/hitachi/Hitachi"
     },
     {
       "company_name": "Interac",
       "ats_platform": "workday",
-      "board_slug": "interac.wd3.myworkdayjobs.com",
+      "board_slug": "interac",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=interac.ca&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://interac.wd3.myworkdayjobs.com/wday/cxs/interac/Interac"
     },
     {
       "company_name": "Eli Lilly",
       "ats_platform": "workday",
-      "board_slug": "lilly.wd115.myworkdayjobs.com",
+      "board_slug": "lilly",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=lilly.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://lilly.wd115.myworkdayjobs.com/wday/cxs/lilly/LLY"
     },
     {
       "company_name": "Lumentum",
       "ats_platform": "workday",
-      "board_slug": "lumentum.wd5.myworkdayjobs.com",
+      "board_slug": "lumentum",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=lumentum.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://lumentum.wd5.myworkdayjobs.com/wday/cxs/lumentum/LITE"
     },
     {
       "company_name": "Magna",
       "ats_platform": "workday",
-      "board_slug": "magna.wd3.myworkdayjobs.com",
+      "board_slug": "magna",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=magna.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://magna.wd3.myworkdayjobs.com/wday/cxs/magna/Magna"
     },
     {
       "company_name": "Dotdash Meredith",
       "ats_platform": "workday",
-      "board_slug": "meredith.wd5.myworkdayjobs.com",
+      "board_slug": "meredith",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=dotdashmeredith.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://meredith.wd5.myworkdayjobs.com/wday/cxs/meredith/EXT"
     },
     {
       "company_name": "MLSE",
       "ats_platform": "workday",
-      "board_slug": "mlse.wd3.myworkdayjobs.com",
+      "board_slug": "mlse",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=mlse.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://mlse.wd3.myworkdayjobs.com/wday/cxs/mlse/MLSE"
     },
     {
       "company_name": "Parsons",
       "ats_platform": "workday",
-      "board_slug": "parsons.wd5.myworkdayjobs.com",
+      "board_slug": "parsons",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=parsons.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://parsons.wd5.myworkdayjobs.com/wday/cxs/parsons/Search"
     },
     {
       "company_name": "Procter & Gamble",
       "ats_platform": "workday",
-      "board_slug": "pg.wd5.myworkdayjobs.com",
+      "board_slug": "pg",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=pg.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://pg.wd5.myworkdayjobs.com/wday/cxs/pg/1000"
     },
     {
       "company_name": "Roche",
       "ats_platform": "workday",
-      "board_slug": "roche.wd3.myworkdayjobs.com",
+      "board_slug": "roche",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=roche.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://roche.wd3.myworkdayjobs.com/wday/cxs/roche/roche-ext"
     },
     {
       "company_name": "SOTI",
       "ats_platform": "workday",
-      "board_slug": "soti.wd3.myworkdayjobs.com",
+      "board_slug": "soti",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=soti.net&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://soti.wd3.myworkdayjobs.com/wday/cxs/soti/Careers"
     },
     {
       "company_name": "TMX Group",
       "ats_platform": "workday",
-      "board_slug": "tmx.wd3.myworkdayjobs.com",
+      "board_slug": "tmx",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=tmx.com&sz=128",
-      "enabled": false
+      "enabled": true,
+      "workday_url_template": "https://tmx.wd3.myworkdayjobs.com/wday/cxs/tmx/TMX_Careers"
     }
   ]
 }
