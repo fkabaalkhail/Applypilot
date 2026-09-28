@@ -16,16 +16,26 @@ different job from "Software Engineer Intern" and must never merge.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from urllib.parse import parse_qsl, urlsplit
 
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session, aliased
 
 from backend.db.models import ScrapedJob
+from backend.services.listing_freshness import (
+    HIDDEN_LISTING_STATUSES,
+    LISTING_ACTIVE,
+    LISTING_REMOVED,
+    LISTING_STALE,
+)
 from backend.services.location_parser import fold
 from backend.services.logo_cache import logo_quality
+
+logger = logging.getLogger(__name__)
 
 DIRECT_SOURCES = ("ats", "github")
 INFERIOR_SOURCES = ("linkedin", "indeed")
@@ -80,7 +90,7 @@ def canonical_url(url: str) -> str:
     raw = (url or "").strip()
     if not raw or "?" not in raw:
         return raw.rstrip("/") if raw else ""
-    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+    from urllib.parse import urlencode, urlunsplit
 
     try:
         parts = urlsplit(raw)
@@ -91,6 +101,37 @@ def canonical_url(url: str) -> str:
     return urlunsplit(
         (parts.scheme, parts.netloc, parts.path, urlencode(kept), "")
     ).rstrip("/")
+
+
+_LINKEDIN_JOB_ID_RE = re.compile(r"(\d{6,})(?!.*\d{6,})")
+
+
+def posting_key(url: str) -> str:
+    """The posting a URL names, host spelling aside: LinkedIn's numeric job
+    id ('ca.linkedin.com/jobs/view/dev-at-ibm-4462216626' and
+    'www.linkedin.com/jobs/view/4462216626' are one posting), Indeed's jk,
+    otherwise the utm-free URL. Two rows with different keys are different
+    postings, even when employer, title and city match (a repost)."""
+    raw = (url or "").strip()
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return raw.lower()
+    host = (parts.hostname or "").lower()
+    query = {k.lower(): v for k, v in parse_qsl(parts.query)}
+    if host == "linkedin.com" or host.endswith(".linkedin.com"):
+        job_id = (query.get("currentjobid") or "").strip()
+        if not job_id:
+            match = _LINKEDIN_JOB_ID_RE.search(parts.path)
+            job_id = match.group(1) if match else ""
+        if job_id:
+            return f"linkedin:{job_id}"
+    if host == "indeed.com" or host.endswith(".indeed.com"):
+        job_key = (query.get("jk") or query.get("vjk") or "").strip().lower()
+        if job_key:
+            return f"indeed:{job_key}"
+    return canonical_url(raw).lower()
+
 
 _SEASON_WORDS = re.compile(r"\b(summer|fall|autumn|winter|spring)\b")
 _YEARS = re.compile(r"\b20\d{2}\b")
@@ -146,6 +187,114 @@ def _employer_filter(company: str, company_domain: str):
     return or_(*conditions)
 
 
+# ─── Which rows may stand in for their twins ────────────────────────────────
+#
+# A row hides (absorbs) its twins, and answers for them on a deep link, only
+# while it is visible. A closed aggregator row speaks for its own posting id
+# alone: LinkedIn/Indeed reposts carry new ids, and the 21-day age-out says
+# nothing about a newer copy. The one closed row that still speaks for its
+# mirrors is a direct (ats/github) row the board or the platform check
+# REMOVED: that is a death verdict on the employer's own requisition, and
+# LinkedIn keeps "apply on company site" mirrors of closed requisitions open
+# (their apply link lands on the employer's 404). ``expired`` is only age or
+# missing evidence, never a death verdict, so an expired row speaks for no
+# one.
+
+_VISIBLE_LISTING_STATUSES = (LISTING_ACTIVE, LISTING_STALE)
+
+
+def stands_in_for_twins(listing_status: str | None, source_platform: str, url: str) -> bool:
+    """True when a row may hide its twins or answer for them (see above)."""
+    if listing_status not in HIDDEN_LISTING_STATUSES:
+        return True
+    return (listing_status == LISTING_REMOVED
+            and effective_source(source_platform or "", url or "") in DIRECT_SOURCES)
+
+
+def _stands_in_filter():
+    """SQL side of stands_in_for_twins. Loose on one point: a rogue-era 'ats'
+    row with an aggregator URL passes here and is rejected in Python."""
+    return or_(
+        ScrapedJob.listing_status.is_(None),
+        ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES),
+        and_(ScrapedJob.listing_status == LISTING_REMOVED,
+             ScrapedJob.source_platform.in_(DIRECT_SOURCES)),
+    )
+
+
+# Column-only view of a possible absorber: id, source_platform, url,
+# description length, city, location_search, country, title_norm, status.
+_TWIN_COLUMNS = (
+    ScrapedJob.id, ScrapedJob.source_platform, ScrapedJob.url,
+    func.length(func.coalesce(ScrapedJob.description, "")),
+    ScrapedJob.city, ScrapedJob.location_search, ScrapedJob.country,
+    ScrapedJob.title_norm, ScrapedJob.listing_status,
+)
+
+
+def _find_absorber(db: Session, *, row_id: int, source: str, title_norm: str,
+                   company: str, company_domain: str, city: str, country: str,
+                   desc_len: int) -> int | None:
+    """The id of the row that should hide this aggregator row: a better twin
+    (a direct row, or a same-tier aggregator row that has a description when
+    this one doesn't, the older one when both do) for the same employer,
+    title and city, among the rows that may stand in for it. Exact title
+    first; failing that, a near-identical DIRECT title only (fuzzy-merging
+    two aggregator copies risks eating a genuinely different posting).
+    Column-only."""
+    row_tier = _SOURCE_TIER.get(source, 3)
+
+    def pick(twins) -> int | None:
+        for (twin_id, twin_source, twin_url, twin_desc_len, twin_city,
+             twin_search, twin_country, _norm, twin_status) in twins:
+            if not stands_in_for_twins(twin_status, twin_source, twin_url):
+                continue
+            twin_tier = _SOURCE_TIER.get(effective_source(twin_source or "", twin_url or ""), 3)
+            better = twin_tier < row_tier or (
+                twin_tier == row_tier
+                and (twin_desc_len or 0) >= 50
+                and (desc_len < 50 or twin_id < row_id)
+            )
+            if not better:
+                continue
+            if not _cities_compatible(city, twin_city or "", twin_search or "",
+                                      country, twin_country or ""):
+                continue
+            return twin_id
+        return None
+
+    twins = (
+        db.query(*_TWIN_COLUMNS)
+        .filter(
+            ScrapedJob.duplicate_of.is_(None),
+            _stands_in_filter(),
+            ScrapedJob.title_norm == title_norm,
+            ScrapedJob.id != row_id,
+            _employer_filter(company, company_domain),
+        )
+        .limit(20)
+        .all()
+    )
+    best = pick(twins)
+    if best is not None:
+        return best
+    near = (
+        db.query(*_TWIN_COLUMNS)
+        .filter(
+            ScrapedJob.duplicate_of.is_(None),
+            _stands_in_filter(),
+            ScrapedJob.source_platform.in_(DIRECT_SOURCES),
+            ScrapedJob.title_norm != title_norm,
+            ScrapedJob.title_norm != "",
+            ScrapedJob.id != row_id,
+            _employer_filter(company, company_domain),
+        )
+        .limit(40)
+        .all()
+    )
+    return pick([twin for twin in near if titles_fuzzy_match(title_norm, twin[7] or "")])
+
+
 def has_direct_twin(
     db: Session,
     *,
@@ -156,7 +305,9 @@ def has_direct_twin(
     country: str = "",
 ) -> bool:
     """True when a direct (ats/github) row for the same employer, title, and
-    city already exists, the ingest guard for LinkedIn/Indeed sources."""
+    city already exists, the ingest guard for LinkedIn/Indeed sources. An
+    expired direct row doesn't count (no death verdict, the new copy may be
+    live); a removed one does (stands_in_for_twins)."""
     title_norm = normalize_title(title)
     if not title_norm:
         return False
@@ -166,18 +317,22 @@ def has_direct_twin(
         db.query(
             ScrapedJob.id, ScrapedJob.city, ScrapedJob.location_search,
             ScrapedJob.country, ScrapedJob.url, ScrapedJob.source_platform,
+            ScrapedJob.listing_status,
         )
         .filter(
             ScrapedJob.duplicate_of.is_(None),
             ScrapedJob.source_platform.in_(DIRECT_SOURCES),
+            _stands_in_filter(),
             ScrapedJob.title_norm == title_norm,
             _employer_filter(company, company_domain),
         )
         .limit(20)
     )
-    for _id, winner_city, winner_search, winner_country, url, source in query.all():
+    for _id, winner_city, winner_search, winner_country, url, source, status in query.all():
         if effective_source(source, url) not in DIRECT_SOURCES:
             continue  # rogue-era mislabel: an aggregator URL is not a direct twin
+        if not stands_in_for_twins(status, source, url):
+            continue
         if _cities_compatible(city, winner_city or "", winner_search or "",
                               country or "", winner_country or ""):
             return True
@@ -242,11 +397,82 @@ def _inherit_logo(winner: ScrapedJob, twin: ScrapedJob) -> None:
         winner.company_logo = twin.company_logo
 
 
+def release_from_closed_winners(db: Session, *, clear_probe: bool = True) -> list[tuple]:
+    """Give back the LinkedIn/Indeed rows hidden behind a winner that has
+    since closed and can no longer stand in for them (stands_in_for_twins):
+    an older copy that aged out or whose own posting died, while this copy,
+    a repost with a posting id of its own, may well be live.
+
+    Each such row (active or stale itself, a different posting_key from its
+    winner) either moves under a better twin that is still visible, or
+    comes back to the feed with ``last_probed_at`` cleared, so the
+    least-recently-probed-first verifier checks it before anything else and
+    the dead share leaves again quickly. Rows sharing the winner's posting
+    id stay hidden: that posting's closure is theirs too. ``clear_probe``
+    False skips the probe stamp (a database without the column yet).
+
+    Returns (row id, old winner id, new winner id or None) per row moved.
+    Column-only reads; one UPDATE per row by id. Commits."""
+    winner = aliased(ScrapedJob)
+    rows = (
+        db.query(
+            ScrapedJob.id, ScrapedJob.url, ScrapedJob.source_platform,
+            ScrapedJob.company, ScrapedJob.company_domain, ScrapedJob.title,
+            ScrapedJob.title_norm, ScrapedJob.city, ScrapedJob.country,
+            func.length(func.coalesce(ScrapedJob.description, "")),
+            winner.id, winner.url, winner.source_platform, winner.listing_status,
+        )
+        .join(winner, winner.id == ScrapedJob.duplicate_of)
+        .filter(
+            ScrapedJob.listing_status.in_(_VISIBLE_LISTING_STATUSES),
+            winner.listing_status.in_(HIDDEN_LISTING_STATUSES),
+        )
+        .order_by(ScrapedJob.id)
+        .all()
+    )
+
+    moved: list[tuple] = []
+    for (row_id, url, source, company, domain, title, title_norm, city, country,
+         desc_len, winner_id, winner_url, winner_source, winner_status) in rows:
+        row_source = effective_source(source or "", url or "")
+        if row_source not in INFERIOR_SOURCES:
+            continue  # direct rows are only ever hidden as URL twins
+        if stands_in_for_twins(winner_status, winner_source, winner_url):
+            continue
+        if posting_key(url) == posting_key(winner_url):
+            continue
+        norm = title_norm or normalize_title(title or "")
+        new_home = None
+        if norm and norm != "\x01":
+            new_home = _find_absorber(
+                db, row_id=row_id, source=row_source, title_norm=norm,
+                company=company or "", company_domain=domain or "",
+                city=city or "", country=country or "", desc_len=desc_len or 0,
+            )
+        values: dict = {"duplicate_of": new_home}
+        if new_home is None and clear_probe:
+            values["last_probed_at"] = None
+        db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(values)
+        moved.append((row_id, winner_id, new_home))
+    if moved:
+        db.commit()
+    return moved
+
+
 def absorb_new_aggregator_rows(db: Session, limit: int = 300) -> int:
     """Incremental dedup for rows the one-time sweep never saw: the newest
     unmarked LinkedIn/Indeed rows get absorbed by any better existing twin
-    (direct row, or a higher/equal-tier aggregator row that has a description
-    when this one doesn't). Called from the hourly backfill cron. Commits."""
+    that may stand in for them (_find_absorber). Rows hidden behind a winner
+    that has since closed are given back first (release_from_closed_winners).
+    Called from the hourly backfill cron. Commits. Returns rows absorbed."""
+    moved = release_from_closed_winners(db)
+    if moved:
+        logger.info(
+            "dedup: %d rows left closed winners (%d back in the feed, %d under a live twin)",
+            len(moved), sum(1 for m in moved if m[2] is None),
+            sum(1 for m in moved if m[2] is not None),
+        )
+
     candidates = (
         db.query(ScrapedJob)
         .filter(
@@ -270,61 +496,13 @@ def absorb_new_aggregator_rows(db: Session, limit: int = 300) -> int:
         title_norm = row.title_norm or normalize_title(row.title)
         if not title_norm or title_norm == "\x01":
             continue
-        row_tier = _SOURCE_TIER.get(row_source, 3)
-
-        def _pick_better_twin(twins: list[ScrapedJob]) -> ScrapedJob | None:
-            for twin in twins:
-                twin_tier = _SOURCE_TIER.get(
-                    effective_source(twin.source_platform, twin.url), 3
-                )
-                better = twin_tier < row_tier or (
-                    twin_tier == row_tier
-                    and len(twin.description or "") >= 50
-                    and (len(row.description or "") < 50 or twin.id < row.id)
-                )
-                if not better:
-                    continue
-                if not _cities_compatible(row.city or "", twin.city or "",
-                                          twin.location_search or "",
-                                          row.country or "", twin.country or ""):
-                    continue
-                return twin
-            return None
-
-        twins = (
-            db.query(ScrapedJob)
-            .filter(
-                ScrapedJob.duplicate_of.is_(None),
-                ScrapedJob.title_norm == title_norm,
-                ScrapedJob.id != row.id,
-                _employer_filter(row.company, row.company_domain or ""),
-            )
-            .limit(20)
-            .all()
+        best_id = _find_absorber(
+            db, row_id=row.id, source=row_source, title_norm=title_norm,
+            company=row.company, company_domain=row.company_domain or "",
+            city=row.city or "", country=row.country or "",
+            desc_len=len(row.description or ""),
         )
-        best = _pick_better_twin(twins)
-
-        if best is None:
-            # Fuzzy fallback: same employer, near-identical title. Only
-            # DIRECT rows may absorb here, fuzzy-merging two aggregator
-            # copies risks eating a genuinely different posting.
-            near = (
-                db.query(ScrapedJob)
-                .filter(
-                    ScrapedJob.duplicate_of.is_(None),
-                    ScrapedJob.source_platform.in_(DIRECT_SOURCES),
-                    ScrapedJob.title_norm != title_norm,
-                    ScrapedJob.title_norm != "",
-                    ScrapedJob.id != row.id,
-                    _employer_filter(row.company, row.company_domain or ""),
-                )
-                .limit(40)
-                .all()
-            )
-            best = _pick_better_twin([
-                twin for twin in near
-                if titles_fuzzy_match(title_norm, twin.title_norm or "")
-            ])
+        best = db.get(ScrapedJob, best_id) if best_id is not None else None
         if best is None:
             continue
         row.duplicate_of = best.id
@@ -367,12 +545,15 @@ class _Row:
     desc_len: int
     applicant_count: int | None
     salary_range: str
+    stands_in: bool  # may hide its twins (stands_in_for_twins)
 
 
 def dedup_sweep(db: Session) -> dict:
     """Collapse cross-source twins across the whole catalogue (one-time /
-    maintenance pass). Column-only reads; descriptions are only fetched for
-    the rare copy onto a description-less winner. Commits. Idempotent."""
+    maintenance pass). A closed row never becomes the winner that hides a
+    live copy (stands_in_for_twins). Column-only reads; descriptions are only
+    fetched for the rare copy onto a description-less winner. Commits.
+    Idempotent."""
     raw = (
         db.query(
             ScrapedJob.id,
@@ -388,6 +569,7 @@ def dedup_sweep(db: Session) -> dict:
             func.length(func.coalesce(ScrapedJob.description, "")),
             ScrapedJob.applicant_count,
             ScrapedJob.salary_range,
+            ScrapedJob.listing_status,
         )
         .filter(ScrapedJob.duplicate_of.is_(None))
         .all()
@@ -398,7 +580,7 @@ def dedup_sweep(db: Session) -> dict:
 
     # Phase A: identical canonical URL = the same posting, whatever the tier.
     # (GitHub lists append utm_* params, so the URL-unique constraint lets the
-    # same job in twice.) Keep the best copy; hide the rest.
+    # same job in twice.) Keep the best copy, a live one first; hide the rest.
     by_canonical: dict[str, list] = {}
     for row in raw:
         canon = canonical_url(row[2] or "")
@@ -411,6 +593,7 @@ def dedup_sweep(db: Session) -> dict:
         rows = sorted(
             rows,
             key=lambda r: (
+                1 if r[13] in HIDDEN_LISTING_STATUSES else 0,
                 _SOURCE_TIER.get(effective_source(r[1] or "", r[2] or ""), 3),
                 -(r[10] or 0),  # desc_len
                 r[0],
@@ -427,7 +610,7 @@ def dedup_sweep(db: Session) -> dict:
     # Phase B: aggregator copies of direct postings (employer+title+location).
     groups: dict[tuple[str, str], list[_Row]] = {}
     for (rid, source, url, company, domain, title, title_norm, city, country,
-         location_search, desc_len, applicant_count, salary_range) in raw:
+         location_search, desc_len, applicant_count, salary_range, status) in raw:
         if rid in url_hidden:
             continue
         norm = title_norm or normalize_title(title or "")
@@ -442,6 +625,7 @@ def dedup_sweep(db: Session) -> dict:
             location_search=location_search or "",
             desc_len=desc_len or 0, applicant_count=applicant_count,
             salary_range=salary_range or "",
+            stands_in=stands_in_for_twins(status, source or "", url or ""),
         ))
 
     for rows in groups.values():
@@ -465,7 +649,8 @@ def dedup_sweep(db: Session) -> dict:
                         home = winner
                         break
             if home is None:
-                winners.append(row)
+                if row.stands_in:
+                    winners.append(row)
                 continue
 
             updates: dict = {"duplicate_of": home.id}
