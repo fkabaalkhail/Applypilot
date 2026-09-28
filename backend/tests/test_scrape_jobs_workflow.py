@@ -92,6 +92,35 @@ def test_checkout_does_not_leave_the_token_on_disk():
         assert (step.get("with") or {}).get("persist-credentials") is False
 
 
+def test_every_gitlink_has_a_gitmodules_entry():
+    # persist-credentials: false (above) makes checkout run `git submodule
+    # foreach` inside its main step, and git dies on any gitlink .gitmodules
+    # doesn't map ("No url found for submodule path", exit 128): checkout
+    # fails and both scrapers are skipped. Two orphaned gitlinks did exactly
+    # that to every scheduled run after f26fa4c.
+    root = WORKFLOW.parents[2]
+    if shutil.which("git") is None or not (root / ".git").exists():
+        pytest.skip("needs a git checkout")
+    # -z on both: raw NUL-separated paths, never C-quoted, so a mapped path
+    # with non-ASCII characters still compares equal.
+    staged = subprocess.run(
+        ["git", "ls-files", "--stage", "-z"],
+        cwd=root, capture_output=True, check=True,
+    ).stdout.decode("utf-8")
+    gitlinks = {
+        entry.split("\t", 1)[1]
+        for entry in staged.split("\0")
+        if entry.startswith("160000 ")
+    }
+    mapped = subprocess.run(
+        ["git", "config", "--file", ".gitmodules", "-z",
+         "--get-regexp", r"^submodule\..*\.path$"],
+        cwd=root, capture_output=True,
+    ).stdout.decode("utf-8")
+    paths = {entry.split("\n", 1)[1] for entry in mapped.split("\0") if entry}
+    assert gitlinks <= paths, sorted(gitlinks - paths)
+
+
 def test_pip_installs_are_pinned():
     installs = [
         m.group(1).split()

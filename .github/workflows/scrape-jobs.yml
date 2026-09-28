@@ -98,6 +98,14 @@ jobs:
       # of authenticated requests per run instead of thousands of dead ones.
       # They stay continue-on-error: LinkedIn and Indeed block scrapers often
       # enough that a red run from them would drown out a real outage.
+      #
+      # persist-credentials: false makes checkout strip its token inside this
+      # step, and that cleanup runs `git submodule foreach`. Any gitlink with
+      # no .gitmodules entry then fails the step (exit 128, "No url found for
+      # submodule path"), which skips Python setup and both scrapers. Two
+      # such orphans (resumate-scraper, reference/AutoApplyMax) broke every
+      # run from f26fa4c until they were removed; keep nested clones out of
+      # the index (.gitignore).
       - uses: actions/checkout@v4
         with:
           persist-credentials: false

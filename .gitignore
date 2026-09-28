@@ -28,5 +28,10 @@ tmp/
 1.15.0_0/
 .analysis-jr/
 
+# Nested clones of other repos. Committing one records a gitlink with no
+# .gitmodules entry, which fails actions/checkout (see scrape-jobs.yml).
+/resumate-scraper/
+/reference/AutoApplyMax/
+
 # Store upload artifacts (rebuilt from dist/ on demand)
 chrome-extension/*.zip
