@@ -39,9 +39,9 @@ def test_seed_idempotence(num_calls):
 
         # Call seed_sources() num_calls times
         for i in range(num_calls):
-            result = asyncio.get_event_loop().run_until_complete(
-                aggregator.seed_sources()
-            )
+            # asyncio.run, not get_event_loop(): an earlier test's asyncio.run
+            # leaves no current loop, which made this test order-dependent.
+            result = asyncio.run(aggregator.seed_sources())
 
             expected_total = len(AggregatorService.REPOS)
             if i == 0:
@@ -79,7 +79,7 @@ def test_seed_creates_correct_categories():
 
     try:
         aggregator = AggregatorService(session)
-        asyncio.get_event_loop().run_until_complete(aggregator.seed_sources())
+        asyncio.run(aggregator.seed_sources())
 
         sources = session.query(GitHubSource).all()
 

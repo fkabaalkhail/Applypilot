@@ -464,20 +464,18 @@ async def cron_poll(
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
 ):
-    """Seed sources (if needed) and poll the next batch of overdue GitHub sources."""
+    """Seed sources (if needed) and poll the next batch of overdue GitHub sources.
+
+    Sources parked in 'error' by a transient failure (5xx, timeout, a rename
+    recorded before redirects were followed) rejoin the batch after a cooldown.
+    """
     try:
         from backend.services.aggregator import AggregatorService
         aggregator = AggregatorService(db)
 
         seed_result = await aggregator.seed_sources()
 
-        sources = (
-            db.query(GitHubSource)
-            .filter(GitHubSource.status == "active")
-            .order_by(GitHubSource.last_polled_at.asc().nullsfirst())
-            .limit(5)
-            .all()
-        )
+        sources = aggregator.sources_due(limit=5)
 
         if not sources:
             return {"status": "no_sources", "sources_seeded": seed_result["created"]}

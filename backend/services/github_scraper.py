@@ -48,7 +48,8 @@ class GitHubScraper:
             f"{source.repo_name}/contents/{source.file_path}"
         )
 
-        async with httpx.AsyncClient() as client:
+        # Follow redirects: a renamed repo answers 301.
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             headers = {"Accept": "application/vnd.github.v3.raw"}
             response = await client.get(url, headers=headers, timeout=30)
             response.raise_for_status()
@@ -210,29 +211,11 @@ class GitHubScraper:
         )
 
     def _parse_date(self, date_str: str) -> Optional[datetime.datetime]:
-        """Parse various date formats from GitHub job tables."""
-        date_str = date_str.strip()
-        if not date_str:
-            return None
+        """Parse various date formats from GitHub job tables. Shared with the
+        aggregator's parser: a yearless 'Nov 30' is the most recent past one."""
+        from backend.services.markdown_parser import parse_listing_date
 
-        formats = [
-            "%Y-%m-%d",
-            "%m/%d/%Y",
-            "%b %d, %Y",
-            "%B %d, %Y",
-            "%b %d",
-            "%m/%d",
-        ]
-        for fmt in formats:
-            try:
-                dt = datetime.datetime.strptime(date_str, fmt)
-                # If year is 1900 (no year in format), use current year
-                if dt.year == 1900:
-                    dt = dt.replace(year=datetime.datetime.utcnow().year)
-                return dt
-            except ValueError:
-                continue
-        return None
+        return parse_listing_date(date_str)
 
     async def _store_jobs(
         self, jobs: list[ParsedJob], source: GitHubSource

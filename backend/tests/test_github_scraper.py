@@ -230,13 +230,20 @@ class TestParseDate:
         dt = scraper._parse_date("January 15, 2024")
         assert dt == datetime.datetime(2024, 1, 15)
 
-    def test_month_day_only(self, scraper):
-        """Parse month/day format (uses current year)."""
+    def test_month_day_only(self, scraper, monkeypatch):
+        """Parse month/day format (current year when that date has passed)."""
+        from backend.services import markdown_parser
+        monkeypatch.setattr(markdown_parser, "_utcnow",
+                            lambda: datetime.datetime(2026, 9, 27, 12, 0))
         dt = scraper._parse_date("Jan 15")
-        assert dt is not None
-        assert dt.month == 1
-        assert dt.day == 15
-        assert dt.year == datetime.datetime.utcnow().year
+        assert dt == datetime.datetime(2026, 1, 15)
+
+    def test_month_day_in_future_is_last_year(self, scraper, monkeypatch):
+        """A yearless date later than today is last year's, never a future one."""
+        from backend.services import markdown_parser
+        monkeypatch.setattr(markdown_parser, "_utcnow",
+                            lambda: datetime.datetime(2026, 9, 27, 12, 0))
+        assert scraper._parse_date("Nov 30") == datetime.datetime(2025, 11, 30)
 
     def test_empty_string(self, scraper):
         """Return None for empty string."""
