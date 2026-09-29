@@ -31,6 +31,8 @@ def _utcnow() -> datetime.datetime:
 
 # The lists' legend for "application closed". The link is dropped on those rows.
 CLOSED_MARK = "\U0001F512"
+# Legend: 🛂 does not sponsor, 🇺🇸 requires U.S. citizenship.
+NO_SPONSORSHIP_MARKS = ("\U0001F6C2", "\U0001F1FA\U0001F1F8")
 
 # A URL inside markdown link parens, allowing one level of balanced parens
 # ('.../Stagiaire-(hardware)-Quebec/123') that a plain [^)]+ would cut short.
@@ -306,6 +308,7 @@ class ParsedJob:
     work_model: Optional[str] = None  # parsed "Work Model" column: remote/hybrid/onsite
     section_category: Optional[str] = None  # from section headers (mega-repo)
     closed: bool = False  # the list marks it closed (🔒 / strikethrough); url is often ""
+    no_sponsorship: bool = False  # legend 🛂 (no sponsorship) or 🇺🇸 (citizens only)
 
 
 class MarkdownParser:
@@ -330,20 +333,19 @@ class MarkdownParser:
         section_headers = self._detect_section_headers(lines)
         jobs: list[ParsedJob] = []
 
-        if not section_headers:
-            # No section headers found, parse as a single table
+        if not any(category for _, category in section_headers):
+            # No known section headers found, parse as a single table
             return self.parse_markdown_table(content, include_closed=include_closed, now=now)
 
-        # Process content between section headers
-        for i, (line_idx, category) in enumerate(section_headers):
-            # Determine the end of this section
-            if i + 1 < len(section_headers):
-                end_idx = section_headers[i + 1][0]
-            else:
-                end_idx = len(lines)
-
-            # Extract the section content
-            section_content = "\n".join(lines[line_idx + 1 : end_idx])
+        # Every '## ' header ends the section above it, known or not: an
+        # unknown one ('## Data Science, AI & Machine Learning Internship
+        # Roles') used to fold its rows into the section before it, so
+        # SimplifyJobs' data, quant and hardware roles all read as Product
+        # Management. Rows under an unknown header (or above the first one)
+        # carry no section category and are classified by title.
+        bounds = [(-1, None), *section_headers, (len(lines), None)]
+        for (start, category), (end, _next) in zip(bounds, bounds[1:]):
+            section_content = "\n".join(lines[start + 1 : end])
             section_jobs = self.parse_markdown_table(
                 section_content, section_category=category,
                 include_closed=include_closed, now=now,
@@ -487,12 +489,12 @@ class MarkdownParser:
                     return True
         return False
 
-    def _detect_section_headers(self, lines: list[str]) -> list[tuple[int, str]]:
-        """Find ## headers and map them to role categories.
+    def _detect_section_headers(self, lines: list[str]) -> list[tuple[int, Optional[str]]]:
+        """Find every ## header and map it to a role category.
 
-        Returns list of (line_index, category_name) tuples.
+        Returns list of (line_index, category_name or None) tuples.
         """
-        headers: list[tuple[int, str]] = []
+        headers: list[tuple[int, Optional[str]]] = []
 
         for i, line in enumerate(lines):
             stripped = line.strip()
@@ -504,10 +506,7 @@ class MarkdownParser:
                 header_text = re.sub(r"\s*\[.*?\].*", "", header_text)
                 header_text = header_text.strip()
 
-                # Try to match to a known category
-                category = self._match_section_category(header_text)
-                if category:
-                    headers.append((i, category))
+                headers.append((i, self._match_section_category(header_text)))
 
         return headers
 
@@ -519,9 +518,12 @@ class MarkdownParser:
         if lower in SECTION_CATEGORY_MAP:
             return SECTION_CATEGORY_MAP[lower]
 
-        # Substring/fuzzy match
+        # A known category named inside a longer header ('💻 Software
+        # Engineering Internship Roles'). Never the reverse: a short header is
+        # not a category because a category name contains it ('AI' is in
+        # 'education and training').
         for key, value in SECTION_CATEGORY_MAP.items():
-            if key in lower or lower in key:
+            if key in lower:
                 return value
 
         return None
@@ -684,7 +686,13 @@ class MarkdownParser:
                         data["url"] = link
                 else:
                     text = cell
-                data[field] = clean_cell_text(text.replace(CLOSED_MARK, ""))
+                title = clean_cell_text(text.replace(CLOSED_MARK, ""))
+                # Legend marks trail the title ('Software Engineer 🛂 🇺🇸',
+                # 'Intern 🎓'): they say something about the posting, not
+                # its name, and rendered in the card title.
+                if any(mark in title for mark in NO_SPONSORSHIP_MARKS):
+                    data["no_sponsorship"] = True
+                data[field] = clean_company_name(title)
             elif field == "company_logo":
                 logo_url = self._extract_image_url(cell)
                 if logo_url:
@@ -721,6 +729,7 @@ class MarkdownParser:
             company_url=company_url,
             company_domain=resolved_domain or None,
             work_model=data.get("work_model"),
+            no_sponsorship=bool(data.get("no_sponsorship")),
             closed=closed,
         )
 

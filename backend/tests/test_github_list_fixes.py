@@ -315,8 +315,10 @@ class TestClosedRows:
         closed = [j for j in jobs if j.closed]
         assert [(j.company, j.title, j.url) for j in closed] == [
             ("Fidelity Investments", "Software Engineer", ""),
-            ("The Boeing Company", "Associate Software Engineer 🛂", ""),
+            ("The Boeing Company", "Associate Software Engineer", ""),
         ]
+        # The legend mark leaves the title and becomes a flag.
+        assert [j.no_sponsorship for j in closed] == [False, True]
 
     def test_strikethrough_row_is_closed(self, frozen_now):
         table = (
@@ -511,7 +513,7 @@ class TestPolling:
         assert await AggregatorService(db_session).poll_source(source) == 1
 
         db_session.refresh(source)
-        assert (source.status, source.last_commit_sha, source.error_message) == ("active", "abc", "")
+        assert (source.status, source.last_commit_sha, source.error_message) == ("active", "abc@r1", "")
         tesla = db_session.query(ScrapedJob).filter(ScrapedJob.company == "Tesla").one()
         assert tesla.url == "https://www.tesla.com/careers/search/job/256719"
         assert tesla.posted_date == datetime.datetime(2026, 9, 20)
@@ -538,7 +540,7 @@ class TestPolling:
         assert source.repo_owner == "speedyapply"
         assert source.repo_name == "2027-SWE-College-Jobs"
         assert source.repo_url == "https://github.com/speedyapply/2027-SWE-College-Jobs"
-        assert (source.status, source.last_commit_sha) == ("active", "new")
+        assert (source.status, source.last_commit_sha) == ("active", "new@r1")
         assert any(c.endswith("/repos/speedyapply/2027-SWE-College-Jobs/contents/README.md")
                    for c in github["calls"])
 
@@ -619,7 +621,8 @@ class TestRetryRotation:
         now = datetime.datetime(2026, 9, 27, 12, 0)
         long_ago = now - ERROR_RETRY_COOLDOWN - datetime.timedelta(hours=1)
         recent = now - datetime.timedelta(hours=1)
-        active = _source(db_session, url="https://github.com/a/active", last_polled_at=recent)
+        active = _source(db_session, url="https://github.com/a/active", last_polled_at=recent,
+                         last_commit_sha="abc@r1")
         gateway = _source(db_session, url="https://github.com/a/gateway", status="error",
                           error_message="HTTP 504: Gateway Timeout", last_polled_at=long_ago)
         renamed = _source(db_session, url="https://github.com/a/renamed", status="error",
@@ -676,6 +679,43 @@ class TestCronPoll:
 
         assert resp.status_code == 200, resp.text
         assert polled == [errored.repo_url]
+
+    def test_match_sweep_runs_when_no_source_is_due(self, client, db_session, monkeypatch):
+        # The sweep used to sit behind `if not sources: return`: parking or
+        # retiring every list would have silently stopped all alert emails.
+        import backend.auth.dependencies as auth_deps
+        from backend.services import match_notifier
+
+        monkeypatch.setattr(auth_deps, "CRON_SECRET", "test-cron-secret")
+        _source(db_session, url="https://github.com/jobright-ai/2026-HR-New-Grad", status="error",
+                error_message="HTTP 404: Not Found")
+        swept: list[bool] = []
+
+        async def no_seed(self):
+            return {"created": 0, "existing": 0}
+
+        async def no_poll(self, source):
+            raise AssertionError(f"{source.repo_url} is not due")
+
+        async def no_enrich(self, source_id=None, limit=10):
+            return 0
+
+        async def alerts(db):
+            swept.append(True)
+            return {"status": "completed", "users_scanned": 2}
+
+        monkeypatch.setattr(AggregatorService, "seed_sources", no_seed)
+        monkeypatch.setattr(AggregatorService, "poll_source", no_poll)
+        monkeypatch.setattr(AggregatorService, "_enrich_missing_descriptions", no_enrich)
+        monkeypatch.setattr(match_notifier, "sweep_match_alerts", alerts)
+
+        resp = client.post("/github-sources/cron-poll", headers={"x-cron-secret": "test-cron-secret"})
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert swept == [True]
+        assert (body["status"], body["sources_polled"]) == ("no_sources", 0)
+        assert body["match_alerts"] == {"status": "completed", "users_scanned": 2}
 
 
 # ─── review fixes: stale rows, insert order ──────────────────────────────────
@@ -859,8 +899,9 @@ class TestRenameSeeding:
 
         await svc.poll_source(owner)
         db_session.refresh(owner)
+        # The README has no job table: the list is parked under its new name.
         assert (owner.status, owner.repo_url) == (
-            "active", "https://github.com/vanshb03/Summer2027-Internships")
+            "parked", "https://github.com/vanshb03/Summer2027-Internships")
 
         assert (await svc.seed_sources()) == {"created": 0, "existing": 1}
         assert db_session.query(GitHubSource).count() == 1
@@ -947,6 +988,8 @@ class TestTitleClassification:
     @pytest.mark.parametrize("title", [
         "Software Engineer Intern", "SWE Internship - Summer 2027", "Interns 2027",
         "Software Developer Co-op", "Coop - Firmware", "Intern-Summer 2027",
+        # speedyapply INTERN_INTL.md, Montreal
+        "Développeur Logiciels - Stagiaire - Backend - l'été 2027 - Montreal",
     ])
     def test_internship_words_are_internships(self, db_session, title):
         source = _source(db_session, url="https://github.com/vanshb03/New-Grad-2027")

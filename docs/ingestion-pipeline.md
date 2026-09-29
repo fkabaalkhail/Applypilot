@@ -360,6 +360,40 @@ place); only 404/410/451 park a source in `error`, other failures keep it
 `active`, and retryable errors are retried after a 12-hour cooldown
 (`sources_due`).
 
+Cadence (`sources_due`, `_due_at`): a list whose file committed in the last
+7 days is due hourly, a quieter one daily. A list with nothing to ingest
+(every row links to a list vendor such as jobright.ai or zapply.jobs, or the
+README has no job table) and no visible rows is `parked`: re-checked weekly,
+and only with the slots productive lists leave free. cron-poll polls up to
+`CRON_POLL_MAX_SOURCES` (12) due sources, most overdue first. The stored
+commit is stamped with `PARSE_REVISION` (`<sha>@r1`): bump it when the parse
+or ingest rules change and every list is re-parsed once, since a README is
+otherwise only re-read when its commit changes.
+
+One source per file: speedyapply keeps new-grad and international roles in
+`NEW_GRAD_USA.md`, `INTERN_INTL.md` and `NEW_GRAD_INTL.md` beside its README.
+A `file_path` in `REPOS` makes a source at `<repo>/blob/HEAD/<file>` whose
+commit check only counts commits touching that file; a `countries` allowlist
+(the `*_INTL.md` files read for `CA` only) drops everything else.
+
+List rows are dropped at ingest, and hidden on every run
+(`hide_list_copies_of_board_rows`), when the board crawl carries the same
+posting under another URL spelling: same employer, title and
+`posting_identity` (Greenhouse job id, Workday tenant + requisition across
+locale, site alias, `-1` repost and `/apply` variants, Lever/Ashby UUID).
+A hidden copy comes back (`release_list_copies_of_lapsed_board_rows`) once
+its board row ages out (`expired`); a board row its board `removed` keeps it
+hidden. `canonical_url` drops `utm_*` and `ref=` and keeps every other query
+segment byte for byte. Legend marks leave titles (`🛂`/`🇺🇸` set
+`visa_sponsorship='no'`).
+
+cron-poll time boxes, from the start of the request (the workflow's curl and
+Vercel both stop at 300 s): no new source after 120 s, a source still
+polling at 200 s is cut off, no description fetch after 170 s, and the
+match-alert sweep is cut off at 240 s (an email send in flight can hold the
+cut for the Resend SDK's 30 s timeout). The sweep runs whether or not any
+list was due. The response carries per-source `seconds` and phase `timings`.
+
 ## Per-board health + circuit breaker
 
 Every board outcome lands in `source_health`. Five consecutive failures open

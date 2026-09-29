@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.db.database import Base
 from backend.db.models import GitHubSource
-from backend.services.aggregator import AggregatorService
+from backend.services.aggregator import AggregatorService, source_url
 
 
 @settings(max_examples=50)
@@ -62,7 +62,8 @@ def test_seed_idempotence(num_calls):
         assert len(urls) == len(set(urls)), f"Duplicate URLs found: {urls}"
 
         # Verify all expected repos are present
-        expected_repos = {repo["url"] for repo in AggregatorService.REPOS}
+        expected_repos = {source_url(repo["url"], repo.get("file_path", "README.md"))
+                          for repo in AggregatorService.REPOS}
         actual_repos = {s.repo_url for s in sources}
         assert actual_repos == expected_repos
     finally:
@@ -82,13 +83,15 @@ def test_seed_creates_correct_categories():
         asyncio.run(aggregator.seed_sources())
 
         sources = session.query(GitHubSource).all()
+        configs = {source_url(repo["url"], repo.get("file_path", "README.md")): repo
+                   for repo in AggregatorService.REPOS}
 
         for source in sources:
-            # Verify experience_level
+            # Verify experience_level: the seed entry's, and internship for
+            # every list named as one
+            assert source.experience_level == configs[source.repo_url]["level"]
             if "internship" in source.repo_name.lower():
                 assert source.experience_level == "internship"
-            else:
-                assert source.experience_level == "new_grad"
 
             # Verify role_category matches REPO_CATEGORY_MAP
             expected_category = AggregatorService.REPO_CATEGORY_MAP.get(source.repo_name, "")
