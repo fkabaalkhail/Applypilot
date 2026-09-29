@@ -858,16 +858,23 @@ async def cron_poll(
         timings["enrich"] = round(elapsed(), 1)
 
         # Hide list rows the board crawl also carries under another spelling
-        # ('/en-US/marvellcareers/...' vs '/MarvellCareers/...'), after giving
-        # back the ones whose board row has since aged out. Column-only.
+        # ('/en-US/marvellcareers/...' vs '/MarvellCareers/...'), and list
+        # rows repeating a posting another list row carries ('jobsathpe' vs
+        # 'wfmathpe'), after giving back the ones whose board row or list row
+        # has since left the feed. Column-only, a few thousand rows.
         list_copies_hidden = list_copies_released = 0
+        list_repeats_hidden = list_repeats_released = 0
         try:
             from backend.services.cross_source_dedup import (
                 hide_list_copies_of_board_rows,
+                hide_repeated_list_rows,
                 release_list_copies_of_lapsed_board_rows,
+                release_repeated_list_rows,
             )
             list_copies_released = release_list_copies_of_lapsed_board_rows(db)
+            list_repeats_released = release_repeated_list_rows(db)
             list_copies_hidden = hide_list_copies_of_board_rows(db)
+            list_repeats_hidden = hide_repeated_list_rows(db)
         except Exception:
             db.rollback()
             logger.error(f"List-copy dedup failed: {traceback.format_exc()}")
@@ -888,6 +895,8 @@ async def cron_poll(
             "global_descriptions_enriched": global_enriched,
             "list_copies_hidden": list_copies_hidden,
             "list_copies_released": list_copies_released,
+            "list_repeats_hidden": list_repeats_hidden,
+            "list_repeats_released": list_repeats_released,
             "polled": polled,
             "match_alerts": match_alerts,
             "timings": timings,

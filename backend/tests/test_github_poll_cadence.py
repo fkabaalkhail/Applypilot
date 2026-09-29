@@ -432,6 +432,38 @@ class TestCronPollBudget:
         db_session.expire_all()
         assert db_session.get(ScrapedJob, rows["github"]).duplicate_of is None
 
+    def test_list_repeats_are_hidden_by_cron_poll(self, cron, db_session):
+        # One HPE requisition under two site aliases in speedyapply's
+        # NEW_GRAD_USA.md (e2e run, 2026-09-29).
+        from backend.services.cross_source_dedup import normalize_title
+
+        ids = []
+        for site, repost in (("jobsathpe", "2"), ("wfmathpe", "1")):
+            row = ScrapedJob(title="Manageability Firmware Engineer", company="Hewlett Packard Enterprise",
+                             location="Chippewa Falls, WI", description="", source_platform="github",
+                             url=f"https://hpe.wd5.myworkdayjobs.com/en-US/{site}/job/Chippewa-Falls/"
+                                 f"Manageability-Firmware-Engineer_1214522-{repost}",
+                             listing_status="active", title_norm=normalize_title("Manageability Firmware Engineer"))
+            db_session.add(row)
+            db_session.commit()
+            ids.append(row.id)
+
+        body, _ = cron["post"]()
+
+        assert (body["list_repeats_hidden"], body["list_repeats_released"]) == (1, 0)
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, ids[1]).duplicate_of == ids[0]
+
+        # The first alias leaves its list: the next run gives the other back.
+        db_session.get(ScrapedJob, ids[0]).listing_status = "removed"
+        db_session.commit()
+
+        body, _ = cron["post"]()
+
+        assert (body["list_repeats_hidden"], body["list_repeats_released"]) == (0, 1)
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, ids[1]).duplicate_of is None
+
     def test_default_budgets_leave_headroom_under_vercels_limit(self):
         from backend.routers import github_sources as router
 

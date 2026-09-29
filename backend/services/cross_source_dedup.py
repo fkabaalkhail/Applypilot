@@ -932,3 +932,128 @@ def release_list_copies_of_lapsed_board_rows(db: Session) -> int:
         db.commit()
         logger.info("released %d GitHub-list copies of lapsed board rows", len(released))
     return len(released)
+
+
+# ─── One posting on two GitHub lists, or twice on one ───────────────────────
+#
+# speedyapply's files list one Workday requisition under several site
+# aliases ('jobsathpe' and 'wfmathpe', 'displacedemployees' and 'jj'), and
+# repeat postings negarprh already lists under another path case
+# ('/en-US/mfcjh_jobs/' vs '/en-US/MFCJH_Jobs/'), often retitled ('Software
+# Engineer Co-op, Backend' vs 'Software Engineer - Backend - Co-op') and
+# under another employer name ('RELX' vs 'LexisNexis Risk Solutions',
+# 'Manulife' vs 'Manulife Financial'). A precise identity (Workday tenant +
+# requisition, Greenhouse job id, Lever/Ashby UUID, LinkedIn/Indeed job id)
+# names one posting whatever the list calls it: the tenant, or the
+# platform's global id, is the employer. Any other URL is one posting only
+# with the same folded employer and title (a careers page may stand for
+# several roles). One row per posting stays in the feed, the rest are
+# soft-hidden (duplicate_of) and come back when it leaves.
+
+_PRECISE_IDENTITY_PREFIXES = ("workday:", "greenhouse:", "lever:", "ashby:", "linkedin:", "indeed:")
+
+
+def list_row_key(company: str, title_norm: str, url: str) -> tuple | None:
+    """What makes two GitHub-list rows one posting (see above), or None when
+    the row can't be matched."""
+    identity = posting_identity(url or "")
+    if identity.startswith(_PRECISE_IDENTITY_PREFIXES):
+        return (identity,)
+    employer = normalize_company(company or "")
+    if not identity or not employer or not title_norm or title_norm == "\x01":
+        return None
+    return (employer, title_norm, identity)
+
+
+def list_posting_keys(url: str) -> set[str]:
+    """The ingest guard's keys for a list URL: its posting identity and its
+    case-folded canonical URL."""
+    return {key for key in (posting_identity(url or ""), canonical_url(url or "").lower()) if key}
+
+
+def hide_repeated_list_rows(db: Session) -> int:
+    """Soft-hide visible GitHub-list rows that repeat a posting another row
+    already carries (list_row_key). The posting stays with the board row a
+    repeat of it is already hidden behind (hide_list_copies_of_board_rows
+    needs the same title, a retitled repeat does not), else with its oldest
+    visible list row. Idempotent; run by every cron-poll after the board
+    pass. Column-only: the visible list rows (a few thousand at most) and
+    the platforms of the rows they are hidden behind, one UPDATE per kept
+    row. Commits. Returns the number hidden."""
+    rows = (
+        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title_norm,
+                 ScrapedJob.duplicate_of)
+        .filter(ScrapedJob.source_platform == "github",
+                or_(ScrapedJob.listing_status.is_(None),
+                    ScrapedJob.listing_status.in_(_VISIBLE_LISTING_STATUSES)))
+        .order_by(ScrapedJob.id)
+        .all()
+    )
+    groups: dict[tuple, list[tuple[int, int | None]]] = {}
+    for row_id, url, company, title_norm, duplicate_of in rows:
+        key = list_row_key(company or "", title_norm or "", url or "")
+        if key is not None:
+            groups.setdefault(key, []).append((row_id, duplicate_of))
+    groups = {key: members for key, members in groups.items() if len(members) > 1}
+    targets = sorted({dup for members in groups.values() for _id, dup in members if dup is not None})
+    board_rows: set[int] = set()
+    for i in range(0, len(targets), 400):
+        board_rows.update(
+            row_id for (row_id,) in db.query(ScrapedJob.id).filter(
+                ScrapedJob.id.in_(targets[i:i + 400]), ScrapedJob.source_platform == "ats"))
+
+    to_hide: dict[int, list[int]] = {}
+    for members in groups.values():
+        shown = [row_id for row_id, dup in members if dup is None]
+        behind_board = [dup for _id, dup in members if dup in board_rows]
+        keeper = behind_board[0] if behind_board else (shown[0] if shown else None)
+        repeats = [row_id for row_id in shown if row_id != keeper]
+        if keeper is not None and repeats:
+            to_hide.setdefault(keeper, []).extend(repeats)
+    hidden = 0
+    for keeper, ids in to_hide.items():
+        db.query(ScrapedJob).filter(ScrapedJob.id.in_(ids)).update(
+            {"duplicate_of": keeper}, synchronize_session=False)
+        hidden += len(ids)
+    if hidden:
+        db.commit()
+        logger.info("hid %d GitHub-list rows repeating a posting another row carries", hidden)
+    return hidden
+
+
+def release_repeated_list_rows(db: Session) -> int:
+    """Give back the visible GitHub-list rows hidden behind another list row
+    (hide_repeated_list_rows) that has left the feed: removed, expired or
+    retired on its own list, while this row's list still offers the
+    posting. A row whose keeper is itself hidden now (behind a board row,
+    or behind an older repeat) moves on to that row instead, so no copy
+    points at a hidden row. Run by cron-poll before the hide passes, which
+    hide a released row again under anything still carrying the posting.
+    Column-only. Commits. Returns the number released."""
+    keeper = aliased(ScrapedJob)
+    rows = (
+        db.query(ScrapedJob.id, keeper.listing_status, keeper.duplicate_of)
+        .join(keeper, keeper.id == ScrapedJob.duplicate_of)
+        .filter(ScrapedJob.source_platform == "github",
+                or_(ScrapedJob.listing_status.is_(None),
+                    ScrapedJob.listing_status.in_(_VISIBLE_LISTING_STATUSES)),
+                keeper.source_platform == "github")
+        .all()
+    )
+    released: list[int] = []
+    moved = 0
+    for row_id, status, onward in rows:
+        if (status is not None and status in HIDDEN_LISTING_STATUSES) or onward == row_id:
+            released.append(row_id)
+        elif onward is not None:
+            db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
+                {"duplicate_of": onward}, synchronize_session=False)
+            moved += 1
+    for i in range(0, len(released), 400):
+        db.query(ScrapedJob).filter(ScrapedJob.id.in_(released[i:i + 400])).update(
+            {"duplicate_of": None}, synchronize_session=False)
+    if released or moved:
+        db.commit()
+        logger.info("released %d GitHub-list repeats of lapsed list rows, moved %d onward",
+                    len(released), moved)
+    return len(released)

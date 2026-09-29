@@ -479,6 +479,9 @@ class AggregatorService:
         # shares one request with Vercel's 300 s limit). Descriptions are
         # optional here: cron-backfill fetches whatever this leaves.
         self.deadline = deadline
+        # Posting keys of the visible GitHub-list rows (_listed_postings),
+        # read once per parse.
+        self._listed_keys: Optional[set[str]] = None
         self.parser = MarkdownParser()
         self.country_filter = CountryFilter()
         self.work_type_classifier = WorkTypeClassifier()
@@ -570,6 +573,7 @@ class AggregatorService:
                 # budget goes on the rows users will see first.
                 dead_urls = await self._probe_new_urls(insertable[::-1])
 
+                self._listed_keys = None  # read afresh: rows left the feed since the last parse
                 for job in insertable:
                     stored = self._classify_and_store(job, source, dead_urls=dead_urls)
                     if stored:
@@ -970,6 +974,25 @@ class AggregatorService:
                 urls.add(canonical_url(job.url))
         return urls
 
+    def _listed_postings(self) -> set[str]:
+        """Posting keys (cross_source_dedup.list_posting_keys) of every
+        GitHub-list row whose posting is in the feed (a hidden repeat's is,
+        under the row it repeats): read once per parse, then kept current as
+        rows are stored. Column-only."""
+        if self._listed_keys is None:
+            from backend.services.cross_source_dedup import list_posting_keys
+            from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES
+
+            self._listed_keys = set()
+            for (url,) in (
+                self.db.query(ScrapedJob.url)
+                .filter(ScrapedJob.source_platform == "github",
+                        or_(ScrapedJob.listing_status.is_(None),
+                            ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES)))
+            ):
+                self._listed_keys |= list_posting_keys(url or "")
+        return self._listed_keys
+
     def _retire_delisted_rows(self, source: GitHubSource, listed_urls: set[str],
                               closed_jobs: list[ParsedJob]) -> dict[str, int]:
         """Soft-remove this source's visible rows the list stopped offering.
@@ -1134,6 +1157,13 @@ class AggregatorService:
         if board_row_for_posting(self.db, company=job.company, company_domain=company_domain,
                                  title=job.title, url=job.url):
             return False
+        # Another list, or this one under another site alias, already has
+        # it in the feed: the same Workday requisition, Greenhouse job or
+        # Lever/Ashby UUID, or the same URL in another letter case.
+        from backend.services.cross_source_dedup import list_posting_keys
+        posting_keys = list_posting_keys(job.url)
+        if posting_keys & self._listed_postings():
+            return False
 
         # Store the job
         from backend.services.cross_source_dedup import mark_inferior_twins, normalize_title
@@ -1182,6 +1212,7 @@ class AggregatorService:
 
         if is_dead:
             return False  # remembered, hidden, not a new catalogue job
+        self._listed_postings().update(posting_keys)
 
         # This direct row supersedes LinkedIn/Indeed copies that arrived first.
         try:
