@@ -144,7 +144,12 @@ def cleanup_blank_companies(
 # list payload has none, and the public page is JS-rendered so cron-backfill
 # can't recover it later). Cap per run; jobs past the cap simply stay
 # un-inserted and surface as "new" again on the board's next shard pass.
+# ~0.4 s a request, so the run's 40 add ~16 s against the 300 s limit.
 WORKDAY_DETAIL_BUDGET = 40
+# ...and per board: the budget goes to boards in the order their lists
+# finish, so a big new board (PwC's 212 postings) took all 40 for days while
+# fresh postings on BMO, CIBC or RBC's early-talent site waited behind it.
+WORKDAY_DETAIL_PER_BOARD = 10
 
 # Wall-clock budget, from the start of the run, for paging big boards past
 # their newest-first head. Full lists are what let Workday boards reconcile
@@ -488,6 +493,7 @@ async def cron_ats(
                             "relabeled"):
                     totals[key] += refresh_stats[key]
 
+                board_detail_budget = WORKDAY_DETAIL_PER_BOARD
                 for job in new_jobs:
                     # Board APIs carry descriptions for GH/Lever/Ashby;
                     # SmartRecruiters/Workday need one extra call per NEW job only.
@@ -498,9 +504,10 @@ async def cron_ats(
                         except Exception:
                             description = ""
                     elif not description and platform == "workday":
-                        if workday_detail_budget <= 0:
+                        if workday_detail_budget <= 0 or board_detail_budget <= 0:
                             continue  # re-surfaces as new on the next pass
                         workday_detail_budget -= 1
+                        board_detail_budget -= 1
                         try:
                             detail = await fetch_workday_detail(client, slug, job.detail_ref)
                             description = detail.get("description", "")
