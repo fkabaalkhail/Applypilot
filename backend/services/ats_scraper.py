@@ -35,7 +35,15 @@ from typing import Optional
 import httpx
 
 from backend.services.description_extractor import clean_html
-from backend.services.na_location import CA, FOREIGN, US, hint_region, is_north_america, region_of
+from backend.services.na_location import (
+    CA,
+    FOREIGN,
+    US,
+    hint_region,
+    is_north_america,
+    names_north_american_place,
+    region_of,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +69,13 @@ class ATSJob:
     # ("San Francisco; Toronto" beside a primary "London"). Read for the NA
     # verdict and the country column only, never displayed or stored.
     location_hint: str = ""
+
+
+def _text(value) -> str:
+    """A source's title or location, stripped. Boards pad them (Carvana's
+    " Entry-level Auto Body Inspector", SoFi's "Frisco, TX "), and the
+    padding reached the feed."""
+    return value.strip() if isinstance(value, str) else ""
 
 
 @dataclass
@@ -318,13 +333,15 @@ DEPT_ENTRY = re.compile(
 # The source's own commitment field (Lever commitment, Ashby employmentType,
 # SmartRecruiters typeOfEmployment): "Intern", "Internship", "Intern/Co-op".
 EMPLOYMENT_TYPE_ENTRY = re.compile(r"\bintern|\bco-?op\b|\bstudent\b|\bapprentice", re.IGNORECASE)
+# "Software Engineer I", "Analyst 1"; not "Rack Repair Specialist-1".
+_LEVEL_ONE_ROLE = r"\b" + _LEVEL_ROLE + r"\s*,?\s*(?:i|1)\b(?![-\w])" + _NOT_A_DURATION
 WEAK_ENTRY = re.compile(
     r"\bjunior\b|\bjr\b\.?"
     r"|\bentry[- ]level\b"
     r"|\banalyst\b"
     r"|\bassociates?\b"
     r"|\b(?:level|lvl|grade|tier)\s*(?:i|1)\b"
-    r"|\b" + _LEVEL_ROLE + r"\s*,?\s*(?:i|1)\b(?![-\w])" + _NOT_A_DURATION
+    r"|" + _LEVEL_ONE_ROLE
     + r"|\b0\s*-\s*[12]\s*years\b|\b1\s*-\s*2\s*years\b|\bstarter\b|\bfresh(?:er)?\b",
     re.IGNORECASE,
 )
@@ -352,17 +369,38 @@ _BAND_RANGE = re.compile(
     r"\b(" + _ENTRY_BAND + r")(?:\s*(?:,|/|-|–|&|\bor\b|\band\b|\bto\b)\s*" + _MID_BAND + r")+\b",
     re.IGNORECASE,
 )
+# So is a slash or "or" list of bands that opens at an entry band, whatever
+# its later bands say: Norfolk County's "Junior Planner / Planner / Senior
+# Planner (PFT)", Salesforce's "Analyst/Sr. Analyst, Global Incentive
+# Compensation". Only the later bands lose their senior and mid-level words:
+# "Senior Analyst", "Sr. Analyst / Analyst" and "Associate or Vice President"
+# stay out.
+_BAND_CLAUSE = re.compile(r"[^,;:()\[\]|]+")
+_BAND_LIST_SEPARATOR = re.compile(r"(\s*/\s*|\s+or\s+)", re.IGNORECASE)
+_OPENING_BAND = re.compile(r"\b(?:" + _ENTRY_BAND + r"|analyst)(?![\w-])", re.IGNORECASE)
+_LATER_BAND = re.compile(r"\b(?:senior|sr\b\.?|" + _MID_BAND + r")(?![\w-])", re.IGNORECASE)
+
+
+def _open_band_list(clause: re.Match) -> str:
+    parts = _BAND_LIST_SEPARATOR.split(clause.group(0))
+    if len(parts) < 3 or not _OPENING_BAND.search(parts[0]):
+        return clause.group(0)
+    # parts alternates band, separator, band, ...: parts[2::2] are the later bands.
+    return "".join(_LATER_BAND.sub(" ", part) if index >= 2 and index % 2 == 0 else part
+                   for index, part in enumerate(parts))
 
 
 class _SeniorVeto:
-    """HARD_SENIOR: ``search`` reads a band range as its entry band first."""
+    """HARD_SENIOR: ``search`` reads a band range or a band list as its
+    entry band first."""
 
     def __init__(self, words: re.Pattern):
         self.words = words
         self.pattern = words.pattern
 
     def search(self, title: str):
-        return self.words.search(_BAND_RANGE.sub(r"\1", title or ""))
+        title = _BAND_CLAUSE.sub(_open_band_list, title or "")
+        return self.words.search(_BAND_RANGE.sub(r"\1", title))
 
 
 # Also the one title veto for LinkedIn/Indeed rows (jobs.ingest_batch,
@@ -403,9 +441,12 @@ STUDENT_JOB = re.compile(
     re.IGNORECASE,
 )
 # Hourly/frontline work. Vetoes the weak tier only: a named track stays one.
-FRONTLINE = re.compile(
+_SHIFT = (
     r"\b(?:\d(?:st|nd|rd|th)|night|overnight|evening|weekend|day|am|pm|swing|graveyard)[- ]shift\b"
-    r"|\bshift\s*\d\b|\bpart[- ]time\b|\bseasonal\b|#\s?\d+\b"
+    r"|\bshift\s*\d\b"
+)
+FRONTLINE = re.compile(
+    _SHIFT + r"|\bpart[- ]time\b|\bseasonal\b|#\s?\d+\b"
     r"|\b(?:warehouse|forklift|barista|cashier|key holder|lot attendant|detailer|driver"
     r"|crew member|sous chef|cook|dishwasher|bartender|store|merchandising"
     r"|production associate|security associate)\b"
@@ -417,7 +458,20 @@ FRONTLINE = re.compile(
     r"|\b(?:event|store)\s+retail\b",
     re.IGNORECASE,
 )
+_SHIFT_WORDS = re.compile(_SHIFT, re.IGNORECASE)
+_LEVEL_ONE = re.compile(_LEVEL_ONE_ROLE, re.IGNORECASE)
 _PART_TIME_COMMITMENT = re.compile(r"part[- ]?time", re.IGNORECASE)
+
+
+def _frontline(title: str) -> bool:
+    """FRONTLINE, except that a shift alone does not make a level-I role
+    hourly floor work: Replit's "Support Engineer I (FC, Weekend Shift)" is
+    a support engineer on a weekend rota. Its other words still veto
+    ("Security Associate I - 2nd Shift", "Lot Driver I - Part Time")."""
+    if _LEVEL_ONE.search(title):
+        title = _SHIFT_WORDS.sub(" ", title)
+    return bool(FRONTLINE.search(title))
+
 
 # Title words that file an entry-level row under internships, not new grad.
 INTERNSHIP_TITLE = re.compile(
@@ -428,6 +482,9 @@ _INTERNSHIP_DEPARTMENT = re.compile(r"\bintern(?:s|ships?)?\b|" + _COOP, re.IGNO
 # A work term: "RF Validation Associate (Winter 2027)".
 _TERM_TITLE = re.compile(r"\b(?:summer|fall|winter|spring|autumn)\s*,?\s*(?:19|20)\d\d\b",
                          re.IGNORECASE)
+# ...but a start date for a junior hire: BDO's full-time "Junior Accountant,
+# Assurance (Winter 2027 or Fall 2027 or Winter 2028)" is a new-grad job.
+_JUNIOR_TITLE = re.compile(r"\bjunior\b|\bjr\b", re.IGNORECASE)
 _NEW_GRAD_TITLE = re.compile(
     r"\b(?:new|recent|university|college)[- ]?grad(?:uate)?s?\b|\bearly[- ]careers?\b"
     r"|\bentry[- ]level\b|\b(?:19|20)\d\d\s+start\b",
@@ -454,7 +511,7 @@ def entry_tier(title: str, department: str = "", employment_type: str = "") -> O
         return None
     if strong_title or DEPT_ENTRY.search(department or ""):
         return "strong"
-    if (WEAK_ENTRY.search(title) and not FRONTLINE.search(title)
+    if (WEAK_ENTRY.search(title) and not _frontline(title)
             and not _PART_TIME_COMMITMENT.search(employment_type or "")):
         return "weak"
     return None
@@ -465,7 +522,8 @@ def experience_level_for(title: str, department: str = "", employment_type: str 
     "Internal Audit Analyst", "International Payroll" and "Cooper, #559" are
     not internships. Past an intern/co-op/student title, and unless the title
     names a new-grad role, a work term in the title ("RF Validation Associate
-    (Winter 2027)"), a department naming internships or co-ops ("Payload
+    (Winter 2027)", not a junior hire's start date: "Junior Accountant - Fall
+    2026"), a department naming internships or co-ops ("Payload
     Internships") or the source's own commitment ("Intern") files it under
     internships. ``employment_type`` is that commitment (ATSJob.
     employment_type), never the one extracted from a description: "prior
@@ -474,7 +532,7 @@ def experience_level_for(title: str, department: str = "", employment_type: str 
         return "internship"
     if _NEW_GRAD_TITLE.search(title or ""):
         return "new_grad"
-    if (_TERM_TITLE.search(title or "")
+    if ((_TERM_TITLE.search(title or "") and not _JUNIOR_TITLE.search(title or ""))
             or _INTERNSHIP_DEPARTMENT.search(department or "")
             or EMPLOYMENT_TYPE_ENTRY.search(employment_type or "")):
         return "internship"
@@ -640,9 +698,9 @@ def _workday_location(posting: dict) -> str:
     (Parsons lists all ~1,950 postings without one, so the NA filter dropped
     every one) the first bullet that is not a requisition id, e.g.
     "US - CA, Pasadena"."""
-    text = posting.get("locationsText") or ""
-    if text.strip():
-        return text  # verbatim: stored rows compare against it for edits
+    text = _text(posting.get("locationsText"))
+    if text:
+        return text  # otherwise verbatim: stored rows compare against it for edits
     for item in posting.get("bulletFields") or []:
         item = item.strip() if isinstance(item, str) else ""
         if item and not _WORKDAY_REQ_ID.fullmatch(item):
@@ -667,13 +725,16 @@ def _other_na_locations(primary: str, others) -> str:
     """The North American places among a posting's other locations (Ashby
     ``secondaryLocations``, Lever ``categories.allLocations``), "; "-joined.
     A posting whose primary location is abroad but which is also open in New
-    York or Toronto is a North American posting, not a "location" reject."""
+    York or Toronto is a North American posting, not a "location" reject.
+    A bare "Remote" ("Remote - Worldwide") names no place, so it vouches for
+    nothing: Perplexity's "Belgrade" posting, also open "Remote", is not
+    North American."""
     places: list[str] = []
     for item in others or []:
         place = item.get("location") if isinstance(item, dict) else item
         place = place.strip() if isinstance(place, str) else ""
         if place and place != (primary or "").strip() and place not in places \
-                and is_north_america(place):
+                and names_north_american_place(place):
             places.append(place)
     return "; ".join(places)
 
@@ -835,8 +896,8 @@ class ATSScraper:
 
         jobs: list[ATSJob] = []
         for job_data in data.get("jobs", []):
-            title = job_data.get("title", "")
-            location = job_data.get("location", {}).get("name", "")
+            title = _text(job_data.get("title"))
+            location = _text((job_data.get("location") or {}).get("name"))
             job_url = job_data.get("absolute_url", "")
             updated_at = job_data.get("updated_at", "")
 
@@ -896,9 +957,9 @@ class ATSScraper:
 
         jobs: list[ATSJob] = []
         for posting in data:
-            title = posting.get("text", "")
+            title = _text(posting.get("text"))
             categories = posting.get("categories", {})
-            location = categories.get("location", "")
+            location = _text(categories.get("location"))
             job_url = posting.get("hostedUrl", "")
             created_at = posting.get("createdAt")
 
@@ -959,8 +1020,8 @@ class ATSScraper:
 
         jobs: list[ATSJob] = []
         for job_data in data.get("jobs", []):
-            title = job_data.get("title", "")
-            location = job_data.get("location", "")
+            title = _text(job_data.get("title"))
+            location = _text(job_data.get("location"))
             job_url = job_data.get("jobUrl", "")
             published_at = job_data.get("publishedAt", "")
             department = job_data.get("departmentName", "")
@@ -1025,14 +1086,14 @@ class ATSScraper:
             total_found = max(total_found, int(data.get("totalFound") or len(content)))
 
             for job_data in content:
-                title = job_data.get("name", "")
+                title = _text(job_data.get("name"))
 
                 # Build location from city, region, country
                 loc_info = job_data.get("location", {})
                 loc_parts = [
-                    loc_info.get("city", ""),
-                    loc_info.get("region", ""),
-                    loc_info.get("country", ""),
+                    _text(loc_info.get("city")),
+                    _text(loc_info.get("region")),
+                    _text(loc_info.get("country")),
                 ]
                 location = ", ".join(part for part in loc_parts if part)
 
@@ -1150,7 +1211,7 @@ class ATSScraper:
 
             for posting in postings:
                 external_path = posting.get("externalPath", "") or ""
-                title = posting.get("title", "") or ""
+                title = _text(posting.get("title"))
                 location = _workday_location(posting)
                 if not title or not external_path:
                     unlisted.add(_workday_unlisted_key(posting))

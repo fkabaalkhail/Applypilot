@@ -184,6 +184,78 @@ async def test_lever_all_locations_feed_the_na_verdict(monkeypatch):
     assert snapshot.rejected == {"https://jobs.lever.co/acme/l2": "location"}
 
 
+@pytest.mark.asyncio
+async def test_a_bare_remote_other_location_vouches_for_nothing(monkeypatch):
+    """Live 2026-09-29: Perplexity's "Belgrade" posting is also open
+    "Remote", and Hopper's "Brazil - Remote" one "Curitiba - Remote". Neither
+    names a North American place, so neither is a North American posting."""
+    monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+
+    def ashby(job_id, location, secondary):
+        return {"id": job_id, "title": "Machine Learning Intern", "location": location,
+                "secondaryLocations": [{"location": place} for place in secondary],
+                "jobUrl": f"https://jobs.ashbyhq.com/acme/{job_id}", "employmentType": "Intern"}
+
+    transport = FixtureTransport({
+        "api.ashbyhq.com": {"jobs": [
+            ashby("a1", "Belgrade", ["Remote"]),
+            ashby("a2", "Brazil - Remote", ["Curitiba - Remote", "Remote - Worldwide"]),
+            ashby("a3", "London", ["Remote", "Remote - US", "Toronto, ON; Remote"]),
+            ashby("a4", "London", ["Remote - North America"]),
+        ]},
+        "api.lever.co": [
+            {"id": "l1", "text": "Software Engineer Intern",
+             "hostedUrl": "https://jobs.lever.co/acme/l1",
+             "categories": {"location": "London, UK", "allLocations": ["London, UK", "Remote"],
+                            "commitment": "Intern"}},
+        ],
+    })
+    async with httpx.AsyncClient(transport=transport) as client:
+        ashby_board = await _filtered().scrape_board(client, "ashby", "acme", "Acme")
+        lever_board = await _filtered().scrape_board(client, "lever", "acme", "Acme")
+
+    passed = {job.url.rsplit("/", 1)[-1]: job.location_hint for job in ashby_board.jobs}
+    assert passed == {"a3": "Remote - US; Toronto, ON; Remote", "a4": "Remote - North America"}
+    assert ashby_board.rejected == {"https://jobs.ashbyhq.com/acme/a1": "location",
+                                    "https://jobs.ashbyhq.com/acme/a2": "location"}
+    assert lever_board.jobs == []
+    assert lever_board.rejected == {"https://jobs.lever.co/acme/l1": "location"}
+
+
+# ─── Padded titles and locations ─────────────────────────────────────────────
+# Boards pad them (2,301 titles and 358 locations in the 2026-09-29 crawl:
+# Carvana's " Entry-level Auto Body Inspector", SoFi's "Frisco, TX ",
+# ServiceNow's "Austin, Texas , us"). Every fetcher strips them.
+
+@pytest.mark.asyncio
+async def test_every_fetcher_strips_titles_and_locations(workday_registry):
+    transport = FixtureTransport({
+        "boards-api.greenhouse.io": {"jobs": [
+            {"id": 1, "title": " Software Intern ", "location": {"name": "Frisco, TX "},
+             "absolute_url": "https://boards.greenhouse.io/acme/jobs/1"}]},
+        "api.lever.co": [
+            {"id": "l1", "text": "Software Intern ", "hostedUrl": "https://jobs.lever.co/acme/l1",
+             "categories": {"location": " Toronto, ON"}}],
+        "api.ashbyhq.com": {"jobs": [
+            {"id": "a1", "title": "\tSoftware Intern", "location": "Toronto ",
+             "jobUrl": "https://jobs.ashbyhq.com/acme/a1"}]},
+        "api.smartrecruiters.com": {"totalFound": 1, "content": [
+            {"id": "1", "name": "Software Intern  ",
+             "location": {"city": "Austin ", "region": "Texas ", "country": "us"}}]},
+        "/wday/cxs/acmebank/external/jobs": [{"total": 1, "jobPostings": [
+            {"title": " Software Intern", "locationsText": "Toronto, ON ",
+             "externalPath": "/job/Toronto-ON/Software-Intern_R1", "bulletFields": ["R1"]}]}],
+    })
+    expected = {("greenhouse", "acme"): "Frisco, TX", ("lever", "acme"): "Toronto, ON",
+                ("ashby", "acme"): "Toronto", ("smartrecruiters", "acme"): "Austin, Texas, us",
+                ("workday", "acmebank"): "Toronto, ON"}
+    async with httpx.AsyncClient(transport=transport) as client:
+        for (platform, slug), location in expected.items():
+            snapshot = await _unfiltered().scrape_board(client, platform, slug, "Acme")
+            [job] = snapshot.jobs
+            assert (job.title, job.location) == ("Software Intern", location), platform
+
+
 # ─── SmartRecruiters ─────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

@@ -261,6 +261,59 @@ def test_an_entry_band_or_a_mid_one_is_weak(title):
     assert _entry(title)
 
 
+@pytest.mark.parametrize("title", [
+    # A slash or "or" list of bands that opens at an entry band (prod and the
+    # 2026-09-29 crawl): open at that band, whatever the later bands say.
+    "Junior Planner / Planner / Senior Planner (PFT) (CUPE 72.26)",   # Indeed, Simcoe ON
+    "Analyst/Sr. Analyst, Global Incentive Compensation",             # Salesforce, Toronto
+    "Sales Strategy Analyst/Sr. Analyst",
+    "Associate/ Senior Associate, Transaction Services",              # BDO
+    "Flight Software Engineers (Associate/Experienced/Senior)",       # Boeing
+    "Junior or Senior Software Developer",
+])
+def test_a_band_list_that_opens_at_an_entry_band_is_weak(title):
+    assert not HARD_SENIOR.search(title)
+    assert entry_tier(title) == "weak"
+    assert _entry(title)
+
+
+@pytest.mark.parametrize("title", [
+    "Senior Analyst",
+    "Sr. Analyst / Analyst",                                  # opens senior
+    "Software Engineer / Senior Software Engineer",           # no entry band
+    "Modern Data Stack Engineer Consultant / Senior Consultant",  # prod LinkedIn
+    "Analyst / Senior Director",                              # Director is no band word
+    "Analyst/Sr. Analyst (5+ years)",
+    "Associate, Senior Analyst",                              # not a list
+])
+def test_a_band_list_only_opens_at_its_first_band(title):
+    assert HARD_SENIOR.search(title)
+    assert entry_tier(title) is None
+    assert not _entry(title)
+
+
+@pytest.mark.parametrize("title", [
+    # A level-I role on a shift is not hourly floor work (2026-09-29 crawl).
+    "Support Engineer I (FC, Weekend Shift)",                 # Replit, prod 64250
+    "Support Engineer I (NYC, Weekend Shift)",
+    "Factory Test Technical Specialist I - 2nd Shift",        # Relativity
+])
+def test_a_shift_alone_never_vetoes_a_level_one_role(title):
+    assert entry_tier(title) == "weak"
+    assert ATSScraper().rejection(_job(title, location="Foster City, CA")) is None
+
+
+@pytest.mark.parametrize("title", [
+    "Customer Experience Associate (Evening Shift)",          # no level I
+    "Security Associate I - 2nd Shift",                       # frontline anyway
+    "Software Engineer I, Night Shift, #12",                  # a store number
+    "Lot Driver I - Part Time",
+])
+def test_a_level_one_role_is_still_frontline_on_its_other_words(title):
+    assert entry_tier(title) is None
+    assert not _entry(title)
+
+
 @pytest.mark.parametrize("title,employment_type", [
     # The range only lifts the mid-level veto; everything else still applies.
     ("Experienced Financial Analyst", ""),
@@ -350,6 +403,13 @@ def test_hard_senior_is_the_aggregator_veto(title, hard):
     ("Stagiaire en ingénierie (été 2027)", "", "", "internship"),
     ("RF Validation Associate", "Payload Internships", "", "internship"),
     ("Thermal Associate Engineer (Summer 2027)", "", "", "internship"),   # a work term
+    # ...but a junior hire's start date (BDO, full time).
+    ("Junior Accountant, Assurance - Barrie - Fall 2026", "", "", "new_grad"),
+    ("Junior Accountant, Assurance (Winter 2027 or Fall 2027 or Winter 2028)", "",
+     "Full time", "new_grad"),
+    ("Jr. Analyst (Summer 2027)", "Summer Internships", "", "internship"),
+    ("Junior Analyst (Summer 2027)", "", "Intern", "internship"),
+    ("Junior Developer - Winter 2027 Co-op", "", "", "internship"),
     ("Hardware Validation Associate", "", "Intern", "internship"),       # Lever commitment
     ("Cohort 0", "", "Intern", "internship"),
     ("Software Engineer, New Grad (Summer 2027)", "", "", "new_grad"),

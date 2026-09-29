@@ -166,7 +166,14 @@ async def search_linkedin(client: httpx.AsyncClient, query: str, city: str, prov
     try:
         resp = await client.get(url)
         if resp.status_code == 200:
-            return parse_job_cards(resp.text)
+            jobs = parse_job_cards(resp.text)
+            # A card can show no location (LinkedIn leaves the span empty),
+            # and a row without one never matches a city filter. It came up
+            # in a search of this city, so file it there.
+            for job in jobs:
+                if not job.location:
+                    job.location = location
+            return jobs
     except Exception as e:
         print(f"  Error: {e}")
     return []

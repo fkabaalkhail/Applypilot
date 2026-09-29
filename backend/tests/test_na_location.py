@@ -16,6 +16,7 @@ from backend.services.na_location import (
     classify_north_america,
     hint_region,
     job_country,
+    names_north_american_place,
     region_of,
 )
 
@@ -412,6 +413,52 @@ def test_a_bare_us_namesake_city_never_flips_a_country(city):
     # Beside anything that places it, the city is Canadian as before.
     assert job_country(f"{city}, ON", current="US") == "CA"
     assert job_country(f"{city}; Toronto", current="US") == "CA"
+
+
+@pytest.mark.parametrize("location", ["Remote", "Remote - Worldwide", "Remote - North America",
+                                      "NA - Remote", "Remote - NA, APAC, EMEA"])
+def test_remote_or_north_america_never_flips_a_country(location):
+    """Oscar's and Stripe's "Remote" (live 2026-09-29), "Remote - North
+    America", "NA - Remote": North American (the filter keeps them) but in
+    no particular country, so a stored or client-sent Canada stands."""
+    assert region_of(location) == "US"
+    assert job_country(location, current="CA") == "CA"
+    assert job_country(location, fallback="CA") == "CA"   # a client's value
+    assert job_country(location, current="US") == "US"
+    assert job_country(location) == "US"                  # a new crawled row's default
+    assert job_country(location, "CA") == "CA"            # the registry's country
+    assert job_country(location, hint="Toronto", current="US") == "CA"
+
+
+def test_a_country_or_city_beside_north_america_still_decides():
+    assert job_country("Remote - US", current="CA") == "US"
+    assert job_country("Remote (Canada)", current="US") == "CA"
+    assert job_country("North America - Toronto", current="US") == "CA"
+    assert job_country("North America - Seattle", current="CA") == "US"
+
+
+@pytest.mark.parametrize("location, names", [
+    ("Remote", False), ("Remote - Worldwide", False), ("Hybrid Remote", False),
+    ("Curitiba - Remote", False),       # Hopper: a place we cannot place
+    ("Belgrade", False), ("Anywhere", False), ("", False),
+    ("Remote - US", True), ("Remote (Canada)", True), ("Toronto", True),
+    ("San Francisco, CA", True), ("Remote - North America", True), ("Remote, CA", True),
+])
+def test_names_north_american_place(location, names):
+    """What vouches for a posting among its other locations (Ashby, Lever)."""
+    assert names_north_american_place(location) is names
+
+
+def test_only_the_first_thousand_characters_are_read():
+    """Some rules are quadratic in the length: a 10,000-character slug took
+    hint_region 9 s. Real locations are under 500 characters."""
+    padding = "x" * 995
+    assert region_of(padding + " Toronto") is None
+    assert region_of(padding[:980] + " Toronto") == "CA"
+    assert hint_region(padding + "-Toronto-ON") is None
+    assert hint_region(padding[:980] + "-Toronto-ON") == "CA"
+    assert hint_region(padding[:980] + "-Toronto" + "-" * 20 + "-GB") == "CA"  # a code past it too
+    assert job_country(padding + " Toronto", current="US") == "US"
 
 
 def test_a_bare_london_never_flips_a_country():
