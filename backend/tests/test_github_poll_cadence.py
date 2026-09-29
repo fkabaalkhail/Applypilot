@@ -596,6 +596,24 @@ class TestAdminEndpoints:
 
         assert resp.status_code == 422
 
+    @pytest.mark.parametrize("minutes, status", [(-30, 422), (0, 422), (4, 422), (10081, 422),
+                                                 (5, 200), (10080, 200)])
+    def test_poll_interval_is_bounded(self, admin, db_session, minutes, status):
+        # An admin interval sticks, so a negative one made the source due on
+        # every cron-poll run (_due_at), and 0 read as the automatic cadence.
+        url = "https://github.com/vanshb03/New-Grad-2027"
+        source = _source(db_session, url=url)
+
+        edited = admin.put(f"/github-sources/{source.id}",
+                           json={"repo_url": url, "poll_interval_minutes": minutes})
+        created = admin.post("/github-sources", json={
+            "repo_url": "https://github.com/negarprh/Canadian-Tech-Internships-2027",
+            "poll_interval_minutes": minutes})
+
+        assert (edited.status_code, created.status_code) == (status, status)
+        db_session.refresh(source)
+        assert source.poll_interval_minutes == (minutes if status == 200 else 60)
+
     @pytest.mark.asyncio
     async def test_admin_poll_interval_sticks(self, db_session, github):
         # poll_source used to reset every source to 60/1440 on each poll.
