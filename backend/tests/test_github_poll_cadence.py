@@ -226,7 +226,16 @@ class TestPerFileSources:
         assert by_file["INTERN_INTL.md"].repo_name == "2027-SWE-College-Jobs"
 
     @pytest.mark.asyncio
-    async def test_international_file_is_read_for_canada_only(self, db_session, github):
+    async def test_international_file_is_read_for_canada_only(self, db_session, github, monkeypatch):
+        from backend.services import listing_freshness
+
+        probed: list[str] = []
+
+        async def probe(client, urls, **kwargs):
+            probed.extend(urls)
+            return {}
+
+        monkeypatch.setattr(listing_freshness, "probe_urls_liveness", probe)
         svc = AggregatorService(db_session)
         svc.REPOS = [{"url": "https://github.com/speedyapply/2027-SWE-College-Jobs", "file_path": "INTERN_INTL.md",
                       "countries": ["CA"], "category": "", "level": "internship"}]
@@ -245,6 +254,10 @@ class TestPerFileSources:
         assert (row.company, row.country) == ("Robinhood", "CA")
         # Kept byte for byte: the board crawl stores this exact spelling.
         assert row.url == "https://boards.greenhouse.io/robinhood/jobs/8199729?t=gh_src=&gh_jid=8199729"
+        # The new-URL probe budget goes on that row alone: the foreign rows
+        # (~620 of NEW_GRAD_INTL.md's ~700) are never stored, so never known,
+        # and used to take the 80 probes on every change of the file.
+        assert probed == [row.url]
 
     def test_country_allowlist_survives_a_repo_rename(self, db_session):
         # speedyapply renames every season; the source adopts the new name on
