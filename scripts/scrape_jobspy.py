@@ -128,15 +128,13 @@ def to_payload(job_data: dict) -> dict | None:
     # re-derives the country from the location (na_location.job_country);
     # this is only the fallback it keeps when the location says nothing.
     # A LinkedIn row with no location at all (JobSpy blanked a one-part one
-    # and recover_linkedin_locations couldn't read it back) could be either
-    # country, so it sends none and the API stores none instead of a guessed
-    # "CA": the row then shows only while the feed isn't filtered by country.
-    # Indeed rows come from ca.indeed.com (country_indeed="Canada"), so "CA"
-    # stands for them.
+    # and recover_linkedin_locations couldn't read it back) keeps the search's
+    # country: every SEARCHES entry is a Canadian search, and a row sent with
+    # no country would drop out of every country-filtered feed. Indeed rows
+    # come from ca.indeed.com (country_indeed="Canada"), so "CA" stands for
+    # them too.
     country = "CA"
-    if not location and site == "linkedin":
-        country = ""
-    elif state:
+    if state:
         if len(state) == 2 and state.upper() not in (
             "ON", "QC", "BC", "AB", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "YT", "NU"
         ):

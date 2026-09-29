@@ -150,13 +150,13 @@ def test_every_ingest_counter_is_summed_and_logged(name, monkeypatch):
 # ─── LinkedIn rows JobSpy left without a location ───────────────────────────
 # JobSpy 1.1.82 displays a one-part LinkedIn location ("Canada", "United
 # States", "Greater Vancouver Metropolitan Area") as "". The live scrape's two
-# such rows were both Canadian; a "United States" card would have been sent
-# as "CA" all the same.
+# such rows were both Canadian, like every search: an unrecovered one keeps
+# the search's country rather than none, which no country filter would show.
 
-def test_a_linkedin_row_without_location_sends_no_country(jobspy):
+def test_a_linkedin_row_without_location_keeps_the_search_country(jobspy):
     payload = jobspy.to_payload(_row(site="linkedin", location="",
                                      job_url="https://www.linkedin.com/jobs/view/4470371715"))
-    assert payload["country"] == ""
+    assert payload["country"] == "CA"
 
 
 def test_an_indeed_row_without_location_stays_canadian(jobspy):
@@ -221,7 +221,7 @@ def test_a_blanked_linkedin_location_is_read_back_from_the_posting(jobspy, monke
     payloads = [jobspy.to_payload(job) for job in jobs]
     assert payloads[0]["location"] == "Greater Vancouver Metropolitan Area"
     assert payloads[0]["country"] == "CA"      # the API re-derives it from the text too
-    assert payloads[1]["country"] == payloads[2]["country"] == payloads[3]["country"] == ""
+    assert payloads[1]["country"] == payloads[2]["country"] == payloads[3]["country"] == "CA"
 
 
 def test_location_lookups_are_capped_per_run(jobspy, monkeypatch):
@@ -245,12 +245,12 @@ def test_location_lookups_are_capped_per_run(jobspy, monkeypatch):
 ])
 def test_ingest_batch_derives_or_leaves_an_unsent_country(jobspy, client, db_session,
                                                           monkeypatch, location, stored):
-    """The API's half: a payload that sends no country gets one from its
-    location, and none at all when there is no location."""
+    """The API's half: a payload that sends no country (any client may) gets
+    one from its location, and none at all when there is no location."""
     monkeypatch.setattr(auth_deps, "CRON_SECRET", "test-cron-secret")
     payload = jobspy.to_payload(_row(site="linkedin", location="",
                                      job_url="https://www.linkedin.com/jobs/view/4470371715"))
-    assert payload["country"] == ""
+    payload["country"] = ""
     payload["location"] = location
 
     res = client.post("/jobs/ingest-batch", json={"jobs": [payload]},
