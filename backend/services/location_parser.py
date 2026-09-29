@@ -516,6 +516,18 @@ _SLUG_AREA_PARTS = {"amer", "americas", "emea", "apac", "latam", "noram"}
 _SLUG_SITE_WORDS = {"metro", "area", "office", "campus", "hq", "plant", "site", "offsitehome"}
 # Workday drops non-ASCII letters: "Montréal" -> "Montral".
 _SLUG_FIXUPS = {"montral": "Montreal", "qubec": "Quebec"}
+# Names spelled out in another form: BMO's "VILLE-DE-QUEBEC-QC-CAN".
+_SLUG_PHRASES = {("ville", "de", "quebec"): ("Quebec", "City")}
+# A word that goes on naming the place after a city we know ("Chicago-
+# Heights", "Miami-Beach"), where any other word names a site in it:
+# Lumentum's "USA---CA---San-Jose-Ridder" is its Ridder Park site in San Jose.
+_PLACE_NAME_WORDS = {
+    "bay", "beach", "center", "centre", "city", "court", "creek", "crossing",
+    "estates", "falls", "gardens", "grove", "hall", "harbor", "harbour",
+    "heights", "hill", "hills", "island", "junction", "lake", "lakes",
+    "locks", "mill", "mills", "park", "ridge", "shores", "springs",
+    "station", "township", "twp", "valley", "village",
+}
 # ((folded words), value) entries, longest first.
 _SLUG_COUNTRY_WORDS = {
     "US": ((("united", "states", "of", "america"), "US"), (("united", "states"), "US"),
@@ -596,6 +608,34 @@ def _scan_slug_part(words: list[str], country: str, first: bool) -> tuple[list[s
     return city, region
 
 
+def _slug_words(part: str) -> list[str]:
+    """The words of one slug part, with Workday's spellings fixed up."""
+    words = [_SLUG_FIXUPS.get(w.lower(), w) for w in part.split("-") if w]
+    out: list[str] = []
+    i = 0
+    while i < len(words):
+        for phrase, name in _SLUG_PHRASES.items():
+            if tuple(w.lower() for w in words[i:i + len(phrase)]) == phrase:
+                out.extend(name)
+                i += len(phrase)
+                break
+        else:
+            out.append(words[i])
+            i += 1
+    return out
+
+
+def _known_city_head(city: list[str]) -> list[str]:
+    """A city we know at the head of ``city`` when the words after it name a
+    site, not more of the place ("San Jose Ridder" is San Jose; "Chicago
+    Heights" stays whole). ``city`` itself when there is none."""
+    for k in range(len(city) - 1, 0, -1):
+        if (fold(" ".join(city[:k])) in _NAMED_CITIES
+                and city[k].lower() not in _PLACE_NAME_WORDS):
+            return city[:k]
+    return city
+
+
 def _slug_names_foreign_place(slug: str, city: str) -> bool:
     """Whether a slug names a place outside the US and Canada, read as
     na_location.hint_region reads one: foreign as written or with dashes as
@@ -630,8 +670,10 @@ def parse_location_slug(slug: str, country: str) -> ParsedLocation | None:
         return None
     city: list[str] = []
     region = ""
+    placed = False           # a part before this one named the country or region
+    site_may_follow = False  # the city's part came after such a part
     for index, part in enumerate(_SLUG_PARTS.split(slug or "")):
-        words = [_SLUG_FIXUPS.get(w.lower(), w) for w in part.split("-") if w]
+        words = _slug_words(part)
         if not words or (not city and len(words) == 1 and words[0].lower() in _SLUG_AREA_PARTS):
             continue
         if index and words[0][:1].isdigit():
@@ -643,12 +685,18 @@ def parse_location_slug(slug: str, country: str) -> ParsedLocation | None:
             # The city's own region beats an earlier part's:
             # "Maryland---Washington-DC-Metro" is Washington, DC.
             city, region = part_city, part_region or region
+            site_may_follow = placed
         else:
             region = region or part_region
+            placed = True
     while city and city[-1].lower() in _SLUG_SITE_WORDS:
         city.pop()
-    if len(city) == 1 and city[0].lower().startswith("remote"):
-        city = ["Remote"]  # "REMOTETELETRAVAIL-ON-CAN"
+    if site_may_follow and fold(" ".join(city)) not in _SLUG_KNOWN_CITIES:
+        # "USA---CA---San-Jose-Ridder", "Canada---Ottawa-Bill-Leathem": the
+        # country and region come first, then the city and its site.
+        city = _known_city_head(city)
+    if len(city) == 1 and (city[0].lower().startswith("remote") or city[0].lower() == "virtual"):
+        city = ["Remote"]  # "REMOTETELETRAVAIL-ON-CAN", BMO's "Virtual-IL-USA"
     if city and city[0] == "St":
         city[0] = "St."  # "St-Louis-MO", as "St. Louis, MO" parses
     name = _titleize(" ".join(city))
