@@ -42,9 +42,11 @@ from backend.migrations.drop_saved_answers import run_migration as run_drop_save
 from backend.migrations.add_autofill_diagnostic_capture import run_migration as run_autofill_diagnostic_capture_migration
 from backend.migrations.add_listing_probe_columns import run_migration as run_listing_probe_columns_migration
 from backend.migrations.add_company_logos import run_migration as run_company_logos_migration
+from backend.migrations.add_match_alerts_opt_out import run_migration as run_match_alerts_opt_out_migration
 from backend.routers import health, resumes, jobs, settings, fill, ai, apply, connections, github_sources, profile, autofill
 from backend.routers import auth, auth_extension, extension, tailor, cover_letter, auth_linkedin
 from backend.routers.feedback import router as feedback_router
+from backend.services.alert_unsubscribe import UNSUBSCRIBE_PATH
 
 # Postgres only: create_all's lock waits are capped like the first-deploy
 # migrations' (a CREATE queued behind an open transaction would otherwise
@@ -107,6 +109,9 @@ async def lifespan(app: FastAPI):
     # next cold start.
     run_listing_probe_columns_migration()
     run_company_logos_migration()
+    # Every UserSettings query selects match_alerts_enabled, GET /settings
+    # included, so an instance without the column must not serve either.
+    run_match_alerts_opt_out_migration()
     yield
 
 
@@ -186,6 +191,8 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
     elif path.startswith("/jobs/logo/") and "Content-Security-Policy" in response.headers:
         pass  # served SVG logos carry their own sandboxing CSP (inline styles allowed)
+    elif path == UNSUBSCRIBE_PATH and "Content-Security-Policy" in response.headers:
+        pass  # the unsubscribe pages: inline styles and one same-origin form, still no scripts
     else:
         response.headers["Content-Security-Policy"] = (
             "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"

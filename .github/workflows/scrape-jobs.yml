@@ -166,6 +166,13 @@ jobs:
           head -c 6000 response.json 2>/dev/null || true; echo
           case "$code" in 2*) ;; *) exit 1 ;; esac
 
+      # cron-poll also runs the match-alert sweep, which answers 200 even when
+      # OpenAI refuses the account (billing, quota, revoked key): it stops
+      # scoring and reports match_alerts.status "llm_unavailable". That gets a
+      # warning annotation on every run's summary, deliberately not a failure:
+      # the owner already knows about an account outage, and a red scheduled
+      # run would email them every few hours until billing is fixed. Setting
+      # MATCH_ALERTS_ENABLED=false turns the sweep (and this warning) off.
       - name: Trigger GitHub aggregator
         id: cron_poll
         if: ${{ !cancelled() }}
@@ -182,6 +189,10 @@ jobs:
           echo "HTTP $code"
           head -c 6000 response.json 2>/dev/null || true; echo
           case "$code" in 2*) ;; *) exit 1 ;; esac
+          if grep -q '"llm_unavailable"' response.json 2>/dev/null; then
+            reason=$(grep -o '"llm_unavailable".*' response.json | grep -o '"error":"[^"]*"' | head -n 1 | cut -d '"' -f 4 || true)
+            echo "::warning title=Match alerts paused::OpenAI refused the account (${reason:-see match_alerts.error above}). Match scoring, autofill answers and every other AI feature stay down until billing, quota or the API key is fixed. MATCH_ALERTS_ENABLED=false stops the sweep deliberately."
+          fi
 
       - name: Backfill descriptions + locations + logos
         id: cron_backfill

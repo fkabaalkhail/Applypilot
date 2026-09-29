@@ -285,3 +285,78 @@ def test_final_step_turns_the_run_red_on_an_inactivity_failure(bash):
     result = _run_final(bash, failed={"inactivity"})
     assert result.returncode == 1
     assert "inactivity=failure" in result.stdout
+
+
+# --- cron-poll: an AI account outage is a warning, not a red run ---------
+
+# Stub curl: writes $STUB_BODY to the -o file and prints "$STUB_CODE <time>"
+# for -w, the two things the endpoint steps read.
+STUB_CURL = """#!/usr/bin/env bash
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -n "$out" ] && printf '%s' "$STUB_BODY" > "$out"
+printf '%s 1.23s' "${STUB_CODE:-200}"
+"""
+
+OUTAGE_BODY = (
+    '{"status":"completed","sources_polled":5,"new_jobs":3,'
+    '"match_alerts":{"status":"llm_unavailable","threshold":80,"users_scanned":5,'
+    '"users_notified":0,"jobs_notified":0,"jobs_scored":0,"scoring_errors":0,'
+    '"scoring_budget_spent":false,'
+    '"error":"OpenAI rejected the request (billing_not_active). This is an account '
+    'billing/quota problem, not a transient rate limit."}}'
+)
+HEALTHY_BODY = (
+    '{"status":"completed","match_alerts":{"status":"completed","threshold":80,'
+    '"users_scanned":5,"jobs_scored":12,"scoring_errors":0}}'
+)
+
+
+def _run_cron_poll(bash, tmp_path, body, code="200"):
+    step = _step("cron_poll")
+    stub_dir = tmp_path / "curlbin"
+    stub_dir.mkdir(exist_ok=True)
+    curl = stub_dir / "curl"
+    curl.write_bytes(STUB_CURL.encode())
+    curl.chmod(0o755)
+    env = {k: _render(v, {"secrets.CRON_SECRET": "stub-secret"})
+           for k, v in step.get("env", {}).items()}
+    env.update({
+        "API_BASE": "https://example.invalid",
+        "PATH": str(stub_dir) + os.pathsep + os.environ.get("PATH", ""),
+        "STUB_BODY": body,
+        "STUB_CODE": code,
+    })
+    # The step writes response.json into its working directory.
+    return bash(f'cd "{tmp_path.as_posix()}"\n' + step["run"], env)
+
+
+def test_cron_poll_warns_but_stays_green_when_openai_refuses_the_account(bash, tmp_path):
+    result = _run_cron_poll(bash, tmp_path, OUTAGE_BODY)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    warnings = [l for l in result.stdout.splitlines() if l.startswith("::warning")]
+    assert len(warnings) == 1, result.stdout
+    assert warnings[0].startswith("::warning title=Match alerts paused::")
+    # The annotation names the cause itself, not just the body dump above it.
+    assert "billing_not_active" in warnings[0]
+    assert "::error" not in result.stdout
+
+
+def test_cron_poll_says_nothing_extra_when_scoring_works(bash, tmp_path):
+    result = _run_cron_poll(bash, tmp_path, HEALTHY_BODY)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "::warning" not in result.stdout
+
+
+def test_cron_poll_still_fails_the_step_on_an_http_error(bash, tmp_path):
+    result = _run_cron_poll(bash, tmp_path, '{"detail":"Internal server error"}', code="500")
+
+    assert result.returncode == 1
+    assert "HTTP 500" in result.stdout

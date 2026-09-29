@@ -211,6 +211,7 @@ class EmailService:
         to_email: str,
         jobs: list[dict],
         recipient_name: Optional[str] = None,
+        unsubscribe_url: Optional[str] = None,
     ) -> bool:
         """Send a digest of high-scoring job matches.
 
@@ -221,6 +222,12 @@ class EmailService:
                 and optionally location, salary, posted.
                 Should be pre-sorted by match_score descending.
             recipient_name: Optional first name for a personal greeting.
+            unsubscribe_url: The recipient's opt-out link
+                (services/alert_unsubscribe). Rendered in the footer and sent
+                as List-Unsubscribe + List-Unsubscribe-Post (RFC 8058), which is
+                what puts the mail client's own one-click "Unsubscribe" button
+                next to the sender. The notifier passes one whenever
+                FRONTEND_URL is set, which prod always has.
 
         Returns:
             True if the email was sent, False otherwise (not configured,
@@ -242,18 +249,23 @@ class EmailService:
             f"{clean_company_name(top['company'])} just posted a "
             f"{top['match_score']}% match {top['title']} role"
         )
-        html_content = self._build_job_alert_html(jobs, recipient_name)
+        html_content = self._build_job_alert_html(jobs, recipient_name, unsubscribe_url)
+
+        params = {
+            "from": self.from_email,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_content,
+        }
+        if unsubscribe_url:
+            params["headers"] = {
+                "List-Unsubscribe": f"<{unsubscribe_url}>",
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            }
 
         try:
             resend.api_key = self.api_key
-            resend.Emails.send(
-                {
-                    "from": self.from_email,
-                    "to": [to_email],
-                    "subject": subject,
-                    "html": html_content,
-                }
-            )
+            resend.Emails.send(params)
             logger.info("Match alert (%d jobs) sent to %s.", len(jobs), to_email)
             return True
         except Exception as e:
@@ -261,7 +273,10 @@ class EmailService:
             return False
 
     def _build_job_alert_html(
-        self, jobs: list[dict], recipient_name: Optional[str] = None
+        self,
+        jobs: list[dict],
+        recipient_name: Optional[str] = None,
+        unsubscribe_url: Optional[str] = None,
     ) -> str:
         """Build the HTML for a job-match alert, styled after Stripe's system.
 
@@ -278,6 +293,18 @@ class EmailService:
             f"Hi {html.escape(recipient_name)}," if recipient_name else "Hi there,"
         )
         cards = "".join(self._build_job_card(job, font) for job in jobs)
+
+        # There was never a toggle to "enable" alerts: every verified user with a
+        # resume gets them, so the footer says so, and says how to stop them.
+        if unsubscribe_url:
+            href = html.escape(unsubscribe_url, quote=True)
+            opt_out = (
+                f'<a href="{href}" target="_blank" '
+                'style="color: #533afd; text-decoration: underline;">'
+                "Unsubscribe from match alerts</a>"
+            )
+        else:
+            opt_out = "You can turn them off in Tailrd under Settings."
 
         # Brand logo chip in the header. Hosted at FRONTEND_URL/logo-full.png
         # (Vercel serves frontend/public at the site root). Sits on a white
@@ -347,7 +374,7 @@ class EmailService:
                                 The Tailrd Team
                             </p>
                             <p style="margin: 0; font-size: 11px; font-weight: 300; line-height: 1.5; color: #64748d;">
-                                You're receiving this because you uploaded a resume to Tailrd and enabled match alerts.
+                                You're getting match alerts because you uploaded a resume to Tailrd. {opt_out}
                             </p>
                         </td>
                     </tr>

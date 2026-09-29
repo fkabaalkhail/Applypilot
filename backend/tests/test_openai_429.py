@@ -172,3 +172,87 @@ async def test_a_real_rate_limit_still_retries_and_then_succeeds(monkeypatch):
     assert await service._generate("hi", op="fill.batch.short") == "ok"
     assert calls == 2
     assert slept == [2.0], "Retry-After should win over the blind doubling"
+
+
+# ------------------------------------------------- account errors are typed
+# The match sweep scores dozens of jobs a run. It needs to tell "OpenAI refused
+# the account" (stop now, every further call is doomed) from "this one call
+# failed" (count it, move on). A plain ConnectionError could be either, so the
+# sweep made up to 75 refused calls a run for seven weeks and reported success.
+
+
+def _no_sleep(monkeypatch) -> list[float]:
+    slept: list[float] = []
+
+    async def no_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr("asyncio.sleep", no_sleep)
+    return slept
+
+
+@pytest.mark.asyncio
+async def test_a_billing_refusal_is_an_llm_account_error(monkeypatch):
+    from backend.services.openai_service import LLMAccountError, OpenAIService
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    async def post(self, url, **kwargs):  # noqa: ARG001
+        return response(body={"error": {"code": "billing_not_active", "type": "billing_not_active"}})
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", post)
+    _no_sleep(monkeypatch)
+
+    with pytest.raises(LLMAccountError) as excinfo:
+        await OpenAIService()._generate("hi", op="match.score")
+
+    # Still a ConnectionError, so every existing `except ConnectionError` -> 503
+    # handler keeps catching it unchanged.
+    assert isinstance(excinfo.value, ConnectionError)
+    assert "billing_not_active" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_a_revoked_key_fails_fast_as_an_account_error(monkeypatch, caplog):
+    """401 used to reach raise_for_status: an HTTPStatusError no handler
+    catches (a 500), after which the sweep kept trying every other job."""
+    from backend.services.openai_service import LLMAccountError, OpenAIService
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-revoked")
+    attempts = 0
+
+    async def post(self, url, **kwargs):  # noqa: ARG001
+        nonlocal attempts
+        attempts += 1
+        return response(status=401, body={"error": {"code": "invalid_api_key", "type": "invalid_request_error"}})
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", post)
+    slept = _no_sleep(monkeypatch)
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(LLMAccountError) as excinfo:
+            await OpenAIService()._generate("hi", op="match.score")
+
+    assert attempts == 1 and slept == []
+    assert "invalid_api_key" in str(excinfo.value)
+    assert "invalid_api_key" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_rate_limit_that_outlasts_the_retries_is_not_an_account_error(monkeypatch):
+    """Traffic 429s stay transient: the sweep must count them and keep going,
+    not stop scoring for everyone because one window was full."""
+    from backend.services.openai_service import LLMAccountError, OpenAIService
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    async def post(self, url, **kwargs):  # noqa: ARG001
+        return response(body={"error": {"code": "rate_limit_exceeded"}})
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", post)
+    _no_sleep(monkeypatch)
+
+    with pytest.raises(ConnectionError) as excinfo:
+        await OpenAIService()._generate("hi", op="match.score")
+
+    assert not isinstance(excinfo.value, LLMAccountError)

@@ -63,6 +63,9 @@ class SettingsUpdate(BaseModel):
     # AI features
     resume_tailoring_enabled: Optional[bool] = None
 
+    # Match-alert emails (opt-out; the unsubscribe link in each alert flips it too)
+    match_alerts_enabled: Optional[bool] = None
+
 
 class SettingsOut(BaseModel):
     """Settings returned to the frontend, password is masked."""
@@ -117,3 +120,6 @@ class SettingsOut(BaseModel):
 
     # AI features
     resume_tailoring_enabled: bool = False
+
+    # Match-alert emails: ON unless the user opted out
+    match_alerts_enabled: bool = True

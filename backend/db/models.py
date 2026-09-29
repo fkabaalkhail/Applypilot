@@ -15,7 +15,7 @@ import enum
 import datetime
 from sqlalchemy import (
     Boolean, Column, Integer, String, Text, DateTime, Enum, JSON, Float,
-    ForeignKey, LargeBinary, UniqueConstraint, func,
+    ForeignKey, LargeBinary, UniqueConstraint, func, true,
 )
 from sqlalchemy.orm import deferred
 from backend.db.database import Base
@@ -397,6 +397,13 @@ class UserSettings(Base):
     # (see AutofillFieldCapture). OFF for everybody by default, which is what
     # keeps "telemetry never stores your answers" true for every other account.
     diagnostic_capture = Column(Boolean, default=False, nullable=False)
+
+    # Match-alert emails (services/match_notifier). ON by default, which keeps
+    # the behaviour every account has had since alerts shipped; switched off
+    # by the unsubscribe link in each alert or the Settings toggle. An account
+    # with no settings row is opted in. Added by
+    # migrations/add_match_alerts_opt_out.py.
+    match_alerts_enabled = Column(Boolean, default=True, nullable=False, server_default=true())
 
     # Resume file path
     resume_file_path = Column(String, default="")

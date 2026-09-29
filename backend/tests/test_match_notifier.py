@@ -182,7 +182,7 @@ def capture_email(monkeypatch):
     """Stub the email send so notifier tests never hit the network."""
     sent = []
 
-    def fake_send(to_email, jobs, recipient_name=None):
+    def fake_send(to_email, jobs, recipient_name=None, unsubscribe_url=None):
         sent.append({"to": to_email, "jobs": jobs, "name": recipient_name})
         return True
 
@@ -336,7 +336,7 @@ def test_cron_match_alerts_endpoint(client, db_session, monkeypatch):
     monkeypatch.setattr(
         match_notifier.email_service,
         "send_job_match_alert",
-        lambda to, jobs, name=None: (sent.append((to, jobs)) or True),
+        lambda to, jobs, name=None, **_kw: (sent.append((to, jobs)) or True),
     )
 
     resp = client.post("/ai/cron-match-alerts", headers={"x-cron-secret": "test-cron-secret"})
@@ -407,7 +407,7 @@ def test_sweep_window_only_scores_rows_the_feed_shows(db_session, monkeypatch):
     monkeypatch.setattr(
         match_notifier.email_service,
         "send_job_match_alert",
-        lambda to, jobs, name=None: (sent.append(jobs) or True),
+        lambda to, jobs, name=None, **_kw: (sent.append(jobs) or True),
     )
 
     result = asyncio.run(match_notifier.sweep_match_alerts(db_session))

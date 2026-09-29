@@ -20,7 +20,11 @@ from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.exc import OperationalError
 
 from backend.db.database import Base
-from backend.migrations import add_company_logos, add_listing_probe_columns
+from backend.migrations import (
+    add_company_logos,
+    add_listing_probe_columns,
+    add_match_alerts_opt_out,
+)
 
 
 class _RecordingPostgres:
@@ -134,6 +138,71 @@ def test_probe_column_migration_on_sqlite_is_plain_and_idempotent(tmp_path):
     inspector = inspect(engine)
     assert "last_probed_at" in {c["name"] for c in inspector.get_columns("scraped_jobs")}
     assert "ix_scraped_jobs_last_probed_at" in {i["name"] for i in inspector.get_indexes("scraped_jobs")}
+
+
+# --- user_settings.match_alerts_enabled ---------------------------------------------
+
+def test_match_alerts_column_ddl_caps_lock_waits_and_tolerates_a_lost_race(monkeypatch):
+    engine = _fake_postgres(monkeypatch, add_match_alerts_opt_out, {
+        "user_settings": {"columns": ["id", "user_id", "regions"], "indexes": []},
+    })
+
+    add_match_alerts_opt_out.run_migration(engine)
+
+    assert engine.sql[0] == "SET LOCAL lock_timeout = '5s'"
+    assert engine.sql[1].startswith("SELECT pg_advisory_xact_lock(")
+    # Default TRUE keeps every existing account's alerts exactly as they were.
+    assert engine.sql[2:] == [
+        "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS match_alerts_enabled "
+        "BOOLEAN NOT NULL DEFAULT TRUE",
+    ]
+
+
+def test_match_alerts_column_ddl_takes_no_lock_once_applied(monkeypatch):
+    engine = _fake_postgres(monkeypatch, add_match_alerts_opt_out, {
+        "user_settings": {"columns": ["id", "match_alerts_enabled"], "indexes": []},
+    })
+
+    add_match_alerts_opt_out.run_migration(engine)
+
+    assert engine.sql == []
+    assert engine.transactions == 0
+
+
+def test_match_alerts_column_on_sqlite_defaults_existing_rows_on(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'settings.db'}")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE user_settings (id INTEGER PRIMARY KEY, user_id INTEGER)"))
+        conn.execute(text("INSERT INTO user_settings (id, user_id) VALUES (1, 7)"))
+    sent: list[str] = []
+    event.listen(engine, "before_cursor_execute",
+                 lambda _c, _cur, statement, *_a: sent.append(statement))
+
+    add_match_alerts_opt_out.run_migration(engine)
+    first = [s for s in sent if s.lstrip().upper().startswith(("ALTER", "SET"))]
+    sent.clear()
+    add_match_alerts_opt_out.run_migration(engine)  # second run: no DDL at all
+
+    assert first == [
+        "ALTER TABLE user_settings ADD COLUMN match_alerts_enabled BOOLEAN NOT NULL DEFAULT TRUE",
+    ]
+    assert not [s for s in sent if s.lstrip().upper().startswith(("ALTER", "SET"))]
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT match_alerts_enabled FROM user_settings")).scalar() == 1
+
+
+def test_match_alerts_migration_sends_no_ddl_on_a_table_create_all_built(tmp_path):
+    from backend.db.models import UserSettings
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'built.db'}")
+    Base.metadata.create_all(bind=engine, tables=[UserSettings.__table__])
+    sent: list[str] = []
+    event.listen(engine, "before_cursor_execute",
+                 lambda _c, _cur, statement, *_a: sent.append(statement))
+
+    add_match_alerts_opt_out.run_migration(engine)
+
+    assert not [s for s in sent if s.lstrip().upper().startswith(("ALTER", "SET"))]
 
 
 # --- company_logos ----------------------------------------------------------------
@@ -320,6 +389,8 @@ async def test_lifespan_builds_tables_through_the_serialized_create_all(monkeypa
     # Not swallowed either: every insert path (ingest-batch, cron-ats, the
     # GitHub lists) reads company_logos through load_branding unguarded.
     "run_company_logos_migration",
+    # Every UserSettings query maps match_alerts_enabled (GET /settings too).
+    "run_match_alerts_opt_out_migration",
 ])
 async def test_a_failed_first_deploy_migration_fails_startup_and_the_next_start_retries(
     monkeypatch, migration,
