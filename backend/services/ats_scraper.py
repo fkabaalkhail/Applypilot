@@ -668,7 +668,9 @@ def workday_public_base(cxs_base: str) -> str:
 
 SMARTRECRUITERS_POSTING_BASE = "https://jobs.smartrecruiters.com/"
 # Rows stored before the URL fix point here instead; it redirects to the
-# company's careers home, so those rows are migrated when their board lists them.
+# company's careers home, so those rows are migrated: when their board lists
+# them (cron-ats), and from the URL alone for the rest (cron-backfill,
+# legacy_urls.migrate_legacy_smartrecruiters).
 SMARTRECRUITERS_LEGACY_BASE = "https://careers.smartrecruiters.com/"
 
 

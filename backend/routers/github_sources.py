@@ -375,7 +375,9 @@ def _migrate_smartrecruiters_urls(db: Session, snapshot) -> int:
     posting, rewrite the row to the jobs.smartrecruiters.com URL the crawl now
     builds, so refresh and reconcile match it instead of inserting a twin and
     (on a complete board) removing the original. A row whose new URL another
-    row already holds (url is UNIQUE) is left for reconciliation to settle.
+    row already holds (url is UNIQUE) is left here; cron-backfill's
+    legacy_urls.migrate_legacy_smartrecruiters hides it behind that row, and
+    moves the rows no crawl lists.
     Commits when it rewrites anything. Returns the count.
     """
     if snapshot.platform != "smartrecruiters":
