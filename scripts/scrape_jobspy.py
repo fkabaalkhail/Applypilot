@@ -325,7 +325,7 @@ async def main():
         print("WARNING: CRON_SECRET is not set; the API will reject the batches.")
     payloads = [p for p in (to_payload(j) for j in all_jobs) if p]
     if len(payloads) < len(all_jobs):
-        print(f"Skipped {len(all_jobs) - len(payloads)} rows with no title or company")
+        print(f"Skipped {len(all_jobs) - len(payloads)} rows with no URL, title or company")
     print(f"\nPushing {len(payloads)} jobs to {API_BASE} in batches of {BATCH_SIZE}...")
 
     totals = await push_batches(payloads)
