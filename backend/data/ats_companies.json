@@ -1381,42 +1381,48 @@
       "ats_platform": "workday",
       "board_slug": "adobe",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=adobe.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external_experienced"
     },
     {
       "company_name": "Amazon",
-      "ats_platform": "workday",
+      "ats_platform": "custom",
       "board_slug": "amazon",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=amazon.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): amazon.jobs (own system, JSON at amazon.jobs/en/search.json); no Workday tenant; no connector for it"
     },
     {
       "company_name": "Apple",
-      "ats_platform": "workday",
+      "ats_platform": "custom",
       "board_slug": "apple",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=apple.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): jobs.apple.com (own system); apple.wd1 is an internal tenant (CxS 401); no connector for it"
     },
     {
       "company_name": "Bain & Company",
-      "ats_platform": "workday",
+      "ats_platform": "avature",
       "board_slug": "bain",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=bain.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): Avature (careers.bain.com / bain.avature.net); bain.wd5 is internal (CxS 401); no connector for it"
     },
     {
       "company_name": "BCG",
-      "ats_platform": "workday",
+      "ats_platform": "eightfold",
       "board_slug": "bcg",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=bcg.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): Phenom front end careers.bcg.com applying via Eightfold careerhub (studenttalent.bcg.com, experiencedtalent.bcg.com); bcg.wd5 is internal (CxS 401); no connector for it"
     },
     {
       "company_name": "Bell Canada",
-      "ats_platform": "workday",
+      "ats_platform": "successfactors",
       "board_slug": "bell",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=bell.ca&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): SAP SuccessFactors (jobs.bce.ca, career5.successfactors.eu) behind the Phenom site jobs.bell.ca; no connector for it"
     },
     {
       "company_name": "BMO",
@@ -1431,21 +1437,24 @@
       "ats_platform": "workday",
       "board_slug": "boeing",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=boeing.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://boeing.wd1.myworkdayjobs.com/wday/cxs/boeing/EXTERNAL_CAREERS"
     },
     {
       "company_name": "Booz Allen Hamilton",
       "ats_platform": "workday",
-      "board_slug": "boozallen",
+      "board_slug": "bah",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=boozallen.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://bah.wd1.myworkdayjobs.com/wday/cxs/bah/BAH_Jobs"
     },
     {
       "company_name": "Capital One",
       "ats_platform": "workday",
       "board_slug": "capitalone",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=capitalone.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://capitalone.wd12.myworkdayjobs.com/wday/cxs/capitalone/Capital_One"
     },
     {
       "company_name": "CIBC",
@@ -1465,45 +1474,51 @@
     },
     {
       "company_name": "EY",
-      "ats_platform": "workday",
+      "ats_platform": "successfactors",
       "board_slug": "ey",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=ey.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): SAP SuccessFactors (careers.ey.com, career5.successfactors.eu); no connector for it"
     },
     {
       "company_name": "Goldman Sachs",
-      "ats_platform": "workday",
+      "ats_platform": "custom",
       "board_slug": "goldmansachs",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=goldmansachs.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): higher.gs.com (own system); no Workday tenant; no connector for it"
     },
     {
       "company_name": "Google",
-      "ats_platform": "workday",
+      "ats_platform": "custom",
       "board_slug": "google",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=google.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): google.com/about/careers (own system); google.wd501 is Google Operations Center (GOCJobs, a separate support-ops company), not Google; no connector for it"
     },
     {
       "company_name": "JPMorgan Chase",
-      "ats_platform": "workday",
+      "ats_platform": "oracle",
       "board_slug": "jpmorgan",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=jpmorganchase.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): Oracle Recruiting Cloud (jpmc.fa.oraclecloud.com, site CX_1001); no connector for it"
     },
     {
       "company_name": "KPMG",
-      "ats_platform": "workday",
+      "ats_platform": "avature",
       "board_slug": "kpmg",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=kpmg.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): KPMG US applies through Avature (us-talentcommunity.kpmg.com via kpmguscareers.com); KPMG Canada uses iCIMS (kpmgca.icims.com); no connector for it"
     },
     {
       "company_name": "Leidos",
       "ats_platform": "workday",
       "board_slug": "leidos",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=leidos.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://leidos.wd5.myworkdayjobs.com/wday/cxs/leidos/External"
     },
     {
       "company_name": "Marvell",
@@ -1523,59 +1538,70 @@
     },
     {
       "company_name": "McKinsey",
-      "ats_platform": "workday",
+      "ats_platform": "custom",
       "board_slug": "mckinsey",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=mckinsey.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): mckinsey.com/careers (own system); no Workday tenant; no connector for it"
     },
     {
       "company_name": "Meta",
-      "ats_platform": "workday",
+      "ats_platform": "custom",
       "board_slug": "meta",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=meta.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): metacareers.com (own system); no Workday tenant; no connector for it"
     },
     {
       "company_name": "Microsoft",
-      "ats_platform": "workday",
+      "ats_platform": "eightfold",
       "board_slug": "microsoft",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=microsoft.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): Eightfold (apply.careers.microsoft.com); no connector for it"
     },
     {
       "company_name": "Morgan Stanley",
       "ats_platform": "workday",
       "board_slug": "morganstanley",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=morganstanley.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "held for a product decision: most passes are corporate Associate/Analyst titles",
+      "workday_url_template": "https://ms.wd5.myworkdayjobs.com/wday/cxs/ms/External"
     },
     {
       "company_name": "PwC",
       "ats_platform": "workday",
-      "board_slug": "pwc",
+      "board_slug": "pwc-us-entry",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=pwc.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://pwc.wd3.myworkdayjobs.com/wday/cxs/pwc/US_Entry_Level_Careers",
+      "country": "US"
     },
     {
       "company_name": "RBC",
       "ats_platform": "workday",
-      "board_slug": "rbc",
+      "board_slug": "rbc-global",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=rbc.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "held for a product decision: most passes are corporate Associate/Analyst titles",
+      "workday_url_template": "https://rbc.wd3.myworkdayjobs.com/wday/cxs/rbc/RBCGLOBAL1"
     },
     {
       "company_name": "Rogers",
-      "ats_platform": "workday",
+      "ats_platform": "successfactors",
       "board_slug": "rogers",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=rogers.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): SAP SuccessFactors (jobs.rogers.com, career4.successfactors.com); no connector for it"
     },
     {
       "company_name": "SAIC",
-      "ats_platform": "workday",
+      "ats_platform": "taleo",
       "board_slug": "saic",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=saic.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): Oracle Taleo (saicjobs.taleo.net) behind jobs.saic.com (bot-blocked 403); no connector for it"
     },
     {
       "company_name": "Salesforce",
@@ -1587,38 +1613,36 @@
     },
     {
       "company_name": "Scotiabank",
-      "ats_platform": "workday",
+      "ats_platform": "successfactors",
       "board_slug": "scotiabank",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=scotiabank.com&sz=128",
-      "enabled": true
-    },
-    {
-      "company_name": "ServiceNow",
-      "ats_platform": "workday",
-      "board_slug": "servicenow",
-      "company_logo_url": "https://www.google.com/s2/favicons?domain=servicenow.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): SAP SuccessFactors (jobs.scotiabank.com, career17.sapsf.com); no connector for it"
     },
     {
       "company_name": "TD Bank",
       "ats_platform": "workday",
       "board_slug": "td",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=td.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "held for a product decision: most passes are corporate Associate/Analyst titles",
+      "workday_url_template": "https://td.wd3.myworkdayjobs.com/wday/cxs/td/TD_Bank_Careers"
     },
     {
       "company_name": "Telus",
-      "ats_platform": "workday",
+      "ats_platform": "successfactors",
       "board_slug": "telus",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=telus.com&sz=128",
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "Not on Workday (checked 2026-09-29): SAP SuccessFactors (careers.telus.com, career17.sapsf.com); TELUS Health's Workday site is its own entry (lifeworks); no connector for it"
     },
     {
       "company_name": "Workday",
       "ats_platform": "workday",
       "board_slug": "workday",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=workday.com&sz=128",
-      "enabled": true
+      "enabled": true,
+      "workday_url_template": "https://workday.wd5.myworkdayjobs.com/wday/cxs/workday/Workday"
     },
     {
       "company_name": "Coveo",
@@ -1953,6 +1977,40 @@
       "company_logo_url": "https://www.google.com/s2/favicons?domain=tmx.com&sz=128",
       "enabled": true,
       "workday_url_template": "https://tmx.wd3.myworkdayjobs.com/wday/cxs/tmx/TMX_Careers"
+    },
+    {
+      "company_name": "Morgan Stanley",
+      "ats_platform": "workday",
+      "board_slug": "morganstanley-private",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=morganstanley.com&sz=128",
+      "enabled": false,
+      "disabled_reason": "held for a product decision: most passes are corporate Associate/Analyst titles",
+      "workday_url_template": "https://ms.wd5.myworkdayjobs.com/wday/cxs/ms/private"
+    },
+    {
+      "company_name": "RBC",
+      "ats_platform": "workday",
+      "board_slug": "rbc-early",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=rbc.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://rbc.wd3.myworkdayjobs.com/wday/cxs/rbc/RBCEARLYTALENT1"
+    },
+    {
+      "company_name": "PwC",
+      "ats_platform": "workday",
+      "board_slug": "pwc-campus",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=pwc.com&sz=128",
+      "enabled": false,
+      "disabled_reason": "Global_Campus_Careers is worldwide: its Canadian campus roles list bare cities (Montreal, Ottawa, Winnipeg) that store as country=US and 'Hamilton - NZL' passes the NA filter; enable once cron-ats takes country from the Workday detail (jobRequisitionLocation.country.alpha2Code)",
+      "workday_url_template": "https://pwc.wd3.myworkdayjobs.com/wday/cxs/pwc/Global_Campus_Careers"
+    },
+    {
+      "company_name": "TELUS Health",
+      "ats_platform": "workday",
+      "board_slug": "lifeworks",
+      "company_logo_url": "https://www.google.com/s2/favicons?domain=telushealth.com&sz=128",
+      "enabled": true,
+      "workday_url_template": "https://lifeworks.wd3.myworkdayjobs.com/wday/cxs/lifeworks/External"
     }
   ]
 }

@@ -6,6 +6,8 @@ nobody notices until the catalogue goes stale.
 """
 
 import json
+import re
+from collections import defaultdict
 from pathlib import Path
 
 import httpx
@@ -250,6 +252,96 @@ def test_every_disabled_board_says_why():
     for entry in company_registry._load_raw():
         if not entry.get("enabled", True):
             assert (entry.get("disabled_reason") or "").strip(), entry["company_name"]
+
+
+def test_every_enabled_workday_board_has_a_template():
+    # load_companies() silently skips a template-less workday entry: it reads
+    # as covered in the registry and is never crawled (28 were, until 2026-09).
+    for entry in company_registry._load_raw():
+        if entry.get("ats_platform") == "workday" and entry.get("enabled", True):
+            assert (entry.get("workday_url_template") or "").strip(), entry["company_name"]
+
+
+def test_workday_templates_are_cxs_bases_of_their_tenant():
+    for slug, base in company_registry.load_workday_bases().items():
+        m = re.match(r"^https://([a-z0-9-]+)\.wd\d+\.myworkdayjobs\.com/wday/cxs/([a-z0-9-]+)/[^/]+$",
+                     base, re.IGNORECASE)
+        assert m and m.group(1).lower() == m.group(2).lower(), (slug, base)
+
+
+def test_multi_site_workday_tenants_never_use_the_bare_tenant_slug():
+    # _adopt_site_rows() hands tenant-keyed rows only to a site whose slug is
+    # not the tenant; a site crawled as the bare tenant would reconcile, and
+    # remove, its sibling site's rows.
+    by_tenant = defaultdict(list)
+    for slug, base in company_registry.load_workday_bases().items():
+        tenant = re.match(r"https://([^.]+)\.", base).group(1).lower()
+        by_tenant[tenant].append(slug)
+    for tenant, slugs in by_tenant.items():
+        if len(slugs) > 1:
+            assert tenant not in slugs, (tenant, slugs)
+
+
+# The 2026-09-29 rollout of the template-less Workday entries: slug → tenant.
+_WAVE_ONE_WORKDAY = {
+    "adobe": "adobe", "bah": "bah", "boeing": "boeing", "capitalone": "capitalone",
+    "leidos": "leidos", "lifeworks": "lifeworks", "pwc-us-entry": "pwc",
+    "rbc-early": "rbc", "workday": "workday",
+}
+
+
+def test_workday_rollout_crawls_wave_one_and_holds_the_rest():
+    # TD, RBC's global site and both Morgan Stanley sites keep a verified
+    # template but wait for a product call (their passes are mostly corporate
+    # "Associate"/"Analyst" titles); PwC's worldwide campus site waits for
+    # country-from-detail. Held means listed with a base, never crawled.
+    crawled = {slug for platform, slug, _ in company_registry.load_companies()
+               if platform == "workday"}
+    bases = company_registry.load_workday_bases()
+    for slug, tenant in _WAVE_ONE_WORKDAY.items():
+        assert slug in crawled, slug
+        assert bases[slug].startswith(f"https://{tenant}.wd"), (slug, bases[slug])
+    for slug in ("td", "rbc-global", "morganstanley", "morganstanley-private", "pwc-campus"):
+        assert slug in bases and slug not in crawled, slug
+
+
+def test_only_one_country_workday_boards_carry_a_country_hint():
+    # A hint waives the NA filter for the whole board, so it only goes on a
+    # site whose every posting is in that country. Checked live 2026-09-29
+    # against the CxS country facets: RBC's early-talent site also posts in
+    # Malaysia (13 of 45), TELUS Health in Australia, NZ and the UK, Capital
+    # One and Boeing in the UK, the rest worldwide. PwC's US entry-level site
+    # is US only: 197 of 213 by location text, the 16 "N Locations" ones by
+    # their requisition country.
+    countries = company_registry.load_board_countries()
+    assert countries["workday:pwc-us-entry"] == "US"
+    for slug in set(_WAVE_ONE_WORKDAY) - {"pwc-us-entry"}:
+        assert f"workday:{slug}" not in countries, slug
+
+
+@pytest.mark.asyncio
+async def test_us_only_board_keeps_its_multi_location_postings():
+    # PwC lists a multi-city posting as "15 Locations", which the NA filter
+    # can't place (14 of its 211 entry-level postings on 2026-09-29); the
+    # board's "US" hint keeps them. The level filter still applies.
+    def posting(title, where, req):
+        return {"title": title, "locationsText": where, "postedOn": "Posted Today",
+                "externalPath": f"/job/IL-Rosemont/{title.replace(' ', '-')}_{req}",
+                "bulletFields": [req]}
+
+    page = {"total": 3, "jobPostings": [
+        posting("Transfer Pricing - Intern - Summer 2027", "15 Locations", "760001WD"),
+        posting("Tax - Intern - Winter 2027", "CA-San Francisco", "760002WD"),
+        posting("Transfer Pricing PhD - Senior Associate", "9 Locations", "760003WD"),
+    ]}
+    transport = FixtureTransport({"/wday/cxs/pwc/US_Entry_Level_Careers/jobs": [page]})
+    async with httpx.AsyncClient(transport=transport) as client:
+        snapshot = await _filtered().scrape_board(client, "workday", "pwc-us-entry", "PwC")
+
+    assert {j.title for j in snapshot.jobs} == {
+        "Transfer Pricing - Intern - Summer 2027", "Tax - Intern - Winter 2027",
+    }
+    assert snapshot.complete and len(snapshot.all_urls) == 3
 
 
 # ─── North America filter ────────────────────────────────────────────────────
