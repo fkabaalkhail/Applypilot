@@ -772,9 +772,24 @@ async def scrape_linkedin_jobs(
 #     every score as it buys it, so a cut sweep loses no LLM spend, and it
 #     can only be cut at an LLM await, never between an email send and the
 #     record of it.
-# What can outlast the wall clock is synchronous work the cut has to wait
-# for: at worst an email send in flight (the Resend SDK's 30 s timeout) plus
-# a Neon round trip, which still ends well before the 300 s ceiling.
+# A cut lands only at an await, so synchronous work runs past it:
+#   - a source's insert loop (poll_source stores rows with no await once
+#     its probes are done). A source whose probes end just before the hard
+#     stop stores its whole batch after it, ~20 s for a 375-row file at
+#     prod's insert rate, and is cut at its description fetch (a list that
+#     parks has none, so its poll finishes).
+#   - the list dedup passes below (column-only: one read of the visible list
+#     rows, a few thousand, plus an UPDATE per hidden group; 0.2 s over
+#     1,824 rows locally, a few Neon round trips in prod).
+#   - the rest of the sweep once it has stopped scoring (llm_unavailable,
+#     as while OpenAI billing is off, or its scoring budget spent): no await
+#     is left, so every remaining user's queries and cached-match email
+#     sends run to completion, each send up to the Resend SDK's 30 s
+#     timeout.
+# At today's scale (5 eligible users, a 25-user cap) the worst run ends
+# around 225-265 s, under the 300 s ceiling. Only sends that hang to their
+# timeout, or many more alert users while scoring is off, could pass it:
+# the wall clock cannot cut either.
 CRON_POLL_MAX_SOURCES = int(os.getenv("CRON_POLL_MAX_SOURCES", "12"))
 CRON_POLL_BUDGET_SECONDS = float(os.getenv("CRON_POLL_BUDGET_SECONDS", "120"))
 CRON_POLL_HARD_STOP_SECONDS = float(os.getenv("CRON_POLL_HARD_STOP_SECONDS", "200"))

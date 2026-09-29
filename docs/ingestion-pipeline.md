@@ -368,7 +368,11 @@ and only with the slots productive lists leave free. cron-poll polls up to
 `CRON_POLL_MAX_SOURCES` (12) due sources, most overdue first. The stored
 commit is stamped with `PARSE_REVISION` (`<sha>@r1`): bump it when the parse
 or ingest rules change and every list is re-parsed once, since a README is
-otherwise only re-read when its commit changes.
+otherwise only re-read when its commit changes. A list due only for the
+revision, with nothing in the feed, waits behind every other due list (a
+never-polled one still goes first): after the r1 bump the ~33 vendor lists
+held the productive lists back for 12-15 h. An interval other than hourly
+or daily set through `PUT /github-sources/{id}` sticks.
 
 One source per file: speedyapply keeps new-grad and international roles in
 `NEW_GRAD_USA.md`, `INTERN_INTL.md` and `NEW_GRAD_INTL.md` beside its README.
@@ -380,19 +384,42 @@ List rows are dropped at ingest, and hidden on every run
 (`hide_list_copies_of_board_rows`), when the board crawl carries the same
 posting under another URL spelling: same employer, title and
 `posting_identity` (Greenhouse job id, Workday tenant + requisition across
-locale, site alias, `-1` repost and `/apply` variants, Lever/Ashby UUID).
-A hidden copy comes back (`release_list_copies_of_lapsed_board_rows`) once
-its board row ages out (`expired`); a board row its board `removed` keeps it
-hidden. `canonical_url` drops `utm_*` and `ref=` and keeps every other query
-segment byte for byte. Legend marks leave titles (`🛂`/`🇺🇸` set
-`visa_sponsorship='no'`).
+locale, site alias, `-1` repost and `/apply` variants, Lever/Ashby UUID; a
+`-N` goes only when a requisition of 4+ digits, not a bare year, is left).
+Only a visible board row, or one its board `removed`, stands in for a list
+copy, a visible one before a removed sibling; an `expired` or `off_target`
+one does not (the crawler's level and location filters are not the list's;
+`off_target` still stands in for LinkedIn/Indeed twins). A hidden copy comes
+back (`release_list_copies_of_lapsed_board_rows`) once its board row stops
+standing in. `canonical_url` drops `utm_*` and `ref=` and keeps every other
+query segment byte for byte. Legend marks leave titles (`🛂`/`🇺🇸` set
+`visa_sponsorship='no'`, which cron-backfill keeps when a description
+lands), and an escaped `\|` stays inside its cell.
+
+One posting on two lists, or twice on one (speedyapply lists one Workday
+requisition under several site aliases, and repeats negarprh postings
+under another path case, title or employer name), is one card: a precise
+`posting_identity` (Workday, Greenhouse, Lever, Ashby) matches whatever
+the title or employer spelling, any other URL needs the same employer and
+title (`list_row_key`). A list row whose posting another list row in the
+feed carries is not stored, and cron-poll hides the rest
+(`hide_repeated_list_rows`: under the board row a repeat is already hidden
+behind, else the oldest list row); `release_repeated_list_rows` gives a
+repeat back when that row leaves the feed. List rows with a plainly senior
+title (`ats_scraper.HARD_SENIOR`: "Engineer I -II -III", "Level 4") are not
+stored.
 
 cron-poll time boxes, from the start of the request (the workflow's curl and
 Vercel both stop at 300 s): no new source after 120 s, a source still
 polling at 200 s is cut off, no description fetch after 170 s, and the
-match-alert sweep is cut off at 240 s (an email send in flight can hold the
-cut for the Resend SDK's 30 s timeout). The sweep runs whether or not any
-list was due. The response carries per-source `seconds` and phase `timings`.
+match-alert sweep is cut off at 240 s. A cut only lands at an await, so
+synchronous work runs past it: a source's insert loop (~20 s for a 375-row
+file), the column-only list dedup passes, and, once the sweep has stopped
+scoring (`llm_unavailable`, or its scoring budget spent), every remaining
+user's queries and email sends (the Resend SDK's 30 s timeout each). At
+today's scale (5 eligible users) the worst run ends around 225-265 s. The
+sweep runs whether or not any list was due. The response carries per-source
+`seconds` and phase `timings`.
 
 ## Per-board health + circuit breaker
 
