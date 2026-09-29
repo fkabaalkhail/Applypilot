@@ -393,6 +393,10 @@ _ROLE_WORD = re.compile(r"[a-z0-9]+")
 # A spaced dash sets a qualifier off a band: the opening band follows it
 # ("CIBC – Associate"), a later band precedes it ("Senior Analyst - Tax").
 _BAND_QUALIFIER = re.compile(r"\s+[-–\u2014]\s+")
+# The veto reads at most this much of a title. A real one is far shorter,
+# and on a long run of whitespace the band splits (and the level-role
+# words' "\s*,?\s*") go quadratic: 40,000 spaces took 8 s.
+_MAX_TITLE = 500
 
 
 def _band_role(band: str) -> list[str]:
@@ -427,14 +431,14 @@ def _open_band_list(clause: re.Match) -> str:
 
 class _SeniorVeto:
     """HARD_SENIOR: ``search`` reads a band range or a band list as its
-    entry band first."""
+    entry band first, in the first _MAX_TITLE characters."""
 
     def __init__(self, words: re.Pattern):
         self.words = words
         self.pattern = words.pattern
 
     def search(self, title: str):
-        title = _BAND_CLAUSE.sub(_open_band_list, title or "")
+        title = _BAND_CLAUSE.sub(_open_band_list, (title or "")[:_MAX_TITLE])
         return self.words.search(_BAND_RANGE.sub(r"\1", title))
 
 

@@ -10,6 +10,8 @@ through ATSScraper._is_entry_level or .rejection as well as entry_tier, so the
 cases fail on the old classifier, not just on a missing import.
 """
 
+import time
+
 import pytest
 
 from backend.services.ats_scraper import (
@@ -307,6 +309,21 @@ def test_a_band_list_only_opens_at_its_first_band(title):
     assert HARD_SENIOR.search(title)
     assert entry_tier(title) is None
     assert not _entry(title)
+
+
+@pytest.mark.parametrize("title,senior", [
+    # ingest-batch titles are client-sent: a long run of whitespace made the
+    # band-list split quadratic (8 s at 40,000 characters, review 5).
+    (" " * 40_000, False),
+    ("Analyst" + " " * 40_000 + "/ Senior Analyst", False),
+    ("Software Engineer" + " " * 40_000, False),
+    ("Senior Software Engineer" + " " * 40_000, True),
+# Short ids: pytest puts the id in an environment variable, capped on Windows.
+], ids=["spaces", "band-list", "level-role", "senior"])
+def test_the_veto_reads_a_pathological_title_quickly(title, senior):
+    start = time.perf_counter()
+    assert bool(HARD_SENIOR.search(title)) is senior
+    assert time.perf_counter() - start < 0.5
 
 
 @pytest.mark.parametrize("title", [
