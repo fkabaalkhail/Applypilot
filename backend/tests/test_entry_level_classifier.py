@@ -263,13 +263,16 @@ def test_an_entry_band_or_a_mid_one_is_weak(title):
 
 @pytest.mark.parametrize("title", [
     # A slash or "or" list of bands that opens at an entry band (prod and the
-    # 2026-09-29 crawl): open at that band, whatever the later bands say.
+    # 2026-09-29 crawl): open at that band when the later bands restate its
+    # role, or are bare levels of the title's role.
     "Junior Planner / Planner / Senior Planner (PFT) (CUPE 72.26)",   # Indeed, Simcoe ON
     "Analyst/Sr. Analyst, Global Incentive Compensation",             # Salesforce, Toronto
-    "Sales Strategy Analyst/Sr. Analyst",
+    "Sales Strategy Analyst/Sr. Analyst",                             # Salesforce
     "Associate/ Senior Associate, Transaction Services",              # BDO
+    "Quantitative Analyst/Senior Quantitative Analyst",               # CIBC
     "Flight Software Engineers (Associate/Experienced/Senior)",       # Boeing
-    "Junior or Senior Software Developer",
+    "Flight Software Test Engineers (Associate/Experienced/Senior)",  # Boeing
+    "Analyst/Senior Analyst - Tax",                                   # a qualifier after it
 ])
 def test_a_band_list_that_opens_at_an_entry_band_is_weak(title):
     assert not HARD_SENIOR.search(title)
@@ -285,6 +288,20 @@ def test_a_band_list_that_opens_at_an_entry_band_is_weak(title):
     "Analyst / Senior Director",                              # Director is no band word
     "Analyst/Sr. Analyst (5+ years)",
     "Associate, Senior Analyst",                              # not a list
+    # A later band that names another role is that role's senior band
+    # (review 5): only a band restating the opening band's role opens.
+    "Analyst / Senior Manager",
+    "Junior / Senior Staff Engineer",
+    "Analyst/Sr. Lead Engineer",
+    "Junior Developer / Senior Architect",
+    "Junior/Sr Engineering Manager",
+    "Associate / Senior Associate / Manager / Senior Manager",
+    "Sales Associate / Senior Sales Executive",
+    "Junior or Senior Software Developer",                    # "Junior" names no role
+    "Analyst / Senior Associate",
+    "CIBC – Associate / Senior Analyst, Institutional Client Experience - Bilingual",
+    "Associate Manager/Senior Analyst-Bioanalytical Lab",     # Roche
+    "Data Analyst – Consultant/Senior Consultant",            # Lilly: opens at Consultant
 ])
 def test_a_band_list_only_opens_at_its_first_band(title):
     assert HARD_SENIOR.search(title)

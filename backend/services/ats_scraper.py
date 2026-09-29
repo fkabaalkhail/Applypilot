@@ -369,25 +369,60 @@ _BAND_RANGE = re.compile(
     r"\b(" + _ENTRY_BAND + r")(?:\s*(?:,|/|-|–|&|\bor\b|\band\b|\bto\b)\s*" + _MID_BAND + r")+\b",
     re.IGNORECASE,
 )
-# So is a slash or "or" list of bands that opens at an entry band, whatever
-# its later bands say: Norfolk County's "Junior Planner / Planner / Senior
-# Planner (PFT)", Salesforce's "Analyst/Sr. Analyst, Global Incentive
-# Compensation". Only the later bands lose their senior and mid-level words:
-# "Senior Analyst", "Sr. Analyst / Analyst" and "Associate or Vice President"
-# stay out.
+# So is a slash or "or" list of bands that opens at an entry band, where a
+# later band restates the opening band's role at another level: Norfolk
+# County's "Junior Planner / Planner / Senior Planner (PFT)", Salesforce's
+# "Analyst/Sr. Analyst, Global Incentive Compensation" and "Sales Strategy
+# Analyst/Sr. Analyst", BDO's "Associate/ Senior Associate", and a bare level
+# of the title's own role, Boeing's "Flight Software Engineers
+# (Associate/Experienced/Senior)". Only such a band loses its senior and
+# mid-level words. One that names another role keeps them: "Analyst / Senior
+# Manager", "Junior / Senior Staff Engineer", CIBC's "Associate / Senior
+# Analyst". "Senior Analyst" and "Sr. Analyst / Analyst" stay out too.
 _BAND_CLAUSE = re.compile(r"[^,;:()\[\]|]+")
 _BAND_LIST_SEPARATOR = re.compile(r"(\s*/\s*|\s+or\s+)", re.IGNORECASE)
 _OPENING_BAND = re.compile(r"\b(?:" + _ENTRY_BAND + r"|analyst)(?![\w-])", re.IGNORECASE)
 _LATER_BAND = re.compile(r"\b(?:senior|sr\b\.?|" + _MID_BAND + r")(?![\w-])", re.IGNORECASE)
+# The level words a band's role is read without. "Associate" stays: it is
+# the role in "Associate / Senior Analyst".
+_LEVEL_WORD = re.compile(
+    r"\b(?:junior|jr\b\.?|entry[- ]level|senior|sr\b\.?|" + _MID_BAND + r")(?![\w-])",
+    re.IGNORECASE,
+)
+_ROLE_WORD = re.compile(r"[a-z0-9]+")
+# A spaced dash sets a qualifier off a band: the opening band follows it
+# ("CIBC – Associate"), a later band precedes it ("Senior Analyst - Tax").
+_BAND_QUALIFIER = re.compile(r"\s+[-–\u2014]\s+")
+
+
+def _band_role(band: str) -> list[str]:
+    """A band's role without its level words: "Sr. Analyst" -> ["analyst"],
+    "Junior Planner" -> ["planner"], a bare "Experienced" -> []."""
+    return _ROLE_WORD.findall(_LEVEL_WORD.sub(" ", band).lower())
+
+
+def _restates(role: list[str], band_role: list[str]) -> bool:
+    """True when a later band's role is the opening band's, whole or its
+    last words ("Sr. Analyst" after "Sales Strategy Analyst"), or no role at
+    all (a bare level)."""
+    return len(band_role) <= len(role) and role[len(role) - len(band_role):] == band_role
 
 
 def _open_band_list(clause: re.Match) -> str:
     parts = _BAND_LIST_SEPARATOR.split(clause.group(0))
-    if len(parts) < 3 or not _OPENING_BAND.search(parts[0]):
+    if len(parts) < 3:
         return clause.group(0)
+    opening = _BAND_QUALIFIER.split(parts[0])[-1]
+    if not _OPENING_BAND.search(opening):
+        return clause.group(0)
+    role = _band_role(opening)
     # parts alternates band, separator, band, ...: parts[2::2] are the later bands.
-    return "".join(_LATER_BAND.sub(" ", part) if index >= 2 and index % 2 == 0 else part
-                   for index, part in enumerate(parts))
+    for index in range(2, len(parts), 2):
+        qualifier = _BAND_QUALIFIER.search(parts[index])
+        band = parts[index][:qualifier.start()] if qualifier else parts[index]
+        if _restates(role, _band_role(band)):
+            parts[index] = _LATER_BAND.sub(" ", band) + parts[index][len(band):]
+    return "".join(parts)
 
 
 class _SeniorVeto:
