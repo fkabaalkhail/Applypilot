@@ -195,12 +195,155 @@ class TestHeal:
         assert stands_in_for_twins("off_target", "ats", board.url) is True
         assert stands_in_for_list_copy("off_target") is False
 
-    def test_different_title_is_never_merged(self, db_session):
-        _job(db_session, PROD_PAIRS[0][1], "ats", title="Firmware Engineer Intern")
-        listed = _job(db_session, PROD_PAIRS[0][0], "github", title="Firmware Engineer Intern, Storage")
+    def test_different_title_is_never_merged_without_a_precise_identity(self, db_session):
+        # A careers-page URL may stand for several roles: only the same
+        # employer and title make it one posting.
+        board_url, list_url = "https://careers.acme.com/jobs/123", "https://careers.acme.com/Jobs/123"
+        assert posting_identity(board_url) == posting_identity(list_url)
+        _job(db_session, board_url, "ats", title="Firmware Engineer Intern")
+        listed = _job(db_session, list_url, "github", title="Firmware Engineer Intern, Storage")
         assert hide_list_copies_of_board_rows(db_session) == 0
         db_session.refresh(listed)
         assert listed.duplicate_of is None
+
+
+# (list url, list company, list title), (board url, board company, board title):
+# one requisition each, titled or named differently on the two sides.
+RETITLED_PAIRS = [
+    # Review 4's e2e replay: normalize_title keeps '- College Grad' but drops
+    # '(College Grad)', so the two title_norm values differ.
+    (("https://salesforce.wd12.myworkdayjobs.com/en-US/futureforce_newgradroles/job/California---San-Francisco/"
+      "Software-Engineering-AMTS---College-Grad_JR355250", "Salesforce",
+      "Software Engineering AMTS - College Grad"),
+     ("https://salesforce.wd12.myworkdayjobs.com/External_Career_Site/job/California---San-Francisco/"
+      "Software-Engineering-AMTS--College-Grad-_JR355250-1", "Salesforce",
+      "Software Engineering AMTS (College Grad)")),
+    # Prod 2026-09-29 (list id, board id): 65338/65661, 65331/62720, 65352/64640.
+    (("https://bdo.wd3.myworkdayjobs.com/BDO/job/Toronto---Bay-St/"
+      "Co-op-or-Intern--Full-Stack-Developer--January-2027-_JR7057", "BDO Canada",
+      "Full-Stack Developer Co-op Intern"),
+     ("https://bdo.wd3.myworkdayjobs.com/Bdo/job/Toronto---Bay-St/"
+      "Co-op-or-Intern--Full-Stack-Developer--January-2027-_JR7057", "BDO",
+      "Co-op or Intern, Full-Stack Developer (January 2027)")),
+    (("https://bmo.wd3.myworkdayjobs.com/Campus/job/Toronto-ON-CAN/Quantitative-Developer--Alpha-Research-Team"
+      "----GAM--Summer-2027--Co-op-Internship----12-months_R260026715", "Bank of Montreal",
+      "Quantitative Developer (Alpha Research Team), GAM"),
+     ("https://bmo.wd3.myworkdayjobs.com/external/job/Toronto-ON-CAN/Quantitative-Developer--Alpha-Research-Team"
+      "----GAM--Summer-2027--Co-op-Internship----12-months_R260026715-3", "BMO",
+      "Quantitative Developer (Alpha Research Team) - GAM, Summer 2027 (Co-op/Internship) - 12 months")),
+    (("https://autodesk.wd1.myworkdayjobs.com/uni/job/Montreal-QC-CAN/"
+      "Intern--Software-Developer--Stagiaire-en-Dveloppement-Logiciel_26WD101101-1", "Autodesk",
+      "Software Developer Intern"),
+     ("https://autodesk.wd1.myworkdayjobs.com/Ext/job/Montreal-QC-CAN/"
+      "Intern--Software-Developer--Stagiaire-en-Dveloppement-Logiciel_26WD101101-2", "Autodesk",
+      "Intern, Software Developer, Stagiaire en Développement Logiciel")),
+    # Greenhouse and Lever ids are the posting on any host.
+    (("https://www.zipline.com/open-roles/8004729003?gh_jid=8004729003", "Zipline",
+      "Software Engineering Intern"),
+     ("https://job-boards.greenhouse.io/flyzipline/jobs/8004729003", "Zipline International",
+      "Intern, Software Engineering")),
+    (("https://jobs.lever.co/acme/17d8dd15-5f97-4003-8d6c-170dca13ff88/apply", "Acme",
+      "Backend Intern"),
+     ("https://jobs.lever.co/acme/17d8dd15-5f97-4003-8d6c-170dca13ff88", "Acme",
+      "Backend Engineering Intern (Winter 2027)")),
+]
+
+
+def _pair(db, pair, board_status="active"):
+    (list_url, list_company, list_title), (board_url, board_company, board_title) = pair
+    board = _job(db, board_url, "ats", title=board_title, company=board_company)
+    board.listing_status = board_status
+    db.commit()
+    listed = _job(db, list_url, "github", title=list_title, company=list_company)
+    return board, listed
+
+
+class TestRetitledCopies:
+    @pytest.mark.parametrize("pair", RETITLED_PAIRS, ids=lambda pair: pair[1][1])
+    def test_precise_identity_hides_a_retitled_copy(self, db_session, pair):
+        board, listed = _pair(db_session, pair)
+        assert listed.title_norm != board.title_norm
+
+        assert hide_list_copies_of_board_rows(db_session) == 1
+        assert hide_list_copies_of_board_rows(db_session) == 0  # idempotent
+        db_session.refresh(listed)
+        assert listed.duplicate_of == board.id
+
+    def test_a_longer_requisition_is_another_posting(self, db_session):
+        # '_jr35525' is inside '_JR355250': the URL prefilter matches, the
+        # identity does not.
+        (list_url, company, title), (board_url, _, board_title) = RETITLED_PAIRS[0]
+        _job(db_session, board_url, "ats", title=board_title, company=company)
+        listed = _job(db_session, list_url.replace("_JR355250", "_JR35525"), "github",
+                      title=title, company=company)
+
+        assert hide_list_copies_of_board_rows(db_session) == 0
+        db_session.refresh(listed)
+        assert listed.duplicate_of is None
+        assert board_row_for_posting(db_session, company=company, company_domain="",
+                                     title=title, url=listed.url) is None
+
+    def test_a_careers_page_never_rides_on_an_id_lookup(self, db_session):
+        # The Zipline copy's lookup reads the board rows whose URLs carry
+        # '8004729003'. One of them is a careers page the other list row
+        # spells in another case: still one posting only with the same title.
+        zipline = RETITLED_PAIRS[4]
+        _pair(db_session, zipline)
+        page = "https://careers.acme.com/jobs/8004729003"
+        _job(db_session, page, "ats", title="Data Intern", company="Acme")
+        other = _job(db_session, page.replace("/jobs/", "/Jobs/"), "github", title="Data Engineer Intern",
+                     company="Acme")
+
+        assert hide_list_copies_of_board_rows(db_session) == 1  # the Zipline copy
+        db_session.refresh(other)
+        assert other.duplicate_of is None
+
+    @pytest.mark.parametrize("status", ["off_target", "expired", "removed"])
+    def test_only_a_visible_board_row_takes_a_retitled_copy(self, db_session, status):
+        # off_target and expired never stand in for a list copy; a removed
+        # one only for a copy titled like it: a retitled one may be a later
+        # '-1' repost of the closed requisition.
+        _board, listed = _pair(db_session, RETITLED_PAIRS[0], board_status=status)
+
+        assert hide_list_copies_of_board_rows(db_session) == 0
+        db_session.refresh(listed)
+        assert listed.duplicate_of is None
+
+    def test_visible_retitled_sibling_wins_over_a_removed_same_titled_one(self, db_session):
+        (list_url, company, title), (board_url, _, board_title) = RETITLED_PAIRS[0]
+        removed = _job(db_session, board_url.replace("_JR355250-1", "_JR355250"), "ats",
+                       title=title, company=company)
+        removed.listing_status = "removed"
+        db_session.commit()
+        live = _job(db_session, board_url, "ats", title=board_title, company=company)
+        listed = _job(db_session, list_url, "github", title=title, company=company)
+
+        assert hide_list_copies_of_board_rows(db_session) == 1
+        db_session.refresh(listed)
+        assert listed.duplicate_of == live.id
+        assert board_row_for_posting(db_session, company=company, company_domain="",
+                                     title=title, url=list_url) == live.id
+        # Without the live one, the removed one still answers for its title.
+        live.listing_status = "expired"
+        db_session.commit()
+        assert board_row_for_posting(db_session, company=company, company_domain="",
+                                     title=title, url=list_url) == removed.id
+
+    @pytest.mark.parametrize("status, released", [("off_target", 1), ("expired", 1), ("removed", 0)])
+    def test_released_copy_goes_under_a_live_retitled_sibling(self, db_session, status, released):
+        board, listed = _pair(db_session, RETITLED_PAIRS[0])
+        assert hide_list_copies_of_board_rows(db_session) == 1
+        board.listing_status = status
+        db_session.commit()
+        sibling = _job(db_session, RETITLED_PAIRS[0][1][0].replace("External_Career_Site", "Campus"), "ats",
+                       title="Software Engineering AMTS (New Grad)", company="Salesforce")
+
+        assert release_list_copies_of_lapsed_board_rows(db_session) == released
+        assert hide_list_copies_of_board_rows(db_session) == released
+
+        db_session.refresh(listed)
+        # A removed board row is the posting's death verdict: the copy stays.
+        assert listed.duplicate_of == (sibling.id if released else board.id)
 
 
 class TestIngestGuard:
@@ -229,6 +372,22 @@ class TestIngestGuard:
                         location="Toronto, ON", url=PROD_PAIRS[1][0])
 
         assert AggregatorService(db_session)._classify_and_store(job, source) is stored
+
+    @pytest.mark.parametrize("status, stored",
+                             [("active", False), ("removed", True), ("expired", True), ("off_target", True)])
+    @pytest.mark.parametrize("pair", RETITLED_PAIRS[:3], ids=lambda pair: pair[1][1])
+    def test_retitled_list_row_of_a_board_posting(self, db_session, pair, status, stored):
+        # Only a visible board row keeps out a copy the list titles, or
+        # names the employer of, otherwise (the heal's rule too).
+        (list_url, list_company, list_title), (board_url, board_company, board_title) = pair
+        board = _job(db_session, board_url, "ats", title=board_title, company=board_company)
+        board.listing_status = status
+        db_session.commit()
+        source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")
+        job = ParsedJob(title=list_title, company=list_company, location="Toronto, ON", url=list_url)
+
+        assert AggregatorService(db_session)._classify_and_store(job, source) is stored
+        assert db_session.query(ScrapedJob).count() == 1 + int(stored)
 
     def test_expired_board_row_does_not_hide_a_visible_list_copy(self, db_session):
         board = _job(db_session, PROD_PAIRS[0][1], "ats")

@@ -112,17 +112,20 @@ class TestHideRepeats:
         assert hide_repeated_list_rows(db_session) == 0
         assert (_dup(db_session, closed), _dup(db_session, alias)) == (None, None)
 
-    def test_retitled_repeat_goes_under_the_board_row(self, db_session):
-        # The board pass hides the list row whose title matches the board's;
-        # the retitled repeat on another list follows it, not the feed.
+    @pytest.mark.parametrize("board_status, by_board, by_repeat", [("active", 2, 0), ("removed", 1, 1)])
+    def test_retitled_repeat_goes_under_the_board_row(self, db_session, board_status, by_board, by_repeat):
+        # The board pass hides a retitled copy of a precise identity behind a
+        # visible board row itself. A removed one takes only the copy whose
+        # title matches the board's: the retitled repeat on another list
+        # follows it there, not the feed.
         (url_a, company_a, title_a), (url_b, company_b, title_b) = MANULIFE
         board = _row(db_session, url_a.replace("/en-US/", "/"), title=title_a, company=company_a,
-                     platform="ats")
+                     platform="ats", status=board_status)
         same_title = _row(db_session, url_a, title=title_a, company=company_a)
         retitled = _row(db_session, url_b, title=title_b, company=company_b)
 
-        assert hide_list_copies_of_board_rows(db_session) == 1
-        assert hide_repeated_list_rows(db_session) == 1
+        assert hide_list_copies_of_board_rows(db_session) == by_board
+        assert hide_repeated_list_rows(db_session) == by_repeat
         assert _dup(db_session, same_title) == board.id
         assert _dup(db_session, retitled) == board.id
 
