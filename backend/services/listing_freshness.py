@@ -892,6 +892,27 @@ def retire_unreconcilable_off_target(db: Session, now: datetime.datetime | None 
     stats["off_target"] = len(retire)
     if retire:
         db.commit()
+
+    # No crawl re-judges these rows, so this sweep re-reads the ones it hid
+    # on every run: a row the current filters no longer reject (a classifier
+    # or location fix since) comes back.
+    held = (
+        db.query(ScrapedJob.id, ScrapedJob.title, ScrapedJob.company, ScrapedJob.location)
+        .filter(*_orphan_row(), ScrapedJob.listing_status == LISTING_OFF_TARGET)
+        .order_by(ScrapedJob.id.asc())
+        .limit(limit)
+        .all()
+    )
+    back = [
+        row_id for row_id, title, company, location in held
+        if scraper.rejection(ATSJob(title=title or "", company=company or "",
+                                    location=location or "", url="", department=""))
+        not in _RETIRABLE
+    ]
+    if back:
+        stats["restored"] = _restore_off_target(
+            db, now, limit, (ScrapedJob.id.in_(back),))["restored"]
+    if retire or back:
         logger.info("retire_unreconcilable_off_target: %s", stats)
     return stats
 

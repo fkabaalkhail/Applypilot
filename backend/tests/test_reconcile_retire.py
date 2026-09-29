@@ -463,6 +463,25 @@ class TestOrphanRetire:
         for row in (crawled, linkedin, rogue_li, github, twin):
             assert _status(db_session, row) == LISTING_ACTIVE
 
+    def test_a_row_the_filters_no_longer_reject_comes_back(self, db_session):
+        """Hidden under an earlier rule: no crawl will re-judge it, so the
+        sweep re-reads its own off_target rows on every run."""
+        passes = _row(db_session, "https://huaweicanada.recruitee.com/o/1", board_key="unknown",
+                      title="Co-op Engineer - AI Software Engineering", location="Markham, ON",
+                      listing_status=LISTING_OFF_TARGET)
+        fails = _row(db_session, "https://jobs.nokia.com/2", board_key="unknown",
+                     title="Cleaner", location="Toronto, ON", listing_status=LISTING_OFF_TARGET)
+        crawled = _row(db_session, "https://boards.greenhouse.io/acme/jobs/3",
+                       title="Software Intern", location="Toronto, ON",
+                       listing_status=LISTING_OFF_TARGET)  # its board crawl decides
+
+        stats = retire_unreconcilable_off_target(db_session, now=NOW)
+
+        assert stats["restored"] == 1
+        assert _status(db_session, passes) == LISTING_ACTIVE
+        assert _status(db_session, fails) == LISTING_OFF_TARGET
+        assert _status(db_session, crawled) == LISTING_OFF_TARGET
+
     def test_kill_switch(self, db_session, monkeypatch):
         monkeypatch.setenv("CRON_ATS_RETIRE_OFF_TARGET", "0")
         cleaner = _row(db_session, "https://jobs.nokia.com/1", board_key="unknown",
