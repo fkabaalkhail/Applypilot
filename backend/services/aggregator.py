@@ -63,6 +63,7 @@ PARSE_REVISION = 1
 # slots the lists that feed the catalogue leave free.
 ACTIVE_POLL_MINUTES = 60
 DORMANT_POLL_MINUTES = 24 * 60
+AUTO_POLL_MINUTES = (ACTIVE_POLL_MINUTES, DORMANT_POLL_MINUTES)  # any other value is an admin's
 DORMANT_AFTER = datetime.timedelta(days=7)
 PARKED_RECHECK = datetime.timedelta(days=7)
 STATUS_PARKED = "parked"
@@ -479,6 +480,10 @@ class AggregatorService:
         # shares one request with Vercel's 300 s limit). Descriptions are
         # optional here: cron-backfill fetches whatever this leaves.
         self.deadline = deadline
+        # Posting keys of the visible GitHub-list rows (_listed_postings),
+        # read once per parse of the list in _listing (id, listed URLs).
+        self._listed_keys: Optional[set[str]] = None
+        self._listing: tuple[Optional[int], set[str]] = (None, set())
         self.parser = MarkdownParser()
         self.country_filter = CountryFilter()
         self.work_type_classifier = WorkTypeClassifier()
@@ -570,6 +575,8 @@ class AggregatorService:
                 # budget goes on the rows users will see first.
                 dead_urls = await self._probe_new_urls(insertable[::-1])
 
+                # Read afresh: rows left the feed since the last parse.
+                self._listed_keys, self._listing = None, (source.id, listed_urls)
                 for job in insertable:
                     stored = self._classify_and_store(job, source, dead_urls=dead_urls)
                     if stored:
@@ -592,9 +599,13 @@ class AggregatorService:
                 source.status = "active"
                 source.error_message = ""
 
-            now = _utcnow()
-            quiet = committed_at is not None and now - committed_at > DORMANT_AFTER
-            source.poll_interval_minutes = DORMANT_POLL_MINUTES if quiet else ACTIVE_POLL_MINUTES
+            # The cadence follows the commits (hourly, daily once quiet)
+            # unless an admin set another interval (PUT /github-sources/{id}),
+            # which sticks.
+            if (source.poll_interval_minutes or ACTIVE_POLL_MINUTES) in AUTO_POLL_MINUTES:
+                now = _utcnow()
+                quiet = committed_at is not None and now - committed_at > DORMANT_AFTER
+                source.poll_interval_minutes = DORMANT_POLL_MINUTES if quiet else ACTIVE_POLL_MINUTES
             source.last_polled_at = datetime.datetime.utcnow()
             self.db.commit()
             return new_count
@@ -721,7 +732,12 @@ class AggregatorService:
         Parked lists only get the slots left over: they come due together
         (the first pass after a deploy parks ~36 at once) and a week late
         costs nothing, while a skipped run delays the lists that feed the
-        catalogue.
+        catalogue. So does a list re-parsed only for a newer PARSE_REVISION
+        while it has nothing in the feed: after the r1 bump the ~33 vendor
+        lists (still 'active', 0 rows) were all due at once, and once the
+        productive lists were re-parsed and due hourly again, the vendor
+        lists sorted ahead of them for ~4 runs (12-15 h) until all were
+        parked. A never-polled list (a new file) still goes first.
         """
         now = now or datetime.datetime.utcnow()
         # A few dozen rows at most: filter the due rule in Python.
@@ -744,7 +760,13 @@ class AggregatorService:
             .group_by(ScrapedJob.github_source_id)
             .all()
         ) if due else {}
-        due.sort(key=lambda entry: (entry[1].status == STATUS_PARKED, entry[0],
+
+        def reparse_only(due_at: datetime.datetime, source: GitHubSource) -> bool:
+            """Due at once only for PARSE_REVISION, with nothing in the feed."""
+            return (due_at == datetime.datetime.min and source.last_polled_at is not None
+                    and not visible.get(source.id))
+
+        due.sort(key=lambda entry: (entry[1].status == STATUS_PARKED, reparse_only(*entry), entry[0],
                                     -visible.get(entry[1].id, 0),
                                     entry[1].last_polled_at or datetime.datetime.min))
         return [source for _due, source in due[:limit]]
@@ -970,6 +992,35 @@ class AggregatorService:
                 urls.add(canonical_url(job.url))
         return urls
 
+    def _listed_postings(self) -> set[str]:
+        """Posting keys (cross_source_dedup.list_posting_keys) of every
+        GitHub-list row whose posting is in the feed (a hidden repeat's is,
+        under the row it repeats): read once per parse, then kept current as
+        rows are stored. Column-only.
+
+        The list being parsed (``self._listing``: its id and listed URLs)
+        doesn't count its own rows it no longer lists: the parse retires
+        them, so a list that swaps one site alias of a posting for another
+        keeps the posting in the feed."""
+        if self._listed_keys is None:
+            from backend.services.cross_source_dedup import canonical_url, list_posting_keys
+            from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES
+
+            source_id, listed_urls = self._listing
+            self._listed_keys = set()
+            for url, github_source_id in (
+                self.db.query(ScrapedJob.url, ScrapedJob.github_source_id)
+                .filter(ScrapedJob.source_platform == "github",
+                        or_(ScrapedJob.listing_status.is_(None),
+                            ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES)))
+            ):
+                url = url or ""
+                if (source_id is not None and github_source_id == source_id
+                        and url not in listed_urls and canonical_url(url) not in listed_urls):
+                    continue
+                self._listed_keys |= list_posting_keys(url)
+        return self._listed_keys
+
     def _retire_delisted_rows(self, source: GitHubSource, listed_urls: set[str],
                               closed_jobs: list[ParsedJob]) -> dict[str, int]:
         """Soft-remove this source's visible rows the list stopped offering.
@@ -1058,6 +1109,15 @@ class AggregatorService:
         # Malformed links ('https:/.workable.com/...') are dead on arrival.
         if not is_job_url(job.url):
             return False
+        # A plainly senior title ("Software Engineer I -II -III", "Level 4",
+        # "Senior ...") is no student job whatever list carries it. Only the
+        # crawler's hard markers (ats_scraper.HARD_SENIOR, shared with the
+        # LinkedIn/Indeed ingest): the lists are curated for interns and new
+        # grads, so its weak tier, soft words ("Manager", "Architect") and
+        # frontline rules don't apply to them.
+        from backend.services.ats_scraper import HARD_SENIOR
+        if HARD_SENIOR.search(job.title or ""):
+            return False
 
         # Same posting, different utm_* decorations must collide on the URL
         # unique constraint instead of slipping in twice.
@@ -1134,6 +1194,13 @@ class AggregatorService:
         if board_row_for_posting(self.db, company=job.company, company_domain=company_domain,
                                  title=job.title, url=job.url):
             return False
+        # Another list, or this one under another site alias, already has
+        # it in the feed: the same Workday requisition, Greenhouse job or
+        # Lever/Ashby UUID, or the same URL in another letter case.
+        from backend.services.cross_source_dedup import list_posting_keys
+        posting_keys = list_posting_keys(job.url)
+        if posting_keys & self._listed_postings():
+            return False
 
         # Store the job
         from backend.services.cross_source_dedup import mark_inferior_twins, normalize_title
@@ -1182,6 +1249,7 @@ class AggregatorService:
 
         if is_dead:
             return False  # remembered, hidden, not a new catalogue job
+        self._listed_postings().update(posting_keys)
 
         # This direct row supersedes LinkedIn/Indeed copies that arrived first.
         try:

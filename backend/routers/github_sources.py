@@ -43,6 +43,31 @@ def _parse_github_url(url: str) -> tuple[str, str]:
     return match.group(1), match.group(2)
 
 
+# A source's URL (aggregator.source_url): the repo for its README, or
+# '<repo>/blob/HEAD/<file>' for a list kept in its own file (speedyapply's
+# NEW_GRAD_USA.md, *_INTL.md).
+_FILE_SOURCE_URL_RE = re.compile(
+    r"^(https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)/blob/HEAD/([\w.\-/]+)$")
+
+
+def _source_owner_repo(repo_url: str, file_path: str) -> tuple[str, str]:
+    """Owner and repo name of a source URL in either form. A file URL must
+    be the one seed_sources stores for the source's own ``file_path`` (a
+    README source is the bare repo). 422 otherwise."""
+    from backend.services.aggregator import source_url
+
+    match = _FILE_SOURCE_URL_RE.match(repo_url or "")
+    if match:
+        repo, url_file = match.groups()
+        if ".." in url_file.split("/") or source_url(repo, file_path) != repo_url:
+            raise HTTPException(status_code=422,
+                                detail="The URL's file must be the source's file_path.")
+        return _parse_github_url(repo)
+    if not validate_github_repo_url(repo_url):
+        raise HTTPException(status_code=422, detail="Invalid GitHub repository URL.")
+    return _parse_github_url(repo_url)
+
+
 @router.get("", response_model=list[GitHubSourceOut])
 def list_sources(
     _admin: int = Depends(get_admin_user_id),
@@ -59,15 +84,12 @@ def create_source(
     db: Session = Depends(get_db),
 ):
     """Add a new GitHub repository source."""
-    if not validate_github_repo_url(source.repo_url):
-        raise HTTPException(status_code=422, detail="Invalid GitHub repository URL.")
+    owner, repo_name = _source_owner_repo(source.repo_url, source.file_path)
 
     # Check for duplicate
     existing = db.query(GitHubSource).filter(GitHubSource.repo_url == source.repo_url).first()
     if existing:
         raise HTTPException(status_code=409, detail="This repository is already configured.")
-
-    owner, repo_name = _parse_github_url(source.repo_url)
 
     db_source = GitHubSource(
         repo_url=source.repo_url,
@@ -760,9 +782,25 @@ async def scrape_linkedin_jobs(
 #     every score as it buys it, so a cut sweep loses no LLM spend, and it
 #     can only be cut at an LLM await, never between an email send and the
 #     record of it.
-# What can outlast the wall clock is synchronous work the cut has to wait
-# for: at worst an email send in flight (the Resend SDK's 30 s timeout) plus
-# a Neon round trip, which still ends well before the 300 s ceiling.
+# A cut lands only at an await, so synchronous work runs past it:
+#   - a source's insert loop (poll_source stores rows with no await once
+#     its probes are done). A source whose probes end just before the hard
+#     stop stores its whole batch after it, ~20 s for a 375-row file at
+#     prod's insert rate, and then finishes its poll: past
+#     CRON_POLL_ENRICH_UNTIL_SECONDS its description fetch starts nothing,
+#     so no await is left to cut it at.
+#   - the list dedup passes below (column-only: one read of the visible list
+#     rows, a few thousand, plus an UPDATE per hidden group; 0.2 s over
+#     1,824 rows locally, a few Neon round trips in prod).
+#   - the rest of the sweep once it has stopped scoring (llm_unavailable,
+#     as while OpenAI billing is off, or its scoring budget spent): no await
+#     is left, so every remaining user's queries and cached-match email
+#     sends run to completion, each send up to the Resend SDK's 30 s
+#     timeout.
+# At today's scale (5 eligible users, a 25-user cap) the worst run ends
+# around 225-265 s, under the 300 s ceiling. Only sends that hang to their
+# timeout, or many more alert users while scoring is off, could pass it:
+# the wall clock cannot cut either.
 CRON_POLL_MAX_SOURCES = int(os.getenv("CRON_POLL_MAX_SOURCES", "12"))
 CRON_POLL_BUDGET_SECONDS = float(os.getenv("CRON_POLL_BUDGET_SECONDS", "120"))
 CRON_POLL_HARD_STOP_SECONDS = float(os.getenv("CRON_POLL_HARD_STOP_SECONDS", "200"))
@@ -865,16 +903,23 @@ async def cron_poll(
         timings["enrich"] = round(elapsed(), 1)
 
         # Hide list rows the board crawl also carries under another spelling
-        # ('/en-US/marvellcareers/...' vs '/MarvellCareers/...'), after giving
-        # back the ones whose board row has since aged out. Column-only.
+        # ('/en-US/marvellcareers/...' vs '/MarvellCareers/...'), and list
+        # rows repeating a posting another list row carries ('jobsathpe' vs
+        # 'wfmathpe'), after giving back the ones whose board row or list row
+        # has since left the feed. Column-only, a few thousand rows.
         list_copies_hidden = list_copies_released = 0
+        list_repeats_hidden = list_repeats_released = 0
         try:
             from backend.services.cross_source_dedup import (
                 hide_list_copies_of_board_rows,
+                hide_repeated_list_rows,
                 release_list_copies_of_lapsed_board_rows,
+                release_repeated_list_rows,
             )
             list_copies_released = release_list_copies_of_lapsed_board_rows(db)
+            list_repeats_released = release_repeated_list_rows(db)
             list_copies_hidden = hide_list_copies_of_board_rows(db)
+            list_repeats_hidden = hide_repeated_list_rows(db)
         except Exception:
             db.rollback()
             logger.error(f"List-copy dedup failed: {traceback.format_exc()}")
@@ -895,6 +940,8 @@ async def cron_poll(
             "global_descriptions_enriched": global_enriched,
             "list_copies_hidden": list_copies_hidden,
             "list_copies_released": list_copies_released,
+            "list_repeats_hidden": list_repeats_hidden,
+            "list_repeats_released": list_repeats_released,
             "polled": polled,
             "match_alerts": match_alerts,
             "timings": timings,
@@ -911,15 +958,15 @@ def update_source(
     _admin: int = Depends(get_admin_user_id),
     db: Session = Depends(get_db),
 ):
-    """Update a GitHub source configuration."""
+    """Update a GitHub source configuration. A file source keeps its
+    '<repo>/blob/HEAD/<file>' URL (every edit of one used to 422). An
+    interval other than the automatic hourly/daily cadence sticks
+    (AggregatorService.poll_source)."""
     db_source = db.query(GitHubSource).filter(GitHubSource.id == source_id).first()
     if not db_source:
         raise HTTPException(status_code=404, detail="GitHub source not found.")
 
-    if not validate_github_repo_url(source.repo_url):
-        raise HTTPException(status_code=422, detail="Invalid GitHub repository URL.")
-
-    owner, repo_name = _parse_github_url(source.repo_url)
+    owner, repo_name = _source_owner_repo(source.repo_url, source.file_path)
 
     db_source.repo_url = source.repo_url
     db_source.repo_owner = owner

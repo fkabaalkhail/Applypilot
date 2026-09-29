@@ -609,8 +609,11 @@ async def cron_backfill(
                 job.description_sections = None
                 descriptions_fixed += 1
                 # A description just landed: the structured fields it feeds
-                # (visa/skills/salary/type) can finally be extracted.
-                job.visa_sponsorship = detect_visa_sponsorship(job.description)
+                # (visa/skills/salary/type) can finally be extracted. A visa
+                # answer the row already has (a list's no-sponsorship mark)
+                # stays: the description only fills an unknown.
+                if (job.visa_sponsorship or "unknown") == "unknown":
+                    job.visa_sponsorship = detect_visa_sponsorship(job.description)
                 job.skills = extract_skills(job.title, job.description) or None
                 if not job.employment_type:
                     job.employment_type = detect_employment_type(job.title, job.description)

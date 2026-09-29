@@ -9,11 +9,14 @@ import pytest
 from backend.db.models import ScrapedJob
 from backend.services.aggregator import AggregatorService
 from backend.services.cross_source_dedup import (
+    board_row_for_posting,
     canonical_url,
     hide_list_copies_of_board_rows,
     normalize_title,
     posting_identity,
     release_list_copies_of_lapsed_board_rows,
+    stands_in_for_list_copy,
+    stands_in_for_twins,
 )
 from backend.services.markdown_parser import ParsedJob
 from backend.tests.test_github_list_fixes import _source
@@ -68,6 +71,27 @@ class TestPostingIdentity:
                 "Risk-Analytics-Co-op_2618885")
         assert posting_identity(site) == posting_identity(board) == "workday:cibc:2618885"
 
+    @pytest.mark.parametrize("a, b", [
+        ("_2024-12", "_2024-13"),
+        ("_R2024-15", "_R2024-16"),
+        ("_R12-1", "_R12-2"),
+    ])
+    def test_short_or_year_requisition_keeps_its_dash_number(self, a, b):
+        # What is left of '_2024-12' without '-12' is a year, not a
+        # requisition: stripping it folded two postings into 'acme:2024'.
+        board = "https://acme.wd1.myworkdayjobs.com/External/job/Austin-TX/Software-Intern"
+        assert posting_identity(board + a) != posting_identity(board + b)
+        assert posting_identity(board + a) == "workday:acme:" + a[1:].lower()
+
+    @pytest.mark.parametrize("repost, requisition", [
+        ("_JR5108-1", "jr5108"), ("_R-5994-1", "r-5994"), ("_2618885-12", "2618885"),
+        ("_JR2026520254-1", "jr2026520254"), ("_R-0000187113-1", "r-0000187113"),
+    ])
+    def test_repost_suffix_still_goes_on_a_real_requisition(self, repost, requisition):
+        # Shapes from prod's suffixed Workday URLs (2026-09-29).
+        url = "https://acme.wd1.myworkdayjobs.com/External/job/Austin-TX/Software-Intern" + repost
+        assert posting_identity(url) == f"workday:acme:{requisition}"
+
     def test_same_requisition_at_another_tenant_is_another_posting(self):
         assert posting_identity("https://bmo.wd3.myworkdayjobs.com/External/job/X_R123") \
             != posting_identity("https://td.wd3.myworkdayjobs.com/External/job/X_R123")
@@ -104,11 +128,13 @@ class TestHeal:
         assert listed.duplicate_of == board.id
         assert other.duplicate_of is None
 
-    @pytest.mark.parametrize("status, released", [("expired", 1), ("removed", 0), ("active", 0)])
+    @pytest.mark.parametrize("status, released",
+                             [("expired", 1), ("off_target", 1), ("removed", 0), ("active", 0)])
     def test_copy_comes_back_when_its_board_row_ages_out(self, db_session, status, released):
         # 'expired' only means nothing re-confirmed the board row lately; the
-        # list still offers the posting. 'removed' is the board's own death
-        # verdict, so its copy stays hidden.
+        # list still offers the posting. 'off_target' is the crawler's own
+        # level/location verdict, not the list's. 'removed' is the board's
+        # own death verdict, so its copy stays hidden.
         board = _job(db_session, PROD_PAIRS[0][1], "ats")
         listed = _job(db_session, PROD_PAIRS[0][0], "github")
         assert hide_list_copies_of_board_rows(db_session) == 1
@@ -135,6 +161,40 @@ class TestHeal:
         db_session.refresh(listed)
         assert listed.duplicate_of == live.id
 
+    def test_visible_board_row_wins_over_a_removed_sibling(self, db_session):
+        # Same requisition, same title: the lower-id '_R031692' was removed,
+        # its '_R031692-1' repost is live. The copy goes under the live one,
+        # never the removed one that would keep it hidden for good.
+        base = "https://ciena.wd5.myworkdayjobs.com/careers/job/Atlanta/WaveLogic-Software-Intern_R031692"
+        removed = _job(db_session, base, "ats", title="WaveLogic Software Intern", company="Ciena")
+        removed.listing_status = "removed"
+        db_session.commit()
+        live = _job(db_session, base + "-1", "ats", title="WaveLogic Software Intern", company="Ciena")
+        listed = _job(db_session, base.replace("/careers/", "/en-US/careers/"), "github",
+                      title="WaveLogic Software Intern", company="Ciena")
+
+        assert hide_list_copies_of_board_rows(db_session) == 1
+        db_session.refresh(listed)
+        assert listed.duplicate_of == live.id
+        assert board_row_for_posting(db_session, company="Ciena", company_domain="",
+                                     title="WaveLogic Software Intern", url=listed.url) == live.id
+        assert removed.id < live.id
+
+    def test_off_target_board_row_never_hides_a_curated_list_row(self, db_session):
+        # The crawler read the board's own title as not entry level ('level'
+        # verdict); the human-curated new-grad list still lists the posting.
+        board = _job(db_session, PROD_PAIRS[0][1], "ats")
+        board.listing_status = "off_target"
+        db_session.commit()
+        listed = _job(db_session, PROD_PAIRS[0][0], "github")
+
+        assert hide_list_copies_of_board_rows(db_session) == 0
+        db_session.refresh(listed)
+        assert listed.duplicate_of is None
+        # ...while it still speaks for a LinkedIn/Indeed mirror of the posting.
+        assert stands_in_for_twins("off_target", "ats", board.url) is True
+        assert stands_in_for_list_copy("off_target") is False
+
     def test_different_title_is_never_merged(self, db_session):
         _job(db_session, PROD_PAIRS[0][1], "ats", title="Firmware Engineer Intern")
         listed = _job(db_session, PROD_PAIRS[0][0], "github", title="Firmware Engineer Intern, Storage")
@@ -154,10 +214,12 @@ class TestIngestGuard:
         assert db_session.query(ScrapedJob).count() == 1
         assert db_session.query(ScrapedJob).one().id == board.id
 
-    @pytest.mark.parametrize("status, stored", [("removed", False), ("expired", True)])
+    @pytest.mark.parametrize("status, stored",
+                             [("removed", False), ("expired", True), ("off_target", True)])
     def test_only_a_board_row_that_stands_in_blocks_the_list_row(self, db_session, status, stored):
         # A removed board row is the posting's death verdict; an expired one
-        # only aged out, so the list copy (still listed) is the one to show.
+        # only aged out, and an off_target one failed the crawler's filters,
+        # not the list's, so the list copy (still listed) is the one to show.
         board = _job(db_session, PROD_PAIRS[1][1], "ats", title="Risk Analytics Co-op Winter 2027",
                      company="CIBC")
         board.listing_status = status

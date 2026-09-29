@@ -276,6 +276,58 @@ class TestRotationOrder:
         assert AggregatorService(db_session).sources_due(limit=1, now=now) == [busy]
         assert AggregatorService(db_session).sources_due(limit=2, now=now) == [busy, empty]
 
+    def test_revision_bump_never_starves_the_lists_that_feed_the_catalogue(self, db_session):
+        # Prod's 43 sources on 2026-09-29, then the r1 deploy: 3 lists with
+        # visible rows, 33 vendor-link lists (active, 0 rows ever), 3
+        # permanent 404s, plus the 7 speedyapply files seeding adds. Every
+        # list's file committed this week (due hourly); cron-poll runs every
+        # ~4 h and takes 12. Polling stamps r1; a vendor list parks, a new
+        # file stores rows. Before the fix the re-parsed feeding lists waited
+        # behind the vendor lists' revision-only re-parses for 3 runs.
+        now = datetime.datetime(2026, 9, 29, 12)
+        feeding = []
+        for i in range(3):
+            source = _source(db_session, url=f"https://github.com/lists/feeding-{i}", last_commit_sha=f"f{i}",
+                             last_polled_at=now - datetime.timedelta(hours=16 + i))
+            _row(db_session, source, f"https://jobs.lever.co/acme/{i}")
+            feeding.append(source)
+        vendor = [_source(db_session, url=f"https://github.com/jobright-ai/list-{i}", last_commit_sha=f"v{i}",
+                          last_polled_at=now - datetime.timedelta(hours=6 + i))
+                  for i in range(33)]
+        for i in range(3):
+            _source(db_session, url=f"https://github.com/jobright-ai/typo-{i}", status="error",
+                    error_message="HTTP 404: Client error '404 Not Found'")
+        files = [_source(db_session, url=f"https://github.com/speedyapply/x/blob/HEAD/F{i}.md") for i in range(7)]
+        feeding += files
+        svc = AggregatorService(db_session)
+
+        for run in range(5):
+            polled = svc.sources_due(limit=12, now=now)
+            assert set(feeding) <= set(polled), f"run {run}"
+            for source in polled:
+                source.last_commit_sha = STAMPED
+                source.last_polled_at = now
+                source.poll_interval_minutes = ACTIVE_POLL_MINUTES
+                if source in vendor:
+                    source.status = STATUS_PARKED
+                elif source in files and run == 0:
+                    _row(db_session, source, f"https://jobs.lever.co/file/{source.id}")
+            db_session.commit()
+            now += datetime.timedelta(hours=4)
+
+        # The vendor lists still move, with the slots left over (2 a run).
+        assert sum(source.status == STATUS_PARKED for source in vendor) == 10
+
+    def test_a_never_polled_list_still_goes_first(self, db_session):
+        # A new file has no rows yet either, but nothing about it is known.
+        now = datetime.datetime(2026, 9, 29, 12)
+        busy = _source(db_session, url="https://github.com/lists/busy", last_commit_sha=STAMPED,
+                       last_polled_at=now - datetime.timedelta(hours=3))
+        _row(db_session, busy, "https://jobs.lever.co/acme/1")
+        new = _source(db_session, url="https://github.com/speedyapply/x/blob/HEAD/NEW_GRAD_USA.md")
+
+        assert AggregatorService(db_session).sources_due(limit=1, now=now) == [new]
+
 
 class TestEnrichDeadline:
     @pytest.mark.asyncio
@@ -432,6 +484,38 @@ class TestCronPollBudget:
         db_session.expire_all()
         assert db_session.get(ScrapedJob, rows["github"]).duplicate_of is None
 
+    def test_list_repeats_are_hidden_by_cron_poll(self, cron, db_session):
+        # One HPE requisition under two site aliases in speedyapply's
+        # NEW_GRAD_USA.md (e2e run, 2026-09-29).
+        from backend.services.cross_source_dedup import normalize_title
+
+        ids = []
+        for site, repost in (("jobsathpe", "2"), ("wfmathpe", "1")):
+            row = ScrapedJob(title="Manageability Firmware Engineer", company="Hewlett Packard Enterprise",
+                             location="Chippewa Falls, WI", description="", source_platform="github",
+                             url=f"https://hpe.wd5.myworkdayjobs.com/en-US/{site}/job/Chippewa-Falls/"
+                                 f"Manageability-Firmware-Engineer_1214522-{repost}",
+                             listing_status="active", title_norm=normalize_title("Manageability Firmware Engineer"))
+            db_session.add(row)
+            db_session.commit()
+            ids.append(row.id)
+
+        body, _ = cron["post"]()
+
+        assert (body["list_repeats_hidden"], body["list_repeats_released"]) == (1, 0)
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, ids[1]).duplicate_of == ids[0]
+
+        # The first alias leaves its list: the next run gives the other back.
+        db_session.get(ScrapedJob, ids[0]).listing_status = "removed"
+        db_session.commit()
+
+        body, _ = cron["post"]()
+
+        assert (body["list_repeats_hidden"], body["list_repeats_released"]) == (0, 1)
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, ids[1]).duplicate_of is None
+
     def test_default_budgets_leave_headroom_under_vercels_limit(self):
         from backend.routers import github_sources as router
 
@@ -473,6 +557,55 @@ class TestAdminEndpoints:
         assert resp.json()["new_jobs"] == 0
         assert resp.json()["status"] == STATUS_PARKED
         assert db_session.query(ScrapedJob).count() == 0
+
+    def test_file_source_can_be_edited(self, admin, db_session):
+        # speedyapply's per-file sources live at '<repo>/blob/HEAD/<file>':
+        # the owner/repo-only validator made every edit of one a 422.
+        url = "https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/NEW_GRAD_USA.md"
+        source = GitHubSource(repo_url=url, repo_owner="speedyapply", repo_name="2027-SWE-College-Jobs",
+                              file_path="NEW_GRAD_USA.md", status="active", poll_interval_minutes=60)
+        db_session.add(source)
+        db_session.commit()
+
+        resp = admin.put(f"/github-sources/{source.id}",
+                         json={"repo_url": url, "file_path": "NEW_GRAD_USA.md", "poll_interval_minutes": 180})
+
+        assert resp.status_code == 200, resp.text
+        assert (resp.json()["repo_name"], resp.json()["file_path"], resp.json()["poll_interval_minutes"]) \
+            == ("2027-SWE-College-Jobs", "NEW_GRAD_USA.md", 180)
+        created = admin.post("/github-sources", json={
+            "repo_url": "https://github.com/speedyapply/2027-AI-College-Jobs/blob/HEAD/NEW_GRAD_USA.md",
+            "file_path": "NEW_GRAD_USA.md"})
+        assert created.status_code == 200, created.text
+        assert created.json()["repo_owner"] == "speedyapply"
+
+    @pytest.mark.parametrize("repo_url, file_path", [
+        # The URL names another file than the source reads.
+        ("https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/NEW_GRAD_USA.md", "README.md"),
+        ("https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/../x.md", "../x.md"),
+        # A README source is the bare repo (seed_sources' URL): its file
+        # form would be a second source for the same list.
+        ("https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/README.md", "README.md"),
+        ("https://github.com/speedyapply/2027-SWE-College-Jobs/tree/main", "README.md"),
+        ("https://gitlab.com/speedyapply/2027-SWE-College-Jobs", "README.md"),
+    ])
+    def test_edit_rejects_a_url_that_is_no_source(self, admin, db_session, repo_url, file_path):
+        source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")
+
+        resp = admin.put(f"/github-sources/{source.id}", json={"repo_url": repo_url, "file_path": file_path})
+
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_admin_poll_interval_sticks(self, db_session, github):
+        # poll_source used to reset every source to 60/1440 on each poll.
+        source = _source(db_session, url="https://github.com/vanshb03/New-Grad-2027", poll_interval_minutes=180)
+        _routes(github, "vanshb03/New-Grad-2027", README, when="2026-08-21T15:30:41Z")  # quiet
+
+        await AggregatorService(db_session).poll_source(source)
+
+        db_session.refresh(source)
+        assert source.poll_interval_minutes == 180
 
     def test_cleanup_jobright_is_gone(self, admin, db_session):
         # It deleted the jobright sources, and the next cron-poll re-seeded

@@ -251,6 +251,25 @@ class TestLinks:
         )
         assert parser.parse_markdown_table(table) == []
 
+    def test_escaped_pipe_stays_inside_its_cell(self, frozen_now):
+        # negarprh, 2026-09-29: splitting on the escaped pipe shifted every
+        # later cell and all four open Intelcom rows were dropped.
+        table = (
+            "| Company | Role | Location | Apply | Date Posted |\n"
+            "|--------|------|----------|:-----:|--------------|\n"
+            "| Intelcom \\| Dragonfly | Data Analyst Intern | Montreal, QC | "
+            "[![Apply](https://img.shields.io/badge/-Apply-blue?style=for-the-badge)]"
+            "(https://intelcomgroup.wd3.myworkdayjobs.com/Intelcom/job/Canada-Quebec-Montreal/"
+            "HR-Data-Analysis-Intern_JR111758-1) | Sep 15, 2026 |\n"
+            "| Intelcom \\| Dragonfly | Operations Analyst Intern | Montreal, QC | Closed🔒 | Aug 31, 2026 |\n"
+        )
+        [open_row, closed_row] = parser.parse_markdown_table(table, include_closed=True)
+        assert (open_row.company, open_row.title, open_row.location) == \
+            ("Intelcom | Dragonfly", "Data Analyst Intern", "Montreal, QC")
+        assert open_row.url.endswith("HR-Data-Analysis-Intern_JR111758-1")
+        assert open_row.posted_date == datetime.datetime(2026, 9, 15)
+        assert (closed_row.title, closed_row.closed) == ("Operations Analyst Intern", True)
+
     def test_simplify_html_table(self, frozen_now):
         content = """
 <table style="width: 100%;">
@@ -371,6 +390,26 @@ class TestIngest:
                         location="New York, NY", url="https://jobs.ashbyhq.com/ramp/1")
         AggregatorService(db_session)._classify_and_store(job, source)
         assert db_session.query(ScrapedJob).one().experience_level == "internship"
+
+    @pytest.mark.parametrize("title, stored", [
+        # speedyapply's new-grad files, 2026-09-29: the plainly senior rows.
+        ("Software Engineer I -II -III: Simulations", False),
+        ("Machine Learning Engineer - II-III - Space Edge Deployment", False),
+        ("Software Engineer - ML Infrastructure - Content Retrieval Platform - Level 4", False),
+        ("Senior Software Engineer", False),
+        # Only the hard markers: a term length, a soft word or a 'Staff'
+        # research internship is still a student job on a curated list.
+        ("Software Developer Co-op (8 months)", True),
+        ("Product Manager Intern", True),
+        ("Staff Research Scientist - Intern - PhD Foundational AI", True),
+        ("Software Engineer - New Grad (2027)", True),
+    ])
+    def test_plainly_senior_title_is_not_stored(self, db_session, title, stored):
+        source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")
+        job = ParsedJob(title=title, company="Lodestar", location="Austin, TX",
+                        url="https://jobs.lever.co/lodestar/1")
+        assert AggregatorService(db_session)._classify_and_store(job, source) is stored
+        assert db_session.query(ScrapedJob).count() == int(stored)
 
 
 # ─── retiring delisted rows ──────────────────────────────────────────────────
