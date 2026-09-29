@@ -9,10 +9,11 @@ import os
 # endpoint in a loop aren't tripped by the per-minute/daily AI limits.
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
-# Tests run with NO live-service credentials, locally exactly as in CI.
-# backend/db/database.py calls load_dotenv() at import, and python-dotenv walks
-# up from backend/db to the first .env it finds, so a developer's real keys
-# reached every local test run:
+# Three live-service credentials are pinned empty, so a local run holds none of
+# them, as CI holds none: OPENAI_API_KEY, RESEND_API_KEY and
+# BLOB_READ_WRITE_TOKEN. backend/db/database.py calls load_dotenv() at import,
+# and python-dotenv walks up from backend/db to the first .env it finds, so a
+# developer's real keys reached every local test run:
 # - OPENAI_API_KEY: a test that forgot the dummy-key fixture passed locally and
 #   failed only in CI (5 such tests kept CI red for months), and a missing
 #   mock could have spent real OpenAI money.
@@ -24,6 +25,13 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # exported in the shell). Empty reads as unset everywhere they are read. A
 # test that builds OpenAIService opts in with
 # monkeypatch.setenv("OPENAI_API_KEY", "test-key") and mocks the call.
+# Only these three, plus the RATE_LIMIT_ENABLED default above (set before
+# load_dotenv, so .env can't change it either). Every other .env variable still
+# reaches a local run (DATABASE_URL, REDIS_URL, JWT_SECRET, CRON_SECRET,
+# FRONTEND_URL, ...), so this is not full CI parity: CI exports
+# DATABASE_URL=sqlite:///./ci_test.db and a dummy JWT_SECRET; export the same
+# locally, or the app lifespan runs its migrations against whatever database
+# .env names.
 for _live_credential in ("OPENAI_API_KEY", "RESEND_API_KEY", "BLOB_READ_WRITE_TOKEN"):
     os.environ[_live_credential] = ""
 
@@ -145,7 +153,7 @@ def _cold_analysis_memo():
 
     ``match_engine`` memoises analyze_job for ANALYSIS_MEMO_TTL so one "tailor my
     résumé" journey buys the analysis once instead of three times. That cache is
-    process-global by design — which across a test session means one test's
+    process-global by design, which across a test session means one test's
     result silently answers another's call, so a test that stubs the LLM to
     raise never reaches it. Production is unaffected (the key contains the
     résumé text and job description, so no two users can collide), but tests

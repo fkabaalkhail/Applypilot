@@ -56,15 +56,20 @@ def make_token(user_id: int) -> str:
 def verify_token(token: Optional[str]) -> Optional[int]:
     """The user id a genuine token names, or None for anything else."""
     raw_id, sep, mac = (token or "").strip().partition(".")
-    if not sep or not mac or not raw_id.isdigit() or len(raw_id) > _MAX_ID_DIGITS:
+    # ASCII digits only: str.isdigit() also passes a superscript two, which
+    # int() rejects (a 500 on an unauthenticated URL), and Arabic-Indic
+    # digits, which int() reads as another spelling of a real id.
+    if (not sep or not mac or not (raw_id.isascii() and raw_id.isdigit())
+            or len(raw_id) > _MAX_ID_DIGITS):
         return None
     try:
-        expected = _mac(int(raw_id))
-    except RuntimeError:
+        user_id = int(raw_id)
+        expected = _mac(user_id)
+    except (RuntimeError, ValueError):
         return None
     if not hmac.compare_digest(expected.encode("ascii"), mac.encode("ascii", "replace")):
         return None
-    return int(raw_id)
+    return user_id
 
 
 def unsubscribe_url(user_id: int) -> str:

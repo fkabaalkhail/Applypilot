@@ -83,6 +83,11 @@ def _mangled():
         f"-42.{mac}",
         f"4{'2' * 20}.{mac}",
         "abc.def",
+        # Unicode digits pass str.isdigit(): "²" then crashed int() (a 500),
+        # and Arabic-Indic "٤٢" read as 42 under 42's own MAC.
+        "².abc",
+        f"².{mac}",
+        f"٤٢.{mac}",
     ]
 
 
@@ -340,6 +345,17 @@ def test_a_tampered_token_changes_nothing(client, db_session):
 
     assert _flag(db_session, me.id) is None
     assert _flag(db_session, other.id) is None
+
+
+def test_a_unicode_digit_token_is_a_400_not_a_500(client, db_session):
+    """The endpoint is unauthenticated: a crafted id like "²" must get the
+    invalid-link page, never an unhandled exception."""
+    for res in (
+        client.get(UNSUBSCRIBE_PATH, params={"token": "².abc"}),
+        client.post(f"{UNSUBSCRIBE_PATH}?token=%C2%B2.abc"),
+    ):
+        assert res.status_code == 400
+        assert "invalid" in res.text.lower()
 
 
 def test_unsubscribing_twice_is_harmless(client, db_session):
