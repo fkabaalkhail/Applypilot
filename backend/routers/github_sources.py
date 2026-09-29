@@ -43,6 +43,28 @@ def _parse_github_url(url: str) -> tuple[str, str]:
     return match.group(1), match.group(2)
 
 
+# A source's URL (aggregator.source_url): the repo for its README, or
+# '<repo>/blob/HEAD/<file>' for a list kept in its own file (speedyapply's
+# NEW_GRAD_USA.md, *_INTL.md).
+_FILE_SOURCE_URL_RE = re.compile(
+    r"^(https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)/blob/HEAD/([\w.\-/]+)$")
+
+
+def _source_owner_repo(repo_url: str, file_path: str) -> tuple[str, str]:
+    """Owner and repo name of a source URL in either form. A file URL must
+    name the source's own ``file_path``. 422 otherwise."""
+    match = _FILE_SOURCE_URL_RE.match(repo_url or "")
+    if match:
+        repo, url_file = match.groups()
+        if ".." in url_file.split("/") or url_file != file_path:
+            raise HTTPException(status_code=422,
+                                detail="The URL's file must be the source's file_path.")
+        return _parse_github_url(repo)
+    if not validate_github_repo_url(repo_url):
+        raise HTTPException(status_code=422, detail="Invalid GitHub repository URL.")
+    return _parse_github_url(repo_url)
+
+
 @router.get("", response_model=list[GitHubSourceOut])
 def list_sources(
     _admin: int = Depends(get_admin_user_id),
@@ -59,15 +81,12 @@ def create_source(
     db: Session = Depends(get_db),
 ):
     """Add a new GitHub repository source."""
-    if not validate_github_repo_url(source.repo_url):
-        raise HTTPException(status_code=422, detail="Invalid GitHub repository URL.")
+    owner, repo_name = _source_owner_repo(source.repo_url, source.file_path)
 
     # Check for duplicate
     existing = db.query(GitHubSource).filter(GitHubSource.repo_url == source.repo_url).first()
     if existing:
         raise HTTPException(status_code=409, detail="This repository is already configured.")
-
-    owner, repo_name = _parse_github_url(source.repo_url)
 
     db_source = GitHubSource(
         repo_url=source.repo_url,
@@ -913,15 +932,15 @@ def update_source(
     _admin: int = Depends(get_admin_user_id),
     db: Session = Depends(get_db),
 ):
-    """Update a GitHub source configuration."""
+    """Update a GitHub source configuration. A file source keeps its
+    '<repo>/blob/HEAD/<file>' URL (every edit of one used to 422). An
+    interval other than the automatic hourly/daily cadence sticks
+    (AggregatorService.poll_source)."""
     db_source = db.query(GitHubSource).filter(GitHubSource.id == source_id).first()
     if not db_source:
         raise HTTPException(status_code=404, detail="GitHub source not found.")
 
-    if not validate_github_repo_url(source.repo_url):
-        raise HTTPException(status_code=422, detail="Invalid GitHub repository URL.")
-
-    owner, repo_name = _parse_github_url(source.repo_url)
+    owner, repo_name = _source_owner_repo(source.repo_url, source.file_path)
 
     db_source.repo_url = source.repo_url
     db_source.repo_owner = owner

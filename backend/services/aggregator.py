@@ -63,6 +63,7 @@ PARSE_REVISION = 1
 # slots the lists that feed the catalogue leave free.
 ACTIVE_POLL_MINUTES = 60
 DORMANT_POLL_MINUTES = 24 * 60
+AUTO_POLL_MINUTES = (ACTIVE_POLL_MINUTES, DORMANT_POLL_MINUTES)  # any other value is an admin's
 DORMANT_AFTER = datetime.timedelta(days=7)
 PARKED_RECHECK = datetime.timedelta(days=7)
 STATUS_PARKED = "parked"
@@ -596,9 +597,13 @@ class AggregatorService:
                 source.status = "active"
                 source.error_message = ""
 
-            now = _utcnow()
-            quiet = committed_at is not None and now - committed_at > DORMANT_AFTER
-            source.poll_interval_minutes = DORMANT_POLL_MINUTES if quiet else ACTIVE_POLL_MINUTES
+            # The cadence follows the commits (hourly, daily once quiet)
+            # unless an admin set another interval (PUT /github-sources/{id}),
+            # which sticks.
+            if (source.poll_interval_minutes or ACTIVE_POLL_MINUTES) in AUTO_POLL_MINUTES:
+                now = _utcnow()
+                quiet = committed_at is not None and now - committed_at > DORMANT_AFTER
+                source.poll_interval_minutes = DORMANT_POLL_MINUTES if quiet else ACTIVE_POLL_MINUTES
             source.last_polled_at = datetime.datetime.utcnow()
             self.db.commit()
             return new_count

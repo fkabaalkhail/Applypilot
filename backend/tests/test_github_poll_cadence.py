@@ -558,6 +558,52 @@ class TestAdminEndpoints:
         assert resp.json()["status"] == STATUS_PARKED
         assert db_session.query(ScrapedJob).count() == 0
 
+    def test_file_source_can_be_edited(self, admin, db_session):
+        # speedyapply's per-file sources live at '<repo>/blob/HEAD/<file>':
+        # the owner/repo-only validator made every edit of one a 422.
+        url = "https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/NEW_GRAD_USA.md"
+        source = GitHubSource(repo_url=url, repo_owner="speedyapply", repo_name="2027-SWE-College-Jobs",
+                              file_path="NEW_GRAD_USA.md", status="active", poll_interval_minutes=60)
+        db_session.add(source)
+        db_session.commit()
+
+        resp = admin.put(f"/github-sources/{source.id}",
+                         json={"repo_url": url, "file_path": "NEW_GRAD_USA.md", "poll_interval_minutes": 180})
+
+        assert resp.status_code == 200, resp.text
+        assert (resp.json()["repo_name"], resp.json()["file_path"], resp.json()["poll_interval_minutes"]) \
+            == ("2027-SWE-College-Jobs", "NEW_GRAD_USA.md", 180)
+        created = admin.post("/github-sources", json={
+            "repo_url": "https://github.com/speedyapply/2027-AI-College-Jobs/blob/HEAD/NEW_GRAD_USA.md",
+            "file_path": "NEW_GRAD_USA.md"})
+        assert created.status_code == 200, created.text
+        assert created.json()["repo_owner"] == "speedyapply"
+
+    @pytest.mark.parametrize("repo_url, file_path", [
+        # The URL names another file than the source reads.
+        ("https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/NEW_GRAD_USA.md", "README.md"),
+        ("https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/../x.md", "../x.md"),
+        ("https://github.com/speedyapply/2027-SWE-College-Jobs/tree/main", "README.md"),
+        ("https://gitlab.com/speedyapply/2027-SWE-College-Jobs", "README.md"),
+    ])
+    def test_edit_rejects_a_url_that_is_no_source(self, admin, db_session, repo_url, file_path):
+        source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")
+
+        resp = admin.put(f"/github-sources/{source.id}", json={"repo_url": repo_url, "file_path": file_path})
+
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_admin_poll_interval_sticks(self, db_session, github):
+        # poll_source used to reset every source to 60/1440 on each poll.
+        source = _source(db_session, url="https://github.com/vanshb03/New-Grad-2027", poll_interval_minutes=180)
+        _routes(github, "vanshb03/New-Grad-2027", README, when="2026-08-21T15:30:41Z")  # quiet
+
+        await AggregatorService(db_session).poll_source(source)
+
+        db_session.refresh(source)
+        assert source.poll_interval_minutes == 180
+
     def test_cleanup_jobright_is_gone(self, admin, db_session):
         # It deleted the jobright sources, and the next cron-poll re-seeded
         # them; they park themselves now.
