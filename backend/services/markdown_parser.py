@@ -63,6 +63,9 @@ _WRAPPED_EMPHASIS_RE = re.compile(r"^([*_])(\S(?:.*\S)?)\1$")
 _HTML_TABLE_RE = re.compile(r"<table\b.*?</table>", re.IGNORECASE | re.DOTALL)
 _HTML_ROW_RE = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
 _HTML_CELL_RE = re.compile(r"<t([hd])\b[^>]*>(.*?)</t\1>", re.IGNORECASE | re.DOTALL)
+# A cell boundary: every pipe but an escaped one ('Intelcom \| Dragonfly' is
+# one company cell in negarprh's list).
+_CELL_DELIMITER_RE = re.compile(r"(?<!\\)\|")
 
 _DATED_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%b %d, %Y", "%B %d, %Y")
 _YEARLESS_FORMATS = ("%b %d", "%B %d", "%m/%d")
@@ -447,7 +450,10 @@ class MarkdownParser:
 
     @staticmethod
     def _split_row(line: str) -> list[str]:
-        return [c.strip() for c in line.split("|")[1:-1]]
+        """The cells of a pipe row, an escaped '\\|' kept inside its cell as
+        '|'. Splitting on it shifted every later cell, and the row was
+        dropped for a missing title or URL."""
+        return [c.strip().replace("\\|", "|") for c in _CELL_DELIMITER_RE.split(line)[1:-1]]
 
     @staticmethod
     def _is_separator_row(line: str) -> bool:

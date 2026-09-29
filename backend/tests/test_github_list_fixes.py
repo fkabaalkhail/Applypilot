@@ -251,6 +251,25 @@ class TestLinks:
         )
         assert parser.parse_markdown_table(table) == []
 
+    def test_escaped_pipe_stays_inside_its_cell(self, frozen_now):
+        # negarprh, 2026-09-29: splitting on the escaped pipe shifted every
+        # later cell and all four open Intelcom rows were dropped.
+        table = (
+            "| Company | Role | Location | Apply | Date Posted |\n"
+            "|--------|------|----------|:-----:|--------------|\n"
+            "| Intelcom \\| Dragonfly | Data Analyst Intern | Montreal, QC | "
+            "[![Apply](https://img.shields.io/badge/-Apply-blue?style=for-the-badge)]"
+            "(https://intelcomgroup.wd3.myworkdayjobs.com/Intelcom/job/Canada-Quebec-Montreal/"
+            "HR-Data-Analysis-Intern_JR111758-1) | Sep 15, 2026 |\n"
+            "| Intelcom \\| Dragonfly | Operations Analyst Intern | Montreal, QC | Closed🔒 | Aug 31, 2026 |\n"
+        )
+        [open_row, closed_row] = parser.parse_markdown_table(table, include_closed=True)
+        assert (open_row.company, open_row.title, open_row.location) == \
+            ("Intelcom | Dragonfly", "Data Analyst Intern", "Montreal, QC")
+        assert open_row.url.endswith("HR-Data-Analysis-Intern_JR111758-1")
+        assert open_row.posted_date == datetime.datetime(2026, 9, 15)
+        assert (closed_row.title, closed_row.closed) == ("Operations Analyst Intern", True)
+
     def test_simplify_html_table(self, frozen_now):
         content = """
 <table style="width: 100%;">
