@@ -261,6 +261,37 @@ def test_an_entry_band_or_a_mid_one_is_weak(title):
     assert _entry(title)
 
 
+@pytest.mark.parametrize("title", [
+    # A slash or "or" list of bands that opens at an entry band (prod and the
+    # 2026-09-29 crawl): open at that band, whatever the later bands say.
+    "Junior Planner / Planner / Senior Planner (PFT) (CUPE 72.26)",   # Indeed, Simcoe ON
+    "Analyst/Sr. Analyst, Global Incentive Compensation",             # Salesforce, Toronto
+    "Sales Strategy Analyst/Sr. Analyst",
+    "Associate/ Senior Associate, Transaction Services",              # BDO
+    "Flight Software Engineers (Associate/Experienced/Senior)",       # Boeing
+    "Junior or Senior Software Developer",
+])
+def test_a_band_list_that_opens_at_an_entry_band_is_weak(title):
+    assert not HARD_SENIOR.search(title)
+    assert entry_tier(title) == "weak"
+    assert _entry(title)
+
+
+@pytest.mark.parametrize("title", [
+    "Senior Analyst",
+    "Sr. Analyst / Analyst",                                  # opens senior
+    "Software Engineer / Senior Software Engineer",           # no entry band
+    "Modern Data Stack Engineer Consultant / Senior Consultant",  # prod LinkedIn
+    "Analyst / Senior Director",                              # Director is no band word
+    "Analyst/Sr. Analyst (5+ years)",
+    "Associate, Senior Analyst",                              # not a list
+])
+def test_a_band_list_only_opens_at_its_first_band(title):
+    assert HARD_SENIOR.search(title)
+    assert entry_tier(title) is None
+    assert not _entry(title)
+
+
 @pytest.mark.parametrize("title,employment_type", [
     # The range only lifts the mid-level veto; everything else still applies.
     ("Experienced Financial Analyst", ""),

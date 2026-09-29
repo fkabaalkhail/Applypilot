@@ -352,17 +352,38 @@ _BAND_RANGE = re.compile(
     r"\b(" + _ENTRY_BAND + r")(?:\s*(?:,|/|-|–|&|\bor\b|\band\b|\bto\b)\s*" + _MID_BAND + r")+\b",
     re.IGNORECASE,
 )
+# So is a slash or "or" list of bands that opens at an entry band, whatever
+# its later bands say: Norfolk County's "Junior Planner / Planner / Senior
+# Planner (PFT)", Salesforce's "Analyst/Sr. Analyst, Global Incentive
+# Compensation". Only the later bands lose their senior and mid-level words:
+# "Senior Analyst", "Sr. Analyst / Analyst" and "Associate or Vice President"
+# stay out.
+_BAND_CLAUSE = re.compile(r"[^,;:()\[\]|]+")
+_BAND_LIST_SEPARATOR = re.compile(r"(\s*/\s*|\s+or\s+)", re.IGNORECASE)
+_OPENING_BAND = re.compile(r"\b(?:" + _ENTRY_BAND + r"|analyst)(?![\w-])", re.IGNORECASE)
+_LATER_BAND = re.compile(r"\b(?:senior|sr\b\.?|" + _MID_BAND + r")(?![\w-])", re.IGNORECASE)
+
+
+def _open_band_list(clause: re.Match) -> str:
+    parts = _BAND_LIST_SEPARATOR.split(clause.group(0))
+    if len(parts) < 3 or not _OPENING_BAND.search(parts[0]):
+        return clause.group(0)
+    # parts alternates band, separator, band, ...: parts[2::2] are the later bands.
+    return "".join(_LATER_BAND.sub(" ", part) if index >= 2 and index % 2 == 0 else part
+                   for index, part in enumerate(parts))
 
 
 class _SeniorVeto:
-    """HARD_SENIOR: ``search`` reads a band range as its entry band first."""
+    """HARD_SENIOR: ``search`` reads a band range or a band list as its
+    entry band first."""
 
     def __init__(self, words: re.Pattern):
         self.words = words
         self.pattern = words.pattern
 
     def search(self, title: str):
-        return self.words.search(_BAND_RANGE.sub(r"\1", title or ""))
+        title = _BAND_CLAUSE.sub(_open_band_list, title or "")
+        return self.words.search(_BAND_RANGE.sub(r"\1", title))
 
 
 # Also the one title veto for LinkedIn/Indeed rows (jobs.ingest_batch,
