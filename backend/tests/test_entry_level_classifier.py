@@ -310,6 +310,14 @@ def test_student_recruiting_jobs_stay(title):
     assert _entry(title)
 
 
+def test_a_recruiting_title_in_an_internship_department_is_an_internship():
+    # Astranis (prod row 63327) files this under its internships.
+    title, department = "Recruiting Coordination Associate", "Talent Acquisition Internships"
+    assert entry_tier(title, department) == "strong"
+    assert _entry(title, department)
+    assert entry_tier(title, "Talent Acquisition") is None  # staff elsewhere
+
+
 @pytest.mark.parametrize("title,hard", [
     ("Senior HR Specialist", True),
     ("Director of Engineering", True),

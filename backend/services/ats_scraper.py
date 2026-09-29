@@ -441,7 +441,11 @@ def entry_tier(title: str, department: str = "", employment_type: str = "") -> O
     title = title or ""
     if HARD_SENIOR.search(title) or PROGRAM_STAFF.search(title):
         return None
-    if RECRUITING.search(title) and not STUDENT_JOB.search(title):
+    # A recruiting title is staff, unless it names a student track or sits in
+    # an internship department (Astranis files "Recruiting Coordination
+    # Associate" under "Talent Acquisition Internships").
+    if (RECRUITING.search(title) and not STUDENT_JOB.search(title)
+            and not _INTERNSHIP_DEPARTMENT.search(department or "")):
         return None
     strong_title = bool(STRONG_ENTRY.search(title)) or bool(
         EMPLOYMENT_TYPE_ENTRY.search(employment_type or "")
