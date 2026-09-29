@@ -162,7 +162,8 @@ crawls set it on rows they list (ATS rows only; GitHub-list, LinkedIn and
 Indeed rows are never re-judged by a board), and a listing that passes again
 brings the row back. Two cron-freshness sweeps set it too: ATS rows on
 never-crawled `unknown` boards, and LinkedIn/Indeed rows with plainly senior
-titles. An off_target row is never called dead, and it becomes `removed` once
+titles; both re-read what they hid on every run and give back a row their
+rule no longer rejects. An off_target row is never called dead, and it becomes `removed` once
 its board stops listing it. `CRON_ATS_RETIRE_OFF_TARGET=0` turns all of this
 off and puts the rows back (crawled rows on their board's next crawl, the
 sweeps' rows on the next cron-freshness); like any Vercel env var, the change
@@ -312,7 +313,10 @@ silently filtered**: the product decides hide vs badge. Factors:
 
 Scoring is incremental: new rows are scored once (the only pass that reads
 descriptions; the evergreen flag is cached in the factors JSON), and aging
-rows are re-scored column-only as their age factors move.
+rows are re-scored column-only as their age factors move, least recently
+scored first. "Open" counts from the source's `posted_date` when it is
+plausible (after 2000 and before we first saw the row), else from our first
+sighting: Lever lists postings from 2016-2021 that we first saw in 2026.
 
 ## Structured extraction
 
@@ -336,8 +340,12 @@ LLM calls are how the OpenAI bill melted once already. Extracted at ingest
 
 Re-crawls diff stored rows against fresh board data: title/location/salary
 changes and description-hash changes append to a capped `change_log` and bump
-`edit_count`. A posting whose salary statement disappears gets a
-`salary_removed` entry: an edit-frequency/trust signal the UI can surface.
+`edit_count`. A posting whose salary statement disappears gets one
+`salary_removed` entry (and its stored pay is cleared): an edit-frequency/
+trust signal the UI can surface. Whitespace padding is not an edit, the
+description hash is taken over the sanitized text exactly as at insert, and a
+crawler row's company follows its registry name without a change entry. A
+Workday "N Locations" count never overwrites a stored place name.
 
 ## Deduplication
 
@@ -391,12 +399,17 @@ One source per file: speedyapply keeps new-grad and international roles in
 `NEW_GRAD_USA.md`, `INTERN_INTL.md` and `NEW_GRAD_INTL.md` beside its README.
 A `file_path` in `REPOS` makes a source at `<repo>/blob/HEAD/<file>` whose
 commit check only counts commits touching that file; a `countries` allowlist
-(the `*_INTL.md` files read for `CA` only) drops everything else.
+(the `*_INTL.md` files read for `CA` only) drops everything else, before the
+new-URL liveness probe spends its budget on it. An admin-set poll interval
+must be 5 to 10,080 minutes.
 
 List rows are dropped at ingest, and hidden on every run
 (`hide_list_copies_of_board_rows`), when the board crawl carries the same
-posting under another URL spelling: same employer, title and
-`posting_identity` (Greenhouse job id, Workday tenant + requisition across
+posting under another URL spelling: a precise `posting_identity` matches a
+visible board row whatever the title or employer spelling ("... - College
+Grad" beside "... (College Grad)"); any other URL, and a `removed` board row,
+still needs the same employer and title. Identities are the Greenhouse job
+id, Workday tenant + requisition across
 locale, site alias, `-1` repost and `/apply` variants, Lever/Ashby UUID; a
 `-N` goes only when a requisition of 4+ digits, not a bare year, is left).
 Only a visible board row, or one its board `removed`, stands in for a list
@@ -420,7 +433,8 @@ feed carries is not stored, and cron-poll hides the rest
 behind, else the oldest list row); `release_repeated_list_rows` gives a
 repeat back when that row leaves the feed. List rows with a plainly senior
 title (`ats_scraper.HARD_SENIOR`: "Engineer I -II -III", "Level 4") are not
-stored.
+stored, unless the title also names a student track ("Office of General
+Counsel Intern", "Research Fellow - Summer 2027").
 
 cron-poll time boxes, from the start of the request (the workflow's curl and
 Vercel both stop at 300 s): no new source after 120 s, a source still
@@ -462,7 +476,12 @@ shard, least-recently-probed verification). A `concurrency` group
    registry; ingests, confirms and reconciles.
 4. `/github-sources/cron-poll`: GitHub lists.
 5. `/jobs/cron-backfill`: descriptions, locations, logos (Phase 3), twin
-   absorption, extraction-on-description-arrival.
+   absorption, extraction-on-description-arrival, plus two bounded DB-only
+   repairs: `repair_country` (rows whose stored country contradicts their
+   location) and `legacy_smartrecruiters` (rows still on
+   `careers.smartrecruiters.com/<Company>/<id>`, which now redirects to the
+   employer's homepage, move to the `jobs.smartrecruiters.com` posting URL, or
+   hide behind the row that already holds it).
 6. `/jobs/cron-freshness`: board_key adoption, stale/aggregator/terminal
    sweeps, platform liveness verification, ghost scoring.
 7. `/jobs/ingest-metrics`: logged snapshot, runs even after a failure.
