@@ -35,6 +35,7 @@ from typing import Optional
 import httpx
 
 from backend.services.description_extractor import clean_html
+from backend.services.na_location import CA, FOREIGN, US, hint_region, is_north_america, region_of
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,10 @@ class ATSJob:
     employment_type: str = ""  # Source-declared commitment (Intern / Full-time / …)
     salary_text: str = ""  # Source-structured pay range, verbatim-ish
     detail_ref: str = ""  # Connector-specific ref for a lazy detail fetch (Workday externalPath)
+    # Where a Workday posting that only says "3 Locations" is primarily based,
+    # from its externalPath ("Toronto-ON", "IL-Rosemont"). Read for the NA
+    # verdict and the country column only, never displayed or stored.
+    location_hint: str = ""
 
 
 @dataclass
@@ -62,8 +67,12 @@ class BoardSnapshot:
 
     ``all_urls`` covers EVERY listing on the board, including ones the
     entry-level/NA filters rejected, reconciliation must never mistake
-    "filtered out" for "taken down". ``complete`` is False when the fetch was
-    partial (a board past the page cap or Workday's listing ceiling, or a
+    "filtered out" for "taken down". ``rejected`` says why each rejected one
+    failed (ATSScraper.rejection: "level", "location" or "unplaced"), so
+    reconciliation can retire a stored row whose own listing is off target
+    instead of confirming it; only scrape_board fills it, and empty means "no
+    verdicts", never "everything passed". ``complete`` is False when the fetch
+    was partial (a board past the page cap or Workday's listing ceiling, or a
     crawl budget that ran out); an incomplete snapshot must not be used to
     mark rows removed, though every URL it did list is still proof of life.
     """
@@ -74,6 +83,7 @@ class BoardSnapshot:
     all_urls: set[str] = field(default_factory=set)
     complete: bool = True
     total_listed: int = 0
+    rejected: dict[str, str] = field(default_factory=dict)
 
     @property
     def board_key(self) -> str:
@@ -276,47 +286,24 @@ SENIOR_KEYWORDS = re.compile(
 )
 
 
-# Location keywords for US/Canada filtering
-US_STATES = {
-    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
-    "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
-    "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
-    "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
-    "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC",
-}
+# US/Canada location classification lives in na_location (whole words and
+# codes where codes sit, never substrings: "usa" is not in "Busan", "IN" after
+# "Bangalore" is India), shared with the country column every ingest path
+# stores. The substring lists that used to live here let about 80 visible
+# foreign rows through (2026-09) and dropped real US ones ("Newaygo,
+# Michigan, US", "McLean, Virginia").
 
-CA_PROVINCES = {
-    "ON", "QC", "BC", "AB", "MB", "SK", "NS", "NB", "NL", "PE",
-    "NT", "YT", "NU",
-}
+# Rejection reasons a board crawl may act on: the listing itself says the
+# posting is off target, so a stored row at its URL is retired (listing_status
+# off_target) instead of confirmed. "unplaced" (no North American location,
+# and no evidence against one either: Workday's "2 Locations", "Hybrid") never
+# retires a row.
+RETIRABLE_REJECTIONS = frozenset({"level", "location"})
 
-US_CITIES = [
-    "new york", "san francisco", "los angeles", "chicago", "seattle",
-    "austin", "boston", "denver", "atlanta", "dallas", "houston",
-    "miami", "philadelphia", "phoenix", "san diego", "san jose",
-    "portland", "minneapolis", "detroit", "pittsburgh", "raleigh",
-    "charlotte", "nashville", "salt lake city", "washington",
-    "mountain view", "palo alto", "sunnyvale", "cupertino",
-    "menlo park", "redmond", "bellevue", "irvine", "santa monica",
-    "brooklyn", "manhattan",
-    # Netflix's Workday board gives a bare city: its HQ and US offices.
-    "los gatos", "burbank", "las vegas", "king of prussia",
-]
-
-CA_CITIES = [
-    "toronto", "vancouver", "montreal", "ottawa", "calgary",
-    "edmonton", "winnipeg", "quebec", "hamilton", "kitchener",
-    "waterloo", "mississauga", "brampton", "markham",
-    # Not bare "london": that is London, UK on nearly every board ("London",
-    # "London Office", "London, England"). London, Ontario still passes as
-    # "London, ON" (province token), "London, Ontario" or "..., Canada", or
-    # from a board the registry marks "country": "CA" (BDO's bare "London").
-    "ontario", "victoria", "halifax", "burnaby", "richmond",
-    "gatineau", "kanata", "scarborough", "north york", "etobicoke",
-    "vaughan", "richmond hill", "oakville", "burlington", "guelph",
-    "saskatoon", "regina", "fredericton", "moncton", "kelowna",
-    "windsor", "laval", "longueuil", "sherbrooke", "barrie",
-]
+# Workday names one location and counts the rest ("PRAGUE DC (2 Locations)",
+# "3 Locations"): the unnamed ones may be North American, so a foreign name
+# beside a count is not a retire verdict.
+_MORE_LOCATIONS = re.compile(r"\b\d+\s+locations?\b", re.IGNORECASE)
 
 
 # ─── Per-host pacing (ToS hygiene) ───────────────────────────────────────────
@@ -448,6 +435,39 @@ def _workday_unlisted_key(posting: dict) -> str:
     return json.dumps(ident, sort_keys=True, default=str)
 
 
+# A requisition id bullet ("R186419", "JR-12345", "2026-0042"), never a place.
+_WORKDAY_REQ_ID = re.compile(r"[A-Za-z]{0,4}[-_ ]?\d[\w-]*")
+_WORKDAY_COUNTED_LOCATIONS = re.compile(r"\s*\d+\s+locations?\s*", re.IGNORECASE)
+
+
+def _workday_location(posting: dict) -> str:
+    """The list row's location: ``locationsText``, or for tenants that omit it
+    (Parsons lists all ~1,950 postings without one, so the NA filter dropped
+    every one) the first bullet that is not a requisition id, e.g.
+    "US - CA, Pasadena"."""
+    text = posting.get("locationsText") or ""
+    if text.strip():
+        return text  # verbatim: stored rows compare against it for edits
+    for item in posting.get("bulletFields") or []:
+        item = item.strip() if isinstance(item, str) else ""
+        if item and not _WORKDAY_REQ_ID.fullmatch(item):
+            return item
+    return ""
+
+
+def _workday_location_hint(location: str, external_path: str) -> str:
+    """For a posting whose location is only a count ("3 Locations"), the
+    primary location Workday puts in its path: "/job/Toronto-ON/Dev_R1" ->
+    "Toronto-ON". "" otherwise. TD, Boeing, PwC and Adobe list ~300 entry-level
+    postings this way, and ~215 of them name a US/Canadian place there."""
+    if not _WORKDAY_COUNTED_LOCATIONS.fullmatch(location or ""):
+        return ""
+    parts = (external_path or "").split("/")
+    if len(parts) > 3 and parts[1] == "job":
+        return parts[2]
+    return ""
+
+
 def _workday_external_id(external_path: str, bullet_fields: list) -> str:
     """Prefer the req id Workday appends to the path ("…_R-12345"); fall back
     to the first bulletField (usually the same req id)."""
@@ -552,11 +572,22 @@ class ATSScraper:
             platform=platform,
             slug=slug,
             company=company_name,
-            jobs=[job for job in listings if self._passes_filters(job, home_country)],
             all_urls={job.url for job in listings if job.url},
             complete=complete,
             total_listed=total,
         )
+        # One verdict per listing: the passing ones are ingested, the rest
+        # keep their reason for reconciliation (a stored row at a "level" or
+        # "location" URL is retired rather than confirmed).
+        for job in listings:
+            reason = self.rejection(job, home_country)
+            if reason is None:
+                snapshot.jobs.append(job)
+            elif job.url:
+                snapshot.rejected[job.url] = reason
+        # A URL listed twice keeps its passing verdict.
+        for job in snapshot.jobs:
+            snapshot.rejected.pop(job.url, None)
         return snapshot
 
     # ── Back-compat filtered single-platform methods ────────────────────────
@@ -908,7 +939,7 @@ class ATSScraper:
             for posting in postings:
                 external_path = posting.get("externalPath", "") or ""
                 title = posting.get("title", "") or ""
-                location = posting.get("locationsText", "") or ""
+                location = _workday_location(posting)
                 if not title or not external_path:
                     unlisted.add(_workday_unlisted_key(posting))
                     continue
@@ -926,6 +957,7 @@ class ATSScraper:
                     work_type=self._detect_work_type(location, title),
                     external_id=_workday_external_id(external_path, posting.get("bulletFields")),
                     detail_ref=external_path,
+                    location_hint=_workday_location_hint(location, external_path),
                 )
                 jobs.append(job)
 
@@ -951,12 +983,36 @@ class ATSScraper:
         """Check if a job passes the configured filters. ``home_country`` is
         the registry's country for a one-country board: every listing on it
         is in North America, whatever its location text says."""
+        return self.rejection(job, home_country) is None
+
+    def rejection(self, job: ATSJob, home_country: str = "") -> Optional[str]:
+        """Why the configured filters reject ``job``, or None when it passes.
+
+        The one place that decides, for ingest (a listing is inserted only on
+        None) and for reconciliation (a stored row whose listing says
+        "level" or "location" is retired, RETIRABLE_REJECTIONS):
+
+        - "level": not entry level (_is_entry_level, title + department)
+        - "location": positive evidence the posting is outside the US and
+          Canada (na_location.region_of says FOREIGN, and the text does not
+          count further unnamed locations: "PRAGUE DC (2 Locations)")
+        - "unplaced": no North American location, and nothing against one
+          either ("3 Locations", "Hybrid", ""): never retires a row
+
+        A Workday "3 Locations" posting passes on its path's primary
+        location (``location_hint``)."""
         if self.filter_entry_level and not self._is_entry_level(job):
-            return False
-        if (self.filter_north_america and not home_country
-                and not self._is_north_america(job.location)):
-            return False
-        return True
+            return "level"
+        if self.filter_north_america and not home_country:
+            region = region_of(job.location)
+            if region in (US, CA):
+                return None
+            if job.location_hint and hint_region(job.location_hint):
+                return None
+            if region == FOREIGN and not _MORE_LOCATIONS.search(job.location or ""):
+                return "location"
+            return "unplaced"
+        return None
 
     def _is_entry_level(self, job: ATSJob) -> bool:
         """Check if a job is intern/new-grad/entry-level.
@@ -973,44 +1029,8 @@ class ATSScraper:
         return True
 
     def _is_north_america(self, location: str) -> bool:
-        """Check if location is in US or Canada."""
-        if not location:
-            return False
-
-        loc_lower = location.lower()
-
-        # Check explicit country mentions
-        if "united states" in loc_lower or "usa" in loc_lower or "u.s." in loc_lower:
-            return True
-        if "canada" in loc_lower:
-            return True
-
-        # Check US cities
-        for city in US_CITIES:
-            if city in loc_lower:
-                return True
-
-        # Check Canadian cities
-        for city in CA_CITIES:
-            if city in loc_lower:
-                return True
-
-        # Check state/province abbreviations
-        tokens = re.findall(r'\b([A-Z]{2})\b', location)
-        for token in tokens:
-            if token in US_STATES or token in CA_PROVINCES:
-                return True
-
-        # "Remote" without specific non-NA country = include
-        if "remote" in loc_lower:
-            # Exclude if explicitly another country
-            non_na = ["uk", "united kingdom", "germany", "india", "japan",
-                      "australia", "france", "brazil", "singapore", "ireland",
-                      "netherlands", "spain", "italy", "korea", "china"]
-            if not any(c in loc_lower for c in non_na):
-                return True
-
-        return False
+        """Check if location is in US or Canada (na_location decides)."""
+        return is_north_america(location)
 
     def _detect_work_type(self, location: str, title: str) -> str:
         """Detect Remote/Hybrid/On Site from location and title text."""

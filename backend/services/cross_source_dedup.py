@@ -29,6 +29,7 @@ from backend.db.models import ScrapedJob
 from backend.services.listing_freshness import (
     HIDDEN_LISTING_STATUSES,
     LISTING_ACTIVE,
+    LISTING_OFF_TARGET,
     LISTING_REMOVED,
     LISTING_STALE,
 )
@@ -268,13 +269,18 @@ def _employer_filter(company: str, company_domain: str):
 # one.
 
 _VISIBLE_LISTING_STATUSES = (LISTING_ACTIVE, LISTING_STALE)
+# An ``off_target`` direct row speaks for its mirrors too: the employer's own
+# listing says the posting is not entry level or not in North America, and a
+# LinkedIn copy of the same posting is no more on target than the original,
+# so its twins stay hidden rather than coming back in its place.
+_SPEAKS_WHEN_HIDDEN = (LISTING_REMOVED, LISTING_OFF_TARGET)
 
 
 def stands_in_for_twins(listing_status: str | None, source_platform: str, url: str) -> bool:
     """True when a row may hide its twins or answer for them (see above)."""
     if listing_status not in HIDDEN_LISTING_STATUSES:
         return True
-    return (listing_status == LISTING_REMOVED
+    return (listing_status in _SPEAKS_WHEN_HIDDEN
             and effective_source(source_platform or "", url or "") in DIRECT_SOURCES)
 
 
@@ -284,7 +290,7 @@ def _stands_in_filter():
     return or_(
         ScrapedJob.listing_status.is_(None),
         ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES),
-        and_(ScrapedJob.listing_status == LISTING_REMOVED,
+        and_(ScrapedJob.listing_status.in_(_SPEAKS_WHEN_HIDDEN),
              ScrapedJob.source_platform.in_(DIRECT_SOURCES)),
     )
 

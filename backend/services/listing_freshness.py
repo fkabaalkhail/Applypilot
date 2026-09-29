@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 import re
 import time
 from collections import Counter
@@ -67,10 +68,32 @@ LISTING_ACTIVE = "active"
 LISTING_STALE = "stale"
 LISTING_REMOVED = "removed"
 LISTING_EXPIRED = "expired"
+# Open on its board, but the board's own listing fails the crawler's filters
+# (not entry level, or outside the US and Canada): a London, UK posting stored
+# before the NA filter knew better, a "Vice President" row from before the
+# entry-level filter. Set only from a listing's verdict (a board crawl, or the
+# orphan sweep for rows no crawl reaches), and a crawl brings it back to
+# active the moment the listing passes again. Never a death verdict.
+LISTING_OFF_TARGET = "off_target"
 
+# Closed: the posting no longer takes applications (or nothing vouches for it).
+CLOSED_LISTING_STATUSES = (LISTING_REMOVED, LISTING_EXPIRED)
 # Listing statuses hidden from the default catalogue view. ``stale`` stays
 # visible: it usually means the board crawl is behind, not that the job died.
-HIDDEN_LISTING_STATUSES = (LISTING_REMOVED, LISTING_EXPIRED)
+HIDDEN_LISTING_STATUSES = CLOSED_LISTING_STATUSES + (LISTING_OFF_TARGET,)
+# ats_scraper.RETIRABLE_REJECTIONS: the listing verdicts that retire a row.
+_RETIRABLE = frozenset({"level", "location"})
+
+
+def retire_off_target_enabled() -> bool:
+    """CRON_ATS_RETIRE_OFF_TARGET kill switch, read per run (default on).
+
+    "0"/"false"/"no"/"off" turns the retire off entirely: crawls go back to
+    the old rule (a listed row is active), so each board's next crawl brings
+    its off_target rows back, and the orphan sweep retires nothing. For an
+    emergency such as a classifier regression hiding real rows."""
+    value = os.getenv("CRON_ATS_RETIRE_OFF_TARGET", "1").strip().lower()
+    return value not in ("0", "false", "no", "off")
 
 # A direct-board row not re-confirmed for this long means its board stopped
 # vouching for it (partial Workday crawls, a board that 500s). The full
@@ -170,22 +193,53 @@ def build_new_row_fields(job, board_key: str, source_trust: str = "high") -> dic
 
 # ─── Board reconciliation ────────────────────────────────────────────────────
 
+def listed_status_change(listing_status: str | None, source_platform: str,
+                         rejection: str | None) -> str | None:
+    """The listing_status a row its board LISTS moves to, or None to keep it.
+
+    ``rejection`` is the crawler's verdict on the listing (ats_scraper.
+    ATSScraper.rejection, None when it passes). A crawler row ('ats') whose
+    listing is off target ("level", "location") goes off_target, whatever it
+    was; one that passes comes back to active from any hidden or stale
+    state. An "unplaced" listing (no location either way) proves only that
+    the posting is open: it revives a closed row as before, never an
+    off_target one. Other sources' rows (a GitHub-list row adopted into the
+    board, LinkedIn/Indeed copies) keep the old rule, listed means active:
+    they passed their own source's filters, which are not the crawler's."""
+    status = listing_status or LISTING_ACTIVE
+    if source_platform == "ats" and rejection in _RETIRABLE:
+        return None if status == LISTING_OFF_TARGET else LISTING_OFF_TARGET
+    if status == LISTING_OFF_TARGET and rejection is not None:
+        return None
+    return LISTING_ACTIVE if status != LISTING_ACTIVE else None
+
+
 def reconcile_board(db: Session, board_key: str, live_urls: set[str],
-                    now: datetime.datetime | None = None) -> dict:
+                    now: datetime.datetime | None = None, *,
+                    rejected: dict[str, str] | None = None) -> dict:
     """Sync this board's rows against the URLs the board just listed.
 
-    - rows whose URL is still listed: ``last_seen_at`` = now, and removed/stale
-      rows come back to ``active`` (reposted or crawl recovered)
+    - rows whose URL is still listed: ``last_seen_at`` = now, and the status
+      follows listed_status_change(): removed/stale/expired rows come back
+      to ``active`` (reposted or crawl recovered), unless ``rejected`` (url
+      -> ATSScraper.rejection reason) says the listing is off target, which
+      sends a crawler row ``off_target`` instead. Before, every listed row
+      was confirmed whatever its listing said, so a row stored under older
+      filters (London, UK; a "Vice President" title) stayed visible for as
+      long as its board listed it.
     - rows whose URL vanished: ``removed``, effective immediately
+      (``off_target`` rows stay as they are, hidden either way)
 
     Only call with a COMPLETE snapshot, a partial crawl's absence is not
     evidence of removal. Commits. Returns counts.
     """
     now = now or _utcnow()
-    stats = {"confirmed": 0, "revived": 0, "removed": 0}
+    rejected = rejected or {}
+    stats = {"confirmed": 0, "revived": 0, "removed": 0, "off_target": 0}
 
     rows = (
-        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
+        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status,
+                 ScrapedJob.source_platform)
         .filter(ScrapedJob.board_key == board_key)
         .all()
     )
@@ -194,13 +248,19 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
 
     live_ids: list[int] = []
     revive_ids: list[int] = []
+    off_target_ids: list[int] = []
     gone_ids: list[int] = []
-    for row_id, url, listing_status in rows:
+    for row_id, url, listing_status, source_platform in rows:
         # A stored Workday '/job/<slug>/apply' link is the listed posting.
-        if url in live_urls or strip_workday_apply(url or "") in live_urls:
+        listed = url if url in live_urls else strip_workday_apply(url or "")
+        if listed in live_urls:
             live_ids.append(row_id)
-            if listing_status in (LISTING_REMOVED, LISTING_STALE, LISTING_EXPIRED):
+            change = listed_status_change(listing_status, source_platform or "",
+                                          rejected.get(listed))
+            if change == LISTING_ACTIVE:
                 revive_ids.append(row_id)
+            elif change == LISTING_OFF_TARGET:
+                off_target_ids.append(row_id)
         elif listing_status in (LISTING_ACTIVE, LISTING_STALE):
             gone_ids.append(row_id)
 
@@ -226,14 +286,74 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
             {"listing_status": LISTING_REMOVED, "listing_status_changed_at": now},
             synchronize_session=False,
         )
+    for chunk in _chunks(off_target_ids):
+        db.query(ScrapedJob).filter(ScrapedJob.id.in_(chunk)).update(
+            {"listing_status": LISTING_OFF_TARGET, "listing_status_changed_at": now},
+            synchronize_session=False,
+        )
 
     db.commit()
-    stats.update(confirmed=len(live_ids), revived=len(revive_ids), removed=len(gone_ids))
+    stats.update(confirmed=len(live_ids), revived=len(revive_ids), removed=len(gone_ids),
+                 off_target=len(off_target_ids))
+    if off_target_ids:
+        logger.info("reconcile %s: %d listed rows retired off_target", board_key,
+                    len(off_target_ids))
     return stats
 
 
+# ─── Fields derived from a row's title and location ──────────────────────────
+# Inserts (cron-ats) and the crawl's refresh of known rows compute these with
+# the same helpers, so an edited row can never end up filed differently from
+# a new one with the same title and location.
+
+def experience_level_for(title: str) -> str:
+    """The intern/new-grad split every crawled row gets: "internship" when
+    the title says intern/co-op, else "new_grad" (the crawl only keeps entry
+    level)."""
+    title_lower = (title or "").lower()
+    if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
+        return "internship"
+    return "new_grad"
+
+
+def title_fields(title: str, department: str = "") -> dict:
+    """Columns derived from a crawled row's title: the cross-source dedup key,
+    the role category and the experience level."""
+    from backend.services.cross_source_dedup import normalize_title
+    from backend.services.role_classifier import classify as classify_role
+
+    return {
+        "title_norm": normalize_title(title or ""),
+        "role_category": classify_role(title or "", department or ""),
+        "experience_level": experience_level_for(title),
+    }
+
+
+def location_derived_fields(location: str, board_country: str = "", *, hint: str = "",
+                            current_country: str = "", fallback: str = "US") -> dict:
+    """Columns derived from a crawled row's location: the parsed city/region/
+    locations_json/location_search (location_parser) and the ``country``
+    (na_location.job_country: the board's registry country, else what the
+    location says, else ``fallback``)."""
+    from backend.services.location_parser import location_fields
+    from backend.services.na_location import job_country
+
+    fields = location_fields(location or "")
+    fields["country"] = job_country(location or "", board_country, hint=hint,
+                                    current=current_country, fallback=fallback)
+    return fields
+
+
+def _title_edited_before(change_log) -> bool:
+    for entry in change_log or []:
+        if isinstance(entry, dict) and "title" in (entry.get("changed") or []):
+            return True
+    return False
+
+
 def refresh_known_listings(db: Session, board_key: str, jobs: list,
-                           now: datetime.datetime | None = None) -> tuple[list, dict]:
+                           now: datetime.datetime | None = None,
+                           board_country: str = "") -> tuple[list, dict]:
     """Split a board's filtered jobs into (new, stats) and refresh the ones
     already stored: detect edits (title/location/salary/description) into
     ``change_log``, update the structured fields, adopt legacy rows into
@@ -242,9 +362,21 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     Change detection is explicit column compares plus a description hash,
     a re-crawl that didn't carry the description (SmartRecruiters/Workday
     list payloads) must not read "description became empty" as an edit.
+
+    The fields derived from the title and location are kept in step, the way
+    cron-ats derives them for a new row (location_derived_fields,
+    title_fields): an edit used to rewrite only ``location``/``title``, so a
+    Toronto job stayed filed under Austin and a retitled one kept its old
+    dedup key. Each crawl also heals what earlier code left behind: parsed
+    fields that disagree with the stored location ("reparsed"), a country
+    that disagrees with what the location or ``board_country`` (the
+    registry's country for a one-country board) says ("recountried": a bare
+    "Toronto" once defaulted to "US"), and a title_norm left stale by an
+    earlier title edit ("retitled"). Only rows that differ are rewritten.
     """
     now = now or _utcnow()
-    stats = {"refreshed": 0, "edited": 0, "salary_removed": 0}
+    stats = {"refreshed": 0, "edited": 0, "salary_removed": 0,
+             "reparsed": 0, "recountried": 0, "retitled": 0}
     if not jobs:
         return [], stats
 
@@ -258,6 +390,8 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
                 ScrapedJob.location, ScrapedJob.salary_min, ScrapedJob.raw_hash,
                 ScrapedJob.edit_count, ScrapedJob.change_log,
                 ScrapedJob.board_key, ScrapedJob.external_id,
+                ScrapedJob.country, ScrapedJob.city, ScrapedJob.region,
+                ScrapedJob.location_search, ScrapedJob.title_norm,
             )
             .filter(ScrapedJob.url.in_(chunk))
             .all()
@@ -267,9 +401,12 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
 
     new_jobs = [job for url, job in by_url.items() if url not in existing]
 
+    from backend.services.cross_source_dedup import normalize_title
+
     for url, row in existing.items():
         (row_id, _url, old_title, old_location, old_salary_min, old_hash,
-         edit_count, change_log, old_board_key, old_external_id) = row
+         edit_count, change_log, old_board_key, old_external_id, old_country,
+         old_city, old_region, old_search, old_title_norm) = row
         job = by_url[url]
 
         updates: dict = {"last_seen_at": now}
@@ -279,12 +416,40 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
             updates["external_id"] = f"{board_key}:{job.external_id}"
 
         changes: list[str] = []
-        if job.title and job.title != old_title:
+        title = job.title or old_title or ""
+        title_changed = bool(job.title) and job.title != old_title
+        if title_changed:
             changes.append("title")
             updates["title"] = job.title
-        if job.location and job.location != old_location:
-            changes.append("location")
+        # Re-derive on an edit, and heal a row an earlier edit left with the
+        # old title's dedup key. Only rows with a logged title edit: an
+        # unedited row's title_norm is the insert's own, whatever version of
+        # normalize_title wrote it.
+        if title and (title_changed or (
+                _title_edited_before(change_log)
+                and (old_title_norm or "") != normalize_title(title))):
+            updates.update(title_fields(title, job.department or ""))
+            stats["retitled"] += 1
+
+        location = job.location or old_location or ""
+        location_changed = bool(job.location) and job.location != old_location
+        if location_changed:
+            # Filling in a location the row never had (Parsons' list rows
+            # carried none until the bullet fallback) is not an edit.
+            if (old_location or "").strip():
+                changes.append("location")
             updates["location"] = job.location
+        derived = location_derived_fields(
+            location, board_country, hint=job.location_hint or "",
+            current_country=old_country or "", fallback=old_country or "US",
+        )
+        parsed_place = (derived["city"], derived["region"], derived["location_search"])
+        if location_changed or parsed_place != (old_city or "", old_region or "", old_search or ""):
+            updates.update({key: value for key, value in derived.items() if key != "country"})
+            stats["reparsed"] += 1
+        if derived["country"] != (old_country or ""):
+            updates["country"] = derived["country"]
+            stats["recountried"] += 1
 
         salary_source = job.salary_text or job.description or ""
         if salary_source:
@@ -327,6 +492,84 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
 
     db.commit()
     return new_jobs, stats
+
+
+# ─── Country repair ──────────────────────────────────────────────────────────
+
+REPAIR_COUNTRY_LIMIT = 1000
+
+
+def repair_country(db: Session, *, limit: int = REPAIR_COUNTRY_LIMIT,
+                   board_countries: dict[str, str] | None = None,
+                   now: datetime.datetime | None = None) -> dict:
+    """Heal visible rows whose ``country`` contradicts their own location.
+
+    The LinkedIn script stored "US" on every Canadian row (", ca" matched
+    ", canada": 653 visible rows, 2026-09), cron-ats defaulted a bare
+    "Toronto" to "US", and BDO's rows predate its registry country. Ingest now
+    derives the country server-side (na_location.job_country) and the crawl
+    heals the rows it re-lists, but LinkedIn/Indeed/GitHub rows are never
+    re-crawled, so this pass fixes them in place.
+
+    DB-only and bounded: a column-only SELECT of at most ``limit`` candidate
+    rows (a cheap SQL prefilter: a US row whose parsed location says Canada
+    or whose city is a Canadian one, the reverse, or a one-country board's row
+    stored under the other country), the verdict in Python, then one UPDATE
+    per chunk per target country. Only positive evidence moves a row: the
+    registry's country for the board, or a US/CA verdict on the location; a
+    location naming both countries keeps its value. Commits. Returns counts.
+    """
+    from backend.data import company_registry
+    from backend.services.na_location import CA, CA_CITIES, US, US_CITIES, job_country
+
+    stats = {"checked": 0, "repaired": 0, "to_ca": 0, "to_us": 0}
+    if board_countries is None:
+        board_countries = company_registry.load_board_countries()
+    ca_boards = sorted(key for key, country in board_countries.items() if country == CA)
+    us_boards = sorted(key for key, country in board_countries.items() if country == US)
+
+    suspect = [
+        (ScrapedJob.country == US) & or_(
+            ScrapedJob.location_search.like("%|canada|%"),
+            ScrapedJob.city.in_(CA_CITIES),
+        ),
+        (ScrapedJob.country == CA) & or_(
+            ScrapedJob.location_search.like("%|united states|%"),
+            ScrapedJob.city.in_(US_CITIES),
+        ),
+    ]
+    if ca_boards:
+        suspect.append(ScrapedJob.board_key.in_(ca_boards) & (ScrapedJob.country != CA))
+    if us_boards:
+        suspect.append(ScrapedJob.board_key.in_(us_boards) & (ScrapedJob.country != US))
+    rows = (
+        db.query(ScrapedJob.id, ScrapedJob.location, ScrapedJob.country, ScrapedJob.board_key)
+        .filter(
+            ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
+            ScrapedJob.duplicate_of.is_(None),
+            or_(*suspect),
+        )
+        .order_by(ScrapedJob.id.asc())
+        .limit(limit)
+        .all()
+    )
+
+    moves: dict[str, list[int]] = {CA: [], US: []}
+    for row_id, location, country, board_key in rows:
+        stats["checked"] += 1
+        current = country or ""
+        wanted = job_country(location or "", board_countries.get(board_key or "", ""),
+                             current=current, fallback=current)
+        if wanted != current and wanted in moves:
+            moves[wanted].append(row_id)
+    for country, ids in moves.items():
+        _update_ids(db, ids, {"country": country})
+    stats.update(to_ca=len(moves[CA]), to_us=len(moves[US]),
+                 repaired=len(moves[CA]) + len(moves[US]))
+    if stats["repaired"]:
+        db.commit()
+        logger.info("repair_country: %s", stats)
+    return stats
 
 
 # ─── Scheduled sweeps ────────────────────────────────────────────────────────
@@ -468,6 +711,66 @@ def sweep_terminal_expiry(db: Session, now: datetime.datetime | None = None,
     )
     db.commit()
     return {"stale_expired": stale, "unreconcilable_expired": unreconcilable}
+
+
+ORPHAN_RETIRE_LIMIT = 2000
+
+
+def retire_unreconcilable_off_target(db: Session, now: datetime.datetime | None = None,
+                                     limit: int = ORPHAN_RETIRE_LIMIT) -> dict:
+    """Retire visible crawler rows no board crawl will ever judge, when their
+    own stored title or location fails the crawler's filters.
+
+    Rows on board_key '' / 'unknown' (BGIS on Oracle, Nokia, Huawei's
+    Recruitee: 144 visible, 2026-09, all rogue-era inserts) are never
+    reconciled, and every authoritative "alive" from the verify sweeps bumps
+    their last_seen_at, so the terminal expiry never ends them either: a
+    "Cleaner" posting stayed in a student feed as long as it stayed open.
+    The verdict is ATSScraper.rejection on the stored title and location,
+    the same one a board crawl acts on; there is no department to rescue a
+    title, and "location" only on positive foreign evidence. Only "ats"
+    rows, never a LinkedIn/Indeed page stored as one. Nothing revives them
+    but a board crawl whose listing passes, if the employer is ever added to
+    the registry. Honours the CRON_ATS_RETIRE_OFF_TARGET kill switch.
+    Column-only SELECT (at most ``limit`` rows), chunked UPDATEs. Commits.
+    """
+    from backend.services.ats_scraper import ATSJob, ATSScraper
+
+    now = now or _utcnow()
+    stats = {"checked": 0, "off_target": 0, "level": 0, "location": 0}
+    if not retire_off_target_enabled():
+        stats["disabled"] = True
+        return stats
+
+    rows = (
+        db.query(ScrapedJob.id, ScrapedJob.title, ScrapedJob.company, ScrapedJob.location)
+        .filter(
+            ScrapedJob.source_platform == "ats",
+            _unreconcilable_board(),
+            ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
+            ScrapedJob.duplicate_of.is_(None),
+            not_(_fast_aggregator_row()),
+        )
+        .order_by(ScrapedJob.id.asc())
+        .limit(limit)
+        .all()
+    )
+    scraper = ATSScraper(filter_entry_level=True, filter_north_america=True)
+    retire: list[int] = []
+    for row_id, title, company, location in rows:
+        stats["checked"] += 1
+        reason = scraper.rejection(ATSJob(title=title or "", company=company or "",
+                                          location=location or "", url="", department=""))
+        if reason in _RETIRABLE:
+            retire.append(row_id)
+            stats[reason] += 1
+    _update_ids(db, retire, {"listing_status": LISTING_OFF_TARGET,
+                             "listing_status_changed_at": now})
+    stats["off_target"] = len(retire)
+    if retire:
+        db.commit()
+        logger.info("retire_unreconcilable_off_target: %s", stats)
+    return stats
 
 
 # ─── Ghost-risk scoring ──────────────────────────────────────────────────────
@@ -707,7 +1010,11 @@ def _liveness_outcome(listing_status: str, result) -> str:
     if result.verdict == DEAD:
         return "removed"
     if result.verdict == ALIVE and result.authoritative:
-        return "confirmed" if listing_status == LISTING_ACTIVE else "revived"
+        # Open is not on target: only a listing that passes the crawler's
+        # filters brings an off_target row back (reconcile_board).
+        if listing_status in (LISTING_ACTIVE, LISTING_OFF_TARGET):
+            return "confirmed"
+        return "revived"
     return "unverified"
 
 

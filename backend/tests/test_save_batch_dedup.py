@@ -145,6 +145,10 @@ def test_row_fields_and_defaults(client, cron_headers, db_session):
             source_platform="indeed",
             experience_level="internship",
             work_type="remote",
+            # The server derives the country from the location (the
+            # client's value only stands when the location is silent), so a
+            # US row needs a US location, not the helper's "Ottawa, ON".
+            location="Austin, TX",
             country="US",
             posted_date="2026-07-10",
         ),

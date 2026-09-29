@@ -168,6 +168,35 @@ async def search_linkedin(client: httpx.AsyncClient, query: str, city: str, prov
     return []
 
 
+_US_STATE_CODES = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+    "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+    "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+    "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+    "WI", "WY", "DC",
+}
+
+
+def guess_country(location: str) -> str:
+    """"US" or "CA" for a LinkedIn card's location. Whole words and a closing
+    uppercase state code only: the old substring test (", ca" in the
+    lowercased text) matched ", canada" and sent "US" for every
+    "Calgary, Alberta, Canada" card. The API re-derives the country from the
+    location anyway (na_location.job_country); this is the fallback it keeps
+    when the location says nothing. Every search is a Canadian city, so an
+    unplaced location stays "CA"."""
+    text = (location or "").strip()
+    lower = text.lower()
+    if re.search(r"\bcanada\b", lower):
+        return "CA"
+    if re.search(r"\b(?:united states|usa)\b", lower):
+        return "US"
+    state = re.search(r",\s*([A-Z]{2})$", text)  # "Seattle, WA"; "San Francisco, CA" is California
+    if state and state.group(1) in _US_STATE_CODES:
+        return "US"
+    return "CA"
+
+
 def to_payload(job: Job) -> dict:
     """Map a parsed LinkedIn card to an ingest-batch job payload."""
     # Determine experience level
@@ -186,11 +215,6 @@ def to_payload(job: Job) -> dict:
     else:
         work_type = "onsite"
 
-    # Determine country
-    country = "CA"  # Default for Canadian cities
-    if any(x in loc_lower for x in ["united states", "usa", ", ca", ", ny", ", tx"]):
-        country = "US"
-
     payload = {
         "title": job.title,
         "company": job.company,
@@ -199,7 +223,7 @@ def to_payload(job: Job) -> dict:
         "source_platform": "linkedin",
         "experience_level": exp_level,
         "work_type": work_type,
-        "country": country,
+        "country": guess_country(job.location),
     }
     if job.logo:
         payload["company_logo"] = job.logo

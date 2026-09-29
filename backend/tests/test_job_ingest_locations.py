@@ -1,6 +1,8 @@
 """Ingest paths must populate structured location fields and never guess
 icon.horse domains."""
 
+import pytest
+
 import backend.auth.dependencies as auth_deps
 from backend.db.models import ScrapedJob
 
@@ -107,3 +109,71 @@ def test_ingest_batch_multi_location_blob(client, db_session, monkeypatch):
     assert "|ottawa|" in row.location_search
     assert "|krakow|" in row.location_search
     assert len(row.locations_json) == 2
+
+
+# ─── Country: derived server-side, not trusted from the client ──────────────
+
+@pytest.mark.parametrize("location, sent, stored", [
+    # The LinkedIn script's ", ca" test matched ", canada": 653 visible rows.
+    ("Toronto, Ontario, Canada", "US", "CA"),
+    ("Calgary, Alberta, Canada", "US", "CA"),
+    ("Seattle, WA, United States", "CA", "US"),
+    ("Austin, TX, US", "CA", "US"),           # JobSpy: the tail is the ISO country
+    ("Toronto, ON, CA", "US", "CA"),
+    ("San Francisco, CA", "CA", "US"),
+    # Nothing either way, or only a bare "CA" (JobSpy's Indeed "Remote, CA"
+    # is ISO Canada): the client's value stands.
+    ("Hybrid", "CA", "CA"),
+    ("Remote, CA", "CA", "CA"),
+])
+def test_ingest_batch_derives_the_country(client, db_session, monkeypatch, location, sent, stored):
+    url = "https://www.linkedin.com/jobs/view/" + "".join(c for c in location if c.isalnum())
+    payload = {"jobs": [{
+        "title": "Software Intern", "company": "Acme", "location": location, "url": url,
+        "source_platform": "linkedin", "work_type": "onsite", "country": sent,
+        "experience_level": "internship",
+    }]}
+    res = client.post("/jobs/ingest-batch", json=payload, headers=_cron_headers(monkeypatch))
+    assert res.status_code == 200, res.text
+    assert res.json()["created"] == 1
+    assert db_session.query(ScrapedJob).filter(ScrapedJob.url == url).one().country == stored
+
+
+def _script(name):
+    import importlib.util
+    import pathlib
+
+    path = pathlib.Path(__file__).resolve().parents[2] / "scripts" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"{name}_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("location, country", [
+    ("Calgary, Alberta, Canada", "CA"),
+    ("Toronto, ON", "CA"),
+    ("Greater Toronto Area", "CA"),
+    ("Seattle, WA, United States", "US"),
+    ("San Francisco, CA", "US"),        # uppercase: California
+    ("United States", "US"),
+])
+def test_linkedin_script_country(location, country):
+    module = _script("scrape_linkedin")
+    job = module.Job(title="Software Intern", company="Acme", location=location,
+                     url="https://www.linkedin.com/jobs/view/1")
+    assert module.to_payload(job)["country"] == country
+
+
+@pytest.mark.parametrize("row, country", [
+    ({"location": "Toronto, ON, CA"}, "CA"),
+    ({"location": "Austin, TX, US"}, "US"),
+    ({"city": "San Jose", "state": "CA"}, "US"),
+    ({"city": "Ottawa", "state": "ON"}, "CA"),
+])
+def test_jobspy_script_country(row, country):
+    module = _script("scrape_jobspy")
+    payload = module.to_payload({"title": "Software Intern", "company": "Acme",
+                                 "job_url": "https://ca.indeed.com/viewjob?jk=1",
+                                 "site": "indeed", **row})
+    assert payload["country"] == country

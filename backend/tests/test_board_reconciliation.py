@@ -568,6 +568,47 @@ class TestCronReconciliation:
         row = db_session.query(ScrapedJob).filter_by(url=url).one()
         assert row.country == "CA"  # not the cron's "US" default
 
+    def test_new_row_for_a_bare_canadian_city_is_canadian(self, client, db_session, monkeypatch):
+        """CountryFilter found nothing in a bare "Toronto" and cron-ats stored
+        its "US" default (41 visible rows, 2026-09)."""
+        monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+        url = "https://boards.greenhouse.io/acme/jobs/3"
+        job = ATSJob(title="Software Intern", company="Acme", location="Toronto", url=url)
+        self._run(client, monkeypatch, [("greenhouse", "acme", "Acme")], {
+            "acme": dict(jobs=[job], all_urls={url}, complete=True, total_listed=1),
+        })
+        row = db_session.query(ScrapedJob).filter_by(url=url).one()
+        assert (row.country, row.city) == ("CA", "toronto")
+        assert (row.title_norm, row.experience_level) == ("software intern", "internship")
+
+    def test_workday_count_is_placed_by_its_path(self, client, db_session, monkeypatch):
+        monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+        url = "https://acme.wd3.myworkdayjobs.com/External/job/Toronto-ON/Dev-Intern_R1"
+        job = ATSJob(title="Developer Intern", company="Acme", location="3 Locations", url=url,
+                     description="Build things.", location_hint="Toronto-ON")
+        self._run(client, monkeypatch, [("workday", "acme", "Acme")], {
+            "acme": dict(jobs=[job], all_urls={url}, complete=True, total_listed=1),
+        })
+        row = db_session.query(ScrapedJob).filter_by(url=url).one()
+        assert (row.location, row.country) == ("3 Locations", "CA")
+
+    def test_refresh_heals_rows_through_the_crawl(self, client, db_session, monkeypatch):
+        """A known row stored "US" for a bare Canadian city, still listed: the
+        crawl's refresh fixes it and reports it."""
+        monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+        known = _row(db_session, "https://boards.greenhouse.io/acme/jobs/4", "greenhouse:acme",
+                     location="Ottawa", country="US")
+        job = ATSJob(title="Software Intern", company="Acme", location="Ottawa", url=known.url)
+
+        body = self._run(client, monkeypatch, [("greenhouse", "acme", "Acme")], {
+            "acme": dict(jobs=[job], all_urls={known.url}, complete=True, total_listed=1),
+        })
+
+        assert body["recountried"] == 1 and body["reparsed"] == 1
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert (row.country, row.city) == ("CA", "ottawa")
+
     def test_complete_snapshot_still_removes_what_vanished(self, client, db_session, monkeypatch):
         board = "workday:acme"
         live = _row(db_session, "https://acme.wd3.myworkdayjobs.com/External/job/a_R-1", board)
@@ -652,8 +693,69 @@ def test_confirm_listed_touches_only_its_board(db_session):
 
     stats = _confirm_listed(db_session, "lever:acme", {removed.url, other.url}, now=NOW)
 
-    assert stats == {"confirmed": 1, "revived": 1}
+    assert stats == {"confirmed": 1, "revived": 1, "off_target": 0}
     db_session.expire_all()
     assert db_session.get(ScrapedJob, removed.id).listing_status == LISTING_ACTIVE
     assert db_session.get(ScrapedJob, removed.id).last_seen_at == NOW
     assert db_session.get(ScrapedJob, other.id).listing_status == LISTING_STALE
+
+
+# ─── Workday list rows without a locationsText ───────────────────────────────
+
+@pytest.mark.parametrize("posting, location", [
+    ({"locationsText": "Toronto, ON, CAN", "bulletFields": ["R-1"]}, "Toronto, ON, CAN"),
+    # Parsons' list rows carry no locationsText; the location is a bullet.
+    ({"bulletFields": ["US - CA, Pasadena", "R186419"]}, "US - CA, Pasadena"),
+    ({"bulletFields": ["R186419", "CA - ON, Oakville"]}, "CA - ON, Oakville"),
+    ({"locationsText": "  ", "bulletFields": ["R000159260"]}, ""),
+    ({"bulletFields": ["JR-12345", "Remote"]}, "Remote"),
+    ({}, ""),
+])
+def test_workday_location_falls_back_to_the_location_bullet(posting, location):
+    assert ats_scraper._workday_location(posting) == location
+
+
+@pytest.mark.parametrize("location, path, hint", [
+    ("3 Locations", "/job/Toronto-ON/Dev-Intern_R1", "Toronto-ON"),
+    ("2 Locations", "/job/IL-Rosemont/Transfer-Pricing-Intern_R2", "IL-Rosemont"),
+    ("1 Location", "/job/San-Jose/Graduate_R3", "San-Jose"),
+    ("Toronto, ON, CAN", "/job/Toronto-ON/Dev-Intern_R1", ""),   # a real location: no hint
+    ("PRAGUE DC (2 Locations)", "/job/PRAGUE-DC/x_R4", ""),
+    ("3 Locations", "", ""),
+])
+def test_workday_location_hint_only_for_a_count(location, path, hint):
+    assert ats_scraper._workday_location_hint(location, path) == hint
+
+
+class _ParsonsBoard(httpx.AsyncBaseTransport):
+    """A CxS list whose rows carry no locationsText (Parsons, 2026-09)."""
+
+    postings = [
+        {"title": "Engineer I, Civil - Roadway", "externalPath": "/job/US---CA-Pasadena/Eng-I_R186419",
+         "bulletFields": ["US - CA, Pasadena", "R186419"], "postedOn": "Posted Today"},
+        {"title": "Engineering Co-op", "externalPath": "/job/CA-ON-Oakville/Coop_R186420",
+         "bulletFields": ["CA - ON, Oakville", "R186420"], "postedOn": "Posted Today"},
+        {"title": "Engineer I", "externalPath": "/job/Doha/Eng-I_R186421",
+         "bulletFields": ["QA - Doha, Qatar", "R186421"], "postedOn": "Posted Today"},
+        {"title": "Developer Intern", "externalPath": "/job/Toronto-ON/Dev-Intern_R186422",
+         "locationsText": "3 Locations", "bulletFields": ["R186422"], "postedOn": "Posted Today"},
+    ]
+
+    async def handle_async_request(self, request):
+        body = json.loads(request.content or b"{}")
+        offset = body.get("offset", 0)
+        page = self.postings[offset:offset + body.get("limit", 20)]
+        return httpx.Response(200, json={"total": len(self.postings), "jobPostings": page})
+
+
+@pytest.mark.asyncio
+async def test_workday_board_without_locations_text_is_ingested(acme_workday, monkeypatch):
+    monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+    async with httpx.AsyncClient(transport=_ParsonsBoard()) as client:
+        snap = await ATSScraper().scrape_board(client, "workday", "acme", "Acme")
+
+    kept = {job.title: job for job in snap.jobs}
+    assert set(kept) == {"Engineer I, Civil - Roadway", "Engineering Co-op", "Developer Intern"}
+    assert kept["Engineer I, Civil - Roadway"].location == "US - CA, Pasadena"
+    assert kept["Developer Intern"].location_hint == "Toronto-ON"
+    assert list(snap.rejected.values()) == ["location"]  # Doha, Qatar

@@ -545,3 +545,44 @@ def test_backfill_without_the_harvester_contract_still_succeeds(client, db_sessi
     res = client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch))
     assert res.status_code == 200, res.text
     assert res.json()["logo_harvest"]["harvester_available"] is False
+
+
+# --- country repair (DB-only step) --------------------------------------------
+
+def _linkedin_us_row(db_session, url="https://www.linkedin.com/jobs/view/77"):
+    row = ScrapedJob(
+        title="Software Intern", company="Acme", url=url,
+        location="Calgary, Alberta, Canada", description="x" * 80, country="US",
+        work_type="onsite", source_platform="linkedin", experience_level="internship",
+        easy_apply=0, match_score=0, location_search="|calgary|ab|alberta|canada|",
+        city="calgary", company_domain="acme.com",
+    )
+    db_session.add(row)
+    db_session.commit()
+    return row
+
+
+def test_backfill_repairs_a_contradicted_country(client, db_session, monkeypatch):
+    row = _linkedin_us_row(db_session)
+    monkeypatch.setattr("backend.routers.jobs.extract_description_from_url", _no_description)
+
+    body = client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch)).json()
+
+    assert body["country_repair"]["repaired"] == 1
+    db_session.refresh(row)
+    assert row.country == "CA"
+
+
+def test_backfill_country_repair_never_runs_past_the_harvest_mark(client, db_session, monkeypatch):
+    """With no time left before the harvest's deadline the repair is skipped
+    (next run), so it can never push the pass past its plan."""
+    row = _linkedin_us_row(db_session)
+    monkeypatch.setattr("backend.routers.jobs.extract_description_from_url", _no_description)
+    monkeypatch.setattr("backend.routers.jobs.BACKFILL_BUDGET_S", 10.0)
+    monkeypatch.setattr("backend.routers.jobs.POST_HARVEST_RESERVE_S", 10.0)
+
+    body = client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch)).json()
+
+    assert body["country_repair"] == {"skipped": True}
+    db_session.refresh(row)
+    assert row.country == "US"

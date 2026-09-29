@@ -72,17 +72,24 @@ def to_payload(job_data: dict) -> dict | None:
         else:
             work_type = "onsite"
 
-    # Determine country
-    country = "CA"
-    state = job_data.get("state") or ""
-    if state and len(state) == 2 and state.upper() not in (
-        "ON", "QC", "BC", "AB", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "YT", "NU"
-    ):
-        country = "US"
-
     # Build location string
     city = job_data.get("city") or ""
+    state = job_data.get("state") or ""
     location = f"{city}, {state}" if city and state else city or state or job_data.get("location") or ""
+
+    # Determine country. JobSpy's frame carries no city/state columns, only
+    # "location" ("Toronto, ON, CA", "Austin, TX, US": the last part is the
+    # ISO country), so the state test alone left every row "CA". The API
+    # re-derives the country from the location (na_location.job_country);
+    # this is only the fallback it keeps when the location says nothing.
+    country = "CA"
+    if state:
+        if len(state) == 2 and state.upper() not in (
+            "ON", "QC", "BC", "AB", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "YT", "NU"
+        ):
+            country = "US"
+    elif location.rsplit(",", 1)[-1].strip() in ("US", "USA") or "united states" in location.lower():
+        country = "US"
 
     payload = {
         "title": job_data.get("title") or "",

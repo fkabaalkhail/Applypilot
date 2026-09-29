@@ -40,6 +40,7 @@ from backend.services.description_extractor import (
     extract_description_from_url,
 )
 from backend.services.location_parser import location_fields
+from backend.services.na_location import job_country
 from backend.services.logo_cache import (
     brand,
     company_key,
@@ -56,6 +57,7 @@ from backend.services.cross_source_dedup import (
 )
 from backend.services import platform_liveness
 from backend.services.listing_freshness import (
+    CLOSED_LISTING_STATUSES,
     HIDDEN_LISTING_STATUSES,
     LISTING_ACTIVE,
     _UNRECONCILABLE_BOARD_KEYS,
@@ -398,6 +400,13 @@ def ingest_batch(
         company_domain = (job.company_domain or "").strip().lower() or resolved_domain
         company_logo, company_domain = brand(branding, job.company, company_logo, company_domain)
         fields = location_fields(job.location)
+        # The country is derived here, not trusted from the client: the
+        # LinkedIn script's ", ca" test matched ", canada" and sent "US" for
+        # 653 visible Canadian rows. The client's value only stands when the
+        # location says nothing either way, or names both countries, or
+        # rests on a bare "CA" (JobSpy's "Remote, CA" is ISO Canada).
+        sent = (job.country or "").strip().upper()
+        country = job_country(job.location or "", current=sent, fallback=sent)
 
         # A direct (ats/github) row for this employer+title+city already in
         # the catalogue makes this aggregator copy redundant, skip it.
@@ -407,7 +416,7 @@ def ingest_batch(
             company_domain=company_domain,
             title=job.title,
             city=fields["city"],
-            country=job.country or "",
+            country=country,
         ):
             twins_skipped += 1
             duplicates += 1
@@ -426,7 +435,7 @@ def ingest_batch(
                 easy_apply=0,
                 work_type=job.work_type,
                 role_category=classify_role(job.title),
-                country=job.country,
+                country=country,
                 experience_level=job.experience_level,
                 company_logo=company_logo,
                 company_domain=company_domain,
@@ -499,9 +508,11 @@ async def cron_backfill(
     direct-URL rows before login-walled LinkedIn/Indeed ones), fill structured
     location + company_domain, and harvest self-hosted logos for employers
     that have none yet (services/logo_cache.py). The network phases are
-    bounded, and the pass is planned to finish inside BACKFILL_BUDGET_S."""
+    bounded, and the pass is planned to finish inside BACKFILL_BUDGET_S. A
+    DB-only step also heals visible rows whose country contradicts their
+    location (listing_freshness.repair_country)."""
     import httpx
-    from backend.services import logo_cache
+    from backend.services import listing_freshness, logo_cache
 
     loop = asyncio.get_running_loop()
     started = loop.time()
@@ -613,6 +624,25 @@ async def cron_backfill(
                     domains_fixed += 1
         db.commit()
 
+        # Country repair: visible rows whose stored country contradicts their
+        # own location (653 Canadian LinkedIn rows stored "US", bare
+        # Canadian cities cron-ats defaulted to "US"). DB-only, one bounded
+        # column-only SELECT, so it takes well under a second; skipped when
+        # the pass is already past its harvest mark, and it can only shorten
+        # the harvest below (whose deadline is fixed from ``started``), never
+        # push the pass past BACKFILL_BUDGET_S.
+        harvest_deadline = started + BACKFILL_BUDGET_S - POST_HARVEST_RESERVE_S
+        country_stats: dict = {"skipped": True}
+        if loop.time() < harvest_deadline:
+            try:
+                country_stats = listing_freshness.repair_country(
+                    db, limit=listing_freshness.REPAIR_COUNTRY_LIMIT,
+                )
+            except Exception:
+                db.rollback()
+                logger.exception("cron-backfill country repair failed")
+                country_stats = {"error": True}
+
         # Phase 3: self-hosted logos. Rows of employers whose logo is already
         # stored get re-pointed at it; employers with none are harvested
         # (busiest first, misses on a 14d-per-attempt backoff) inside a
@@ -621,8 +651,7 @@ async def cron_backfill(
         # shortens the harvest instead of pushing the pass past Vercel's cap.
         try:
             logo_stats = await logo_cache.harvest_missing_logos(
-                db, client,
-                deadline=started + BACKFILL_BUDGET_S - POST_HARVEST_RESERVE_S,
+                db, client, deadline=harvest_deadline,
             )
         except Exception:
             db.rollback()
@@ -653,6 +682,7 @@ async def cron_backfill(
         "descriptions_deferred": descriptions_deferred,
         "locations_fixed": locations_fixed,
         "domains_fixed": domains_fixed,
+        "country_repair": country_stats,
         # Back-compat names: companies harvested, logos stored.
         "logo_domains_probed": logo_stats.get("companies_attempted", 0),
         "logos_harvested": logo_stats.get("stored", 0),
@@ -680,6 +710,15 @@ async def cron_freshness(
     adopted = listing_freshness.backfill_board_keys(db)
     stale = listing_freshness.sweep_stale(db)
     expired = listing_freshness.sweep_aggregator_expiry(db)
+    # Before the checks: crawler rows no board reconciles ('' / 'unknown')
+    # whose own title or location fails the filters leave the feed here,
+    # and spend no probe. Bounded, column-only, no network.
+    try:
+        orphans_retired = listing_freshness.retire_unreconcilable_off_target(db)
+    except Exception:
+        db.rollback()
+        logger.exception("cron-freshness orphan retire failed")
+        orphans_retired = {"error": True}
 
     # The probes share one wall-clock box (the "hourly" schedule really fires
     # ~6x/day, so budgets are big and hosts can hang). Each phase stops
@@ -720,6 +759,7 @@ async def cron_freshness(
         "board_keys_adopted": adopted,
         "marked_stale": stale,
         "expired": expired,
+        "orphans_off_target": orphans_retired,
         "terminal_expired": terminal,
         "stale_verified": verified,
         "unconfirmed_verified": unconfirmed,
@@ -738,7 +778,7 @@ def ingest_metrics(
     rate, ghost flags, and the currently-broken boards (dead-letter view).
     Cron-secret auth so the workflow can log it every run."""
     from backend.db.models import SourceHealth
-    from backend.services.listing_freshness import LISTING_ACTIVE
+    from backend.services.listing_freshness import LISTING_ACTIVE, LISTING_OFF_TARGET
     from backend.services.source_health import FAILURE_THRESHOLD
 
     now = datetime.datetime.utcnow()
@@ -765,6 +805,14 @@ def ingest_metrics(
     removed_24h = (
         db.query(ScrapedJob)
         .filter(ScrapedJob.listing_status == "removed",
+                ScrapedJob.listing_status_changed_at >= day_ago)
+        .count()
+    )
+    # Rows the crawl (or the orphan sweep) retired because their own listing
+    # fails the filters; by_listing_status carries the running total.
+    off_target_24h = (
+        db.query(ScrapedJob)
+        .filter(ScrapedJob.listing_status == LISTING_OFF_TARGET,
                 ScrapedJob.listing_status_changed_at >= day_ago)
         .count()
     )
@@ -833,6 +881,7 @@ def ingest_metrics(
         "ingested_24h": ingested_24h,
         "ingested_7d": ingested_7d,
         "removed_24h": removed_24h,
+        "off_target_24h": off_target_24h,
         "hidden_duplicates": hidden_duplicates,
         "dedup_rate": round(hidden_duplicates / total_rows, 4) if total_rows else 0.0,
         "active_total": active_total,
@@ -1230,7 +1279,10 @@ async def check_job_live(
         raise HTTPException(status_code=404, detail="Job not found.")
 
     status = row.listing_status or LISTING_ACTIVE
-    if status in HIDDEN_LISTING_STATUSES:
+    # Closed only: an off_target row is hidden from the feed but still open
+    # on its board (a saved or deep-linked one), so it is probed like any row
+    # instead of being called dead, which the client shows as "removed".
+    if status in CLOSED_LISTING_STATUSES:
         return _live_answer(row.id, status, DEAD)
 
     if status == LISTING_ACTIVE and _vouched_for(row, datetime.datetime.utcnow()):
@@ -1383,7 +1435,8 @@ async def fetch_job_details(
 
     def _listing_state() -> dict:
         status = job.listing_status or LISTING_ACTIVE
-        return {"listing_status": status, "dead": status in HIDDEN_LISTING_STATUSES}
+        # off_target is hidden, not closed: its apply link still works.
+        return {"listing_status": status, "dead": status in CLOSED_LISTING_STATUSES}
 
     if not job.url or not await asyncio.to_thread(_is_url_allowed, job.url):
         return {
