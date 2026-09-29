@@ -953,6 +953,8 @@ def test_autofill_returns_primary_resume_data(
 
     # Step 1: Create UserSettings in DB (required by the profile endpoint)
     settings_obj = UserSettings(
+        # apply.py reads settings by the verified user's id (cf3c891)
+        user_id=1,
         first_name="Test",
         last_name="User",
         email="test@example.com",
@@ -999,6 +1001,9 @@ def test_autofill_returns_primary_resume_data(
     # Step 4: Patch _sessions with a test session (simpler than creating a job)
     test_session_id = "test-session-prop7"
     apply_module._sessions[test_session_id] = {
+        # Owned by the overridden verified user: apply.py 403s a session that
+        # is not the caller's (cf3c891).
+        "user_id": 1,
         "job_id": 99999,
         "resume_version": "original",
         "status": "initiated",
@@ -1198,6 +1203,8 @@ def test_skills_list_merges_all_technology_categories(
 
     # Step 1: Create UserSettings in DB (required by the profile endpoint)
     settings_obj = UserSettings(
+        # apply.py reads settings by the verified user's id (cf3c891)
+        user_id=1,
         first_name="Test",
         last_name="User",
         email="test@example.com",
@@ -1230,6 +1237,9 @@ def test_skills_list_merges_all_technology_categories(
     # Step 3: Patch _sessions with a test session
     test_session_id = "test-session-prop12"
     apply_module._sessions[test_session_id] = {
+        # Owned by the overridden verified user: apply.py 403s a session that
+        # is not the caller's (cf3c891).
+        "user_id": 1,
         "job_id": 99999,
         "resume_version": "original",
         "status": "initiated",
