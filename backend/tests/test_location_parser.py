@@ -228,3 +228,39 @@ def test_workday_location_count_is_not_a_city():
         assert location_fields(raw)["city"] == ""
     # Only a whole segment: a real place beside it still parses.
     assert first("Toronto, ON; 3 Locations").city == "Toronto"
+
+
+def _matches(tag, raw):
+    blob = location_fields(raw)["location_search"]
+    return all(f"|{token}|" in blob for token in location_tag_tokens(tag))
+
+
+def test_pipe_separates_locations_like_a_semicolon():
+    # Real prod strings (Anthropic, Greenhouse; 2026-09). Read as one
+    # comma list they became "San Francisco, DC": the New York City and
+    # Seattle postings never matched those cities' filters.
+    raw = "San Francisco, CA | New York City, NY | Seattle, WA"
+    locs = parse_locations(raw)
+    assert [(l.city, l.region) for l in locs] == [
+        ("San Francisco", "CA"), ("New York City", "NY"), ("Seattle", "WA")]
+    for tag in ("San Francisco", "New York", "Seattle"):
+        assert _matches(tag, raw), tag
+    assert _matches("New York", "San Francisco, CA | New York City, NY | Washington, DC")
+    both = "Remote-Friendly, United States; San Francisco, CA | New York City, NY"
+    assert _matches("San Francisco", both) and _matches("New York", both)
+    assert [l.city for l in parse_locations("Toronto, ON | Austin, TX")] == ["Toronto", "Austin"]
+
+
+def test_pipe_inside_parentheses_is_not_a_separator():
+    # 1Password's "Remote (United States | Canada)": the alternatives are
+    # the parenthetical, which the segment parse drops.
+    assert [(l.city, l.country) for l in parse_locations("Remote (United States | Canada)")] == [
+        ("Remote", "")]
+    assert [(l.city, l.country) for l in parse_locations(
+        "Remote-Friendly (Travel-Required) | San Francisco, CA")] == [
+        ("Remote-Friendly", ""), ("San Francisco", "United States")]
+
+
+def test_bare_multiword_country_is_a_country_not_a_city():
+    assert [(l.city, l.country) for l in parse_locations("United States | Canada")] == [
+        ("", "United States"), ("", "Canada")]

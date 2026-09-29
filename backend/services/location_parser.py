@@ -256,11 +256,13 @@ def _parse_segment(segment: str) -> list[ParsedLocation]:
     words = [w for w in segment.split(" ") if w.strip()]
 
     # Peel a trailing multi-word country name ("… United States") so the
-    # word-wise pass doesn't scatter it ("United" city, "States" dropped).
+    # word-wise pass doesn't scatter it ("United" city, "States" dropped),
+    # or file a bare "United States" (one alternative of "United States |
+    # Canada") as a city.
     tail_country = ""
     for alias_words in _ALIAS_TAILS:
         n = len(alias_words)
-        if len(words) > n and [fold(w) for w in words[-n:]] == alias_words:
+        if len(words) >= n and [fold(w) for w in words[-n:]] == alias_words:
             tail_country = _COUNTRY_ALIASES[" ".join(alias_words)]
             words = words[:-n]
             break
@@ -328,8 +330,11 @@ def parse_locations(raw: str) -> list[ParsedLocation]:
     # " / " and lowercase " or " separate alternatives ("US / Canada",
     # "Ottawa or Calgary ON"). Lowercase-only: uppercase "OR" is Oregon.
     # (Yes, this would split "Truth or Consequences, NM"; the catalogue is
-    # intern/new-grad tech jobs, the trade is worth it.)
-    segments = re.split(r"[;\n•]+|\s+/\s+|\s+or\s+", raw)
+    # intern/new-grad tech jobs, the trade is worth it.) "|" joins a board's
+    # multi-location list ("San Francisco, CA | New York City, NY") like ";"
+    # does, except inside parentheses: "Remote (United States | Canada)"
+    # keeps its pipe, and the segment parse drops the parenthetical whole.
+    segments = re.split(r"[;\n•]+|\|(?![^()]*\))|\s+/\s+|\s+or\s+", raw)
     out: list[ParsedLocation] = []
     seen: set[tuple[str, str, str]] = set()
     for segment in segments:

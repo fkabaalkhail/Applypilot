@@ -350,6 +350,23 @@ class TestRefreshKnownListings:
         )
         assert stats["reparsed"] == 0
 
+    def test_reparse_keeps_every_city_of_a_pipe_joined_location(self, db_session):
+        """An Anthropic row as prod stored it, filed under New York City. Read
+        as one comma list the heal rewrote it to "San Francisco, DC" and it
+        dropped out of the New York filter."""
+        both = "San Francisco, CA | New York City, NY | Washington, DC"
+        known = _row(db_session, location=both, city="new york city", region="NY",
+                     location_search="|new york city|ny|new york|united states|",
+                     country="US")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, location=both)], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["reparsed"] == 1
+        for token in ("|new york city|", "|new york|", "|san francisco|", "|dc|"):
+            assert token in row.location_search, token
+
     def test_filling_an_empty_location_is_not_an_edit(self, db_session):
         """Parsons' list rows carried no location until the bullet fallback."""
         known = self._consistent(db_session, location="", country="US")
