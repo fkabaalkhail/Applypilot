@@ -545,9 +545,13 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
                 if content_changed and not changes:
                     changes.append("description")
                 updates["description"] = description
-                updates["description_sections"] = None
-                updates["visa_sponsorship"] = detect_visa_sponsorship(description)
-                updates["skills"] = extract_skills(job.title, description) or None
+                # The same content healed to its sanitized form keeps what was
+                # read from it: the LLM section cache (description_sections)
+                # and the visa and skills extraction.
+                if not same_content:
+                    updates["description_sections"] = None
+                    updates["visa_sponsorship"] = detect_visa_sponsorship(description)
+                    updates["skills"] = extract_skills(job.title, description) or None
             updates["raw_hash"] = new_hash
 
         if changes:

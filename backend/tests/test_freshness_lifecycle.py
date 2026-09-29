@@ -258,6 +258,43 @@ class TestRefreshKnownListings:
         assert row.raw_hash == compute_raw_hash(
             "Software Intern", "Ottawa, ON, Canada", sanitize_description(raw))
 
+    def test_the_heal_keeps_what_was_read_from_the_same_content(self, db_session):
+        """The heal rewrites only the text and its hash: ~1,160 prod rows
+        carry an LLM section cache (description_sections) that clearing
+        would send back to gpt-4o-mini on their next open (review 5)."""
+        raw = "Build tools for R&D teams."
+        sections = {"responsibilities": ["Build tools for R&D teams."]}
+        known = _row(db_session, description=raw, description_sections=sections,
+                     visa_sponsorship="yes", skills=["python"],
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", raw))
+
+        refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, description=raw)], now=NOW,
+        )
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert row.description == sanitize_description(raw)
+        assert (row.description_sections, row.visa_sponsorship, row.skills) == (
+            sections, "yes", ["python"])
+
+    def test_a_description_edit_clears_what_was_read_from_the_old_text(self, db_session):
+        old = sanitize_description("Build tools for R&D teams.")
+        known = _row(db_session, description=old, description_sections={"about": [old]},
+                     visa_sponsorship="yes", skills=["python"],
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", old))
+
+        refresh_known_listings(
+            db_session, BOARD,
+            [_job(url=known.url, description="Build Go services for the payments team.")],
+            now=NOW,
+        )
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert row.description_sections is None
+        assert row.visa_sponsorship == "unknown" and row.skills != ["python"]
+
     def test_a_real_description_edit_is_still_logged(self, db_session):
         old = "Build tools for R&D teams."
         known = _row(db_session, description=sanitize_description(old),
