@@ -76,7 +76,8 @@ LISTING_EXPIRED = "expired"
 # active the moment the listing passes again. Never a death verdict: a
 # complete crawl that stops listing it marks it removed, like any row. A
 # LinkedIn/Indeed row with a plainly senior title goes off_target too
-# (retire_senior_aggregator_rows) and stays there: no crawl lists it.
+# (retire_senior_aggregator_rows) and stays there while the retire is on: no
+# crawl lists it.
 LISTING_OFF_TARGET = "off_target"
 
 # Closed: the posting no longer takes applications (or nothing vouches for it).
@@ -89,13 +90,16 @@ _RETIRABLE = frozenset({"level", "location"})
 
 
 def retire_off_target_enabled() -> bool:
-    """CRON_ATS_RETIRE_OFF_TARGET kill switch, read per run (default on).
+    """CRON_ATS_RETIRE_OFF_TARGET kill switch (default on), read at the start
+    of each cron run. On Vercel a changed env var reaches the functions only
+    with the next deployment: redeploy after flipping it.
 
-    "0"/"false"/"no"/"off" turns the retire off entirely: crawls go back to
-    the old rule (a listed row is active), so each board's next crawl brings
-    its off_target rows back, and neither the orphan sweep nor the senior
-    aggregator sweep retires anything (the rows those two retired stay
-    hidden). For an emergency such as a classifier regression hiding real
+    "0"/"false"/"no"/"off" turns the retire off and rolls it back: crawls go
+    back to the old rule (a listed row is active), so each board's next crawl
+    brings back the off_target rows it lists, and the orphan sweep and the
+    senior aggregator sweep, whose rows no crawl ever re-judges, move the
+    rows they retired back themselves (_restore_off_target, bounded per
+    run). For an emergency such as a classifier regression hiding real
     rows."""
     value = os.getenv("CRON_ATS_RETIRE_OFF_TARGET", "1").strip().lower()
     return value not in ("0", "false", "no", "off")
@@ -734,6 +738,52 @@ def sweep_terminal_expiry(db: Session, now: datetime.datetime | None = None,
 ORPHAN_RETIRE_LIMIT = 2000
 
 
+def _restore_off_target(db: Session, now: datetime.datetime, limit: int, owned: tuple,
+                        *, newest_first: bool = False,
+                        expire_before: datetime.datetime | None = None) -> dict:
+    """The kill switch's rollback of a sweep no crawl re-judges: the
+    off_target rows matching ``owned`` (that sweep's own criteria) go back
+    to active, at most ``limit`` a run. With ``expire_before``, a row whose
+    age (the earliest of posted/first-seen/scraped) passed it goes to
+    expired instead, as the aggregator expiry would have done had it stayed
+    visible. Column-only SELECT of ids, chunked UPDATEs. Commits."""
+    order = ScrapedJob.id.desc() if newest_first else ScrapedJob.id.asc()
+    ids = [row_id for (row_id,) in (
+        db.query(ScrapedJob.id)
+        .filter(ScrapedJob.listing_status == LISTING_OFF_TARGET, *owned)
+        .order_by(order)
+        .limit(limit)
+        .all()
+    )]
+    stats = {"restored": 0, "expired": 0}
+    for chunk in _chunks(ids):
+        if expire_before is not None:
+            stats["expired"] += (
+                db.query(ScrapedJob)
+                .filter(ScrapedJob.id.in_(chunk),
+                        _older_than(expire_before, ScrapedJob.posted_date,
+                                    ScrapedJob.first_seen_at, ScrapedJob.scraped_at))
+                .update({"listing_status": LISTING_EXPIRED, "listing_status_changed_at": now},
+                        synchronize_session=False)
+            )
+        stats["restored"] += (
+            db.query(ScrapedJob)
+            .filter(ScrapedJob.id.in_(chunk), ScrapedJob.listing_status == LISTING_OFF_TARGET)
+            .update({"listing_status": LISTING_ACTIVE, "listing_status_changed_at": now},
+                    synchronize_session=False)
+        )
+    if ids:
+        db.commit()
+    return stats
+
+
+def _orphan_row() -> tuple:
+    """Crawler rows no board crawl reaches (board_key '' / 'unknown'), never
+    a LinkedIn/Indeed page stored as one: what the orphan sweep judges."""
+    return (ScrapedJob.source_platform == "ats", _unreconcilable_board(),
+            not_(_fast_aggregator_row()))
+
+
 def retire_unreconcilable_off_target(db: Session, now: datetime.datetime | None = None,
                                      limit: int = ORPHAN_RETIRE_LIMIT) -> dict:
     """Retire visible crawler rows no board crawl will ever judge, when their
@@ -747,10 +797,14 @@ def retire_unreconcilable_off_target(db: Session, now: datetime.datetime | None 
     The verdict is ATSScraper.rejection on the stored title and location,
     the same one a board crawl acts on; there is no department to rescue a
     title, and "location" only on positive foreign evidence. Only "ats"
-    rows, never a LinkedIn/Indeed page stored as one. Nothing revives them
-    but a board crawl whose listing passes, if the employer is ever added to
-    the registry. Honours the CRON_ATS_RETIRE_OFF_TARGET kill switch.
-    Column-only SELECT (at most ``limit`` rows), chunked UPDATEs. Commits.
+    rows, never a LinkedIn/Indeed page stored as one.
+
+    No crawl ever brings these rows back (reconcile_board goes by board_key,
+    and backfill_board_keys re-derives only a '' or NULL key), so with the
+    CRON_ATS_RETIRE_OFF_TARGET kill switch off this sweep rolls itself back
+    instead: its off_target rows return to active (``restored``), at most
+    ``limit`` a run. Column-only SELECT (at most ``limit`` rows), chunked
+    UPDATEs. Commits.
     """
     from backend.services.ats_scraper import ATSJob, ATSScraper
 
@@ -758,16 +812,17 @@ def retire_unreconcilable_off_target(db: Session, now: datetime.datetime | None 
     stats = {"checked": 0, "off_target": 0, "level": 0, "location": 0}
     if not retire_off_target_enabled():
         stats["disabled"] = True
+        stats["restored"] = _restore_off_target(db, now, limit, _orphan_row())["restored"]
+        if stats["restored"]:
+            logger.info("retire_unreconcilable_off_target disabled, rolled back: %s", stats)
         return stats
 
     rows = (
         db.query(ScrapedJob.id, ScrapedJob.title, ScrapedJob.company, ScrapedJob.location)
         .filter(
-            ScrapedJob.source_platform == "ats",
-            _unreconcilable_board(),
+            *_orphan_row(),
             ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
             ScrapedJob.duplicate_of.is_(None),
-            not_(_fast_aggregator_row()),
         )
         .order_by(ScrapedJob.id.asc())
         .limit(limit)
@@ -807,8 +862,11 @@ def retire_senior_aggregator_rows(db: Session, now: datetime.datetime | None = N
     so the verdict holds (the aggregator expiry leaves off_target alone).
     Rows hidden as another row's twin are judged too: if only their winner
     were retired, release_from_closed_winners would hand them back to the
-    feed. Honours the CRON_ATS_RETIRE_OFF_TARGET kill switch. Column-only
-    SELECT of the newest ``limit`` visible rows (they age out after
+    feed. With the CRON_ATS_RETIRE_OFF_TARGET kill switch off it rolls
+    itself back instead: its off_target rows return to active
+    (``restored``), or to expired when the aggregator expiry would have
+    ended them meanwhile, the newest ``limit`` a run. Column-only SELECT of
+    the newest ``limit`` visible rows (they age out after
     AGGREGATOR_FAST_MAX_AGE_DAYS, so the window stays small), chunked
     UPDATEs. Commits.
     """
@@ -818,6 +876,13 @@ def retire_senior_aggregator_rows(db: Session, now: datetime.datetime | None = N
     stats = {"checked": 0, "off_target": 0}
     if not retire_off_target_enabled():
         stats["disabled"] = True
+        stats.update(_restore_off_target(
+            db, now, limit, (ScrapedJob.source_platform.in_(_FAST_AGGREGATOR_SOURCES),),
+            newest_first=True,
+            expire_before=now - datetime.timedelta(days=AGGREGATOR_FAST_MAX_AGE_DAYS),
+        ))
+        if stats["restored"] or stats["expired"]:
+            logger.info("retire_senior_aggregator_rows disabled, rolled back: %s", stats)
         return stats
 
     rows = (
