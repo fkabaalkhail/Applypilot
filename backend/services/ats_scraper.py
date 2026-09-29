@@ -555,8 +555,10 @@ STUDENT_ROLE_TITLE = re.compile(
 
 def entry_tier(title: str, department: str = "", employment_type: str = "") -> Optional[str]:
     """'strong' | 'weak' | None (not an entry-level listing), from the title,
-    the board's department and the source's commitment field."""
-    title = title or ""
+    the board's department and the source's commitment field. Reads the
+    first _MAX_TITLE characters: the level-role patterns go quadratic on a
+    pathological run of whitespace, and no real title is that long."""
+    title = (title or "")[:_MAX_TITLE]
     if HARD_SENIOR.search(title) or PROGRAM_STAFF.search(title):
         return None
     # A recruiting title is staff, unless it names a student track or sits in
@@ -589,6 +591,7 @@ def experience_level_for(title: str, department: str = "", employment_type: str 
     internships. ``employment_type`` is that commitment (ATSJob.
     employment_type), never the one extracted from a description: "prior
     internship experience" made SpaceX's "Financial Analyst" read as one."""
+    title = (title or "")[:_MAX_TITLE]
     if INTERNSHIP_TITLE.search(title or ""):
         return "internship"
     if _NEW_GRAD_TITLE.search(title or ""):

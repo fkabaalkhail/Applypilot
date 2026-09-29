@@ -327,6 +327,18 @@ def test_the_veto_reads_a_pathological_title_quickly(title, senior):
 
 
 @pytest.mark.parametrize("title", [
+    "Software Engineer" + " " * 20_000,          # 7-9 s uncapped
+    "Data Analyst" + " " * 20_000 + ", I",
+    " " * 40_000,
+], ids=["level-role", "level-one", "spaces"])
+def test_the_classifier_reads_a_pathological_title_quickly(title):
+    start = time.perf_counter()
+    entry_tier(title)
+    experience_level_for(title)
+    assert time.perf_counter() - start < 0.5
+
+
+@pytest.mark.parametrize("title", [
     # A level-I desk role on a shift is not hourly floor work (2026-09-29 crawl).
     "Support Engineer I (FC, Weekend Shift)",                 # Replit, prod 64250
     "Support Engineer I (NYC, Weekend Shift)",
