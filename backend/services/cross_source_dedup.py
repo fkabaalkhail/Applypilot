@@ -795,30 +795,57 @@ def dedup_sweep(db: Session) -> dict:
 # '-1' suffix, 'jobs/8199729' vs 'jobs/8199729?gh_jid=8199729'). The URL is
 # UNIQUE, not the posting, so both became visible rows. The board row wins:
 # its crawl reconciles it and it carries the description. Only a board row
-# that may stand in for its twins counts (_stands_in_filter): a visible one,
-# or one its board removed (that death verdict is the list copy's too); an
-# expired one says nothing about the posting, and the list copy is shown.
+# that may stand in for a list copy counts (stands_in_for_list_copy): a
+# visible one, or one its board removed (that death verdict is the list
+# copy's too). An expired one says nothing about the posting, and neither
+# does an off_target one: the crawler's level and location filters are not
+# the list's, and a human-curated new-grad row the classifier reads as mid
+# level is still listed as new grad. The list copy is shown then. (An
+# off_target row still stands in for its LinkedIn/Indeed twins:
+# stands_in_for_twins.) Among board rows carrying one posting, a visible
+# one wins over a removed sibling ('_R123' removed, its '_R123-1' repost
+# live).
+
+def stands_in_for_list_copy(listing_status: str | None) -> bool:
+    """True when a board row may hide a GitHub-list copy of its posting, or
+    keep one from being stored (see above)."""
+    return (listing_status is None or listing_status not in HIDDEN_LISTING_STATUSES
+            or listing_status == LISTING_REMOVED)
+
+
+def _stands_in_for_list_filter():
+    """SQL side of stands_in_for_list_copy."""
+    return or_(ScrapedJob.listing_status.is_(None),
+               ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES),
+               ScrapedJob.listing_status == LISTING_REMOVED)
+
+
+def _visible_first(listing_status: str | None) -> int:
+    """Sort key among board rows for one posting: visible before removed."""
+    return 0 if listing_status is None or listing_status not in HIDDEN_LISTING_STATUSES else 1
+
 
 def board_row_for_posting(db: Session, *, company: str, company_domain: str,
                           title: str, url: str) -> int | None:
     """Id of a board-crawled (ats) row for the posting ``url`` names, same
-    employer and title, that may stand in for it, or None. The ingest guard
-    for GitHub-list rows. Column-only."""
+    employer and title, that may stand in for it (a visible one first), or
+    None. The ingest guard for GitHub-list rows. Column-only."""
     title_norm = normalize_title(title)
     identity = posting_identity(url)
     if not title_norm or not identity:
         return None
     rows = (
-        db.query(ScrapedJob.id, ScrapedJob.url)
+        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
         .filter(ScrapedJob.source_platform == "ats",
                 ScrapedJob.duplicate_of.is_(None),
-                _stands_in_filter(),
+                _stands_in_for_list_filter(),
                 ScrapedJob.title_norm == title_norm,
                 _employer_filter(company, company_domain))
+        .order_by(ScrapedJob.id)
         .limit(50)
         .all()
     )
-    for row_id, row_url in rows:
+    for row_id, row_url, _status in sorted(rows, key=lambda row: (_visible_first(row[2]), row[0])):
         # A rogue-era 'ats' row with a LinkedIn/Indeed URL is no board row.
         if (effective_source("ats", row_url or "") == "ats"
                 and posting_identity(row_url or "") == identity):
@@ -828,10 +855,11 @@ def board_row_for_posting(db: Session, *, company: str, company_domain: str,
 
 def hide_list_copies_of_board_rows(db: Session) -> int:
     """Soft-hide visible GitHub-list rows whose posting a board row carries
-    under another URL spelling (duplicate_of = the board row), same employer
-    (folded name) and title. Idempotent; run by every cron-poll. Column-only
-    reads: the visible list rows (a few thousand at most), then the board
-    rows sharing their titles. Commits. Returns the number hidden."""
+    under another URL spelling (duplicate_of = the board row, a visible one
+    before a removed sibling), same employer (folded name) and title.
+    Idempotent; run by every cron-poll. Column-only reads: the visible list
+    rows (a few thousand at most), then the board rows sharing their titles.
+    Commits. Returns the number hidden."""
     listed = (
         db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title_norm)
         .filter(ScrapedJob.source_platform == "github",
@@ -846,15 +874,18 @@ def hide_list_copies_of_board_rows(db: Session) -> int:
     titles = sorted({row.title_norm for row in listed if row.title_norm})
     board: dict[tuple[str, str, str], int] = {}
     for i in range(0, len(titles), 400):
-        for row_id, url, company, title_norm in (
-            db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title_norm)
+        candidates = (
+            db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title_norm,
+                     ScrapedJob.listing_status)
             .filter(ScrapedJob.source_platform == "ats",
                     ScrapedJob.duplicate_of.is_(None),
-                    _stands_in_filter(),
+                    _stands_in_for_list_filter(),
                     ScrapedJob.title_norm.in_(titles[i:i + 400]))
-            .order_by(ScrapedJob.id)
             .all()
-        ):
+        )
+        # A chunk holds whole titles, so every key's candidates are in it.
+        for row_id, url, company, title_norm, _status in sorted(
+                candidates, key=lambda row: (_visible_first(row[4]), row[0])):
             if effective_source("ats", url or "") != "ats":
                 continue
             board.setdefault(
@@ -874,18 +905,18 @@ def hide_list_copies_of_board_rows(db: Session) -> int:
 
 def release_list_copies_of_lapsed_board_rows(db: Session) -> int:
     """Give back the visible GitHub-list rows hidden behind a board row that
-    no longer stands in for them (stands_in_for_twins): one that aged out.
-    1,443 of prod's ats rows are 'expired', which says nothing about the
-    posting, while the list still offers it; release_from_closed_winners
-    never frees a direct row, so without this the copy stayed hidden for
-    good. A board row its board removed keeps its copies hidden (the
-    posting's death verdict), and a released copy retires with its list as
-    usual. Run by cron-poll before hide_list_copies_of_board_rows, which
-    hides it again under any live board twin. Column-only. Commits. Returns
-    the number released."""
+    no longer stands in for them (stands_in_for_list_copy): one that aged
+    out, or one the crawl retired as off_target. 1,443 of prod's ats rows
+    are 'expired', which says nothing about the posting, while the list
+    still offers it; release_from_closed_winners never frees a direct row,
+    so without this the copy stayed hidden for good. A board row its board
+    removed keeps its copies hidden (the posting's death verdict), and a
+    released copy retires with its list as usual. Run by cron-poll before
+    hide_list_copies_of_board_rows, which hides it again under any live
+    board twin. Column-only. Commits. Returns the number released."""
     winner = aliased(ScrapedJob)
     rows = (
-        db.query(ScrapedJob.id, winner.listing_status, winner.source_platform, winner.url)
+        db.query(ScrapedJob.id, winner.listing_status)
         .join(winner, winner.id == ScrapedJob.duplicate_of)
         .filter(ScrapedJob.source_platform == "github",
                 or_(ScrapedJob.listing_status.is_(None),
@@ -893,8 +924,7 @@ def release_list_copies_of_lapsed_board_rows(db: Session) -> int:
                 winner.source_platform == "ats")
         .all()
     )
-    released = [row_id for row_id, status, platform, url in rows
-                if not stands_in_for_twins(status, platform or "", url or "")]
+    released = [row_id for row_id, status in rows if not stands_in_for_list_copy(status)]
     for i in range(0, len(released), 400):
         db.query(ScrapedJob).filter(ScrapedJob.id.in_(released[i:i + 400])).update(
             {"duplicate_of": None}, synchronize_session=False)
