@@ -58,6 +58,7 @@ const SETTINGS = {
   pause_before_submit: true,
   smooth_scrolling: false,
   follow_companies: false,
+  match_alerts_enabled: true,
 };
 
 const renderModal = () =>
@@ -166,6 +167,48 @@ describe("SettingsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => expect(put).toHaveBeenCalledWith("/settings", { smooth_scrolling: true }));
+  });
+
+  // Every alert email links to an unsubscribe page; this is the in-app side of
+  // the same switch (the Privacy Policy promises both).
+  it("shows match alert emails on the Account tab, on when the account never opted out", async () => {
+    renderModal();
+    const toggle = await screen.findByRole("checkbox", { name: "Match alert emails" });
+    expect(toggle).toBeChecked();
+  });
+
+  it("treats a missing match_alerts_enabled as on, matching the backend default", async () => {
+    const { match_alerts_enabled: _omit, ...legacy } = SETTINGS;
+    get.mockImplementation((url: string) =>
+      url === "/settings" ? Promise.resolve({ data: legacy }) : Promise.resolve({ data: { sessions: [] } })
+    );
+    renderModal();
+    expect(await screen.findByRole("checkbox", { name: "Match alert emails" })).toBeChecked();
+  });
+
+  it("saves ONLY the match-alerts flag when the user switches alerts off", async () => {
+    put.mockResolvedValue({ data: { ...SETTINGS, match_alerts_enabled: false } });
+    renderModal();
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Match alert emails" }));
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(put).toHaveBeenCalledWith("/settings", { match_alerts_enabled: false }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Match alert emails" })).not.toBeChecked()
+    );
+  });
+
+  it("keeps the identity rows when /settings fails, and offers no alerts toggle", async () => {
+    get.mockImplementation((url: string) =>
+      url === "/settings"
+        ? Promise.reject({ response: { data: { detail: "boom" } } })
+        : Promise.resolve({ data: { sessions: [] } })
+    );
+    renderModal();
+    expect(await screen.findByText("you@school.edu")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load this setting right now.")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Match alert emails" })).toBeNull();
   });
 
   it("keeps the save bar mounted when an unsaved toggle survives a tab switch", async () => {

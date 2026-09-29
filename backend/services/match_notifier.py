@@ -13,10 +13,17 @@ import os
 import time
 from typing import Optional
 
-from sqlalchemy import func, or_
+from sqlalchemy import exists, func, or_
 from sqlalchemy.orm import Session
 
-from backend.db.models import JobMatchNotification, JobMatchScore, ScrapedJob, User
+from backend.db.models import (
+    JobMatchNotification,
+    JobMatchScore,
+    ScrapedJob,
+    User,
+    UserSettings,
+)
+from backend.services.alert_unsubscribe import unsubscribe_url
 from backend.services.email_service import clean_company_name, email_service
 from backend.services.listing_freshness import LISTING_ACTIVE, LISTING_STALE
 from backend.services.logo_cache import LOGO_PATH_PREFIX, logo_quality
@@ -32,6 +39,12 @@ DEFAULT_COOLDOWN_HOURS = 24
 DEFAULT_DAILY_BUDGET = 80
 # Wall-clock box (seconds) for the sweep's LLM scoring; see sweep_match_alerts.
 DEFAULT_SCORING_BUDGET_S = 120
+
+# Every value scraped_jobs.country takes: services/country_filter.py files each
+# ingested row under US or CA, or drops it.
+_ALERT_COUNTRIES = frozenset({"US", "CA"})
+# Sorts a never-scored account ahead of every scored one.
+_NEVER_SCORED = datetime.datetime(1970, 1, 1)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -77,6 +90,32 @@ def _now() -> float:
     """Monotonic clock for the sweep's scoring budget (a seam for tests: the
     event loop reads time.monotonic too, so that must never be patched)."""
     return time.monotonic()
+
+
+def _alert_regions(raw: Optional[str]) -> list[str]:
+    """The countries a user's alerts are limited to, from user_settings.regions.
+
+    Onboarding stores the country the user picked ("CA"), the same value that
+    seeds the feed's first-load country filter, so alerts honour it the way the
+    feed does: before this, 33 of the 85 alerts (39%) sent to Canada-only users
+    were US jobs. Empty, or only values no job carries, means no limit: an
+    unrecognized setting must never silence a user.
+    """
+    picked = {r.strip().upper() for r in (raw or "").split(",") if r.strip()}
+    return sorted(picked & _ALERT_COUNTRIES)
+
+
+def _alert_prefs(db: Session, user_id: int) -> tuple[bool, list[str]]:
+    """(alerts on?, region limit) for one user. Columns only. No settings row,
+    or a NULL flag, is opted in: that has been everyone's default."""
+    row = (
+        db.query(UserSettings.match_alerts_enabled, UserSettings.regions)
+        .filter(UserSettings.user_id == user_id)
+        .first()
+    )
+    if row is None:
+        return True, []
+    return row[0] is not False, _alert_regions(row[1])
 
 
 def _alertable() -> tuple:
@@ -272,6 +311,14 @@ def notify_high_matches(
         )
         return 0
 
+    # The recipient's own choices. Checked here as well as in the sweep's user
+    # query because the resume-upload path calls this directly, and a user can
+    # unsubscribe while a sweep is running.
+    enabled, regions = _alert_prefs(db, user_id)
+    if not enabled:
+        logger.info("Skipping match alert for user %s (opted out).", user_id)
+        return 0
+
     # Free-tier guard: at most one digest per user per cooldown window. Matches
     # found in the meantime stay un-recorded and roll into the next eligible run.
     cooldown = get_cooldown_hours()
@@ -292,12 +339,14 @@ def notify_high_matches(
         return 0
 
     # Only rows the feed still shows (the upload path hands over whatever it
-    # scored, hidden or closed rows included). Ids only, never whole rows.
+    # scored, hidden or closed rows included), in the user's region if they
+    # picked one. Ids only, never whole rows.
     job_ids = [job.id for job, _ in candidates]
+    region_filter = [ScrapedJob.country.in_(regions)] if regions else []
     alertable = {
         row.id
         for row in db.query(ScrapedJob.id)
-        .filter(ScrapedJob.id.in_(job_ids), *_alertable())
+        .filter(ScrapedJob.id.in_(job_ids), *_alertable(), *region_filter)
         .all()
     }
     candidates = [(job, score) for job, score in candidates if job.id in alertable]
@@ -322,8 +371,19 @@ def notify_high_matches(
     fresh.sort(key=lambda pair: pair[1], reverse=True)
     payload = [_job_to_alert_dict(job, score) for job, score in fresh]
     recipient_name = (user.first_name or "").strip() or None
+    # CASL: every alert carries a working opt-out. It can only be missing where
+    # FRONTEND_URL is unset (local dev); prod needs it for the verification
+    # email and the APPLY links anyway.
+    opt_out = unsubscribe_url(user_id)
+    if not opt_out:
+        logger.warning(
+            "Match alert for user %s has no unsubscribe link: FRONTEND_URL is unset.",
+            user_id,
+        )
 
-    sent = email_service.send_job_match_alert(user.email, payload, recipient_name)
+    sent = email_service.send_job_match_alert(
+        user.email, payload, recipient_name, unsubscribe_url=opt_out
+    )
     if not sent:
         # Leave un-recorded so the next sweep retries (e.g. transient Resend
         # error or email not yet configured).
@@ -347,8 +407,8 @@ async def sweep_match_alerts(
 
     Shared by the standalone cron endpoint and the github-sources cron-poll run
     (so the whole product fits inside Vercel's 2-cron Hobby limit). Skips users
-    in cooldown *before* scoring to save LLM cost, and stops the whole sweep once
-    the daily email budget is spent.
+    in cooldown or opted out *before* scoring to save LLM cost, and stops the
+    whole sweep once the daily email budget is spent.
 
     Work is capped per run (env CRON_MATCH_MAX_USERS / CRON_MATCH_JOBS_PER_USER);
     any truncation is logged. Returns a summary dict whose status is
@@ -388,21 +448,66 @@ async def sweep_match_alerts(
     cooldown = get_cooldown_hours()
     engine = MatchEngine(db)
 
+    # Everyone the sweep can do anything for, filtered in SQL BEFORE the cap:
+    # verified, holding a resume, not opted out, not in cooldown. The cap used
+    # to take the first 25 verified users by id and drop the resume-less ones
+    # afterwards, so they held slots, and with no rotation account 26 onward
+    # would never have been swept at all.
+    cooldown_filter = []
+    if cooldown > 0:
+        cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=cooldown)
+        cooldown_filter.append(
+            ~exists().where(
+                JobMatchNotification.user_id == User.id,
+                JobMatchNotification.sent_at >= cutoff,
+            )
+        )
+    eligible = (
+        User.email_verified == True,  # noqa: E712
+        exists().where(
+            ResumeProfileDB.user_id == User.id,
+            ResumeProfileDB.raw_text != None,  # noqa: E711
+            ResumeProfileDB.raw_text != "",
+        ),
+        # Outer-joined below: no settings row, or a NULL flag, is opted in.
+        or_(
+            UserSettings.match_alerts_enabled == None,  # noqa: E711
+            UserSettings.match_alerts_enabled == True,  # noqa: E712
+        ),
+        *cooldown_filter,
+    )
+    # Fair rotation under the cap: least recently scored first (never-scored
+    # accounts ahead of everyone), id as the tiebreak. A run that buys a user a
+    # score sends them to the back of the next run's queue. One whose window
+    # held nothing new keeps its place, at no LLM cost, until a job lands in
+    # it. (Prod on 2026-09-29: 5 eligible users, cap 25.)
+    last_scored = (
+        db.query(func.max(JobMatchScore.scored_at))
+        .filter(JobMatchScore.user_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
+    )
     users = (
-        db.query(User)
-        .filter(User.email_verified == True)  # noqa: E712
-        .order_by(User.id.asc())
+        db.query(User, UserSettings.regions)
+        .outerjoin(UserSettings, UserSettings.user_id == User.id)
+        .filter(*eligible)
+        .order_by(func.coalesce(last_scored, _NEVER_SCORED).asc(), User.id.asc())
         .limit(max_users)
         .all()
     )
-    total_verified = (
-        db.query(func.count(User.id)).filter(User.email_verified == True).scalar()  # noqa: E712
-    )
-    if total_verified and total_verified > max_users:
-        logger.info(
-            "match-alert sweep: processing %d of %d verified users this run (capped).",
-            max_users, total_verified,
-        )
+    if max_users and len(users) >= max_users:
+        total_eligible = (
+            db.query(func.count(User.id))
+            .outerjoin(UserSettings, UserSettings.user_id == User.id)
+            .filter(*eligible)
+            .scalar()
+        ) or 0
+        if total_eligible > max_users:
+            logger.info(
+                "match-alert sweep: processing %d of %d eligible users this run "
+                "(capped; least recently scored first).",
+                max_users, total_eligible,
+            )
 
     users_scanned = 0
     users_notified = 0
@@ -415,7 +520,7 @@ async def sweep_match_alerts(
     llm_unavailable: Optional[str] = None
     budget_spent = False
 
-    for user in users:
+    for user, regions_raw in users:
         # Stop spending LLM calls once the day's email budget is gone.
         if _emails_sent_today(db) >= budget:
             logger.info(
@@ -436,11 +541,10 @@ async def sweep_match_alerts(
         if not profile or not profile.raw_text:
             continue
 
-        # Skip cooldown users before doing any LLM scoring.
-        if _recently_notified(db, user.id, cooldown):
-            continue
-
+        # Cooldown and opt-out were applied in the users query, before any
+        # LLM scoring.
         users_scanned += 1
+        regions = _alert_regions(regions_raw)
 
         notified_subq = (
             db.query(JobMatchNotification.job_id)
@@ -448,14 +552,18 @@ async def sweep_match_alerts(
             .subquery()
         )
         # The scoring window: the newest N jobs the feed shows that this user
-        # hasn't been alerted about. Selected as ids first so the window stays
-        # anchored to "newest N": filtering by cache state before the LIMIT
-        # would make each run dig further into the backlog, growing the bill
-        # instead of capping it.
+        # hasn't been alerted about, in their region if they picked one.
+        # Selected as ids first so the window stays anchored to "newest N":
+        # filtering by cache state before the LIMIT would make each run dig
+        # further into the backlog, growing the bill instead of capping it. The
+        # region is a content filter like _alertable(), not a cache-state one,
+        # and it only ever narrows what gets paid for.
+        region_filter = [ScrapedJob.country.in_(regions)] if regions else []
         window = (
             db.query(ScrapedJob.id)
             .filter(
                 *_alertable(),
+                *region_filter,
                 ScrapedJob.description != "",
                 ScrapedJob.description != None,  # noqa: E711
                 func.length(ScrapedJob.description) > 50,

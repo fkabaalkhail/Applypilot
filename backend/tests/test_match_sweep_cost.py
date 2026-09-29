@@ -18,6 +18,7 @@ from backend.db.models import (
     ResumeProfileDB,
     ScrapedJob,
     User,
+    UserSettings,
 )
 from backend.services import match_notifier
 
@@ -40,13 +41,14 @@ def swept_user(db_session):
     return user
 
 
-def _make_job(db_session, title="Engineer", company="Globex"):
+def _make_job(db_session, title="Engineer", company="Globex", **fields):
     job = ScrapedJob(
         title=title,
         company=company,
         url=f"https://jobs.example.com/{title}-{company}".replace(" ", "-"),
         description="x" * 200,
         posted_date=datetime.datetime.utcnow(),
+        **fields,
     )
     db_session.add(job)
     db_session.commit()
@@ -75,7 +77,7 @@ def llm_calls(monkeypatch):
     monkeypatch.setattr(
         match_notifier.email_service,
         "send_job_match_alert",
-        lambda to, jobs, name=None: True,
+        lambda to, jobs, name=None, **_kw: True,
     )
     return calls
 
@@ -259,7 +261,7 @@ async def test_unparseable_llm_response_is_not_banked_as_zero(
     monkeypatch.setattr(
         match_notifier.email_service,
         "send_job_match_alert",
-        lambda to, jobs, name=None: True,
+        lambda to, jobs, name=None, **_kw: True,
     )
 
     calls = []
@@ -290,7 +292,7 @@ async def test_scoring_runs_on_the_cheap_model(db_session, swept_user, monkeypat
     monkeypatch.setattr(
         match_notifier.email_service,
         "send_job_match_alert",
-        lambda to, jobs, name=None: True,
+        lambda to, jobs, name=None, **_kw: True,
     )
 
     seen = {}
@@ -322,7 +324,7 @@ async def test_scoring_model_is_env_overridable(db_session, swept_user, monkeypa
     monkeypatch.setattr(
         match_notifier.email_service,
         "send_job_match_alert",
-        lambda to, jobs, name=None: True,
+        lambda to, jobs, name=None, **_kw: True,
     )
 
     seen = {}
@@ -350,13 +352,15 @@ async def test_scoring_model_is_env_overridable(db_session, swept_user, monkeypa
 # nothing for seven weeks".
 
 
-def _swept(db_session, email, resume):
-    """Another verified user with a resume."""
+def _swept(db_session, email, resume, **settings):
+    """Another verified user with a resume (and a settings row when given)."""
     user = User(email=email, first_name="U", email_verified=True, auth_provider="local")
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
     db_session.add(ResumeProfileDB(user_id=user.id, raw_text=resume))
+    if settings:
+        db_session.add(UserSettings(user_id=user.id, **settings))
     db_session.commit()
     return user
 
@@ -588,3 +592,147 @@ async def test_scoring_budget_zero_means_no_box(db_session, swept_user, llm_call
 
     assert len(llm_calls) == 3
     assert result["scoring_budget_spent"] is False
+
+
+# --- opt-out (2026-09 audit) -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_opted_out_user_costs_nothing_and_gets_nothing(
+    db_session, swept_user, llm_calls
+):
+    """No LLM spend and no email for an account that unsubscribed, not even
+    a cached strong match that was bought before they left."""
+    db_session.add(UserSettings(user_id=swept_user.id, match_alerts_enabled=False))
+    cached_job = _make_job(db_session, title="Cached")
+    _make_job(db_session, title="Unscored")
+    db_session.add(
+        JobMatchScore(
+            user_id=swept_user.id,
+            job_id=cached_job.id,
+            score=95,
+            resume_fingerprint=match_notifier._resume_fingerprint("resume body text"),
+        )
+    )
+    db_session.commit()
+
+    result = await match_notifier.sweep_match_alerts(db_session)
+
+    assert llm_calls == []
+    assert result["users_scanned"] == 0
+    assert result["jobs_notified"] == 0
+    assert db_session.query(JobMatchNotification).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_settings_row_without_a_choice_is_opted_in(db_session, swept_user, llm_calls):
+    """The column defaults ON: everyone who never touched it keeps alerts."""
+    db_session.add(UserSettings(user_id=swept_user.id))
+    db_session.commit()
+    _make_job(db_session)
+
+    result = await match_notifier.sweep_match_alerts(db_session)
+
+    assert len(llm_calls) == 1
+    assert result["users_scanned"] == 1
+
+
+# --- region (2026-09 audit) --------------------------------------------------
+# 33 of the 85 alerts sent to users who picked Canada at onboarding were US
+# jobs, and each of those was a paid score first.
+
+
+@pytest.mark.asyncio
+async def test_alert_window_honours_the_onboarding_region(db_session, llm_calls):
+    ca_only = _swept(db_session, "ca@example.com", "canadian resume", regions="CA")
+    anywhere = _swept(db_session, "any@example.com", "open resume", regions="")
+    _make_job(db_session, title="Toronto Role", country="CA")
+    _make_job(db_session, title="Austin Role", country="US")
+
+    await match_notifier.sweep_match_alerts(db_session)
+
+    scored = {}
+    for row in db_session.query(JobMatchScore).all():
+        scored.setdefault(row.user_id, set()).add(db_session.get(ScrapedJob, row.job_id).title)
+    assert scored[ca_only.id] == {"Toronto Role"}
+    assert scored[anywhere.id] == {"Toronto Role", "Austin Role"}
+    assert len(llm_calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_region_does_not_let_the_window_dig_into_the_backlog(db_session, llm_calls):
+    """The region narrows the newest-N window, it doesn't widen it: with N=1
+    the CA user is scored on the newest CA job only, once."""
+    _swept(db_session, "ca@example.com", "canadian resume", regions="CA")
+    _make_job(db_session, title="Old CA Role", country="CA")
+    _make_job(db_session, title="New CA Role", country="CA")
+    _make_job(db_session, title="Newest US Role", country="US")
+
+    await match_notifier.sweep_match_alerts(db_session, jobs_per_user=1)
+    await match_notifier.sweep_match_alerts(db_session, jobs_per_user=1)
+
+    assert len(llm_calls) == 1
+    only = db_session.query(JobMatchScore).one()
+    assert db_session.get(ScrapedJob, only.job_id).title == "New CA Role"
+
+
+def test_unknown_region_values_never_silence_a_user():
+    assert match_notifier._alert_regions("CA") == ["CA"]
+    assert match_notifier._alert_regions(" ca , US ") == ["CA", "US"]
+    assert match_notifier._alert_regions("") == []
+    assert match_notifier._alert_regions(None) == []
+    # No job carries these, so they mean "no limit", not "match nothing".
+    assert match_notifier._alert_regions("EU,remote") == []
+
+
+# --- fair user cap (2026-09 audit) -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cap_counts_only_users_the_sweep_can_score(db_session, llm_calls):
+    """Resume-less users used to take cap slots (the LIMIT came before the
+    resume check), so with max_users=1 the only resume holder, account 2, was
+    never swept."""
+    no_resume = User(email="first@example.com", email_verified=True, auth_provider="local")
+    db_session.add(no_resume)
+    db_session.commit()
+    holder = _swept(db_session, "second@example.com", "holder resume")
+    _make_job(db_session)
+
+    result = await match_notifier.sweep_match_alerts(db_session, max_users=1)
+
+    assert [r for r, _d in llm_calls] == ["holder resume"]
+    assert result["users_scanned"] == 1
+    assert db_session.query(JobMatchScore).one().user_id == holder.id
+
+
+@pytest.mark.asyncio
+async def test_cap_skips_cooldown_users_before_taking_a_slot(db_session, llm_calls):
+    cooling = _swept(db_session, "cooling@example.com", "cooling resume")
+    _swept(db_session, "ready@example.com", "ready resume")
+    old = _make_job(db_session, title="Already Sent")
+    db_session.add(JobMatchNotification(user_id=cooling.id, job_id=old.id, match_score=90))
+    db_session.commit()
+    _make_job(db_session, title="Fresh")
+
+    await match_notifier.sweep_match_alerts(db_session, max_users=1)
+
+    assert {r for r, _d in llm_calls} == {"ready resume"}
+
+
+@pytest.mark.asyncio
+async def test_cap_rotates_least_recently_scored_first(db_session, llm_calls):
+    """Ordering by id alone meant the same accounts every run. Each run scores
+    the users it takes, which sends them to the back of the queue."""
+    _swept(db_session, "a@example.com", "resume A")
+    _swept(db_session, "b@example.com", "resume B")
+    _swept(db_session, "c@example.com", "resume C")
+
+    order = []
+    for i in range(4):
+        _make_job(db_session, title=f"Role {i}")
+        before = len(llm_calls)
+        await match_notifier.sweep_match_alerts(db_session, max_users=1)
+        order.append({r for r, _d in llm_calls[before:]})
+
+    assert order == [{"resume A"}, {"resume B"}, {"resume C"}, {"resume A"}]

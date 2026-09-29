@@ -23,7 +23,8 @@ import "../settings-modal.css";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /**
- * The extension toggles are the only thing this modal edits now.
+ * The extension toggles and the match-alert email switch are the only things
+ * this modal edits now.
  *
  * Contact details moved to /app/profile, which genuinely owns them. The columns
  * this modal used to write all still exist and the extension still reads them
@@ -33,10 +34,13 @@ import "../settings-modal.css";
  * job_title and the screening answers live on the same application-profile
  * endpoint and are edited on /app/profile's "Application Answers" card.
  */
-interface ExtensionSettings {
+interface EditableSettings {
   pause_before_submit: boolean;
   smooth_scrolling: boolean;
   follow_companies: boolean;
+  // Opt-out, so ON unless the user switched it off (here or through the
+  // unsubscribe link every alert email carries).
+  match_alerts_enabled: boolean;
 }
 
 interface Toast {
@@ -57,25 +61,27 @@ interface DeviceSession {
 
 type TabKey = "account" | "extension" | "security";
 
-const SETTINGS_KEYS: (keyof ExtensionSettings)[] = [
+const SETTINGS_KEYS: (keyof EditableSettings)[] = [
   "pause_before_submit",
   "smooth_scrolling",
   "follow_companies",
+  "match_alerts_enabled",
 ];
 
-function normalize(data: Partial<ExtensionSettings>): ExtensionSettings {
+function normalize(data: Partial<EditableSettings>): EditableSettings {
   return {
     pause_before_submit: data.pause_before_submit ?? false,
     smooth_scrolling: data.smooth_scrolling ?? false,
     follow_companies: data.follow_companies ?? false,
+    match_alerts_enabled: data.match_alerts_enabled ?? true,
   };
 }
 
 function computeDiff(
-  original: ExtensionSettings,
-  current: ExtensionSettings
-): Partial<ExtensionSettings> | null {
-  const diff: Partial<ExtensionSettings> = {};
+  original: EditableSettings,
+  current: EditableSettings
+): Partial<EditableSettings> | null {
+  const diff: Partial<EditableSettings> = {};
   for (const key of SETTINGS_KEYS) {
     if (current[key] !== original[key]) diff[key] = current[key];
   }
@@ -173,8 +179,8 @@ function ToastContainer({
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<TabKey>("account");
-  const [formData, setFormData] = useState<ExtensionSettings | null>(null);
-  const [originalData, setOriginalData] = useState<ExtensionSettings | null>(null);
+  const [formData, setFormData] = useState<EditableSettings | null>(null);
+  const [originalData, setOriginalData] = useState<EditableSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -291,7 +297,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     [originalData, formData]
   );
 
-  function updateField(field: keyof ExtensionSettings, value: boolean) {
+  function updateField(field: keyof EditableSettings, value: boolean) {
     setFormData((prev) => (prev ? { ...prev, [field]: value } : prev));
   }
 
@@ -364,15 +370,40 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             Name, contact details, address, EEO answers and saved screening answers.
           </span>
         </SettingRow>
+
+        {/* The one account-level email preference. It reads the same GET /settings
+            as the Extension tab, but a failure there costs this row only, never the
+            identity rows above. Saved through the shared save bar, which mounts on
+            any tab while a toggle is unsaved. */}
+        <SettingRow
+          label="Match alerts"
+          action={
+            formData && !error ? (
+              <ToggleSwitch
+                label="Match alert emails"
+                checked={formData.match_alerts_enabled}
+                onChange={(v) => updateField("match_alerts_enabled", v)}
+              />
+            ) : null
+          }
+        >
+          <span className="sm-muted">
+            {loading
+              ? "Loading…"
+              : error
+                ? "Couldn't load this setting right now."
+                : "Email me when a new job strongly matches my résumé."}
+          </span>
+        </SettingRow>
       </div>
     );
   }
 
   function renderExtension() {
-    // The /settings fetch gates THIS tab only. It is the only tab that reads it.
-    // Account renders from useAuth() and Security from /auth/sessions, so a failing
-    // GET /settings must not cost the user their identity row and their device list
-    // with an error about an endpoint neither tab touches.
+    // The /settings fetch gates THIS tab only. Account renders from useAuth() (its
+    // match-alerts row alone reads /settings, and degrades to its own message) and
+    // Security from /auth/sessions, so a failing GET /settings must not cost the
+    // user their identity row and their device list.
     if (loading) return <div className="settings-loading">Loading settings…</div>;
     if (error) return <div className="settings-error">{error}</div>;
     if (!formData) return null;

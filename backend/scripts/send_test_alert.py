@@ -4,16 +4,21 @@ Usage (PowerShell):
     $env:RESEND_API_KEY="re_xxx"
     $env:RESEND_FROM_EMAIL="alerts@yourdomain.com"   # must be a verified Resend sender
     $env:FRONTEND_URL="https://your-deployed-site"   # so the brand logo loads
-    python backend/scripts/send_test_alert.py fk.abaalkhail@gmail.com
+    python backend/scripts/send_test_alert.py fk.abaalkhail@gmail.com [USER_ID]
 
 Notes:
     - On the Resend free tier with NO verified domain you can only send from
       onboarding@resend.dev and only TO the email you signed up with.
     - This exercises the real Resend delivery path (not the LLM scoring).
+    - Pass the recipient's Tailrd USER_ID (with JWT_SECRET set to prod's) to
+      get a working footer link and List-Unsubscribe headers: the mail
+      client's own "Unsubscribe" button then really turns that account's
+      match alerts off.
 """
 
 import sys
 
+from backend.services.alert_unsubscribe import unsubscribe_url
 from backend.services.email_service import email_service
 from backend.services.logo_resolver import logo_url_for_domain as L
 
@@ -67,8 +72,11 @@ def main() -> int:
     print(f"Logo base: {email_service.frontend_url or '(none, text fallback)'}")
     print("Sending...")
 
+    opt_out = unsubscribe_url(int(sys.argv[2])) if len(sys.argv) > 2 else ""
+    print(f"Unsubscribe: {opt_out or '(none, pass USER_ID to include one)'}")
+
     ok = email_service.send_job_match_alert(
-        recipient, SAMPLE_JOBS, recipient_name="Fahad"
+        recipient, SAMPLE_JOBS, recipient_name="Fahad", unsubscribe_url=opt_out
     )
     if ok:
         print("OK: Resend accepted the email. Check the inbox (and spam).")

@@ -5,19 +5,25 @@ GET   /settings, return current user's settings (password masked)
 PUT   /settings, update settings
 POST  /settings/resume, upload resume file
 POST  /settings/cookies, upload LinkedIn session cookies (skip password login)
+GET   /settings/unsubscribe-alerts, confirm page for turning off match alerts (token, no login)
+POST  /settings/unsubscribe-alerts, turn them off (the page's button, and RFC 8058 one-click)
 """
 
+import html
 import os
 import logging
 from pathlib import Path
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import UserSettings
+from backend.db.models import User, UserSettings
 from backend.auth.dependencies import get_verified_user_id
 from backend.schemas.settings import SettingsUpdate, SettingsOut
+from backend.services.alert_unsubscribe import UNSUBSCRIBE_PATH, make_token, verify_token
 from backend.services.crypto import encrypt, decrypt
 from backend.services.profile_version import bump_profile_version
 
@@ -83,6 +89,8 @@ def _settings_to_out(s: UserSettings) -> SettingsOut:
         hr_daily_connect_limit=s.hr_daily_connect_limit or 10,
         # AI features
         resume_tailoring_enabled=bool(s.resume_tailoring_enabled),
+        # Opt-out: only an explicit FALSE is off.
+        match_alerts_enabled=s.match_alerts_enabled is not False,
     )
 
 
@@ -186,6 +194,9 @@ def update_settings(
     # AI features
     if update.resume_tailoring_enabled is not None:
         s.resume_tailoring_enabled = 1 if update.resume_tailoring_enabled else 0
+    # Match-alert emails
+    if update.match_alerts_enabled is not None:
+        s.match_alerts_enabled = bool(update.match_alerts_enabled)
 
     db.commit()
     db.refresh(s)
@@ -256,3 +267,121 @@ async def upload_cookies(
 
     logger.info("LinkedIn cookies saved")
     return _settings_to_out(s)
+
+
+# ─── Match-alert unsubscribe ─────────────────────────────────────────────────
+
+# The unsubscribe pages are the only HTML this API serves outside the docs.
+# They need inline styles and one same-origin form (the confirm button), and
+# nothing else: no scripts, no images. main.py's security middleware leaves a
+# CSP set here alone for this path.
+_UNSUBSCRIBE_CSP = (
+    "default-src 'none'; style-src 'unsafe-inline'; "
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+)
+
+_FONT = "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+_BUTTON_STYLE = (
+    "display: inline-block; padding: 10px 22px; border: 0; border-radius: 9999px; "
+    "background-color: #533afd; color: #ffffff; font-family: inherit; "
+    "font-size: 14px; text-decoration: none; cursor: pointer;"
+)
+
+
+def _unsubscribe_page(
+    title: str, message: str, status_code: int, confirm_token: str = ""
+) -> HTMLResponse:
+    """A small, self-contained page in the alert email's style.
+
+    With confirm_token it asks instead of telling: one button that POSTs the
+    token back to this same path.
+    """
+    if confirm_token:
+        action = html.escape(f"{UNSUBSCRIBE_PATH}?{urlencode({'token': confirm_token})}", quote=True)
+        cta = (
+            f'<form method="post" action="{action}" style="margin: 0;">'
+            f'<button type="submit" style="{_BUTTON_STYLE}">Unsubscribe</button>'
+            "</form>"
+        )
+    else:
+        cta = f'<a href="/app" style="{_BUTTON_STYLE}">Open Tailrd</a>'
+    body = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{html.escape(title)} | Tailrd</title>
+</head>
+<body style="margin: 0; padding: 48px 16px; background-color: #f6f9fc; font-family: {_FONT}; color: #0d253d;">
+<main style="max-width: 440px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e3e8ee; border-radius: 16px; padding: 28px 24px;">
+<h1 style="margin: 0 0 12px; font-size: 22px; font-weight: 400; line-height: 1.25;">{html.escape(title)}</h1>
+<p style="margin: 0 0 22px; font-size: 15px; font-weight: 300; line-height: 1.5; color: #64748d;">{html.escape(message)}</p>
+{cta}
+</main>
+</body>
+</html>"""
+    return HTMLResponse(
+        body,
+        status_code=status_code,
+        headers={"Content-Security-Policy": _UNSUBSCRIBE_CSP, "Cache-Control": "no-store"},
+    )
+
+
+@router.api_route("/unsubscribe-alerts", methods=["GET", "POST"], include_in_schema=False)
+def unsubscribe_alerts(request: Request, token: str = "", db: Session = Depends(get_db)):
+    """Turn off match-alert emails for the account the token names.
+
+    Unauthenticated on purpose: the token is the credential (see
+    services/alert_unsubscribe). POST unsubscribes. It is what a mail client's
+    own "Unsubscribe" button (Gmail, Yahoo) sends to the List-Unsubscribe URL
+    (RFC 8058 one-click: body "List-Unsubscribe=One-Click", no cookies), and
+    what the button on the GET page sends. Idempotent.
+
+    GET, the footer link, only asks. Mail security scanners (Microsoft Defender
+    Safe Links, Proofpoint, Mimecast: what most university inboxes run) open
+    every link in a message to vet it, with no person involved. If GET
+    unsubscribed, those scanners would quietly switch alerts off for whole
+    schools on delivery. A person reads the page and presses the button; a
+    scanner doesn't. This is the split RFC 8058 describes for the same reason.
+    """
+    user_id = verify_token(token)
+    if user_id is None:
+        return _unsubscribe_page(
+            "This link doesn't work",
+            "This unsubscribe link is invalid. You can turn match alerts off any "
+            "time in Tailrd, under Settings.",
+            400,
+        )
+
+    # A deleted account has nothing left to email; don't create a row for it.
+    account = db.query(User.id).filter(User.id == user_id).first() is not None
+    settings = (
+        db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        if account else None
+    )
+    already_off = not account or (
+        settings is not None and settings.match_alerts_enabled is False
+    )
+
+    if request.method == "GET" and not already_off:
+        return _unsubscribe_page(
+            "Unsubscribe from match alerts?",
+            "You'll stop getting emails about new jobs that strongly match your "
+            "résumé. You can turn them back on any time in Tailrd, under Settings.",
+            200,
+            confirm_token=make_token(user_id),
+        )
+
+    if not already_off:
+        s = settings or _get_or_create_settings(db, user_id)
+        s.match_alerts_enabled = False
+        db.commit()
+        logger.info("Match alerts turned off for user %s via unsubscribe link.", user_id)
+
+    return _unsubscribe_page(
+        "You're unsubscribed",
+        "You won't get any more match alert emails from Tailrd. Changed your "
+        "mind? Turn match alerts back on in Tailrd, under Settings.",
+        200,
+    )
