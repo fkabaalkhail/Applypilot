@@ -433,8 +433,11 @@ feed carries is not stored, and cron-poll hides the rest
 behind, else the oldest list row); `release_repeated_list_rows` gives a
 repeat back when that row leaves the feed. List rows with a plainly senior
 title (`ats_scraper.HARD_SENIOR`: "Engineer I -II -III", "Level 4") are not
-stored, unless the title also names a student track ("Office of General
-Counsel Intern", "Research Fellow - Summer 2027").
+stored, unless the title also names the student role itself
+(`ats_scraper.STUDENT_ROLE_TITLE`: "Office of General Counsel Intern",
+"Software Engineer Intern - Sr. Design"). Naming the program is not enough:
+"Head of Internships", "Senior Manager, Early Careers" and "Principal
+Engineer (New Grad Mentor)" stay out.
 
 cron-poll time boxes, from the start of the request (the workflow's curl and
 Vercel both stop at 300 s): no new source after 120 s, a source still

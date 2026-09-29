@@ -539,6 +539,18 @@ _NEW_GRAD_TITLE = re.compile(
     r"|\bentry[- ]level\b|\b(?:19|20)\d\d\s+start\b",
     re.IGNORECASE,
 )
+# A title naming the student role itself (an intern, a co-op, a stagiaire, a
+# student, a new or recent grad), not an early-career program or its staff:
+# "Chief of Staff Intern" and "Software Engineer Intern - Sr. Design" are
+# interns, while "Head of Internships", "Senior Manager, Early Careers",
+# "Senior Director, Graduate Programs" and "Principal Engineer (New Grad
+# Mentor)" run or serve the program.
+STUDENT_ROLE_TITLE = re.compile(
+    r"(?:\bintern(?:ship)?\b|" + _COOP + r"|\bstagiaires?\b|" + _STUDENT
+    + r"|\b(?:new|recent|university|college)[- ]?grad(?:uate)?s?\b)"
+    r"(?!\s+(?:" + _PROGRAM_OBJECT + r"|" + _PROGRAM_ROLE + r"|mentors?|recruit\w*)\b)",
+    re.IGNORECASE,
+)
 
 
 def entry_tier(title: str, department: str = "", employment_type: str = "") -> Optional[str]:
