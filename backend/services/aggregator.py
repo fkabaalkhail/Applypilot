@@ -481,8 +481,9 @@ class AggregatorService:
         # optional here: cron-backfill fetches whatever this leaves.
         self.deadline = deadline
         # Posting keys of the visible GitHub-list rows (_listed_postings),
-        # read once per parse.
+        # read once per parse of the list in _listing (id, listed URLs).
         self._listed_keys: Optional[set[str]] = None
+        self._listing: tuple[Optional[int], set[str]] = (None, set())
         self.parser = MarkdownParser()
         self.country_filter = CountryFilter()
         self.work_type_classifier = WorkTypeClassifier()
@@ -574,7 +575,8 @@ class AggregatorService:
                 # budget goes on the rows users will see first.
                 dead_urls = await self._probe_new_urls(insertable[::-1])
 
-                self._listed_keys = None  # read afresh: rows left the feed since the last parse
+                # Read afresh: rows left the feed since the last parse.
+                self._listed_keys, self._listing = None, (source.id, listed_urls)
                 for job in insertable:
                     stored = self._classify_and_store(job, source, dead_urls=dead_urls)
                     if stored:
@@ -994,19 +996,29 @@ class AggregatorService:
         """Posting keys (cross_source_dedup.list_posting_keys) of every
         GitHub-list row whose posting is in the feed (a hidden repeat's is,
         under the row it repeats): read once per parse, then kept current as
-        rows are stored. Column-only."""
+        rows are stored. Column-only.
+
+        The list being parsed (``self._listing``: its id and listed URLs)
+        doesn't count its own rows it no longer lists: the parse retires
+        them, so a list that swaps one site alias of a posting for another
+        keeps the posting in the feed."""
         if self._listed_keys is None:
-            from backend.services.cross_source_dedup import list_posting_keys
+            from backend.services.cross_source_dedup import canonical_url, list_posting_keys
             from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES
 
+            source_id, listed_urls = self._listing
             self._listed_keys = set()
-            for (url,) in (
-                self.db.query(ScrapedJob.url)
+            for url, github_source_id in (
+                self.db.query(ScrapedJob.url, ScrapedJob.github_source_id)
                 .filter(ScrapedJob.source_platform == "github",
                         or_(ScrapedJob.listing_status.is_(None),
                             ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES)))
             ):
-                self._listed_keys |= list_posting_keys(url or "")
+                url = url or ""
+                if (source_id is not None and github_source_id == source_id
+                        and url not in listed_urls and canonical_url(url) not in listed_urls):
+                    continue
+                self._listed_keys |= list_posting_keys(url)
         return self._listed_keys
 
     def _retire_delisted_rows(self, source: GitHubSource, listed_urls: set[str],

@@ -212,6 +212,28 @@ class TestIngestGuard:
 
         assert await svc.poll_source(source) == 1
 
+    @pytest.mark.asyncio
+    async def test_list_swapping_site_aliases_keeps_the_posting(self, db_session, github):
+        # The list now links the posting through its other alias: the row it
+        # no longer lists retires in this parse, so it blocks nothing.
+        source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")
+        old = _row(db_session, HPE[0], github_source_id=source.id)
+        github["routes"].update({
+            "/repos/speedyapply/2027-SWE-College-Jobs/commits?per_page=1":
+                (200, _commits("s1", "2026-09-27T12:00:00Z")),
+            "/repos/speedyapply/2027-SWE-College-Jobs/contents/README.md": (200, (
+                "| Company | Role | Location | Application/Link | Date Posted |\n"
+                "| --- | --- | --- | --- | --- |\n"
+                "| **Hewlett Packard Enterprise** | Entry Electrical Engineering Embedded Power Solutions | "
+                f'Spring, TX | <a href="{HPE[1]}"><img src="x.png" alt="Apply"></a> | Sep 20 |\n')),
+        })
+
+        assert await AggregatorService(db_session).poll_source(source) == 1
+
+        db_session.refresh(old)
+        assert old.listing_status == "removed"
+        assert db_session.query(ScrapedJob).filter(ScrapedJob.url == HPE[1]).one().listing_status == "active"
+
     @pytest.mark.parametrize("status", ["removed", "expired"])
     def test_a_row_out_of_the_feed_does_not_block(self, db_session, status):
         _row(db_session, HPE[0], status=status)
