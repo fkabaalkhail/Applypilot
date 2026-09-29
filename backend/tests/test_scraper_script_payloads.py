@@ -265,6 +265,33 @@ def test_a_hanging_linkedin_cannot_stall_the_lookups(jobspy, monkeypatch):
     assert 2 <= len(requested) <= 4       # cut at 0.2 s each until 0.5 s is spent
 
 
+# ─── scrape_linkedin cards without a location ───────────────────────────────
+# Prod had 10 visible LinkedIn rows with no location (AlayaCare x4, the
+# Federation of Canadian Municipalities x2, ...), which no city filter finds.
+
+def _linkedin_card(job_id, location):
+    return (f'<li><div data-entity-urn="urn:li:jobPosting:{job_id}">'
+            f'<a class="base-card__full-link" href="https://ca.linkedin.com/jobs/view/{job_id}?trk=x">'
+            f'</a><h3 class="base-search-card__title">Software Intern</h3>'
+            f'<h4 class="base-search-card__subtitle"><a href="#">Acme</a></h4>'
+            f'<span class="job-search-card__location">{location}</span></div></li>')
+
+
+def test_a_linkedin_card_without_location_takes_the_searched_city():
+    module = _script("scrape_linkedin")
+    html = _linkedin_card(1, "\n  ") + _linkedin_card(2, "Calgary, Alberta, Canada")
+
+    async def run():
+        transport = httpx.MockTransport(lambda request: httpx.Response(200, text=html))
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await module.search_linkedin(client, "intern", "Ottawa", "Ontario")
+
+    jobs = module.asyncio.run(run())
+
+    assert [job.location for job in jobs] == ["Ottawa, Ontario, Canada", "Calgary, Alberta, Canada"]
+    assert module.to_payload(jobs[0])["country"] == "CA"
+
+
 # ─── What ingest-batch does with the empty country ──────────────────────────
 
 @pytest.mark.parametrize("location, stored", [
