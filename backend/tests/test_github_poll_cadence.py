@@ -276,6 +276,58 @@ class TestRotationOrder:
         assert AggregatorService(db_session).sources_due(limit=1, now=now) == [busy]
         assert AggregatorService(db_session).sources_due(limit=2, now=now) == [busy, empty]
 
+    def test_revision_bump_never_starves_the_lists_that_feed_the_catalogue(self, db_session):
+        # Prod's 43 sources on 2026-09-29, then the r1 deploy: 3 lists with
+        # visible rows, 33 vendor-link lists (active, 0 rows ever), 3
+        # permanent 404s, plus the 7 speedyapply files seeding adds. Every
+        # list's file committed this week (due hourly); cron-poll runs every
+        # ~4 h and takes 12. Polling stamps r1; a vendor list parks, a new
+        # file stores rows. Before the fix the re-parsed feeding lists waited
+        # behind the vendor lists' revision-only re-parses for 3 runs.
+        now = datetime.datetime(2026, 9, 29, 12)
+        feeding = []
+        for i in range(3):
+            source = _source(db_session, url=f"https://github.com/lists/feeding-{i}", last_commit_sha=f"f{i}",
+                             last_polled_at=now - datetime.timedelta(hours=16 + i))
+            _row(db_session, source, f"https://jobs.lever.co/acme/{i}")
+            feeding.append(source)
+        vendor = [_source(db_session, url=f"https://github.com/jobright-ai/list-{i}", last_commit_sha=f"v{i}",
+                          last_polled_at=now - datetime.timedelta(hours=6 + i))
+                  for i in range(33)]
+        for i in range(3):
+            _source(db_session, url=f"https://github.com/jobright-ai/typo-{i}", status="error",
+                    error_message="HTTP 404: Client error '404 Not Found'")
+        files = [_source(db_session, url=f"https://github.com/speedyapply/x/blob/HEAD/F{i}.md") for i in range(7)]
+        feeding += files
+        svc = AggregatorService(db_session)
+
+        for run in range(5):
+            polled = svc.sources_due(limit=12, now=now)
+            assert set(feeding) <= set(polled), f"run {run}"
+            for source in polled:
+                source.last_commit_sha = STAMPED
+                source.last_polled_at = now
+                source.poll_interval_minutes = ACTIVE_POLL_MINUTES
+                if source in vendor:
+                    source.status = STATUS_PARKED
+                elif source in files and run == 0:
+                    _row(db_session, source, f"https://jobs.lever.co/file/{source.id}")
+            db_session.commit()
+            now += datetime.timedelta(hours=4)
+
+        # The vendor lists still move, with the slots left over (2 a run).
+        assert sum(source.status == STATUS_PARKED for source in vendor) == 10
+
+    def test_a_never_polled_list_still_goes_first(self, db_session):
+        # A new file has no rows yet either, but nothing about it is known.
+        now = datetime.datetime(2026, 9, 29, 12)
+        busy = _source(db_session, url="https://github.com/lists/busy", last_commit_sha=STAMPED,
+                       last_polled_at=now - datetime.timedelta(hours=3))
+        _row(db_session, busy, "https://jobs.lever.co/acme/1")
+        new = _source(db_session, url="https://github.com/speedyapply/x/blob/HEAD/NEW_GRAD_USA.md")
+
+        assert AggregatorService(db_session).sources_due(limit=1, now=now) == [new]
+
 
 class TestEnrichDeadline:
     @pytest.mark.asyncio

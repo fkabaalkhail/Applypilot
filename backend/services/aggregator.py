@@ -725,7 +725,12 @@ class AggregatorService:
         Parked lists only get the slots left over: they come due together
         (the first pass after a deploy parks ~36 at once) and a week late
         costs nothing, while a skipped run delays the lists that feed the
-        catalogue.
+        catalogue. So does a list re-parsed only for a newer PARSE_REVISION
+        while it has nothing in the feed: after the r1 bump the ~33 vendor
+        lists (still 'active', 0 rows) were all due at once, and once the
+        productive lists were re-parsed and due hourly again, the vendor
+        lists sorted ahead of them for ~4 runs (12-15 h) until all were
+        parked. A never-polled list (a new file) still goes first.
         """
         now = now or datetime.datetime.utcnow()
         # A few dozen rows at most: filter the due rule in Python.
@@ -748,7 +753,13 @@ class AggregatorService:
             .group_by(ScrapedJob.github_source_id)
             .all()
         ) if due else {}
-        due.sort(key=lambda entry: (entry[1].status == STATUS_PARKED, entry[0],
+
+        def reparse_only(due_at: datetime.datetime, source: GitHubSource) -> bool:
+            """Due at once only for PARSE_REVISION, with nothing in the feed."""
+            return (due_at == datetime.datetime.min and source.last_polled_at is not None
+                    and not visible.get(source.id))
+
+        due.sort(key=lambda entry: (entry[1].status == STATUS_PARKED, reparse_only(*entry), entry[0],
                                     -visible.get(entry[1].id, 0),
                                     entry[1].last_polled_at or datetime.datetime.min))
         return [source for _due, source in due[:limit]]
