@@ -71,6 +71,13 @@ class ATSJob:
     location_hint: str = ""
 
 
+def _text(value) -> str:
+    """A source's title or location, stripped. Boards pad them (Carvana's
+    " Entry-level Auto Body Inspector", SoFi's "Frisco, TX "), and the
+    padding reached the feed."""
+    return value.strip() if isinstance(value, str) else ""
+
+
 @dataclass
 class BoardSnapshot:
     """One board crawl: what to ingest, and what the board says is live.
@@ -691,9 +698,9 @@ def _workday_location(posting: dict) -> str:
     (Parsons lists all ~1,950 postings without one, so the NA filter dropped
     every one) the first bullet that is not a requisition id, e.g.
     "US - CA, Pasadena"."""
-    text = posting.get("locationsText") or ""
-    if text.strip():
-        return text  # verbatim: stored rows compare against it for edits
+    text = _text(posting.get("locationsText"))
+    if text:
+        return text  # otherwise verbatim: stored rows compare against it for edits
     for item in posting.get("bulletFields") or []:
         item = item.strip() if isinstance(item, str) else ""
         if item and not _WORKDAY_REQ_ID.fullmatch(item):
@@ -889,8 +896,8 @@ class ATSScraper:
 
         jobs: list[ATSJob] = []
         for job_data in data.get("jobs", []):
-            title = job_data.get("title", "")
-            location = job_data.get("location", {}).get("name", "")
+            title = _text(job_data.get("title"))
+            location = _text((job_data.get("location") or {}).get("name"))
             job_url = job_data.get("absolute_url", "")
             updated_at = job_data.get("updated_at", "")
 
@@ -950,9 +957,9 @@ class ATSScraper:
 
         jobs: list[ATSJob] = []
         for posting in data:
-            title = posting.get("text", "")
+            title = _text(posting.get("text"))
             categories = posting.get("categories", {})
-            location = categories.get("location", "")
+            location = _text(categories.get("location"))
             job_url = posting.get("hostedUrl", "")
             created_at = posting.get("createdAt")
 
@@ -1013,8 +1020,8 @@ class ATSScraper:
 
         jobs: list[ATSJob] = []
         for job_data in data.get("jobs", []):
-            title = job_data.get("title", "")
-            location = job_data.get("location", "")
+            title = _text(job_data.get("title"))
+            location = _text(job_data.get("location"))
             job_url = job_data.get("jobUrl", "")
             published_at = job_data.get("publishedAt", "")
             department = job_data.get("departmentName", "")
@@ -1079,14 +1086,14 @@ class ATSScraper:
             total_found = max(total_found, int(data.get("totalFound") or len(content)))
 
             for job_data in content:
-                title = job_data.get("name", "")
+                title = _text(job_data.get("name"))
 
                 # Build location from city, region, country
                 loc_info = job_data.get("location", {})
                 loc_parts = [
-                    loc_info.get("city", ""),
-                    loc_info.get("region", ""),
-                    loc_info.get("country", ""),
+                    _text(loc_info.get("city")),
+                    _text(loc_info.get("region")),
+                    _text(loc_info.get("country")),
                 ]
                 location = ", ".join(part for part in loc_parts if part)
 
@@ -1204,7 +1211,7 @@ class ATSScraper:
 
             for posting in postings:
                 external_path = posting.get("externalPath", "") or ""
-                title = posting.get("title", "") or ""
+                title = _text(posting.get("title"))
                 location = _workday_location(posting)
                 if not title or not external_path:
                     unlisted.add(_workday_unlisted_key(posting))
