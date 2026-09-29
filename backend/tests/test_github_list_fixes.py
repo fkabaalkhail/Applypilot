@@ -403,6 +403,13 @@ class TestIngest:
         ("Product Manager Intern", True),
         ("Staff Research Scientist - Intern - PhD Foundational AI", True),
         ("Software Engineer - New Grad (2027)", True),
+        # A hard marker beside a student track is that track (review 4).
+        ("Chief of Staff Intern", True),
+        ("Office of General Counsel Intern", True),
+        ("Research Fellow - Summer 2027", True),
+        ("Software Engineer Intern - Sr. Design", True),
+        ("Director's Office Intern", True),
+        ("Co-op 4 years BS/MS", True),
     ])
     def test_plainly_senior_title_is_not_stored(self, db_session, title, stored):
         source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")

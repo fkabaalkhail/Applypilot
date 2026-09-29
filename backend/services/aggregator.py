@@ -1114,9 +1114,12 @@ class AggregatorService:
         # crawler's hard markers (ats_scraper.HARD_SENIOR, shared with the
         # LinkedIn/Indeed ingest): the lists are curated for interns and new
         # grads, so its weak tier, soft words ("Manager", "Architect") and
-        # frontline rules don't apply to them.
-        from backend.services.ats_scraper import HARD_SENIOR
-        if HARD_SENIOR.search(job.title or ""):
+        # frontline rules don't apply to them. A title that also names a
+        # student track (ats_scraper.STRONG_ENTRY) is that track: "Chief of
+        # Staff Intern", "Research Fellow - Summer 2027", "Software Engineer
+        # Intern - Sr. Design".
+        from backend.services.ats_scraper import HARD_SENIOR, STRONG_ENTRY
+        if HARD_SENIOR.search(job.title or "") and not STRONG_ENTRY.search(job.title or ""):
             return False
 
         # Same posting, different utm_* decorations must collide on the URL
