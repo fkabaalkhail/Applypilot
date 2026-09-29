@@ -583,6 +583,9 @@ class TestAdminEndpoints:
         # The URL names another file than the source reads.
         ("https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/NEW_GRAD_USA.md", "README.md"),
         ("https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/../x.md", "../x.md"),
+        # A README source is the bare repo (seed_sources' URL): its file
+        # form would be a second source for the same list.
+        ("https://github.com/speedyapply/2027-SWE-College-Jobs/blob/HEAD/README.md", "README.md"),
         ("https://github.com/speedyapply/2027-SWE-College-Jobs/tree/main", "README.md"),
         ("https://gitlab.com/speedyapply/2027-SWE-College-Jobs", "README.md"),
     ])

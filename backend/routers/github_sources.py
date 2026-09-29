@@ -52,11 +52,14 @@ _FILE_SOURCE_URL_RE = re.compile(
 
 def _source_owner_repo(repo_url: str, file_path: str) -> tuple[str, str]:
     """Owner and repo name of a source URL in either form. A file URL must
-    name the source's own ``file_path``. 422 otherwise."""
+    be the one seed_sources stores for the source's own ``file_path`` (a
+    README source is the bare repo). 422 otherwise."""
+    from backend.services.aggregator import source_url
+
     match = _FILE_SOURCE_URL_RE.match(repo_url or "")
     if match:
         repo, url_file = match.groups()
-        if ".." in url_file.split("/") or url_file != file_path:
+        if ".." in url_file.split("/") or source_url(repo, file_path) != repo_url:
             raise HTTPException(status_code=422,
                                 detail="The URL's file must be the source's file_path.")
         return _parse_github_url(repo)
