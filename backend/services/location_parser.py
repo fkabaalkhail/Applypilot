@@ -75,6 +75,11 @@ KNOWN_CITIES = {
 _CA_POSTAL = re.compile(r"^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$")
 _US_ZIP = re.compile(r"^\d{5}(-\d{4})?$")
 _PLUS_MORE = re.compile(r"\(\s*\+?\d+\s*more\s*\)", re.IGNORECASE)
+# Workday's list payload says "15 Locations" for a multi-location posting. It
+# names no place: parsed word-wise it became the city "15", and the feed card
+# (labelled from the parsed locations) would show "15" as the job's place. No
+# location instead, so the card falls back to the raw "15 Locations" text.
+_LOCATION_COUNT = re.compile(r"^\d+\s+locations?$", re.IGNORECASE)
 _PARENTHETICAL = re.compile(r"\([^)]*\)")
 _METRO = re.compile(
     r"^(?:greater\s+)?(.+?)\s+(?:metropolitan\s+area|metro\s+area|area)$",
@@ -209,7 +214,7 @@ def _parse_segment(segment: str) -> list[ParsedLocation]:
     segment = segment.replace(":", ", ")
     segment = segment.replace(" - ", ", ").replace(" – ", ", ")
     segment = re.sub(r"\s+", " ", segment).strip(" ,;-")
-    if not segment:
+    if not segment or _LOCATION_COUNT.match(segment):
         return []
 
     metro = _METRO.match(segment)
