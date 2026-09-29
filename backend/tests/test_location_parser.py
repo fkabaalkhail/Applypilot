@@ -1,11 +1,14 @@
 """Location parser tests seeded with real prod formats (sampled 2026-07-15)."""
 
+import pytest
+
 from backend.services.location_parser import (
     fold,
     location_display,
     location_fields,
     location_search_blob,
     location_tag_tokens,
+    parse_location_slug,
     parse_locations,
 )
 
@@ -228,3 +231,121 @@ def test_workday_location_count_is_not_a_city():
         assert location_fields(raw)["city"] == ""
     # Only a whole segment: a real place beside it still parses.
     assert first("Toronto, ON; 3 Locations").city == "Toronto"
+
+
+def _matches(tag, raw):
+    blob = location_fields(raw)["location_search"]
+    return all(f"|{token}|" in blob for token in location_tag_tokens(tag))
+
+
+def test_pipe_separates_locations_like_a_semicolon():
+    # Real prod strings (Anthropic, Greenhouse; 2026-09). Read as one
+    # comma list they became "San Francisco, DC": the New York City and
+    # Seattle postings never matched those cities' filters.
+    raw = "San Francisco, CA | New York City, NY | Seattle, WA"
+    locs = parse_locations(raw)
+    assert [(l.city, l.region) for l in locs] == [
+        ("San Francisco", "CA"), ("New York City", "NY"), ("Seattle", "WA")]
+    for tag in ("San Francisco", "New York", "Seattle"):
+        assert _matches(tag, raw), tag
+    assert _matches("New York", "San Francisco, CA | New York City, NY | Washington, DC")
+    both = "Remote-Friendly, United States; San Francisco, CA | New York City, NY"
+    assert _matches("San Francisco", both) and _matches("New York", both)
+    assert [l.city for l in parse_locations("Toronto, ON | Austin, TX")] == ["Toronto", "Austin"]
+
+
+def test_pipe_inside_parentheses_is_not_a_separator():
+    # 1Password's "Remote (United States | Canada)": the alternatives are
+    # the parenthetical, which the segment parse drops.
+    assert [(l.city, l.country) for l in parse_locations("Remote (United States | Canada)")] == [
+        ("Remote", "")]
+    assert [(l.city, l.country) for l in parse_locations(
+        "Remote-Friendly (Travel-Required) | San Francisco, CA")] == [
+        ("Remote-Friendly", ""), ("San Francisco", "United States")]
+
+
+def test_bare_multiword_country_is_a_country_not_a_city():
+    assert [(l.city, l.country) for l in parse_locations("United States | Canada")] == [
+        ("", "United States"), ("", "Canada")]
+
+
+def _places(raw, country=""):
+    return [(l.city, l.region, l.country) for l in parse_locations(raw, country)]
+
+
+@pytest.mark.parametrize("raw, country, places", [
+    # PwC's state-city form, on a US board.
+    ("CA-San Francisco", "US", [("San Francisco", "CA", "United States")]),
+    ("NY-New York", "US", [("New York", "NY", "United States")]),
+    ("DC-Washington", "US", [("Washington", "DC", "United States")]),
+    ("MO-St. Louis", "US", [("St. Louis", "MO", "United States")]),
+    ("NC-Winston-Salem", "US", [("Winston-Salem", "NC", "United States")]),
+    # A leading "CA" is Canada when the evidence says Canada.
+    ("CA-Toronto", "CA", [("Toronto", "", "Canada")]),
+    ("CA-ON - Ontario - Toronto", "CA", [("Toronto", "ON", "Canada")]),
+    ("CA-Ontario-Windsor", "CA", [("Windsor", "ON", "Canada")]),
+    # Country-prefixed forms (Snowflake, Stripe, CIBC).
+    ("US-NY-New York", "US", [("New York", "NY", "United States")]),
+    ("US-Alabama-Ozark", "US", [("Ozark", "AL", "United States")]),
+    ("US-IL-Chicago-MSO", "US", [("Chicago", "IL", "United States")]),
+    ("WI-Milwaukee, 411 E Wisconsin Ave Ste 1850", "US",
+     [("Milwaukee", "WI", "United States")]),
+    ("US-Chicago, US-New York; Canada-Toronto", "US", [
+        ("Chicago", "", "United States"), ("New York", "", "United States"),
+        ("Toronto", "", "Canada")]),
+    # SoFi: a prefix starts the next place even before a city we don't know.
+    ("NY-New York, FL-Jacksonville, UT-Cottonwood Heights", "US", [
+        ("New York", "NY", "United States"), ("Jacksonville", "FL", "United States"),
+        ("Cottonwood Heights", "UT", "United States")]),
+    ("QC-1155 Bl. Rene Levesque-Virtual", "CA", [("", "QC", "Canada")]),  # an address
+])
+def test_code_prefixed_place(raw, country, places):
+    assert _places(raw, country) == places
+
+
+def test_code_prefix_is_read_only_with_positive_evidence():
+    # Without a country (every caller but the crawl's), nothing changes:
+    # "IN-Bengaluru" is India, "DE-Berlin" Germany, not Indiana or Delaware.
+    assert _places("CA-San Francisco") == [("CA-San Francisco", "", "")]
+    assert _places("IN-Bengaluru") == [("IN-Bengaluru", "", "")]
+    # "New York, New York" keeps its city: a repeated region name is only
+    # skipped when it is not also a city.
+    assert _places("New York, New York") == [("New York", "NY", "United States")]
+    assert _places("Quebec, Quebec, Canada") == [("Quebec", "QC", "Canada")]
+
+
+@pytest.mark.parametrize("slug, country, place", [
+    ("Toronto-ON", "CA", ("Toronto", "ON")),
+    ("Toronto-Ontario-Canada", "CA", ("Toronto", "ON")),
+    ("MONTRAL-Quebec-Canada", "CA", ("Montreal", "QC")),  # "Montréal", accent dropped
+    ("REMOTETELETRAVAIL-ON-CAN", "CA", ("Remote", "ON")),
+    ("AMER---Canada---Ontario---Toronto---University-Ave", "CA", ("Toronto", "ON")),
+    ("Toronto---100-Adelaide-St-W", "CA", ("Toronto", "")),
+    ("Mountain-View-CA-USA", "US", ("Mountain View", "CA")),
+    ("USA---Hazelwood-MO", "US", ("Hazelwood", "MO")),
+    ("IL-Rosemont", "US", ("Rosemont", "IL")),
+    ("USA-NY-New-York-City", "US", ("New York City", "NY")),
+    ("New-York-City-New-York", "US", ("New York City", "NY")),
+    ("New-York-NY---225-Liberty-Street", "US", ("New York", "NY")),
+    ("Washington-DC", "US", ("Washington", "DC")),
+    ("Maryland---Washington-DC-Metro---Remote", "US", ("Washington", "DC")),
+    ("California---San-Francisco", "US", ("San Francisco", "CA")),
+    ("St-Louis-MO", "US", ("St. Louis", "MO")),
+    ("3572-Macon-GA-Home-Office", "US", ("Macon", "GA")),
+    ("Texas-Remote", "US", ("Remote", "TX")),
+    ("USA---Remote", "US", ("Remote", "")),
+    ("Los-Angeles", "US", ("Los Angeles", "")),
+    ("New-York", "US", ("", "NY")),
+])
+def test_workday_slug_names_the_primary_location(slug, country, place):
+    loc = parse_location_slug(slug, country)
+    assert loc is not None and (loc.city, loc.region) == place
+
+
+@pytest.mark.parametrize("slug, country", [
+    ("TELUS-CAN-BC-510-W-Georgia-St", "CA"),  # a company and an address
+    ("Hawkesbury", "CA"),                     # no region, not a city we know
+    ("Bangalore", ""),                        # no North American evidence
+])
+def test_workday_slug_it_cannot_trust(slug, country):
+    assert parse_location_slug(slug, country) is None

@@ -241,13 +241,31 @@ class TestReconcileRetire:
         assert _status(db_session, github) == LISTING_ACTIVE  # the old rule
         assert _status(db_session, linkedin) == LISTING_ACTIVE
 
-    def test_vanished_off_target_row_is_left_alone(self, db_session):
+    def test_vanished_off_target_row_is_removed(self, db_session):
+        """Hidden either way, but only a closed status tells a saved job, an
+        application or a deep link that the posting is gone."""
         off = _row(db_session, "https://a/1", listing_status=LISTING_OFF_TARGET)
         other = _row(db_session, "https://a/2", location="Austin, TX")
 
         stats = reconcile_board(db_session, BOARD, {other.url}, now=NOW, rejected={})
 
-        assert stats["removed"] == 0
+        assert stats["removed"] == 1
+        assert _status(db_session, off) == LISTING_REMOVED
+        assert LISTING_REMOVED in CLOSED_LISTING_STATUSES
+
+        # Relisted and still failing: back to off_target, not the feed.
+        reconcile_board(db_session, BOARD, {off.url, other.url}, now=NOW,
+                        rejected={off.url: "location"})
+        assert _status(db_session, off) == LISTING_OFF_TARGET
+
+    def test_partial_snapshot_never_removes_off_target(self, db_session):
+        from backend.routers.github_sources import _confirm_listed
+
+        off = _row(db_session, "https://a/1", listing_status=LISTING_OFF_TARGET)
+        other = _row(db_session, "https://a/2", location="Austin, TX")
+
+        _confirm_listed(db_session, BOARD, {other.url}, now=NOW, rejected={})
+
         assert _status(db_session, off) == LISTING_OFF_TARGET
 
     def test_workday_apply_url_matches_its_rejection(self, db_session):
@@ -455,6 +473,33 @@ class TestOrphanRetire:
         assert stats["off_target"] == 0 and stats["disabled"]
         assert _status(db_session, cleaner) == LISTING_ACTIVE
 
+    def test_kill_switch_rolls_the_retire_back(self, db_session, monkeypatch):
+        """No crawl ever re-judges an orphan, so switching the retire off must
+        bring back what this sweep hid, bounded per run, and nothing else."""
+        cleaner = _row(db_session, "https://jobs.nokia.com/1", board_key="unknown",
+                       title="Cleaner", location="Toronto, ON")
+        london = _row(db_session, "https://jobs.nokia.com/2", board_key="",
+                      title="Software Intern", location="London, UK")
+        # Retired by others: a crawl's verdict (its next crawl brings it
+        # back) and the senior aggregator sweep's (it rolls back its own).
+        crawled = _row(db_session, "https://boards.greenhouse.io/acme/jobs/3",
+                       listing_status=LISTING_OFF_TARGET)
+        senior = _aggregator(db_session, 4, "Senior HR Specialist",
+                             listing_status=LISTING_OFF_TARGET)
+        assert retire_unreconcilable_off_target(db_session, now=NOW)["off_target"] == 2
+
+        monkeypatch.setenv("CRON_ATS_RETIRE_OFF_TARGET", "0")
+        stats = retire_unreconcilable_off_target(db_session, now=NOW, limit=1)
+
+        assert stats["disabled"] and (stats["off_target"], stats["restored"]) == (0, 1)
+        assert _status(db_session, cleaner) == LISTING_ACTIVE
+        assert _status(db_session, london) == LISTING_OFF_TARGET  # the next run's
+        assert retire_unreconcilable_off_target(db_session, now=NOW)["restored"] == 1
+        assert _status(db_session, london) == LISTING_ACTIVE
+        assert retire_unreconcilable_off_target(db_session, now=NOW)["restored"] == 0
+        assert _status(db_session, crawled) == LISTING_OFF_TARGET
+        assert _status(db_session, senior) == LISTING_OFF_TARGET
+
     def test_cron_freshness_runs_it_before_the_checks(self, client, db_session, monkeypatch):
         from backend.services import listing_freshness
 
@@ -547,6 +592,33 @@ class TestSeniorAggregatorRetire:
 
         assert stats["off_target"] == 0 and stats["disabled"]
         assert _status(db_session, row) == LISTING_ACTIVE
+
+    def test_kill_switch_rolls_the_retire_back(self, db_session, monkeypatch):
+        """Nothing else revives these rows, so switching the retire off must
+        bring back what this sweep hid: twins included, and a row the
+        aggregator expiry would have ended meanwhile goes to expired."""
+        young = _aggregator(db_session, 1, "Senior HR Specialist", city="toronto",
+                            title_norm="senior hr specialist")
+        twin = _aggregator(db_session, 2, "Senior HR Specialist", source="indeed",
+                           city="toronto", title_norm="senior hr specialist",
+                           duplicate_of=young.id)
+        aged_at = NOW - datetime.timedelta(days=30)
+        aged = _aggregator(db_session, 3, "Director of Engineering",
+                           first_seen_at=aged_at, scraped_at=aged_at)
+        orphan = _row(db_session, "https://jobs.nokia.com/4", board_key="unknown",
+                      title="Cleaner", listing_status=LISTING_OFF_TARGET)
+        assert retire_senior_aggregator_rows(db_session, now=NOW)["off_target"] == 3
+
+        monkeypatch.setenv("CRON_ATS_RETIRE_OFF_TARGET", "0")
+        stats = retire_senior_aggregator_rows(db_session, now=NOW)
+
+        assert stats["disabled"] and (stats["restored"], stats["expired"]) == (2, 1)
+        assert _status(db_session, young) == LISTING_ACTIVE
+        assert _status(db_session, twin) == LISTING_ACTIVE
+        assert db_session.get(ScrapedJob, twin.id).duplicate_of == young.id  # still hidden
+        assert _status(db_session, aged) == LISTING_EXPIRED
+        assert _status(db_session, orphan) == LISTING_OFF_TARGET  # the orphan sweep's
+        assert retire_senior_aggregator_rows(db_session, now=NOW)["restored"] == 0
 
     def test_cron_freshness_runs_it(self, client, db_session, monkeypatch):
         from backend.services import listing_freshness
