@@ -33,6 +33,10 @@ CRON_SECRET = os.getenv("CRON_SECRET", "")
 # Jobs per request. The endpoint caps a batch at 500.
 BATCH_SIZE = 100
 
+# What ingest-batch counts per request. Twins are included in duplicates;
+# senior_skipped is a plainly senior title the API refused to store.
+INGEST_COUNTERS = ("created", "duplicates", "cross_source_twins_skipped", "skipped", "senior_skipped")
+
 # Canadian cities to search
 CITIES = [
     ("Ottawa", "Ontario"),
@@ -232,14 +236,15 @@ def to_payload(job: Job) -> dict:
     return payload
 
 
-async def push_batches(jobs: list[dict]) -> tuple[int, int, int, int]:
+async def push_batches(jobs: list[dict]) -> dict[str, int]:
     """POST jobs to /jobs/ingest-batch in chunks. One request dedupes and
     inserts a whole chunk, the old per-job /jobs/create loop cost one
     (unauthenticated, always-401) request per job.
 
-    Returns (created, duplicates, skipped, errors).
+    Returns the API's INGEST_COUNTERS summed over the chunks, plus "errors":
+    jobs in a chunk that never reached the API or that it refused.
     """
-    created = duplicates = skipped = errors = 0
+    totals = dict.fromkeys(INGEST_COUNTERS + ("errors",), 0)
     headers = {"x-cron-secret": CRON_SECRET} if CRON_SECRET else {}
     async with httpx.AsyncClient(timeout=60) as client:
         for start in range(0, len(jobs), BATCH_SIZE):
@@ -252,16 +257,25 @@ async def push_batches(jobs: list[dict]) -> tuple[int, int, int, int]:
                 )
                 if resp.status_code == 200:
                     data = resp.json()
-                    created += data.get("created", 0)
-                    duplicates += data.get("duplicates", 0)
-                    skipped += data.get("skipped", 0)
+                    for key in INGEST_COUNTERS:
+                        totals[key] += data.get(key, 0)
                 else:
                     print(f"  batch {start // BATCH_SIZE + 1}: HTTP {resp.status_code} {resp.text[:200]}")
-                    errors += len(chunk)
+                    totals["errors"] += len(chunk)
             except Exception as e:
                 print(f"  batch {start // BATCH_SIZE + 1}: {e}")
-                errors += len(chunk)
-    return created, duplicates, skipped, errors
+                totals["errors"] += len(chunk)
+    return totals
+
+
+def results_line(totals: dict[str, int]) -> str:
+    """The run's closing log line, every ingest-batch counter included."""
+    return (
+        f"Results: {totals['created']} created, {totals['duplicates']} duplicates "
+        f"({totals['cross_source_twins_skipped']} cross-source twins), "
+        f"{totals['senior_skipped']} senior titles skipped, "
+        f"{totals['skipped']} skipped (no URL), {totals['errors']} errors"
+    )
 
 
 async def main():
@@ -309,9 +323,9 @@ async def main():
     payloads = [to_payload(job) for job in all_jobs]
     print(f"\nPushing {len(payloads)} jobs to {API_BASE} in batches of {BATCH_SIZE}...")
 
-    created, duplicates, skipped, errors = await push_batches(payloads)
+    totals = await push_batches(payloads)
 
-    print(f"\nResults: {created} created, {duplicates} duplicates, {skipped} skipped, {errors} errors")
+    print(f"\n{results_line(totals)}")
     print(f"Total in DB: check {API_BASE}/jobs/stats")
 
 
