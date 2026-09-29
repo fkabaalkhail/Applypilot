@@ -25,11 +25,13 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # exported in the shell). Empty reads as unset everywhere they are read. A
 # test that builds OpenAIService opts in with
 # monkeypatch.setenv("OPENAI_API_KEY", "test-key") and mocks the call.
-# Only these three. Every other .env variable still reaches a local run
-# (DATABASE_URL, REDIS_URL, JWT_SECRET, CRON_SECRET, FRONTEND_URL, ...), so
-# this is not full CI parity: CI exports DATABASE_URL=sqlite:///./ci_test.db
-# and a dummy JWT_SECRET; export the same locally, or the app lifespan runs its
-# migrations against whatever database .env names.
+# Only these three, plus the RATE_LIMIT_ENABLED default above (set before
+# load_dotenv, so .env can't change it either). Every other .env variable still
+# reaches a local run (DATABASE_URL, REDIS_URL, JWT_SECRET, CRON_SECRET,
+# FRONTEND_URL, ...), so this is not full CI parity: CI exports
+# DATABASE_URL=sqlite:///./ci_test.db and a dummy JWT_SECRET; export the same
+# locally, or the app lifespan runs its migrations against whatever database
+# .env names.
 for _live_credential in ("OPENAI_API_KEY", "RESEND_API_KEY", "BLOB_READ_WRITE_TOKEN"):
     os.environ[_live_credential] = ""
 
