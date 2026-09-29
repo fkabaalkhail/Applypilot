@@ -512,8 +512,8 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
         # longer sanitized text moves parse_salary's window. A row that
         # older refresh rewrote holds the raw text and its hash: the same
         # content, healed without an edit.
-        description = (job.description or "").strip()
-        description = sanitize_description(description) if description else ""
+        raw_description = (job.description or "").strip()
+        description = sanitize_description(raw_description) if raw_description else ""
         new_hash = (compute_raw_hash(job.title, job.location, description, job.salary_text or "")
                     if description else "")
         same_content = bool(new_hash) and (old_hash == new_hash or old_hash == compute_raw_hash(
@@ -521,7 +521,12 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
         content_changed = bool(new_hash) and bool(old_hash) and not same_content
 
         if job.salary_text or description:
-            parsed = parse_salary(job.salary_text or "") or parse_salary(description)
+            # The raw text last: escaping lengthens the sanitized text, which
+            # moves parse_salary's window off a pay line the raw text shows.
+            # Veeva's "Financial Analyst" states "$60,000 - $85,000" at
+            # character 3,967 of 4,510, and "&nbsp;" pushes it past 4,000.
+            parsed = (parse_salary(job.salary_text or "") or parse_salary(description)
+                      or parse_salary(raw_description))
             if parsed:
                 salary_min, salary_max, currency, period = parsed
                 # A new reading of unchanged content is the parser's, not an edit.

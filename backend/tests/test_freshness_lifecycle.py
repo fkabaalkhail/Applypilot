@@ -324,6 +324,25 @@ class TestRefreshKnownListings:
         row = db_session.get(ScrapedJob, known.id)
         assert (row.salary_min, row.salary_max, row.salary_period) == (60, 70, "hour")
 
+    def test_salary_falls_back_to_the_raw_description(self, db_session):
+        """Veeva's "Financial Analyst" (Lever): the pay line sits at
+        character 3,967 of 4,510, inside parse_salary's 4,000-character head,
+        and the sanitized text's "&nbsp;" pushes it past, so the refresh read
+        no pay the raw text states (review 5)."""
+        body = "Our values:\n\xa0\n" * 30
+        raw = (body + "x" * (3967 - len(body)) + "Base pay: $60,000 - $85,000\n"
+               + "The salary range listed here has been set in good faith. " * 9)
+        stored = sanitize_description(raw)
+        assert raw.index("$60,000") < 4000 < stored.index("$60,000")
+        assert len(stored) <= 5500
+        known = _row(db_session)
+
+        refresh_known_listings(db_session, BOARD, [_job(url=known.url, description=raw)], now=NOW)
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert (row.salary_min, row.salary_max, row.salary_period) == (60000, 85000, "year")
+
     def test_empty_description_recrawl_is_not_an_edit(self, db_session):
         """SmartRecruiters/Workday list payloads carry no description, a
         refresh without one must not log a description change."""
