@@ -498,16 +498,26 @@ FRONTLINE = re.compile(
     re.IGNORECASE,
 )
 _SHIFT_WORDS = re.compile(_SHIFT, re.IGNORECASE)
-_LEVEL_ONE = re.compile(_LEVEL_ONE_ROLE, re.IGNORECASE)
+# The level-I roles a shift can't make floor work: engineering, analysis,
+# science, design and support desks on a rota.
+_ROTA_ROLE = (
+    r"(?:engineer|developer|analyst|scientist|programmer|designer|support\s+" + _LEVEL_ROLE + r")"
+)
+_ROTA_LEVEL_ONE = re.compile(
+    r"\b" + _ROTA_ROLE + r"\s*,?\s*(?:i|1)\b(?![-\w])" + _NOT_A_DURATION, re.IGNORECASE,
+)
 _PART_TIME_COMMITMENT = re.compile(r"part[- ]?time", re.IGNORECASE)
 
 
 def _frontline(title: str) -> bool:
-    """FRONTLINE, except that a shift alone does not make a level-I role
-    hourly floor work: Replit's "Support Engineer I (FC, Weekend Shift)" is
-    a support engineer on a weekend rota. Its other words still veto
-    ("Security Associate I - 2nd Shift", "Lot Driver I - Part Time")."""
-    if _LEVEL_ONE.search(title):
+    """FRONTLINE, except that a shift alone does not make a level-I desk
+    role (_ROTA_ROLE) hourly floor work: Replit's "Support Engineer I (FC,
+    Weekend Shift)" is a support engineer on a weekend rota. A production
+    floor's level-I role on a shift is floor work ("Factory Test Technical
+    Specialist I - 1st Shift", "Technician I - 2nd Shift"), and a desk
+    role's other words still veto ("Software Engineer I, Night Shift,
+    #12")."""
+    if _ROTA_LEVEL_ONE.search(title):
         title = _SHIFT_WORDS.sub(" ", title)
     return bool(FRONTLINE.search(title))
 

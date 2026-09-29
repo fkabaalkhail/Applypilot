@@ -327,12 +327,13 @@ def test_the_veto_reads_a_pathological_title_quickly(title, senior):
 
 
 @pytest.mark.parametrize("title", [
-    # A level-I role on a shift is not hourly floor work (2026-09-29 crawl).
+    # A level-I desk role on a shift is not hourly floor work (2026-09-29 crawl).
     "Support Engineer I (FC, Weekend Shift)",                 # Replit, prod 64250
     "Support Engineer I (NYC, Weekend Shift)",
-    "Factory Test Technical Specialist I - 2nd Shift",        # Relativity
+    "Data Analyst I - Night Shift",
+    "IT Support Specialist I (Evening Shift)",
 ])
-def test_a_shift_alone_never_vetoes_a_level_one_role(title):
+def test_a_shift_alone_never_vetoes_a_level_one_desk_role(title):
     assert entry_tier(title) == "weak"
     assert ATSScraper().rejection(_job(title, location="Foster City, CA")) is None
 
@@ -342,6 +343,10 @@ def test_a_shift_alone_never_vetoes_a_level_one_role(title):
     "Security Associate I - 2nd Shift",                       # frontline anyway
     "Software Engineer I, Night Shift, #12",                  # a store number
     "Lot Driver I - Part Time",
+    # A production floor's level-I role on a shift is floor work (review 5).
+    "Factory Test Technical Specialist I - 1st Shift",        # Relativity, Long Beach
+    "Factory Test Technical Specialist I - 2nd Shift",
+    "Technician I - 2nd Shift",
 ])
 def test_a_level_one_role_is_still_frontline_on_its_other_words(title):
     assert entry_tier(title) is None
