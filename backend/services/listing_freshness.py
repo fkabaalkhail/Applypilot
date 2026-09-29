@@ -957,6 +957,22 @@ def retire_senior_aggregator_rows(db: Session, now: datetime.datetime | None = N
 
 # ─── Ghost-risk scoring ──────────────────────────────────────────────────────
 
+# A source's posted_date before this is a placeholder, not a date.
+_POSTED_DATE_FLOOR = datetime.datetime(2000, 1, 1)
+
+
+def _opened_at(posted_date, first_seen_at):
+    """When a posting opened: the source's posted_date when it is plausible
+    (after 2000, and before we first saw the row: a later one is a repost
+    stamp), else our first sighting. Lever lists GoPuff postings from 2021
+    and Palantir's from 2016 that we first saw in 2026: measured from the
+    sighting they scored as fresh."""
+    if (posted_date is not None and posted_date > _POSTED_DATE_FLOOR
+            and (first_seen_at is None or posted_date < first_seen_at)):
+        return posted_date
+    return first_seen_at
+
+
 def _ghost_score(days_open: int, evergreen: bool, repost_count: int,
                  company_long_open_ratio: float, company_active: int) -> tuple[int, dict]:
     score = 0
@@ -986,6 +1002,9 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
          descriptions, to cache the evergreen flag into the factors JSON
       2. previously scored rows old enough that age-driven factors move,
          column-only, evergreen reused from the cached factors
+
+    Days open count from when the posting opened (_opened_at: the source's
+    posted_date when plausible, else our first sighting).
 
     Commits. Returns counts.
     """
@@ -1036,7 +1055,7 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
     # Pass 1: never scored. Reads the description once to cache `evergreen`.
     fresh = (
         db.query(ScrapedJob.id, ScrapedJob.company, ScrapedJob.title_norm,
-                 ScrapedJob.first_seen_at, ScrapedJob.description)
+                 ScrapedJob.first_seen_at, ScrapedJob.posted_date, ScrapedJob.description)
         .filter(ScrapedJob.listing_status == LISTING_ACTIVE,
                 ScrapedJob.duplicate_of.is_(None),
                 ScrapedJob.ghost_risk_factors.is_(None))
@@ -1044,9 +1063,10 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
         .limit(batch_size)
         .all()
     )
-    reposts = _repost_counts([(c or "", n or "") for _i, c, n, _f, _d in fresh])
-    for row_id, company, title_norm, first_seen_at, description in fresh:
-        days_open = (now - first_seen_at).days if first_seen_at else 0
+    reposts = _repost_counts([(c or "", n or "") for _i, c, n, _f, _p, _d in fresh])
+    for row_id, company, title_norm, first_seen_at, posted_date, description in fresh:
+        opened = _opened_at(posted_date, first_seen_at)
+        days_open = (now - opened).days if opened else 0
         evergreen = looks_evergreen(description or "")
         ratio, active_n = _company_ratio(company or "")
         score, factors = _ghost_score(
@@ -1062,22 +1082,27 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
         )
         stats["scored_new"] += 1
 
-    # Pass 2: aging rows whose age factor may have moved. Column-only.
+    # Pass 2: aging rows whose age factor may have moved. Column-only. A
+    # row first seen lately can be old by its source's plausible date.
     aging_cutoff = now - datetime.timedelta(days=GHOST_DAYS_OPEN - 5)
     aging = (
         db.query(ScrapedJob.id, ScrapedJob.company, ScrapedJob.title_norm,
-                 ScrapedJob.first_seen_at, ScrapedJob.ghost_risk_factors)
+                 ScrapedJob.first_seen_at, ScrapedJob.posted_date,
+                 ScrapedJob.ghost_risk_factors)
         .filter(ScrapedJob.listing_status == LISTING_ACTIVE,
                 ScrapedJob.duplicate_of.is_(None),
                 ScrapedJob.ghost_risk_factors.isnot(None),
-                ScrapedJob.first_seen_at < aging_cutoff)
+                or_(ScrapedJob.first_seen_at < aging_cutoff,
+                    (ScrapedJob.posted_date > _POSTED_DATE_FLOOR)
+                    & (ScrapedJob.posted_date < aging_cutoff)))
         .order_by(ScrapedJob.first_seen_at.asc())
         .limit(batch_size)
         .all()
     )
-    reposts = _repost_counts([(c or "", n or "") for _i, c, n, _f, _g in aging])
-    for row_id, company, title_norm, first_seen_at, old_factors in aging:
-        days_open = (now - first_seen_at).days if first_seen_at else 0
+    reposts = _repost_counts([(c or "", n or "") for _i, c, n, _f, _p, _g in aging])
+    for row_id, company, title_norm, first_seen_at, posted_date, old_factors in aging:
+        opened = _opened_at(posted_date, first_seen_at)
+        days_open = (now - opened).days if opened else 0
         evergreen = bool((old_factors or {}).get("evergreen"))
         ratio, active_n = _company_ratio(company or "")
         score, factors = _ghost_score(

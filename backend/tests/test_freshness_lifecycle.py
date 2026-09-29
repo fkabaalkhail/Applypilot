@@ -981,6 +981,53 @@ class TestGhostScoring:
         assert stats["rescored"] == 1
         assert row.ghost_risk_score >= 25  # age factor now applies
 
+    def test_a_years_old_posting_scores_as_old(self, db_session):
+        """Lever lists GoPuff postings from 2021 that we first saw in 2026:
+        days open count from the source's date, not our sighting."""
+        posted = NOW - datetime.timedelta(days=3 * 365)
+        row = _row(db_session, first_seen_at=NOW - datetime.timedelta(days=10),
+                   posted_date=posted,
+                   description="One opening on the payments team, starting September.")
+        # The rescore pass has room for one row, and an older one takes it:
+        # the first scoring alone must get the age right.
+        _row(db_session, url="https://boards.greenhouse.io/acme/jobs/old",
+             first_seen_at=NOW - datetime.timedelta(days=300),
+             ghost_risk_factors={"evergreen": False,
+                                 "scored_at": (NOW - datetime.timedelta(days=30)).isoformat()})
+        score_ghost_risk(db_session, now=NOW, batch_size=1)
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, row.id)
+        assert row.ghost_risk_score >= 40
+        assert row.ghost_risk_factors["days_open"] == (NOW - posted).days
+
+    @pytest.mark.parametrize("posted_date", [
+        datetime.datetime(1970, 1, 1),                # a placeholder, not a date
+        NOW - datetime.timedelta(days=5),             # after our first sighting: a repost stamp
+    ])
+    def test_an_implausible_posted_date_is_ignored(self, db_session, posted_date):
+        row = _row(db_session, first_seen_at=NOW - datetime.timedelta(days=100),
+                   posted_date=posted_date,
+                   description="One opening on the payments team, starting September.")
+        score_ghost_risk(db_session, now=NOW)
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, row.id)
+        assert row.ghost_risk_factors["days_open"] == 100  # from our first sighting
+
+    def test_rescore_reaches_a_recently_seen_old_posting(self, db_session):
+        """Scored while young by our sighting, old by its source's date: the
+        rescore pass must pick it up, or its first score stands."""
+        row = _row(db_session,
+                   first_seen_at=NOW - datetime.timedelta(days=10),
+                   posted_date=NOW - datetime.timedelta(days=200),
+                   ghost_risk_score=0,
+                   ghost_risk_factors={"evergreen": False,
+                                       "scored_at": (NOW - datetime.timedelta(days=1)).isoformat()})
+        stats = score_ghost_risk(db_session, now=NOW)
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, row.id)
+        assert stats["rescored"] == 1
+        assert row.ghost_risk_score == 40 and row.ghost_risk_factors["days_open"] == 200
+
     def test_hidden_duplicates_not_scored(self, db_session):
         winner = _row(db_session)
         twin = _row(db_session, url="https://linkedin.com/jobs/view/9",
