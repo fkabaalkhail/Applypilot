@@ -575,6 +575,7 @@ class _Reading(NamedTuple):
     ambiguous: bool         # the only NA evidence is a bare "CA" code
     namesake: bool = False  # ...or a bare city both countries have ("Richmond")
     countryless: bool = False  # ...or "North America" or a bare "Remote"
+    bare_remote: bool = False  # ...a bare "Remote": no North American place at all
 
 
 def _read(location: str) -> _Reading:
@@ -654,7 +655,7 @@ def _read(location: str) -> _Reading:
     if maybe_foreign:
         return _Reading(None, named, False)  # "Remote - PT", "Remote (NO)"
     if _REMOTE.search(folded):
-        return _Reading(US, named, False, countryless=True)
+        return _Reading(US, named, False, countryless=True, bare_remote=True)
     return _Reading(None, named, False)
 
 
@@ -678,6 +679,17 @@ def classify_north_america(location: str) -> Optional[str]:
 
 def is_north_america(location: str) -> bool:
     return classify_north_america(location) is not None
+
+
+def names_north_american_place(location: str) -> bool:
+    """A US/Canadian place the location names: a country, a state or
+    province, a city, or "North America". A bare "Remote" ("Remote",
+    "Remote - Worldwide") names none: region_of reads it as North American
+    for want of anything else, which suits a posting's own location but not
+    one of its other locations (Perplexity's "Belgrade" posting, also open
+    "Remote", is not a North American one)."""
+    reading = _read(location)
+    return reading.verdict in (US, CA) and not reading.bare_remote
 
 
 def hint_region(hint: str) -> Optional[str]:

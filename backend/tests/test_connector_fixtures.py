@@ -184,6 +184,44 @@ async def test_lever_all_locations_feed_the_na_verdict(monkeypatch):
     assert snapshot.rejected == {"https://jobs.lever.co/acme/l2": "location"}
 
 
+@pytest.mark.asyncio
+async def test_a_bare_remote_other_location_vouches_for_nothing(monkeypatch):
+    """Live 2026-09-29: Perplexity's "Belgrade" posting is also open
+    "Remote", and Hopper's "Brazil - Remote" one "Curitiba - Remote". Neither
+    names a North American place, so neither is a North American posting."""
+    monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+
+    def ashby(job_id, location, secondary):
+        return {"id": job_id, "title": "Machine Learning Intern", "location": location,
+                "secondaryLocations": [{"location": place} for place in secondary],
+                "jobUrl": f"https://jobs.ashbyhq.com/acme/{job_id}", "employmentType": "Intern"}
+
+    transport = FixtureTransport({
+        "api.ashbyhq.com": {"jobs": [
+            ashby("a1", "Belgrade", ["Remote"]),
+            ashby("a2", "Brazil - Remote", ["Curitiba - Remote", "Remote - Worldwide"]),
+            ashby("a3", "London", ["Remote", "Remote - US", "Toronto, ON; Remote"]),
+            ashby("a4", "London", ["Remote - North America"]),
+        ]},
+        "api.lever.co": [
+            {"id": "l1", "text": "Software Engineer Intern",
+             "hostedUrl": "https://jobs.lever.co/acme/l1",
+             "categories": {"location": "London, UK", "allLocations": ["London, UK", "Remote"],
+                            "commitment": "Intern"}},
+        ],
+    })
+    async with httpx.AsyncClient(transport=transport) as client:
+        ashby_board = await _filtered().scrape_board(client, "ashby", "acme", "Acme")
+        lever_board = await _filtered().scrape_board(client, "lever", "acme", "Acme")
+
+    passed = {job.url.rsplit("/", 1)[-1]: job.location_hint for job in ashby_board.jobs}
+    assert passed == {"a3": "Remote - US; Toronto, ON; Remote", "a4": "Remote - North America"}
+    assert ashby_board.rejected == {"https://jobs.ashbyhq.com/acme/a1": "location",
+                                    "https://jobs.ashbyhq.com/acme/a2": "location"}
+    assert lever_board.jobs == []
+    assert lever_board.rejected == {"https://jobs.lever.co/acme/l1": "location"}
+
+
 # ─── SmartRecruiters ─────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

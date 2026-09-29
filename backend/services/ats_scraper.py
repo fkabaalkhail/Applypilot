@@ -35,7 +35,15 @@ from typing import Optional
 import httpx
 
 from backend.services.description_extractor import clean_html
-from backend.services.na_location import CA, FOREIGN, US, hint_region, is_north_america, region_of
+from backend.services.na_location import (
+    CA,
+    FOREIGN,
+    US,
+    hint_region,
+    is_north_america,
+    names_north_american_place,
+    region_of,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -710,13 +718,16 @@ def _other_na_locations(primary: str, others) -> str:
     """The North American places among a posting's other locations (Ashby
     ``secondaryLocations``, Lever ``categories.allLocations``), "; "-joined.
     A posting whose primary location is abroad but which is also open in New
-    York or Toronto is a North American posting, not a "location" reject."""
+    York or Toronto is a North American posting, not a "location" reject.
+    A bare "Remote" ("Remote - Worldwide") names no place, so it vouches for
+    nothing: Perplexity's "Belgrade" posting, also open "Remote", is not
+    North American."""
     places: list[str] = []
     for item in others or []:
         place = item.get("location") if isinstance(item, dict) else item
         place = place.strip() if isinstance(place, str) else ""
         if place and place != (primary or "").strip() and place not in places \
-                and is_north_america(place):
+                and names_north_american_place(place):
             places.append(place)
     return "; ".join(places)
 

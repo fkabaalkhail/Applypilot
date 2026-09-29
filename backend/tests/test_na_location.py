@@ -16,6 +16,7 @@ from backend.services.na_location import (
     classify_north_america,
     hint_region,
     job_country,
+    names_north_american_place,
     region_of,
 )
 
@@ -434,6 +435,18 @@ def test_a_country_or_city_beside_north_america_still_decides():
     assert job_country("Remote (Canada)", current="US") == "CA"
     assert job_country("North America - Toronto", current="US") == "CA"
     assert job_country("North America - Seattle", current="CA") == "US"
+
+
+@pytest.mark.parametrize("location, names", [
+    ("Remote", False), ("Remote - Worldwide", False), ("Hybrid Remote", False),
+    ("Curitiba - Remote", False),       # Hopper: a place we cannot place
+    ("Belgrade", False), ("Anywhere", False), ("", False),
+    ("Remote - US", True), ("Remote (Canada)", True), ("Toronto", True),
+    ("San Francisco, CA", True), ("Remote - North America", True), ("Remote, CA", True),
+])
+def test_names_north_american_place(location, names):
+    """What vouches for a posting among its other locations (Ashby, Lever)."""
+    assert names_north_american_place(location) is names
 
 
 def test_a_bare_london_never_flips_a_country():
