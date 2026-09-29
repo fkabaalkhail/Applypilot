@@ -413,7 +413,9 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
       if (!stillOnScreen()) return;
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 503) {
-        setError("AI analysis unavailable. Connect Gemini or Ollama to enable match scoring.");
+        // 503 = the scoring model is unreachable or refused the call (outage,
+        // billing). There is nothing for the user to connect or configure.
+        setError("Match scoring is temporarily unavailable. Please try again later.");
       } else if (status === 422) {
         setError("Could not fetch a job description to analyze. Try opening the apply link directly.");
       } else if (status) {

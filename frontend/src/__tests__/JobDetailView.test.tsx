@@ -105,6 +105,25 @@ describe("JobDetailView", () => {
     expect(screen.getByText("Hyperion Planning").className).not.toContain("skill-tag-matched");
   });
 
+  // Every prod job has match_score 0, so every open asks /ai/match-breakdown,
+  // and while the OpenAI account is down every one of those answers 503. The
+  // old copy told users to "Connect Gemini or Ollama", which no user can do.
+  it("says match scoring is temporarily unavailable on a 503", async () => {
+    apiPost.mockImplementation((url: string) => {
+      if (url.includes("/ai/match-breakdown/")) {
+        return Promise.reject({ response: { status: 503 } });
+      }
+      if (url.endsWith("/structure-description")) return Promise.resolve({ data: STRUCT });
+      return Promise.resolve({ data: {} });
+    });
+    renderWithProviders(<JobDetailView job={{ ...mockJob, id: 5, match_score: 0 }} />);
+
+    expect(
+      await screen.findByText("Match scoring is temporarily unavailable. Please try again later.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/gemini|ollama/i)).toBeNull();
+  });
+
   it("shows a View Original Post CTA when no description could be fetched", async () => {
     apiPost.mockImplementation((url: string) => {
       if (url.endsWith("/fetch-details")) return Promise.resolve({ data: { description: "" } });
