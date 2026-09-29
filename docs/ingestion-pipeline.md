@@ -94,10 +94,19 @@ A registry entry is scrapeable only when it carries the endpoint base:
 
 To find a tenant's base: open the company's careers site, watch the network
 tab for a POST to `/wday/cxs/{tenant}/{site}/jobs`, and copy everything up to
-`/jobs`. Entries without a template are kept in the registry but skipped.
-(All 16 tenants that had rows but no template, Magna, Parsons, Hitachi,
-Lilly and others, got one in 2026-09; BlackBerry and QNX share tenant `bb`
-and are split into two slugs.)
+`/jobs`. `load_companies()` skips a workday entry without a template, so it
+would read as covered and never be crawled: an enabled workday entry must
+carry one (`test_every_enabled_workday_board_has_a_template`). A company that
+is not on a public Workday site is filed under its real system (`custom`,
+`avature`, `eightfold`, `successfactors`, `oracle`, `taleo`) and disabled
+with the reason. When one tenant hosts several sites, each site takes its
+own slug and none takes the bare tenant (BlackBerry and QNX on `bb`, PwC,
+RBC, Morgan Stanley). (All 16 tenants that had rows but no template, Magna,
+Parsons, Hitachi, Lilly and others, got one in 2026-09. On 2026-09-29 the 28
+enabled entries that had never been crawled were sorted out: 9 sites
+enabled, 5 held with a template for a product decision or a missing
+feature, 17 filed under their real system, and a duplicate ServiceNow
+entry removed.)
 
 The connector pages the WHOLE list, 20 postings per POST, up to
 `WORKDAY_MAX_PAGES` (default **100**; prod must not pin it to the old 8).
