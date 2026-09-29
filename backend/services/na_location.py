@@ -55,6 +55,11 @@ CA = "CA"
 # The continent, in neither country: a marker _segment_markers yields.
 _NORTH_AMERICA = "NA"
 
+# Classify at most this much text. Prod's longest location is 495
+# characters, and some rules are quadratic in the length: a 10,000-character
+# string took hint_region 9 s.
+_MAX_TEXT = 1000
+
 US_STATE_CODES = {
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
     "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
@@ -587,6 +592,7 @@ def _read(location: str) -> _Reading:
     ("Remote - North America", "Remote"). One pass over the text."""
     if not location or not location.strip():
         return _Reading(None, frozenset(), False)
+    location = location[:_MAX_TEXT]
     if "🇺🇸" in location:
         return _Reading(US, frozenset({US}), False)
     if "🇨🇦" in location:
@@ -702,12 +708,13 @@ def hint_region(hint: str) -> Optional[str]:
     is not Newfoundland.
     Never FOREIGN: a slug names one location of several, so it can only ever
     vouch for a posting, not retire one."""
-    spaced = (hint or "").replace("-", " ")
+    hint = (hint or "")[:_MAX_TEXT]
+    spaced = hint.replace("-", " ")
     tokens = spaced.split()
-    if (FOREIGN in (region_of(hint or ""), region_of(spaced))
+    if (FOREIGN in (region_of(hint), region_of(spaced))
             or (tokens and tokens[-1] in FOREIGN_CODES)):
         return None
-    for text in (hint or "", spaced):
+    for text in (hint, spaced):
         region = classify_north_america(text)
         if region:
             return region

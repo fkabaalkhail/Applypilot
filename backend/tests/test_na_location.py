@@ -449,6 +449,18 @@ def test_names_north_american_place(location, names):
     assert names_north_american_place(location) is names
 
 
+def test_only_the_first_thousand_characters_are_read():
+    """Some rules are quadratic in the length: a 10,000-character slug took
+    hint_region 9 s. Real locations are under 500 characters."""
+    padding = "x" * 995
+    assert region_of(padding + " Toronto") is None
+    assert region_of(padding[:980] + " Toronto") == "CA"
+    assert hint_region(padding + "-Toronto-ON") is None
+    assert hint_region(padding[:980] + "-Toronto-ON") == "CA"
+    assert hint_region(padding[:980] + "-Toronto" + "-" * 20 + "-GB") == "CA"  # a code past it too
+    assert job_country(padding + " Toronto", current="US") == "US"
+
+
 def test_a_bare_london_never_flips_a_country():
     """London, Ontario or London, UK: a bare "London" reads foreign, which
     places the row in no North American country, so the stored or client
