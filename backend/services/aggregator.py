@@ -154,6 +154,13 @@ class AggregatorService:
             "level": "internship",
         },
         # === Jobright-AI Internship repos (2026) ===
+        # No Accounting or Engineering internship, or Accounting new-grad, list:
+        # those URLs were typos (the repos are 2026-Account-Internship,
+        # 2026-Engineer-Internship and 2026-Account-New-Grad), 404ed from the
+        # day they were seeded and sat in status=error. Not re-added under the
+        # right names: like every jobright-ai list they link only to
+        # jobright.ai, which ingest skips (is_list_vendor_url), so they would
+        # store nothing.
         {
             "url": "https://github.com/jobright-ai/2026-Software-Engineer-Internship",
             "category": "Software Engineering",
@@ -220,11 +227,6 @@ class AggregatorService:
             "level": "internship",
         },
         {
-            "url": "https://github.com/jobright-ai/2026-Accounting-Internship",
-            "category": "Accounting and Finance",
-            "level": "internship",
-        },
-        {
             "url": "https://github.com/jobright-ai/2026-Design-Internship",
             "category": "Creatives and Design",
             "level": "internship",
@@ -232,11 +234,6 @@ class AggregatorService:
         {
             "url": "https://github.com/jobright-ai/2026-Management-Internship",
             "category": "Management and Executive",
-            "level": "internship",
-        },
-        {
-            "url": "https://github.com/jobright-ai/2026-Engineering-Internship",
-            "category": "Engineering and Development",
             "level": "internship",
         },
         # === Jobright-AI New Grad repos (2026) ===
@@ -306,11 +303,6 @@ class AggregatorService:
             "level": "new_grad",
         },
         {
-            "url": "https://github.com/jobright-ai/2026-Accounting-New-Grad",
-            "category": "Accounting and Finance",
-            "level": "new_grad",
-        },
-        {
             "url": "https://github.com/jobright-ai/2026-Design-New-Grad",
             "category": "Creatives and Design",
             "level": "new_grad",
@@ -356,10 +348,8 @@ class AggregatorService:
         "2026-Legal-Internship": "Legal and Compliance",
         "2026-Art-Internship": "Arts and Entertainment",
         "2026-Sales-Internship": "Sales",
-        "2026-Accounting-Internship": "Accounting and Finance",
         "2026-Design-Internship": "Creatives and Design",
         "2026-Management-Internship": "Management and Executive",
-        "2026-Engineering-Internship": "Engineering and Development",
         "2026-Software-Engineer-New-Grad": "Software Engineering",
         "2026-Data-Analysis-New-Grad": "Data Analysis",
         "2026-Product-Management-New-Grad": "Product Management",
@@ -373,7 +363,6 @@ class AggregatorService:
         "2026-Legal-New-Grad": "Legal and Compliance",
         "2026-Art-New-Grad": "Arts and Entertainment",
         "2026-Sales-New-Grad": "Sales",
-        "2026-Accounting-New-Grad": "Accounting and Finance",
         "2026-Design-New-Grad": "Creatives and Design",
         "2026-Management-New-Grad": "Management and Executive",
         "2026-Engineering-New-Grad": "Engineering and Development",

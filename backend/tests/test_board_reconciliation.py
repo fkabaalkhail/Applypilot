@@ -554,6 +554,20 @@ class TestCronReconciliation:
         assert unlisted_after.listing_status == LISTING_ACTIVE
         assert unlisted_after.last_seen_at == OLD  # not confirmed, not removed
 
+    def test_one_country_board_sets_the_country_of_a_bare_city(
+            self, client, db_session, monkeypatch):
+        monkeypatch.setattr(company_registry, "load_board_countries",
+                            lambda: {"greenhouse:acmeca": "CA"})
+        url = "https://boards.greenhouse.io/acmeca/jobs/1"
+        job = ATSJob(title="Software Intern", company="Acme", location="London", url=url)
+
+        self._run(client, monkeypatch, [("greenhouse", "acmeca", "Acme")], {
+            "acmeca": dict(jobs=[job], all_urls={url}, complete=True, total_listed=1),
+        })
+
+        row = db_session.query(ScrapedJob).filter_by(url=url).one()
+        assert row.country == "CA"  # not the cron's "US" default
+
     def test_complete_snapshot_still_removes_what_vanished(self, client, db_session, monkeypatch):
         board = "workday:acme"
         live = _row(db_session, "https://acme.wd3.myworkdayjobs.com/External/job/a_R-1", board)

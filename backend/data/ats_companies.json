@@ -401,7 +401,7 @@
     },
     {
       "company_name": "Amplitude",
-      "ats_platform": "greenhouse",
+      "ats_platform": "ashby",
       "board_slug": "amplitude",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=amplitude.com&sz=128",
       "enabled": true
@@ -545,7 +545,7 @@
       "board_slug": "cerebral",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=cerebral.com&sz=128",
       "enabled": false,
-      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
+      "disabled_reason": "Greenhouse board deleted ~2026-08-11 and no replacement ATS found (checked 2026-09-29); company reported for sale 2026-09"
     },
     {
       "company_name": "Chime",
@@ -857,11 +857,10 @@
     },
     {
       "company_name": "Marqeta",
-      "ats_platform": "greenhouse",
-      "board_slug": "marqeta",
+      "ats_platform": "ashby",
+      "board_slug": "marqeta-inc",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=marqeta.com&sz=128",
-      "enabled": false,
-      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
+      "enabled": true
     },
     {
       "company_name": "MasterClass",
@@ -976,12 +975,12 @@
       "enabled": true
     },
     {
-      "company_name": "Postman (Greenhouse)",
-      "ats_platform": "greenhouse",
+      "company_name": "Postman",
+      "ats_platform": "workday",
       "board_slug": "postman",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=postman.com&sz=128",
-      "enabled": false,
-      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
+      "enabled": true,
+      "workday_url_template": "https://postman.wd108.myworkdayjobs.com/wday/cxs/postman/careers"
     },
     {
       "company_name": "Reddit",
@@ -1139,11 +1138,11 @@
     },
     {
       "company_name": "Unity",
-      "ats_platform": "greenhouse",
-      "board_slug": "unity3d",
+      "ats_platform": "workday",
+      "board_slug": "unitytech",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=unity.com&sz=128",
-      "enabled": false,
-      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
+      "enabled": true,
+      "workday_url_template": "https://unitytech.wd1.myworkdayjobs.com/wday/cxs/unitytech/Unity"
     },
     {
       "company_name": "Vercel",
@@ -1238,11 +1237,11 @@
     },
     {
       "company_name": "Netflix",
-      "ats_platform": "lever",
+      "ats_platform": "workday",
       "board_slug": "netflix",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=netflix.com&sz=128",
-      "enabled": false,
-      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
+      "enabled": true,
+      "workday_url_template": "https://netflix.wd108.myworkdayjobs.com/wday/cxs/netflix/Netflix"
     },
     {
       "company_name": "Palantir",
@@ -1250,14 +1249,6 @@
       "board_slug": "palantir",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=palantir.com&sz=128",
       "enabled": true
-    },
-    {
-      "company_name": "Plaid (Lever)",
-      "ats_platform": "lever",
-      "board_slug": "plaid",
-      "company_logo_url": "https://www.google.com/s2/favicons?domain=plaid.com&sz=128",
-      "enabled": false,
-      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
     },
     {
       "company_name": "PointClickCare",
@@ -1764,11 +1755,11 @@
     },
     {
       "company_name": "Opendoor",
-      "ats_platform": "greenhouse",
+      "ats_platform": "rippling",
       "board_slug": "opendoor",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=opendoor.com&sz=128",
       "enabled": false,
-      "disabled_reason": "board API 404 on every crawl since 2026-09 (source_health); no new slug found"
+      "disabled_reason": "moved to Rippling (ats.rippling.com/opendoor), which the crawler does not support yet; the greenhouse:opendoor slug never worked"
     },
     {
       "company_name": "ProCogia",
@@ -1864,7 +1855,8 @@
       "board_slug": "bdo",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=bdo.ca&sz=128",
       "enabled": true,
-      "workday_url_template": "https://bdo.wd3.myworkdayjobs.com/wday/cxs/bdo/Bdo"
+      "workday_url_template": "https://bdo.wd3.myworkdayjobs.com/wday/cxs/bdo/Bdo",
+      "country": "CA"
     },
     {
       "company_name": "Hitachi",

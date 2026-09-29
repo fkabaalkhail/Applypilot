@@ -796,6 +796,24 @@ def ingest_metrics(
         if midpoint_first_seen:
             median_age_days = (now - midpoint_first_seen).days
 
+    # Only boards cron-ats still crawls. A board disabled or removed from the
+    # registry keeps its source_health row (history, if it comes back) but no
+    # crawl ever updates it again, so it would read as broken forever.
+    from backend.data import company_registry
+
+    crawled = {
+        f"{platform}:{slug}" for platform, slug, _ in company_registry.load_companies()
+    }
+    failing = [
+        row
+        for row in (
+            db.query(SourceHealth)
+            .filter(SourceHealth.consecutive_failures > 0)
+            .order_by(SourceHealth.consecutive_failures.desc())
+            .all()
+        )
+        if row.board_key in crawled
+    ]
     failing_boards = [
         {
             "board_key": row.board_key,
@@ -803,18 +821,10 @@ def ingest_metrics(
             "last_error": row.last_error,
             "last_success_at": row.last_success_at.isoformat() if row.last_success_at else None,
         }
-        for row in (
-            db.query(SourceHealth)
-            .filter(SourceHealth.consecutive_failures > 0)
-            .order_by(SourceHealth.consecutive_failures.desc())
-            .limit(20)
-            .all()
-        )
+        for row in failing[:20]
     ]
-    boards_in_cooldown = (
-        db.query(SourceHealth)
-        .filter(SourceHealth.consecutive_failures >= FAILURE_THRESHOLD)
-        .count()
+    boards_in_cooldown = sum(
+        1 for row in failing if row.consecutive_failures >= FAILURE_THRESHOLD
     )
 
     return {

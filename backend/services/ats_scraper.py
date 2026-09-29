@@ -299,13 +299,19 @@ US_CITIES = [
     "mountain view", "palo alto", "sunnyvale", "cupertino",
     "menlo park", "redmond", "bellevue", "irvine", "santa monica",
     "brooklyn", "manhattan",
+    # Netflix's Workday board gives a bare city: its HQ and US offices.
+    "los gatos", "burbank", "las vegas", "king of prussia",
 ]
 
 CA_CITIES = [
     "toronto", "vancouver", "montreal", "ottawa", "calgary",
     "edmonton", "winnipeg", "quebec", "hamilton", "kitchener",
     "waterloo", "mississauga", "brampton", "markham",
-    "london", "victoria", "halifax", "burnaby", "richmond",
+    # Not bare "london": that is London, UK on nearly every board ("London",
+    # "London Office", "London, England"). London, Ontario still passes as
+    # "London, ON" (province token), "London, Ontario" or "..., Canada", or
+    # from a board the registry marks "country": "CA" (BDO's bare "London").
+    "ontario", "victoria", "halifax", "burnaby", "richmond",
     "gatineau", "kanata", "scarborough", "north york", "etobicoke",
     "vaughan", "richmond hill", "oakville", "burlington", "guelph",
     "saskatoon", "regina", "fredericton", "moncton", "kelowna",
@@ -539,11 +545,14 @@ class ATSScraper:
             return BoardSnapshot(platform=platform, slug=slug, company=company_name,
                                  complete=False)
 
+        from backend.data.company_registry import load_board_countries
+
+        home_country = load_board_countries().get(f"{platform}:{slug}", "")
         snapshot = BoardSnapshot(
             platform=platform,
             slug=slug,
             company=company_name,
-            jobs=[job for job in listings if self._passes_filters(job)],
+            jobs=[job for job in listings if self._passes_filters(job, home_country)],
             all_urls={job.url for job in listings if job.url},
             complete=complete,
             total_listed=total,
@@ -938,11 +947,14 @@ class ATSScraper:
         return jobs, complete, total
 
 
-    def _passes_filters(self, job: ATSJob) -> bool:
-        """Check if a job passes the configured filters."""
+    def _passes_filters(self, job: ATSJob, home_country: str = "") -> bool:
+        """Check if a job passes the configured filters. ``home_country`` is
+        the registry's country for a one-country board: every listing on it
+        is in North America, whatever its location text says."""
         if self.filter_entry_level and not self._is_entry_level(job):
             return False
-        if self.filter_north_america and not self._is_north_america(job.location):
+        if (self.filter_north_america and not home_country
+                and not self._is_north_america(job.location)):
             return False
         return True
 

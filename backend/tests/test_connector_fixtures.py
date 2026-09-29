@@ -13,6 +13,7 @@ import pytest
 
 from backend.data import company_registry
 from backend.services.ats_scraper import (
+    ATSJob,
     ATSScraper,
     fetch_workday_detail,
     workday_public_base,
@@ -241,3 +242,41 @@ def test_registry_supports_workday_only_with_template():
     # Every supported workday board has a CxS base; none ship without one.
     assert workday_slugs, "expected at least one workday board with a template"
     assert workday_slugs <= set(bases.keys())
+
+
+def test_every_disabled_board_says_why():
+    # The reason is what stops the next person from re-enabling a dead slug,
+    # or from searching again for a board already known to be gone.
+    for entry in company_registry._load_raw():
+        if not entry.get("enabled", True):
+            assert (entry.get("disabled_reason") or "").strip(), entry["company_name"]
+
+
+# ─── North America filter ────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("location", [
+    "Los Gatos", "Burbank", "Las Vegas", "King of Prussia", "London, ON",
+    "London, Ontario", "London, Ontario, Canada", "Toronto", "New York, NY, USA",
+    "San Francisco HQ",
+])
+def test_north_america_filter_keeps(location):
+    assert ATSScraper()._is_north_america(location)
+
+
+@pytest.mark.parametrize("location", [
+    "London", "London Office", "London, UK", "London, England",
+    "London, United Kingdom", "GB-London", "Hybrid - London",
+])
+def test_north_america_filter_drops_london_uk(location):
+    # Bare "london" was a Canadian city here, so every London, UK role passed.
+    assert not ATSScraper()._is_north_america(location)
+
+
+def test_one_country_board_keeps_a_bare_ambiguous_city():
+    # BDO Canada's Workday board lists bare cities: its "London" is Ontario.
+    assert company_registry.load_board_countries()["workday:bdo"] == "CA"
+    job = ATSJob(title="Financial Analyst", company="BDO", location="London",
+                 url="https://bdo.wd3.myworkdayjobs.com/Bdo/job/London/x_JR1")
+    scraper = ATSScraper()
+    assert scraper._passes_filters(job, "CA")
+    assert not scraper._passes_filters(job)

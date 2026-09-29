@@ -416,6 +416,7 @@ async def cron_ats(
         country_filter = CountryFilter()
         work_type_classifier = WorkTypeClassifier()
         logo_map = company_registry.load_logo_map()
+        board_countries = company_registry.load_board_countries()
 
         # The workflow's "hourly" schedule really fires ~6x a day at uneven
         # gaps, so hour % shard_count can hand the same shard several runs in
@@ -505,9 +506,11 @@ async def cron_ats(
                     job.description = description
 
                     # Classify country
-                    country = country_filter.classify(job.location)
-                    if not country:
-                        country = "US"  # ATS scraper already filtered to NA
+                    # A bare city ("London", "Vancouver") classifies as
+                    # nothing; a one-country board says which country it is.
+                    country = (country_filter.classify(job.location)
+                               or board_countries.get(board_key)
+                               or "US")  # ATS scraper already filtered to NA
 
                     # Classify work type
                     work_type = job.work_type or work_type_classifier.classify(job.location)

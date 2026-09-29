@@ -209,6 +209,20 @@ def load_workday_bases() -> dict[str, str]:
     return out
 
 
+def load_board_countries() -> dict[str, str]:
+    """Return {"platform:slug": "US" | "CA"} for boards that post in one
+    country only (an optional ``country`` field). Such a board may list a
+    bare, ambiguous city: BDO Canada's "London" is London, Ontario."""
+    out: dict[str, str] = {}
+    for entry in _load_raw():
+        platform = (entry.get("ats_platform") or "").strip().lower()
+        slug = (entry.get("board_slug") or "").strip()
+        country = (entry.get("country") or "").strip().upper()
+        if platform and slug and country in ("US", "CA"):
+            out[f"{platform}:{slug}"] = country
+    return out
+
+
 def load_logo_map() -> dict[str, str]:
     """Return {company_name_lower: company_logo_url} for enrichment."""
     return {

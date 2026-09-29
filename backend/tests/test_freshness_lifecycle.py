@@ -1367,10 +1367,13 @@ class TestFreshnessEndpoints:
         _row(db_session, url="https://boards.greenhouse.io/acme/jobs/2",
              listing_status=LISTING_REMOVED,
              listing_status_changed_at=datetime.datetime.utcnow())
+        from backend.data import company_registry
         db_session.add(SourceHealth(board_key="lever:broken", platform="lever",
                                     slug="broken", consecutive_failures=3,
                                     last_error="HTTP 404"))
         db_session.commit()
+        monkeypatch.setattr(company_registry, "load_companies",
+                            lambda **kw: [("lever", "broken", "Broken")])
 
         res = client.get("/jobs/ingest-metrics", headers=self._cron_headers(monkeypatch))
         assert res.status_code == 200, res.text
@@ -1382,6 +1385,24 @@ class TestFreshnessEndpoints:
         assert body["failing_boards"][0]["board_key"] == "lever:broken"
         assert "median_active_age_days" in body
         assert "dedup_rate" in body
+
+    def test_ingest_metrics_skips_boards_no_longer_crawled(self, client, db_session, monkeypatch):
+        """A board disabled or dropped from the registry keeps its health row,
+        but nothing crawls it any more: it must not read as broken forever."""
+        from backend.data import company_registry
+        from backend.db.models import SourceHealth
+        for key, failures in (("greenhouse:live", 5), ("greenhouse:retired", 50)):
+            platform, slug = key.split(":")
+            db_session.add(SourceHealth(board_key=key, platform=platform, slug=slug,
+                                        consecutive_failures=failures,
+                                        last_error="HTTP 404"))
+        db_session.commit()
+        monkeypatch.setattr(company_registry, "load_companies",
+                            lambda **kw: [("greenhouse", "live", "Live")])
+
+        body = client.get("/jobs/ingest-metrics", headers=self._cron_headers(monkeypatch)).json()
+        assert [b["board_key"] for b in body["failing_boards"]] == ["greenhouse:live"]
+        assert body["boards_in_cooldown"] == 1
 
 
 # ─── API visibility ──────────────────────────────────────────────────────────
