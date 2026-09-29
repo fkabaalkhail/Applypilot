@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import GitHubSource
 from backend.schemas.github_source import GitHubSourceOut, GitHubSourceCreate
-from backend.services.github_scraper import GitHubScraper, validate_github_repo_url
+from backend.services.github_scraper import validate_github_repo_url
 from backend.services.role_classifier import classify as classify_role
 from backend.services.location_parser import location_fields
 from backend.services.cross_source_dedup import mark_inferior_twins, normalize_title
@@ -105,23 +105,6 @@ async def seed_sources(
     except Exception:
         logger.error(f"Seed failed: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.post("/cleanup-jobright")
-def cleanup_jobright_jobs(
-    _admin: int = Depends(get_admin_user_id),
-    db: Session = Depends(get_db),
-):
-    """Remove all jobs with jobright.ai URLs from the database.
-
-    One-time cleanup to remove redirect-only jobs.
-    """
-    from backend.db.models import ScrapedJob as SJ
-    count = db.query(SJ).filter(SJ.url.like("%jobright.ai%")).delete(synchronize_session=False)
-    # Also remove jobright sources
-    source_count = db.query(GitHubSource).filter(GitHubSource.repo_url.like("%jobright-ai%")).delete(synchronize_session=False)
-    db.commit()
-    return {"deleted_jobs": count, "deleted_sources": source_count}
 
 
 @router.post("/cleanup-blank-companies")
@@ -741,64 +724,157 @@ async def scrape_linkedin_jobs(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# cron-poll shares one request with the workflow's `curl --max-time 300` and
+# Vercel's 300 s function limit, so every phase is time-boxed from the start
+# of the request (a normal run takes 13-27 s, the slowest of 30 in late
+# September 127 s):
+#   - no new source starts after CRON_POLL_BUDGET_SECONDS, and a source still
+#     polling at CRON_POLL_HARD_STOP_SECONDS is cut off (a hung README or
+#     probe batch; it is due again next run, the rows it stored are kept);
+#   - no description fetch starts after CRON_POLL_ENRICH_UNTIL_SECONDS (each
+#     can take its whole 15 s timeout; cron-backfill picks up the rest);
+#   - the match-alert sweep is cut off at CRON_POLL_WALL_SECONDS. It banks
+#     every score as it buys it, so a cut sweep loses no LLM spend, and it
+#     can only be cut at an LLM await, never between an email send and the
+#     record of it.
+# What can outlast the wall clock is synchronous work the cut has to wait
+# for: at worst an email send in flight (the Resend SDK's 30 s timeout) plus
+# a Neon round trip, which still ends well before the 300 s ceiling.
+CRON_POLL_MAX_SOURCES = int(os.getenv("CRON_POLL_MAX_SOURCES", "12"))
+CRON_POLL_BUDGET_SECONDS = float(os.getenv("CRON_POLL_BUDGET_SECONDS", "120"))
+CRON_POLL_HARD_STOP_SECONDS = float(os.getenv("CRON_POLL_HARD_STOP_SECONDS", "200"))
+CRON_POLL_ENRICH_UNTIL_SECONDS = float(os.getenv("CRON_POLL_ENRICH_UNTIL_SECONDS", "170"))
+CRON_POLL_WALL_SECONDS = float(os.getenv("CRON_POLL_WALL_SECONDS", "240"))
+
+
+async def _sweep_match_alerts_boxed(db: Session, seconds_left: float) -> dict:
+    """The match-alert sweep, cut off after ``seconds_left``. Best-effort: a
+    failure or a cut-off never fails the poll."""
+    if seconds_left <= 0:
+        logger.warning("Match-alert sweep skipped: cron-poll wall clock spent")
+        return {"status": "skipped", "reason": "cron-poll wall clock spent"}
+    try:
+        from backend.services.match_notifier import sweep_match_alerts
+        return await asyncio.wait_for(sweep_match_alerts(db), timeout=seconds_left)
+    except asyncio.TimeoutError:
+        db.rollback()
+        logger.warning("Match-alert sweep cut off after %.0f s (cron-poll wall clock)",
+                       seconds_left)
+        return {"status": "timed_out", "seconds": round(seconds_left, 1)}
+    except Exception:
+        db.rollback()
+        logger.error(f"Match-alert sweep failed: {traceback.format_exc()}")
+        return {"status": "failed"}
+
+
 @router.post("/cron-poll")
 async def cron_poll(
     _cron: None = Depends(verify_cron_secret),
     db: Session = Depends(get_db),
 ):
-    """Seed sources (if needed) and poll the next batch of overdue GitHub sources.
+    """Seed sources (if needed), poll the GitHub lists that are due, and run
+    the match-alert sweep.
 
-    Sources parked in 'error' by a transient failure (5xx, timeout, a rename
-    recorded before redirects were followed) rejoin the batch after a cooldown.
+    Due means: a list that committed this week hourly, a quiet one daily, a
+    parked one (nothing but list-vendor links, or no job table) weekly, and a
+    source parked in 'error' by a transient failure (5xx, timeout, a rename
+    recorded before redirects were followed) after a cooldown. The sweep runs
+    whether or not any list was due: it used to sit behind an early return,
+    so retiring the lists would have silently stopped every alert email.
     """
+    started = time.monotonic()
+    timings: dict[str, float] = {}
+
+    def elapsed() -> float:
+        return time.monotonic() - started
+
     try:
         from backend.services.aggregator import AggregatorService
-        aggregator = AggregatorService(db)
+        aggregator = AggregatorService(db, deadline=started + CRON_POLL_ENRICH_UNTIL_SECONDS)
 
         seed_result = await aggregator.seed_sources()
 
-        sources = aggregator.sources_due(limit=5)
-
-        if not sources:
-            return {"status": "no_sources", "sources_seeded": seed_result["created"]}
+        due = aggregator.sources_due(limit=10_000)
+        sources = due[:CRON_POLL_MAX_SOURCES]
+        timings["seed"] = round(elapsed(), 1)
 
         polled: list[dict] = []
         total_new = 0
         total_enriched = 0
         for source in sources:
-            new_count = await aggregator.poll_source(source)
+            # Sources left over stay the most overdue: first in line next run.
+            if polled and elapsed() > CRON_POLL_BUDGET_SECONDS:
+                break
+            repo_name = source.repo_name
+            source_started = time.monotonic()
+            try:
+                new_count = await asyncio.wait_for(
+                    aggregator.poll_source(source),
+                    timeout=max(1.0, CRON_POLL_HARD_STOP_SECONDS - elapsed()),
+                )
+            except asyncio.TimeoutError:
+                # Its rows so far are committed row by row; the stamp that
+                # says the README was read is not, so the next poll re-reads it.
+                db.rollback()
+                source.error_message = "Timeout: poll cut off by the cron-poll budget"
+                source.last_polled_at = datetime.datetime.utcnow()
+                db.commit()
+                logger.warning("cron-poll: %s cut off at %.0f s", repo_name, elapsed())
+                polled.append({"source": repo_name, "file": source.file_path or "README.md",
+                               "new_jobs": 0, "timed_out": True,
+                               "seconds": round(time.monotonic() - source_started, 1)})
+                break
             enriched = await aggregator._enrich_missing_descriptions(source.id, limit=3)
             total_new += new_count
             total_enriched += enriched
             polled.append(
                 {
-                    "source": source.repo_name,
+                    "source": repo_name,
+                    "file": source.file_path or "README.md",
                     "new_jobs": new_count,
                     "descriptions_enriched": enriched,
+                    "seconds": round(time.monotonic() - source_started, 1),
                 }
             )
+        timings["poll"] = round(elapsed(), 1)
 
         global_enriched = await aggregator._enrich_missing_descriptions(None, limit=40)
+        timings["enrich"] = round(elapsed(), 1)
+
+        # Hide list rows the board crawl also carries under another spelling
+        # ('/en-US/marvellcareers/...' vs '/MarvellCareers/...'), after giving
+        # back the ones whose board row has since aged out. Column-only.
+        list_copies_hidden = list_copies_released = 0
+        try:
+            from backend.services.cross_source_dedup import (
+                hide_list_copies_of_board_rows,
+                release_list_copies_of_lapsed_board_rows,
+            )
+            list_copies_released = release_list_copies_of_lapsed_board_rows(db)
+            list_copies_hidden = hide_list_copies_of_board_rows(db)
+        except Exception:
+            db.rollback()
+            logger.error(f"List-copy dedup failed: {traceback.format_exc()}")
+        timings["dedup"] = round(elapsed(), 1)
 
         # Email users about new strong matches. Folded in here (rather than a
         # separate cron) so the app stays within Vercel's 2-cron Hobby limit.
-        # Best-effort: a failure here must not fail the poll.
-        match_alerts: dict = {}
-        try:
-            from backend.services.match_notifier import sweep_match_alerts
-            match_alerts = await sweep_match_alerts(db)
-        except Exception:
-            logger.error(f"Match-alert sweep failed: {traceback.format_exc()}")
+        match_alerts = await _sweep_match_alerts_boxed(db, CRON_POLL_WALL_SECONDS - elapsed())
+        timings["total"] = round(elapsed(), 1)
 
         return {
-            "status": "completed",
+            "status": "completed" if sources else "no_sources",
             "sources_seeded": seed_result["created"],
-            "sources_polled": len(sources),
+            "sources_polled": len(polled),
+            "sources_due": len(due),
             "new_jobs": total_new,
             "descriptions_enriched": total_enriched,
             "global_descriptions_enriched": global_enriched,
+            "list_copies_hidden": list_copies_hidden,
+            "list_copies_released": list_copies_released,
             "polled": polled,
             "match_alerts": match_alerts,
+            "timings": timings,
         }
     except Exception:
         logger.error(f"Cron poll failed: {traceback.format_exc()}")
@@ -854,19 +930,23 @@ async def poll_source(
     _admin: int = Depends(get_admin_user_id),
     db: Session = Depends(get_db),
 ):
-    """Trigger an immediate poll of a GitHub source."""
+    """Trigger an immediate poll of a GitHub source, through the same pipeline
+    as cron-poll. It used to run the old GitHubScraper, which stored every
+    parsed row as an active listing with no vendor-link, country, max-age or
+    dead-link filter and no canonical URL: one poll of a jobright list would
+    have put hundreds of jobright.ai redirects in the feed."""
     db_source = db.query(GitHubSource).filter(GitHubSource.id == source_id).first()
     if not db_source:
         raise HTTPException(status_code=404, detail="GitHub source not found.")
 
-    scraper = GitHubScraper(db)
+    from backend.services.aggregator import AggregatorService
     try:
-        jobs = await scraper.fetch_jobs(db_source)
-        new_count = await scraper._store_jobs(jobs, db_source)
-        return {"status": "polled", "new_jobs": new_count, "total_found": len(jobs)}
+        new_count = await AggregatorService(db).poll_source(db_source)
     except Exception:
         logger.error(f"Poll failed for source {source_id}: {traceback.format_exc()}")
         raise HTTPException(status_code=502, detail="Internal server error")
+    return {"status": db_source.status, "new_jobs": new_count,
+            "error_message": db_source.error_message or ""}
 
 
 @router.post("/backfill-role-categories")

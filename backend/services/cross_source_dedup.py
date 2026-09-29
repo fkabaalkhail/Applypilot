@@ -83,23 +83,36 @@ def effective_source(source: str, url: str) -> str:
     return source or ""
 
 
+# Query params that only say who sent the click: utm_* everywhere, and the
+# lists' own attribution ('?ref=Simplify', '&ref=vansh'). Everything else an
+# ATS URL carries (gh_jid, jobid, token) identifies the posting.
+_ATTRIBUTION_PARAMS = frozenset({"ref"})
+
+
+def _is_tracking_param(segment: str) -> bool:
+    key = segment.split("=", 1)[0].lower()
+    return key.startswith("utm_") or key in _ATTRIBUTION_PARAMS
+
+
 def canonical_url(url: str) -> str:
     """Strip tracking params so 'jobs/86588?utm_source=vansh' and 'jobs/86588'
-    dedupe as one posting. ONLY utm_* is stripped, ATS URLs carry functional
-    params (gh_jid, jobid, token) that must survive."""
+    dedupe as one posting. Only utm_* and list attribution (ref=) go: ATS URLs
+    carry functional params (gh_jid, jobid, token) that must survive, and the
+    kept ones keep their exact spelling ('?t=gh_src=&gh_jid=1' stays byte for
+    byte what the board crawl stores; re-encoding it to 't=gh_src%3D' made the
+    same posting a second row)."""
     raw = (url or "").strip()
     if not raw or "?" not in raw:
         return raw.rstrip("/") if raw else ""
-    from urllib.parse import urlencode, urlunsplit
-
     try:
         parts = urlsplit(raw)
     except ValueError:
         return raw
-    kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
-            if not k.lower().startswith("utm_")]
+    from urllib.parse import urlunsplit
+
+    kept = [seg for seg in parts.query.split("&") if seg and not _is_tracking_param(seg)]
     return urlunsplit(
-        (parts.scheme, parts.netloc, parts.path, urlencode(kept), "")
+        (parts.scheme, parts.netloc, parts.path, "&".join(kept), "")
     ).rstrip("/")
 
 
@@ -131,6 +144,60 @@ def posting_key(url: str) -> str:
         if job_key:
             return f"indeed:{job_key}"
     return canonical_url(raw).lower()
+
+
+_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+_GREENHOUSE_JOB_RE = re.compile(r"/jobs/(\d{5,})")
+# Workday posting paths end in '_<requisition>' plus an optional '-1'-style
+# repost suffix: '.../Firmware-Engineer-Intern_R123', '..._2618885-1'. An
+# apply step ('/apply', '/apply/applyManually') is the same posting.
+_WORKDAY_REQ_RE = re.compile(r"_([A-Za-z]{0,6}[-_]?\d[\w.]*?)(?:-\d{1,2})?$")
+_WORKDAY_APPLY_TAIL_RE = re.compile(r"/apply(?:/[^/]*)?$", re.I)
+# myworkdaysite.com carries the tenant in the path, not the host:
+# 'wd3.myworkdaysite.com/en-US/recruiting/cibc/campus/job/...'.
+_WORKDAY_SITE_TENANT_RE = re.compile(r"/recruiting/([^/]+)/", re.I)
+
+
+def posting_identity(url: str) -> str:
+    """The ATS posting a direct URL names, whatever the spelling: the same
+    Greenhouse job behind boards./job-boards. and an employer-hosted gh_jid
+    page, a Workday requisition behind '/en-US/' locale prefixes, site
+    aliases ('campus' vs 'search'), '-1' repost suffixes and '/apply' steps,
+    a Lever/Ashby posting UUID. Falls back to posting_key(). Only ever
+    compared between rows of the same employer and title, so two postings
+    it happens to fold together must also share both to merge."""
+    raw = (url or "").strip()
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return raw.lower()
+    host = (parts.hostname or "").lower()
+    path = parts.path.rstrip("/")
+    query = {k.lower(): v for k, v in parse_qsl(parts.query)}
+    gh_jid = (query.get("gh_jid") or "").strip()
+    if gh_jid.isdigit():
+        return f"greenhouse:{gh_jid}"
+    if host.endswith("greenhouse.io"):
+        match = _GREENHOUSE_JOB_RE.search(path)
+        if match:
+            return f"greenhouse:{match.group(1)}"
+        token = (query.get("token") or "").strip()
+        if token.isdigit():
+            return f"greenhouse:{token}"
+    if host.endswith((".myworkdayjobs.com", ".myworkdaysite.com")):
+        match = _WORKDAY_REQ_RE.search(_WORKDAY_APPLY_TAIL_RE.sub("", path))
+        tenant = host.split(".")[0]
+        if host.endswith(".myworkdaysite.com"):
+            site = _WORKDAY_SITE_TENANT_RE.search(path)
+            tenant = site.group(1).lower() if site else ""
+        if match and tenant:
+            return f"workday:{tenant}:{match.group(1).lower()}"
+    if host in ("jobs.lever.co", "jobs.eu.lever.co", "jobs.ashbyhq.com"):
+        match = _UUID_RE.search(path)
+        if match:
+            platform = "lever" if "lever" in host else "ashby"
+            return f"{platform}:{match.group(0).lower()}"
+    return posting_key(raw)
 
 
 _SEASON_WORDS = re.compile(r"\b(summer|fall|autumn|winter|spring)\b")
@@ -696,3 +763,119 @@ def dedup_sweep(db: Session) -> dict:
 
     db.commit()
     return stats
+
+
+# ─── GitHub-list copies of board-crawled postings ───────────────────────────
+#
+# A GitHub list and the board crawl often link one posting under two
+# spellings ('/en-US/marvellcareers/...' vs '/MarvellCareers/...', a repost
+# '-1' suffix, 'jobs/8199729' vs 'jobs/8199729?gh_jid=8199729'). The URL is
+# UNIQUE, not the posting, so both became visible rows. The board row wins:
+# its crawl reconciles it and it carries the description. Only a board row
+# that may stand in for its twins counts (_stands_in_filter): a visible one,
+# or one its board removed (that death verdict is the list copy's too); an
+# expired one says nothing about the posting, and the list copy is shown.
+
+def board_row_for_posting(db: Session, *, company: str, company_domain: str,
+                          title: str, url: str) -> int | None:
+    """Id of a board-crawled (ats) row for the posting ``url`` names, same
+    employer and title, that may stand in for it, or None. The ingest guard
+    for GitHub-list rows. Column-only."""
+    title_norm = normalize_title(title)
+    identity = posting_identity(url)
+    if not title_norm or not identity:
+        return None
+    rows = (
+        db.query(ScrapedJob.id, ScrapedJob.url)
+        .filter(ScrapedJob.source_platform == "ats",
+                ScrapedJob.duplicate_of.is_(None),
+                _stands_in_filter(),
+                ScrapedJob.title_norm == title_norm,
+                _employer_filter(company, company_domain))
+        .limit(50)
+        .all()
+    )
+    for row_id, row_url in rows:
+        # A rogue-era 'ats' row with a LinkedIn/Indeed URL is no board row.
+        if (effective_source("ats", row_url or "") == "ats"
+                and posting_identity(row_url or "") == identity):
+            return row_id
+    return None
+
+
+def hide_list_copies_of_board_rows(db: Session) -> int:
+    """Soft-hide visible GitHub-list rows whose posting a board row carries
+    under another URL spelling (duplicate_of = the board row), same employer
+    (folded name) and title. Idempotent; run by every cron-poll. Column-only
+    reads: the visible list rows (a few thousand at most), then the board
+    rows sharing their titles. Commits. Returns the number hidden."""
+    listed = (
+        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title_norm)
+        .filter(ScrapedJob.source_platform == "github",
+                ScrapedJob.duplicate_of.is_(None),
+                or_(ScrapedJob.listing_status.is_(None),
+                    ScrapedJob.listing_status.in_(_VISIBLE_LISTING_STATUSES)),
+                ScrapedJob.title_norm != "")
+        .all()
+    )
+    if not listed:
+        return 0
+    titles = sorted({row.title_norm for row in listed if row.title_norm})
+    board: dict[tuple[str, str, str], int] = {}
+    for i in range(0, len(titles), 400):
+        for row_id, url, company, title_norm in (
+            db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title_norm)
+            .filter(ScrapedJob.source_platform == "ats",
+                    ScrapedJob.duplicate_of.is_(None),
+                    _stands_in_filter(),
+                    ScrapedJob.title_norm.in_(titles[i:i + 400]))
+            .order_by(ScrapedJob.id)
+            .all()
+        ):
+            if effective_source("ats", url or "") != "ats":
+                continue
+            board.setdefault(
+                (normalize_company(company or ""), title_norm, posting_identity(url or "")), row_id)
+    hidden = 0
+    for row_id, url, company, title_norm in listed:
+        winner = board.get((normalize_company(company or ""), title_norm, posting_identity(url or "")))
+        if winner and winner != row_id:
+            db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
+                {"duplicate_of": winner}, synchronize_session=False)
+            hidden += 1
+    if hidden:
+        db.commit()
+        logger.info("hid %d GitHub-list copies of board-crawled postings", hidden)
+    return hidden
+
+
+def release_list_copies_of_lapsed_board_rows(db: Session) -> int:
+    """Give back the visible GitHub-list rows hidden behind a board row that
+    no longer stands in for them (stands_in_for_twins): one that aged out.
+    1,443 of prod's ats rows are 'expired', which says nothing about the
+    posting, while the list still offers it; release_from_closed_winners
+    never frees a direct row, so without this the copy stayed hidden for
+    good. A board row its board removed keeps its copies hidden (the
+    posting's death verdict), and a released copy retires with its list as
+    usual. Run by cron-poll before hide_list_copies_of_board_rows, which
+    hides it again under any live board twin. Column-only. Commits. Returns
+    the number released."""
+    winner = aliased(ScrapedJob)
+    rows = (
+        db.query(ScrapedJob.id, winner.listing_status, winner.source_platform, winner.url)
+        .join(winner, winner.id == ScrapedJob.duplicate_of)
+        .filter(ScrapedJob.source_platform == "github",
+                or_(ScrapedJob.listing_status.is_(None),
+                    ScrapedJob.listing_status.in_(_VISIBLE_LISTING_STATUSES)),
+                winner.source_platform == "ats")
+        .all()
+    )
+    released = [row_id for row_id, status, platform, url in rows
+                if not stands_in_for_twins(status, platform or "", url or "")]
+    for i in range(0, len(released), 400):
+        db.query(ScrapedJob).filter(ScrapedJob.id.in_(released[i:i + 400])).update(
+            {"duplicate_of": None}, synchronize_session=False)
+    if released:
+        db.commit()
+        logger.info("released %d GitHub-list copies of lapsed board rows", len(released))
+    return len(released)

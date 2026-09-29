@@ -11,6 +11,7 @@ import re
 import logging
 import datetime
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 from sqlalchemy import func, or_
@@ -20,7 +21,6 @@ from backend.db.models import GitHubSource, ScrapedJob
 from backend.services.markdown_parser import (
     MarkdownParser,
     ParsedJob,
-    clean_cell_text,
     clean_company_name,
     is_job_url,
     is_list_vendor_url,
@@ -49,10 +49,31 @@ ERROR_RETRY_COOLDOWN = datetime.timedelta(hours=12)
 _VANISHED_GUARD_RATIO = 0.5
 _VANISHED_GUARD_MIN = 10
 
+# Revision of the parse + ingest rules, stored beside the commit SHA
+# ('<sha>@r<N>'). A README is only re-parsed when its commit changes, so a
+# parser fix never reached a list that had not committed since; bumping this
+# re-parses every source once, on its next poll.
+PARSE_REVISION = 1
+
+# Poll cadence. cron-poll runs every few hours and polls the sources that are
+# due, most overdue first: a list that committed this week is due every run,
+# one that has been quiet for a week once a day. A list with nothing we can
+# ingest (every row links to a list vendor's redirector, or the README has
+# no job table) is parked: re-checked weekly in case it changes, with the
+# slots the lists that feed the catalogue leave free.
+ACTIVE_POLL_MINUTES = 60
+DORMANT_POLL_MINUTES = 24 * 60
+DORMANT_AFTER = datetime.timedelta(days=7)
+PARKED_RECHECK = datetime.timedelta(days=7)
+STATUS_PARKED = "parked"
+
 
 # Internship wording in a title: whole words only, so 'Internal Tools',
 # 'International Assignment' and 'OS Internals' stay new-grad roles.
-_INTERNSHIP_TITLE_RE = re.compile(r"\bintern(?:ship)?s?\b|\bco-?ops?\b", re.IGNORECASE)
+# 'Stagiaire' is the Quebec postings' word ('Développeur Logiciels -
+# Stagiaire - Backend' in speedyapply's INTERN_INTL.md).
+_INTERNSHIP_TITLE_RE = re.compile(r"\bintern(?:ship)?s?\b|\bco-?ops?\b|\bstagiaires?\b",
+                                  re.IGNORECASE)
 
 
 def _utcnow() -> datetime.datetime:
@@ -90,11 +111,40 @@ def _commit_time(commit: dict) -> Optional[datetime.datetime]:
     return parsed
 
 
+DEFAULT_FILE = "README.md"
+
+
+def source_url(repo_url: str, file_path: str = DEFAULT_FILE) -> str:
+    """A source's unique URL: the repo for its README, the file otherwise
+    (speedyapply keeps its new-grad list in NEW_GRAD_USA.md and its
+    international lists in *_INTL.md, beside the README another source
+    reads)."""
+    repo_url = repo_url.rstrip("/")
+    if not file_path or file_path == DEFAULT_FILE:
+        return repo_url
+    return f"{repo_url}/blob/HEAD/{file_path}"
+
+
+_REPO_URL_RE = re.compile(r"^https://github\.com/([^/]+)/([^/#?]+)")
+
+
+def _split_stamp(stored: Optional[str]) -> tuple[str, int]:
+    """(commit sha, parse revision) of a stored last_commit_sha. A bare SHA
+    (stored before revisions existed) is revision 0."""
+    sha, sep, rev = (stored or "").partition("@r")
+    return sha, int(rev) if sep and rev.isdigit() else 0
+
+
+def _stamp(sha: str) -> str:
+    return f"{sha}@r{PARSE_REVISION}"
+
+
 def _listing_key(company: str, title: str) -> tuple[str, str]:
     """Company + title folded for matching a closed list row to a stored one
-    (stored GitHub companies may still carry the old '**Name**' emphasis)."""
+    (stored GitHub companies may still carry the old '**Name**' emphasis, and
+    stored titles the legend marks the parser now strips: 'Engineer 🛂')."""
     return (clean_company_name(company).lower(),
-            " ".join(clean_cell_text(title).lower().split()))
+            " ".join(clean_company_name(title).lower().split()))
 
 
 class AggregatorService:
@@ -121,6 +171,60 @@ class AggregatorService:
             "url": "https://github.com/speedyapply/2027-SWE-College-Jobs",
             "renamed_from": ["https://github.com/speedyapply/2026-SWE-College-Jobs"],
             "category": "Software Engineering",
+            "level": "new_grad",
+        },
+        # speedyapply keeps each list in its own file; the README is the USA
+        # internships. The international files are read for Canada only.
+        {
+            "url": "https://github.com/speedyapply/2027-SWE-College-Jobs",
+            "renamed_from": ["https://github.com/speedyapply/2026-SWE-College-Jobs"],
+            "file_path": "NEW_GRAD_USA.md",
+            "category": "Software Engineering",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/speedyapply/2027-SWE-College-Jobs",
+            "renamed_from": ["https://github.com/speedyapply/2026-SWE-College-Jobs"],
+            "file_path": "INTERN_INTL.md",
+            "countries": ["CA"],
+            "category": "Software Engineering",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/speedyapply/2027-SWE-College-Jobs",
+            "renamed_from": ["https://github.com/speedyapply/2026-SWE-College-Jobs"],
+            "file_path": "NEW_GRAD_INTL.md",
+            "countries": ["CA"],
+            "category": "Software Engineering",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/speedyapply/2027-AI-College-Jobs",
+            "renamed_from": ["https://github.com/speedyapply/2026-AI-College-Jobs"],
+            "category": "",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/speedyapply/2027-AI-College-Jobs",
+            "renamed_from": ["https://github.com/speedyapply/2026-AI-College-Jobs"],
+            "file_path": "NEW_GRAD_USA.md",
+            "category": "",
+            "level": "new_grad",
+        },
+        {
+            "url": "https://github.com/speedyapply/2027-AI-College-Jobs",
+            "renamed_from": ["https://github.com/speedyapply/2026-AI-College-Jobs"],
+            "file_path": "INTERN_INTL.md",
+            "countries": ["CA"],
+            "category": "",
+            "level": "internship",
+        },
+        {
+            "url": "https://github.com/speedyapply/2027-AI-College-Jobs",
+            "renamed_from": ["https://github.com/speedyapply/2026-AI-College-Jobs"],
+            "file_path": "NEW_GRAD_INTL.md",
+            "countries": ["CA"],
+            "category": "",
             "level": "new_grad",
         },
         {
@@ -369,8 +473,12 @@ class AggregatorService:
         "Daily-H1B-Jobs-In-Tech": "",
     }
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, deadline: Optional[float] = None):
         self.db = db
+        # time.monotonic() after which no description fetch starts (cron-poll
+        # shares one request with Vercel's 300 s limit). Descriptions are
+        # optional here: cron-backfill fetches whatever this leaves.
+        self.deadline = deadline
         self.parser = MarkdownParser()
         self.country_filter = CountryFilter()
         self.work_type_classifier = WorkTypeClassifier()
@@ -389,8 +497,10 @@ class AggregatorService:
         existing = 0
 
         for repo_config in self.REPOS:
-            repo_url = repo_config["url"]
-            known_urls = [repo_url, *repo_config.get("renamed_from", ())]
+            file_path = repo_config.get("file_path", DEFAULT_FILE)
+            repo_url = source_url(repo_config["url"], file_path)
+            known_urls = [source_url(url, file_path)
+                          for url in (repo_config["url"], *repo_config.get("renamed_from", ()))]
 
             # Check if source already exists
             source = (
@@ -403,17 +513,13 @@ class AggregatorService:
                 existing += 1
                 continue
 
-            # Extract owner and repo name from URL
-            # URL format: https://github.com/{owner}/{repo}
-            parts = repo_url.rstrip("/").split("/")
-            repo_owner = parts[-2]
-            repo_name = parts[-1]
+            repo_owner, repo_name = _REPO_URL_RE.match(repo_config["url"]).groups()
 
             new_source = GitHubSource(
                 repo_url=repo_url,
                 repo_owner=repo_owner,
                 repo_name=repo_name,
-                file_path="README.md",
+                file_path=file_path,
                 poll_interval_minutes=60,
                 role_category=repo_config["category"],
                 experience_level=repo_config["level"],
@@ -469,13 +575,27 @@ class AggregatorService:
                     if stored:
                         new_count += 1
 
+                # Judged before retirement: a list that had visible rows
+                # before this parse is never parked by it.
+                parked_reason = self._parked_reason(source, parsed_jobs)
                 self._retire_delisted_rows(source, listed_urls, closed_jobs)
-                source.last_commit_sha = new_sha
-                await self._enrich_missing_descriptions(source.id, limit=8)
+                source.last_commit_sha = _stamp(new_sha)
+                if parked_reason:
+                    source.status = STATUS_PARKED
+                    source.error_message = parked_reason
+                else:
+                    source.status = "active"
+                    source.error_message = ""
+                    await self._enrich_missing_descriptions(source.id, limit=8)
+            elif source.status != STATUS_PARKED:
+                # Same README as last time: nothing to reclassify.
+                source.status = "active"
+                source.error_message = ""
 
+            now = _utcnow()
+            quiet = committed_at is not None and now - committed_at > DORMANT_AFTER
+            source.poll_interval_minutes = DORMANT_POLL_MINUTES if quiet else ACTIVE_POLL_MINUTES
             source.last_polled_at = datetime.datetime.utcnow()
-            source.status = "active"
-            source.error_message = ""
             self.db.commit()
             return new_count
 
@@ -540,30 +660,94 @@ class AggregatorService:
 
         return results
 
+    def _parked_reason(self, source: GitHubSource, open_jobs: list[ParsedJob]) -> str:
+        """Why a list whose README was just parsed in full can't feed the
+        catalogue, or '' when it can. A list is parked when no open row links
+        to an employer (jobright.ai / zapply.jobs redirectors, a bullet-list
+        README) and it has no visible rows left: a list that still owns
+        visible rows is never parked by one odd parse."""
+        if any(is_job_url(job.url) and not is_list_vendor_url(job.url) for job in open_jobs):
+            return ""
+        from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES
+
+        visible = (
+            self.db.query(ScrapedJob.id)
+            .filter(ScrapedJob.github_source_id == source.id,
+                    or_(ScrapedJob.listing_status.is_(None),
+                        ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES)))
+            .first()
+        )
+        if visible:
+            logger.warning("GitHub source %s: no employer links in %d rows, "
+                           "keeping it active (it still has visible rows)",
+                           source.repo_url, len(open_jobs))
+            return ""
+        if not open_jobs:
+            return "Parked: no job table in the README (re-checked weekly)"
+        return (f"Parked: none of {len(open_jobs)} open rows links to an employer, "
+                f"only to list vendors (re-checked weekly)")
+
+    @staticmethod
+    def _due_at(source: GitHubSource) -> Optional[datetime.datetime]:
+        """When ``source`` is next due for a poll, or None when never (a
+        permanent error, polled or not: the typo'd jobright URLs 404ed before
+        their first poll ever completed). A never-polled source, and a README
+        parsed under an older PARSE_REVISION, are due at once."""
+        if source.status == "error":
+            if not is_retryable_error(source.error_message):
+                return None
+            if source.last_polled_at is None:
+                return datetime.datetime.min
+            return source.last_polled_at + ERROR_RETRY_COOLDOWN
+        if source.last_polled_at is None:
+            return datetime.datetime.min
+        sha, revision = _split_stamp(source.last_commit_sha)
+        if sha and revision != PARSE_REVISION:
+            return datetime.datetime.min
+        if source.status == STATUS_PARKED:
+            return source.last_polled_at + PARKED_RECHECK
+        minutes = source.poll_interval_minutes or ACTIVE_POLL_MINUTES
+        return source.last_polled_at + datetime.timedelta(minutes=minutes)
+
     def sources_due(self, limit: int = 5,
                     now: Optional[datetime.datetime] = None) -> list[GitHubSource]:
-        """The next sources cron-poll should poll: least-recently polled first,
-        active ones plus 'error' ones whose failure was transient once they have
-        cooled down (a single 504 or a repo rename used to park a source for good).
+        """The next sources cron-poll should poll, most overdue first: active
+        lists by their poll interval (hourly while they commit, daily once
+        quiet), parked ones weekly, and 'error' ones whose failure was
+        transient once they have cooled down (a single 504 or a repo rename
+        used to park a source for good). Anything not yet parsed under the
+        current PARSE_REVISION goes first.
+
+        Parked lists only get the slots left over: they come due together
+        (the first pass after a deploy parks ~36 at once) and a week late
+        costs nothing, while a skipped run delays the lists that feed the
+        catalogue.
         """
         now = now or datetime.datetime.utcnow()
-        retry_before = now - ERROR_RETRY_COOLDOWN
-        # A few dozen rows at most: filter the retry rule in Python.
+        # A few dozen rows at most: filter the due rule in Python.
         candidates = (
             self.db.query(GitHubSource)
-            .filter(GitHubSource.status.in_(("active", "error")))
+            .filter(GitHubSource.status.in_(("active", "error", STATUS_PARKED)))
             .all()
         )
-        due = [
-            source for source in candidates
-            if source.status == "active" or (
-                is_retryable_error(source.error_message)
-                and (source.last_polled_at is None or source.last_polled_at < retry_before)
-            )
-        ]
-        due.sort(key=lambda s: (s.last_polled_at is not None,
-                                s.last_polled_at or datetime.datetime.min))
-        return due[:limit]
+        due = [(self._due_at(source), source) for source in candidates]
+        due = [(due_at, source) for due_at, source in due if due_at is not None and due_at <= now]
+        # Ties (every source is due at once after a PARSE_REVISION bump) go
+        # to the lists that feed the catalogue: most visible rows first.
+        from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES
+        visible = dict(
+            self.db.query(ScrapedJob.github_source_id, func.count(ScrapedJob.id))
+            .filter(ScrapedJob.github_source_id.in_([source.id for _due, source in due] or [-1]),
+                    ScrapedJob.duplicate_of.is_(None),
+                    or_(ScrapedJob.listing_status.is_(None),
+                        ScrapedJob.listing_status.notin_(HIDDEN_LISTING_STATUSES)))
+            .group_by(ScrapedJob.github_source_id)
+            .all()
+        ) if due else {}
+        due.sort(key=lambda entry: (entry[1].status == STATUS_PARKED, entry[0],
+                                    -visible.get(entry[1].id, 0),
+                                    entry[1].last_polled_at or datetime.datetime.min))
+        return [source for _due, source in due[:limit]]
 
     def _github_client(self, timeout: float) -> httpx.AsyncClient:
         """GitHub API client. Follows redirects: a renamed repo answers 301."""
@@ -582,6 +766,9 @@ class AggregatorService:
             f"{GITHUB_API_BASE}/repos/{source.repo_owner}/"
             f"{source.repo_name}/commits?per_page=1"
         )
+        if (source.file_path or DEFAULT_FILE) != DEFAULT_FILE:
+            # Only commits that touch this source's own file.
+            url += f"&path={quote(source.file_path)}"
 
         headers = self._get_github_headers()
 
@@ -594,11 +781,12 @@ class AggregatorService:
                 # the new name so the README fetch and later polls go direct.
                 await self._adopt_repo_rename(client, source, headers)
 
+        stored_sha, stored_revision = _split_stamp(source.last_commit_sha)
         if not commits:
-            return False, source.last_commit_sha or "", None
+            return False, stored_sha, None
 
         new_sha = commits[0]["sha"]
-        changed = new_sha != source.last_commit_sha
+        changed = new_sha != stored_sha or stored_revision != PARSE_REVISION
         return changed, new_sha, _commit_time(commits[0])
 
     async def _adopt_repo_rename(self, client: httpx.AsyncClient,
@@ -624,7 +812,7 @@ class AggregatorService:
         if (owner.lower(), name.lower()) == (source.repo_owner.lower(), source.repo_name.lower()):
             return
 
-        repo_url = f"https://github.com/{owner}/{name}"
+        repo_url = source_url(f"https://github.com/{owner}/{name}", source.file_path or DEFAULT_FILE)
         tracked = (
             self.db.query(GitHubSource.id, GitHubSource.status)
             .filter(func.lower(GitHubSource.repo_url) == repo_url.lower(),
@@ -676,6 +864,28 @@ class AggregatorService:
         if token:
             headers["Authorization"] = f"Bearer {token}"
         return headers
+
+    def _allowed_countries(self, source: GitHubSource) -> frozenset:
+        """The seed entry's "countries" for this source, empty when unrestricted.
+
+        Matched by URL, or for a non-README file by owner + file: speedyapply
+        renames its repos every season (2026 -> 2027), a source adopts the new
+        name on its next poll, and its INTERN_INTL.md must not start admitting
+        'Remote - Poland' rows (read as US) until REPOS catches up."""
+        url = (source.repo_url or "").lower()
+        file_path = source.file_path or DEFAULT_FILE
+        for config in self.REPOS:
+            if not config.get("countries"):
+                continue
+            config_file = config.get("file_path", DEFAULT_FILE)
+            urls = (config["url"], *config.get("renamed_from", ()))
+            if url in {source_url(u, config_file).lower() for u in urls}:
+                return frozenset(config["countries"])
+            if (config_file != DEFAULT_FILE and config_file.lower() == file_path.lower()
+                    and _REPO_URL_RE.match(config["url"]).group(1).lower()
+                    == (source.repo_owner or "").lower()):
+                return frozenset(config["countries"])
+        return frozenset()
 
     def _get_experience_level(self, source: GitHubSource, title: str = "") -> str:
         """Returns 'internship' or 'new_grad' based on source repo name, or on
@@ -869,6 +1079,12 @@ class AggregatorService:
         if country is None:
             # Exclude non-US/CA jobs
             return False
+        # A list of mostly non-North-American roles (speedyapply's
+        # INTERN_INTL.md) is only read for the country it is seeded for:
+        # its 'Remote - Poland' rows classify as US.
+        allowed = self._allowed_countries(source)
+        if allowed and country not in allowed:
+            return False
 
         # Work type: prefer the jobright "Work Model" column when present,
         # otherwise infer it from the location string.
@@ -912,6 +1128,12 @@ class AggregatorService:
         )
         if existing:
             return False
+        # The board crawl may already carry this posting under another URL
+        # spelling (Workday locale/site aliases, a '-1' repost suffix).
+        from backend.services.cross_source_dedup import board_row_for_posting
+        if board_row_for_posting(self.db, company=job.company, company_domain=company_domain,
+                                 title=job.title, url=job.url):
+            return False
 
         # Store the job
         from backend.services.cross_source_dedup import mark_inferior_twins, normalize_title
@@ -947,6 +1169,7 @@ class AggregatorService:
             first_seen_at=now,
             last_seen_at=now,
             source_trust="medium",
+            visa_sponsorship="no" if job.no_sponsorship else "unknown",
             **location_fields(job.location),
         )
         self.db.add(scraped_job)
@@ -970,7 +1193,18 @@ class AggregatorService:
     async def _enrich_missing_descriptions(
         self, source_id: int | None = None, limit: int = 10
     ) -> int:
-        """Fetch descriptions for jobs that only have metadata + apply URL."""
+        """Fetch descriptions for jobs that only have metadata + apply URL.
+        No fetch starts past ``self.deadline``: each one can take its whole
+        15 s timeout, and a batch of 40 sequential fetches alone could outlast
+        the cron request."""
+        import time
+
+        def out_of_time() -> bool:
+            return self.deadline is not None and time.monotonic() >= self.deadline
+
+        if out_of_time():
+            return 0
+
         from sqlalchemy import or_
         from backend.services.description_extractor import (
             BROWSER_HEADERS,
@@ -992,6 +1226,8 @@ class AggregatorService:
         enriched = 0
         async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=BROWSER_HEADERS) as client:
             for job in jobs:
+                if out_of_time():
+                    break
                 if not job.url:
                     continue
                 try:
