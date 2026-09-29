@@ -584,6 +584,25 @@ class TestSeniorAggregatorRetire:
 
         assert _status(db_session, row) == LISTING_OFF_TARGET
 
+    def test_a_title_the_veto_no_longer_matches_comes_back(self, db_session):
+        """Retired under an earlier, broader veto: the next run re-reads the
+        title, as a board crawl re-reads its listings."""
+        narrowed = _aggregator(db_session, 1, "Junior Planner / Planner / Senior Planner (PFT)",
+                               source="indeed", listing_status=LISTING_OFF_TARGET)
+        aged = _aggregator(db_session, 2, "Junior Planner / Planner / Senior Planner (FT)",
+                           source="indeed", listing_status=LISTING_OFF_TARGET,
+                           first_seen_at=NOW - datetime.timedelta(days=40),
+                           scraped_at=NOW - datetime.timedelta(days=40))
+        senior = _aggregator(db_session, 3, "Senior HR Specialist",
+                             listing_status=LISTING_OFF_TARGET)
+
+        stats = retire_senior_aggregator_rows(db_session, now=NOW)
+
+        assert (stats["restored"], stats["expired"]) == (1, 1)
+        assert _status(db_session, narrowed) == LISTING_ACTIVE
+        assert _status(db_session, aged) == LISTING_EXPIRED  # the expiry would have ended it
+        assert _status(db_session, senior) == LISTING_OFF_TARGET
+
     def test_kill_switch(self, db_session, monkeypatch):
         monkeypatch.setenv("CRON_ATS_RETIRE_OFF_TARGET", "0")
         row = _aggregator(db_session, 1, "Senior HR Specialist")

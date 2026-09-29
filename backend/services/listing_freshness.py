@@ -951,6 +951,30 @@ def retire_senior_aggregator_rows(db: Session, now: datetime.datetime | None = N
     stats.update(checked=len(rows), off_target=len(retire))
     if retire:
         db.commit()
+
+    # The verdict is re-read every run, as a board crawl re-reads its
+    # listings: a title HARD_SENIOR no longer matches (the veto narrowed, e.g.
+    # "Junior Planner / Planner / Senior Planner" now opens at its entry band)
+    # comes back, or goes to expired if the aggregator expiry would have ended
+    # it meanwhile.
+    held = (
+        db.query(ScrapedJob.id, ScrapedJob.title)
+        .filter(
+            ScrapedJob.source_platform.in_(_FAST_AGGREGATOR_SOURCES),
+            ScrapedJob.listing_status == LISTING_OFF_TARGET,
+        )
+        .order_by(ScrapedJob.id.desc())
+        .limit(limit)
+        .all()
+    )
+    back = [row_id for row_id, title in held if not HARD_SENIOR.search(title or "")]
+    if back:
+        stats.update(_restore_off_target(
+            db, now, limit, (ScrapedJob.id.in_(back),),
+            newest_first=True,
+            expire_before=now - datetime.timedelta(days=AGGREGATOR_FAST_MAX_AGE_DAYS),
+        ))
+    if retire or back:
         logger.info("retire_senior_aggregator_rows: %s", stats)
     return stats
 
