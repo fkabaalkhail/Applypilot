@@ -9,6 +9,18 @@ import os
 # endpoint in a loop aren't tripped by the per-minute/daily AI limits.
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
+# Tests run with NO OpenAI key, locally exactly as in CI. backend/db/database.py
+# calls load_dotenv() at import, and python-dotenv walks up from backend/db to
+# the first .env it finds, so a developer's real key reached every local test
+# run: a test that forgot the dummy-key fixture passed locally and failed only
+# in CI (5 such tests kept CI red for months), and a missing mock could have
+# spent real OpenAI money. load_dotenv() never overrides a variable that is
+# already set, so pinning it empty here, before any backend import, wins over
+# .env (and over a key exported in the shell). An empty key reads as unset
+# everywhere (OpenAIService, /health). A test that builds OpenAIService opts in
+# with monkeypatch.setenv("OPENAI_API_KEY", "test-key") and mocks the call.
+os.environ["OPENAI_API_KEY"] = ""
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

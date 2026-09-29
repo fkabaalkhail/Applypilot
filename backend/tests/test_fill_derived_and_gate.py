@@ -54,6 +54,14 @@ def setup_db():
 
 
 @pytest.fixture(autouse=True)
+def _key(monkeypatch):
+    # get_llm_service() builds OpenAIService before the patched batch methods
+    # run, and its constructor refuses an empty key. Tests run keyless (see
+    # conftest), so without this the AI pass dies before it answers anything.
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+
+@pytest.fixture(autouse=True)
 def override_deps():
     def _db():
         db = TestingSessionLocal()
