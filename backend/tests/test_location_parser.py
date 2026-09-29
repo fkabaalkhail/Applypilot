@@ -218,3 +218,13 @@ def test_taleo_hyphen_hierarchy():
 def test_hyphenated_city_names_survive():
     loc = first("Winston-Salem, NC")
     assert (loc.city, loc.region) == ("Winston-Salem", "NC")
+
+
+def test_workday_location_count_is_not_a_city():
+    # Workday lists a multi-location posting as "15 Locations"; parsed
+    # word-wise it became the city "15", which the card would show as the place.
+    for raw in ("15 Locations", "2 locations", "1 Location"):
+        assert parse_locations(raw) == []
+        assert location_fields(raw)["city"] == ""
+    # Only a whole segment: a real place beside it still parses.
+    assert first("Toronto, ON; 3 Locations").city == "Toronto"
