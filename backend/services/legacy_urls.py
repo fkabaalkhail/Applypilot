@@ -22,7 +22,7 @@ from backend.services.ats_scraper import (
     SMARTRECRUITERS_POSTING_BASE,
     smartrecruiters_legacy_url,
 )
-from backend.services.cross_source_dedup import stands_in_for_twins
+from backend.services.cross_source_dedup import effective_source, stands_in_for_twins
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +58,15 @@ def migrate_legacy_smartrecruiters(db: Session, limit: int = MIGRATE_LEGACY_SR_L
     per row by id. A row whose new URL is free takes it. A row whose new URL
     another row holds becomes that row's hidden twin (duplicate_of), so saved
     jobs and applications that reference it still resolve, but only behind a
-    holder that is itself unhidden and may stand in for it
-    (cross_source_dedup.stands_in_for_twins): hiding a live board row behind
-    a list copy that expired, or behind a row hidden behind it, would drop
-    the posting from the feed with nothing to release it. Such a row keeps
-    its URL (``blocked``) and apply_url still sends applicants to the
-    posting. Commits when it changes anything. Returns counts.
+    board row (effective source 'ats') that is itself unhidden and may stand
+    in for it (cross_source_dedup.stands_in_for_twins). Never behind a
+    GitHub-list or LinkedIn/Indeed copy, even a live one: nothing releases a
+    board row once that copy expires (release_from_closed_winners frees only
+    aggregator rows, release_list_copies_of_lapsed_board_rows only list
+    copies), so the posting would leave the feed for good. Nor behind a row
+    hidden behind it. Such a row keeps its URL (``blocked``) and apply_url
+    still sends applicants to the posting. Commits when it changes anything.
+    Returns counts.
     """
     stats = {"checked": 0, "migrated": 0, "hidden_as_twin": 0, "blocked": 0}
     rows = (
@@ -98,9 +101,9 @@ def migrate_legacy_smartrecruiters(db: Session, limit: int = MIGRATE_LEGACY_SR_L
             stats["migrated"] += 1
         else:
             holder_id, duplicate_of, listing_status, source_platform = holder
-            if duplicate_of is not None or not stands_in_for_twins(
-                listing_status, source_platform or "", new_url,
-            ):
+            if (duplicate_of is not None
+                    or effective_source(source_platform or "", new_url) != "ats"
+                    or not stands_in_for_twins(listing_status, source_platform or "", new_url)):
                 stats["blocked"] += 1
                 continue
             values = {"duplicate_of": holder_id}

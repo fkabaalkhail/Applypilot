@@ -481,7 +481,8 @@ shard, least-recently-probed verification). A `concurrency` group
    location) and `legacy_smartrecruiters` (rows still on
    `careers.smartrecruiters.com/<Company>/<id>`, which now redirects to the
    employer's homepage, move to the `jobs.smartrecruiters.com` posting URL, or
-   hide behind the row that already holds it).
+   hide behind the board row that already holds it; a list or LinkedIn/Indeed
+   copy holding it leaves the legacy row where it is).
 6. `/jobs/cron-freshness`: board_key adoption, stale/aggregator/terminal
    sweeps, platform liveness verification, ghost scoring.
 7. `/jobs/ingest-metrics`: logged snapshot, runs even after a failure.

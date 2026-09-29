@@ -6,6 +6,7 @@ jobs.smartrecruiters.com. cron-backfill migrates them from the URL alone,
 and the API hands out the posting URL for any row still waiting.
 """
 
+import datetime
 import socket
 
 import httpx
@@ -16,11 +17,16 @@ from backend.db.models import ScrapedJob
 from backend.routers import jobs as jobs_router
 from backend.services import legacy_urls, logo_cache
 from backend.services.ats_scraper import SMARTRECRUITERS_POSTING_BASE, smartrecruiters_legacy_url
+from backend.services.cross_source_dedup import (
+    release_from_closed_winners,
+    release_list_copies_of_lapsed_board_rows,
+)
 from backend.services.legacy_urls import (
     apply_url,
     migrate_legacy_smartrecruiters,
     smartrecruiters_posting_url,
 )
+from backend.services.listing_freshness import AGGREGATOR_MAX_AGE_DAYS, sweep_aggregator_expiry
 
 SECRET = "test-cron-secret"
 LEGACY = "https://careers.smartrecruiters.com/BoschGroup/744000143933909"
@@ -144,6 +150,41 @@ def test_never_hides_behind_a_holder_that_is_itself_hidden(db_session):
 
     assert (stats["hidden_as_twin"], stats["blocked"]) == (0, 1)
     assert _reload(db_session, legacy.id).duplicate_of is None
+
+
+@pytest.mark.parametrize("source_platform", ["github", "linkedin", "indeed"])
+def test_never_hides_behind_a_live_list_or_aggregator_copy(db_session, source_platform):
+    """Only a board row answers for a board row: nothing releases one hidden
+    behind a copy (release_from_closed_winners frees only LinkedIn/Indeed
+    rows, release_list_copies_of_lapsed_board_rows only list copies)."""
+    copy = _row(db_session, url=POSTING, source_platform=source_platform, board_key="",
+                listing_status="active")
+    legacy = _row(db_session, listing_status="active")
+
+    stats = migrate_legacy_smartrecruiters(db_session)
+
+    assert (stats["hidden_as_twin"], stats["blocked"]) == (0, 1)
+    assert _reload(db_session, legacy.id).duplicate_of is None
+    assert _reload(db_session, copy.id).duplicate_of is None
+
+
+def test_a_board_row_outlives_the_list_copy_holding_its_posting_url(db_session):
+    """Review 5's probe: hidden behind a live list copy, the board row stayed
+    hidden for good once the copy aged out."""
+    now = datetime.datetime(2026, 9, 29, 12, 0, 0)
+    old = now - datetime.timedelta(days=AGGREGATOR_MAX_AGE_DAYS + 1)
+    copy = _row(db_session, url=POSTING, source_platform="github", board_key="",
+                listing_status="active", posted_date=old, first_seen_at=old, scraped_at=old)
+    legacy = _row(db_session, listing_status="active", first_seen_at=now, scraped_at=now)
+
+    migrate_legacy_smartrecruiters(db_session)
+    assert sweep_aggregator_expiry(db_session, now=now) == 1  # the list copy ages out
+    release_from_closed_winners(db_session)
+    release_list_copies_of_lapsed_board_rows(db_session)
+
+    row = _reload(db_session, legacy.id)
+    assert (row.url, row.duplicate_of, row.listing_status) == (LEGACY, None, "active")
+    assert _reload(db_session, copy.id).listing_status == "expired"
 
 
 def test_bounded_and_skips_rows_already_hidden(db_session):
