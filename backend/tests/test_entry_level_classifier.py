@@ -403,6 +403,13 @@ def test_hard_senior_is_the_aggregator_veto(title, hard):
     ("Stagiaire en ingénierie (été 2027)", "", "", "internship"),
     ("RF Validation Associate", "Payload Internships", "", "internship"),
     ("Thermal Associate Engineer (Summer 2027)", "", "", "internship"),   # a work term
+    # ...but a junior hire's start date (BDO, full time).
+    ("Junior Accountant, Assurance - Barrie - Fall 2026", "", "", "new_grad"),
+    ("Junior Accountant, Assurance (Winter 2027 or Fall 2027 or Winter 2028)", "",
+     "Full time", "new_grad"),
+    ("Jr. Analyst (Summer 2027)", "Summer Internships", "", "internship"),
+    ("Junior Analyst (Summer 2027)", "", "Intern", "internship"),
+    ("Junior Developer - Winter 2027 Co-op", "", "", "internship"),
     ("Hardware Validation Associate", "", "Intern", "internship"),       # Lever commitment
     ("Cohort 0", "", "Intern", "internship"),
     ("Software Engineer, New Grad (Summer 2027)", "", "", "new_grad"),

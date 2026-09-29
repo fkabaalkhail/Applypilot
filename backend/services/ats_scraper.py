@@ -467,6 +467,9 @@ _INTERNSHIP_DEPARTMENT = re.compile(r"\bintern(?:s|ships?)?\b|" + _COOP, re.IGNO
 # A work term: "RF Validation Associate (Winter 2027)".
 _TERM_TITLE = re.compile(r"\b(?:summer|fall|winter|spring|autumn)\s*,?\s*(?:19|20)\d\d\b",
                          re.IGNORECASE)
+# ...but a start date for a junior hire: BDO's full-time "Junior Accountant,
+# Assurance (Winter 2027 or Fall 2027 or Winter 2028)" is a new-grad job.
+_JUNIOR_TITLE = re.compile(r"\bjunior\b|\bjr\b", re.IGNORECASE)
 _NEW_GRAD_TITLE = re.compile(
     r"\b(?:new|recent|university|college)[- ]?grad(?:uate)?s?\b|\bearly[- ]careers?\b"
     r"|\bentry[- ]level\b|\b(?:19|20)\d\d\s+start\b",
@@ -504,7 +507,8 @@ def experience_level_for(title: str, department: str = "", employment_type: str 
     "Internal Audit Analyst", "International Payroll" and "Cooper, #559" are
     not internships. Past an intern/co-op/student title, and unless the title
     names a new-grad role, a work term in the title ("RF Validation Associate
-    (Winter 2027)"), a department naming internships or co-ops ("Payload
+    (Winter 2027)", not a junior hire's start date: "Junior Accountant - Fall
+    2026"), a department naming internships or co-ops ("Payload
     Internships") or the source's own commitment ("Intern") files it under
     internships. ``employment_type`` is that commitment (ATSJob.
     employment_type), never the one extracted from a description: "prior
@@ -513,7 +517,7 @@ def experience_level_for(title: str, department: str = "", employment_type: str 
         return "internship"
     if _NEW_GRAD_TITLE.search(title or ""):
         return "new_grad"
-    if (_TERM_TITLE.search(title or "")
+    if ((_TERM_TITLE.search(title or "") and not _JUNIOR_TITLE.search(title or ""))
             or _INTERNSHIP_DEPARTMENT.search(department or "")
             or EMPLOYMENT_TYPE_ENTRY.search(employment_type or "")):
         return "internship"
