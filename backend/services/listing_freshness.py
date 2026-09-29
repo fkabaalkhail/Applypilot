@@ -301,8 +301,59 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
     return stats
 
 
+# ─── Fields derived from a row's title and location ──────────────────────────
+# Inserts (cron-ats) and the crawl's refresh of known rows compute these with
+# the same helpers, so an edited row can never end up filed differently from
+# a new one with the same title and location.
+
+def experience_level_for(title: str) -> str:
+    """The intern/new-grad split every crawled row gets: "internship" when
+    the title says intern/co-op, else "new_grad" (the crawl only keeps entry
+    level)."""
+    title_lower = (title or "").lower()
+    if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
+        return "internship"
+    return "new_grad"
+
+
+def title_fields(title: str, department: str = "") -> dict:
+    """Columns derived from a crawled row's title: the cross-source dedup key,
+    the role category and the experience level."""
+    from backend.services.cross_source_dedup import normalize_title
+    from backend.services.role_classifier import classify as classify_role
+
+    return {
+        "title_norm": normalize_title(title or ""),
+        "role_category": classify_role(title or "", department or ""),
+        "experience_level": experience_level_for(title),
+    }
+
+
+def location_derived_fields(location: str, board_country: str = "", *, hint: str = "",
+                            current_country: str = "", fallback: str = "US") -> dict:
+    """Columns derived from a crawled row's location: the parsed city/region/
+    locations_json/location_search (location_parser) and the ``country``
+    (na_location.job_country: the board's registry country, else what the
+    location says, else ``fallback``)."""
+    from backend.services.location_parser import location_fields
+    from backend.services.na_location import job_country
+
+    fields = location_fields(location or "")
+    fields["country"] = job_country(location or "", board_country, hint=hint,
+                                    current=current_country, fallback=fallback)
+    return fields
+
+
+def _title_edited_before(change_log) -> bool:
+    for entry in change_log or []:
+        if isinstance(entry, dict) and "title" in (entry.get("changed") or []):
+            return True
+    return False
+
+
 def refresh_known_listings(db: Session, board_key: str, jobs: list,
-                           now: datetime.datetime | None = None) -> tuple[list, dict]:
+                           now: datetime.datetime | None = None,
+                           board_country: str = "") -> tuple[list, dict]:
     """Split a board's filtered jobs into (new, stats) and refresh the ones
     already stored: detect edits (title/location/salary/description) into
     ``change_log``, update the structured fields, adopt legacy rows into
@@ -311,9 +362,21 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     Change detection is explicit column compares plus a description hash,
     a re-crawl that didn't carry the description (SmartRecruiters/Workday
     list payloads) must not read "description became empty" as an edit.
+
+    The fields derived from the title and location are kept in step, the way
+    cron-ats derives them for a new row (location_derived_fields,
+    title_fields): an edit used to rewrite only ``location``/``title``, so a
+    Toronto job stayed filed under Austin and a retitled one kept its old
+    dedup key. Each crawl also heals what earlier code left behind: parsed
+    fields that disagree with the stored location ("reparsed"), a country
+    that disagrees with what the location or ``board_country`` (the
+    registry's country for a one-country board) says ("recountried": a bare
+    "Toronto" once defaulted to "US"), and a title_norm left stale by an
+    earlier title edit ("retitled"). Only rows that differ are rewritten.
     """
     now = now or _utcnow()
-    stats = {"refreshed": 0, "edited": 0, "salary_removed": 0}
+    stats = {"refreshed": 0, "edited": 0, "salary_removed": 0,
+             "reparsed": 0, "recountried": 0, "retitled": 0}
     if not jobs:
         return [], stats
 
@@ -327,6 +390,8 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
                 ScrapedJob.location, ScrapedJob.salary_min, ScrapedJob.raw_hash,
                 ScrapedJob.edit_count, ScrapedJob.change_log,
                 ScrapedJob.board_key, ScrapedJob.external_id,
+                ScrapedJob.country, ScrapedJob.city, ScrapedJob.region,
+                ScrapedJob.location_search, ScrapedJob.title_norm,
             )
             .filter(ScrapedJob.url.in_(chunk))
             .all()
@@ -336,9 +401,12 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
 
     new_jobs = [job for url, job in by_url.items() if url not in existing]
 
+    from backend.services.cross_source_dedup import normalize_title
+
     for url, row in existing.items():
         (row_id, _url, old_title, old_location, old_salary_min, old_hash,
-         edit_count, change_log, old_board_key, old_external_id) = row
+         edit_count, change_log, old_board_key, old_external_id, old_country,
+         old_city, old_region, old_search, old_title_norm) = row
         job = by_url[url]
 
         updates: dict = {"last_seen_at": now}
@@ -348,12 +416,40 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
             updates["external_id"] = f"{board_key}:{job.external_id}"
 
         changes: list[str] = []
-        if job.title and job.title != old_title:
+        title = job.title or old_title or ""
+        title_changed = bool(job.title) and job.title != old_title
+        if title_changed:
             changes.append("title")
             updates["title"] = job.title
-        if job.location and job.location != old_location:
-            changes.append("location")
+        # Re-derive on an edit, and heal a row an earlier edit left with the
+        # old title's dedup key. Only rows with a logged title edit: an
+        # unedited row's title_norm is the insert's own, whatever version of
+        # normalize_title wrote it.
+        if title and (title_changed or (
+                _title_edited_before(change_log)
+                and (old_title_norm or "") != normalize_title(title))):
+            updates.update(title_fields(title, job.department or ""))
+            stats["retitled"] += 1
+
+        location = job.location or old_location or ""
+        location_changed = bool(job.location) and job.location != old_location
+        if location_changed:
+            # Filling in a location the row never had (Parsons' list rows
+            # carried none until the bullet fallback) is not an edit.
+            if (old_location or "").strip():
+                changes.append("location")
             updates["location"] = job.location
+        derived = location_derived_fields(
+            location, board_country, hint=job.location_hint or "",
+            current_country=old_country or "", fallback=old_country or "US",
+        )
+        parsed_place = (derived["city"], derived["region"], derived["location_search"])
+        if location_changed or parsed_place != (old_city or "", old_region or "", old_search or ""):
+            updates.update({key: value for key, value in derived.items() if key != "country"})
+            stats["reparsed"] += 1
+        if derived["country"] != (old_country or ""):
+            updates["country"] = derived["country"]
+            stats["recountried"] += 1
 
         salary_source = job.salary_text or job.description or ""
         if salary_source:
@@ -396,6 +492,84 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
 
     db.commit()
     return new_jobs, stats
+
+
+# ─── Country repair ──────────────────────────────────────────────────────────
+
+REPAIR_COUNTRY_LIMIT = 1000
+
+
+def repair_country(db: Session, *, limit: int = REPAIR_COUNTRY_LIMIT,
+                   board_countries: dict[str, str] | None = None,
+                   now: datetime.datetime | None = None) -> dict:
+    """Heal visible rows whose ``country`` contradicts their own location.
+
+    The LinkedIn script stored "US" on every Canadian row (", ca" matched
+    ", canada": 653 visible rows, 2026-09), cron-ats defaulted a bare
+    "Toronto" to "US", and BDO's rows predate its registry country. Ingest now
+    derives the country server-side (na_location.job_country) and the crawl
+    heals the rows it re-lists, but LinkedIn/Indeed/GitHub rows are never
+    re-crawled, so this pass fixes them in place.
+
+    DB-only and bounded: a column-only SELECT of at most ``limit`` candidate
+    rows (a cheap SQL prefilter: a US row whose parsed location says Canada
+    or whose city is a Canadian one, the reverse, or a one-country board's row
+    stored under the other country), the verdict in Python, then one UPDATE
+    per chunk per target country. Only positive evidence moves a row: the
+    registry's country for the board, or a US/CA verdict on the location; a
+    location naming both countries keeps its value. Commits. Returns counts.
+    """
+    from backend.data import company_registry
+    from backend.services.na_location import CA, CA_CITIES, US, US_CITIES, job_country
+
+    stats = {"checked": 0, "repaired": 0, "to_ca": 0, "to_us": 0}
+    if board_countries is None:
+        board_countries = company_registry.load_board_countries()
+    ca_boards = sorted(key for key, country in board_countries.items() if country == CA)
+    us_boards = sorted(key for key, country in board_countries.items() if country == US)
+
+    suspect = [
+        (ScrapedJob.country == US) & or_(
+            ScrapedJob.location_search.like("%|canada|%"),
+            ScrapedJob.city.in_(CA_CITIES),
+        ),
+        (ScrapedJob.country == CA) & or_(
+            ScrapedJob.location_search.like("%|united states|%"),
+            ScrapedJob.city.in_(US_CITIES),
+        ),
+    ]
+    if ca_boards:
+        suspect.append(ScrapedJob.board_key.in_(ca_boards) & (ScrapedJob.country != CA))
+    if us_boards:
+        suspect.append(ScrapedJob.board_key.in_(us_boards) & (ScrapedJob.country != US))
+    rows = (
+        db.query(ScrapedJob.id, ScrapedJob.location, ScrapedJob.country, ScrapedJob.board_key)
+        .filter(
+            ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
+            ScrapedJob.duplicate_of.is_(None),
+            or_(*suspect),
+        )
+        .order_by(ScrapedJob.id.asc())
+        .limit(limit)
+        .all()
+    )
+
+    moves: dict[str, list[int]] = {CA: [], US: []}
+    for row_id, location, country, board_key in rows:
+        stats["checked"] += 1
+        current = country or ""
+        wanted = job_country(location or "", board_countries.get(board_key or "", ""),
+                             current=current, fallback=current)
+        if wanted != current and wanted in moves:
+            moves[wanted].append(row_id)
+    for country, ids in moves.items():
+        _update_ids(db, ids, {"country": country})
+    stats.update(to_ca=len(moves[CA]), to_us=len(moves[US]),
+                 repaired=len(moves[CA]) + len(moves[US]))
+    if stats["repaired"]:
+        db.commit()
+        logger.info("repair_country: %s", stats)
+    return stats
 
 
 # ─── Scheduled sweeps ────────────────────────────────────────────────────────

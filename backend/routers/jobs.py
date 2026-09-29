@@ -40,6 +40,7 @@ from backend.services.description_extractor import (
     extract_description_from_url,
 )
 from backend.services.location_parser import location_fields
+from backend.services.na_location import job_country
 from backend.services.logo_cache import (
     brand,
     company_key,
@@ -399,6 +400,13 @@ def ingest_batch(
         company_domain = (job.company_domain or "").strip().lower() or resolved_domain
         company_logo, company_domain = brand(branding, job.company, company_logo, company_domain)
         fields = location_fields(job.location)
+        # The country is derived here, not trusted from the client: the
+        # LinkedIn script's ", ca" test matched ", canada" and sent "US" for
+        # 653 visible Canadian rows. The client's value only stands when the
+        # location says nothing either way, or names both countries, or
+        # rests on a bare "CA" (JobSpy's "Remote, CA" is ISO Canada).
+        sent = (job.country or "").strip().upper()
+        country = job_country(job.location or "", current=sent, fallback=sent)
 
         # A direct (ats/github) row for this employer+title+city already in
         # the catalogue makes this aggregator copy redundant, skip it.
@@ -408,7 +416,7 @@ def ingest_batch(
             company_domain=company_domain,
             title=job.title,
             city=fields["city"],
-            country=job.country or "",
+            country=country,
         ):
             twins_skipped += 1
             duplicates += 1
@@ -427,7 +435,7 @@ def ingest_batch(
                 easy_apply=0,
                 work_type=job.work_type,
                 role_category=classify_role(job.title),
-                country=job.country,
+                country=country,
                 experience_level=job.experience_level,
                 company_logo=company_logo,
                 company_domain=company_domain,
@@ -500,9 +508,11 @@ async def cron_backfill(
     direct-URL rows before login-walled LinkedIn/Indeed ones), fill structured
     location + company_domain, and harvest self-hosted logos for employers
     that have none yet (services/logo_cache.py). The network phases are
-    bounded, and the pass is planned to finish inside BACKFILL_BUDGET_S."""
+    bounded, and the pass is planned to finish inside BACKFILL_BUDGET_S. A
+    DB-only step also heals visible rows whose country contradicts their
+    location (listing_freshness.repair_country)."""
     import httpx
-    from backend.services import logo_cache
+    from backend.services import listing_freshness, logo_cache
 
     loop = asyncio.get_running_loop()
     started = loop.time()
@@ -614,6 +624,25 @@ async def cron_backfill(
                     domains_fixed += 1
         db.commit()
 
+        # Country repair: visible rows whose stored country contradicts their
+        # own location (653 Canadian LinkedIn rows stored "US", bare
+        # Canadian cities cron-ats defaulted to "US"). DB-only, one bounded
+        # column-only SELECT, so it takes well under a second; skipped when
+        # the pass is already past its harvest mark, and it can only shorten
+        # the harvest below (whose deadline is fixed from ``started``), never
+        # push the pass past BACKFILL_BUDGET_S.
+        harvest_deadline = started + BACKFILL_BUDGET_S - POST_HARVEST_RESERVE_S
+        country_stats: dict = {"skipped": True}
+        if loop.time() < harvest_deadline:
+            try:
+                country_stats = listing_freshness.repair_country(
+                    db, limit=listing_freshness.REPAIR_COUNTRY_LIMIT,
+                )
+            except Exception:
+                db.rollback()
+                logger.exception("cron-backfill country repair failed")
+                country_stats = {"error": True}
+
         # Phase 3: self-hosted logos. Rows of employers whose logo is already
         # stored get re-pointed at it; employers with none are harvested
         # (busiest first, misses on a 14d-per-attempt backoff) inside a
@@ -622,8 +651,7 @@ async def cron_backfill(
         # shortens the harvest instead of pushing the pass past Vercel's cap.
         try:
             logo_stats = await logo_cache.harvest_missing_logos(
-                db, client,
-                deadline=started + BACKFILL_BUDGET_S - POST_HARVEST_RESERVE_S,
+                db, client, deadline=harvest_deadline,
             )
         except Exception:
             db.rollback()
@@ -654,6 +682,7 @@ async def cron_backfill(
         "descriptions_deferred": descriptions_deferred,
         "locations_fixed": locations_fixed,
         "domains_fixed": domains_fixed,
+        "country_repair": country_stats,
         # Back-compat names: companies harvested, logos stored.
         "logo_domains_probed": logo_stats.get("companies_attempted", 0),
         "logos_harvested": logo_stats.get("stored", 0),

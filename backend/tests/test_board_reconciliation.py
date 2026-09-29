@@ -568,6 +568,47 @@ class TestCronReconciliation:
         row = db_session.query(ScrapedJob).filter_by(url=url).one()
         assert row.country == "CA"  # not the cron's "US" default
 
+    def test_new_row_for_a_bare_canadian_city_is_canadian(self, client, db_session, monkeypatch):
+        """CountryFilter found nothing in a bare "Toronto" and cron-ats stored
+        its "US" default (41 visible rows, 2026-09)."""
+        monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+        url = "https://boards.greenhouse.io/acme/jobs/3"
+        job = ATSJob(title="Software Intern", company="Acme", location="Toronto", url=url)
+        self._run(client, monkeypatch, [("greenhouse", "acme", "Acme")], {
+            "acme": dict(jobs=[job], all_urls={url}, complete=True, total_listed=1),
+        })
+        row = db_session.query(ScrapedJob).filter_by(url=url).one()
+        assert (row.country, row.city) == ("CA", "toronto")
+        assert (row.title_norm, row.experience_level) == ("software intern", "internship")
+
+    def test_workday_count_is_placed_by_its_path(self, client, db_session, monkeypatch):
+        monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+        url = "https://acme.wd3.myworkdayjobs.com/External/job/Toronto-ON/Dev-Intern_R1"
+        job = ATSJob(title="Developer Intern", company="Acme", location="3 Locations", url=url,
+                     description="Build things.", location_hint="Toronto-ON")
+        self._run(client, monkeypatch, [("workday", "acme", "Acme")], {
+            "acme": dict(jobs=[job], all_urls={url}, complete=True, total_listed=1),
+        })
+        row = db_session.query(ScrapedJob).filter_by(url=url).one()
+        assert (row.location, row.country) == ("3 Locations", "CA")
+
+    def test_refresh_heals_rows_through_the_crawl(self, client, db_session, monkeypatch):
+        """A known row stored "US" for a bare Canadian city, still listed: the
+        crawl's refresh fixes it and reports it."""
+        monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+        known = _row(db_session, "https://boards.greenhouse.io/acme/jobs/4", "greenhouse:acme",
+                     location="Ottawa", country="US")
+        job = ATSJob(title="Software Intern", company="Acme", location="Ottawa", url=known.url)
+
+        body = self._run(client, monkeypatch, [("greenhouse", "acme", "Acme")], {
+            "acme": dict(jobs=[job], all_urls={known.url}, complete=True, total_listed=1),
+        })
+
+        assert body["recountried"] == 1 and body["reparsed"] == 1
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert (row.country, row.city) == ("CA", "ottawa")
+
     def test_complete_snapshot_still_removes_what_vanished(self, client, db_session, monkeypatch):
         board = "workday:acme"
         live = _row(db_session, "https://acme.wd3.myworkdayjobs.com/External/job/a_R-1", board)

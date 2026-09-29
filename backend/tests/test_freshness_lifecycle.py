@@ -204,6 +204,226 @@ class TestRefreshKnownListings:
         db_session.expire_all()
         assert db_session.get(ScrapedJob, known.id).board_key == BOARD
 
+    # ── Derived fields follow the title and location ────────────────────────
+
+    def _consistent(self, db, location="Ottawa, ON, Canada", country="CA", **kwargs):
+        """A row whose derived fields agree with its location, as cron-ats
+        would have inserted it."""
+        from backend.services.listing_freshness import location_derived_fields, title_fields
+
+        fields = location_derived_fields(location)
+        fields.pop("country")
+        title = kwargs.pop("title", "Software Intern")
+        return _row(db, location=location, country=country, title=title,
+                    **fields, **title_fields(title), **kwargs)
+
+    def test_consistent_row_is_left_alone(self, db_session):
+        known = self._consistent(db_session)
+        _new, stats = refresh_known_listings(db_session, BOARD, [_job(url=known.url)], now=NOW)
+        assert (stats["reparsed"], stats["recountried"], stats["retitled"]) == (0, 0, 0)
+
+    def test_heals_the_country_of_a_bare_canadian_city(self, db_session):
+        """cron-ats once stored a bare "Toronto" as "US"; the next crawl fixes it."""
+        known = self._consistent(db_session, location="Toronto", country="US")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, location="Toronto")], now=NOW,
+        )
+        db_session.expire_all()
+        assert stats["recountried"] == 1 and stats["edited"] == 0
+        assert db_session.get(ScrapedJob, known.id).country == "CA"
+
+    def test_one_country_board_sets_the_country(self, db_session):
+        known = self._consistent(db_session, location="London", country="US")
+        refresh_known_listings(db_session, BOARD, [_job(url=known.url, location="London")],
+                               now=NOW, board_country="CA")
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, known.id).country == "CA"
+
+    def test_a_location_naming_both_countries_keeps_its_country(self, db_session):
+        both = "Remote (United States | Canada)"
+        known = self._consistent(db_session, location=both, country="US")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, location=both)], now=NOW,
+        )
+        db_session.expire_all()
+        assert stats["recountried"] == 0
+        assert db_session.get(ScrapedJob, known.id).country == "US"
+
+    def test_workday_count_takes_its_country_from_the_path_hint(self, db_session):
+        known = self._consistent(db_session, location="3 Locations", country="US")
+        refresh_known_listings(
+            db_session, BOARD,
+            [_job(url=known.url, location="3 Locations", location_hint="Toronto-ON")], now=NOW,
+        )
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, known.id).country == "CA"
+
+    def test_location_edit_reparses_city_and_country(self, db_session):
+        known = self._consistent(db_session)
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, location="Austin, TX")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 1 and row.change_log[-1]["changed"] == ["location"]
+        assert (row.location, row.city, row.region, row.country) == ("Austin, TX", "austin", "TX", "US")
+        assert row.location_search.startswith("|austin|tx|")
+        assert row.locations_json[0]["city"] == "Austin"
+
+    def test_heals_parsed_fields_left_stale_by_an_earlier_edit(self, db_session):
+        """Prod had "Seattle, Washington" rows still filed under Dallas: the
+        location was edited before edits re-parsed it."""
+        known = _row(db_session, location="Seattle, WA", city="dallas",
+                     region="TX", location_search="|dallas|tx|texas|united states|",
+                     country="US")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, location="Seattle, WA")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["reparsed"] == 1 and stats["edited"] == 0
+        assert (row.city, row.region) == ("seattle", "WA")
+        assert "|seattle|" in row.location_search
+
+        # Now consistent: nothing to rewrite on the next crawl.
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, location="Seattle, WA")], now=NOW,
+        )
+        assert stats["reparsed"] == 0
+
+    def test_filling_an_empty_location_is_not_an_edit(self, db_session):
+        """Parsons' list rows carried no location until the bullet fallback."""
+        known = self._consistent(db_session, location="", country="US")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, location="US - CA, Pasadena")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and not row.change_log
+        assert (row.location, row.city, row.region) == ("US - CA, Pasadena", "pasadena", "CA")
+
+    def test_title_edit_rederives_the_title_fields(self, db_session):
+        known = self._consistent(db_session, title="Business Systems Analyst")
+        before = db_session.get(ScrapedJob, known.id)
+        assert (before.experience_level, before.role_category) != ("internship", "Software Engineering")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, title="Software Engineering Intern")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["retitled"] == 1 and stats["edited"] == 1
+        assert row.title_norm == "software engineering intern"
+        assert row.experience_level == "internship"
+        assert row.role_category == "Software Engineering"
+
+    def test_heals_a_title_norm_left_stale_by_an_earlier_edit(self, db_session):
+        known = self._consistent(
+            db_session, title="Operations Analyst",
+            change_log=[{"at": "2026-08-01T00:00:00", "changed": ["title"]}],
+        )
+        db_session.query(ScrapedJob).filter_by(id=known.id).update(
+            {"title_norm": "business systems analyst"})
+        db_session.commit()
+
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, title="Operations Analyst")], now=NOW,
+        )
+        db_session.expire_all()
+        assert stats["retitled"] == 1 and stats["edited"] == 0
+        assert db_session.get(ScrapedJob, known.id).title_norm == "operations analyst"
+
+    def test_unedited_title_norm_is_never_rewritten(self, db_session):
+        """Only rows with a logged title edit are healed: an unedited row's
+        title_norm is its insert's, whatever normalize_title version wrote it."""
+        known = self._consistent(db_session, title="Operations Analyst")
+        db_session.query(ScrapedJob).filter_by(id=known.id).update({"title_norm": "legacy key"})
+        db_session.commit()
+
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, title="Operations Analyst")], now=NOW,
+        )
+        db_session.expire_all()
+        assert stats["retitled"] == 0
+        assert db_session.get(ScrapedJob, known.id).title_norm == "legacy key"
+
+
+class TestDerivedFieldHelpers:
+    @pytest.mark.parametrize("title, level", [
+        ("Software Intern", "internship"),
+        ("Co-op Student, Data", "internship"),
+        ("Coop Engineer", "internship"),
+        ("New Grad Software Engineer", "new_grad"),
+        ("Analyst I", "new_grad"),
+    ])
+    def test_experience_level_for(self, title, level):
+        from backend.services.listing_freshness import experience_level_for
+
+        assert experience_level_for(title) == level
+
+    def test_location_derived_fields(self):
+        from backend.services.listing_freshness import location_derived_fields
+
+        fields = location_derived_fields("Toronto")
+        assert (fields["city"], fields["country"]) == ("toronto", "CA")
+        assert location_derived_fields("London", "CA")["country"] == "CA"
+        assert location_derived_fields("Austin, TX")["country"] == "US"
+
+
+class TestRepairCountry:
+    def test_heals_contradicted_rows_and_is_idempotent(self, db_session):
+        from backend.services.listing_freshness import location_derived_fields, repair_country
+
+        def row(url, location, country, **kwargs):
+            fields = location_derived_fields(location)
+            fields.pop("country")
+            return _row(db_session, url=url, location=location, country=country,
+                        **{**fields, **kwargs})
+
+        linkedin = row("https://www.linkedin.com/jobs/view/1", "Calgary, Alberta, Canada", "US",
+                       source_platform="linkedin", board_key="")
+        bare = row("https://boards.greenhouse.io/acme/jobs/2", "Toronto", "US")
+        bdo = row("https://bdo.wd3.myworkdayjobs.com/Bdo/job/London/x_JR1", "London", "US",
+                  board_key="workday:bdo")
+        reverse = row("https://boards.greenhouse.io/acme/jobs/3", "Austin, TX, United States", "CA")
+        both = row("https://boards.greenhouse.io/acme/jobs/4", "Toronto, ON; Seattle, WA", "US")
+        right = row("https://boards.greenhouse.io/acme/jobs/5", "Toronto, ON", "CA")
+        hidden = row("https://www.linkedin.com/jobs/view/6", "Ottawa, Ontario, Canada", "US",
+                     source_platform="linkedin", board_key="", listing_status=LISTING_EXPIRED)
+        foreign = row("https://www.linkedin.com/jobs/view/7", "London, England, United Kingdom",
+                      "CA", source_platform="linkedin", board_key="")
+
+        stats = repair_country(db_session, board_countries={"workday:bdo": "CA"})
+
+        db_session.expire_all()
+        country = {r.id: db_session.get(ScrapedJob, r.id).country
+                   for r in (linkedin, bare, bdo, reverse, both, right, hidden, foreign)}
+        assert country[linkedin.id] == "CA"
+        assert country[bare.id] == "CA"
+        assert country[bdo.id] == "CA"
+        assert country[reverse.id] == "US"
+        assert country[both.id] == "US"       # names both: keeps its value
+        assert country[right.id] == "CA"
+        assert country[hidden.id] == "US"     # not visible: not this pass's job
+        assert country[foreign.id] == "CA"    # no NA verdict: left alone
+        assert (stats["to_ca"], stats["to_us"], stats["repaired"]) == (3, 1, 4)
+
+        again = repair_country(db_session, board_countries={"workday:bdo": "CA"})
+        assert again["repaired"] == 0
+
+    def test_is_bounded(self, db_session):
+        from backend.services.listing_freshness import repair_country
+
+        for i in range(3):
+            _row(db_session, url=f"https://www.linkedin.com/jobs/view/{i}",
+                 location="Calgary, Alberta, Canada", country="US",
+                 location_search="|calgary|ab|alberta|canada|", source_platform="linkedin",
+                 board_key="")
+
+        stats = repair_country(db_session, limit=2, board_countries={})
+
+        assert stats["checked"] == 2 and stats["repaired"] == 2
+        assert repair_country(db_session, limit=2, board_countries={})["repaired"] == 1
+
 
 # ─── Sweeps ──────────────────────────────────────────────────────────────────
 

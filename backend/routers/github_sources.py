@@ -28,7 +28,7 @@ from backend.schemas.github_source import GitHubSourceOut, GitHubSourceCreate
 from backend.services.github_scraper import GitHubScraper, validate_github_repo_url
 from backend.services.role_classifier import classify as classify_role
 from backend.services.location_parser import location_fields
-from backend.services.cross_source_dedup import mark_inferior_twins, normalize_title
+from backend.services.cross_source_dedup import mark_inferior_twins
 from backend.auth.dependencies import get_admin_user_id, verify_cron_secret
 
 logger = logging.getLogger(__name__)
@@ -423,7 +423,6 @@ async def cron_ats(
     try:
         from backend.db.models import ScrapedJob
         from backend.services.ats_scraper import ATSScraper, fetch_workday_detail
-        from backend.services.country_filter import CountryFilter
         from backend.services.work_type_classifier import WorkTypeClassifier
         from backend.services.logo_resolver import domain_from_logo_url, resolve_logo
         from backend.services import listing_freshness, logo_cache, source_health
@@ -433,7 +432,6 @@ async def cron_ats(
             filter_entry_level=True, filter_north_america=True,
             deadline=time.monotonic() + CRON_ATS_LIST_BUDGET_SECONDS,
         )
-        country_filter = CountryFilter()
         work_type_classifier = WorkTypeClassifier()
         logo_map = company_registry.load_logo_map()
         board_countries = company_registry.load_board_countries()
@@ -462,7 +460,8 @@ async def cron_ats(
             "removed": 0, "revived": 0, "cross_source_twins_hidden": 0,
             "boards_failed": 0, "boards_skipped_cooldown": 0,
             "boards_partial": 0, "partial_confirmed": 0, "urls_migrated": 0,
-            "boards_deferred": 0, "off_target": 0,
+            "boards_deferred": 0, "off_target": 0, "reparsed": 0, "recountried": 0,
+            "retitled": 0,
         }
         workday_detail_budget = WORKDAY_DETAIL_BUDGET
 
@@ -496,12 +495,14 @@ async def cron_ats(
                 _adopt_site_rows(db, platform, slug, board_key)
                 totals["urls_migrated"] += _migrate_smartrecruiters_urls(db, snapshot)
 
-                # Re-confirm known listings (and detect edits); get the new ones.
+                # Re-confirm known listings (and detect edits, re-deriving the
+                # fields an edit moves); get the new ones.
+                board_country = board_countries.get(board_key, "")
                 new_jobs, refresh_stats = listing_freshness.refresh_known_listings(
-                    db, board_key, snapshot.jobs
+                    db, board_key, snapshot.jobs, board_country=board_country,
                 )
-                totals["refreshed"] += refresh_stats["refreshed"]
-                totals["edited"] += refresh_stats["edited"]
+                for key in ("refreshed", "edited", "reparsed", "recountried", "retitled"):
+                    totals[key] += refresh_stats[key]
 
                 for job in new_jobs:
                     # Board APIs carry descriptions for GH/Lever/Ashby;
@@ -526,22 +527,18 @@ async def cron_ats(
                     description = sanitize_description(description) if description else ""
                     job.description = description
 
-                    # Classify country
-                    # A bare city ("London", "Vancouver") classifies as
-                    # nothing; a one-country board says which country it is.
-                    country = (country_filter.classify(job.location)
-                               or board_countries.get(board_key)
-                               or "US")  # ATS scraper already filtered to NA
+                    # Country + parsed location, and the title-derived fields,
+                    # by the same helpers the refresh of known rows uses. A
+                    # one-country board says which country it is (BDO's bare
+                    # "London" is Ontario); otherwise the location does, with
+                    # the classifier the NA filter used ("Toronto" is CA, where
+                    # CountryFilter found nothing and "US" was the default).
+                    derived = listing_freshness.location_derived_fields(
+                        job.location, board_country, hint=job.location_hint,
+                    )
 
                     # Classify work type
                     work_type = job.work_type or work_type_classifier.classify(job.location)
-
-                    # Determine experience level from title
-                    title_lower = job.title.lower()
-                    if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
-                        experience_level = "internship"
-                    else:
-                        experience_level = "new_grad"
 
                     # Resolve an accurate logo: a self-hosted one from the logo
                     # store, else the curated registry logo, else one derived
@@ -567,14 +564,11 @@ async def cron_ats(
                         url=job.url,
                         description=description,
                         source_platform="ats",
-                        title_norm=normalize_title(job.title),
-                        **location_fields(job.location),
+                        **listing_freshness.title_fields(job.title, job.department or ""),
+                        **derived,
                         posted_date=job.posted_date,
                         easy_apply=0,
                         work_type=work_type,
-                        role_category=classify_role(job.title, job.department or ""),
-                        country=country,
-                        experience_level=experience_level,
                         company_logo=company_logo,
                         company_domain=resolved_domain,
                         **listing_freshness.build_new_row_fields(job, board_key),
@@ -655,11 +649,10 @@ async def scrape_linkedin_jobs(
     try:
         from backend.db.models import ScrapedJob
         from backend.services.linkedin_scraper import LinkedInScraper, CITIES, QUERIES
-        from backend.services.country_filter import CountryFilter
+        from backend.services.na_location import job_country
         from backend.services.work_type_classifier import WorkTypeClassifier
 
         scraper = LinkedInScraper(request_delay=2.0)
-        country_filter = CountryFilter()
         work_type_classifier = WorkTypeClassifier()
 
         if city and query:
@@ -699,10 +692,9 @@ async def scrape_linkedin_jobs(
                 skipped_dupe += 1
                 continue
 
-            # Classify country
-            country = country_filter.classify(job.location)
-            if not country:
-                country = "CA"
+            # Classify country: the classifier every ingest path shares; a
+            # location it can't place stays "CA" (every search is Canadian).
+            country = job_country(job.location, fallback="CA")
 
             # Classify work type
             work_type = work_type_classifier.classify(job.location)
