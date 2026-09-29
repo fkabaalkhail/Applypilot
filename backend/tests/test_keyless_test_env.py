@@ -1,11 +1,13 @@
 """
-The suite runs with no OpenAI key, on a dev machine exactly as in CI.
+The suite runs with no live-service credentials, on a dev machine exactly as
+in CI.
 
 backend/db/database.py calls load_dotenv() at import, which walks up to the
-first .env it finds. A developer's real key used to reach every local test
+first .env it finds. A developer's real keys used to reach every local test
 run, so tests that forgot the dummy-key fixture passed locally and failed only
-in CI (backend CI stayed red from 2026-07-01 without anyone seeing it locally).
-conftest.py now pins the key empty before any backend import; these tests pin
+in CI (backend CI stayed red from 2026-07-01 without anyone seeing it
+locally), and the register tests sent real verification emails. conftest.py
+now pins these credentials empty before any backend import; these tests pin
 that contract.
 """
 
@@ -14,35 +16,45 @@ import os
 import pytest
 from dotenv import load_dotenv
 
+from backend.services import blob_storage
+from backend.services.email_service import EmailService
 from backend.services.openai_service import OpenAIService
 
+LIVE_CREDENTIALS = ("OPENAI_API_KEY", "RESEND_API_KEY", "BLOB_READ_WRITE_TOKEN")
 
 # Assertions compare to booleans first: on failure pytest prints the operands,
 # and the operand here could be a developer's real key.
 
 
-def test_the_suite_starts_without_an_openai_key():
-    keyless = os.environ.get("OPENAI_API_KEY") == ""
-    assert keyless, "conftest must pin OPENAI_API_KEY to empty (value withheld)"
+@pytest.mark.parametrize("name", LIVE_CREDENTIALS)
+def test_the_suite_starts_without_the_credential(name):
+    empty = os.environ.get(name) == ""
+    assert empty, f"conftest must pin {name} to empty (value withheld)"
+
+
+def test_no_live_service_is_configured():
     with pytest.raises(ValueError):
         OpenAIService()
+    assert not EmailService().is_configured
+    assert not blob_storage.is_configured()
 
 
-def test_a_developer_env_file_cannot_hand_tests_a_key(tmp_path):
+@pytest.mark.parametrize("name", LIVE_CREDENTIALS)
+def test_a_developer_env_file_cannot_hand_tests_the_credential(name, tmp_path):
     dotenv = tmp_path / ".env"
-    dotenv.write_text("OPENAI_API_KEY=sk-from-a-developer-env\n", encoding="utf-8")
-    prior = os.environ.get("OPENAI_API_KEY")
+    dotenv.write_text(f"{name}=from-a-developer-env\n", encoding="utf-8")
+    prior = os.environ.get(name)
     try:
         # What backend/db/database.py does at import.
         load_dotenv(dotenv)
-        keyless = os.environ.get("OPENAI_API_KEY") == ""
+        empty = os.environ.get(name) == ""
     finally:
-        # Never let this test leak a key into the rest of the session.
+        # Never let this test leak a value into the rest of the session.
         if prior is None:
-            os.environ.pop("OPENAI_API_KEY", None)
+            os.environ.pop(name, None)
         else:
-            os.environ["OPENAI_API_KEY"] = prior
-    assert keyless, "load_dotenv() handed the test process a key (value withheld)"
+            os.environ[name] = prior
+    assert empty, f"load_dotenv() handed the test process {name} (value withheld)"
 
 
 def test_a_test_opts_in_with_a_dummy_key(monkeypatch):
