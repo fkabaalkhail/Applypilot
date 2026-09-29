@@ -414,7 +414,8 @@ Vercel both stop at 300 s): no new source after 120 s, a source still
 polling at 200 s is cut off, no description fetch after 170 s, and the
 match-alert sweep is cut off at 240 s. A cut only lands at an await, so
 synchronous work runs past it: a source's insert loop (~20 s for a 375-row
-file), the column-only list dedup passes, and, once the sweep has stopped
+file) and the rest of that poll (past 170 s no description fetch is left to
+cut it at), the column-only list dedup passes, and, once the sweep has stopped
 scoring (`llm_unavailable`, or its scoring budget spent), every remaining
 user's queries and email sends (the Resend SDK's 30 s timeout each). At
 today's scale (5 eligible users) the worst run ends around 225-265 s. The

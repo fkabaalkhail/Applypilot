@@ -779,8 +779,9 @@ async def scrape_linkedin_jobs(
 #   - a source's insert loop (poll_source stores rows with no await once
 #     its probes are done). A source whose probes end just before the hard
 #     stop stores its whole batch after it, ~20 s for a 375-row file at
-#     prod's insert rate, and is cut at its description fetch (a list that
-#     parks has none, so its poll finishes).
+#     prod's insert rate, and then finishes its poll: past
+#     CRON_POLL_ENRICH_UNTIL_SECONDS its description fetch starts nothing,
+#     so no await is left to cut it at.
 #   - the list dedup passes below (column-only: one read of the visible list
 #     rows, a few thousand, plus an UPDATE per hidden group; 0.2 s over
 #     1,824 rows locally, a few Neon round trips in prod).
