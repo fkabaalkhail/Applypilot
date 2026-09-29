@@ -391,6 +391,26 @@ class TestIngest:
         AggregatorService(db_session)._classify_and_store(job, source)
         assert db_session.query(ScrapedJob).one().experience_level == "internship"
 
+    @pytest.mark.parametrize("title, stored", [
+        # speedyapply's new-grad files, 2026-09-29: the plainly senior rows.
+        ("Software Engineer I -II -III: Simulations", False),
+        ("Machine Learning Engineer - II-III - Space Edge Deployment", False),
+        ("Software Engineer - ML Infrastructure - Content Retrieval Platform - Level 4", False),
+        ("Senior Software Engineer", False),
+        # Only the hard markers: a term length, a soft word or a 'Staff'
+        # research internship is still a student job on a curated list.
+        ("Software Developer Co-op (8 months)", True),
+        ("Product Manager Intern", True),
+        ("Staff Research Scientist - Intern - PhD Foundational AI", True),
+        ("Software Engineer - New Grad (2027)", True),
+    ])
+    def test_plainly_senior_title_is_not_stored(self, db_session, title, stored):
+        source = _source(db_session, url="https://github.com/speedyapply/2027-SWE-College-Jobs")
+        job = ParsedJob(title=title, company="Lodestar", location="Austin, TX",
+                        url="https://jobs.lever.co/lodestar/1")
+        assert AggregatorService(db_session)._classify_and_store(job, source) is stored
+        assert db_session.query(ScrapedJob).count() == int(stored)
+
 
 # ─── retiring delisted rows ──────────────────────────────────────────────────
 

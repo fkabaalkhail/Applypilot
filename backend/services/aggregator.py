@@ -1081,6 +1081,15 @@ class AggregatorService:
         # Malformed links ('https:/.workable.com/...') are dead on arrival.
         if not is_job_url(job.url):
             return False
+        # A plainly senior title ("Software Engineer I -II -III", "Level 4",
+        # "Senior ...") is no student job whatever list carries it. Only the
+        # crawler's hard markers (ats_scraper.HARD_SENIOR, shared with the
+        # LinkedIn/Indeed ingest): the lists are curated for interns and new
+        # grads, so its weak tier, soft words ("Manager", "Architect") and
+        # frontline rules don't apply to them.
+        from backend.services.ats_scraper import HARD_SENIOR
+        if HARD_SENIOR.search(job.title or ""):
+            return False
 
         # Same posting, different utm_* decorations must collide on the URL
         # unique constraint instead of slipping in twice.
