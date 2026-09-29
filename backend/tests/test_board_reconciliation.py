@@ -591,6 +591,27 @@ class TestCronReconciliation:
         })
         row = db_session.query(ScrapedJob).filter_by(url=url).one()
         assert (row.location, row.country) == ("3 Locations", "CA")
+        # Filed under its path's place, so the city filter finds it; the
+        # card keeps the "3 Locations" text (no locations_json).
+        assert (row.city, row.region) == ("toronto", "ON")
+        assert row.locations_json == []
+        assert [job["id"] for job in client.get("/jobs?location=Toronto").json()] == [row.id]
+
+    def test_state_prefixed_location_is_placed(self, client, db_session, monkeypatch):
+        """PwC lists "CA-San Francisco" (~206 of 212 rows): parsed word-wise
+        it was the city "ca-san francisco" with no region, which no city
+        filter ever matched."""
+        monkeypatch.setattr(company_registry, "load_board_countries",
+                            lambda: {"workday:pwc": "US"})
+        url = "https://pwc.wd3.myworkdayjobs.com/US_Entry/job/San-Francisco/Associate_R1"
+        job = ATSJob(title="Audit Associate, Early Careers", company="PwC",
+                     location="CA-San Francisco", url=url, description="Audit things.")
+        self._run(client, monkeypatch, [("workday", "pwc", "PwC")], {
+            "pwc": dict(jobs=[job], all_urls={url}, complete=True, total_listed=1),
+        })
+        row = db_session.query(ScrapedJob).filter_by(url=url).one()
+        assert (row.city, row.region, row.country) == ("san francisco", "CA", "US")
+        assert [job["id"] for job in client.get("/jobs?location=San Francisco").json()] == [row.id]
 
     def test_refresh_heals_rows_through_the_crawl(self, client, db_session, monkeypatch):
         """A known row stored "US" for a bare Canadian city, still listed: the

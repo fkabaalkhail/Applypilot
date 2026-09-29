@@ -342,11 +342,21 @@ def location_derived_fields(location: str, board_country: str = "", *, hint: str
     """Columns derived from a crawled row's location: the parsed city/region/
     locations_json/location_search (location_parser) and the ``country``
     (na_location.job_country: the board's registry country, else what the
-    location says, else ``fallback``)."""
-    from backend.services.location_parser import location_fields
-    from backend.services.na_location import job_country
+    location says, else ``fallback``).
 
-    fields = location_fields(location or "")
+    The parse gets the country positive evidence names (the board's, else
+    na_location's reading of the location, never the fallback), so PwC's
+    "CA-San Francisco" is San Francisco, California. A location that names
+    no place (Workday's "3 Locations") takes its city, region and
+    location_search from the path ``hint`` ("Toronto-ON"), so the city
+    filter finds it."""
+    from backend.services.location_parser import hint_location_fields, location_fields
+    from backend.services.na_location import CA, US, hint_region, job_country, region_of
+
+    evidence = board_country or region_of(location or "")
+    fields = location_fields(location or "", evidence if evidence in (US, CA) else "")
+    if not fields["location_search"] and hint:
+        fields.update(hint_location_fields(hint, hint_region(hint) or board_country))
     fields["country"] = job_country(location or "", board_country, hint=hint,
                                     current=current_country, fallback=fallback)
     return fields

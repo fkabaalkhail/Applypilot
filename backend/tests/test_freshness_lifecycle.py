@@ -310,12 +310,17 @@ class TestRefreshKnownListings:
 
     def test_workday_count_takes_its_country_from_the_path_hint(self, db_session):
         known = self._consistent(db_session, location="3 Locations", country="US")
-        refresh_known_listings(
+        _new, stats = refresh_known_listings(
             db_session, BOARD,
             [_job(url=known.url, location="3 Locations", location_hint="Toronto-ON")], now=NOW,
         )
         db_session.expire_all()
-        assert db_session.get(ScrapedJob, known.id).country == "CA"
+        row = db_session.get(ScrapedJob, known.id)
+        assert row.country == "CA"
+        # And its place: stored rows heal on their next crawl.
+        assert stats["reparsed"] == 1
+        assert (row.city, row.region) == ("toronto", "ON")
+        assert "|toronto|" in row.location_search
 
     def test_location_edit_reparses_city_and_country(self, db_session):
         known = self._consistent(db_session)
@@ -447,6 +452,36 @@ class TestDerivedFieldHelpers:
         assert (fields["city"], fields["country"]) == ("toronto", "CA")
         assert location_derived_fields("London", "CA")["country"] == "CA"
         assert location_derived_fields("Austin, TX")["country"] == "US"
+
+    @pytest.mark.parametrize("location, board_country, city, region", [
+        ("CA-San Francisco", "US", "san francisco", "CA"),  # PwC, a US board
+        ("CA-San Francisco", "", "san francisco", "CA"),    # the location says US
+        ("NY-New York", "US", "new york", "NY"),
+        ("DC-Washington", "US", "washington", "DC"),
+        ("CA-Toronto", "", "toronto", ""),                  # CA is Canada here
+        ("US-NY-New York", "", "new york", "NY"),           # Snowflake
+        # No North American evidence: never read as Indiana.
+        ("IN-Bengaluru", "", "in-bengaluru", ""),
+    ])
+    def test_code_prefixed_location(self, location, board_country, city, region):
+        from backend.services.listing_freshness import location_derived_fields
+
+        fields = location_derived_fields(location, board_country)
+        assert (fields["city"], fields["region"]) == (city, region)
+
+    def test_workday_count_is_placed_by_its_path_hint(self):
+        from backend.services.listing_freshness import location_derived_fields
+
+        fields = location_derived_fields("3 Locations", hint="Toronto-Ontario-Canada")
+        assert (fields["city"], fields["region"], fields["country"]) == ("toronto", "ON", "CA")
+        assert "|toronto|on|ontario|canada|" in fields["location_search"]
+        assert fields["locations_json"] == []  # the card keeps "3 Locations"
+        # A slug naming no North American place, or nothing we trust.
+        assert location_derived_fields("3 Locations", hint="Bangalore")["location_search"] == ""
+        assert location_derived_fields(
+            "7 Locations", hint="TELUS-CAN-BC-510-W-Georgia-St")["location_search"] == ""
+        # A location that names its place wins over the hint.
+        assert location_derived_fields("Austin, TX", hint="Toronto-ON")["city"] == "austin"
 
 
 class TestRepairCountry:

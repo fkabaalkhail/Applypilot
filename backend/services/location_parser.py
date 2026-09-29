@@ -14,6 +14,9 @@ import re
 import unicodedata
 from dataclasses import asdict, dataclass
 
+from backend.services.na_location import CA_CITIES as NA_CA_CITIES
+from backend.services.na_location import US_CITIES as NA_US_CITIES
+
 CA_PROVINCES: dict[str, str] = {
     "ON": "Ontario", "QC": "Quebec", "BC": "British Columbia", "AB": "Alberta",
     "MB": "Manitoba", "SK": "Saskatchewan", "NS": "Nova Scotia",
@@ -71,6 +74,8 @@ KNOWN_CITIES = {
     "palo alto", "sunnyvale", "cupertino", "menlo park", "redmond",
     "bellevue", "irvine", "santa monica", "brooklyn", "manhattan",
 }
+# Every city name we know: the parser's and the NA filter's.
+_NAMED_CITIES = KNOWN_CITIES | set(NA_US_CITIES) | set(NA_CA_CITIES)
 
 _CA_POSTAL = re.compile(r"^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$")
 _US_ZIP = re.compile(r"^\d{5}(-\d{4})?$")
@@ -81,6 +86,12 @@ _PLUS_MORE = re.compile(r"\(\s*\+?\d+\s*more\s*\)", re.IGNORECASE)
 # location instead, so the card falls back to the raw "15 Locations" text.
 _LOCATION_COUNT = re.compile(r"^\d+\s+locations?$", re.IGNORECASE)
 _PARENTHETICAL = re.compile(r"\([^)]*\)")
+# "CA-San Francisco", "US-NY-New York", "Canada-Toronto": a country or region
+# code joined to the place by a dash (_peel_code_prefix). The short country
+# codes count only in capitals.
+_CODE_PREFIX = re.compile(r"^([A-Za-z]{2,6})\s*-\s*(?=\S)")
+_PREFIX_COUNTRIES = {"US": "US", "USA": "US", "CAN": "CA", "canada": "CA"}
+_COUNTRY_NAMES = {"US": "United States", "CA": "Canada"}
 _METRO = re.compile(
     r"^(?:greater\s+)?(.+?)\s+(?:metropolitan\s+area|metro\s+area|area)$",
     re.IGNORECASE,
@@ -169,6 +180,11 @@ def _classify_token(token: str, loc: ParsedLocation) -> None:
         loc.region = code
         loc.region_name = CA_PROVINCES.get(code) or US_STATES.get(code, "")
         return
+    if (folded in _REGION_BY_NAME and _REGION_BY_NAME[folded] == loc.region
+            and folded not in _NAMED_CITIES):
+        # "CA-ON - Ontario - Toronto": the region again, not a city ("New
+        # York, New York" and "Quebec, Quebec" name one).
+        return
 
     folded_words = folded.split(" ")
     if "remote" in folded_words:
@@ -206,7 +222,57 @@ def _finish(loc: ParsedLocation) -> ParsedLocation:
     return loc
 
 
-def _parse_segment(segment: str) -> list[ParsedLocation]:
+def _peel_code_prefix(segment: str, country: str) -> tuple[ParsedLocation | None, str]:
+    """Split a code-prefixed place ("CA-San Francisco", PwC's state-city
+    form; "US-NY-New York"; "Canada-Toronto") into its prefix, as a seed
+    ParsedLocation, and the rest. ``country`` ("US"/"CA") is what positive
+    evidence says the place is in, and decides whether a leading "CA" is
+    California or Canada ("IN" alone could be Indiana or India, so nothing
+    is peeled without it). (None, segment) when there is no prefix."""
+    seed = ParsedLocation()
+    rest = segment
+    while True:
+        m = _CODE_PREFIX.match(rest)
+        if not m:
+            break
+        word = m.group(1)
+        named = _PREFIX_COUNTRIES.get(word) or _PREFIX_COUNTRIES.get(word.lower())
+        if word == "CA" and country == "CA":
+            named = "CA"
+        codes = US_STATES if country == "US" else CA_PROVINCES if country == "CA" else {}
+        if named and seed.country in ("", _COUNTRY_NAMES[named]):
+            country, seed.country = named, _COUNTRY_NAMES[named]  # "US-USA-Remote"
+        elif word.isupper() and word in codes and not seed.region:
+            seed.region, seed.region_name = word, codes[word]
+        else:
+            break
+        rest = rest[m.end():]
+    if rest == segment:
+        return None, segment
+    return seed, rest
+
+
+def _fill_from(loc: ParsedLocation, seed: ParsedLocation) -> None:
+    """Give ``loc`` the region and country a code prefix named, where empty."""
+    if not loc.region and seed.region:
+        loc.region, loc.region_name = seed.region, seed.region_name
+    loc.country = loc.country or seed.country
+
+
+def _classify_prefixed(rest: str, loc: ParsedLocation) -> None:
+    """The place after a code prefix: a city even when it shares a state's
+    name ("US-New York", "DC-Washington"); an address ("ON-81 Bay Street")
+    is not one."""
+    place = rest.strip(" .")
+    if place[:1].isdigit():
+        return
+    if not loc.city and fold(place) in KNOWN_CITIES:
+        loc.city = _titleize(place)
+        return
+    _classify_token(rest, loc)
+
+
+def _parse_segment(segment: str, country: str = "") -> list[ParsedLocation]:
     segment = _PLUS_MORE.sub(" ", segment)
     segment = _PARENTHETICAL.sub(" ", segment)
     segment = _STREET_SUFFIX.sub(" ", segment)
@@ -216,6 +282,24 @@ def _parse_segment(segment: str) -> list[ParsedLocation]:
     segment = re.sub(r"\s+", " ", segment).strip(" ,;-")
     if not segment or _LOCATION_COUNT.match(segment):
         return []
+
+    if country and "," not in segment:
+        seed, rest = _peel_code_prefix(segment, country)
+        if seed is not None:
+            head = rest.split("-", 1)[0].strip()
+            if fold(head) in KNOWN_CITIES:
+                rest = head  # "US-IL-Chicago-MSO": the office after the city
+            if "-" in rest and not rest[:1].isdigit():
+                # "US-Alabama-Ozark": the usual parse of "Alabama-Ozark",
+                # the prefix filling what it left empty.
+                locs = _parse_segment(rest) or [ParsedLocation()]
+                _fill_from(locs[0], seed)
+                locs[0] = _finish(locs[0])
+                return locs if (locs[0].city or locs[0].region or locs[0].country) else []
+            # The rest is the place itself, read with the prefix's region
+            # already set, so "DC-Washington" is a city, not a state.
+            _classify_prefixed(rest, seed)
+            return [_finish(seed)]
 
     metro = _METRO.match(segment)
     if metro:
@@ -240,15 +324,21 @@ def _parse_segment(segment: str) -> list[ParsedLocation]:
         # Usually "City, Region, Country", but aggregators also emit comma
         # city-LISTS ("Toronto Canada, San Francisco, …"): a known city token
         # arriving after the city slot is filled starts a new location.
+        # So does a code-prefixed token ("US-Chicago, US-Atlanta").
         locs: list[ParsedLocation] = []
         current = ParsedLocation()
         for token in segment.split(","):
+            seed, token = _peel_code_prefix(token.strip(), country) if country else (None, token)
             folded_tok = fold(token.strip(" ."))
-            if (current.city and folded_tok in KNOWN_CITIES
-                    and folded_tok != fold(current.city)):
+            if current.city and (seed is not None or (
+                    folded_tok in KNOWN_CITIES and folded_tok != fold(current.city))):
                 locs.append(_finish(current))
                 current = ParsedLocation()
-            _classify_token(token, current)
+            if seed is not None:
+                _fill_from(current, seed)
+                _classify_prefixed(token, current)
+            else:
+                _classify_token(token, current)
         if current.city or current.region or current.country:
             locs.append(_finish(current))
         return locs
@@ -323,8 +413,11 @@ def _parse_segment(segment: str) -> list[ParsedLocation]:
     return [_finish(loc)]
 
 
-def parse_locations(raw: str) -> list[ParsedLocation]:
-    """Parse a raw scraped location string into structured locations."""
+def parse_locations(raw: str, country: str = "") -> list[ParsedLocation]:
+    """Parse a raw scraped location string into structured locations.
+    ``country`` ("US"/"CA", only from positive evidence: a one-country
+    board, na_location's reading) lets a code-prefixed place read as its
+    region and city ("CA-San Francisco" is California on a US row)."""
     if not raw or not raw.strip():
         return []
     # " / " and lowercase " or " separate alternatives ("US / Canada",
@@ -338,7 +431,7 @@ def parse_locations(raw: str) -> list[ParsedLocation]:
     out: list[ParsedLocation] = []
     seen: set[tuple[str, str, str]] = set()
     for segment in segments:
-        for loc in _parse_segment(segment):
+        for loc in _parse_segment(segment, country):
             key = (fold(loc.city), loc.region, fold(loc.country))
             if key in seen:
                 continue
@@ -387,9 +480,10 @@ def location_tag_tokens(tag: str) -> list[str]:
     return [t for t in tokens if t]
 
 
-def location_fields(raw: str) -> dict:
-    """Column values for ScrapedJob(**fields), shared by every ingest path."""
-    locs = parse_locations(raw or "")
+def location_fields(raw: str, country: str = "") -> dict:
+    """Column values for ScrapedJob(**fields), shared by every ingest path.
+    ``country`` as for parse_locations."""
+    locs = parse_locations(raw or "", country)
     if not locs:
         return {"city": "", "region": "", "locations_json": [], "location_search": ""}
     return {
@@ -398,3 +492,158 @@ def location_fields(raw: str) -> dict:
         "locations_json": [asdict(l) for l in locs],
         "location_search": location_search_blob(locs),
     }
+
+
+# ─── Workday path slugs ──────────────────────────────────────────────────────
+# A Workday posting listed as "3 Locations" names its primary location only
+# in its path, every space and separator turned into a dash: "Toronto-ON",
+# "Mountain-View-CA-USA", "USA---Hazelwood-MO", "IL-Rosemont",
+# "New-York-NY---225-Liberty-Street". A run of dashes starts a new part; a
+# single dash is a space inside a name or a separator, told apart by the
+# region codes and names around it.
+
+_SLUG_PARTS = re.compile(r"-{2,}")
+# A whole part that is only a sales region: "AMER---Canada---Ontario---...".
+_SLUG_AREA_PARTS = {"amer", "americas", "emea", "apac", "latam", "noram"}
+# Trailing words naming a site, not the city: "Chicago-Metro", "DALLAS-OFFICE",
+# Autodesk's "Colorado---OffsiteHome".
+_SLUG_SITE_WORDS = {"metro", "area", "office", "campus", "hq", "plant", "site", "offsitehome"}
+# Workday drops non-ASCII letters: "Montréal" -> "Montral".
+_SLUG_FIXUPS = {"montral": "Montreal", "qubec": "Quebec"}
+# ((folded words), value) entries, longest first.
+_SLUG_COUNTRY_WORDS = {
+    "US": ((("united", "states", "of", "america"), "US"), (("united", "states"), "US"),
+           (("usa",), "US"), (("us",), "US")),
+    "CA": ((("canada",), "CA"), (("can",), "CA"), (("ca",), "CA")),
+}
+_SLUG_REGION_NAMES = {
+    country: sorted(((tuple(name.lower().split()), code) for code, name in codes.items()),
+                    key=lambda entry: len(entry[0]), reverse=True)
+    for country, codes in (("US", US_STATES), ("CA", CA_PROVINCES))
+}
+# Cities a slug may name with no region ("Los-Angeles", "Ottawa-Canada").
+_SLUG_KNOWN_CITIES = _NAMED_CITIES | {"remote"}
+
+
+def _slug_match(words: list[str], at: int, entries) -> tuple[int, str]:
+    """(length, value) of the longest entry starting at ``words[at]``,
+    (0, "") for none."""
+    for entry, value in entries:
+        if tuple(w.lower() for w in words[at:at + len(entry)]) == entry:
+            return len(entry), value
+    return 0, ""
+
+
+def _slug_country_run(words: list[str], at: int, countries) -> int:
+    """Where the run of country words starting at ``at`` ends."""
+    while at < len(words):
+        k, _ = _slug_match(words, at, countries)
+        if not k:
+            break
+        at += k
+    return at
+
+
+def _scan_slug_part(words: list[str], country: str, first: bool) -> tuple[list[str], str]:
+    """(city words, region code) of one part of a slug."""
+    codes = US_STATES if country == "US" else CA_PROVINCES
+    countries = _SLUG_COUNTRY_WORDS[country]
+    names = _SLUG_REGION_NAMES[country]
+
+    def is_code(word: str) -> bool:
+        return word in codes and word.isupper()
+
+    i, region = 0, ""
+    # Leading country words and region codes ("USA-IL-Chicago", "IL-Rosemont"),
+    # and a site number at the very start ("3572-Macon-GA").
+    while i < len(words):
+        k, _ = _slug_match(words, i, countries)
+        if k:
+            i += k
+        elif is_code(words[i]) and not region:
+            region, i = words[i], i + 1
+        elif first and i == 0 and words[i].isdigit():
+            i += 1
+        else:
+            break
+    # A region name, then nothing but country words ("California---San-
+    # Francisco") or a remote marker ("Texas-Remote").
+    k, code = _slug_match(words, i, names)
+    if k:
+        rest = words[_slug_country_run(words, i + k, countries):]
+        if not rest:
+            return [], region or code
+        if len(rest) == 1 and rest[0].lower().startswith("remote"):
+            return ["Remote"], region or code
+    city: list[str] = []
+    while i < len(words) and not words[i][:1].isdigit():
+        if city:
+            if is_code(words[i]):
+                return city, region or words[i]
+            k, code = _slug_match(words, i, names)
+            if k:
+                return city, region or code
+            if _slug_match(words, i, countries)[0]:
+                break
+        city.append(words[i])
+        i += 1
+    return city, region
+
+
+def parse_location_slug(slug: str, country: str) -> ParsedLocation | None:
+    """The primary location a Workday path slug names, or None when it names
+    none we can trust. ``country`` ("US"/"CA", from positive evidence: the
+    slug's own na_location reading, a one-country board) decides which
+    region codes and names count ("CA" is California on a US slug, Canada
+    on a Canadian one); the caller has none for a slug that names no North
+    American place ("Sailauf-DE"), so that one is never read as Delaware. A
+    city with no region must be one we know ("Los-Angeles", "Remote-USA"),
+    so a company or site name ("TELUS-CAN-BC-510-...") never becomes one."""
+    if country not in _SLUG_COUNTRY_WORDS:
+        return None
+    city: list[str] = []
+    region = ""
+    for index, part in enumerate(_SLUG_PARTS.split(slug or "")):
+        words = [_SLUG_FIXUPS.get(w.lower(), w) for w in part.split("-") if w]
+        if not words or (not city and len(words) == 1 and words[0].lower() in _SLUG_AREA_PARTS):
+            continue
+        if index and words[0][:1].isdigit():
+            break  # "Toronto---100-Adelaide-St-W": the address
+        part_city, part_region = _scan_slug_part(words, country, first=index == 0)
+        if city and part_city:
+            break  # a site after the city: "Toronto---Bay-St"
+        if part_city:
+            # The city's own region beats an earlier part's:
+            # "Maryland---Washington-DC-Metro" is Washington, DC.
+            city, region = part_city, part_region or region
+        else:
+            region = region or part_region
+    while city and city[-1].lower() in _SLUG_SITE_WORDS:
+        city.pop()
+    if len(city) == 1 and city[0].lower().startswith("remote"):
+        city = ["Remote"]  # "REMOTETELETRAVAIL-ON-CAN"
+    if city and city[0] == "St":
+        city[0] = "St."  # "St-Louis-MO", as "St. Louis, MO" parses
+    name = _titleize(" ".join(city))
+    if name and not region and fold(name) not in _SLUG_KNOWN_CITIES:
+        return None
+    if not name and not region:
+        return None
+    loc = ParsedLocation(city=name, region=region,
+                         region_name=US_STATES.get(region) or CA_PROVINCES.get(region, ""))
+    if not region:
+        loc.country = _COUNTRY_NAMES[country]
+    return _finish(loc)
+
+
+def hint_location_fields(slug: str, country: str) -> dict:
+    """city/region/location_search from a Workday path slug, for a row whose
+    own location names no place ("3 Locations"), so the city filter can find
+    it; {} when the slug names none we can trust (parse_location_slug). No
+    locations_json: the card keeps its "3 Locations" text rather than pass
+    the primary location off as the only one."""
+    loc = parse_location_slug(slug, country)
+    if loc is None:
+        return {}
+    return {"city": fold(loc.city), "region": loc.region,
+            "location_search": location_search_blob([loc])}
