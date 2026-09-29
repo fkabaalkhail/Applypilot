@@ -620,6 +620,19 @@ class TestDerivedFieldHelpers:
         # A location that names its place wins over the hint.
         assert location_derived_fields("Austin, TX", hint="Toronto-ON")["city"] == "austin"
 
+    def test_a_board_country_never_places_a_foreign_hint(self):
+        """A one-country board's registry country files its rows, but a slug
+        naming a foreign place is no place of ours: "IN-Bengaluru" on a US
+        board was stored as Bengaluru, Indiana."""
+        from backend.services.listing_freshness import location_derived_fields
+
+        fields = location_derived_fields("3 Locations", "US", hint="IN-Bengaluru")
+        assert (fields["city"], fields["region"], fields["location_search"]) == ("", "", "")
+        assert fields["country"] == "US"  # the registry's, as before
+        # BDO Canada's bare "London" still reads as London, Ontario.
+        fields = location_derived_fields("2 Locations", "CA", hint="London")
+        assert (fields["city"], fields["location_search"]) == ("london", "|london|canada|")
+
 
 class TestRepairCountry:
     def test_heals_contradicted_rows_and_is_idempotent(self, db_session):

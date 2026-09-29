@@ -336,6 +336,8 @@ def test_code_prefix_is_read_only_with_positive_evidence():
     ("USA---Remote", "US", ("Remote", "")),
     ("Los-Angeles", "US", ("Los Angeles", "")),
     ("New-York", "US", ("", "NY")),
+    # BDO Canada's bare "London" is London, Ontario, though it reads foreign.
+    ("London", "CA", ("London", "")),
 ])
 def test_workday_slug_names_the_primary_location(slug, country, place):
     loc = parse_location_slug(slug, country)
@@ -346,6 +348,14 @@ def test_workday_slug_names_the_primary_location(slug, country, place):
     ("TELUS-CAN-BC-510-W-Georgia-St", "CA"),  # a company and an address
     ("Hawkesbury", "CA"),                     # no region, not a city we know
     ("Bangalore", ""),                        # no North American evidence
+    # A foreign place is not read with a one-country board's country.
+    ("IN-Bengaluru", "US"),                   # not Bengaluru, Indiana
+    ("PRAGUE-DC", "US"),                      # P&G: not Prague, DC
+    ("IE-Dublin-CA", "US"),                   # the code prefix names Ireland
+    ("San-Pedro-Garza-Garcia-NL-MX", "CA"),   # Mexico's Nuevo Leon, not Newfoundland
+    ("London---United-Kingdom", "CA"),        # the known city is not the evidence
+    ("London-UK", "CA"),
+    ("United-Kingdom---Remote", "US"),
 ])
 def test_workday_slug_it_cannot_trust(slug, country):
     assert parse_location_slug(slug, country) is None

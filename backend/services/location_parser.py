@@ -15,6 +15,7 @@ import unicodedata
 from dataclasses import asdict, dataclass
 
 from backend.services.na_location import CA_CITIES as NA_CA_CITIES
+from backend.services.na_location import FOREIGN, FOREIGN_CODES, region_of
 from backend.services.na_location import US_CITIES as NA_US_CITIES
 
 CA_PROVINCES: dict[str, str] = {
@@ -595,15 +596,36 @@ def _scan_slug_part(words: list[str], country: str, first: bool) -> tuple[list[s
     return city, region
 
 
+def _slug_names_foreign_place(slug: str, city: str) -> bool:
+    """Whether a slug names a place outside the US and Canada, read as
+    na_location.hint_region reads one: foreign as written or with dashes as
+    spaces, or ending in a foreign code. A city we know here is set aside
+    first, so BDO Canada's bare "London" is London, Ontario, while
+    "London-UK" and "London---United-Kingdom" stay foreign."""
+    rest = slug or ""
+    if fold(city) in _SLUG_KNOWN_CITIES:
+        words = r"[-\s]+".join(re.escape(word) for word in fold(city).split())
+        rest = re.sub(rf"(?<![A-Za-z]){words}(?![A-Za-z])", "-", rest, count=1,
+                      flags=re.IGNORECASE)
+    spaced = rest.replace("-", " ")
+    tokens = spaced.split()
+    if tokens and tokens[-1] in FOREIGN_CODES:
+        return True
+    return FOREIGN in (region_of(rest), region_of(spaced))
+
+
 def parse_location_slug(slug: str, country: str) -> ParsedLocation | None:
     """The primary location a Workday path slug names, or None when it names
     none we can trust. ``country`` ("US"/"CA", from positive evidence: the
     slug's own na_location reading, a one-country board) decides which
     region codes and names count ("CA" is California on a US slug, Canada
     on a Canadian one); the caller has none for a slug that names no North
-    American place ("Sailauf-DE"), so that one is never read as Delaware. A
-    city with no region must be one we know ("Los-Angeles", "Remote-USA"),
-    so a company or site name ("TELUS-CAN-BC-510-...") never becomes one."""
+    American place ("Sailauf-DE"), so that one is never read as Delaware.
+    Nor is a slug that names a foreign place read with a one-country
+    board's registry country: "IN-Bengaluru" on a US board is not Indiana,
+    "PRAGUE-DC" not Washington. A city with no region must be one we know
+    ("Los-Angeles", "Remote-USA"), so a company or site name
+    ("TELUS-CAN-BC-510-...") never becomes one."""
     if country not in _SLUG_COUNTRY_WORDS:
         return None
     city: list[str] = []
@@ -634,6 +656,8 @@ def parse_location_slug(slug: str, country: str) -> ParsedLocation | None:
         return None
     if not name and not region:
         return None
+    if _slug_names_foreign_place(slug, name):
+        return None  # a board's country is no reason to read it as one of ours
     loc = ParsedLocation(city=name, region=region,
                          region_name=US_STATES.get(region) or CA_PROVINCES.get(region, ""))
     if not region:
