@@ -341,6 +341,7 @@ def test_a_two_part_lowercase_state_is_no_country(location, verdict):
     "Madrid, MD, es", "Budapest, hu", "Hemaraj Plant, Rayong, RAYONG, th",
     # A lowercase state code is foreign beside a place of that country.
     "coimbatore, in", "Petah Tikva, il", "Casablanca, ma", "Dresden, de",
+    "telengana, in",  # SmartRecruiters' spelling: India, not Indiana
 ])
 def test_smartrecruiters_countries_still_read(location):
     assert region_of(location) == FOREIGN
@@ -411,6 +412,17 @@ def test_a_bare_us_namesake_city_never_flips_a_country(city):
     # Beside anything that places it, the city is Canadian as before.
     assert job_country(f"{city}, ON", current="US") == "CA"
     assert job_country(f"{city}; Toronto", current="US") == "CA"
+
+
+def test_a_bare_london_never_flips_a_country():
+    """London, Ontario or London, UK: a bare "London" reads foreign, which
+    places the row in no North American country, so the stored or client
+    value stands (the refresh, the repair and ingest-batch pass it as
+    ``fallback``)."""
+    for current in ("US", "CA"):
+        assert job_country("London", current=current, fallback=current) == current
+    # An Ashby/Lever posting also open in Toronto takes its country from there.
+    assert job_country("London", hint="Toronto", current="US", fallback="US") == "CA"
 
 
 def test_job_country_falls_back_to_the_hint_then_the_caller():
