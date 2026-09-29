@@ -56,6 +56,7 @@ from backend.services.cross_source_dedup import (
 )
 from backend.services import platform_liveness
 from backend.services.listing_freshness import (
+    CLOSED_LISTING_STATUSES,
     HIDDEN_LISTING_STATUSES,
     LISTING_ACTIVE,
     _UNRECONCILABLE_BOARD_KEYS,
@@ -680,6 +681,15 @@ async def cron_freshness(
     adopted = listing_freshness.backfill_board_keys(db)
     stale = listing_freshness.sweep_stale(db)
     expired = listing_freshness.sweep_aggregator_expiry(db)
+    # Before the checks: crawler rows no board reconciles ('' / 'unknown')
+    # whose own title or location fails the filters leave the feed here,
+    # and spend no probe. Bounded, column-only, no network.
+    try:
+        orphans_retired = listing_freshness.retire_unreconcilable_off_target(db)
+    except Exception:
+        db.rollback()
+        logger.exception("cron-freshness orphan retire failed")
+        orphans_retired = {"error": True}
 
     # The probes share one wall-clock box (the "hourly" schedule really fires
     # ~6x/day, so budgets are big and hosts can hang). Each phase stops
@@ -720,6 +730,7 @@ async def cron_freshness(
         "board_keys_adopted": adopted,
         "marked_stale": stale,
         "expired": expired,
+        "orphans_off_target": orphans_retired,
         "terminal_expired": terminal,
         "stale_verified": verified,
         "unconfirmed_verified": unconfirmed,
@@ -738,7 +749,7 @@ def ingest_metrics(
     rate, ghost flags, and the currently-broken boards (dead-letter view).
     Cron-secret auth so the workflow can log it every run."""
     from backend.db.models import SourceHealth
-    from backend.services.listing_freshness import LISTING_ACTIVE
+    from backend.services.listing_freshness import LISTING_ACTIVE, LISTING_OFF_TARGET
     from backend.services.source_health import FAILURE_THRESHOLD
 
     now = datetime.datetime.utcnow()
@@ -765,6 +776,14 @@ def ingest_metrics(
     removed_24h = (
         db.query(ScrapedJob)
         .filter(ScrapedJob.listing_status == "removed",
+                ScrapedJob.listing_status_changed_at >= day_ago)
+        .count()
+    )
+    # Rows the crawl (or the orphan sweep) retired because their own listing
+    # fails the filters; by_listing_status carries the running total.
+    off_target_24h = (
+        db.query(ScrapedJob)
+        .filter(ScrapedJob.listing_status == LISTING_OFF_TARGET,
                 ScrapedJob.listing_status_changed_at >= day_ago)
         .count()
     )
@@ -833,6 +852,7 @@ def ingest_metrics(
         "ingested_24h": ingested_24h,
         "ingested_7d": ingested_7d,
         "removed_24h": removed_24h,
+        "off_target_24h": off_target_24h,
         "hidden_duplicates": hidden_duplicates,
         "dedup_rate": round(hidden_duplicates / total_rows, 4) if total_rows else 0.0,
         "active_total": active_total,
@@ -1230,7 +1250,10 @@ async def check_job_live(
         raise HTTPException(status_code=404, detail="Job not found.")
 
     status = row.listing_status or LISTING_ACTIVE
-    if status in HIDDEN_LISTING_STATUSES:
+    # Closed only: an off_target row is hidden from the feed but still open
+    # on its board (a saved or deep-linked one), so it is probed like any row
+    # instead of being called dead, which the client shows as "removed".
+    if status in CLOSED_LISTING_STATUSES:
         return _live_answer(row.id, status, DEAD)
 
     if status == LISTING_ACTIVE and _vouched_for(row, datetime.datetime.utcnow()):
@@ -1383,7 +1406,8 @@ async def fetch_job_details(
 
     def _listing_state() -> dict:
         status = job.listing_status or LISTING_ACTIVE
-        return {"listing_status": status, "dead": status in HIDDEN_LISTING_STATUSES}
+        # off_target is hidden, not closed: its apply link still works.
+        return {"listing_status": status, "dead": status in CLOSED_LISTING_STATUSES}
 
     if not job.url or not await asyncio.to_thread(_is_url_allowed, job.url):
         return {

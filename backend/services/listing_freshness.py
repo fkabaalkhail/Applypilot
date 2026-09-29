@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 import re
 import time
 from collections import Counter
@@ -67,10 +68,32 @@ LISTING_ACTIVE = "active"
 LISTING_STALE = "stale"
 LISTING_REMOVED = "removed"
 LISTING_EXPIRED = "expired"
+# Open on its board, but the board's own listing fails the crawler's filters
+# (not entry level, or outside the US and Canada): a London, UK posting stored
+# before the NA filter knew better, a "Vice President" row from before the
+# entry-level filter. Set only from a listing's verdict (a board crawl, or the
+# orphan sweep for rows no crawl reaches), and a crawl brings it back to
+# active the moment the listing passes again. Never a death verdict.
+LISTING_OFF_TARGET = "off_target"
 
+# Closed: the posting no longer takes applications (or nothing vouches for it).
+CLOSED_LISTING_STATUSES = (LISTING_REMOVED, LISTING_EXPIRED)
 # Listing statuses hidden from the default catalogue view. ``stale`` stays
 # visible: it usually means the board crawl is behind, not that the job died.
-HIDDEN_LISTING_STATUSES = (LISTING_REMOVED, LISTING_EXPIRED)
+HIDDEN_LISTING_STATUSES = CLOSED_LISTING_STATUSES + (LISTING_OFF_TARGET,)
+# ats_scraper.RETIRABLE_REJECTIONS: the listing verdicts that retire a row.
+_RETIRABLE = frozenset({"level", "location"})
+
+
+def retire_off_target_enabled() -> bool:
+    """CRON_ATS_RETIRE_OFF_TARGET kill switch, read per run (default on).
+
+    "0"/"false"/"no"/"off" turns the retire off entirely: crawls go back to
+    the old rule (a listed row is active), so each board's next crawl brings
+    its off_target rows back, and the orphan sweep retires nothing. For an
+    emergency such as a classifier regression hiding real rows."""
+    value = os.getenv("CRON_ATS_RETIRE_OFF_TARGET", "1").strip().lower()
+    return value not in ("0", "false", "no", "off")
 
 # A direct-board row not re-confirmed for this long means its board stopped
 # vouching for it (partial Workday crawls, a board that 500s). The full
@@ -170,22 +193,53 @@ def build_new_row_fields(job, board_key: str, source_trust: str = "high") -> dic
 
 # ─── Board reconciliation ────────────────────────────────────────────────────
 
+def listed_status_change(listing_status: str | None, source_platform: str,
+                         rejection: str | None) -> str | None:
+    """The listing_status a row its board LISTS moves to, or None to keep it.
+
+    ``rejection`` is the crawler's verdict on the listing (ats_scraper.
+    ATSScraper.rejection, None when it passes). A crawler row ('ats') whose
+    listing is off target ("level", "location") goes off_target, whatever it
+    was; one that passes comes back to active from any hidden or stale
+    state. An "unplaced" listing (no location either way) proves only that
+    the posting is open: it revives a closed row as before, never an
+    off_target one. Other sources' rows (a GitHub-list row adopted into the
+    board, LinkedIn/Indeed copies) keep the old rule, listed means active:
+    they passed their own source's filters, which are not the crawler's."""
+    status = listing_status or LISTING_ACTIVE
+    if source_platform == "ats" and rejection in _RETIRABLE:
+        return None if status == LISTING_OFF_TARGET else LISTING_OFF_TARGET
+    if status == LISTING_OFF_TARGET and rejection is not None:
+        return None
+    return LISTING_ACTIVE if status != LISTING_ACTIVE else None
+
+
 def reconcile_board(db: Session, board_key: str, live_urls: set[str],
-                    now: datetime.datetime | None = None) -> dict:
+                    now: datetime.datetime | None = None, *,
+                    rejected: dict[str, str] | None = None) -> dict:
     """Sync this board's rows against the URLs the board just listed.
 
-    - rows whose URL is still listed: ``last_seen_at`` = now, and removed/stale
-      rows come back to ``active`` (reposted or crawl recovered)
+    - rows whose URL is still listed: ``last_seen_at`` = now, and the status
+      follows listed_status_change(): removed/stale/expired rows come back
+      to ``active`` (reposted or crawl recovered), unless ``rejected`` (url
+      -> ATSScraper.rejection reason) says the listing is off target, which
+      sends a crawler row ``off_target`` instead. Before, every listed row
+      was confirmed whatever its listing said, so a row stored under older
+      filters (London, UK; a "Vice President" title) stayed visible for as
+      long as its board listed it.
     - rows whose URL vanished: ``removed``, effective immediately
+      (``off_target`` rows stay as they are, hidden either way)
 
     Only call with a COMPLETE snapshot, a partial crawl's absence is not
     evidence of removal. Commits. Returns counts.
     """
     now = now or _utcnow()
-    stats = {"confirmed": 0, "revived": 0, "removed": 0}
+    rejected = rejected or {}
+    stats = {"confirmed": 0, "revived": 0, "removed": 0, "off_target": 0}
 
     rows = (
-        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
+        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status,
+                 ScrapedJob.source_platform)
         .filter(ScrapedJob.board_key == board_key)
         .all()
     )
@@ -194,13 +248,19 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
 
     live_ids: list[int] = []
     revive_ids: list[int] = []
+    off_target_ids: list[int] = []
     gone_ids: list[int] = []
-    for row_id, url, listing_status in rows:
+    for row_id, url, listing_status, source_platform in rows:
         # A stored Workday '/job/<slug>/apply' link is the listed posting.
-        if url in live_urls or strip_workday_apply(url or "") in live_urls:
+        listed = url if url in live_urls else strip_workday_apply(url or "")
+        if listed in live_urls:
             live_ids.append(row_id)
-            if listing_status in (LISTING_REMOVED, LISTING_STALE, LISTING_EXPIRED):
+            change = listed_status_change(listing_status, source_platform or "",
+                                          rejected.get(listed))
+            if change == LISTING_ACTIVE:
                 revive_ids.append(row_id)
+            elif change == LISTING_OFF_TARGET:
+                off_target_ids.append(row_id)
         elif listing_status in (LISTING_ACTIVE, LISTING_STALE):
             gone_ids.append(row_id)
 
@@ -226,9 +286,18 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
             {"listing_status": LISTING_REMOVED, "listing_status_changed_at": now},
             synchronize_session=False,
         )
+    for chunk in _chunks(off_target_ids):
+        db.query(ScrapedJob).filter(ScrapedJob.id.in_(chunk)).update(
+            {"listing_status": LISTING_OFF_TARGET, "listing_status_changed_at": now},
+            synchronize_session=False,
+        )
 
     db.commit()
-    stats.update(confirmed=len(live_ids), revived=len(revive_ids), removed=len(gone_ids))
+    stats.update(confirmed=len(live_ids), revived=len(revive_ids), removed=len(gone_ids),
+                 off_target=len(off_target_ids))
+    if off_target_ids:
+        logger.info("reconcile %s: %d listed rows retired off_target", board_key,
+                    len(off_target_ids))
     return stats
 
 
@@ -470,6 +539,66 @@ def sweep_terminal_expiry(db: Session, now: datetime.datetime | None = None,
     return {"stale_expired": stale, "unreconcilable_expired": unreconcilable}
 
 
+ORPHAN_RETIRE_LIMIT = 2000
+
+
+def retire_unreconcilable_off_target(db: Session, now: datetime.datetime | None = None,
+                                     limit: int = ORPHAN_RETIRE_LIMIT) -> dict:
+    """Retire visible crawler rows no board crawl will ever judge, when their
+    own stored title or location fails the crawler's filters.
+
+    Rows on board_key '' / 'unknown' (BGIS on Oracle, Nokia, Huawei's
+    Recruitee: 144 visible, 2026-09, all rogue-era inserts) are never
+    reconciled, and every authoritative "alive" from the verify sweeps bumps
+    their last_seen_at, so the terminal expiry never ends them either: a
+    "Cleaner" posting stayed in a student feed as long as it stayed open.
+    The verdict is ATSScraper.rejection on the stored title and location,
+    the same one a board crawl acts on; there is no department to rescue a
+    title, and "location" only on positive foreign evidence. Only "ats"
+    rows, never a LinkedIn/Indeed page stored as one. Nothing revives them
+    but a board crawl whose listing passes, if the employer is ever added to
+    the registry. Honours the CRON_ATS_RETIRE_OFF_TARGET kill switch.
+    Column-only SELECT (at most ``limit`` rows), chunked UPDATEs. Commits.
+    """
+    from backend.services.ats_scraper import ATSJob, ATSScraper
+
+    now = now or _utcnow()
+    stats = {"checked": 0, "off_target": 0, "level": 0, "location": 0}
+    if not retire_off_target_enabled():
+        stats["disabled"] = True
+        return stats
+
+    rows = (
+        db.query(ScrapedJob.id, ScrapedJob.title, ScrapedJob.company, ScrapedJob.location)
+        .filter(
+            ScrapedJob.source_platform == "ats",
+            _unreconcilable_board(),
+            ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
+            ScrapedJob.duplicate_of.is_(None),
+            not_(_fast_aggregator_row()),
+        )
+        .order_by(ScrapedJob.id.asc())
+        .limit(limit)
+        .all()
+    )
+    scraper = ATSScraper(filter_entry_level=True, filter_north_america=True)
+    retire: list[int] = []
+    for row_id, title, company, location in rows:
+        stats["checked"] += 1
+        reason = scraper.rejection(ATSJob(title=title or "", company=company or "",
+                                          location=location or "", url="", department=""))
+        if reason in _RETIRABLE:
+            retire.append(row_id)
+            stats[reason] += 1
+    _update_ids(db, retire, {"listing_status": LISTING_OFF_TARGET,
+                             "listing_status_changed_at": now})
+    stats["off_target"] = len(retire)
+    if retire:
+        db.commit()
+        logger.info("retire_unreconcilable_off_target: %s", stats)
+    return stats
+
+
 # ─── Ghost-risk scoring ──────────────────────────────────────────────────────
 
 def _ghost_score(days_open: int, evergreen: bool, repost_count: int,
@@ -707,7 +836,11 @@ def _liveness_outcome(listing_status: str, result) -> str:
     if result.verdict == DEAD:
         return "removed"
     if result.verdict == ALIVE and result.authoritative:
-        return "confirmed" if listing_status == LISTING_ACTIVE else "revived"
+        # Open is not on target: only a listing that passes the crawler's
+        # filters brings an off_target row back (reconcile_board).
+        if listing_status in (LISTING_ACTIVE, LISTING_OFF_TARGET):
+            return "confirmed"
+        return "revived"
     return "unverified"
 
 

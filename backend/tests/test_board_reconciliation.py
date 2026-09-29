@@ -652,7 +652,7 @@ def test_confirm_listed_touches_only_its_board(db_session):
 
     stats = _confirm_listed(db_session, "lever:acme", {removed.url, other.url}, now=NOW)
 
-    assert stats == {"confirmed": 1, "revived": 1}
+    assert stats == {"confirmed": 1, "revived": 1, "off_target": 0}
     db_session.expire_all()
     assert db_session.get(ScrapedJob, removed.id).listing_status == LISTING_ACTIVE
     assert db_session.get(ScrapedJob, removed.id).last_seen_at == NOW

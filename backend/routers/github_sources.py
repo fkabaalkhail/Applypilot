@@ -265,39 +265,56 @@ async def _crawl_boards(scraper, client, boards: list[tuple[str, str, str]],
 
 
 def _confirm_listed(db: Session, board_key: str, urls: set[str],
-                    now: Optional[datetime.datetime] = None) -> dict:
+                    now: Optional[datetime.datetime] = None, *,
+                    rejected: Optional[dict] = None) -> dict:
     """The confirm half of reconciliation, for partial snapshots.
 
     Every URL a board lists is live, even when the crawl couldn't list the
-    whole board: bump those rows' ``last_seen_at`` and bring any stale or
-    removed ones back to active. Rows the partial list didn't mention are left
-    alone, its silence is not evidence of removal (reconcile_board's remove
-    half only ever runs on complete snapshots). UPDATEs only, nothing is read
-    back. Commits. Returns counts.
+    whole board: bump those rows' ``last_seen_at`` and move their status by
+    listing_freshness.listed_status_change(): stale/removed/expired back to
+    active, or off_target when ``rejected`` (url -> ATSScraper.rejection
+    reason) says the listing fails the crawler's filters. A listing's own
+    title and location are evidence however much of the board was read. Rows
+    the partial list didn't mention are left alone, its silence is not
+    evidence of removal (reconcile_board's remove half only ever runs on
+    complete snapshots). A column-only SELECT (id, url, status, source) per
+    chunk, then grouped UPDATEs. Commits. Returns counts.
     """
     from backend.db.models import ScrapedJob
     from backend.services.listing_freshness import (
-        LISTING_ACTIVE, LISTING_EXPIRED, LISTING_REMOVED, LISTING_STALE,
+        LISTING_ACTIVE, LISTING_OFF_TARGET, listed_status_change,
     )
 
     now = now or datetime.datetime.utcnow()
-    stats = {"confirmed": 0, "revived": 0}
+    rejected = rejected or {}
+    stats = {"confirmed": 0, "revived": 0, "off_target": 0}
     listed = sorted(url for url in urls if url)
     for i in range(0, len(listed), _IN_CHUNK):
-        on_board = (ScrapedJob.board_key == board_key,
+        rows = (
+            db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status,
+                     ScrapedJob.source_platform)
+            .filter(ScrapedJob.board_key == board_key,
                     ScrapedJob.url.in_(listed[i:i + _IN_CHUNK]))
-        stats["revived"] += (
-            db.query(ScrapedJob)
-            .filter(*on_board, ScrapedJob.listing_status.in_(
-                (LISTING_REMOVED, LISTING_STALE, LISTING_EXPIRED)))
-            .update({"listing_status": LISTING_ACTIVE, "listing_status_changed_at": now},
+            .all()
+        )
+        moves: dict[str, list[int]] = {LISTING_ACTIVE: [], LISTING_OFF_TARGET: []}
+        for row_id, url, listing_status, source_platform in rows:
+            change = listed_status_change(listing_status, source_platform or "",
+                                          rejected.get(url))
+            if change in moves:
+                moves[change].append(row_id)
+        for status, ids in moves.items():
+            if ids:
+                db.query(ScrapedJob).filter(ScrapedJob.id.in_(ids)).update(
+                    {"listing_status": status, "listing_status_changed_at": now},
                     synchronize_session=False)
-        )
-        stats["confirmed"] += (
-            db.query(ScrapedJob)
-            .filter(*on_board)
-            .update({"last_seen_at": now}, synchronize_session=False)
-        )
+        if rows:
+            db.query(ScrapedJob).filter(
+                ScrapedJob.id.in_([row[0] for row in rows])
+            ).update({"last_seen_at": now}, synchronize_session=False)
+        stats["confirmed"] += len(rows)
+        stats["revived"] += len(moves[LISTING_ACTIVE])
+        stats["off_target"] += len(moves[LISTING_OFF_TARGET])
     if listed:
         db.commit()
     return stats
@@ -398,7 +415,10 @@ async def cron_ats(
 
     Per-board failures are isolated and recorded in source_health; a board
     failing repeatedly is skipped for a cooldown (circuit breaker) instead of
-    burning the run's budget. Filters to entry-level + US/Canada only.
+    burning the run's budget. Filters to entry-level + US/Canada only, and a
+    stored row whose own listing now fails those filters (a London, UK row
+    from before the NA filter knew better) is retired as off_target instead
+    of confirmed; CRON_ATS_RETIRE_OFF_TARGET=0 switches that off.
     """
     try:
         from backend.db.models import ScrapedJob
@@ -417,6 +437,7 @@ async def cron_ats(
         work_type_classifier = WorkTypeClassifier()
         logo_map = company_registry.load_logo_map()
         board_countries = company_registry.load_board_countries()
+        retire_off_target = listing_freshness.retire_off_target_enabled()
 
         # The workflow's "hourly" schedule really fires ~6x a day at uneven
         # gaps, so hour % shard_count can hand the same shard several runs in
@@ -441,7 +462,7 @@ async def cron_ats(
             "removed": 0, "revived": 0, "cross_source_twins_hidden": 0,
             "boards_failed": 0, "boards_skipped_cooldown": 0,
             "boards_partial": 0, "partial_confirmed": 0, "urls_migrated": 0,
-            "boards_deferred": 0,
+            "boards_deferred": 0, "off_target": 0,
         }
         workday_detail_budget = WORKDAY_DETAIL_BUDGET
 
@@ -576,16 +597,22 @@ async def cron_ats(
                 # Reconcile the board's stored rows against what it just listed.
                 # Only a complete listing votes on removals; a partial one (a
                 # board past Workday's ceiling, a spent crawl budget) still
-                # proves every URL it listed is live.
+                # proves every URL it listed is live. Either way a listed row
+                # whose listing fails the filters goes off_target, unless the
+                # kill switch is set (then listed means active, as before).
+                rejected = snapshot.rejected if retire_off_target else None
                 if snapshot.complete:
-                    rec = listing_freshness.reconcile_board(db, board_key, snapshot.all_urls)
+                    rec = listing_freshness.reconcile_board(
+                        db, board_key, snapshot.all_urls, rejected=rejected)
                     totals["removed"] += rec["removed"]
                     totals["revived"] += rec["revived"]
+                    totals["off_target"] += rec["off_target"]
                 else:
                     totals["boards_partial"] += 1
-                    seen = _confirm_listed(db, board_key, snapshot.all_urls)
+                    seen = _confirm_listed(db, board_key, snapshot.all_urls, rejected=rejected)
                     totals["partial_confirmed"] += seen["confirmed"]
                     totals["revived"] += seen["revived"]
+                    totals["off_target"] += seen["off_target"]
 
                 source_health.record_success(db, board_key, platform, slug, len(snapshot.jobs))
 
