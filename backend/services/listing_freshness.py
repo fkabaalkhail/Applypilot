@@ -380,6 +380,8 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     Change detection is explicit column compares plus a description hash,
     a re-crawl that didn't carry the description (SmartRecruiters/Workday
     list payloads) must not read "description became empty" as an edit.
+    Nor may Workday's bare "10 Locations" replace a stored location that
+    names the place: the path hint only places a row whose text names none.
 
     The fields derived from the title and location are kept in step, the way
     cron-ats derives them for a new row (location_derived_fields,
@@ -396,6 +398,7 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     Only rows that differ are rewritten.
     """
     from backend.services.ats_scraper import experience_level_for
+    from backend.services.location_parser import is_location_count, location_fields
 
     now = now or _utcnow()
     stats = {"refreshed": 0, "edited": 0, "salary_removed": 0,
@@ -465,6 +468,12 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
 
         location = job.location or old_location or ""
         location_changed = bool(job.location) and job.location != old_location
+        if (location_changed and is_location_count(job.location)
+                and location_fields(old_location or "")["location_search"]):
+            # Workday's list payload says only "10 Locations"; a stored
+            # "REMOTETELETRAVAIL QC CAN (10 Locations)" names the place.
+            # Not an edit, and the stored text keeps filing the row.
+            location, location_changed = old_location, False
         if location_changed:
             # Filling in a location the row never had (Parsons' list rows
             # carried none until the bullet fallback) is not an edit.

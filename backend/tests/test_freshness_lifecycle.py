@@ -322,6 +322,40 @@ class TestRefreshKnownListings:
         assert (row.city, row.region) == ("toronto", "ON")
         assert "|toronto|" in row.location_search
 
+    @pytest.mark.parametrize("stored, country, hint", [
+        # Prod rows stored before the path hint let a count pass the filter.
+        ("REMOTETELETRAVAIL QC CAN (10 Locations)", "CA", "REMOTETELETRAVAIL-QC-CAN"),
+        ("Granby QC CAN (2 Locations)", "CA", "Granby-QC-CAN"),
+        ("Georgia - Atlanta", "US", "Georgia---Atlanta"),
+    ])
+    def test_a_workday_count_keeps_a_stored_place(self, db_session, stored, country, hint):
+        """The list payload says only "10 Locations": the stored text names
+        the place, so it stays, and no location edit is logged."""
+        known = self._consistent(db_session, location=stored, country=country)
+        before = db_session.get(ScrapedJob, known.id)
+        place = (before.city, before.region, before.location_search)
+        listing = _job(url=known.url, location="10 Locations", location_hint=hint)
+
+        _new, stats = refresh_known_listings(db_session, BOARD, [listing], now=NOW)
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert row.location == stored
+        assert stats["edited"] == 0 and not row.change_log
+        assert stats["reparsed"] == 0 and (row.city, row.region, row.location_search) == place
+
+    def test_a_workday_count_replaces_a_stored_count(self, db_session):
+        """A stored count names no place: the new count is stored and the
+        path hint places the row."""
+        known = self._consistent(db_session, location="2 Locations", country="CA")
+        _new, _stats = refresh_known_listings(
+            db_session, BOARD,
+            [_job(url=known.url, location="3 Locations", location_hint="Toronto-ON")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert (row.location, row.city, row.region) == ("3 Locations", "toronto", "ON")
+
     def test_location_edit_reparses_city_and_country(self, db_session):
         known = self._consistent(db_session)
         _new, stats = refresh_known_listings(

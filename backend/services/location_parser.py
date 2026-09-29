@@ -480,6 +480,11 @@ def location_tag_tokens(tag: str) -> list[str]:
     return [t for t in tokens if t]
 
 
+def is_location_count(raw: str) -> bool:
+    """Whether a location is only Workday's count of places ("10 Locations")."""
+    return bool(_LOCATION_COUNT.match((raw or "").strip()))
+
+
 def location_fields(raw: str, country: str = "") -> dict:
     """Column values for ScrapedJob(**fields), shared by every ingest path.
     ``country`` as for parse_locations."""
