@@ -10,6 +10,8 @@ never be empty.
 **Validates: Requirements 6.7**
 """
 
+import uuid
+
 import pytest
 from hypothesis import given, settings, HealthCheck
 from hypothesis import strategies as st
@@ -18,6 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from backend.auth.dependencies import get_verified_user_id
 from backend.db.database import Base, get_db
 from backend.db.models import (
     ScrapedJob, UserSettings, ResumeProfileDB, TailoredResume,
@@ -32,6 +35,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_
 
 apply_app = FastAPI()
 apply_app.include_router(apply_router, prefix="/apply", tags=["apply"])
+
+TEST_USER_ID = 1
 
 
 # Strategy for generating non-empty resume text
@@ -64,14 +69,20 @@ def db_session(setup_test_db):
 
 @pytest.fixture
 def client(db_session):
-    """FastAPI test client with overridden DB dependency."""
+    """FastAPI test client with overridden DB and verified-user dependencies."""
     def _override_get_db():
         try:
             yield db_session
         finally:
             pass
 
+    async def _override_user_id():
+        return TEST_USER_ID
+
     apply_app.dependency_overrides[get_db] = _override_get_db
+    # Every /apply route needs a verified user and scopes its rows by user_id
+    # (cf3c891). Without this override every call 401'd.
+    apply_app.dependency_overrides[get_verified_user_id] = _override_user_id
     with TestClient(apply_app) as c:
         yield c
     apply_app.dependency_overrides.clear()
@@ -100,14 +111,21 @@ def test_apply_flow_resume_version_selection(
 
     **Validates: Requirements 6.7**
     """
-    # Clear sessions from previous hypothesis iterations
+    # Start every example from an empty slate. Hypothesis reuses the
+    # function-scoped db_session across examples, and cleanup placed after the
+    # assertions never runs for a failing one: its rows then broke the next
+    # example with a UNIQUE error that masked the real failure (a 401).
     apply_module._sessions.clear()
+    db_session.rollback()
+    for model in (TailoredResume, ResumeProfileDB, UserSettings, ScrapedJob):
+        db_session.query(model).delete()
+    db_session.commit()
 
-    # Set up a job in the database
+    # Set up a job in the database (a fresh URL: CPython reuses id() values)
     job = ScrapedJob(
         title="Software Engineer",
         company="TestCo",
-        url=f"https://example.com/job/{id(original_resume_text)}",
+        url=f"https://example.com/job/{uuid.uuid4().hex}",
         description="Build software",
     )
     db_session.add(job)
@@ -115,6 +133,7 @@ def test_apply_flow_resume_version_selection(
 
     # Set up user settings (required for profile endpoint)
     settings_obj = UserSettings(
+        user_id=TEST_USER_ID,
         first_name="Test",
         last_name="User",
         email="test@example.com",
@@ -127,6 +146,7 @@ def test_apply_flow_resume_version_selection(
 
     # Set up resume profile with original text
     profile = ResumeProfileDB(
+        user_id=TEST_USER_ID,
         profile_name="Test User",
         email="test@example.com",
         raw_text=original_resume_text,
@@ -139,6 +159,7 @@ def test_apply_flow_resume_version_selection(
     # Optionally add a tailored resume with status "accepted"
     if has_tailored:
         tailored = TailoredResume(
+            user_id=TEST_USER_ID,
             job_id=job.id,
             original_text=original_resume_text,
             tailored_text=tailored_resume_text,
@@ -177,10 +198,3 @@ def test_apply_flow_resume_version_selection(
         assert fill_profile["resume_text"] == tailored_resume_text
     else:
         assert fill_profile["resume_text"] == original_resume_text
-
-    # Cleanup: remove test data for next hypothesis iteration
-    db_session.query(TailoredResume).delete()
-    db_session.query(ResumeProfileDB).delete()
-    db_session.query(UserSettings).delete()
-    db_session.query(ScrapedJob).delete()
-    db_session.commit()

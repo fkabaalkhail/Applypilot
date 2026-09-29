@@ -76,6 +76,14 @@ def test_token_is_read_only():
         assert set(perms.values()) <= {"read", "none"}, (name, perms)
 
 
+def test_runner_image_is_pinned():
+    # ubuntu-latest moves to Ubuntu 26.04 from 2026-10-19. An unattended
+    # hourly job should change OS when someone decides to, not silently: a
+    # versioned image, never a floating -latest label.
+    for name, job in _workflow()["jobs"].items():
+        assert re.fullmatch(r"ubuntu-\d\d\.\d\d", job["runs-on"]), (name, job["runs-on"])
+
+
 def test_no_step_re_enables_the_workflow():
     for step in _steps():
         run = step.get("run", "")

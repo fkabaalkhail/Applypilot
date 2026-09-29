@@ -72,6 +72,21 @@ for (const key of [
   globalThis[key] = window[key];
 }
 globalThis.getComputedStyle = window.getComputedStyle.bind(window);
+// The engine is a content script, so it reads browser globals directly
+// (scanPage's default adapter reads `location`, composedAncestors checks
+// `instanceof ShadowRoot`, ...). A hand-kept list broke this harness each time
+// the engine touched a new one ('location is not defined' kept CI red from
+// 2026-07-02). Expose every jsdom window global Node does not already define,
+// as vitest's jsdom environment does; Node's own URL, fetch, crypto and
+// navigator are left alone.
+for (const key of Object.getOwnPropertyNames(window)) {
+  if (key in globalThis) continue;
+  try {
+    globalThis[key] = window[key];
+  } catch {
+    /* getter that throws off-window, or non-writable: skip */
+  }
+}
 
 const { scanPage, AutofillReconciler, MOCK_PROFILE, AUTOFILL_CONFIDENCE_THRESHOLD } =
   await import(pathToFileURL(bundlePath).href);

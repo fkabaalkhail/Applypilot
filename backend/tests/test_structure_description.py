@@ -2,7 +2,16 @@
 
 import json
 
+import pytest
+
 from backend.db.models import ScrapedJob
+
+
+@pytest.fixture(autouse=True)
+def _key(monkeypatch):
+    # The route builds OpenAIService, whose constructor refuses an empty key,
+    # before the patched _generate runs. Tests run keyless (see conftest).
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
 
 def _mk_job(db_session, url="https://x.test/sd-1", description=None):

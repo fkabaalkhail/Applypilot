@@ -46,7 +46,10 @@ concurrency:
 
 jobs:
   scrape:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moves to Ubuntu 26.04 from 2026-10-19, and this
+    # job runs unattended every hour: move it deliberately, not on GitHub's
+    # schedule.
+    runs-on: ubuntu-24.04
     # A normal run takes 7-8 minutes; the steps' own caps add up to ~35.
     # Anything longer is hung and would block the concurrency group.
     timeout-minutes: 40

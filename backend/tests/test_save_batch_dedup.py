@@ -10,6 +10,9 @@ Contract:
 - auth via cron secret (x-cron-secret header), NOT user JWT
 - ONE dedup query per batch (SELECT url WHERE url IN ...), never per job
 - bulk insert of the non-duplicate rows
+- a LinkedIn/Indeed row whose direct ATS twin is already stored is not
+  inserted: it counts in cross_source_twins_skipped (7c54709) and in
+  duplicates (test_dedup_integration.py covers the twin itself)
 """
 
 import pytest
@@ -57,7 +60,10 @@ def test_rejects_wrong_secret(client, monkeypatch):
 def test_empty_batch(client, cron_headers):
     resp = client.post("/jobs/ingest-batch", json={"jobs": []}, headers=cron_headers)
     assert resp.status_code == 200
-    assert resp.json() == {"received": 0, "created": 0, "duplicates": 0, "skipped": 0}
+    assert resp.json() == {
+        "received": 0, "created": 0, "duplicates": 0,
+        "cross_source_twins_skipped": 0, "skipped": 0,
+    }
 
 
 def test_all_new_jobs_are_created(client, cron_headers, db_session):
@@ -65,7 +71,10 @@ def test_all_new_jobs_are_created(client, cron_headers, db_session):
     resp = client.post("/jobs/ingest-batch", json={"jobs": jobs}, headers=cron_headers)
     assert resp.status_code == 200
     data = resp.json()
-    assert data == {"received": 3, "created": 3, "duplicates": 0, "skipped": 0}
+    assert data == {
+        "received": 3, "created": 3, "duplicates": 0,
+        "cross_source_twins_skipped": 0, "skipped": 0,
+    }
     assert db_session.query(ScrapedJob).count() == 3
 
 
@@ -99,14 +108,20 @@ def test_mixed_batch(client, cron_headers, db_session):
     jobs = [_job("https://x.test/1"), _job("https://x.test/2"), _job("https://x.test/3")]
     resp = client.post("/jobs/ingest-batch", json={"jobs": jobs}, headers=cron_headers)
     data = resp.json()
-    assert data == {"received": 3, "created": 2, "duplicates": 1, "skipped": 0}
+    assert data == {
+        "received": 3, "created": 2, "duplicates": 1,
+        "cross_source_twins_skipped": 0, "skipped": 0,
+    }
 
 
 def test_within_batch_duplicates(client, cron_headers, db_session):
     jobs = [_job("https://x.test/1"), _job("https://x.test/1"), _job("https://x.test/2")]
     resp = client.post("/jobs/ingest-batch", json={"jobs": jobs}, headers=cron_headers)
     data = resp.json()
-    assert data == {"received": 3, "created": 2, "duplicates": 1, "skipped": 0}
+    assert data == {
+        "received": 3, "created": 2, "duplicates": 1,
+        "cross_source_twins_skipped": 0, "skipped": 0,
+    }
     assert db_session.query(ScrapedJob).count() == 2
 
 
@@ -114,7 +129,10 @@ def test_jobs_without_url_are_skipped(client, cron_headers, db_session):
     jobs = [_job(""), _job("https://x.test/1")]
     resp = client.post("/jobs/ingest-batch", json={"jobs": jobs}, headers=cron_headers)
     data = resp.json()
-    assert data == {"received": 2, "created": 1, "duplicates": 0, "skipped": 1}
+    assert data == {
+        "received": 2, "created": 1, "duplicates": 0,
+        "cross_source_twins_skipped": 0, "skipped": 1,
+    }
     assert db_session.query(ScrapedJob).count() == 1
 
 
