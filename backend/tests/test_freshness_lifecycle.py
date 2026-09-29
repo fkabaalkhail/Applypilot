@@ -220,7 +220,66 @@ class TestRefreshKnownListings:
     def test_consistent_row_is_left_alone(self, db_session):
         known = self._consistent(db_session)
         _new, stats = refresh_known_listings(db_session, BOARD, [_job(url=known.url)], now=NOW)
-        assert (stats["reparsed"], stats["recountried"], stats["retitled"]) == (0, 0, 0)
+        assert (stats["reparsed"], stats["recountried"], stats["retitled"],
+                stats["relabeled"]) == (0, 0, 0, 0)
+
+    @pytest.mark.parametrize("title, department, commitment, stored, healed", [
+        # The old substring test filed these under internships...
+        ("Internal Audit Analyst", "", "", "internship", "new_grad"),
+        ("Operations Analyst, Cooper Street", "", "", "internship", "new_grad"),
+        # ...and these real internships under new grad.
+        ("RF Validation Associate", "Payload Internships", "", "new_grad", "internship"),
+        ("Thermal Associate Engineer (Summer 2027)", "", "", "new_grad", "internship"),
+        ("Hardware Validation Associate", "", "Intern", "new_grad", "internship"),
+        ("Contract Student Worker - Data Analyst", "", "Contract", "new_grad", "internship"),
+    ])
+    def test_heals_the_experience_level_of_a_crawler_row(
+            self, db_session, title, department, commitment, stored, healed):
+        known = self._consistent(db_session, title=title)
+        db_session.query(ScrapedJob).filter_by(id=known.id).update({"experience_level": stored})
+        db_session.commit()
+        listing = _job(url=known.url, title=title, department=department,
+                       employment_type=commitment)
+
+        _new, stats = refresh_known_listings(db_session, BOARD, [listing], now=NOW)
+
+        db_session.expire_all()
+        assert stats["relabeled"] == 1 and stats["edited"] == 0
+        assert db_session.get(ScrapedJob, known.id).experience_level == healed
+        # Consistent now: the next crawl rewrites nothing.
+        _new, stats = refresh_known_listings(db_session, BOARD, [listing], now=NOW)
+        assert stats["relabeled"] == 0
+
+    def test_a_description_mention_of_internships_is_no_label(self, db_session):
+        """The stored employment_type reads the description too, and "prior
+        internship experience" made SpaceX's "Financial Analyst" an
+        internship there; the label reads the source's commitment only."""
+        known = self._consistent(db_session, title="Financial Analyst",
+                                 employment_type="internship")
+
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, title="Financial Analyst")], now=NOW,
+        )
+
+        db_session.expire_all()
+        assert stats["relabeled"] == 0
+        assert db_session.get(ScrapedJob, known.id).experience_level == "new_grad"
+
+    def test_list_rows_keep_their_list_label(self, db_session):
+        """A GitHub-list row adopted into the board keeps the label its list
+        gave it: an intern list's "Software Engineer" is an internship."""
+        known = self._consistent(db_session, title="Software Engineer", source_platform="github")
+        db_session.query(ScrapedJob).filter_by(id=known.id).update(
+            {"experience_level": "internship"})
+        db_session.commit()
+
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, title="Software Engineer")], now=NOW,
+        )
+
+        db_session.expire_all()
+        assert stats["relabeled"] == 0
+        assert db_session.get(ScrapedJob, known.id).experience_level == "internship"
 
     def test_heals_the_country_of_a_bare_canadian_city(self, db_session):
         """cron-ats once stored a bare "Toronto" as "US"; the next crawl fixes it."""
@@ -348,17 +407,21 @@ class TestRefreshKnownListings:
 
 
 class TestDerivedFieldHelpers:
-    @pytest.mark.parametrize("title, level", [
-        ("Software Intern", "internship"),
-        ("Co-op Student, Data", "internship"),
-        ("Coop Engineer", "internship"),
-        ("New Grad Software Engineer", "new_grad"),
-        ("Analyst I", "new_grad"),
+    @pytest.mark.parametrize("title, department, employment_type, level", [
+        ("Software Intern", "", "", "internship"),
+        ("Co-op Student, Data", "", "", "internship"),
+        ("Coop Engineer", "", "", "internship"),
+        ("New Grad Software Engineer", "", "", "new_grad"),
+        ("Analyst I", "", "", "new_grad"),
+        ("Internal Audit Analyst", "", "", "new_grad"),
+        ("RF Validation Associate", "Payload Internships", "", "internship"),
+        ("Thermal Associate Engineer (Summer 2027)", "", "", "internship"),
+        ("Hardware Validation Associate", "", "Intern", "internship"),
     ])
-    def test_experience_level_for(self, title, level):
-        from backend.services.listing_freshness import experience_level_for
+    def test_title_fields_experience_level(self, title, department, employment_type, level):
+        from backend.services.listing_freshness import title_fields
 
-        assert experience_level_for(title) == level
+        assert title_fields(title, department, employment_type)["experience_level"] == level
 
     def test_location_derived_fields(self):
         from backend.services.listing_freshness import location_derived_fields

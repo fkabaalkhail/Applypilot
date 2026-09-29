@@ -346,6 +346,63 @@ class TestCronAts:
         monkeypatch.setenv("CRON_ATS_RETIRE_OFF_TARGET", "1")
         assert retire_off_target_enabled()
 
+    def test_the_classifier_verdict_reaches_stored_rows(self, client, db_session, monkeypatch):
+        """No re-filter of its own: the entry-level classifier's "level"
+        verdict retires and restores stored rows through scrape_board and
+        reconciliation, and a kept row's experience_level heals."""
+        hourly = _row(db_session, "https://boards.greenhouse.io/acme/jobs/1",
+                      title="Operations Associate, Dallas, #118", location="Dallas, TX")
+        pm_intern = _row(db_session, "https://boards.greenhouse.io/acme/jobs/2",
+                         title="Product Manager Intern", location="Austin, TX",
+                         listing_status=LISTING_OFF_TARGET, experience_level="new_grad")
+        audit = _row(db_session, "https://boards.greenhouse.io/acme/jobs/3",
+                     title="Internal Audit Analyst", location="Austin, TX",
+                     experience_level="internship")
+        listings = [ATSJob(title=row.title, company="Acme", location=row.location, url=row.url)
+                    for row in (hourly, pm_intern, audit)]
+
+        async def fake_fetch(self, client, slug, company_name):
+            return listings
+
+        monkeypatch.setattr(ATSScraper, "_fetch_greenhouse", fake_fetch)
+        monkeypatch.setattr(company_registry, "load_companies",
+                            lambda **kw: [("greenhouse", "acme", "Acme")])
+        monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+        res = client.post("/github-sources/cron-ats", headers=_cron_headers(monkeypatch))
+        assert res.status_code == 200, res.text
+        body = res.json()
+
+        assert (body["off_target"], body["revived"], body["relabeled"]) == (1, 1, 2)
+        assert _status(db_session, hourly) == LISTING_OFF_TARGET
+        assert _status(db_session, pm_intern) == LISTING_ACTIVE
+        assert db_session.get(ScrapedJob, pm_intern.id).experience_level == "internship"
+        assert db_session.get(ScrapedJob, audit.id).experience_level == "new_grad"
+
+    def test_new_rows_get_a_word_bounded_experience_level(self, client, db_session, monkeypatch):
+        payroll = "https://jobs.lever.co/acme/1"
+        coop = "https://jobs.lever.co/acme/2"
+        analyst = "https://jobs.lever.co/acme/3"
+        jobs = [
+            ATSJob(title="International Payroll Analyst", company="Acme",
+                   location="Austin, TX", url=payroll),
+            # Lever's commitment says what the bare title doesn't.
+            ATSJob(title="RF Validation Associate", company="Acme", location="Austin, TX",
+                   url=coop, employment_type="Intern"),
+            # A description's mention is no commitment.
+            ATSJob(title="Financial Analyst", company="Acme", location="Austin, TX",
+                   url=analyst, description="Prior internship experience is a plus."),
+        ]
+        monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+
+        body = self._run(client, monkeypatch, dict(
+            jobs=jobs, all_urls={payroll, coop, analyst}, complete=True, total_listed=3))
+
+        assert body["new_jobs"] == 3
+        rows = {row.url: row for row in db_session.query(ScrapedJob).all()}
+        assert {url: row.experience_level for url, row in rows.items()} == {
+            payroll: "new_grad", coop: "internship", analyst: "new_grad"}
+        assert rows[analyst].employment_type == "internship"  # the extractor's reading
+
 
 # ─── Rows no crawl reaches ───────────────────────────────────────────────────
 

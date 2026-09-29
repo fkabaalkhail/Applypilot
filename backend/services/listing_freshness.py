@@ -306,26 +306,22 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
 # the same helpers, so an edited row can never end up filed differently from
 # a new one with the same title and location.
 
-def experience_level_for(title: str) -> str:
-    """The intern/new-grad split every crawled row gets: "internship" when
-    the title says intern/co-op, else "new_grad" (the crawl only keeps entry
-    level)."""
-    title_lower = (title or "").lower()
-    if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
-        return "internship"
-    return "new_grad"
-
-
-def title_fields(title: str, department: str = "") -> dict:
+def title_fields(title: str, department: str = "", employment_type: str = "") -> dict:
     """Columns derived from a crawled row's title: the cross-source dedup key,
-    the role category and the experience level."""
+    the role category and the experience level (ats_scraper.
+    experience_level_for: word-bounded, and aware of the department and the
+    source's commitment ``employment_type``, so "Internal Audit Analyst" is
+    no internship and a Lever "Intern" commitment behind a bare "RF
+    Validation Associate" is one)."""
+    from backend.services.ats_scraper import experience_level_for
     from backend.services.cross_source_dedup import normalize_title
     from backend.services.role_classifier import classify as classify_role
 
     return {
         "title_norm": normalize_title(title or ""),
         "role_category": classify_role(title or "", department or ""),
-        "experience_level": experience_level_for(title),
+        "experience_level": experience_level_for(title or "", department or "",
+                                                 employment_type or ""),
     }
 
 
@@ -371,12 +367,17 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     fields that disagree with the stored location ("reparsed"), a country
     that disagrees with what the location or ``board_country`` (the
     registry's country for a one-country board) says ("recountried": a bare
-    "Toronto" once defaulted to "US"), and a title_norm left stale by an
-    earlier title edit ("retitled"). Only rows that differ are rewritten.
+    "Toronto" once defaulted to "US"), a title_norm left stale by an
+    earlier title edit ("retitled"), and a crawler row's experience_level
+    that disagrees with ats_scraper.experience_level_for ("relabeled": the
+    old substring test filed "Internal Audit Analyst" under internships).
+    Only rows that differ are rewritten.
     """
+    from backend.services.ats_scraper import experience_level_for
+
     now = now or _utcnow()
     stats = {"refreshed": 0, "edited": 0, "salary_removed": 0,
-             "reparsed": 0, "recountried": 0, "retitled": 0}
+             "reparsed": 0, "recountried": 0, "retitled": 0, "relabeled": 0}
     if not jobs:
         return [], stats
 
@@ -392,6 +393,7 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
                 ScrapedJob.board_key, ScrapedJob.external_id,
                 ScrapedJob.country, ScrapedJob.city, ScrapedJob.region,
                 ScrapedJob.location_search, ScrapedJob.title_norm,
+                ScrapedJob.experience_level, ScrapedJob.source_platform,
             )
             .filter(ScrapedJob.url.in_(chunk))
             .all()
@@ -406,7 +408,8 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     for url, row in existing.items():
         (row_id, _url, old_title, old_location, old_salary_min, old_hash,
          edit_count, change_log, old_board_key, old_external_id, old_country,
-         old_city, old_region, old_search, old_title_norm) = row
+         old_city, old_region, old_search, old_title_norm, old_level,
+         source_platform) = row
         job = by_url[url]
 
         updates: dict = {"last_seen_at": now}
@@ -428,8 +431,15 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
         if title and (title_changed or (
                 _title_edited_before(change_log)
                 and (old_title_norm or "") != normalize_title(title))):
-            updates.update(title_fields(title, job.department or ""))
+            updates.update(title_fields(title, job.department or "", job.employment_type or ""))
             stats["retitled"] += 1
+        # The crawler's own label only: a GitHub-list row adopted into the
+        # board keeps the label its list gave it.
+        if title and source_platform == "ats" and "experience_level" not in updates:
+            level = experience_level_for(title, job.department or "", job.employment_type or "")
+            if level != (old_level or ""):
+                updates["experience_level"] = level
+                stats["relabeled"] += 1
 
         location = job.location or old_location or ""
         location_changed = bool(job.location) and job.location != old_location

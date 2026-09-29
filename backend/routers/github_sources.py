@@ -444,7 +444,7 @@ async def cron_ats(
             "boards_failed": 0, "boards_skipped_cooldown": 0,
             "boards_partial": 0, "partial_confirmed": 0, "urls_migrated": 0,
             "boards_deferred": 0, "off_target": 0, "reparsed": 0, "recountried": 0,
-            "retitled": 0,
+            "retitled": 0, "relabeled": 0,
         }
         workday_detail_budget = WORKDAY_DETAIL_BUDGET
 
@@ -484,7 +484,8 @@ async def cron_ats(
                 new_jobs, refresh_stats = listing_freshness.refresh_known_listings(
                     db, board_key, snapshot.jobs, board_country=board_country,
                 )
-                for key in ("refreshed", "edited", "reparsed", "recountried", "retitled"):
+                for key in ("refreshed", "edited", "reparsed", "recountried", "retitled",
+                            "relabeled"):
                     totals[key] += refresh_stats[key]
 
                 for job in new_jobs:
@@ -547,7 +548,8 @@ async def cron_ats(
                         url=job.url,
                         description=description,
                         source_platform="ats",
-                        **listing_freshness.title_fields(job.title, job.department or ""),
+                        **listing_freshness.title_fields(
+                            job.title, job.department or "", job.employment_type or ""),
                         **derived,
                         posted_date=job.posted_date,
                         easy_apply=0,
@@ -631,6 +633,7 @@ async def scrape_linkedin_jobs(
     """
     try:
         from backend.db.models import ScrapedJob
+        from backend.services.ats_scraper import experience_level_for
         from backend.services.linkedin_scraper import LinkedInScraper, CITIES, QUERIES
         from backend.services.na_location import job_country
         from backend.services.work_type_classifier import WorkTypeClassifier
@@ -682,14 +685,8 @@ async def scrape_linkedin_jobs(
             # Classify work type
             work_type = work_type_classifier.classify(job.location)
 
-            # Determine experience level from title
-            title_lower = job.title.lower()
-            if "intern" in title_lower or "co-op" in title_lower or "coop" in title_lower:
-                experience_level = "internship"
-            elif "new grad" in title_lower or "new graduate" in title_lower:
-                experience_level = "new_grad"
-            else:
-                experience_level = "new_grad"
+            # Word-bounded: "Internal Audit Analyst" is not an internship.
+            experience_level = experience_level_for(job.title)
 
             # Resolve logo from the company domain; a self-hosted logo (and
             # verified domain) from the logo store wins.

@@ -246,44 +246,197 @@ except Exception as e:  # pragma: no cover - defensive
     ATS_COMPANIES = _LEGACY_ATS_COMPANIES
 
 
-# Keywords that indicate intern/new-grad level roles
-ENTRY_LEVEL_KEYWORDS = [
-    r"\bintern\b",
-    r"\binternship\b",
-    r"\bco-?op\b",
-    r"\bnew grad\b",
-    r"\bnew graduate\b",
-    r"\bentry level\b",
-    r"\bentry-level\b",
-    r"\bjunior\b",
-    r"\bassociate\b",
-    r"\b(i|1|I)\b",  # Level I/1
-    r"\bearly career\b",
-    r"\brecent grad\b",
-    r"\bgraduate\b",
-    r"\brotational\b",
-    r"\buniversity\b",
-    r"\bcampus\b",
-    r"\bfresh\b",
-    r"\b0-2 years\b",
-    r"\b0-1 years\b",
-    r"\b1-2 years\b",
-    r"\bnew college\b",
-    r"\bstarter\b",
-    r"\bapprentice\b",
-    r"\btrainee\b",
-    r"\banalyst\b",
-]
+# ─── Entry-level classification ──────────────────────────────────────────────
+#
+# Tiers, read from the title (and, for a named track only, the board's
+# department or the source's own commitment field):
+#
+# - STRONG: the posting names a student/new-grad TRACK (intern, co-op, new
+#   grad, early career, apprentice, trainee, student, stagiaire, a season+year
+#   term, "2027 Start", Associate Product Manager). It outranks the SOFT
+#   seniority words ("Product Manager Intern", "Member of Technical Staff (New
+#   Grad)", "Area Manager - New Grad" are entry roles) and is never read as
+#   frontline work ("Warehouse Operations Intern").
+# - WEAK: a level word that is not a track (junior, entry-level, analyst,
+#   associate, "Level I", "Engineer I"). It passes unless the title is
+#   frontline/hourly work ("Operations Associate, Dallas, #118", "Security
+#   Associate - 3rd Shift") or the source's commitment is part-time.
+# - otherwise not entry level.
+#
+# HARD seniority (senior, VP, counsel, mid-level, III, "(L5)", "Level 3",
+# "Analyst 4", "5+ years") vetoes every tier, and so does recruiting for or
+# running an early-career program ("Campus Recruiter", "Intern Program
+# Manager"): those people hire the students. A digit veto never reads a
+# duration: "Co-op (8 months)" is a term, not a level.
 
-ENTRY_LEVEL_PATTERN = re.compile("|".join(ENTRY_LEVEL_KEYWORDS), re.IGNORECASE)
-
-# Title patterns that indicate senior roles (to EXCLUDE)
-SENIOR_KEYWORDS = re.compile(
-    r"\bsenior\b|\bsr\.?\b|\bstaff\b|\bprincipal\b|\blead\b|\bmanager\b"
-    r"|\bdirector\b|\bvp\b|\bhead of\b|\barchitect\b|\bfellow\b"
-    r"|\biii\b|\biv\b|\b[3-9]\+?\s*years\b|\b[5-9]\b|\b10\+\b",
-    re.IGNORECASE
+_LEVEL_ROLE = (
+    r"(?:engineer|developer|scientist|analyst|specialist|technician|consultant|"
+    r"representative|accountant|designer|programmer|administrator|coordinator|"
+    r"associate|researcher|tester|writer|architect|manager|agent|advisor|officer)"
 )
+# "8 months", and "4 or 8 Months" / "4-8 months" too.
+_NOT_A_DURATION = (
+    r"(?!\s*(?:(?:or|to|[-–/])\s*\d+\s*)?(?:months?|weeks?|days?|hours?|hrs?|years?|yrs?)\b)"
+)
+# A student, not a product for students ("Student Financial Aid Consultant")
+# or the people who serve them ("Dean of Students").
+_STUDENT = (
+    r"(?<!\bof )\bstudents?\b(?!\s+(?:loans?|success|affairs|services|experience"
+    r"|financial|aid|accounts?|records|information|enrollment|housing|recruit\w*))"
+)
+
+STRONG_ENTRY = re.compile(
+    r"\bintern(?:s|ships?)?\b"
+    r"|\bco-?ops?\b"
+    r"|\bgrad(?:uate)?s?\b"                       # new/recent/university/"Dec 2026" grads
+    r"|\bearly[- ]careers?\b"
+    r"|\b(?:early|emerging)[- ]talent\b"
+    r"|\bapprentice(?:ship)?s?\b"
+    r"|\btrainees?\b"
+    r"|\brotational\b|\brotation program\b"
+    r"|\bassociate product manager\b"
+    r"|" + _STUDENT
+    + r"|\bstagiaires?\b|\bstage\s+coop\w*|\b[ée]tudiant(?:e|s|es)?\b"
+    r"|\b(?:summer|fall|winter|spring|autumn)\s*,?\s*(?:19|20)\d\d\b"
+    r"|\b(?:19|20)\d\d\s+start\b",
+    re.IGNORECASE,
+)
+# A department only counts when it names the track ("Early Career FT", "Zoox
+# Internships", "University Recruiting"), never a level word: a department
+# containing "Analyst", or "University" as a street name, is not one.
+DEPT_ENTRY = re.compile(
+    STRONG_ENTRY.pattern
+    + r"|\buniversity\s+(?:recruit\w*|relations|programs?|hir\w*|talent)\b"
+      r"|^\s*(?:\d+\s+)?(?:general\s+)?university\s*$|\bcampus\b",
+    re.IGNORECASE,
+)
+# The source's own commitment field (Lever commitment, Ashby employmentType,
+# SmartRecruiters typeOfEmployment): "Intern", "Internship", "Intern/Co-op".
+EMPLOYMENT_TYPE_ENTRY = re.compile(r"\bintern|\bco-?op\b|\bstudent\b|\bapprentice", re.IGNORECASE)
+WEAK_ENTRY = re.compile(
+    r"\bjunior\b|\bjr\b\.?"
+    r"|\bentry[- ]level\b"
+    r"|\banalyst\b"
+    r"|\bassociates?\b"
+    r"|\b(?:level|lvl|grade|tier)\s*(?:i|1)\b"
+    r"|\b" + _LEVEL_ROLE + r"\s*,?\s*(?:i|1)\b(?![-\w])" + _NOT_A_DURATION
+    + r"|\b0\s*-\s*[12]\s*years\b|\b1\s*-\s*2\s*years\b|\bstarter\b|\bfresh(?:er)?\b",
+    re.IGNORECASE,
+)
+HARD_SENIOR = re.compile(
+    r"\bsenior\b|\bsr\b\.?|\bprincipal\b|\bdirector\b|\b[aers]?vp\b|\bvice[- ]president\b"
+    r"|\bhead of\b|\bchief\b|\bdistinguished\b|\bfellow\b|\bcounsel\b"
+    r"|\bmanaging\b|\bassociate partner\b"
+    r"|\bmid[- ]?level\b|\bintermediate\b|\bexperienced\b"
+    r"|\biii\b|\biv\b"
+    r"|\b" + _LEVEL_ROLE + r"\s*,?\s*(?:v|vi|[3-9])\b" + _NOT_A_DURATION
+    + r"|\b(?:level|lvl|grade)\s*[3-9]\b"
+    r"|\bl[4-9]\b"                               # Netflix "(L5)", Twilio "(L6)"
+    # "5+ years", "3-5 years"; not the top of a range ("1-3 years", "0 to 3").
+    r"|(?<![-–])(?<![-–] )(?<!\bto )\b(?:[3-9]|1\d)\s*\+?\s*(?:[-–]\s*\d+\s*)?(?:years?|yrs?)\b",
+    re.IGNORECASE,
+)
+SOFT_SENIOR = re.compile(
+    r"\bstaff\b|\blead\b|\bmanager\b|\barchitect\b|\bsupervisor\b|\bleader\b"
+    r"|\b(?:business|people|hr|talent|client|account)\s+partner\b"
+    r"|\bii\b(?<!i/ii)(?<!i / ii)(?<!i or ii)|\b(?:level|lvl|grade)\s*2\b|\bl[23]\b(?!\s*support)"
+    r"|\b" + _LEVEL_ROLE + r"\s*,?\s*2\b" + _NOT_A_DURATION,
+    re.IGNORECASE,
+)
+# "Sourcing" alone is procurement ("Associate Sourcing Specialist").
+RECRUITING = re.compile(
+    r"\brecruit\w*|\bsourcers?\b|\b(?:talent|candidate)\s+sourcing\b"
+    r"|\btalent (?:acquisition|partner|operations)\b"
+    r"|\b(?:university|campus) relations\b"
+    r"|\bprogram manager\b(?<!associate program manager)",
+    re.IGNORECASE,
+)
+# Staff who run an early-career program, with no unlock: "Intern Program
+# Manager" and "Early Careers & Interns Specialist" run the program, while
+# "Program Coordinator Intern" is in it.
+_PROGRAM_ROLE = r"(?:lead|manager|coordinator|specialist|director|partner|advisor)"
+_PROGRAM_OBJECT = r"(?:programs?|recruiting|relations|hiring|partnerships?)"
+PROGRAM_STAFF = re.compile(
+    r"\b(?:early[- ]careers?|early[- ]talent|emerging[- ]talent|internships?|interns)\s+"
+    r"(?:&\s+\w+\s+)?(?:" + _PROGRAM_OBJECT + r"\s+)?" + _PROGRAM_ROLE + r"\b"
+    r"|\b(?:university|campus|graduate|intern)\s+" + _PROGRAM_OBJECT + r"\s+" + _PROGRAM_ROLE + r"\b"
+    r"|\b" + _PROGRAM_ROLE + r",?\s+(?:of\s+)?(?:early[- ]careers?|early[- ]talent|emerging[- ]talent"
+    r"|university|campus|graduate|internships?|intern)\s+" + _PROGRAM_OBJECT + r"\b",
+    re.IGNORECASE,
+)
+# ...unless the recruiting job is itself a student/new-grad job.
+STUDENT_JOB = re.compile(
+    r"\bintern(?:ship)?\b|\bco-?op\b|\bstudent\b|\bstagiaire\b|\bapprentice\b"
+    r"|\b(?:new|recent)[- ]?grad(?:uate)?s?\b|\btrainee\b",
+    re.IGNORECASE,
+)
+# Hourly/frontline work. Vetoes the weak tier only: a named track stays one.
+FRONTLINE = re.compile(
+    r"\b(?:\d(?:st|nd|rd|th)|night|overnight|evening|weekend|day|am|pm|swing|graveyard)[- ]shift\b"
+    r"|\bshift\s*\d\b|\bpart[- ]time\b|\bseasonal\b|#\s?\d+\b"
+    r"|\b(?:warehouse|forklift|barista|cashier|key holder|lot attendant|detailer|driver"
+    r"|crew member|sous chef|cook|dishwasher|bartender|store|retail|merchandising"
+    r"|production associate|security associate)\b",
+    re.IGNORECASE,
+)
+_PART_TIME_COMMITMENT = re.compile(r"part[- ]?time", re.IGNORECASE)
+
+# Title words that file an entry-level row under internships, not new grad.
+INTERNSHIP_TITLE = re.compile(
+    r"\bintern(?:s|ships?)?\b|\bco-?ops?\b|\bstagiaires?\b|\bstage\s+coop\w*|" + _STUDENT,
+    re.IGNORECASE,
+)
+_INTERNSHIP_DEPARTMENT = re.compile(r"\bintern(?:s|ships?)?\b|\bco-?ops?\b", re.IGNORECASE)
+# A work term: "RF Validation Associate (Winter 2027)".
+_TERM_TITLE = re.compile(r"\b(?:summer|fall|winter|spring|autumn)\s*,?\s*(?:19|20)\d\d\b",
+                         re.IGNORECASE)
+_NEW_GRAD_TITLE = re.compile(
+    r"\b(?:new|recent|university|college)[- ]?grad(?:uate)?s?\b|\bearly[- ]careers?\b"
+    r"|\bentry[- ]level\b|\b(?:19|20)\d\d\s+start\b",
+    re.IGNORECASE,
+)
+
+
+def entry_tier(title: str, department: str = "", employment_type: str = "") -> Optional[str]:
+    """'strong' | 'weak' | None (not an entry-level listing), from the title,
+    the board's department and the source's commitment field."""
+    title = title or ""
+    if HARD_SENIOR.search(title) or PROGRAM_STAFF.search(title):
+        return None
+    if RECRUITING.search(title) and not STUDENT_JOB.search(title):
+        return None
+    strong_title = bool(STRONG_ENTRY.search(title)) or bool(
+        EMPLOYMENT_TYPE_ENTRY.search(employment_type or "")
+    )
+    if SOFT_SENIOR.search(title) and not strong_title:
+        return None
+    if strong_title or DEPT_ENTRY.search(department or ""):
+        return "strong"
+    if (WEAK_ENTRY.search(title) and not FRONTLINE.search(title)
+            and not _PART_TIME_COMMITMENT.search(employment_type or "")):
+        return "weak"
+    return None
+
+
+def experience_level_for(title: str, department: str = "", employment_type: str = "") -> str:
+    """'internship' | 'new_grad' for an entry-level listing. Word-bounded:
+    "Internal Audit Analyst", "International Payroll" and "Cooper, #559" are
+    not internships. Past an intern/co-op/student title, and unless the title
+    names a new-grad role, a work term in the title ("RF Validation Associate
+    (Winter 2027)"), a department naming internships or co-ops ("Payload
+    Internships") or the source's own commitment ("Intern") files it under
+    internships. ``employment_type`` is that commitment (ATSJob.
+    employment_type), never the one extracted from a description: "prior
+    internship experience" made SpaceX's "Financial Analyst" read as one."""
+    if INTERNSHIP_TITLE.search(title or ""):
+        return "internship"
+    if _NEW_GRAD_TITLE.search(title or ""):
+        return "new_grad"
+    if (_TERM_TITLE.search(title or "")
+            or _INTERNSHIP_DEPARTMENT.search(department or "")
+            or EMPLOYMENT_TYPE_ENTRY.search(employment_type or "")):
+        return "internship"
+    return "new_grad"
 
 
 # US/Canada location classification lives in na_location (whole words and
@@ -992,7 +1145,8 @@ class ATSScraper:
         None) and for reconciliation (a stored row whose listing says
         "level" or "location" is retired, RETIRABLE_REJECTIONS):
 
-        - "level": not entry level (_is_entry_level, title + department)
+        - "level": not entry level (_is_entry_level: entry_tier of the title,
+          department and commitment)
         - "location": positive evidence the posting is outside the US and
           Canada (na_location.region_of says FOREIGN, and the text does not
           count further unnamed locations: "PRAGUE DC (2 Locations)")
@@ -1015,18 +1169,10 @@ class ATSScraper:
         return None
 
     def _is_entry_level(self, job: ATSJob) -> bool:
-        """Check if a job is intern/new-grad/entry-level.
-
-        Matches entry-level keywords AND excludes senior-level titles.
-        """
-        text = f"{job.title} {job.department}".lower()
-        # Must match entry-level keywords
-        if not ENTRY_LEVEL_PATTERN.search(text):
-            return False
-        # Must NOT match senior keywords
-        if SENIOR_KEYWORDS.search(job.title):
-            return False
-        return True
+        """Intern/new-grad/entry-level: entry_tier() of the title, the
+        board's department (a named track only) and the source's commitment
+        field is strong or weak."""
+        return entry_tier(job.title, job.department or "", job.employment_type or "") is not None
 
     def _is_north_america(self, location: str) -> bool:
         """Check if location is in US or Canada (na_location decides)."""
