@@ -111,6 +111,32 @@ def test_backfill_fetches_description_and_repairs_row(client, db_session, monkey
     assert row.company_domain == "kinaxis.com"
 
 
+@pytest.mark.parametrize("stored, description, expected", [
+    # A list's no-sponsorship mark (U+1F6C2 / US flag): a description that
+    # says nothing about visas must not reset it to 'unknown'.
+    ("no", "A long and detailed description of the role " * 5, "no"),
+    ("yes", "We are unable to sponsor visas for this role. " * 5, "yes"),
+    # An unknown is still filled from the description.
+    ("unknown", "We are unable to sponsor visas for this role. " * 5, "no"),
+    (None, "Visa sponsorship is available for this role. " * 5, "yes"),
+], ids=["list-no-kept", "yes-kept", "unknown-filled", "null-filled"])
+def test_backfill_only_fills_an_unknown_visa_answer(client, db_session, monkeypatch,
+                                                    stored, description, expected):
+    row = _mk(db_session, "https://x.test/backfill-visa")
+    row.visa_sponsorship = stored
+    db_session.commit()
+
+    async def fake_extract(client_, url):
+        return description
+
+    monkeypatch.setattr("backend.routers.jobs.extract_description_from_url", fake_extract)
+    res = client.post("/jobs/cron-backfill", headers=_cron_headers(monkeypatch))
+    assert res.status_code == 200, res.text
+    db_session.refresh(row)
+    assert row.description
+    assert row.visa_sponsorship == expected
+
+
 def test_backfill_skips_rows_at_attempt_cap(client, db_session, monkeypatch):
     row = _mk(db_session, "https://x.test/backfill-2", attempts=3)
     called = {"n": 0}
