@@ -1445,7 +1445,8 @@
       "ats_platform": "workday",
       "board_slug": "bah",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=boozallen.com&sz=128",
-      "enabled": true,
+      "enabled": false,
+      "disabled_reason": "held for a product decision: most passes are mid-level or clearance Analyst titles",
       "workday_url_template": "https://bah.wd1.myworkdayjobs.com/wday/cxs/bah/BAH_Jobs"
     },
     {
@@ -1517,7 +1518,8 @@
       "ats_platform": "workday",
       "board_slug": "leidos",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=leidos.com&sz=128",
-      "enabled": true,
+      "enabled": false,
+      "disabled_reason": "held for a product decision: most passes are mid-level or clearance Analyst titles",
       "workday_url_template": "https://leidos.wd5.myworkdayjobs.com/wday/cxs/leidos/External"
     },
     {

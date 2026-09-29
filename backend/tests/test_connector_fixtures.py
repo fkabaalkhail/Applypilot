@@ -342,24 +342,27 @@ def test_multi_site_workday_tenants_never_use_the_bare_tenant_slug():
 
 # The 2026-09-29 rollout of the template-less Workday entries: slug → tenant.
 _WAVE_ONE_WORKDAY = {
-    "adobe": "adobe", "bah": "bah", "boeing": "boeing", "capitalone": "capitalone",
-    "leidos": "leidos", "lifeworks": "lifeworks", "pwc-us-entry": "pwc",
-    "rbc-early": "rbc", "workday": "workday",
+    "adobe": "adobe", "boeing": "boeing", "capitalone": "capitalone",
+    "lifeworks": "lifeworks", "pwc-us-entry": "pwc", "rbc-early": "rbc",
+    "workday": "workday",
 }
 
 
 def test_workday_rollout_crawls_wave_one_and_holds_the_rest():
     # TD, RBC's global site and both Morgan Stanley sites keep a verified
     # template but wait for a product call (their passes are mostly corporate
-    # "Associate"/"Analyst" titles); PwC's worldwide campus site waits for
-    # country-from-detail. Held means listed with a base, never crawled.
+    # "Associate"/"Analyst" titles), and so do Booz Allen and Leidos (mid-level
+    # or clearance analysts: "Billing Analyst, Mid", "Target Analyst Reporter
+    # - Level 2"); PwC's worldwide campus site waits for country-from-detail.
+    # Held means listed with a base, never crawled.
     crawled = {slug for platform, slug, _ in company_registry.load_companies()
                if platform == "workday"}
     bases = company_registry.load_workday_bases()
     for slug, tenant in _WAVE_ONE_WORKDAY.items():
         assert slug in crawled, slug
         assert bases[slug].startswith(f"https://{tenant}.wd"), (slug, bases[slug])
-    for slug in ("td", "rbc-global", "morganstanley", "morganstanley-private", "pwc-campus"):
+    for slug in ("td", "rbc-global", "morganstanley", "morganstanley-private", "pwc-campus",
+                 "bah", "leidos"):
         assert slug in bases and slug not in crawled, slug
 
 
