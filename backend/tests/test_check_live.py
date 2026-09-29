@@ -604,14 +604,15 @@ class TestFetchDetailsLiveness:
     def test_bounce_the_platform_calls_alive_keeps_row_and_original_url(
         self, client, db_session, monkeypatch, probes,
     ):
-        # SmartRecruiters careers links bounce to the company site even when
-        # the posting is open; its API is what decides.
+        # A posting page that bounces to the company site may still be open;
+        # the platform's API is what decides. (A legacy careers.smartrecruiters
+        # link is read at its posting page instead: test_legacy_smartrecruiters.)
         probes[1](LivenessResult("alive", "smartrecruiters_api_200", True))
         _stub_extractor(monkeypatch)
-        url = "https://careers.smartrecruiters.com/Bosch/744000012345678"
+        url = "https://jobs.smartrecruiters.com/Bosch/744000012345678"
         _serve(monkeypatch, lambda request: (
             httpx.Response(302, headers={"location": "https://www.bosch.com/careers/"})
-            if request.url.host == "careers.smartrecruiters.com"
+            if request.url.host == "jobs.smartrecruiters.com"
             else httpx.Response(200, text="<html><body>Careers at Bosch</body></html>")
         ))
         job = _job(db_session, url=url)
