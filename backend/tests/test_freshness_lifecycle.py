@@ -981,6 +981,33 @@ class TestGhostScoring:
         assert stats["rescored"] == 1
         assert row.ghost_risk_score >= 25  # age factor now applies
 
+    def test_rescore_rotates_through_every_aging_row(self, db_session):
+        """Ordered by first sighting, the rescore pass took the same oldest
+        batch every run: a row past it kept its first score for good."""
+        def aging(url, days_seen, scored_days_ago):
+            return _row(db_session, url=url,
+                        first_seen_at=NOW - datetime.timedelta(days=days_seen),
+                        ghost_risk_score=0,
+                        ghost_risk_factors={"evergreen": False, "scored_at": (
+                            NOW - datetime.timedelta(days=scored_days_ago)).isoformat()})
+
+        oldest = aging("https://boards.greenhouse.io/acme/jobs/a", 300, 1)
+        older = aging("https://boards.greenhouse.io/acme/jobs/b", 200, 1)
+        stuck = aging("https://boards.greenhouse.io/acme/jobs/c", 100, 60)
+
+        stats = score_ghost_risk(db_session, now=NOW, batch_size=2)
+
+        db_session.expire_all()
+        assert stats["rescored"] == 2
+        assert db_session.get(ScrapedJob, stuck.id).ghost_risk_score == 40
+        # The next run takes the row left out, and so on round.
+        later = NOW + datetime.timedelta(hours=4)
+        score_ghost_risk(db_session, now=later, batch_size=2)
+        db_session.expire_all()
+        scored = {row.id: row.ghost_risk_factors["scored_at"]
+                  for row in (db_session.get(ScrapedJob, r.id) for r in (oldest, older, stuck))}
+        assert all(at >= NOW.isoformat() for at in scored.values())
+
     def test_a_years_old_posting_scores_as_old(self, db_session):
         """Lever lists GoPuff postings from 2021 that we first saw in 2026:
         days open count from the source's date, not our sighting."""

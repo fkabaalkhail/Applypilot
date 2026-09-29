@@ -1084,6 +1084,9 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
 
     # Pass 2: aging rows whose age factor may have moved. Column-only. A
     # row first seen lately can be old by its source's plausible date.
+    # Least recently scored first: ordered by first sighting, the same
+    # oldest batch was rescored every run and the rest kept their first
+    # score for good (1,584 aging rows, 500 a run; Palantir's since July).
     aging_cutoff = now - datetime.timedelta(days=GHOST_DAYS_OPEN - 5)
     aging = (
         db.query(ScrapedJob.id, ScrapedJob.company, ScrapedJob.title_norm,
@@ -1095,7 +1098,8 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
                 or_(ScrapedJob.first_seen_at < aging_cutoff,
                     (ScrapedJob.posted_date > _POSTED_DATE_FLOOR)
                     & (ScrapedJob.posted_date < aging_cutoff)))
-        .order_by(ScrapedJob.first_seen_at.asc())
+        .order_by(nulls_first(ScrapedJob.ghost_risk_factors["scored_at"].as_string().asc()),
+                  ScrapedJob.id.asc())
         .limit(batch_size)
         .all()
     )
