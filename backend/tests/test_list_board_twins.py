@@ -68,6 +68,27 @@ class TestPostingIdentity:
                 "Risk-Analytics-Co-op_2618885")
         assert posting_identity(site) == posting_identity(board) == "workday:cibc:2618885"
 
+    @pytest.mark.parametrize("a, b", [
+        ("_2024-12", "_2024-13"),
+        ("_R2024-15", "_R2024-16"),
+        ("_R12-1", "_R12-2"),
+    ])
+    def test_short_or_year_requisition_keeps_its_dash_number(self, a, b):
+        # What is left of '_2024-12' without '-12' is a year, not a
+        # requisition: stripping it folded two postings into 'acme:2024'.
+        board = "https://acme.wd1.myworkdayjobs.com/External/job/Austin-TX/Software-Intern"
+        assert posting_identity(board + a) != posting_identity(board + b)
+        assert posting_identity(board + a) == "workday:acme:" + a[1:].lower()
+
+    @pytest.mark.parametrize("repost, requisition", [
+        ("_JR5108-1", "jr5108"), ("_R-5994-1", "r-5994"), ("_2618885-12", "2618885"),
+        ("_JR2026520254-1", "jr2026520254"), ("_R-0000187113-1", "r-0000187113"),
+    ])
+    def test_repost_suffix_still_goes_on_a_real_requisition(self, repost, requisition):
+        # Shapes from prod's suffixed Workday URLs (2026-09-29).
+        url = "https://acme.wd1.myworkdayjobs.com/External/job/Austin-TX/Software-Intern" + repost
+        assert posting_identity(url) == f"workday:acme:{requisition}"
+
     def test_same_requisition_at_another_tenant_is_another_posting(self):
         assert posting_identity("https://bmo.wd3.myworkdayjobs.com/External/job/X_R123") \
             != posting_identity("https://td.wd3.myworkdayjobs.com/External/job/X_R123")

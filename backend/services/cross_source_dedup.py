@@ -152,7 +152,23 @@ _GREENHOUSE_JOB_RE = re.compile(r"/jobs/(\d{5,})")
 # Workday posting paths end in '_<requisition>' plus an optional '-1'-style
 # repost suffix: '.../Firmware-Engineer-Intern_R123', '..._2618885-1'. An
 # apply step ('/apply', '/apply/applyManually') is the same posting.
-_WORKDAY_REQ_RE = re.compile(r"_([A-Za-z]{0,6}[-_]?\d[\w.]*?)(?:-\d{1,2})?$")
+_WORKDAY_REQ_RE = re.compile(r"_([A-Za-z]{0,6}[-_]?\d[\w.]*?)(-\d{1,2})?$")
+# What is left once a '-N' is stripped must still name a requisition: at
+# least four digits, and not just a year. '_2024-12' and '_2024-13' (or
+# '_R2024-15' and '_R2024-16') are two requisitions, not reposts of '2024'.
+# Every suffixed Workday URL in prod on 2026-09-29 keeps 4+ non-year digits
+# ('JR5108-1', 'R-5994-1', '2618885-1').
+_WORKDAY_YEAR_ONLY_RE = re.compile(r"[A-Za-z]{0,6}[-_]?(?:19|20)\d\d")
+_WORKDAY_MIN_REQ_DIGITS = 4
+
+
+def _workday_requisition(requisition: str, repost: str) -> str:
+    """The requisition a Workday path names: the '-N' repost suffix goes only
+    when what remains still identifies a requisition on its own."""
+    if repost and (sum(ch.isdigit() for ch in requisition) < _WORKDAY_MIN_REQ_DIGITS
+                   or _WORKDAY_YEAR_ONLY_RE.fullmatch(requisition)):
+        return requisition + repost
+    return requisition
 _WORKDAY_APPLY_TAIL_RE = re.compile(r"/apply(?:/[^/]*)?$", re.I)
 # myworkdaysite.com carries the tenant in the path, not the host:
 # 'wd3.myworkdaysite.com/en-US/recruiting/cibc/campus/job/...'.
@@ -192,7 +208,8 @@ def posting_identity(url: str) -> str:
             site = _WORKDAY_SITE_TENANT_RE.search(path)
             tenant = site.group(1).lower() if site else ""
         if match and tenant:
-            return f"workday:{tenant}:{match.group(1).lower()}"
+            requisition = _workday_requisition(match.group(1), match.group(2) or "")
+            return f"workday:{tenant}:{requisition.lower()}"
     if host in ("jobs.lever.co", "jobs.eu.lever.co", "jobs.ashbyhq.com"):
         match = _UUID_RE.search(path)
         if match:
