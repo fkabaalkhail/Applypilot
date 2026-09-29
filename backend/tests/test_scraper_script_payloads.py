@@ -235,6 +235,36 @@ def test_location_lookups_are_capped_per_run(jobspy, monkeypatch):
     assert (recovered, requested) == (2, ["0", "1"])
 
 
+def test_a_hanging_linkedin_cannot_stall_the_lookups(jobspy, monkeypatch):
+    """Each lookup is cut at LOOKUP_TIMEOUT_S and the phase stops at
+    LOOKUP_BUDGET_S, so the step always reaches push_batches."""
+    import time
+
+    monkeypatch.setattr(jobspy, "LOOKUP_DELAY_S", 0)
+    monkeypatch.setattr(jobspy, "LOOKUP_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(jobspy, "LOOKUP_BUDGET_S", 0.5)
+    jobs = [_row(site="linkedin", location="", job_url=f"https://www.linkedin.com/jobs/view/{i}")
+            for i in range(10)]
+    requested = []
+
+    async def hangs(request):
+        requested.append(request.url.path.rsplit("/", 1)[-1])
+        await jobspy.asyncio.sleep(5)
+        return httpx.Response(200, text=_posting("Canada"))
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(hangs)) as client:
+            started = time.monotonic()
+            recovered = await jobspy.recover_linkedin_locations(jobs, client)
+            return recovered, time.monotonic() - started
+
+    recovered, elapsed = jobspy.asyncio.run(run())
+
+    assert recovered == 0
+    assert elapsed < 1.5                  # not 10 lookups x 5 s
+    assert 2 <= len(requested) <= 4       # cut at 0.2 s each until 0.5 s is spent
+
+
 # ─── What ingest-batch does with the empty country ──────────────────────────
 
 @pytest.mark.parametrize("location, stored", [

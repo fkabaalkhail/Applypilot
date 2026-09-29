@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import time
 
 import httpx
 
@@ -45,6 +46,11 @@ INGEST_COUNTERS = ("created", "duplicates", "cross_source_twins_skipped", "skipp
 # both Canadian) are looked up one at a time, at most this many per run.
 MAX_LOCATION_LOOKUPS = 25
 LOOKUP_DELAY_S = 1.0
+# The whole lookup phase stops at LOOKUP_BUDGET_S, each lookup at
+# LOOKUP_TIMEOUT_S: a hanging LinkedIn must never keep the step (capped at 6
+# minutes in scrape-jobs.yml) from reaching push_batches.
+LOOKUP_BUDGET_S = 60.0
+LOOKUP_TIMEOUT_S = 8.0
 LINKEDIN_POSTING = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{}"
 BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -185,6 +191,7 @@ async def recover_linkedin_locations(jobs: list[dict], client: httpx.AsyncClient
     whose page fails or shows no location keeps "", and to_payload then sends
     no country for it. Returns how many rows got their location back."""
     recovered = 0
+    deadline = time.monotonic() + LOOKUP_BUDGET_S
     blank = [job for job in jobs if _blank_linkedin_location(job)]
     for i, job in enumerate(blank[:MAX_LOCATION_LOOKUPS]):
         match = _LINKEDIN_JOB_ID.search(_text(job.get("job_url")))
@@ -192,9 +199,15 @@ async def recover_linkedin_locations(jobs: list[dict], client: httpx.AsyncClient
             continue
         if i:
             await asyncio.sleep(LOOKUP_DELAY_S)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            resp = await client.get(LINKEDIN_POSTING.format(match.group(1)))
-        except httpx.HTTPError:
+            resp = await asyncio.wait_for(
+                client.get(LINKEDIN_POSTING.format(match.group(1))),
+                timeout=min(LOOKUP_TIMEOUT_S, remaining),
+            )
+        except (httpx.HTTPError, asyncio.TimeoutError):
             continue
         found = _POSTING_LOCATION.search(resp.text) if resp.status_code == 200 else None
         location = re.sub(r"\s+", " ", html.unescape(found.group(1))).strip() if found else ""
