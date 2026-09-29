@@ -414,6 +414,28 @@ def test_a_bare_us_namesake_city_never_flips_a_country(city):
     assert job_country(f"{city}; Toronto", current="US") == "CA"
 
 
+@pytest.mark.parametrize("location", ["Remote", "Remote - Worldwide", "Remote - North America",
+                                      "NA - Remote", "Remote - NA, APAC, EMEA"])
+def test_remote_or_north_america_never_flips_a_country(location):
+    """Oscar's and Stripe's "Remote" (live 2026-09-29), "Remote - North
+    America", "NA - Remote": North American (the filter keeps them) but in
+    no particular country, so a stored or client-sent Canada stands."""
+    assert region_of(location) == "US"
+    assert job_country(location, current="CA") == "CA"
+    assert job_country(location, fallback="CA") == "CA"   # a client's value
+    assert job_country(location, current="US") == "US"
+    assert job_country(location) == "US"                  # a new crawled row's default
+    assert job_country(location, "CA") == "CA"            # the registry's country
+    assert job_country(location, hint="Toronto", current="US") == "CA"
+
+
+def test_a_country_or_city_beside_north_america_still_decides():
+    assert job_country("Remote - US", current="CA") == "US"
+    assert job_country("Remote (Canada)", current="US") == "CA"
+    assert job_country("North America - Toronto", current="US") == "CA"
+    assert job_country("North America - Seattle", current="CA") == "US"
+
+
 def test_a_bare_london_never_flips_a_country():
     """London, Ontario or London, UK: a bare "London" reads foreign, which
     places the row in no North American country, so the stored or client

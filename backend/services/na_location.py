@@ -27,6 +27,10 @@ Evidence is ranked, strongest first:
 4. A known foreign city name ("London", "Paris").
 5. "Remote" with nothing else: North America.
 
+"North America" ("Remote - North America", "NA - Remote") and a bare
+"Remote" place a posting in North America but in neither country, so they
+never decide the ``country`` column (job_country).
+
 A listing with strong NA evidence (1-2) stays even beside a foreign country:
 "New York, NY; London, UK" is open in New York. A foreign country or region
 beats a bare NA city ("Waterloo, London, England", "San Jose, Costa Rica",
@@ -48,6 +52,8 @@ from typing import NamedTuple, Optional
 
 US = "US"
 CA = "CA"
+# The continent, in neither country: a marker _segment_markers yields.
+_NORTH_AMERICA = "NA"
 
 US_STATE_CODES = {
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -356,10 +362,12 @@ _FOREIGN_NAME_RE = re.compile(
     + "|".join(sorted((re.escape(w) for w in FOREIGN_NAMES), key=len, reverse=True))
     + r")(?![a-z0-9])"
 )
-# "USA1" (a pay zone) is still the US; "NAMER"/"NORAM" = North America.
+# "USA1" (a pay zone) is still the US.
 _US_NAME_RE = re.compile(
-    r"(?<![a-z0-9])(?:united states|u\.s\.a\.?|u\.s\.|usa\d?|north america|namer|noram)(?![a-z0-9])"
+    r"(?<![a-z0-9])(?:united states|u\.s\.a\.?|u\.s\.|usa\d?)(?![a-z0-9])"
 )
+# "NAMER"/"NORAM" = North America.
+_NORTH_AMERICA_RE = re.compile(r"(?<![a-z0-9])(?:north america|namer|noram)(?![a-z0-9])")
 _CA_NAME_RE = re.compile(r"(?<![a-z0-9])canada(?![a-z0-9])")
 # Tbilisi/Batumi name Georgia the country, not the state.
 _GEORGIA_COUNTRY_RE = re.compile(r"(?<![a-z])(?:tbilisi|batumi|kutaisi)(?![a-z])")
@@ -482,10 +490,10 @@ def _code_in_position(text: str, start: int, end: int) -> bool:
 
 def _segment_markers(segment: str, folded_segment: str):
     """Yield (strength, country) for one segment: strength > 0 is NA evidence
-    (3 a stated country, 2 a state/province), -3 a foreign country/region,
-    -1 a code that may or may not be foreign: a 2-letter foreign code away
-    from where country codes sit ("13th Ave SE"), a "DE" beside neither a
-    Delaware nor a German place."""
+    (3 a stated country or "North America", 2 a state/province), -3 a
+    foreign country/region, -1 a code that may or may not be foreign: a
+    2-letter foreign code away from where country codes sit ("13th Ave SE"),
+    a "DE" beside neither a Delaware nor a German place."""
     foreign_prefixed = _foreign_prefixed(segment)
     for m in _CODE.finditer(segment):
         code = m.group(1)
@@ -498,7 +506,7 @@ def _segment_markers(segment: str, folded_segment: str):
         if not _code_in_position(segment, m.start(), m.end()):
             continue
         if code == "NA":
-            yield 3, US  # "Remote - NA, APAC, EMEA": North America
+            yield 3, _NORTH_AMERICA  # "Remote - NA, APAC, EMEA"
         elif code in FOREIGN_CODES:
             strong = len(code) > 2 or _strong_foreign_position(segment, m.start(), m.end())
             yield (-3, None) if strong else (-1, None)
@@ -533,6 +541,8 @@ def _segment_markers(segment: str, folded_segment: str):
                 yield 2, US
     for _ in _US_NAME_RE.finditer(folded_segment):
         yield 3, US
+    for _ in _NORTH_AMERICA_RE.finditer(folded_segment):
+        yield 3, _NORTH_AMERICA
     for _ in _CA_NAME_RE.finditer(folded_segment):
         yield 3, CA
     for _ in _FOREIGN_NAME_RE.finditer(folded_segment):
@@ -564,14 +574,16 @@ class _Reading(NamedTuple):
     named: frozenset        # NA countries a stated country/state/province names
     ambiguous: bool         # the only NA evidence is a bare "CA" code
     namesake: bool = False  # ...or a bare city both countries have ("Richmond")
+    countryless: bool = False  # ...or "North America" or a bare "Remote"
 
 
 def _read(location: str) -> _Reading:
     """region_of's answer, plus what job_country needs to leave a stored
     value alone: the North American countries the text names by a stated
     country, a state or a province, and whether the verdict rests only on a
-    bare "CA" that could be California or ISO Canada ("Remote, CA") or on a
-    bare city both countries have ("Waterloo"). One pass over the text."""
+    bare "CA" that could be California or ISO Canada ("Remote, CA"), on a
+    bare city both countries have ("Waterloo"), or on no country at all
+    ("Remote - North America", "Remote"). One pass over the text."""
     if not location or not location.strip():
         return _Reading(None, frozenset(), False)
     if "🇺🇸" in location:
@@ -596,6 +608,7 @@ def _read(location: str) -> _Reading:
 
     na: set[str] = set()
     strong: set[str] = set()
+    in_a_country = False  # NA evidence past "North America" itself
     maybe_foreign = False
     open_world = False
     for segment in _SEGMENT_SPLIT.split(text):
@@ -603,6 +616,8 @@ def _read(location: str) -> _Reading:
         open_world = open_world or _names_the_world(folded_segment)
         for strength, country in _segment_markers(segment, folded_segment):
             if strength > 0:
+                in_a_country = in_a_country or country != _NORTH_AMERICA
+                country = US if country == _NORTH_AMERICA else country
                 na.add(country)
                 if strength > 1:
                     strong.add(country)
@@ -611,6 +626,16 @@ def _read(location: str) -> _Reading:
             else:
                 maybe_foreign = True
     named = frozenset(na)
+    cities = [(m.start(), CA, m.group(0)) for m in _CA_CITY_RE.finditer(folded)]
+    cities += [(m.start(), US, m.group(0)) for m in _US_CITY_RE.finditer(folded)]
+    plain = [city for city in cities if city[2] not in _US_NAMESAKE_CA_CITIES]
+    if na and not in_a_country:
+        # "Remote - North America", "NA - Remote": North American (US, as
+        # region_of has always read it) but in no country, unless a city
+        # names one ("North America - Toronto").
+        if plain:
+            return _Reading(min(plain)[1], named, False)
+        return _Reading(US, named, False, countryless=True)
     if na:
         # "Irvine, CA" is California by its city; "Remote, CA" says nothing.
         ambiguous = not strong and not _US_CITY_RE.search(folded)
@@ -619,20 +644,17 @@ def _read(location: str) -> _Reading:
     if foreign or _SAN_JOSE_CR_RE.search(location):
         return _Reading(None if open_world else FOREIGN, named, False)
 
-    cities = [(m.start(), CA, m.group(0)) for m in _CA_CITY_RE.finditer(folded)]
-    cities += [(m.start(), US, m.group(0)) for m in _US_CITY_RE.finditer(folded)]
     if cities:
         if maybe_foreign:
             # "Calgary - 13th Ave SE", "Victoria (AU)": unknown, never foreign.
             return _Reading(None, named, False)
-        plain = [city for city in cities if city[2] not in _US_NAMESAKE_CA_CITIES]
         return _Reading(min(plain or cities)[1], named, False, namesake=not plain)
     if _FOREIGN_CITY_RE.search(folded):
         return _Reading(None if open_world else FOREIGN, named, False)
     if maybe_foreign:
         return _Reading(None, named, False)  # "Remote - PT", "Remote (NO)"
     if _REMOTE.search(folded):
-        return _Reading(US, named, False)
+        return _Reading(US, named, False, countryless=True)
     return _Reading(None, named, False)
 
 
@@ -700,14 +722,16 @@ def job_country(location: str, board_country: str = "", *, hint: str = "",
     So does one whose only evidence is a bare "CA": "Remote, CA" is
     California on a US board and Canada in JobSpy's Indeed rows, so a stored
     (or client-sent) value is not overruled on it; a new row gets "US". A
-    bare city both countries have ("Richmond", "Waterloo") places the row in
-    neither: the hint, then a ``current`` value, then ``fallback`` decides.
+    bare city both countries have ("Richmond", "Waterloo"), "North America"
+    ("Remote - North America", "NA - Remote") and a bare "Remote" place the
+    row in neither: the hint, then a ``current`` value, then ``fallback``
+    decides.
     """
     if board_country:
         return board_country
     reading = _read(location)
     if reading.verdict in (US, CA):
-        if reading.namesake:
+        if reading.namesake or reading.countryless:
             return hint_region(hint) or (current if current in (US, CA) else fallback)
         if current in (US, CA) and (reading.ambiguous or reading.named >= {US, CA}):
             return current
