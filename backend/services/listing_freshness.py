@@ -73,7 +73,8 @@ LISTING_EXPIRED = "expired"
 # before the NA filter knew better, a "Vice President" row from before the
 # entry-level filter. Set only from a listing's verdict (a board crawl, or the
 # orphan sweep for rows no crawl reaches), and a crawl brings it back to
-# active the moment the listing passes again. Never a death verdict. A
+# active the moment the listing passes again. Never a death verdict: a
+# complete crawl that stops listing it marks it removed, like any row. A
 # LinkedIn/Indeed row with a plainly senior title goes off_target too
 # (retire_senior_aggregator_rows) and stays there: no crawl lists it.
 LISTING_OFF_TARGET = "off_target"
@@ -231,8 +232,11 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
       was confirmed whatever its listing said, so a row stored under older
       filters (London, UK; a "Vice President" title) stayed visible for as
       long as its board listed it.
-    - rows whose URL vanished: ``removed``, effective immediately
-      (``off_target`` rows stay as they are, hidden either way)
+    - rows whose URL vanished: ``removed``, effective immediately. An
+      ``off_target`` row too: hidden either way, but only a closed status
+      tells a saved job, an application or a deep link that the posting is
+      gone. If it is relisted and still fails, listed_status_change sends it
+      back to off_target.
 
     Only call with a COMPLETE snapshot, a partial crawl's absence is not
     evidence of removal. Commits. Returns counts.
@@ -265,7 +269,7 @@ def reconcile_board(db: Session, board_key: str, live_urls: set[str],
                 revive_ids.append(row_id)
             elif change == LISTING_OFF_TARGET:
                 off_target_ids.append(row_id)
-        elif listing_status in (LISTING_ACTIVE, LISTING_STALE):
+        elif listing_status in (LISTING_ACTIVE, LISTING_STALE, LISTING_OFF_TARGET):
             gone_ids.append(row_id)
 
     # A complete-but-empty response on a board that had many live rows is more

@@ -241,13 +241,31 @@ class TestReconcileRetire:
         assert _status(db_session, github) == LISTING_ACTIVE  # the old rule
         assert _status(db_session, linkedin) == LISTING_ACTIVE
 
-    def test_vanished_off_target_row_is_left_alone(self, db_session):
+    def test_vanished_off_target_row_is_removed(self, db_session):
+        """Hidden either way, but only a closed status tells a saved job, an
+        application or a deep link that the posting is gone."""
         off = _row(db_session, "https://a/1", listing_status=LISTING_OFF_TARGET)
         other = _row(db_session, "https://a/2", location="Austin, TX")
 
         stats = reconcile_board(db_session, BOARD, {other.url}, now=NOW, rejected={})
 
-        assert stats["removed"] == 0
+        assert stats["removed"] == 1
+        assert _status(db_session, off) == LISTING_REMOVED
+        assert LISTING_REMOVED in CLOSED_LISTING_STATUSES
+
+        # Relisted and still failing: back to off_target, not the feed.
+        reconcile_board(db_session, BOARD, {off.url, other.url}, now=NOW,
+                        rejected={off.url: "location"})
+        assert _status(db_session, off) == LISTING_OFF_TARGET
+
+    def test_partial_snapshot_never_removes_off_target(self, db_session):
+        from backend.routers.github_sources import _confirm_listed
+
+        off = _row(db_session, "https://a/1", listing_status=LISTING_OFF_TARGET)
+        other = _row(db_session, "https://a/2", location="Austin, TX")
+
+        _confirm_listed(db_session, BOARD, {other.url}, now=NOW, rejected={})
+
         assert _status(db_session, off) == LISTING_OFF_TARGET
 
     def test_workday_apply_url_matches_its_rejection(self, db_session):
