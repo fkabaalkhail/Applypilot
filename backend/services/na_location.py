@@ -20,7 +20,9 @@ Evidence is ranked, strongest first:
    closing a segment: "Mobile AL"). "Dublin OR London" is not Oregon. A code
    that is also a foreign ISO/region code yields to a city of that place:
    "Bangalore, IN" (India), "Amsterdam, NH" (Noord-Holland), "Meerane, DE"
-   (Germany: DE is Delaware only next to a Delaware place).
+   (Germany; DE beside neither a German nor a Delaware place says nothing).
+   A segment that opens with a foreign country ("QAT - Al Udeid AB, Qatar")
+   has no state or province codes.
 3. A known North American city name ("Toronto", "San Francisco"), whole words.
 4. A known foreign city name ("London", "Paris").
 5. "Remote" with nothing else: North America.
@@ -33,7 +35,9 @@ beats a bare NA city ("Waterloo, London, England", "San Jose, Costa Rica",
 FOREIGN is a retire verdict (a board crawl hides a stored row on it), so it
 needs positive evidence and yields to anything that could still mean North
 America: a posting also open "Americas", "Global" or "Worldwide" is unknown,
-never foreign.
+never foreign. So is a 2-letter foreign code outside the places a country
+code sits ("Calgary - 13th Ave SE", "Remote - PT"), unless a foreign city
+backs it.
 """
 
 from __future__ import annotations
@@ -99,6 +103,13 @@ CA_CITIES = (
     "saskatoon", "regina", "fredericton", "moncton", "kelowna",
     "windsor", "laval", "longueuil", "sherbrooke", "barrie",
 )
+# Canadian cities that are also common US ones (Richmond VA, Burlington VT,
+# Hamilton OH, Windsor CT, Victoria TX, Waterloo IA). Named alone they still
+# place a posting in North America, but not in a country: job_country leaves
+# a stored or client-sent country alone on them.
+_US_NAMESAKE_CA_CITIES = frozenset({
+    "richmond", "burlington", "hamilton", "windsor", "victoria", "waterloo",
+})
 # Canadian cities that make an ISO "CA" suffix mean Canada ("Toronto, CA").
 # Not Richmond/Windsor/Hamilton/Burlington/Victoria: also California towns.
 _ISO_CA_CITIES = (
@@ -172,8 +183,8 @@ _FOREIGN_CODE_PLACES = {
            "noida", "kolkata", "ahmedabad", "jaipur", "chandigarh", "kochi",
            "coimbatore", "trivandrum", "thiruvananthapuram", "mysore",
            "mysuru", "vadodara", "nagpur", "indore", "maharashtra",
-           "karnataka", "telangana", "tamil nadu", "kerala", "gujarat",
-           "haryana", "uttar pradesh", "sriperumbudur", "hosur", "chakan",
+           "karnataka", "telangana", "telengana", "tamil nadu", "kerala",
+           "gujarat", "haryana", "uttar pradesh", "sriperumbudur", "hosur", "chakan",
            "manesar", "aurangabad", "nashik", "visakhapatnam", "bhubaneswar",
            "lucknow", "goa", "mangalore", "surat"),
     "IL": ("israel", "tel aviv", "tel-aviv", "herzliya", "haifa", "jerusalem",
@@ -227,9 +238,10 @@ _FOREIGN_CODE_PLACES = {
     "GA": ("vigo", "a coruna", "santiago de compostela"),
     "BC": ("tijuana", "mexicali", "ensenada", "baja california"),
 }
-# "DE" is Germany unless its segment names a Delaware place: boards post from
-# Germany far more than from Delaware, and Magna/Pinterest write
-# "Meerane, DE", "Hamburg, DE".
+# "DE" is Delaware beside a Delaware place and Germany beside a German one
+# (Magna and Pinterest write "Meerane, DE", "Hamburg, DE"). Beside neither
+# ("Remote, DE", "Lincoln, DE") the location is unknown: not Germany, which
+# would retire the row, and not a North American place either.
 _DELAWARE_PLACES = (
     "delaware", "wilmington", "newark", "dover", "middletown", "new castle",
     "lewes", "georgetown", "smyrna", "milford", "seaford", "claymont",
@@ -238,6 +250,23 @@ _DELAWARE_PLACES = (
     "delaware city", "newport", "townsend", "frederica", "felton",
     "ocean view", "bethany beach", "dagsboro", "delmar", "bridgeville",
     "milton", "cheswold", "magnolia", "glasgow", "pike creek", "talleyville",
+)
+# Every German place the boards wrote beside "DE"/"de" in the 2026-09 crawls
+# and prod (Magna's and Bosch's plants, Pinterest, Snowflake), plus the big
+# cities.
+_GERMAN_PLACES = (
+    "germany", "deutschland", "berlin", "munich", "muenchen", "munchen",
+    "hamburg", "frankfurt", "cologne", "koeln", "koln", "stuttgart",
+    "dusseldorf", "duesseldorf", "leipzig", "dresden", "hannover", "nuremberg",
+    "nuernberg", "nurnberg", "bremen", "essen", "dortmund", "bonn", "mannheim",
+    "karlsruhe", "wiesbaden", "mainz", "heidelberg", "ingolstadt", "wolfsburg",
+    "regensburg", "augsburg", "wuppertal", "salzgitter", "assamstadt",
+    "elsendorf", "heilbad heiligenstadt", "hoesbach", "kerpen", "markt schwaben",
+    "meerane", "neuenstadt am kocher", "neuenstein", "sailauf", "schleiz",
+    "schwaebisch gmuend", "schwabisch gmund", "soest", "untergruppenbach",
+    "veitsbronn", "waldshut-tiengen", "troisdorf", "lohr am main", "homburg",
+    "gunzenhausen", "grossmehring", "großmehring", "gerlingen", "feuerbach",
+    "eschenburg", "chemnitz", "bochum",
 )
 
 # ISO country codes (2 and 3 letters) that are not a US state / CA province.
@@ -253,7 +282,10 @@ FOREIGN_CODES = {
     "AUT", "POL", "CZE", "HUN", "ROU", "SWE", "NOR", "DNK", "FIN", "ISR",
     "ARE", "IND", "CHN", "HKG", "TWN", "JPN", "KOR", "SGP", "MYS", "IDN",
     "PHL", "VNM", "THA", "AUS", "NZL", "MEX", "BRA", "ARG", "CHL", "COL",
-    "PER", "CRI", "ZAF", "EMEA", "APAC", "LATAM",
+    "PER", "CRI", "ZAF", "KWT", "QAT", "SAU", "UKR", "TUR", "BHR", "OMN",
+    "EGY", "GRC", "BGR", "HRV", "SRB", "SVK", "SVN", "LTU", "LVA", "CYP",
+    "PAK", "BGD", "LKA", "NGA", "KAZ", "URY", "GTM",
+    "EMEA", "APAC", "LATAM",
 }
 _US_CODES = {"US", "USA"}
 _CA_CODES = {"CAN"}
@@ -316,6 +348,7 @@ _CA_CITY_RE = _words_regex(CA_CITIES)
 _ISO_CA_CITY_RE = _words_regex(_ISO_CA_CITIES)
 _FOREIGN_CITY_RE = _words_regex(FOREIGN_CITIES)
 _DELAWARE_RE = _words_regex(_DELAWARE_PLACES)
+_GERMAN_RE = _words_regex(_GERMAN_PLACES)
 _FOREIGN_CODE_PLACE_RES = {code: _words_regex(names) for code, names in _FOREIGN_CODE_PLACES.items()}
 # "New Mexico"/"New England"/"New South Wales" are not Mexico/England/Wales.
 _FOREIGN_NAME_RE = re.compile(
@@ -334,10 +367,17 @@ _GEORGIA_COUNTRY_RE = re.compile(r"(?<![a-z])(?:tbilisi|batumi|kutaisi)(?![a-z])
 # boards); San Jose, California is written without it.
 _SAN_JOSE_CR_RE = re.compile("san josé", re.IGNORECASE)
 # SmartRecruiters: "city, region, country" or "city, country" with the country
-# a lowercase ISO code ("Bangalore, in", "Madrid, MD, es"). Every such string
+# a lowercase ISO code ("Madrid, MD, es", "Budapest, hu"). Every such string
 # in the 2026-09 crawl (2,788 listings) came from SmartRecruiters, and the
 # posting's own country field agreed with the code on all 2,786 that had one.
-_SR_TRAILING_ISO = re.compile(r",\s*([a-z]{2})\s*$")
+# Any source can write a state in lowercase, though, so a two-part "city, cc"
+# whose cc is also a state or province code is no country by itself: "Boston,
+# ma" is not Morocco. It is foreign only beside a place of that country
+# ("coimbatore, in", "Casablanca, ma"), and never North American either:
+# SmartRecruiters' "telengana, in" is not Indiana.
+_SR_COUNTRY = re.compile(r"[a-z]{2}")
+_NA_CODES_LOWER = frozenset(code.lower() for code in US_STATE_CODES | CA_PROVINCE_CODES)
+_TRAILING_LOWER_CODE = re.compile(r",\s*([a-z]{2})\s*$")
 _REMOTE = re.compile(r"\bremote\b|\bteletravail\b")
 
 # Lowercase "or"/"and" separate alternatives; uppercase "OR" only before a
@@ -347,6 +387,59 @@ _CODE = re.compile(r"(?<![A-Za-z0-9])([A-Z]{2,4})(?![A-Za-z0-9])")
 _COUNTRY_PREFIX = re.compile(r"(?:^|[\s,(-])(?:US|USA|CA|CAN)\s*-?\s*$")
 _SEPARATORS_BEFORE = ",(;/|:&"
 _SEPARATORS_AFTER = ",);/|:&-("
+# A segment that opens with a foreign country ("QAT - Al Udeid AB, Qatar",
+# "IT - Milano, MI", "Germany - Holzdorf AB"): its own country is stated, so a
+# state/province-like code further on is something else (an Air Base, an
+# Italian province).
+_PREFIX = re.compile(r"\s*([A-Za-z][A-Za-z .]*?)\s*(?:-|:)")
+# Parsons' location bullets put the country first ("CA - ON, Oakville", "US -
+# CA, Pasadena"), so its Canadian remote roles read "CA - Remote (Any
+# Location)". California's remote roles are "Remote - CA" or "US - CA".
+_CA_REMOTE_BULLET = re.compile(r"\s*CA\s+-\s+Remote\b(?:\s*\([^)]*\))?\s*")
+
+
+def _sr_country(text: str) -> str:
+    """SmartRecruiters' trailing lowercase ISO country ("es" in "Madrid, MD,
+    es"), or "" when the text is not that shape."""
+    if text.isupper():
+        return ""
+    parts = text.split(",")
+    code = parts[-1].strip()
+    if len(parts) < 2 or not _SR_COUNTRY.fullmatch(code) or code not in _ISO_ALPHA2:
+        return ""
+    if len(parts) >= 3 or code not in _NA_CODES_LOWER:
+        return code
+    return ""
+
+
+def _lowercase_state_is_foreign(head: str, code: str) -> bool:
+    """For "city, cc" with cc a lowercase state/province code: the country of
+    that ISO code, when the city is one of its places ("coimbatore, in")."""
+    places = _GERMAN_RE if code == "de" else _FOREIGN_CODE_PLACE_RES.get(code.upper())
+    return places is not None and bool(places.search(head.lower()))
+
+
+def _foreign_prefixed(segment: str) -> bool:
+    prefix = _PREFIX.match(segment)
+    if not prefix:
+        return False
+    word = prefix.group(1).strip()
+    return word in FOREIGN_CODES or bool(_FOREIGN_NAME_RE.fullmatch(word.lower()))
+
+
+def _strong_foreign_position(text: str, start: int, end: int) -> bool:
+    """A 2-letter foreign code (read where codes sit) is a country only after a
+    comma, closing its segment ("Dublin, IE", "Milano, IT (Hybrid)"), or as
+    the segment's prefix ("GB-London", "IE: Cork", "UK - Remote"). Elsewhere
+    it may be a street quadrant ("13th Ave SE"), a department ("Bank St
+    (IT)") or part-time ("Remote - PT"), so it never retires a row alone."""
+    b = text[:start].rstrip()
+    a = text[end:].lstrip()
+    if b.endswith(","):
+        return not a or a[0] in ",;)(|/&-" or a[0].isdigit()
+    if not b:
+        return bool(a) and (a[0] in "-:" or text[end:].startswith("  "))
+    return False
 
 
 def _code_in_position(text: str, start: int, end: int) -> bool:
@@ -389,7 +482,11 @@ def _code_in_position(text: str, start: int, end: int) -> bool:
 
 def _segment_markers(segment: str, folded_segment: str):
     """Yield (strength, country) for one segment: strength > 0 is NA evidence
-    (3 a stated country, 2 a state/province), < 0 a foreign country/region."""
+    (3 a stated country, 2 a state/province), -3 a foreign country/region,
+    -1 a code that may or may not be foreign: a 2-letter foreign code away
+    from where country codes sit ("13th Ave SE"), a "DE" beside neither a
+    Delaware nor a German place."""
+    foreign_prefixed = _foreign_prefixed(segment)
     for m in _CODE.finditer(segment):
         code = m.group(1)
         if code in _US_CODES:
@@ -403,16 +500,24 @@ def _segment_markers(segment: str, folded_segment: str):
         if code == "NA":
             yield 3, US  # "Remote - NA, APAC, EMEA": North America
         elif code in FOREIGN_CODES:
-            yield -3, None
+            strong = len(code) > 2 or _strong_foreign_position(segment, m.start(), m.end())
+            yield (-3, None) if strong else (-1, None)
         elif len(code) == 2 and (code in US_STATE_CODES or code in CA_PROVINCE_CODES):
+            if foreign_prefixed:
+                continue  # "QAT - Al Udeid AB, Qatar": an Air Base, not Alberta
             if code == "DE":
-                yield (2, US) if _DELAWARE_RE.search(folded_segment) else (-3, None)
+                if _DELAWARE_RE.search(folded_segment):
+                    yield 2, US
+                else:
+                    yield (-3, None) if _GERMAN_RE.search(folded_segment) else (-1, None)
                 continue
             places = _FOREIGN_CODE_PLACE_RES.get(code)
             if places is not None and places.search(folded_segment):
                 yield -3, None
             elif code in CA_PROVINCE_CODES:
                 yield 2, CA
+            elif code == "CA" and _CA_REMOTE_BULLET.fullmatch(segment):
+                yield 2, CA  # Parsons: "CA - Remote (Any Location)"
             elif code == "CA" and (
                 any(not _names_us_city(segment, folded_segment, p)
                     for p in _CA_PROVINCE_NAME_RE.finditer(folded_segment))
@@ -458,14 +563,15 @@ class _Reading(NamedTuple):
     verdict: Optional[str]  # region_of's answer
     named: frozenset        # NA countries a stated country/state/province names
     ambiguous: bool         # the only NA evidence is a bare "CA" code
+    namesake: bool = False  # ...or a bare city both countries have ("Richmond")
 
 
 def _read(location: str) -> _Reading:
     """region_of's answer, plus what job_country needs to leave a stored
     value alone: the North American countries the text names by a stated
     country, a state or a province, and whether the verdict rests only on a
-    bare "CA" that could be California or ISO Canada ("Remote, CA"). One pass
-    over the text."""
+    bare "CA" that could be California or ISO Canada ("Remote, CA") or on a
+    bare city both countries have ("Waterloo"). One pass over the text."""
     if not location or not location.strip():
         return _Reading(None, frozenset(), False)
     if "🇺🇸" in location:
@@ -473,19 +579,24 @@ def _read(location: str) -> _Reading:
     if "🇨🇦" in location:
         return _Reading(CA, frozenset({CA}), False)
     text = _fold(location).strip()
-    folded = text.lower()
 
     # A structured trailing country (SmartRecruiters) is authoritative.
-    sr = _SR_TRAILING_ISO.search(text)
-    if sr and not text.isupper() and sr.group(1) in _ISO_ALPHA2:
-        code = sr.group(1)
+    code = _sr_country(text)
+    if code:
         if code in ("us", "ca"):
             return _Reading(code.upper(), frozenset({code.upper()}), False)
         return _Reading(None if code in _ISO_US_TERRITORIES else FOREIGN, frozenset(), False)
+    foreign = False
+    lowercase_state = _TRAILING_LOWER_CODE.search(text)
+    if lowercase_state and lowercase_state.group(1) in _NA_CODES_LOWER:
+        foreign = _lowercase_state_is_foreign(text[:lowercase_state.start()],
+                                              lowercase_state.group(1))
+        text = text[:lowercase_state.start()]
+    folded = text.lower()
 
     na: set[str] = set()
     strong: set[str] = set()
-    foreign = False
+    maybe_foreign = False
     open_world = False
     for segment in _SEGMENT_SPLIT.split(text):
         folded_segment = segment.lower()
@@ -495,8 +606,10 @@ def _read(location: str) -> _Reading:
                 na.add(country)
                 if strength > 1:
                     strong.add(country)
-            else:
+            elif strength < -1:
                 foreign = True
+            else:
+                maybe_foreign = True
     named = frozenset(na)
     if na:
         # "Irvine, CA" is California by its city; "Remote, CA" says nothing.
@@ -506,12 +619,18 @@ def _read(location: str) -> _Reading:
     if foreign or _SAN_JOSE_CR_RE.search(location):
         return _Reading(None if open_world else FOREIGN, named, False)
 
-    cities = [(m.start(), CA) for m in _CA_CITY_RE.finditer(folded)]
-    cities += [(m.start(), US) for m in _US_CITY_RE.finditer(folded)]
+    cities = [(m.start(), CA, m.group(0)) for m in _CA_CITY_RE.finditer(folded)]
+    cities += [(m.start(), US, m.group(0)) for m in _US_CITY_RE.finditer(folded)]
     if cities:
-        return _Reading(min(cities)[1], named, False)
+        if maybe_foreign:
+            # "Calgary - 13th Ave SE", "Victoria (AU)": unknown, never foreign.
+            return _Reading(None, named, False)
+        plain = [city for city in cities if city[2] not in _US_NAMESAKE_CA_CITIES]
+        return _Reading(min(plain or cities)[1], named, False, namesake=not plain)
     if _FOREIGN_CITY_RE.search(folded):
         return _Reading(None if open_world else FOREIGN, named, False)
+    if maybe_foreign:
+        return _Reading(None, named, False)  # "Remote - PT", "Remote (NO)"
     if _REMOTE.search(folded):
         return _Reading(US, named, False)
     return _Reading(None, named, False)
@@ -543,9 +662,18 @@ def hint_region(hint: str) -> Optional[str]:
     """"US"/"CA" for a Workday URL slug ("Toronto-ON", "IL-Rosemont",
     "USA---Hill-AFB-UT", "San-Jose"), else None. Read as written first (a
     dash marks where a code sits) and then with dashes as spaces (city names).
+    A slug that names a foreign place, read either way, or ends in a foreign
+    country code vouches for nothing: "United-Kingdom---Remote" is not
+    "Remote", "PRAGUE-DC" is not Washington and "San-Pedro-Garza-Garcia-NL-MX"
+    is not Newfoundland.
     Never FOREIGN: a slug names one location of several, so it can only ever
     vouch for a posting, not retire one."""
-    for text in (hint or "", (hint or "").replace("-", " ")):
+    spaced = (hint or "").replace("-", " ")
+    tokens = spaced.split()
+    if (FOREIGN in (region_of(hint or ""), region_of(spaced))
+            or (tokens and tokens[-1] in FOREIGN_CODES)):
+        return None
+    for text in (hint or "", spaced):
         region = classify_north_america(text)
         if region:
             return region
@@ -571,12 +699,16 @@ def job_country(location: str, board_country: str = "", *, hint: str = "",
     pass would only churn. A new row gets "CA", as CountryFilter always did.
     So does one whose only evidence is a bare "CA": "Remote, CA" is
     California on a US board and Canada in JobSpy's Indeed rows, so a stored
-    (or client-sent) value is not overruled on it; a new row gets "US".
+    (or client-sent) value is not overruled on it; a new row gets "US". A
+    bare city both countries have ("Richmond", "Waterloo") places the row in
+    neither: the hint, then a ``current`` value, then ``fallback`` decides.
     """
     if board_country:
         return board_country
     reading = _read(location)
     if reading.verdict in (US, CA):
+        if reading.namesake:
+            return hint_region(hint) or (current if current in (US, CA) else fallback)
         if current in (US, CA) and (reading.ambiguous or reading.named >= {US, CA}):
             return current
         return reading.verdict

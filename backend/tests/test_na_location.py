@@ -9,7 +9,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from backend.services.ats_scraper import ATSScraper
+from backend.services.ats_scraper import ATSJob, ATSScraper
 from backend.services.na_location import (
     FOREIGN,
     FOREIGN_NAMES,
@@ -248,11 +248,131 @@ def test_a_foreign_country_without_na_evidence_is_foreign(place, country):
     ("USA---Hill-AFB-UT", "US"),
     ("San-Jose", "US"),
     ("Mississauga-Ontario", "CA"),
+    ("Dublin-OH", "US"),
+    ("VILLE-DE-QUEBEC-QC-CAN", "CA"),
     ("Bangalore", None),     # never foreign: a hint only vouches
     ("", None),
 ])
 def test_hint_region(hint, country):
     assert hint_region(hint) == country
+
+
+# Live Workday slugs (autodesk, pg, magna) and their dashed kin: a foreign
+# name split by dashes, a site code after a dash, a trailing country code.
+_FOREIGN_SLUGS = [
+    "United-Kingdom---Remote", "Hong-Kong---Remote", "New-Zealand-Remote",
+    "Costa-Rica-Remote", "Saudi-Arabia---Remote", "Tel-Aviv-Remote",
+    "Sao-Paulo-Remote", "Kuala-Lumpur-Remote", "PRAGUE-DC", "ATHENS-DC",
+    "San-Pedro-Garza-Garcia-NL-MX",
+]
+
+
+@pytest.mark.parametrize("hint", _FOREIGN_SLUGS)
+def test_a_foreign_slug_never_vouches(hint):
+    assert hint_region(hint) is None
+    job = ATSJob(title="Software Engineer Intern", company="Acme", location="3 Locations",
+                 url="https://acme.wd1.myworkdayjobs.com/x", location_hint=hint)
+    assert ATSScraper().rejection(job) == "unplaced"
+    assert job_country("3 Locations", hint=hint) == "US"  # the caller's fallback, not the slug
+
+
+# ─── A 2-letter foreign code away from where country codes sit ──────────────
+
+@pytest.mark.parametrize("location", [
+    "Medicine Hat - 13th Ave SE (RHS) - Respiratory therapy",  # Air Liquide, live
+    "Calgary - 13th Ave SE",
+    "Grand Rapids - 28th St SE",
+    "Minneapolis, SE Main St",
+    "Ottawa - Bank St (IT)",
+    "Victoria (AU)",
+    "Remote - PT",
+    "Remote - SE",
+    "Remote (NO)",
+])
+def test_a_code_out_of_place_is_unknown_never_foreign(location):
+    assert region_of(location) is None
+    job = ATSJob(title="Software Engineer Intern", company="Acme", location=location, url="u")
+    assert ATSScraper().rejection(job) == "unplaced"
+
+
+@pytest.mark.parametrize("location", [
+    "Dublin, IE", "Zug, CH", "Milano, IT (Hybrid)", "GB-London", "IE: Cork",
+    "SA - Riyadh", "Stockholm SE", "Lisbon (PT)", "Remote, GB",
+])
+def test_a_code_where_codes_sit_is_still_foreign(location):
+    assert region_of(location) == FOREIGN
+
+
+# ─── Boeing's overseas bases: "<ISO3> - <Base> AB, <Country>" ───────────────
+
+@pytest.mark.parametrize("location", [
+    "QAT - Al Udeid AB, Qatar", "KWT - Al-Mubarak AB, Kuwait",
+    "DEU - Holzdorf AB, Germany", "ITA - Viterbo AB, Italy",
+    "SAU - Riyadh", "UKR - Kyiv", "IT - Milano, MI",
+])
+def test_a_foreign_prefix_beats_a_province_like_code(location):
+    assert region_of(location) == FOREIGN
+    assert job_country(location, current="CA", fallback="US") == "US"  # no CA verdict
+
+
+@pytest.mark.parametrize("location, country", [
+    ("Edmonton, AB", "CA"), ("USA - Dover, DE", "US"), ("CA - ON, Oakville", "CA"),
+])
+def test_a_north_american_prefix_keeps_its_codes(location, country):
+    assert region_of(location) == country
+
+
+# ─── A lowercase state is not a SmartRecruiters country ─────────────────────
+
+@pytest.mark.parametrize("location, verdict", [
+    ("Boston, ma", "US"),            # not Morocco
+    ("Chicago, il", "US"),           # not Israel
+    ("Atlanta, ga", "US"),           # not Gabon
+    ("Los Angeles, ca", "US"),       # not Canada
+    ("Indianapolis, in", None),      # not India
+    ("Toronto, ca", "CA"),
+])
+def test_a_two_part_lowercase_state_is_no_country(location, verdict):
+    assert region_of(location) == verdict
+
+
+@pytest.mark.parametrize("location", [
+    # SmartRecruiters' own shapes still read their country.
+    "Madrid, MD, es", "Budapest, hu", "Hemaraj Plant, Rayong, RAYONG, th",
+    # A lowercase state code is foreign beside a place of that country.
+    "coimbatore, in", "Petah Tikva, il", "Casablanca, ma", "Dresden, de",
+    "telengana, in",  # SmartRecruiters' spelling: India, not Indiana
+])
+def test_smartrecruiters_countries_still_read(location):
+    assert region_of(location) == FOREIGN
+
+
+# ─── DE: Delaware or Germany, and only on evidence ──────────────────────────
+
+@pytest.mark.parametrize("location", ["Remote, DE", "Lincoln, DE", "Frankford, DE", "DE"])
+def test_de_without_a_place_is_unknown(location):
+    assert region_of(location) is None
+
+
+@pytest.mark.parametrize("location, verdict", [
+    ("Meerane, DE", FOREIGN), ("Schwaebisch Gmuend, DE", FOREIGN),
+    ("Markt Schwaben DE (2 Locations)", FOREIGN), ("Fins Only-DE-Munich-MSO", FOREIGN),
+    ("Wilmington, DE", "US"), ("Newport, DE (MEDAL) - Manufacturing - Production", "US"),
+])
+def test_de_beside_a_place(location, verdict):
+    assert region_of(location) == verdict
+
+
+# ─── Parsons' country-first bullets ──────────────────────────────────────────
+
+def test_parsons_canadian_remote_bullet_is_canada():
+    assert region_of("CA - Remote (Any Location)") == "CA"
+    assert job_country("CA - Remote (Any Location)", current="US") == "CA"
+    assert region_of("US - Remote (Any Location)") == "US"
+    # California's remote roles on other boards stay US, and a stored value
+    # still stands on the bare "CA".
+    assert job_country("Remote - CA") == "US"
+    assert job_country("Remote - CA", current="CA") == "CA"
 
 
 # ─── job_country: one answer for every ingest path ──────────────────────────
@@ -274,6 +394,35 @@ def test_job_country_keeps_a_current_value_on_a_bare_ca():
     assert job_country("Pleasanton, CA", current="CA") == "CA"
     # A known city settles it: "Irvine, CA" is California.
     assert job_country("Irvine, CA", current="CA") == "US"
+
+
+@pytest.mark.parametrize("city", ["Richmond", "Burlington", "Hamilton", "Windsor",
+                                  "Victoria", "Waterloo"])
+def test_a_bare_us_namesake_city_never_flips_a_country(city):
+    """Richmond VA, Burlington VT, Hamilton OH, Windsor CT, Victoria TX and
+    Waterloo IA: named alone, the city is North American (the filter keeps
+    it) but in no particular country."""
+    assert region_of(city) == "CA"
+    assert job_country(city, current="US") == "US"
+    assert job_country(city, current="CA") == "CA"
+    assert job_country(city, fallback="CA") == "CA"   # a client's value
+    assert job_country(city) == "US"                  # a new crawled row's default
+    assert job_country(city, "CA") == "CA"            # the registry's country
+    assert job_country(city, hint="Toronto-ON", current="US") == "CA"
+    # Beside anything that places it, the city is Canadian as before.
+    assert job_country(f"{city}, ON", current="US") == "CA"
+    assert job_country(f"{city}; Toronto", current="US") == "CA"
+
+
+def test_a_bare_london_never_flips_a_country():
+    """London, Ontario or London, UK: a bare "London" reads foreign, which
+    places the row in no North American country, so the stored or client
+    value stands (the refresh, the repair and ingest-batch pass it as
+    ``fallback``)."""
+    for current in ("US", "CA"):
+        assert job_country("London", current=current, fallback=current) == current
+    # An Ashby/Lever posting also open in Toronto takes its country from there.
+    assert job_country("London", hint="Toronto", current="US", fallback="US") == "CA"
 
 
 def test_job_country_falls_back_to_the_hint_then_the_caller():
