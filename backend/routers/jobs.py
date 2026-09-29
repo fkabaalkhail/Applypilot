@@ -55,7 +55,7 @@ from backend.services.cross_source_dedup import (
     normalize_title,
     stands_in_for_twins,
 )
-from backend.services import platform_liveness
+from backend.services import legacy_urls, platform_liveness
 from backend.services.listing_freshness import (
     CLOSED_LISTING_STATUSES,
     HIDDEN_LISTING_STATUSES,
@@ -70,7 +70,11 @@ router = APIRouter()
 
 
 def _overlay_saved(db: Session, jobs: list[ScrapedJob], user_id: Optional[int]) -> list[ScrapedJobOut]:
-    """Attach the requesting user's saved/liked status (UserSavedJob is per-user, not global)."""
+    """Attach the requesting user's saved/liked status (UserSavedJob is per-user, not global).
+
+    ``url`` is the apply link the client opens: a legacy SmartRecruiters row
+    cron-backfill hasn't migrated yet answers with its posting page
+    (legacy_urls.apply_url), never the careers-home redirect it stores."""
     saved_ids: set[int] = set()
     if user_id is not None and jobs:
         rows = (
@@ -83,6 +87,7 @@ def _overlay_saved(db: Session, jobs: list[ScrapedJob], user_id: Optional[int]) 
     for job in jobs:
         out = ScrapedJobOut.model_validate(job)
         out.saved = 1 if job.id in saved_ids else 0
+        out.url = legacy_urls.apply_url(out.url)
         results.append(out)
     return results
 
@@ -520,9 +525,11 @@ async def cron_backfill(
     direct-URL rows before login-walled LinkedIn/Indeed ones), fill structured
     location + company_domain, and harvest self-hosted logos for employers
     that have none yet (services/logo_cache.py). The network phases are
-    bounded, and the pass is planned to finish inside BACKFILL_BUDGET_S. A
-    DB-only step also heals visible rows whose country contradicts their
-    location (listing_freshness.repair_country)."""
+    bounded, and the pass is planned to finish inside BACKFILL_BUDGET_S.
+    DB-only steps also heal visible rows whose country contradicts their
+    location (listing_freshness.repair_country) and move legacy
+    SmartRecruiters rows to their posting URL
+    (legacy_urls.migrate_legacy_smartrecruiters)."""
     import httpx
     from backend.services import listing_freshness, logo_cache
 
@@ -658,6 +665,23 @@ async def cron_backfill(
                 logger.exception("cron-backfill country repair failed")
                 country_stats = {"error": True}
 
+        # Legacy SmartRecruiters URLs (careers.smartrecruiters.com redirects
+        # to the employer's careers home) move to the posting page, or hide
+        # behind the row that already holds it. cron-ats only migrates rows
+        # its crawl lists, and a page-capped board like BoschGroup never
+        # lists most of them. DB-only and bounded like the country repair,
+        # under the same harvest mark.
+        legacy_sr_stats: dict = {"skipped": True}
+        if loop.time() < harvest_deadline:
+            try:
+                legacy_sr_stats = legacy_urls.migrate_legacy_smartrecruiters(
+                    db, limit=legacy_urls.MIGRATE_LEGACY_SR_LIMIT,
+                )
+            except Exception:
+                db.rollback()
+                logger.exception("cron-backfill legacy SmartRecruiters migration failed")
+                legacy_sr_stats = {"error": True}
+
         # Phase 3: self-hosted logos. Rows of employers whose logo is already
         # stored get re-pointed at it; employers with none are harvested
         # (busiest first, misses on a 14d-per-attempt backoff) inside a
@@ -698,6 +722,7 @@ async def cron_backfill(
         "locations_fixed": locations_fixed,
         "domains_fixed": domains_fixed,
         "country_repair": country_stats,
+        "legacy_smartrecruiters": legacy_sr_stats,
         # Back-compat names: companies harvested, logos stored.
         "logo_domains_probed": logo_stats.get("companies_attempted", 0),
         "logos_harvested": logo_stats.get("stored", 0),
@@ -1444,7 +1469,8 @@ async def fetch_job_details(
     calls it dead, is marked removed, and the answer carries ``dead: true``
     with the original apply URL. Handing back the redirect target instead is
     what turned Apply into a careers-homepage link; a redirect is only adopted
-    as the apply URL when it kept the posting's id.
+    as the apply URL when it kept the posting's id. A legacy SmartRecruiters
+    URL is fetched and answered as its posting page (legacy_urls.apply_url).
 
     Logos: a missing or generated one is filled only from the self-hosted
     store (services/logo_cache.py) or LinkedIn's own company image. Job-page
@@ -1462,11 +1488,15 @@ async def fetch_job_details(
         # off_target is hidden, not closed: its apply link still works.
         return {"listing_status": status, "dead": status in CLOSED_LISTING_STATUSES}
 
-    if not job.url or not await asyncio.to_thread(_is_url_allowed, job.url):
+    # A legacy SmartRecruiters row is read, and handed out, at its posting
+    # page: the careers.smartrecruiters.com URL it stores bounces to the
+    # employer's careers home. The stored URL is left to cron-backfill.
+    url = legacy_urls.apply_url(job.url or "")
+    if not url or not await asyncio.to_thread(_is_url_allowed, url):
         return {
             "id": job.id,
             "description": job.description or "",
-            "apply_url": job.url or "",
+            "apply_url": url,
             "company_logo": job.company_logo or "",
             **_listing_state(),
         }
@@ -1476,7 +1506,7 @@ async def fetch_job_details(
             return {
                 "id": job.id,
                 "description": job.description,
-                "apply_url": job.url,
+                "apply_url": url,
                 "company_logo": job.company_logo,
                 **_listing_state(),
             }
@@ -1490,11 +1520,11 @@ async def fetch_job_details(
 
     try:
         async with _details_client() as client:
-            response = await client.get(job.url)
+            response = await client.get(url)
             text = response.text
             final_url = str(response.url)
-            linkedin_url = "linkedin.com/jobs" in job.url or "linkedin.com/jobs" in final_url
-            left_posting = _left_posting(job.url, final_url)
+            linkedin_url = "linkedin.com/jobs" in url or "linkedin.com/jobs" in final_url
+            left_posting = _left_posting(url, final_url)
 
             reason = _page_death_reason(response.status_code, final_url, text)
             if not reason and left_posting and response.status_code == 200 and not linkedin_url:
@@ -1503,7 +1533,7 @@ async def fetch_job_details(
                 # platform can tell which.
                 try:
                     verdict = await asyncio.wait_for(
-                        platform_liveness.check_listing(client, job.url), CHECK_LIVE_TIMEOUT_S,
+                        platform_liveness.check_listing(client, url), CHECK_LIVE_TIMEOUT_S,
                     )
                 except asyncio.TimeoutError:
                     verdict = LivenessResult(UNKNOWN, "timeout")
@@ -1518,14 +1548,14 @@ async def fetch_job_details(
                 return {
                     "id": job.id,
                     "description": job.description or "",
-                    "apply_url": job.url,
+                    "apply_url": url,
                     "company_logo": job.company_logo or "",
                     "listing_status": status,
                     "dead": True,
                 }
 
-            description = await extract_description_from_html(client, job.url, text, final_url)
-            apply_url = job.url if (linkedin_url or left_posting) else final_url
+            description = await extract_description_from_html(client, url, text, final_url)
+            apply_url = url if (linkedin_url or left_posting) else final_url
 
             if linkedin_url:
                 if not job.company or job.company.strip() == "":
@@ -1608,7 +1638,7 @@ async def fetch_job_details(
         return {
             "id": job.id,
             "description": job.description or "",
-            "apply_url": job.url,
+            "apply_url": url,
             "company_logo": job.company_logo or "",
             **_listing_state(),
         }
