@@ -216,6 +216,89 @@ def test_not_entry(title):
     assert ATSScraper().rejection(_job(title)) == "level"
 
 
+@pytest.mark.parametrize("title,location,department", [
+    # Real open entry-level postings the 2026-09-29 review saw fail, or at
+    # risk of failing, the level filter (and so be retired).
+    ("Global Sourcing Specialist (Winter  C0-Op 2027)", "San Mateo, CA", "Hardware Operations"),
+    ("Jr. Designer (Design Engineering)", "Newmarket, Ontario, CA", ""),
+    ("Systems Engineer, Jr. (Technical Documentation) - TS/SCI", "Chantilly, VA", ""),
+    ("Contract Student Worker Automation & Behavioral Science Engineer", "Foster City, CA", ""),
+    ("Software Developer Co-op (8 months)", "Toronto, ON", ""),
+    ("Summer Student - Engineering", "Oakville, ON", ""),
+    ("Product Manager Intern", "Austin, TX", ""),
+    ("Construction Project Manager Intern (Summer 2027)", "Denver, CO", ""),
+])
+def test_review_titles_pass_the_filters(title, location, department):
+    job = _job(title, department, location=location)
+    assert ATSScraper().rejection(job) is None
+
+
+def test_a_zero_for_an_o_is_still_a_co_op():
+    title = "Global Sourcing Specialist (Winter  C0-Op 2027)"
+    assert entry_tier(title) == "strong"
+    assert experience_level_for(title) == "internship"
+    assert entry_tier("C0-op Recruiting Assistant") == "strong"  # a student recruiting job
+
+
+@pytest.mark.parametrize("title", [
+    # Boeing's entry band is Associate: these are open to new grads.
+    "Software Engineer (Associate or Experienced / Mid-Level)",
+    "Systems Engineer (Associate or Mid-Level)",
+    "DSP Comm Engineer (Associate or Mid-level)",
+    "Mechanical Systems Design Engineer – Associate/Experienced",
+    "Composite Technical Analyst (Associate, Experienced)",
+    "Associate and Mid-Level Software Engineers",
+    "Associate or Experienced Composites Engineer",
+    "C++/Linux Software Engineer (Associate or Experienced Level)",
+    "Product Repair and Modification Technician (Entry Level and Mid-Level)",
+    # LinkedIn/Indeed rows the aggregator sweep would otherwise retire.
+    "Junior/Intermediate Mechanical Design Engineer",
+    "PySpark / Databricks Developer (Junior to Intermediate)",
+])
+def test_an_entry_band_or_a_mid_one_is_weak(title):
+    assert not HARD_SENIOR.search(title)
+    assert entry_tier(title) == "weak"
+    assert _entry(title)
+
+
+@pytest.mark.parametrize("title,employment_type", [
+    # The range only lifts the mid-level veto; everything else still applies.
+    ("Experienced Financial Analyst", ""),
+    ("Intermediate Web Developer", ""),
+    ("Senior Associate or Experienced Engineer", ""),
+    ("Associate or Experienced Manufacturing Technician, 2nd Shift", ""),
+    ("Junior/Intermediate Developer", "Part-time"),
+    ("Associate or Experienced Engineering Manager", ""),
+])
+def test_a_band_range_is_still_subject_to_the_other_rules(title, employment_type):
+    assert entry_tier(title, employment_type=employment_type) is None
+    assert not _entry(title, employment_type=employment_type)
+
+
+@pytest.mark.parametrize("title", [
+    # A bank's retail business line is not a store floor (BMO, 2026-09-29).
+    "Internal Sales Associate, Retail Distribution",
+    "Associate, Distribution Support, Retail",
+    "Analyst, Retail Banking Strategy",
+])
+def test_retail_banking_titles_are_not_frontline(title):
+    assert entry_tier(title) == "weak"
+    assert _entry(title)
+
+
+@pytest.mark.parametrize("title", [
+    # Store-floor retail stays frontline with or without a store number.
+    "Retail Sales Associate, Albany",
+    "Retail Sales Associate, Bakersfield, #469",
+    "Sales Associate - Event Retail",
+    "Retail Associate",
+    "Retail Stock Associate",
+])
+def test_store_retail_is_still_frontline(title):
+    assert entry_tier(title) is None
+    assert not _entry(title)
+
+
 @pytest.mark.parametrize("title", [
     "Recruiting Intern (Summer 2027)",
     "NEW GRAD - Recruiting Coordinator",
@@ -241,6 +324,9 @@ def test_student_recruiting_jobs_stay(title):
     ("Co-op Developer (4-8 months)", False),
     ("Customer Sales Coordinator, 4 or 8 Months CO-OP Student", False),
     ("Solutions Developer V (Swift)", True),
+    ("Intermediate Full-Stack Software Developer", True),
+    ("Software Developer (Mid-Level)", True),
+    ("Junior/Intermediate Mechanical Design Engineer", False),   # offers the junior band
 ])
 def test_hard_senior_is_the_aggregator_veto(title, hard):
     """LinkedIn/Indeed titles come from searches already scoped to entry

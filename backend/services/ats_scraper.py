@@ -285,10 +285,13 @@ _STUDENT = (
     r"|financial|aid|accounts?|records|information|enrollment|housing|recruit\w*))"
 )
 
+# "Co-op", "Coop", and Verkada's "(Winter  C0-Op 2027)" with a zero.
+_COOP = r"\bc[o0]-?ops?\b"
+
 STRONG_ENTRY = re.compile(
     r"\bintern(?:s|ships?)?\b"
-    r"|\bco-?ops?\b"
-    r"|\bgrad(?:uate)?s?\b"                       # new/recent/university/"Dec 2026" grads
+    r"|" + _COOP
+    + r"|\bgrad(?:uate)?s?\b"                     # new/recent/university/"Dec 2026" grads
     r"|\bearly[- ]careers?\b"
     r"|\b(?:early|emerging)[- ]talent\b"
     r"|\bapprentice(?:ship)?s?\b"
@@ -323,9 +326,7 @@ WEAK_ENTRY = re.compile(
     + r"|\b0\s*-\s*[12]\s*years\b|\b1\s*-\s*2\s*years\b|\bstarter\b|\bfresh(?:er)?\b",
     re.IGNORECASE,
 )
-# Also the one title veto for LinkedIn/Indeed rows (jobs.ingest_batch,
-# listing_freshness.retire_senior_aggregator_rows).
-HARD_SENIOR = re.compile(
+_HARD_SENIOR_WORDS = re.compile(
     r"\bsenior\b|\bsr\b\.?|\bprincipal\b|\bdirector\b|\b[aers]?vp\b|\bvice[- ]president\b"
     r"|\bhead of\b|\bchief\b|\bdistinguished\b|\bfellow\b|\bcounsel\b"
     r"|\bmanaging\b|\bassociate partner\b"
@@ -338,6 +339,33 @@ HARD_SENIOR = re.compile(
     r"|(?<![-–])(?<![-–] )(?<!\bto )\b(?:[3-9]|1\d)\s*\+?\s*(?:[-–]\s*\d+\s*)?(?:years?|yrs?)\b",
     re.IGNORECASE,
 )
+# A title offering an entry band OR a mid-level one is open at the entry band:
+# Boeing's "Software Engineer (Associate or Experienced / Mid-Level)"
+# (Associate is its entry band), "Junior/Intermediate Developer", "(Entry
+# Level and Mid-Level)". Mid-level words only: "Associate or Vice President"
+# and "Experienced Financial Analyst" stay out.
+_ENTRY_BAND = r"(?:associate|junior|jr\.?|entry[- ]level)"
+_MID_BAND = r"(?:experienced|mid[- ]?level|intermediate)"
+_BAND_RANGE = re.compile(
+    r"\b(" + _ENTRY_BAND + r")(?:\s*(?:,|/|-|–|&|\bor\b|\band\b|\bto\b)\s*" + _MID_BAND + r")+\b",
+    re.IGNORECASE,
+)
+
+
+class _SeniorVeto:
+    """HARD_SENIOR: ``search`` reads a band range as its entry band first."""
+
+    def __init__(self, words: re.Pattern):
+        self.words = words
+        self.pattern = words.pattern
+
+    def search(self, title: str):
+        return self.words.search(_BAND_RANGE.sub(r"\1", title or ""))
+
+
+# Also the one title veto for LinkedIn/Indeed rows (jobs.ingest_batch,
+# listing_freshness.retire_senior_aggregator_rows).
+HARD_SENIOR = _SeniorVeto(_HARD_SENIOR_WORDS)
 SOFT_SENIOR = re.compile(
     r"\bstaff\b|\blead\b|\bmanager\b|\barchitect\b|\bsupervisor\b|\bleader\b"
     r"|\b(?:business|people|hr|talent|client|account)\s+partner\b"
@@ -368,7 +396,7 @@ PROGRAM_STAFF = re.compile(
 )
 # ...unless the recruiting job is itself a student/new-grad job.
 STUDENT_JOB = re.compile(
-    r"\bintern(?:ship)?\b|\bco-?op\b|\bstudent\b|\bstagiaire\b|\bapprentice\b"
+    r"\bintern(?:ship)?\b|" + _COOP + r"|\bstudent\b|\bstagiaire\b|\bapprentice\b"
     r"|\b(?:new|recent)[- ]?grad(?:uate)?s?\b|\btrainee\b",
     re.IGNORECASE,
 )
@@ -377,18 +405,24 @@ FRONTLINE = re.compile(
     r"\b(?:\d(?:st|nd|rd|th)|night|overnight|evening|weekend|day|am|pm|swing|graveyard)[- ]shift\b"
     r"|\bshift\s*\d\b|\bpart[- ]time\b|\bseasonal\b|#\s?\d+\b"
     r"|\b(?:warehouse|forklift|barista|cashier|key holder|lot attendant|detailer|driver"
-    r"|crew member|sous chef|cook|dishwasher|bartender|store|retail|merchandising"
-    r"|production associate|security associate)\b",
+    r"|crew member|sous chef|cook|dishwasher|bartender|store|merchandising"
+    r"|production associate|security associate)\b"
+    # Retail floor work ("Retail Sales Associate, Albany", "Sales Associate -
+    # Event Retail"), not a bank's retail business line ("Internal Sales
+    # Associate, Retail Distribution").
+    r"|\bretail\s+(?:sales\s+)?(?:associates?|clerks?|cashiers?|team members?|crew"
+    r"|stock\w*|merchandis\w*|specialists?|consultants?|advisors?|representatives?)\b"
+    r"|\b(?:event|store)\s+retail\b",
     re.IGNORECASE,
 )
 _PART_TIME_COMMITMENT = re.compile(r"part[- ]?time", re.IGNORECASE)
 
 # Title words that file an entry-level row under internships, not new grad.
 INTERNSHIP_TITLE = re.compile(
-    r"\bintern(?:s|ships?)?\b|\bco-?ops?\b|\bstagiaires?\b|\bstage\s+coop\w*|" + _STUDENT,
+    r"\bintern(?:s|ships?)?\b|" + _COOP + r"|\bstagiaires?\b|\bstage\s+coop\w*|" + _STUDENT,
     re.IGNORECASE,
 )
-_INTERNSHIP_DEPARTMENT = re.compile(r"\bintern(?:s|ships?)?\b|\bco-?ops?\b", re.IGNORECASE)
+_INTERNSHIP_DEPARTMENT = re.compile(r"\bintern(?:s|ships?)?\b|" + _COOP, re.IGNORECASE)
 # A work term: "RF Validation Associate (Winter 2027)".
 _TERM_TITLE = re.compile(r"\b(?:summer|fall|winter|spring|autumn)\s*,?\s*(?:19|20)\d\d\b",
                          re.IGNORECASE)
