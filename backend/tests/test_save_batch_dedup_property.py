@@ -9,7 +9,8 @@ call (31cc443); test_save_batch_dedup.py covers its fixed scenarios.
 
 For any batch against any set of already-stored URLs:
 - received == len(batch), and every job lands in exactly one bucket:
-  created + duplicates + skipped == received (skipped = no URL);
+  created + duplicates + skipped + senior_skipped == received (skipped = no
+  URL, senior_skipped = a plainly senior title);
 - every new URL is inserted exactly once and nothing already stored is
   inserted again: created + cross_source_twins_skipped == new URLs
   (a cross-source twin is counted as a duplicate instead of created).
@@ -20,6 +21,7 @@ import pytest
 
 import backend.auth.dependencies as auth_deps
 from backend.db.models import ScrapedJob
+from backend.services.ats_scraper import HARD_SENIOR
 from backend.services.cross_source_dedup import canonical_url
 
 SECRET = "test-cron-secret"
@@ -93,14 +95,17 @@ def test_save_batch_dedup_accounting(client, db_session, cron_headers, batch, pr
 
     assert data["received"] == len(batch)
 
-    # Only jobs with non-empty URLs count toward created + duplicates
+    # Only jobs with non-empty URLs count toward created + duplicates, and
+    # a plainly senior title (ats_scraper.HARD_SENIOR) is set aside first.
     jobs_with_url = [j for j in batch if j.get("url")]
-    assert created + duplicates == len(jobs_with_url)
+    kept = [j for j in jobs_with_url if not HARD_SENIOR.search(j["title"])]
+    assert created + duplicates == len(kept)
+    assert data["senior_skipped"] == len(jobs_with_url) - len(kept)
     assert data["skipped"] == len(batch) - len(jobs_with_url)
     assert created >= 0
     assert duplicates >= 0
 
-    new_urls = {canonical_url(j["url"]) for j in jobs_with_url} - set(pre_existing)
+    new_urls = {canonical_url(j["url"]) for j in kept} - set(pre_existing)
     assert created + data["cross_source_twins_skipped"] == len(new_urls)
     # ...and the table agrees: every stored URL is unique and canonical.
     stored = [row.url for row in db_session.query(ScrapedJob.url)]

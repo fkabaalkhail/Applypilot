@@ -323,6 +323,8 @@ WEAK_ENTRY = re.compile(
     + r"|\b0\s*-\s*[12]\s*years\b|\b1\s*-\s*2\s*years\b|\bstarter\b|\bfresh(?:er)?\b",
     re.IGNORECASE,
 )
+# Also the one title veto for LinkedIn/Indeed rows (jobs.ingest_batch,
+# listing_freshness.retire_senior_aggregator_rows).
 HARD_SENIOR = re.compile(
     r"\bsenior\b|\bsr\b\.?|\bprincipal\b|\bdirector\b|\b[aers]?vp\b|\bvice[- ]president\b"
     r"|\bhead of\b|\bchief\b|\bdistinguished\b|\bfellow\b|\bcounsel\b"

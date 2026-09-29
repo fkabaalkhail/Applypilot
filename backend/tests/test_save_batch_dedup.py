@@ -62,7 +62,7 @@ def test_empty_batch(client, cron_headers):
     assert resp.status_code == 200
     assert resp.json() == {
         "received": 0, "created": 0, "duplicates": 0,
-        "cross_source_twins_skipped": 0, "skipped": 0,
+        "cross_source_twins_skipped": 0, "skipped": 0, "senior_skipped": 0,
     }
 
 
@@ -73,7 +73,7 @@ def test_all_new_jobs_are_created(client, cron_headers, db_session):
     data = resp.json()
     assert data == {
         "received": 3, "created": 3, "duplicates": 0,
-        "cross_source_twins_skipped": 0, "skipped": 0,
+        "cross_source_twins_skipped": 0, "skipped": 0, "senior_skipped": 0,
     }
     assert db_session.query(ScrapedJob).count() == 3
 
@@ -110,7 +110,7 @@ def test_mixed_batch(client, cron_headers, db_session):
     data = resp.json()
     assert data == {
         "received": 3, "created": 2, "duplicates": 1,
-        "cross_source_twins_skipped": 0, "skipped": 0,
+        "cross_source_twins_skipped": 0, "skipped": 0, "senior_skipped": 0,
     }
 
 
@@ -120,7 +120,7 @@ def test_within_batch_duplicates(client, cron_headers, db_session):
     data = resp.json()
     assert data == {
         "received": 3, "created": 2, "duplicates": 1,
-        "cross_source_twins_skipped": 0, "skipped": 0,
+        "cross_source_twins_skipped": 0, "skipped": 0, "senior_skipped": 0,
     }
     assert db_session.query(ScrapedJob).count() == 2
 
@@ -131,7 +131,7 @@ def test_jobs_without_url_are_skipped(client, cron_headers, db_session):
     data = resp.json()
     assert data == {
         "received": 2, "created": 1, "duplicates": 0,
-        "cross_source_twins_skipped": 0, "skipped": 1,
+        "cross_source_twins_skipped": 0, "skipped": 1, "senior_skipped": 0,
     }
     assert db_session.query(ScrapedJob).count() == 1
 

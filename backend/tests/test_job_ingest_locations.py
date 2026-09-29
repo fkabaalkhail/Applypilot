@@ -177,3 +177,36 @@ def test_jobspy_script_country(row, country):
                                  "job_url": "https://ca.indeed.com/viewjob?jk=1",
                                  "site": "indeed", **row})
     assert payload["country"] == country
+
+
+# ─── Seniority: plainly senior titles are not stored ─────────────────────────
+
+def test_ingest_batch_skips_hard_senior_titles(client, db_session, monkeypatch):
+    """LinkedIn/Indeed searches are scoped to entry level, yet 89 visible rows
+    were senior (2026-09). Only ats_scraper.HARD_SENIOR vetoes here: "Software
+    Engineer II" is a soft marker and stays, and the crawler's weak-tier and
+    frontline rules never apply to aggregator titles."""
+    titles = {
+        "Senior HR Specialist": False,
+        "Director of Engineering": False,
+        "Senior Java Full Stack Developer - Vice President": False,
+        "Software Engineer (L5)": False,
+        "Software Engineer II": True,
+        "Operations Associate, Dallas, #118": True,
+        "Software Engineering Intern - 8 months": True,
+    }
+    jobs = [{
+        "title": title, "company": "Acme", "location": "Toronto, ON, CA",
+        "url": (f"https://ca.indeed.com/viewjob?jk=senior{i}" if i % 2
+                else f"https://www.linkedin.com/jobs/view/{4100 + i}"),
+        "source_platform": "indeed" if i % 2 else "linkedin",
+        "country": "CA", "experience_level": "new_grad",
+    } for i, title in enumerate(titles)]
+
+    res = client.post("/jobs/ingest-batch", json={"jobs": jobs}, headers=_cron_headers(monkeypatch))
+
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert (body["created"], body["senior_skipped"], body["skipped"]) == (3, 4, 0)
+    stored = {row.title for row in db_session.query(ScrapedJob).all()}
+    assert stored == {title for title, kept in titles.items() if kept}

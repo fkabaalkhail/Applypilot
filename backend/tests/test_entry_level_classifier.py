@@ -13,6 +13,7 @@ cases fail on the old classifier, not just on a missing import.
 import pytest
 
 from backend.services.ats_scraper import (
+    HARD_SENIOR,
     ATSJob,
     ATSScraper,
     entry_tier,
@@ -225,6 +226,26 @@ def test_student_recruiting_jobs_stay(title):
     assert entry_tier(title) is not None
     assert _entry(title)
 
+
+@pytest.mark.parametrize("title,hard", [
+    ("Senior HR Specialist", True),
+    ("Director of Engineering", True),
+    ("Lead Substation Protection and Control Engineer", False),  # soft: lead
+    ("RESEARCH ENGINEER (II)", False),                           # soft: II
+    ("Software Engineer II, Backend (Identity Decisioning)", False),
+    ("Senior Java Full Stack Developer - Vice President", True),
+    ("Member of Technical Staff 2 - DataHub", False),
+    ("Software Engineer (L5)", True),
+    ("Principal Product Manager", True),
+    ("Software Engineering Intern - 8 months", False),
+    ("Co-op Developer (4-8 months)", False),
+    ("Customer Sales Coordinator, 4 or 8 Months CO-OP Student", False),
+    ("Solutions Developer V (Swift)", True),
+])
+def test_hard_senior_is_the_aggregator_veto(title, hard):
+    """LinkedIn/Indeed titles come from searches already scoped to entry
+    level, so only HARD_SENIOR vetoes them (ingest-batch, cron-freshness)."""
+    assert bool(HARD_SENIOR.search(title)) is hard
 
 
 @pytest.mark.parametrize("title,department,employment_type,level", [

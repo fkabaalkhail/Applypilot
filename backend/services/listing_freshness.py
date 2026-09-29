@@ -73,7 +73,9 @@ LISTING_EXPIRED = "expired"
 # before the NA filter knew better, a "Vice President" row from before the
 # entry-level filter. Set only from a listing's verdict (a board crawl, or the
 # orphan sweep for rows no crawl reaches), and a crawl brings it back to
-# active the moment the listing passes again. Never a death verdict.
+# active the moment the listing passes again. Never a death verdict. A
+# LinkedIn/Indeed row with a plainly senior title goes off_target too
+# (retire_senior_aggregator_rows) and stays there: no crawl lists it.
 LISTING_OFF_TARGET = "off_target"
 
 # Closed: the posting no longer takes applications (or nothing vouches for it).
@@ -90,8 +92,10 @@ def retire_off_target_enabled() -> bool:
 
     "0"/"false"/"no"/"off" turns the retire off entirely: crawls go back to
     the old rule (a listed row is active), so each board's next crawl brings
-    its off_target rows back, and the orphan sweep retires nothing. For an
-    emergency such as a classifier regression hiding real rows."""
+    its off_target rows back, and neither the orphan sweep nor the senior
+    aggregator sweep retires anything (the rows those two retired stay
+    hidden). For an emergency such as a classifier regression hiding real
+    rows."""
     value = os.getenv("CRON_ATS_RETIRE_OFF_TARGET", "1").strip().lower()
     return value not in ("0", "false", "no", "off")
 
@@ -780,6 +784,55 @@ def retire_unreconcilable_off_target(db: Session, now: datetime.datetime | None 
     if retire:
         db.commit()
         logger.info("retire_unreconcilable_off_target: %s", stats)
+    return stats
+
+
+AGGREGATOR_SENIOR_RETIRE_LIMIT = 5000
+
+
+def retire_senior_aggregator_rows(db: Session, now: datetime.datetime | None = None,
+                                  limit: int = AGGREGATOR_SENIOR_RETIRE_LIMIT) -> dict:
+    """Retire LinkedIn/Indeed rows whose title is plainly senior.
+
+    /jobs/ingest-batch took every title its searches returned until it
+    learned ats_scraper.HARD_SENIOR, and 2026-09 prod showed "Senior HR
+    Specialist" and "Director of Engineering" in a student feed. Those
+    searches are already scoped to entry level, so only the hard markers
+    count here, never the crawler's weak-tier or frontline rules. No board
+    crawl lists these rows and no liveness check revives an off_target row,
+    so the verdict holds (the aggregator expiry leaves off_target alone).
+    Rows hidden as another row's twin are judged too: if only their winner
+    were retired, release_from_closed_winners would hand them back to the
+    feed. Honours the CRON_ATS_RETIRE_OFF_TARGET kill switch. Column-only
+    SELECT of the newest ``limit`` visible rows (they age out after
+    AGGREGATOR_FAST_MAX_AGE_DAYS, so the window stays small), chunked
+    UPDATEs. Commits.
+    """
+    from backend.services.ats_scraper import HARD_SENIOR
+
+    now = now or _utcnow()
+    stats = {"checked": 0, "off_target": 0}
+    if not retire_off_target_enabled():
+        stats["disabled"] = True
+        return stats
+
+    rows = (
+        db.query(ScrapedJob.id, ScrapedJob.title)
+        .filter(
+            ScrapedJob.source_platform.in_(_FAST_AGGREGATOR_SOURCES),
+            ScrapedJob.listing_status.in_((LISTING_ACTIVE, LISTING_STALE)),
+        )
+        .order_by(ScrapedJob.id.desc())
+        .limit(limit)
+        .all()
+    )
+    retire = [row_id for row_id, title in rows if HARD_SENIOR.search(title or "")]
+    _update_ids(db, retire, {"listing_status": LISTING_OFF_TARGET,
+                             "listing_status_changed_at": now})
+    stats.update(checked=len(rows), off_target=len(retire))
+    if retire:
+        db.commit()
+        logger.info("retire_senior_aggregator_rows: %s", stats)
     return stats
 
 

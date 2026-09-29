@@ -341,19 +341,30 @@ def ingest_batch(
     admin-JWT-only, which the scripts can't send, every call 401'd since
     809c80f. This dedupes the whole batch with ONE url query and bulk-inserts
     the rest.
+
+    A plainly senior title (ats_scraper.HARD_SENIOR: "Senior HR Specialist",
+    "Director of Engineering", "Software Engineer (L5)") is not stored and
+    counts as ``senior_skipped``. Only the hard markers: the scripts'
+    searches are already scoped to entry level, so the crawler's weak-tier
+    and frontline rules don't apply to these titles.
     """
     from sqlalchemy.exc import IntegrityError
+    from backend.services.ats_scraper import HARD_SENIOR
     from backend.services.role_classifier import classify as classify_role
     from backend.services.structured_extraction import detect_employment_type
 
     received = len(batch.jobs)
     skipped = 0
+    senior_skipped = 0
     duplicates = 0
     unique = {}
     for job in batch.jobs:
         url = canonical_url((job.url or "").strip())
         if not url:
             skipped += 1
+            continue
+        if HARD_SENIOR.search(job.title or ""):
+            senior_skipped += 1
             continue
         if url in unique:
             duplicates += 1
@@ -477,6 +488,7 @@ def ingest_batch(
         "duplicates": duplicates,
         "cross_source_twins_skipped": twins_skipped,
         "skipped": skipped,
+        "senior_skipped": senior_skipped,
     }
 
 
@@ -719,6 +731,14 @@ async def cron_freshness(
         db.rollback()
         logger.exception("cron-freshness orphan retire failed")
         orphans_retired = {"error": True}
+    # LinkedIn/Indeed rows whose title is plainly senior (ingested before
+    # ingest-batch vetoed them): same shape, no network.
+    try:
+        senior_retired = listing_freshness.retire_senior_aggregator_rows(db)
+    except Exception:
+        db.rollback()
+        logger.exception("cron-freshness senior aggregator retire failed")
+        senior_retired = {"error": True}
 
     # The probes share one wall-clock box (the "hourly" schedule really fires
     # ~6x/day, so budgets are big and hosts can hang). Each phase stops
@@ -760,6 +780,7 @@ async def cron_freshness(
         "marked_stale": stale,
         "expired": expired,
         "orphans_off_target": orphans_retired,
+        "aggregator_senior_off_target": senior_retired,
         "terminal_expired": terminal,
         "stale_verified": verified,
         "unconfirmed_verified": unconfirmed,

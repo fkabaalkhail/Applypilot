@@ -33,6 +33,7 @@ from backend.services.listing_freshness import (
     reconcile_board,
     record_liveness,
     retire_off_target_enabled,
+    retire_senior_aggregator_rows,
     retire_unreconcilable_off_target,
 )
 from backend.services.platform_liveness import LivenessResult
@@ -473,6 +474,96 @@ class TestOrphanRetire:
 
         assert body["orphans_off_target"]["off_target"] == 1
         assert probed and all(status == LISTING_OFF_TARGET for status in probed)
+
+
+# ─── LinkedIn/Indeed rows with a plainly senior title ────────────────────────
+
+def _aggregator(db, n, title, source="linkedin", **kwargs):
+    url = (f"https://www.linkedin.com/jobs/view/{n}" if source == "linkedin"
+           else f"https://ca.indeed.com/viewjob?jk={n}")
+    kwargs.setdefault("location", "Toronto, ON")
+    return _row(db, url, board_key="", source_platform=source, title=title, **kwargs)
+
+
+class TestSeniorAggregatorRetire:
+    def test_retires_only_hard_senior_aggregator_titles(self, db_session):
+        senior = _aggregator(db_session, 1, "Senior HR Specialist")
+        director = _aggregator(db_session, 2, "Director of Engineering", source="indeed")
+        stale = _aggregator(db_session, 3, "Principal Engineer", listing_status=LISTING_STALE)
+        level_two = _aggregator(db_session, 4, "Software Engineer II, Backend")  # soft: stays
+        coop = _aggregator(db_session, 5, "Software Engineering Intern - 8 months")
+        hourly = _aggregator(db_session, 6, "Operations Associate, Dallas, #118")
+        expired = _aggregator(db_session, 7, "Senior Mobile Engineer",
+                              listing_status=LISTING_EXPIRED)
+        crawler = _row(db_session, "https://boards.greenhouse.io/acme/jobs/8",
+                       title="Senior Engineer", location="Austin, TX")
+        github = _row(db_session, "https://example.com/careers/9", board_key="",
+                      source_platform="github", title="Senior Engineer")
+
+        stats = retire_senior_aggregator_rows(db_session, now=NOW)
+
+        assert stats == {"checked": 6, "off_target": 3}
+        for row in (senior, director, stale):
+            assert _status(db_session, row) == LISTING_OFF_TARGET
+        for row in (level_two, coop, hourly, crawler, github):
+            assert _status(db_session, row) == LISTING_ACTIVE
+        assert _status(db_session, expired) == LISTING_EXPIRED
+
+    def test_a_hidden_twin_goes_with_its_winner(self, db_session):
+        """A twin left visible behind a retired LinkedIn winner would be handed
+        back to the feed by release_from_closed_winners (a retired aggregator
+        row speaks for no one)."""
+        from backend.services.cross_source_dedup import release_from_closed_winners
+
+        winner = _aggregator(db_session, 1, "Senior Data Engineer", city="toronto",
+                             title_norm="senior data engineer")
+        twin = _aggregator(db_session, 2, "Senior Data Engineer", source="indeed",
+                           city="toronto", title_norm="senior data engineer",
+                           duplicate_of=winner.id)
+
+        assert retire_senior_aggregator_rows(db_session, now=NOW)["off_target"] == 2
+        assert release_from_closed_winners(db_session) == []
+        assert _status(db_session, twin) == LISTING_OFF_TARGET
+        assert db_session.get(ScrapedJob, twin.id).duplicate_of == winner.id
+
+    def test_nothing_brings_a_retired_row_back(self, db_session):
+        from backend.services.listing_freshness import sweep_aggregator_expiry
+
+        row = _aggregator(db_session, 1, "Senior HR Specialist")
+        retire_senior_aggregator_rows(db_session, now=NOW)
+
+        record_liveness(db_session, row.id, LISTING_OFF_TARGET,
+                        LivenessResult("alive", "linkedin_open", True), now=NOW)
+        db_session.commit()
+        sweep_aggregator_expiry(db_session, now=NOW + datetime.timedelta(days=60))
+
+        assert _status(db_session, row) == LISTING_OFF_TARGET
+
+    def test_kill_switch(self, db_session, monkeypatch):
+        monkeypatch.setenv("CRON_ATS_RETIRE_OFF_TARGET", "0")
+        row = _aggregator(db_session, 1, "Senior HR Specialist")
+
+        stats = retire_senior_aggregator_rows(db_session, now=NOW)
+
+        assert stats["off_target"] == 0 and stats["disabled"]
+        assert _status(db_session, row) == LISTING_ACTIVE
+
+    def test_cron_freshness_runs_it(self, client, db_session, monkeypatch):
+        from backend.services import listing_freshness
+
+        row = _aggregator(db_session, 1, "Director of Engineering")
+
+        async def fake_verify(db, client_, limit=0, now=None, *, deadline=None, cache=None, **kw):
+            return {"checked": 0}
+
+        for name in ("verify_stale_listings", "verify_unconfirmed_active_listings",
+                     "verify_recent_aggregator_listings"):
+            monkeypatch.setattr(listing_freshness, name, fake_verify)
+
+        body = client.post("/jobs/cron-freshness", headers=_cron_headers(monkeypatch)).json()
+
+        assert body["aggregator_senior_off_target"]["off_target"] == 1
+        assert _status(db_session, row) == LISTING_OFF_TARGET
 
 
 # ─── The rest of the lifecycle ───────────────────────────────────────────────
