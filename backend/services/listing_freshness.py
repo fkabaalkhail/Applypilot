@@ -376,7 +376,8 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     """Split a board's filtered jobs into (new, stats) and refresh the ones
     already stored: detect edits (title/location/salary/description) into
     ``change_log``, update the structured fields, adopt legacy rows into
-    ``board_key``. ``jobs`` are ats_scraper.ATSJob. Commits.
+    ``board_key``, and give a crawler row the registry's company name.
+    ``jobs`` are ats_scraper.ATSJob. Commits.
 
     Change detection is explicit column compares plus a description hash,
     a re-crawl that didn't carry the description (SmartRecruiters/Workday
@@ -420,6 +421,7 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
                 ScrapedJob.country, ScrapedJob.city, ScrapedJob.region,
                 ScrapedJob.location_search, ScrapedJob.title_norm,
                 ScrapedJob.experience_level, ScrapedJob.source_platform,
+                ScrapedJob.company,
             )
             .filter(ScrapedJob.url.in_(chunk))
             .all()
@@ -435,7 +437,7 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
         (row_id, _url, old_title, old_location, old_salary_min, old_hash,
          edit_count, change_log, old_board_key, old_external_id, old_country,
          old_city, old_region, old_search, old_title_norm, old_level,
-         source_platform) = row
+         source_platform, old_company) = row
         job = by_url[url]
 
         updates: dict = {"last_seen_at": now}
@@ -443,13 +445,23 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
             updates["board_key"] = board_key
         if job.external_id and not old_external_id:
             updates["external_id"] = f"{board_key}:{job.external_id}"
+        # A crawler row carries the registry's name for the employer, so a
+        # rename ("Notion (Ashby)" -> "Notion") reaches the stored rows. Not
+        # an edit of the posting. A list row keeps its list's spelling.
+        company = (job.company or "").strip()
+        if source_platform == "ats" and company and company != old_company:
+            updates["company"] = company
 
+        # Titles and locations compare stripped: padding (Carvana's
+        # " Fleet Operations Associate") is no edit, and is healed quietly.
         changes: list[str] = []
-        title = job.title or old_title or ""
-        title_changed = bool(job.title) and job.title != old_title
+        new_title = (job.title or "").strip()
+        title = new_title or old_title or ""
+        title_changed = bool(new_title) and new_title != (old_title or "").strip()
         if title_changed:
             changes.append("title")
-            updates["title"] = job.title
+        if new_title and new_title != old_title:
+            updates["title"] = new_title
         # Re-derive on an edit, and heal a row an earlier edit left with the
         # old title's dedup key. Only rows with a logged title edit: an
         # unedited row's title_norm is the insert's own, whatever version of
@@ -467,20 +479,21 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
                 updates["experience_level"] = level
                 stats["relabeled"] += 1
 
-        location = job.location or old_location or ""
-        location_changed = bool(job.location) and job.location != old_location
-        if (location_changed and is_location_count(job.location)
+        new_location = (job.location or "").strip()
+        if (is_location_count(new_location)
                 and location_fields(old_location or "")["location_search"]):
             # Workday's list payload says only "10 Locations"; a stored
             # "REMOTETELETRAVAIL QC CAN (10 Locations)" names the place.
             # Not an edit, and the stored text keeps filing the row.
-            location, location_changed = old_location, False
-        if location_changed:
-            # Filling in a location the row never had (Parsons' list rows
-            # carried none until the bullet fallback) is not an edit.
-            if (old_location or "").strip():
-                changes.append("location")
-            updates["location"] = job.location
+            new_location = ""
+        location = new_location or old_location or ""
+        location_changed = bool(new_location) and new_location != (old_location or "").strip()
+        # Filling in a location the row never had (Parsons' list rows
+        # carried none until the bullet fallback) is not an edit.
+        if location_changed and (old_location or "").strip():
+            changes.append("location")
+        if new_location and new_location != old_location:
+            updates["location"] = new_location
         derived = location_derived_fields(
             location, board_country, hint=job.location_hint or "",
             current_country=old_country or "", fallback=old_country or "US",

@@ -299,6 +299,66 @@ class TestRefreshKnownListings:
         assert stats["edited"] == 0
         assert row.description == "Full stored description here."
 
+    def test_a_crawler_row_takes_the_registry_company_name(self, db_session):
+        """'Notion (Ashby)' was the registry's name, stored on every row.
+        The registry now says 'Notion'; the next crawl renames the rows
+        without logging an edit of the posting."""
+        known = _row(db_session, company="Notion (Ashby)")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, company="Notion")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert row.company == "Notion"
+        assert stats["edited"] == 0 and not row.change_log
+
+    def test_a_list_row_keeps_its_company_spelling(self, db_session):
+        known = _row(db_session, company="Manulife Financial", source_platform="github")
+        refresh_known_listings(db_session, BOARD, [_job(url=known.url, company="Manulife")],
+                               now=NOW)
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, known.id).company == "Manulife Financial"
+
+    @pytest.mark.parametrize("stored, listed", [
+        (" Fleet Operations Associate (Overnight Shift)", " Fleet Operations Associate (Overnight Shift)"),
+        (" Fleet Operations Associate (Overnight Shift)", "Fleet Operations Associate (Overnight Shift)"),
+    ])
+    def test_title_padding_is_no_edit(self, db_session, stored, listed):
+        """Carvana's API pads titles (43 visible rows): compared as-is, a
+        fetcher that strips them would log a 'title' edit on every row."""
+        known = self._consistent(db_session, title=stored)
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, title=listed)], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and stats["retitled"] == 0 and not row.change_log
+        assert row.title == "Fleet Operations Associate (Overnight Shift)"
+
+    def test_location_padding_is_no_edit(self, db_session):
+        known = self._consistent(db_session, location=" Toronto, ON ")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, location="Toronto, ON")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and not row.change_log
+        assert row.location == "Toronto, ON"
+
+    def test_registry_names_carry_no_ats_tag(self):
+        """A registry name is stored verbatim as every row's company."""
+        import re
+
+        from backend.data import company_registry
+
+        names = {(platform, slug): name for platform, slug, name in
+                 company_registry.load_companies(include_disabled=True, supported_only=False)}
+        tagged = [name for name in names.values()
+                  if re.search(r"\((?:ashby|lever|greenhouse|workday|smartrecruiters)\)", name, re.I)]
+        assert tagged == []
+        assert names[("ashby", "notion")] == "Notion"
+        assert names[("lever", "neon")] == "Neon"
+
     def test_adopts_legacy_row_into_board(self, db_session):
         known = _row(db_session, board_key="")
         _new, _stats = refresh_known_listings(

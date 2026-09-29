@@ -225,7 +225,7 @@
       "enabled": true
     },
     {
-      "company_name": "Notion (Ashby)",
+      "company_name": "Notion",
       "ats_platform": "ashby",
       "board_slug": "notion",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=notion.so&sz=128",
@@ -1229,7 +1229,7 @@
       "enabled": true
     },
     {
-      "company_name": "Neon (Lever)",
+      "company_name": "Neon",
       "ats_platform": "lever",
       "board_slug": "neon",
       "company_logo_url": "https://www.google.com/s2/favicons?domain=neon.tech&sz=128",
