@@ -44,7 +44,7 @@ class TestTailorResume:
         assert data["document"]["sections"][0]["skills"] == ["Python", "AWS", "TypeScript"]
         # omitted add_keywords -> all missing keywords surfaced in the tailor prompt
         tailor_prompt = gen.call_args_list[1].args[0]
-        assert "surface these job terms: AWS, TypeScript." in tailor_prompt
+        assert "use the job's own words for these terms: AWS, TypeScript." in tailor_prompt
 
     def test_explicit_keywords_used_exactly(self, client, db_session, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -57,7 +57,7 @@ class TestTailorResume:
             })
         assert resp.status_code == 200
         tailor_prompt = gen.call_args_list[1].args[0]
-        assert "surface these job terms: AWS." in tailor_prompt
+        assert "use the job's own words for these terms: AWS." in tailor_prompt
         assert resp.json()["missing_keywords"] == ["AWS", "TypeScript"]
 
     def test_explicit_empty_keywords_skip_weaving(self, client, db_session, monkeypatch):
@@ -71,7 +71,13 @@ class TestTailorResume:
             })
         assert resp.status_code == 200
         tailor_prompt = gen.call_args_list[1].args[0]
-        assert "surface these job terms:" not in tailor_prompt
+        # add_keywords=[] -> nothing is woven in. Neither the JD nor the résumé
+        # mentions AWS or TypeScript, so the keyword instruction is their only
+        # way into the prompt. (This used to assert a phrase that de27f72
+        # reworded, so it passed whatever the code did; term names don't go
+        # stale when the instruction is reworded.)
+        assert "AWS" not in tailor_prompt
+        assert "TypeScript" not in tailor_prompt
 
     def test_wrapped_contract_surfaces_gaps_changes_and_figures(self, client, db_session, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
