@@ -318,13 +318,15 @@ DEPT_ENTRY = re.compile(
 # The source's own commitment field (Lever commitment, Ashby employmentType,
 # SmartRecruiters typeOfEmployment): "Intern", "Internship", "Intern/Co-op".
 EMPLOYMENT_TYPE_ENTRY = re.compile(r"\bintern|\bco-?op\b|\bstudent\b|\bapprentice", re.IGNORECASE)
+# "Software Engineer I", "Analyst 1"; not "Rack Repair Specialist-1".
+_LEVEL_ONE_ROLE = r"\b" + _LEVEL_ROLE + r"\s*,?\s*(?:i|1)\b(?![-\w])" + _NOT_A_DURATION
 WEAK_ENTRY = re.compile(
     r"\bjunior\b|\bjr\b\.?"
     r"|\bentry[- ]level\b"
     r"|\banalyst\b"
     r"|\bassociates?\b"
     r"|\b(?:level|lvl|grade|tier)\s*(?:i|1)\b"
-    r"|\b" + _LEVEL_ROLE + r"\s*,?\s*(?:i|1)\b(?![-\w])" + _NOT_A_DURATION
+    r"|" + _LEVEL_ONE_ROLE
     + r"|\b0\s*-\s*[12]\s*years\b|\b1\s*-\s*2\s*years\b|\bstarter\b|\bfresh(?:er)?\b",
     re.IGNORECASE,
 )
@@ -424,9 +426,12 @@ STUDENT_JOB = re.compile(
     re.IGNORECASE,
 )
 # Hourly/frontline work. Vetoes the weak tier only: a named track stays one.
-FRONTLINE = re.compile(
+_SHIFT = (
     r"\b(?:\d(?:st|nd|rd|th)|night|overnight|evening|weekend|day|am|pm|swing|graveyard)[- ]shift\b"
-    r"|\bshift\s*\d\b|\bpart[- ]time\b|\bseasonal\b|#\s?\d+\b"
+    r"|\bshift\s*\d\b"
+)
+FRONTLINE = re.compile(
+    _SHIFT + r"|\bpart[- ]time\b|\bseasonal\b|#\s?\d+\b"
     r"|\b(?:warehouse|forklift|barista|cashier|key holder|lot attendant|detailer|driver"
     r"|crew member|sous chef|cook|dishwasher|bartender|store|merchandising"
     r"|production associate|security associate)\b"
@@ -438,7 +443,20 @@ FRONTLINE = re.compile(
     r"|\b(?:event|store)\s+retail\b",
     re.IGNORECASE,
 )
+_SHIFT_WORDS = re.compile(_SHIFT, re.IGNORECASE)
+_LEVEL_ONE = re.compile(_LEVEL_ONE_ROLE, re.IGNORECASE)
 _PART_TIME_COMMITMENT = re.compile(r"part[- ]?time", re.IGNORECASE)
+
+
+def _frontline(title: str) -> bool:
+    """FRONTLINE, except that a shift alone does not make a level-I role
+    hourly floor work: Replit's "Support Engineer I (FC, Weekend Shift)" is
+    a support engineer on a weekend rota. Its other words still veto
+    ("Security Associate I - 2nd Shift", "Lot Driver I - Part Time")."""
+    if _LEVEL_ONE.search(title):
+        title = _SHIFT_WORDS.sub(" ", title)
+    return bool(FRONTLINE.search(title))
+
 
 # Title words that file an entry-level row under internships, not new grad.
 INTERNSHIP_TITLE = re.compile(
@@ -475,7 +493,7 @@ def entry_tier(title: str, department: str = "", employment_type: str = "") -> O
         return None
     if strong_title or DEPT_ENTRY.search(department or ""):
         return "strong"
-    if (WEAK_ENTRY.search(title) and not FRONTLINE.search(title)
+    if (WEAK_ENTRY.search(title) and not _frontline(title)
             and not _PART_TIME_COMMITMENT.search(employment_type or "")):
         return "weak"
     return None

@@ -292,6 +292,28 @@ def test_a_band_list_only_opens_at_its_first_band(title):
     assert not _entry(title)
 
 
+@pytest.mark.parametrize("title", [
+    # A level-I role on a shift is not hourly floor work (2026-09-29 crawl).
+    "Support Engineer I (FC, Weekend Shift)",                 # Replit, prod 64250
+    "Support Engineer I (NYC, Weekend Shift)",
+    "Factory Test Technical Specialist I - 2nd Shift",        # Relativity
+])
+def test_a_shift_alone_never_vetoes_a_level_one_role(title):
+    assert entry_tier(title) == "weak"
+    assert ATSScraper().rejection(_job(title, location="Foster City, CA")) is None
+
+
+@pytest.mark.parametrize("title", [
+    "Customer Experience Associate (Evening Shift)",          # no level I
+    "Security Associate I - 2nd Shift",                       # frontline anyway
+    "Software Engineer I, Night Shift, #12",                  # a store number
+    "Lot Driver I - Part Time",
+])
+def test_a_level_one_role_is_still_frontline_on_its_other_words(title):
+    assert entry_tier(title) is None
+    assert not _entry(title)
+
+
 @pytest.mark.parametrize("title,employment_type", [
     # The range only lifts the mid-level veto; everything else still applies.
     ("Experienced Financial Analyst", ""),
