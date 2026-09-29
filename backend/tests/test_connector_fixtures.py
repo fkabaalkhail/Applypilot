@@ -20,6 +20,7 @@ from backend.services.ats_scraper import (
     fetch_workday_detail,
     workday_public_base,
 )
+from backend.services.na_location import job_country
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -124,6 +125,63 @@ async def test_ashby_fixture_parses_employment_and_compensation():
     assert intern.employment_type == "Intern"
     assert "per hour" in intern.salary_text
     assert "<p>" not in intern.description
+
+
+# ─── Other locations (Ashby secondaryLocations, Lever allLocations) ─────────
+# A posting whose primary location is abroad but which is also open in North
+# America (live 2026-09-29: cohere "London" + San Francisco, New York, Toronto,
+# Montreal; oyster "EMEA" + Canada) is a North American posting, not a
+# "location" reject that retires its stored row.
+
+@pytest.mark.asyncio
+async def test_ashby_secondary_locations_feed_the_na_verdict(monkeypatch):
+    monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+
+    def posting(job_id, location, secondary):
+        return {"id": job_id, "title": "Machine Learning Intern", "location": location,
+                "secondaryLocations": [{"location": place} for place in secondary],
+                "jobUrl": f"https://jobs.ashbyhq.com/acme/{job_id}", "employmentType": "Intern"}
+
+    transport = FixtureTransport({"api.ashbyhq.com": {"jobs": [
+        posting("a1", "London", ["San Francisco", "New York", "Toronto"]),
+        posting("a2", "EMEA", ["Canada"]),
+        posting("a3", "London", ["Paris", "Berlin"]),
+        posting("a4", "London", []),
+    ]}})
+    async with httpx.AsyncClient(transport=transport) as client:
+        snapshot = await _filtered().scrape_board(client, "ashby", "acme", "Acme")
+
+    passed = {job.url.rsplit("/", 1)[-1]: job for job in snapshot.jobs}
+    assert set(passed) == {"a1", "a2"}
+    assert snapshot.rejected == {"https://jobs.ashbyhq.com/acme/a3": "location",
+                                 "https://jobs.ashbyhq.com/acme/a4": "location"}
+    # The displayed location stays the primary; the country comes from the rest.
+    assert passed["a1"].location == "London"
+    assert passed["a1"].location_hint == "San Francisco; New York; Toronto"
+    assert job_country(passed["a2"].location, hint=passed["a2"].location_hint) == "CA"
+
+
+@pytest.mark.asyncio
+async def test_lever_all_locations_feed_the_na_verdict(monkeypatch):
+    monkeypatch.setattr(company_registry, "load_board_countries", lambda: {})
+
+    def posting(job_id, location, everywhere):
+        return {"id": job_id, "text": "Software Engineer Intern",
+                "hostedUrl": f"https://jobs.lever.co/acme/{job_id}",
+                "categories": {"location": location, "allLocations": everywhere,
+                               "commitment": "Intern"}}
+
+    transport = FixtureTransport({"api.lever.co": [
+        posting("l1", "London, UK", ["London, UK", "New York, NY"]),
+        posting("l2", "London, UK", ["London, UK", "Dublin, Ireland"]),
+    ]})
+    async with httpx.AsyncClient(transport=transport) as client:
+        snapshot = await _filtered().scrape_board(client, "lever", "acme", "Acme")
+
+    assert [job.url for job in snapshot.jobs] == ["https://jobs.lever.co/acme/l1"]
+    assert snapshot.jobs[0].location_hint == "New York, NY"
+    assert job_country("London, UK", hint=snapshot.jobs[0].location_hint) == "US"
+    assert snapshot.rejected == {"https://jobs.lever.co/acme/l2": "location"}
 
 
 # ─── SmartRecruiters ─────────────────────────────────────────────────────────

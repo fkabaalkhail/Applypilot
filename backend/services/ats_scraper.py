@@ -56,7 +56,9 @@ class ATSJob:
     salary_text: str = ""  # Source-structured pay range, verbatim-ish
     detail_ref: str = ""  # Connector-specific ref for a lazy detail fetch (Workday externalPath)
     # Where a Workday posting that only says "3 Locations" is primarily based,
-    # from its externalPath ("Toronto-ON", "IL-Rosemont"). Read for the NA
+    # from its externalPath ("Toronto-ON", "IL-Rosemont"); for Ashby and
+    # Lever, the North American ones among the posting's other locations
+    # ("San Francisco; Toronto" beside a primary "London"). Read for the NA
     # verdict and the country column only, never displayed or stored.
     location_hint: str = ""
 
@@ -657,6 +659,21 @@ def _workday_location_hint(location: str, external_path: str) -> str:
     return ""
 
 
+def _other_na_locations(primary: str, others) -> str:
+    """The North American places among a posting's other locations (Ashby
+    ``secondaryLocations``, Lever ``categories.allLocations``), "; "-joined.
+    A posting whose primary location is abroad but which is also open in New
+    York or Toronto is a North American posting, not a "location" reject."""
+    places: list[str] = []
+    for item in others or []:
+        place = item.get("location") if isinstance(item, dict) else item
+        place = place.strip() if isinstance(place, str) else ""
+        if place and place != (primary or "").strip() and place not in places \
+                and is_north_america(place):
+            places.append(place)
+    return "; ".join(places)
+
+
 def _workday_external_id(external_path: str, bullet_fields: list) -> str:
     """Prefer the req id Workday appends to the path ("…_R-12345"); fall back
     to the first bulletField (usually the same req id)."""
@@ -918,6 +935,7 @@ class ATSScraper:
                 external_id=str(posting.get("id") or ""),
                 employment_type=commitment,
                 salary_text=salary_text,
+                location_hint=_other_na_locations(location, categories.get("allLocations")),
             )
             jobs.append(job)
 
@@ -965,6 +983,7 @@ class ATSScraper:
                 external_id=str(job_data.get("id") or ""),
                 employment_type=job_data.get("employmentType", "") or "",
                 salary_text=job_data.get("compensationTierSummary", "") or "",
+                location_hint=_other_na_locations(location, job_data.get("secondaryLocations")),
             )
             jobs.append(job)
 
@@ -1190,7 +1209,8 @@ class ATSScraper:
           either ("3 Locations", "Hybrid", ""): never retires a row
 
         A Workday "3 Locations" posting passes on its path's primary
-        location (``location_hint``)."""
+        location, and an Ashby/Lever posting on any North American one of
+        its other locations (``location_hint``)."""
         if self.filter_entry_level and not self._is_entry_level(job):
             return "level"
         if self.filter_north_america and not home_country:
