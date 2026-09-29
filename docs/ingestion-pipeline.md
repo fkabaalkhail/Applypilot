@@ -155,6 +155,19 @@ Feed visibility: `duplicate_of IS NULL AND listing_status IN ('active',
 applications reference them); `removed`/`expired` rows stay in a user's Liked
 list with a "No longer accepting applications" badge and a disabled Apply.
 
+`off_target` hides a row that is still open but outside the feed's scope:
+its own listing fails the crawler's filters today (not entry level, or
+outside the US/Canada), whatever looser rules let it in earlier. Board
+crawls set it on rows they list (ATS rows only; GitHub-list, LinkedIn and
+Indeed rows are never re-judged by a board), and a listing that passes again
+brings the row back. Two cron-freshness sweeps set it too: ATS rows on
+never-crawled `unknown` boards, and LinkedIn/Indeed rows with plainly senior
+titles. An off_target row is never called dead, and it becomes `removed` once
+its board stops listing it. `CRON_ATS_RETIRE_OFF_TARGET=0` turns all of this
+off and puts the rows back (crawled rows on their board's next crawl, the
+sweeps' rows on the next cron-freshness); like any Vercel env var, the change
+needs a redeploy to take effect.
+
 ### Two timestamps: `last_seen_at` vs `last_probed_at`
 
 - `last_seen_at` is **positive evidence only**: a board crawl listed the row,
@@ -540,6 +553,7 @@ The durable fix is to stop depending on GitHub's scheduler:
 | `WORKDAY_MAX_PAGES` | 100 | Workday list pages (20 postings each) per board; do not pin to 8 |
 | `SMARTRECRUITERS_MAX_PAGES` | 20 | SmartRecruiters list pages (100 postings each) per board |
 | `ATS_PER_HOST_INTERVAL` | 0.35 | Seconds between requests to one ATS API host |
+| `CRON_ATS_RETIRE_OFF_TARGET` | on | `0`/`false`/`no`/`off` stops retiring rows to `off_target` and restores them (see the lifecycle section); needs a redeploy |
 
 ## One-time scripts
 
