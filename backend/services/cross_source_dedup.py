@@ -805,6 +805,34 @@ def dedup_sweep(db: Session) -> dict:
 # stands_in_for_twins.) Among board rows carrying one posting, a visible
 # one wins over a removed sibling ('_R123' removed, its '_R123-1' repost
 # live).
+#
+# A precise identity (a Workday tenant + requisition, a Greenhouse job id, a
+# Lever/Ashby UUID) is the posting whatever either side titles it or calls
+# the employer: the list's 'Software Engineering AMTS - College Grad' is the
+# board's 'Software Engineering AMTS (College Grad)', 'BDO Canada' is 'BDO'
+# (tenant 'bdo'). Any other URL also needs the same employer and title.
+# A match on the identity alone takes a visible board row only, so a
+# retitled copy goes only where the feed still shows its posting: a removed
+# row's death verdict holds for a copy titled like it, while a retitled one
+# may be a later repost ('-1') of the closed requisition, and ingest probes
+# its own link.
+
+_BOARD_IDENTITY_PREFIXES = ("workday:", "greenhouse:", "lever:", "ashby:")
+
+
+def _identity_token(identity: str) -> str:
+    """What every URL spelling of a precise identity carries, case-folded:
+    '_' + the Workday requisition, the Greenhouse job id, the Lever/Ashby
+    UUID. Only a SQL prefilter: posting_identity() decides."""
+    token = identity.rsplit(":", 1)[-1]
+    return "_" + token if identity.startswith("workday:") else token
+
+
+def _url_carries(token: str):
+    """SQL: the row's URL contains ``token`` (lower-case), LIKE wildcards
+    escaped."""
+    return func.lower(ScrapedJob.url).contains(token, autoescape=True)
+
 
 def stands_in_for_list_copy(listing_status: str | None) -> bool:
     """True when a board row may hide a GitHub-list copy of its posting, or
@@ -825,40 +853,73 @@ def _visible_first(listing_status: str | None) -> int:
     return 0 if listing_status is None or listing_status not in HIDDEN_LISTING_STATUSES else 1
 
 
+def _visible_board_rows_carrying(db: Session, identities: list[str]) -> dict[str, int]:
+    """identity -> id of the oldest visible board row whose posting is one
+    of ``identities`` (precise ones). Column-only, 400 ids a query."""
+    wanted = set(identities)
+    carriers: dict[str, int] = {}
+    for i in range(0, len(identities), 400):
+        for row_id, url in (
+            db.query(ScrapedJob.id, ScrapedJob.url)
+            .filter(ScrapedJob.source_platform == "ats",
+                    ScrapedJob.duplicate_of.is_(None),
+                    or_(ScrapedJob.listing_status.is_(None),
+                        ScrapedJob.listing_status.in_(_VISIBLE_LISTING_STATUSES)),
+                    or_(*(_url_carries(_identity_token(identity))
+                          for identity in identities[i:i + 400])))
+        ):
+            identity = posting_identity(url or "")
+            if identity in wanted and effective_source("ats", url or "") == "ats":
+                carriers[identity] = min(row_id, carriers.get(identity, row_id))
+    return carriers
+
+
 def board_row_for_posting(db: Session, *, company: str, company_domain: str,
                           title: str, url: str) -> int | None:
-    """Id of a board-crawled (ats) row for the posting ``url`` names, same
-    employer and title, that may stand in for it (a visible one first), or
-    None. The ingest guard for GitHub-list rows. Column-only."""
+    """Id of a board-crawled (ats) row for the posting ``url`` names that
+    may stand in for it, or None: one of the same employer and title (a
+    visible one before a removed sibling), else, for a precise identity,
+    a visible one of any title (see above). The ingest guard for
+    GitHub-list rows. Column-only."""
     title_norm = normalize_title(title)
     identity = posting_identity(url)
-    if not title_norm or not identity:
+    if not identity:
         return None
-    rows = (
-        db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
-        .filter(ScrapedJob.source_platform == "ats",
-                ScrapedJob.duplicate_of.is_(None),
-                _stands_in_for_list_filter(),
-                ScrapedJob.title_norm == title_norm,
-                _employer_filter(company, company_domain))
-        .order_by(ScrapedJob.id)
-        .limit(50)
-        .all()
-    )
-    for row_id, row_url, _status in sorted(rows, key=lambda row: (_visible_first(row[2]), row[0])):
+    best: tuple[int, int] | None = None  # (_visible_first, id)
+    if title_norm:
+        rows = (
+            db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.listing_status)
+            .filter(ScrapedJob.source_platform == "ats",
+                    ScrapedJob.duplicate_of.is_(None),
+                    _stands_in_for_list_filter(),
+                    ScrapedJob.title_norm == title_norm,
+                    _employer_filter(company, company_domain))
+            .order_by(ScrapedJob.id)
+            .limit(50)
+            .all()
+        )
         # A rogue-era 'ats' row with a LinkedIn/Indeed URL is no board row.
-        if (effective_source("ats", row_url or "") == "ats"
-                and posting_identity(row_url or "") == identity):
-            return row_id
-    return None
+        best = min(((_visible_first(status), row_id) for row_id, row_url, status in rows
+                    if effective_source("ats", row_url or "") == "ats"
+                    and posting_identity(row_url or "") == identity), default=None)
+    if identity.startswith(_BOARD_IDENTITY_PREFIXES) and (best is None or best[0]):
+        retitled = _visible_board_rows_carrying(db, [identity]).get(identity)
+        if retitled is not None:
+            return retitled
+    return best[1] if best else None
 
 
 def hide_list_copies_of_board_rows(db: Session) -> int:
     """Soft-hide visible GitHub-list rows whose posting a board row carries
-    under another URL spelling (duplicate_of = the board row, a visible one
-    before a removed sibling), same employer (folded name) and title.
+    under another URL spelling (duplicate_of = the board row), like the
+    ingest guard (board_row_for_posting): one of the same employer (folded
+    name) and title, a visible one before a removed sibling, else, for a
+    precise identity, a visible one of any title. A copy hidden behind a
+    board row that is removed later stays hidden
+    (release_list_copies_of_lapsed_board_rows).
     Idempotent; run by every cron-poll. Column-only reads: the visible list
-    rows (a few thousand at most), then the board rows sharing their titles.
+    rows (a few thousand at most), the board rows sharing their titles, then
+    the visible board rows whose URLs carry the precise ids left over.
     Commits. Returns the number hidden."""
     listed = (
         db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title_norm)
@@ -872,7 +933,7 @@ def hide_list_copies_of_board_rows(db: Session) -> int:
     if not listed:
         return 0
     titles = sorted({row.title_norm for row in listed if row.title_norm})
-    board: dict[tuple[str, str, str], int] = {}
+    board: dict[tuple[str, str, str], tuple[int, int]] = {}  # key -> (_visible_first, id)
     for i in range(0, len(titles), 400):
         candidates = (
             db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title_norm,
@@ -884,15 +945,27 @@ def hide_list_copies_of_board_rows(db: Session) -> int:
             .all()
         )
         # A chunk holds whole titles, so every key's candidates are in it.
-        for row_id, url, company, title_norm, _status in sorted(
+        for row_id, url, company, title_norm, status in sorted(
                 candidates, key=lambda row: (_visible_first(row[4]), row[0])):
             if effective_source("ats", url or "") != "ats":
                 continue
             board.setdefault(
-                (normalize_company(company or ""), title_norm, posting_identity(url or "")), row_id)
-    hidden = 0
+                (normalize_company(company or ""), title_norm, posting_identity(url or "")),
+                (_visible_first(status), row_id))
+    matches: list[tuple[int, str, tuple[int, int] | None]] = []
+    retitled: set[str] = set()  # precise identities with no visible same-titled board row
     for row_id, url, company, title_norm in listed:
-        winner = board.get((normalize_company(company or ""), title_norm, posting_identity(url or "")))
+        identity = posting_identity(url or "")
+        match = board.get((normalize_company(company or ""), title_norm, identity))
+        if identity.startswith(_BOARD_IDENTITY_PREFIXES) and (match is None or match[0]):
+            retitled.add(identity)
+        matches.append((row_id, identity, match))
+    carriers = _visible_board_rows_carrying(db, sorted(retitled)) if retitled else {}
+    hidden = 0
+    for row_id, identity, match in matches:
+        winner = match[1] if match else None
+        if match is None or match[0]:
+            winner = carriers.get(identity, winner)
         if winner and winner != row_id:
             db.query(ScrapedJob).filter(ScrapedJob.id == row_id).update(
                 {"duplicate_of": winner}, synchronize_session=False)
@@ -913,7 +986,8 @@ def release_list_copies_of_lapsed_board_rows(db: Session) -> int:
     removed keeps its copies hidden (the posting's death verdict), and a
     released copy retires with its list as usual. Run by cron-poll before
     hide_list_copies_of_board_rows, which hides it again under any live
-    board twin. Column-only. Commits. Returns the number released."""
+    board twin (a retitled one too, for a precise identity). Column-only.
+    Commits. Returns the number released."""
     winner = aliased(ScrapedJob)
     rows = (
         db.query(ScrapedJob.id, winner.listing_status)
@@ -950,7 +1024,7 @@ def release_list_copies_of_lapsed_board_rows(db: Session) -> int:
 # several roles). One row per posting stays in the feed, the rest are
 # soft-hidden (duplicate_of) and come back when it leaves.
 
-_PRECISE_IDENTITY_PREFIXES = ("workday:", "greenhouse:", "lever:", "ashby:", "linkedin:", "indeed:")
+_PRECISE_IDENTITY_PREFIXES = _BOARD_IDENTITY_PREFIXES + ("linkedin:", "indeed:")
 
 
 def list_row_key(company: str, title_norm: str, url: str) -> tuple | None:
@@ -975,11 +1049,11 @@ def hide_repeated_list_rows(db: Session) -> int:
     """Soft-hide visible GitHub-list rows that repeat a posting another row
     already carries (list_row_key). The posting stays with the board row a
     repeat of it is already hidden behind (hide_list_copies_of_board_rows
-    needs the same title, a retitled repeat does not), else with its oldest
-    visible list row. Idempotent; run by every cron-poll after the board
-    pass. Column-only: the visible list rows (a few thousand at most) and
-    the platforms of the rows they are hidden behind, one UPDATE per kept
-    row. Commits. Returns the number hidden."""
+    puts a retitled repeat behind a board row only while that row is
+    visible), else with its oldest visible list row. Idempotent; run by
+    every cron-poll after the board pass. Column-only: the visible list rows
+    (a few thousand at most) and the platforms of the rows they are hidden
+    behind, one UPDATE per kept row. Commits. Returns the number hidden."""
     rows = (
         db.query(ScrapedJob.id, ScrapedJob.url, ScrapedJob.company, ScrapedJob.title_norm,
                  ScrapedJob.duplicate_of)

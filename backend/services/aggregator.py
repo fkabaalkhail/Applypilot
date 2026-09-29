@@ -571,9 +571,12 @@ class AggregatorService:
 
                 # The lists re-publish postings employers already closed,
                 # verify genuinely-new URLs before they become catalogue rows
-                # a user can click into a 404. Freshest first, so the probe
-                # budget goes on the rows users will see first.
-                dead_urls = await self._probe_new_urls(insertable[::-1])
+                # a user can click into a 404. Only rows this source can
+                # store (an *_INTL.md file's foreign rows took the whole
+                # budget), freshest first, so the probe budget goes on the
+                # rows users will see first.
+                dead_urls = await self._probe_new_urls(
+                    [job for job in insertable[::-1] if self._source_country(job, source)])
 
                 # Read afresh: rows left the feed since the last parse.
                 self._listed_keys, self._listing = None, (source.id, listed_urls)
@@ -909,6 +912,18 @@ class AggregatorService:
                 return frozenset(config["countries"])
         return frozenset()
 
+    def _source_country(self, job: ParsedJob, source: GitHubSource) -> Optional[str]:
+        """The country a row of ``source`` is stored under, or None when the
+        source doesn't take it: not US/CA, or outside the seed entry's
+        allowlist. A list of mostly non-North-American roles (speedyapply's
+        INTERN_INTL.md) is only read for the country it is seeded for: its
+        'Remote - Poland' rows classify as US."""
+        country = self.country_filter.classify(job.location)
+        allowed = self._allowed_countries(source)
+        if country is None or (allowed and country not in allowed):
+            return None
+        return country
+
     def _get_experience_level(self, source: GitHubSource, title: str = "") -> str:
         """Returns 'internship' or 'new_grad' based on source repo name, or on
         the title for mixed lists (speedyapply's README is all internships)."""
@@ -1114,9 +1129,12 @@ class AggregatorService:
         # crawler's hard markers (ats_scraper.HARD_SENIOR, shared with the
         # LinkedIn/Indeed ingest): the lists are curated for interns and new
         # grads, so its weak tier, soft words ("Manager", "Architect") and
-        # frontline rules don't apply to them.
-        from backend.services.ats_scraper import HARD_SENIOR
-        if HARD_SENIOR.search(job.title or ""):
+        # frontline rules don't apply to them. A title that also names a
+        # student track (ats_scraper.STRONG_ENTRY) is that track: "Chief of
+        # Staff Intern", "Research Fellow - Summer 2027", "Software Engineer
+        # Intern - Sr. Design".
+        from backend.services.ats_scraper import HARD_SENIOR, STRONG_ENTRY
+        if HARD_SENIOR.search(job.title or "") and not STRONG_ENTRY.search(job.title or ""):
             return False
 
         # Same posting, different utm_* decorations must collide on the URL
@@ -1134,16 +1152,8 @@ class AggregatorService:
         if self._past_max_age(job, now):
             return False
 
-        # Classify country
-        country = self.country_filter.classify(job.location)
+        country = self._source_country(job, source)
         if country is None:
-            # Exclude non-US/CA jobs
-            return False
-        # A list of mostly non-North-American roles (speedyapply's
-        # INTERN_INTL.md) is only read for the country it is seeded for:
-        # its 'Remote - Poland' rows classify as US.
-        allowed = self._allowed_countries(source)
-        if allowed and country not in allowed:
             return False
 
         # Work type: prefer the jobright "Work Model" column when present,

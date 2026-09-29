@@ -226,7 +226,16 @@ class TestPerFileSources:
         assert by_file["INTERN_INTL.md"].repo_name == "2027-SWE-College-Jobs"
 
     @pytest.mark.asyncio
-    async def test_international_file_is_read_for_canada_only(self, db_session, github):
+    async def test_international_file_is_read_for_canada_only(self, db_session, github, monkeypatch):
+        from backend.services import listing_freshness
+
+        probed: list[str] = []
+
+        async def probe(client, urls, **kwargs):
+            probed.extend(urls)
+            return {}
+
+        monkeypatch.setattr(listing_freshness, "probe_urls_liveness", probe)
         svc = AggregatorService(db_session)
         svc.REPOS = [{"url": "https://github.com/speedyapply/2027-SWE-College-Jobs", "file_path": "INTERN_INTL.md",
                       "countries": ["CA"], "category": "", "level": "internship"}]
@@ -245,6 +254,10 @@ class TestPerFileSources:
         assert (row.company, row.country) == ("Robinhood", "CA")
         # Kept byte for byte: the board crawl stores this exact spelling.
         assert row.url == "https://boards.greenhouse.io/robinhood/jobs/8199729?t=gh_src=&gh_jid=8199729"
+        # The new-URL probe budget goes on that row alone: the foreign rows
+        # (~620 of NEW_GRAD_INTL.md's ~700) are never stored, so never known,
+        # and used to take the 80 probes on every change of the file.
+        assert probed == [row.url]
 
     def test_country_allowlist_survives_a_repo_rename(self, db_session):
         # speedyapply renames every season; the source adopts the new name on
@@ -595,6 +608,24 @@ class TestAdminEndpoints:
         resp = admin.put(f"/github-sources/{source.id}", json={"repo_url": repo_url, "file_path": file_path})
 
         assert resp.status_code == 422
+
+    @pytest.mark.parametrize("minutes, status", [(-30, 422), (0, 422), (4, 422), (10081, 422),
+                                                 (5, 200), (10080, 200)])
+    def test_poll_interval_is_bounded(self, admin, db_session, minutes, status):
+        # An admin interval sticks, so a negative one made the source due on
+        # every cron-poll run (_due_at), and 0 read as the automatic cadence.
+        url = "https://github.com/vanshb03/New-Grad-2027"
+        source = _source(db_session, url=url)
+
+        edited = admin.put(f"/github-sources/{source.id}",
+                           json={"repo_url": url, "poll_interval_minutes": minutes})
+        created = admin.post("/github-sources", json={
+            "repo_url": "https://github.com/negarprh/Canadian-Tech-Internships-2027",
+            "poll_interval_minutes": minutes})
+
+        assert (edited.status_code, created.status_code) == (status, status)
+        db_session.refresh(source)
+        assert source.poll_interval_minutes == (minutes if status == 200 else 60)
 
     @pytest.mark.asyncio
     async def test_admin_poll_interval_sticks(self, db_session, github):

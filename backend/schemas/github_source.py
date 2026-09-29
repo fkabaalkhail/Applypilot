@@ -4,14 +4,16 @@ Pydantic schemas for GitHub repository job sources.
 
 import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GitHubSourceCreate(BaseModel):
     """Input schema for creating a new GitHub source."""
     repo_url: str  # validated as GitHub URL
     file_path: str = "README.md"
-    poll_interval_minutes: int = 60
+    # Any value but 60/1440 sticks (AggregatorService.poll_source); a negative
+    # one was due on every cron-poll run. 5 is the admin form's own minimum.
+    poll_interval_minutes: int = Field(default=60, ge=5, le=10080)
 
 
 class GitHubSourceOut(BaseModel):
