@@ -45,6 +45,7 @@ from sqlalchemy import case, func, not_, nulls_first, or_
 from sqlalchemy.orm import Session
 
 from backend.db.models import ScrapedJob
+from backend.services.description_extractor import sanitize_description
 from backend.services.platform_liveness import (
     ALIVE,
     DEAD,
@@ -375,11 +376,14 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     """Split a board's filtered jobs into (new, stats) and refresh the ones
     already stored: detect edits (title/location/salary/description) into
     ``change_log``, update the structured fields, adopt legacy rows into
-    ``board_key``. ``jobs`` are ats_scraper.ATSJob. Commits.
+    ``board_key``, and give a crawler row the registry's company name.
+    ``jobs`` are ats_scraper.ATSJob. Commits.
 
     Change detection is explicit column compares plus a description hash,
     a re-crawl that didn't carry the description (SmartRecruiters/Workday
     list payloads) must not read "description became empty" as an edit.
+    Nor may Workday's bare "10 Locations" replace a stored location that
+    names the place: the path hint only places a row whose text names none.
 
     The fields derived from the title and location are kept in step, the way
     cron-ats derives them for a new row (location_derived_fields,
@@ -396,6 +400,7 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
     Only rows that differ are rewritten.
     """
     from backend.services.ats_scraper import experience_level_for
+    from backend.services.location_parser import is_location_count, location_fields
 
     now = now or _utcnow()
     stats = {"refreshed": 0, "edited": 0, "salary_removed": 0,
@@ -416,6 +421,7 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
                 ScrapedJob.country, ScrapedJob.city, ScrapedJob.region,
                 ScrapedJob.location_search, ScrapedJob.title_norm,
                 ScrapedJob.experience_level, ScrapedJob.source_platform,
+                ScrapedJob.company,
             )
             .filter(ScrapedJob.url.in_(chunk))
             .all()
@@ -431,7 +437,7 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
         (row_id, _url, old_title, old_location, old_salary_min, old_hash,
          edit_count, change_log, old_board_key, old_external_id, old_country,
          old_city, old_region, old_search, old_title_norm, old_level,
-         source_platform) = row
+         source_platform, old_company) = row
         job = by_url[url]
 
         updates: dict = {"last_seen_at": now}
@@ -439,13 +445,23 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
             updates["board_key"] = board_key
         if job.external_id and not old_external_id:
             updates["external_id"] = f"{board_key}:{job.external_id}"
+        # A crawler row carries the registry's name for the employer, so a
+        # rename ("Notion (Ashby)" -> "Notion") reaches the stored rows. Not
+        # an edit of the posting. A list row keeps its list's spelling.
+        company = (job.company or "").strip()
+        if source_platform == "ats" and company and company != old_company:
+            updates["company"] = company
 
+        # Titles and locations compare stripped: padding (Carvana's
+        # " Fleet Operations Associate") is no edit, and is healed quietly.
         changes: list[str] = []
-        title = job.title or old_title or ""
-        title_changed = bool(job.title) and job.title != old_title
+        new_title = (job.title or "").strip()
+        title = new_title or old_title or ""
+        title_changed = bool(new_title) and new_title != (old_title or "").strip()
         if title_changed:
             changes.append("title")
-            updates["title"] = job.title
+        if new_title and new_title != old_title:
+            updates["title"] = new_title
         # Re-derive on an edit, and heal a row an earlier edit left with the
         # old title's dedup key. Only rows with a logged title edit: an
         # unedited row's title_norm is the insert's own, whatever version of
@@ -463,14 +479,21 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
                 updates["experience_level"] = level
                 stats["relabeled"] += 1
 
-        location = job.location or old_location or ""
-        location_changed = bool(job.location) and job.location != old_location
-        if location_changed:
-            # Filling in a location the row never had (Parsons' list rows
-            # carried none until the bullet fallback) is not an edit.
-            if (old_location or "").strip():
-                changes.append("location")
-            updates["location"] = job.location
+        new_location = (job.location or "").strip()
+        if (is_location_count(new_location)
+                and location_fields(old_location or "")["location_search"]):
+            # Workday's list payload says only "10 Locations"; a stored
+            # "REMOTETELETRAVAIL QC CAN (10 Locations)" names the place.
+            # Not an edit, and the stored text keeps filing the row.
+            new_location = ""
+        location = new_location or old_location or ""
+        location_changed = bool(new_location) and new_location != (old_location or "").strip()
+        # Filling in a location the row never had (Parsons' list rows
+        # carried none until the bullet fallback) is not an edit.
+        if location_changed and (old_location or "").strip():
+            changes.append("location")
+        if new_location and new_location != old_location:
+            updates["location"] = new_location
         derived = location_derived_fields(
             location, board_country, hint=job.location_hint or "",
             current_country=old_country or "", fallback=old_country or "US",
@@ -483,31 +506,48 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
             updates["country"] = derived["country"]
             stats["recountried"] += 1
 
-        salary_source = job.salary_text or job.description or ""
-        if salary_source:
-            parsed = parse_salary(salary_source)
+        # The description as cron-ats stores and hashes it (sanitized): the
+        # raw text hashed differently, so every Greenhouse/Lever/Ashby row
+        # logged a false 'description' edit on its second crawl, and the
+        # longer sanitized text moves parse_salary's window. A row that
+        # older refresh rewrote holds the raw text and its hash: the same
+        # content, healed without an edit.
+        description = (job.description or "").strip()
+        description = sanitize_description(description) if description else ""
+        new_hash = (compute_raw_hash(job.title, job.location, description, job.salary_text or "")
+                    if description else "")
+        same_content = bool(new_hash) and (old_hash == new_hash or old_hash == compute_raw_hash(
+            job.title, job.location, job.description, job.salary_text or ""))
+        content_changed = bool(new_hash) and bool(old_hash) and not same_content
+
+        if job.salary_text or description:
+            parsed = parse_salary(job.salary_text or "") or parse_salary(description)
             if parsed:
                 salary_min, salary_max, currency, period = parsed
-                if old_salary_min and salary_min != old_salary_min:
+                # A new reading of unchanged content is the parser's, not an edit.
+                if old_salary_min and salary_min != old_salary_min and not same_content:
                     changes.append("salary")
                 updates.update(salary_min=salary_min, salary_max=salary_max,
                                salary_currency=currency, salary_period=period)
-            elif old_salary_min and job.salary_text == "" and job.description:
+            elif old_salary_min and job.salary_text == "" and content_changed:
                 # The source used to state pay and the fresh full content no
-                # longer does, the bait-and-switch edit worth flagging.
+                # longer does, the bait-and-switch edit worth flagging. Once:
+                # the stored pay goes too. Unchanged content whose pay the
+                # parser no longer finds (Veeva's "Starting Salary: $85,000")
+                # keeps it.
                 changes.append("salary_removed")
                 stats["salary_removed"] += 1
+                updates.update(salary_min=None, salary_max=None,
+                               salary_currency="", salary_period="")
 
-        if job.description:
-            new_hash = compute_raw_hash(job.title, job.location,
-                                        job.description, job.salary_text or "")
+        if description:
             if old_hash and new_hash != old_hash:
-                if not changes:
+                if content_changed and not changes:
                     changes.append("description")
-                updates["description"] = job.description
+                updates["description"] = description
                 updates["description_sections"] = None
-                updates["visa_sponsorship"] = detect_visa_sponsorship(job.description)
-                updates["skills"] = extract_skills(job.title, job.description) or None
+                updates["visa_sponsorship"] = detect_visa_sponsorship(description)
+                updates["skills"] = extract_skills(job.title, description) or None
             updates["raw_hash"] = new_hash
 
         if changes:
@@ -917,6 +957,22 @@ def retire_senior_aggregator_rows(db: Session, now: datetime.datetime | None = N
 
 # ─── Ghost-risk scoring ──────────────────────────────────────────────────────
 
+# A source's posted_date before this is a placeholder, not a date.
+_POSTED_DATE_FLOOR = datetime.datetime(2000, 1, 1)
+
+
+def _opened_at(posted_date, first_seen_at):
+    """When a posting opened: the source's posted_date when it is plausible
+    (after 2000, and before we first saw the row: a later one is a repost
+    stamp), else our first sighting. Lever lists GoPuff postings from 2021
+    and Palantir's from 2016 that we first saw in 2026: measured from the
+    sighting they scored as fresh."""
+    if (posted_date is not None and posted_date > _POSTED_DATE_FLOOR
+            and (first_seen_at is None or posted_date < first_seen_at)):
+        return posted_date
+    return first_seen_at
+
+
 def _ghost_score(days_open: int, evergreen: bool, repost_count: int,
                  company_long_open_ratio: float, company_active: int) -> tuple[int, dict]:
     score = 0
@@ -946,6 +1002,9 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
          descriptions, to cache the evergreen flag into the factors JSON
       2. previously scored rows old enough that age-driven factors move,
          column-only, evergreen reused from the cached factors
+
+    Days open count from when the posting opened (_opened_at: the source's
+    posted_date when plausible, else our first sighting).
 
     Commits. Returns counts.
     """
@@ -996,7 +1055,7 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
     # Pass 1: never scored. Reads the description once to cache `evergreen`.
     fresh = (
         db.query(ScrapedJob.id, ScrapedJob.company, ScrapedJob.title_norm,
-                 ScrapedJob.first_seen_at, ScrapedJob.description)
+                 ScrapedJob.first_seen_at, ScrapedJob.posted_date, ScrapedJob.description)
         .filter(ScrapedJob.listing_status == LISTING_ACTIVE,
                 ScrapedJob.duplicate_of.is_(None),
                 ScrapedJob.ghost_risk_factors.is_(None))
@@ -1004,9 +1063,10 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
         .limit(batch_size)
         .all()
     )
-    reposts = _repost_counts([(c or "", n or "") for _i, c, n, _f, _d in fresh])
-    for row_id, company, title_norm, first_seen_at, description in fresh:
-        days_open = (now - first_seen_at).days if first_seen_at else 0
+    reposts = _repost_counts([(c or "", n or "") for _i, c, n, _f, _p, _d in fresh])
+    for row_id, company, title_norm, first_seen_at, posted_date, description in fresh:
+        opened = _opened_at(posted_date, first_seen_at)
+        days_open = (now - opened).days if opened else 0
         evergreen = looks_evergreen(description or "")
         ratio, active_n = _company_ratio(company or "")
         score, factors = _ghost_score(
@@ -1022,22 +1082,31 @@ def score_ghost_risk(db: Session, now: datetime.datetime | None = None,
         )
         stats["scored_new"] += 1
 
-    # Pass 2: aging rows whose age factor may have moved. Column-only.
+    # Pass 2: aging rows whose age factor may have moved. Column-only. A
+    # row first seen lately can be old by its source's plausible date.
+    # Least recently scored first: ordered by first sighting, the same
+    # oldest batch was rescored every run and the rest kept their first
+    # score for good (1,584 aging rows, 500 a run; Palantir's since July).
     aging_cutoff = now - datetime.timedelta(days=GHOST_DAYS_OPEN - 5)
     aging = (
         db.query(ScrapedJob.id, ScrapedJob.company, ScrapedJob.title_norm,
-                 ScrapedJob.first_seen_at, ScrapedJob.ghost_risk_factors)
+                 ScrapedJob.first_seen_at, ScrapedJob.posted_date,
+                 ScrapedJob.ghost_risk_factors)
         .filter(ScrapedJob.listing_status == LISTING_ACTIVE,
                 ScrapedJob.duplicate_of.is_(None),
                 ScrapedJob.ghost_risk_factors.isnot(None),
-                ScrapedJob.first_seen_at < aging_cutoff)
-        .order_by(ScrapedJob.first_seen_at.asc())
+                or_(ScrapedJob.first_seen_at < aging_cutoff,
+                    (ScrapedJob.posted_date > _POSTED_DATE_FLOOR)
+                    & (ScrapedJob.posted_date < aging_cutoff)))
+        .order_by(nulls_first(ScrapedJob.ghost_risk_factors["scored_at"].as_string().asc()),
+                  ScrapedJob.id.asc())
         .limit(batch_size)
         .all()
     )
-    reposts = _repost_counts([(c or "", n or "") for _i, c, n, _f, _g in aging])
-    for row_id, company, title_norm, first_seen_at, old_factors in aging:
-        days_open = (now - first_seen_at).days if first_seen_at else 0
+    reposts = _repost_counts([(c or "", n or "") for _i, c, n, _f, _p, _g in aging])
+    for row_id, company, title_norm, first_seen_at, posted_date, old_factors in aging:
+        opened = _opened_at(posted_date, first_seen_at)
+        days_open = (now - opened).days if opened else 0
         evergreen = bool((old_factors or {}).get("evergreen"))
         ratio, active_n = _company_ratio(company or "")
         score, factors = _ghost_score(

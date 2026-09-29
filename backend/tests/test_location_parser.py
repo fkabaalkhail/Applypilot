@@ -336,6 +336,8 @@ def test_code_prefix_is_read_only_with_positive_evidence():
     ("USA---Remote", "US", ("Remote", "")),
     ("Los-Angeles", "US", ("Los Angeles", "")),
     ("New-York", "US", ("", "NY")),
+    # BDO Canada's bare "London" is London, Ontario, though it reads foreign.
+    ("London", "CA", ("London", "")),
 ])
 def test_workday_slug_names_the_primary_location(slug, country, place):
     loc = parse_location_slug(slug, country)
@@ -346,6 +348,47 @@ def test_workday_slug_names_the_primary_location(slug, country, place):
     ("TELUS-CAN-BC-510-W-Georgia-St", "CA"),  # a company and an address
     ("Hawkesbury", "CA"),                     # no region, not a city we know
     ("Bangalore", ""),                        # no North American evidence
+    # A foreign place is not read with a one-country board's country.
+    ("IN-Bengaluru", "US"),                   # not Bengaluru, Indiana
+    ("PRAGUE-DC", "US"),                      # P&G: not Prague, DC
+    ("IE-Dublin-CA", "US"),                   # the code prefix names Ireland
+    ("San-Pedro-Garza-Garcia-NL-MX", "CA"),   # Mexico's Nuevo Leon, not Newfoundland
+    ("London---United-Kingdom", "CA"),        # the known city is not the evidence
+    ("London-UK", "CA"),
+    ("United-Kingdom---Remote", "US"),
 ])
 def test_workday_slug_it_cannot_trust(slug, country):
     assert parse_location_slug(slug, country) is None
+
+
+@pytest.mark.parametrize("slug, country, place", [
+    # Real hint gaps (2026-09 crawl dump).
+    ("VILLE-DE-QUEBEC-QC-CAN", "CA", ("Quebec City", "QC")),  # BMO, in French
+    ("VILLE-DE-QUBEC-QC-CAN", "CA", ("Quebec City", "QC")),   # accent dropped
+    ("Virtual-IL-USA", "US", ("Remote", "IL")),               # BMO
+    ("Virtual-USA", "US", ("Remote", "")),
+    # Lumentum's sites after a city we know, once the country and region
+    # have come first.
+    ("USA---CA---San-Jose-Ridder", "US", ("San Jose", "CA")),
+    ("USA---CA---San-Jose-Rose", "US", ("San Jose", "CA")),
+    ("Canada---Ottawa-Bill-Leathem", "CA", ("Ottawa", "")),
+    # A word that goes on naming the place keeps the whole name.
+    ("USA---IL---Chicago-Heights", "US", ("Chicago Heights", "IL")),
+    ("USA---IL---Arlington-Heights", "US", ("Arlington Heights", "IL")),
+    ("Arlington-Heights-IL", "US", ("Arlington Heights", "IL")),
+    ("USA---FL---Miami-Beach", "US", ("Miami Beach", "FL")),
+    # Without the country or region first, a city is never cut short.
+    ("San-Jose-Ridder-CA", "US", ("San Jose Ridder", "CA")),
+])
+def test_workday_slug_hint_gaps(slug, country, place):
+    loc = parse_location_slug(slug, country)
+    assert loc is not None and (loc.city, loc.region) == place
+
+
+def test_hint_gap_slugs_are_found_by_their_city_filters():
+    from backend.services.location_parser import hint_location_fields
+
+    blob = hint_location_fields("VILLE-DE-QUEBEC-QC-CAN", "CA")["location_search"]
+    assert all(f"|{token}|" in blob for token in location_tag_tokens("Quebec City, QC"))
+    blob = hint_location_fields("USA---CA---San-Jose-Ridder", "US")["location_search"]
+    assert all(f"|{token}|" in blob for token in location_tag_tokens("San Jose, CA"))

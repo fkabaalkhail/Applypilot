@@ -7,6 +7,7 @@ import pytest
 
 from backend.db.models import ScrapedJob, User, UserSavedJob
 from backend.services.ats_scraper import ATSJob
+from backend.services.description_extractor import sanitize_description
 from backend.services.listing_freshness import (
     AGGREGATOR_FAST_MAX_AGE_DAYS,
     AGGREGATOR_MAX_AGE_DAYS,
@@ -25,6 +26,7 @@ from backend.services.listing_freshness import (
     sweep_aggregator_expiry,
     sweep_stale,
 )
+from backend.services.structured_extraction import compute_raw_hash
 
 NOW = datetime.datetime(2026, 7, 16, 12, 0, 0)
 BOARD = "greenhouse:acme"
@@ -174,8 +176,10 @@ class TestRefreshKnownListings:
         assert row.edit_count == 1
         assert row.change_log[-1]["changed"] == ["title"]
 
-    def test_salary_removed_flagged(self, db_session):
-        known = _row(db_session, salary_min=90000, salary_max=110000)
+    def test_salary_removed_flagged_once(self, db_session):
+        stated = "Pay: $90,000 - $110,000 per year."
+        known = _row(db_session, salary_min=90000, salary_max=110000, description=stated,
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", stated))
         jobs = [_job(url=known.url,
                      description="A fresh description with no pay information at all.")]
         _new, stats = refresh_known_listings(db_session, BOARD, jobs, now=NOW)
@@ -183,6 +187,105 @@ class TestRefreshKnownListings:
         row = db_session.get(ScrapedJob, known.id)
         assert stats["salary_removed"] == 1
         assert "salary_removed" in row.change_log[-1]["changed"]
+        assert (row.salary_min, row.salary_max) == (None, None)
+        # The pay is gone now: the next crawl has nothing left to flag.
+        _new, stats = refresh_known_listings(db_session, BOARD, jobs, now=NOW)
+        db_session.expire_all()
+        assert stats["salary_removed"] == 0 and stats["edited"] == 0
+        assert db_session.get(ScrapedJob, known.id).edit_count == 1
+
+    def test_unchanged_content_keeps_a_salary_the_parser_misses(self, db_session):
+        """Veeva: "Starting Salary: $85,000" sits past parse_salary's window,
+        so every crawl of the unchanged posting logged salary_removed (102
+        entries on prod). The same content removed nothing."""
+        text = "Compensation\nStarting Salary: competitive, see the recruiter."
+        known = _row(db_session, salary_min=85000, salary_max=85000, description=text,
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", text))
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, description=text)], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["salary_removed"] == 0 and stats["edited"] == 0 and not row.change_log
+        assert row.salary_min == 85000
+
+    def test_a_new_salary_reading_of_unchanged_content_is_no_edit(self, db_session):
+        text = "Pay: $90,000 - $110,000 per year."
+        known = _row(db_session, salary_min=50000, salary_max=60000, description=text,
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", text))
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, description=text)], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and not row.change_log
+        assert (row.salary_min, row.salary_max) == (90000, 110000)
+
+    def test_recrawl_of_an_inserted_description_is_no_edit(self, db_session):
+        """cron-ats stores and hashes the sanitized description; the refresh
+        hashed the raw text, so every new Greenhouse/Lever row logged a false
+        'description' edit on its second crawl."""
+        raw = "Build tools for R&D teams. Rotations <3 months> across the org."
+        stored = sanitize_description(raw)
+        assert stored != raw
+        inserted = build_new_row_fields(_job(description=stored), BOARD)
+        known = _row(db_session, description=stored, raw_hash=inserted["raw_hash"])
+
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, description=raw)], now=NOW,
+        )
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and not row.change_log
+        assert (row.description, row.raw_hash) == (stored, inserted["raw_hash"])
+
+    def test_a_row_the_raw_text_refresh_rewrote_heals_without_an_edit(self, db_session):
+        """Such a false edit stored the raw text and its hash: the same
+        content, so the next crawl heals it quietly."""
+        raw = "Build tools for R&D teams."
+        known = _row(db_session, description=raw,
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", raw))
+
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, description=raw)], now=NOW,
+        )
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and not row.change_log
+        assert row.description == sanitize_description(raw)
+        assert row.raw_hash == compute_raw_hash(
+            "Software Intern", "Ottawa, ON, Canada", sanitize_description(raw))
+
+    def test_a_real_description_edit_is_still_logged(self, db_session):
+        old = "Build tools for R&D teams."
+        known = _row(db_session, description=sanitize_description(old),
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada",
+                                               sanitize_description(old)))
+        _new, stats = refresh_known_listings(
+            db_session, BOARD,
+            [_job(url=known.url, description="Build tools for the payments team.")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 1 and row.change_log[-1]["changed"] == ["description"]
+        assert row.description == "Build tools for the payments team."
+
+    def test_salary_is_read_from_the_description_as_inserted(self, db_session):
+        """Greenhouse (Waymo, D2L, Relativity): the pay line sits at the end,
+        and only the longer sanitized text reaches parse_salary's tail
+        window, so the refresh read no pay where the insert read some."""
+        body = "Work on R&D tooling & data. " * 180  # ~5,000 chars, ~5,700 sanitized
+        raw = body + "\nThe pay range for this role is $60 - $70 per hour."
+        assert len(raw) <= 5500 < len(sanitize_description(raw))
+        known = _row(db_session)
+
+        refresh_known_listings(db_session, BOARD, [_job(url=known.url, description=raw)], now=NOW)
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert (row.salary_min, row.salary_max, row.salary_period) == (60, 70, "hour")
 
     def test_empty_description_recrawl_is_not_an_edit(self, db_session):
         """SmartRecruiters/Workday list payloads carry no description, a
@@ -195,6 +298,66 @@ class TestRefreshKnownListings:
         row = db_session.get(ScrapedJob, known.id)
         assert stats["edited"] == 0
         assert row.description == "Full stored description here."
+
+    def test_a_crawler_row_takes_the_registry_company_name(self, db_session):
+        """'Notion (Ashby)' was the registry's name, stored on every row.
+        The registry now says 'Notion'; the next crawl renames the rows
+        without logging an edit of the posting."""
+        known = _row(db_session, company="Notion (Ashby)")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, company="Notion")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert row.company == "Notion"
+        assert stats["edited"] == 0 and not row.change_log
+
+    def test_a_list_row_keeps_its_company_spelling(self, db_session):
+        known = _row(db_session, company="Manulife Financial", source_platform="github")
+        refresh_known_listings(db_session, BOARD, [_job(url=known.url, company="Manulife")],
+                               now=NOW)
+        db_session.expire_all()
+        assert db_session.get(ScrapedJob, known.id).company == "Manulife Financial"
+
+    @pytest.mark.parametrize("stored, listed", [
+        (" Fleet Operations Associate (Overnight Shift)", " Fleet Operations Associate (Overnight Shift)"),
+        (" Fleet Operations Associate (Overnight Shift)", "Fleet Operations Associate (Overnight Shift)"),
+    ])
+    def test_title_padding_is_no_edit(self, db_session, stored, listed):
+        """Carvana's API pads titles (43 visible rows): compared as-is, a
+        fetcher that strips them would log a 'title' edit on every row."""
+        known = self._consistent(db_session, title=stored)
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, title=listed)], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and stats["retitled"] == 0 and not row.change_log
+        assert row.title == "Fleet Operations Associate (Overnight Shift)"
+
+    def test_location_padding_is_no_edit(self, db_session):
+        known = self._consistent(db_session, location=" Toronto, ON ")
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, location="Toronto, ON")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and not row.change_log
+        assert row.location == "Toronto, ON"
+
+    def test_registry_names_carry_no_ats_tag(self):
+        """A registry name is stored verbatim as every row's company."""
+        import re
+
+        from backend.data import company_registry
+
+        names = {(platform, slug): name for platform, slug, name in
+                 company_registry.load_companies(include_disabled=True, supported_only=False)}
+        tagged = [name for name in names.values()
+                  if re.search(r"\((?:ashby|lever|greenhouse|workday|smartrecruiters)\)", name, re.I)]
+        assert tagged == []
+        assert names[("ashby", "notion")] == "Notion"
+        assert names[("lever", "neon")] == "Neon"
 
     def test_adopts_legacy_row_into_board(self, db_session):
         known = _row(db_session, board_key="")
@@ -321,6 +484,40 @@ class TestRefreshKnownListings:
         assert stats["reparsed"] == 1
         assert (row.city, row.region) == ("toronto", "ON")
         assert "|toronto|" in row.location_search
+
+    @pytest.mark.parametrize("stored, country, hint", [
+        # Prod rows stored before the path hint let a count pass the filter.
+        ("REMOTETELETRAVAIL QC CAN (10 Locations)", "CA", "REMOTETELETRAVAIL-QC-CAN"),
+        ("Granby QC CAN (2 Locations)", "CA", "Granby-QC-CAN"),
+        ("Georgia - Atlanta", "US", "Georgia---Atlanta"),
+    ])
+    def test_a_workday_count_keeps_a_stored_place(self, db_session, stored, country, hint):
+        """The list payload says only "10 Locations": the stored text names
+        the place, so it stays, and no location edit is logged."""
+        known = self._consistent(db_session, location=stored, country=country)
+        before = db_session.get(ScrapedJob, known.id)
+        place = (before.city, before.region, before.location_search)
+        listing = _job(url=known.url, location="10 Locations", location_hint=hint)
+
+        _new, stats = refresh_known_listings(db_session, BOARD, [listing], now=NOW)
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert row.location == stored
+        assert stats["edited"] == 0 and not row.change_log
+        assert stats["reparsed"] == 0 and (row.city, row.region, row.location_search) == place
+
+    def test_a_workday_count_replaces_a_stored_count(self, db_session):
+        """A stored count names no place: the new count is stored and the
+        path hint places the row."""
+        known = self._consistent(db_session, location="2 Locations", country="CA")
+        _new, _stats = refresh_known_listings(
+            db_session, BOARD,
+            [_job(url=known.url, location="3 Locations", location_hint="Toronto-ON")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert (row.location, row.city, row.region) == ("3 Locations", "toronto", "ON")
 
     def test_location_edit_reparses_city_and_country(self, db_session):
         known = self._consistent(db_session)
@@ -482,6 +679,19 @@ class TestDerivedFieldHelpers:
             "7 Locations", hint="TELUS-CAN-BC-510-W-Georgia-St")["location_search"] == ""
         # A location that names its place wins over the hint.
         assert location_derived_fields("Austin, TX", hint="Toronto-ON")["city"] == "austin"
+
+    def test_a_board_country_never_places_a_foreign_hint(self):
+        """A one-country board's registry country files its rows, but a slug
+        naming a foreign place is no place of ours: "IN-Bengaluru" on a US
+        board was stored as Bengaluru, Indiana."""
+        from backend.services.listing_freshness import location_derived_fields
+
+        fields = location_derived_fields("3 Locations", "US", hint="IN-Bengaluru")
+        assert (fields["city"], fields["region"], fields["location_search"]) == ("", "", "")
+        assert fields["country"] == "US"  # the registry's, as before
+        # BDO Canada's bare "London" still reads as London, Ontario.
+        fields = location_derived_fields("2 Locations", "CA", hint="London")
+        assert (fields["city"], fields["location_search"]) == ("london", "|london|canada|")
 
 
 class TestRepairCountry:
@@ -770,6 +980,80 @@ class TestGhostScoring:
         row = db_session.get(ScrapedJob, row.id)
         assert stats["rescored"] == 1
         assert row.ghost_risk_score >= 25  # age factor now applies
+
+    def test_rescore_rotates_through_every_aging_row(self, db_session):
+        """Ordered by first sighting, the rescore pass took the same oldest
+        batch every run: a row past it kept its first score for good."""
+        def aging(url, days_seen, scored_days_ago):
+            return _row(db_session, url=url,
+                        first_seen_at=NOW - datetime.timedelta(days=days_seen),
+                        ghost_risk_score=0,
+                        ghost_risk_factors={"evergreen": False, "scored_at": (
+                            NOW - datetime.timedelta(days=scored_days_ago)).isoformat()})
+
+        oldest = aging("https://boards.greenhouse.io/acme/jobs/a", 300, 1)
+        older = aging("https://boards.greenhouse.io/acme/jobs/b", 200, 1)
+        stuck = aging("https://boards.greenhouse.io/acme/jobs/c", 100, 60)
+
+        stats = score_ghost_risk(db_session, now=NOW, batch_size=2)
+
+        db_session.expire_all()
+        assert stats["rescored"] == 2
+        assert db_session.get(ScrapedJob, stuck.id).ghost_risk_score == 40
+        # The next run takes the row left out, and so on round.
+        later = NOW + datetime.timedelta(hours=4)
+        score_ghost_risk(db_session, now=later, batch_size=2)
+        db_session.expire_all()
+        scored = {row.id: row.ghost_risk_factors["scored_at"]
+                  for row in (db_session.get(ScrapedJob, r.id) for r in (oldest, older, stuck))}
+        assert all(at >= NOW.isoformat() for at in scored.values())
+
+    def test_a_years_old_posting_scores_as_old(self, db_session):
+        """Lever lists GoPuff postings from 2021 that we first saw in 2026:
+        days open count from the source's date, not our sighting."""
+        posted = NOW - datetime.timedelta(days=3 * 365)
+        row = _row(db_session, first_seen_at=NOW - datetime.timedelta(days=10),
+                   posted_date=posted,
+                   description="One opening on the payments team, starting September.")
+        # The rescore pass has room for one row, and an older one takes it:
+        # the first scoring alone must get the age right.
+        _row(db_session, url="https://boards.greenhouse.io/acme/jobs/old",
+             first_seen_at=NOW - datetime.timedelta(days=300),
+             ghost_risk_factors={"evergreen": False,
+                                 "scored_at": (NOW - datetime.timedelta(days=30)).isoformat()})
+        score_ghost_risk(db_session, now=NOW, batch_size=1)
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, row.id)
+        assert row.ghost_risk_score >= 40
+        assert row.ghost_risk_factors["days_open"] == (NOW - posted).days
+
+    @pytest.mark.parametrize("posted_date", [
+        datetime.datetime(1970, 1, 1),                # a placeholder, not a date
+        NOW - datetime.timedelta(days=5),             # after our first sighting: a repost stamp
+    ])
+    def test_an_implausible_posted_date_is_ignored(self, db_session, posted_date):
+        row = _row(db_session, first_seen_at=NOW - datetime.timedelta(days=100),
+                   posted_date=posted_date,
+                   description="One opening on the payments team, starting September.")
+        score_ghost_risk(db_session, now=NOW)
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, row.id)
+        assert row.ghost_risk_factors["days_open"] == 100  # from our first sighting
+
+    def test_rescore_reaches_a_recently_seen_old_posting(self, db_session):
+        """Scored while young by our sighting, old by its source's date: the
+        rescore pass must pick it up, or its first score stands."""
+        row = _row(db_session,
+                   first_seen_at=NOW - datetime.timedelta(days=10),
+                   posted_date=NOW - datetime.timedelta(days=200),
+                   ghost_risk_score=0,
+                   ghost_risk_factors={"evergreen": False,
+                                       "scored_at": (NOW - datetime.timedelta(days=1)).isoformat()})
+        stats = score_ghost_risk(db_session, now=NOW)
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, row.id)
+        assert stats["rescored"] == 1
+        assert row.ghost_risk_score == 40 and row.ghost_risk_factors["days_open"] == 200
 
     def test_hidden_duplicates_not_scored(self, db_session):
         winner = _row(db_session)
