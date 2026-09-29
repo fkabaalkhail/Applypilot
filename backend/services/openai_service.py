@@ -51,6 +51,17 @@ def _field_model() -> str:
 _TERMINAL_429_MARKERS = ("billing", "quota", "deactivat", "suspend", "expired")
 
 
+class LLMAccountError(ConnectionError):
+    """The OpenAI ACCOUNT refused the call: billing inactive, quota spent, or a
+    revoked key. Nothing clears it but a human fixing the account, so a batch
+    caller (the match sweep) should stop instead of making the same doomed call
+    for every remaining item: from 2026-08-12 the sweep made up to 75 refused
+    calls a run and still reported "completed".
+
+    Subclasses ConnectionError so every existing `except ConnectionError` ->
+    503 handler keeps working unchanged."""
+
+
 def _is_terminal_429(code: str) -> bool:
     """True when a 429 will never clear on its own.
 
@@ -288,7 +299,7 @@ class OpenAIService:
                             "ACCOUNT/BILLING problem and will not clear by retrying",
                             code, op,
                         )
-                        raise ConnectionError(
+                        raise LLMAccountError(
                             f"OpenAI rejected the request ({code}). This is an account "
                             "billing/quota problem, not a transient rate limit."
                         )
@@ -309,6 +320,13 @@ class OpenAIService:
                     )
                     await asyncio.sleep(wait_time)
                     continue
+                # A revoked or mistyped key is the same class of failure as an
+                # unpaid account: no retry fixes it. It used to fall through to
+                # raise_for_status, an HTTPStatusError no handler catches (a 500).
+                if r.status_code == 401:
+                    code = _openai_error_code(r) or "401"
+                    logger.error("OpenAI rejected the API key (%s) for op=%s", code, op)
+                    raise LLMAccountError(f"OpenAI rejected the API key ({code}).")
                 r.raise_for_status()
                 data = r.json()
                 break

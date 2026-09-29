@@ -10,6 +10,7 @@ import datetime
 import hashlib
 import logging
 import os
+import time
 from typing import Optional
 
 from sqlalchemy import func, or_
@@ -29,6 +30,8 @@ DEFAULT_THRESHOLD = 80
 # emails. Both are env-overridable.
 DEFAULT_COOLDOWN_HOURS = 24
 DEFAULT_DAILY_BUDGET = 80
+# Wall-clock box (seconds) for the sweep's LLM scoring; see sweep_match_alerts.
+DEFAULT_SCORING_BUDGET_S = 120
 
 
 def _env_int(name: str, default: int) -> int:
@@ -68,6 +71,12 @@ def alerts_enabled() -> bool:
     but an env var.
     """
     return _env_flag("MATCH_ALERTS_ENABLED", True)
+
+
+def _now() -> float:
+    """Monotonic clock for the sweep's scoring budget (a seam for tests: the
+    event loop reads time.monotonic too, so that must never be patched)."""
+    return time.monotonic()
 
 
 def _alertable() -> tuple:
@@ -342,10 +351,13 @@ async def sweep_match_alerts(
     the daily email budget is spent.
 
     Work is capped per run (env CRON_MATCH_MAX_USERS / CRON_MATCH_JOBS_PER_USER);
-    any truncation is logged. Returns a summary dict.
+    any truncation is logged. Returns a summary dict whose status is
+    "llm_unavailable" (plus "error") when OpenAI refused the account, so a run
+    that scored nothing no longer looks like one that found no strong matches.
     """
     from backend.db.models import ResumeProfileDB
     from backend.services.match_engine import MatchEngine
+    from backend.services.openai_service import LLMAccountError
 
     if not alerts_enabled():
         logger.info("Match-alert sweep disabled (MATCH_ALERTS_ENABLED); skipping.")
@@ -354,12 +366,22 @@ async def sweep_match_alerts(
             "users_scanned": 0,
             "users_notified": 0,
             "jobs_notified": 0,
+            "jobs_scored": 0,
+            "scoring_errors": 0,
         }
 
     if max_users is None:
         max_users = _env_int("CRON_MATCH_MAX_USERS", 25)
     if jobs_per_user is None:
         jobs_per_user = _env_int("CRON_MATCH_JOBS_PER_USER", 15)
+    # Wall-clock box for LLM scoring. cron-poll runs this sweep last, after
+    # polling and enrichment, under Vercel's 300 s ceiling, and one call during
+    # a transient OpenAI incident can sit through 45 s of 429 backoff (5xx:
+    # 75 s): that is how the 2026-08-12 22:07Z to 00:02Z runs all hit 300 s.
+    # Checked before each call, so the sweep overruns it by at most one call.
+    # Unscored jobs are simply scored next run. 0 disables the box.
+    scoring_budget_s = _env_int("CRON_MATCH_BUDGET_S", DEFAULT_SCORING_BUDGET_S)
+    started = _now()
 
     threshold = get_threshold()
     budget = get_daily_budget()
@@ -385,6 +407,13 @@ async def sweep_match_alerts(
     users_scanned = 0
     users_notified = 0
     jobs_notified = 0
+    jobs_scored = 0
+    scoring_errors = 0
+    # Set when OpenAI refuses the ACCOUNT (billing, quota, key). From then on
+    # the sweep makes no more LLM calls this run, but cached strong matches are
+    # still emailed: sending needs no model.
+    llm_unavailable: Optional[str] = None
+    budget_spent = False
 
     for user in users:
         # Stop spending LLM calls once the day's email budget is gone.
@@ -484,11 +513,41 @@ async def sweep_match_alerts(
             if job_id in cached:
                 scored.append((job, cached[job_id]))
                 continue
+            # Nothing unscored is banked, so whatever is skipped here is simply
+            # scored on a later run.
+            if llm_unavailable or budget_spent:
+                continue
+            if scoring_budget_s > 0 and _now() - started >= scoring_budget_s:
+                budget_spent = True
+                logger.warning(
+                    "match-alert sweep: %ds scoring budget spent; no more LLM "
+                    "calls this run.", scoring_budget_s,
+                )
+                continue
             try:
                 breakdown = await engine.compute_breakdown(profile.raw_text, description)
-            except Exception:
+            except LLMAccountError as exc:
+                # Billing, quota or key: every further call would be refused
+                # the same way (75 refused calls a run from 2026-08-12 on).
+                llm_unavailable = str(exc)[:200]
+                logger.error(
+                    "match-alert sweep: OpenAI refused the account, no more "
+                    "scoring this run: %s", exc,
+                )
+                continue
+            except Exception as exc:
+                # Transient (timeout, 5xx after retries, an unparsable reply).
+                # Not banked, so the pair is retried next run; counted and
+                # logged so a sweep that scores nothing is visibly different
+                # from one that found no strong matches.
+                scoring_errors += 1
+                logger.warning(
+                    "match-alert sweep: scoring job %s for user %s failed: %s: %s",
+                    job_id, user.id, type(exc).__name__, exc,
+                )
                 continue
             _remember_score(db, user.id, job_id, breakdown.overall_score, fingerprint)
+            jobs_scored += 1
             scored.append((job, breakdown.overall_score))
 
         sent = notify_high_matches(db, user.id, scored)
@@ -496,10 +555,17 @@ async def sweep_match_alerts(
             users_notified += 1
             jobs_notified += sent
 
-    return {
-        "status": "completed",
+    summary = {
+        "status": "llm_unavailable" if llm_unavailable else "completed",
         "threshold": threshold,
         "users_scanned": users_scanned,
         "users_notified": users_notified,
         "jobs_notified": jobs_notified,
+        "jobs_scored": jobs_scored,
+        "scoring_errors": scoring_errors,
+        "scoring_budget_spent": budget_spent,
     }
+    if llm_unavailable:
+        summary["error"] = llm_unavailable
+    logger.info("match-alert sweep: %s", summary)
+    return summary
