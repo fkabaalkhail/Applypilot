@@ -45,6 +45,7 @@ from sqlalchemy import case, func, not_, nulls_first, or_
 from sqlalchemy.orm import Session
 
 from backend.db.models import ScrapedJob
+from backend.services.description_extractor import sanitize_description
 from backend.services.platform_liveness import (
     ALIVE,
     DEAD,
@@ -492,31 +493,48 @@ def refresh_known_listings(db: Session, board_key: str, jobs: list,
             updates["country"] = derived["country"]
             stats["recountried"] += 1
 
-        salary_source = job.salary_text or job.description or ""
-        if salary_source:
-            parsed = parse_salary(salary_source)
+        # The description as cron-ats stores and hashes it (sanitized): the
+        # raw text hashed differently, so every Greenhouse/Lever/Ashby row
+        # logged a false 'description' edit on its second crawl, and the
+        # longer sanitized text moves parse_salary's window. A row that
+        # older refresh rewrote holds the raw text and its hash: the same
+        # content, healed without an edit.
+        description = (job.description or "").strip()
+        description = sanitize_description(description) if description else ""
+        new_hash = (compute_raw_hash(job.title, job.location, description, job.salary_text or "")
+                    if description else "")
+        same_content = bool(new_hash) and (old_hash == new_hash or old_hash == compute_raw_hash(
+            job.title, job.location, job.description, job.salary_text or ""))
+        content_changed = bool(new_hash) and bool(old_hash) and not same_content
+
+        if job.salary_text or description:
+            parsed = parse_salary(job.salary_text or "") or parse_salary(description)
             if parsed:
                 salary_min, salary_max, currency, period = parsed
-                if old_salary_min and salary_min != old_salary_min:
+                # A new reading of unchanged content is the parser's, not an edit.
+                if old_salary_min and salary_min != old_salary_min and not same_content:
                     changes.append("salary")
                 updates.update(salary_min=salary_min, salary_max=salary_max,
                                salary_currency=currency, salary_period=period)
-            elif old_salary_min and job.salary_text == "" and job.description:
+            elif old_salary_min and job.salary_text == "" and content_changed:
                 # The source used to state pay and the fresh full content no
-                # longer does, the bait-and-switch edit worth flagging.
+                # longer does, the bait-and-switch edit worth flagging. Once:
+                # the stored pay goes too. Unchanged content whose pay the
+                # parser no longer finds (Veeva's "Starting Salary: $85,000")
+                # keeps it.
                 changes.append("salary_removed")
                 stats["salary_removed"] += 1
+                updates.update(salary_min=None, salary_max=None,
+                               salary_currency="", salary_period="")
 
-        if job.description:
-            new_hash = compute_raw_hash(job.title, job.location,
-                                        job.description, job.salary_text or "")
+        if description:
             if old_hash and new_hash != old_hash:
-                if not changes:
+                if content_changed and not changes:
                     changes.append("description")
-                updates["description"] = job.description
+                updates["description"] = description
                 updates["description_sections"] = None
-                updates["visa_sponsorship"] = detect_visa_sponsorship(job.description)
-                updates["skills"] = extract_skills(job.title, job.description) or None
+                updates["visa_sponsorship"] = detect_visa_sponsorship(description)
+                updates["skills"] = extract_skills(job.title, description) or None
             updates["raw_hash"] = new_hash
 
         if changes:

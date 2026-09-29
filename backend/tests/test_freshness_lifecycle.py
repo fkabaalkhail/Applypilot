@@ -7,6 +7,7 @@ import pytest
 
 from backend.db.models import ScrapedJob, User, UserSavedJob
 from backend.services.ats_scraper import ATSJob
+from backend.services.description_extractor import sanitize_description
 from backend.services.listing_freshness import (
     AGGREGATOR_FAST_MAX_AGE_DAYS,
     AGGREGATOR_MAX_AGE_DAYS,
@@ -25,6 +26,7 @@ from backend.services.listing_freshness import (
     sweep_aggregator_expiry,
     sweep_stale,
 )
+from backend.services.structured_extraction import compute_raw_hash
 
 NOW = datetime.datetime(2026, 7, 16, 12, 0, 0)
 BOARD = "greenhouse:acme"
@@ -174,8 +176,10 @@ class TestRefreshKnownListings:
         assert row.edit_count == 1
         assert row.change_log[-1]["changed"] == ["title"]
 
-    def test_salary_removed_flagged(self, db_session):
-        known = _row(db_session, salary_min=90000, salary_max=110000)
+    def test_salary_removed_flagged_once(self, db_session):
+        stated = "Pay: $90,000 - $110,000 per year."
+        known = _row(db_session, salary_min=90000, salary_max=110000, description=stated,
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", stated))
         jobs = [_job(url=known.url,
                      description="A fresh description with no pay information at all.")]
         _new, stats = refresh_known_listings(db_session, BOARD, jobs, now=NOW)
@@ -183,6 +187,105 @@ class TestRefreshKnownListings:
         row = db_session.get(ScrapedJob, known.id)
         assert stats["salary_removed"] == 1
         assert "salary_removed" in row.change_log[-1]["changed"]
+        assert (row.salary_min, row.salary_max) == (None, None)
+        # The pay is gone now: the next crawl has nothing left to flag.
+        _new, stats = refresh_known_listings(db_session, BOARD, jobs, now=NOW)
+        db_session.expire_all()
+        assert stats["salary_removed"] == 0 and stats["edited"] == 0
+        assert db_session.get(ScrapedJob, known.id).edit_count == 1
+
+    def test_unchanged_content_keeps_a_salary_the_parser_misses(self, db_session):
+        """Veeva: "Starting Salary: $85,000" sits past parse_salary's window,
+        so every crawl of the unchanged posting logged salary_removed (102
+        entries on prod). The same content removed nothing."""
+        text = "Compensation\nStarting Salary: competitive, see the recruiter."
+        known = _row(db_session, salary_min=85000, salary_max=85000, description=text,
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", text))
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, description=text)], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["salary_removed"] == 0 and stats["edited"] == 0 and not row.change_log
+        assert row.salary_min == 85000
+
+    def test_a_new_salary_reading_of_unchanged_content_is_no_edit(self, db_session):
+        text = "Pay: $90,000 - $110,000 per year."
+        known = _row(db_session, salary_min=50000, salary_max=60000, description=text,
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", text))
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, description=text)], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and not row.change_log
+        assert (row.salary_min, row.salary_max) == (90000, 110000)
+
+    def test_recrawl_of_an_inserted_description_is_no_edit(self, db_session):
+        """cron-ats stores and hashes the sanitized description; the refresh
+        hashed the raw text, so every new Greenhouse/Lever row logged a false
+        'description' edit on its second crawl."""
+        raw = "Build tools for R&D teams. Rotations <3 months> across the org."
+        stored = sanitize_description(raw)
+        assert stored != raw
+        inserted = build_new_row_fields(_job(description=stored), BOARD)
+        known = _row(db_session, description=stored, raw_hash=inserted["raw_hash"])
+
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, description=raw)], now=NOW,
+        )
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and not row.change_log
+        assert (row.description, row.raw_hash) == (stored, inserted["raw_hash"])
+
+    def test_a_row_the_raw_text_refresh_rewrote_heals_without_an_edit(self, db_session):
+        """Such a false edit stored the raw text and its hash: the same
+        content, so the next crawl heals it quietly."""
+        raw = "Build tools for R&D teams."
+        known = _row(db_session, description=raw,
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada", raw))
+
+        _new, stats = refresh_known_listings(
+            db_session, BOARD, [_job(url=known.url, description=raw)], now=NOW,
+        )
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 0 and not row.change_log
+        assert row.description == sanitize_description(raw)
+        assert row.raw_hash == compute_raw_hash(
+            "Software Intern", "Ottawa, ON, Canada", sanitize_description(raw))
+
+    def test_a_real_description_edit_is_still_logged(self, db_session):
+        old = "Build tools for R&D teams."
+        known = _row(db_session, description=sanitize_description(old),
+                     raw_hash=compute_raw_hash("Software Intern", "Ottawa, ON, Canada",
+                                               sanitize_description(old)))
+        _new, stats = refresh_known_listings(
+            db_session, BOARD,
+            [_job(url=known.url, description="Build tools for the payments team.")], now=NOW,
+        )
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert stats["edited"] == 1 and row.change_log[-1]["changed"] == ["description"]
+        assert row.description == "Build tools for the payments team."
+
+    def test_salary_is_read_from_the_description_as_inserted(self, db_session):
+        """Greenhouse (Waymo, D2L, Relativity): the pay line sits at the end,
+        and only the longer sanitized text reaches parse_salary's tail
+        window, so the refresh read no pay where the insert read some."""
+        body = "Work on R&D tooling & data. " * 180  # ~5,000 chars, ~5,700 sanitized
+        raw = body + "\nThe pay range for this role is $60 - $70 per hour."
+        assert len(raw) <= 5500 < len(sanitize_description(raw))
+        known = _row(db_session)
+
+        refresh_known_listings(db_session, BOARD, [_job(url=known.url, description=raw)], now=NOW)
+
+        db_session.expire_all()
+        row = db_session.get(ScrapedJob, known.id)
+        assert (row.salary_min, row.salary_max, row.salary_period) == (60, 70, "hour")
 
     def test_empty_description_recrawl_is_not_an_edit(self, db_session):
         """SmartRecruiters/Workday list payloads carry no description, a
