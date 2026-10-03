@@ -4,7 +4,7 @@
  * URLs below are real ones from jobs in the app (prod scraped_jobs, 2026-10-03).
  */
 import { describe, expect, it } from "vitest";
-import { countryFromWorkdayUrl, detectJobCountry } from "../src/content/jobLocation";
+import { countryFromWorkdayUrl, detectJobCountry, detectJobPlace } from "../src/content/jobLocation";
 
 describe("countryFromWorkdayUrl", () => {
   it("reads the location slug of real Workday URLs", () => {
@@ -37,5 +37,54 @@ describe("detectJobCountry", () => {
       { "@type": "JobPosting", jobLocation: { address: { addressCountry: "CA" } } },
     ])}</script>`;
     expect(detectJobCountry(document)).toBeNull();
+  });
+});
+
+describe("detectJobPlace (country + city)", () => {
+  const ld = (posting: Record<string, unknown>) => {
+    document.head.innerHTML = `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "JobPosting", ...posting })}</script>`;
+    document.body.innerHTML = "";
+  };
+
+  it("a TELECOMMUTE posting's applicantLocationRequirements (Brex on Greenhouse, live 2026-10-03)", () => {
+    ld({
+      jobLocationType: "TELECOMMUTE",
+      title: "Brex Rotational Program",
+      applicantLocationRequirements: { "@type": "Country", name: "Salt Lake City, Utah, United States" },
+    });
+    expect(detectJobPlace(document)).toEqual({ country: "US", city: "Salt Lake City" });
+  });
+
+  it("jobLocation's locality is the city", () => {
+    ld({ jobLocation: { "@type": "Place", address: { "@type": "PostalAddress", addressLocality: "Toronto", addressRegion: "ON", addressCountry: "CA" } } });
+    expect(detectJobPlace(document)).toEqual({ country: "CA", city: "Toronto" });
+  });
+
+  it("several offices: the country when they agree, never a city", () => {
+    ld({
+      jobLocation: [
+        { address: { addressLocality: "New York", addressRegion: "NY", addressCountry: "US" } },
+        { address: { addressLocality: "San Francisco", addressRegion: "CA", addressCountry: "US" } },
+      ],
+    });
+    expect(detectJobPlace(document)).toEqual({ country: "US", city: null });
+  });
+
+  it("the posting's location line, one anchored place only", () => {
+    document.head.innerHTML = "";
+    document.body.innerHTML = `<div class="job__location">San Francisco, CA</div>`;
+    expect(detectJobPlace(document)).toEqual({ country: "US", city: "San Francisco" });
+    document.body.innerHTML = `<div class="job__location">New York, NY; San Francisco, CA</div>`;
+    expect(detectJobPlace(document)).toEqual({ country: "US", city: null });
+    document.body.innerHTML = `<div class="job__location">Remote - US</div>`;
+    expect(detectJobPlace(document)).toEqual({ country: "US", city: null });
+    document.body.innerHTML = `<div class="job__location">Calgary</div>`;
+    expect(detectJobPlace(document)).toEqual({ country: null, city: null });
+  });
+
+  it("a form's own location field is the applicant's, not the job's", () => {
+    document.head.innerHTML = "";
+    document.body.innerHTML = `<form><div class="location">Toronto, ON</div></form>`;
+    expect(detectJobPlace(document)).toEqual({ country: null, city: null });
   });
 });

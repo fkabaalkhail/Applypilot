@@ -247,6 +247,19 @@ chrome.runtime.onMessage.addListener(
       }
       return false;
     }
+    if (message.type === "TOP_JOB_PLACE_GET") {
+      // An embedded form (Greenhouse inside brex.com) asks the page around it
+      // where the job is: that page, in this tab, now, never a cached posting.
+      if (tabId === undefined || _sender.frameId === 0) {
+        sendResponse({ ok: false });
+        return false;
+      }
+      chrome.tabs
+        .sendMessage(tabId, { type: "JOB_PLACE_GET" }, { frameId: 0 })
+        .then((r: unknown) => sendResponse(r ?? { ok: false }))
+        .catch(() => sendResponse({ ok: false }));
+      return true; // async response
+    }
     if (message.type === "RELAY_TO_TOP") {
       if (tabId !== undefined) {
         void chrome.tabs.sendMessage(tabId, message.payload, { frameId: 0 }).catch(() => {});

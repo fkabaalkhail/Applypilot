@@ -12,6 +12,10 @@
  * work in this country?" or an unscoped "Will you require sponsorship?" are
  * answered for THIS country, so a wrong guess here would be a wrong legal
  * answer there: null (and an abstention) is the safe failure.
+ *
+ * The job's CITY is read the same way (detectJobPlace), for "are you located
+ * here, or would you relocate?": only a single, anchored place ("Toronto, ON",
+ * "Salt Lake City, Utah, United States") names one; a list of offices does not.
  */
 import { countryByCode, countryFromName, regionFromText } from "./geo";
 import { parseAddress } from "./profileFacts";
@@ -32,20 +36,47 @@ const LOCATION_SELECTORS = [
 
 const ATS_NAMES = /^(greenhouse|lever|workday|ashby|ashbyhq|workable|smartrecruiters|bamboohr|jobvite|icims|taleo|oracle|successfactors|careers|jobs|job board|job boards)$/i;
 
-function countryOfText(text: string): string | null {
-  const t = (text || "").trim();
-  if (!t || t.length > 120) return null;
-  const whole = countryFromName(t);
-  if (whole) return whole.code;
-  const parsed = parseAddress(t.replace(/^remote\s*[-–:(]?\s*/i, "").replace(/\)$/, ""));
-  if (parsed.country) return parsed.country.code;
-  if (parsed.region) return parsed.region.country;
-  if (parsed.postal) return parsed.postal.country;
-  return null;
+export interface JobPlace {
+  /** ISO code, or null when not stated. */
+  country: string | null;
+  /** City name as the page wrote it ("Salt Lake City"), or null. */
+  city: string | null;
 }
 
-function jsonLdCountries(doc: Document): string[] {
-  const out: string[] = [];
+/** Several places in one line ("New York, NY; San Francisco, CA", "Toronto or
+ *  Remote", "3 Locations") name no single city. */
+const MANY_PLACES = /[;|/&•·]|\s(or|and)\s|\blocations\b|\bmultiple\b/i;
+const NOT_A_CITY = /^(remote|hybrid|on ?site|in ?office|anywhere|worldwide|global|flexible|various|hq|headquarters)$/i;
+
+function placeOfText(text: string): JobPlace | null {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 120) return null;
+  const whole = countryFromName(t);
+  if (whole) return { country: whole.code, city: null };
+  const parsed = parseAddress(t.replace(/^remote\s*[-–:(]?\s*/i, "").replace(/\)$/, ""));
+  const country = parsed.country?.code ?? parsed.region?.country ?? parsed.postal?.country ?? null;
+  if (!country) return null;
+  // A city counts only when the place around it is named too, and the line
+  // names one place: a bare word ("Calgary") or a list is no evidence.
+  const city = parsed.city?.trim() ?? "";
+  const cityOk = Boolean(city && (parsed.region || parsed.country) && !MANY_PLACES.test(t) && !NOT_A_CITY.test(city));
+  return { country, city: cityOk ? city : null };
+}
+
+function countryOfText(text: string): string | null {
+  return placeOfText(text)?.country ?? null;
+}
+
+/** Text of a schema.org place: a string, or an object's name. */
+function placeText(node: unknown): string {
+  if (typeof node === "string") return node;
+  const n = node as Record<string, unknown> | null | undefined;
+  if (!n || typeof n !== "object") return "";
+  return typeof n.name === "string" ? n.name : "";
+}
+
+function jsonLdPlaces(doc: Document): JobPlace[] {
+  const out: JobPlace[] = [];
   for (const s of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
     let data: unknown;
     try {
@@ -60,26 +91,51 @@ function jsonLdCountries(doc: Document): string[] {
       for (const g of graph) {
         const posting = g as Record<string, unknown>;
         if (!posting || !/JobPosting/i.test(String(posting["@type"] ?? ""))) continue;
+        const before = out.length;
         const locs = Array.isArray(posting.jobLocation) ? posting.jobLocation : [posting.jobLocation];
         for (const loc of locs) {
           const address = (loc as Record<string, unknown> | undefined)?.address as Record<string, unknown> | string | undefined;
           if (!address) continue;
           if (typeof address === "string") {
-            const c = countryOfText(address);
-            if (c) out.push(c);
+            const p = placeOfText(address);
+            if (p) out.push(p);
             continue;
           }
           const raw = address.addressCountry;
           const name = typeof raw === "string" ? raw : String((raw as Record<string, unknown> | undefined)?.name ?? "");
           const code = name.length === 2 ? countryByCode(name)?.code : countryFromName(name)?.code;
-          if (code) out.push(code);
-          else {
-            const c = countryOfText([address.addressLocality, address.addressRegion].filter(Boolean).join(", "));
-            if (c) out.push(c);
+          const country = code ?? countryOfText([address.addressLocality, address.addressRegion].filter(Boolean).join(", "));
+          if (!country) continue;
+          const locality = typeof address.addressLocality === "string" ? address.addressLocality.trim() : "";
+          const city = locality && !MANY_PLACES.test(locality) && !NOT_A_CITY.test(locality) ? locality : null;
+          out.push({ country, city });
+        }
+        // A remote (TELECOMMUTE) posting states WHERE in applicantLocationRequirements
+        // instead (Brex on Greenhouse, live 2026-10-03:
+        // {"@type":"Country","name":"Salt Lake City, Utah, United States"}).
+        if (out.length === before) {
+          const reqs = posting.applicantLocationRequirements;
+          for (const r of Array.isArray(reqs) ? reqs : [reqs]) {
+            const p = placeOfText(placeText(r));
+            if (p) out.push(p);
           }
         }
       }
     }
+  }
+  return out;
+}
+
+/** The posting's location line(s) outside any form. */
+function elementPlaces(doc: Document): JobPlace[] {
+  const out: JobPlace[] = [];
+  for (const sel of LOCATION_SELECTORS) {
+    for (const el of Array.from(doc.querySelectorAll(sel)).slice(0, 4)) {
+      if (el.closest("form")) continue; // a form's own location field is the applicant's
+      const p = placeOfText(el.textContent || "");
+      if (p) out.push(p);
+    }
+    if (out.length) break;
   }
   return out;
 }
@@ -122,26 +178,31 @@ export function countryFromWorkdayUrl(href: string): string | null {
   return found.size === 1 ? [...found][0] : null;
 }
 
-export function detectJobCountry(doc: Document = document): string | null {
+const cityKey = (city: string): string =>
+  city.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
+
+/** The job's country and city: each only when every signal agrees on one. */
+export function detectJobPlace(doc: Document = document): JobPlace {
   try {
+    let places = jsonLdPlaces(doc);
+    if (places.length === 0) places = elementPlaces(doc);
+    const countries = [...new Set(places.map((p) => p.country).filter((c): c is string => Boolean(c)))];
     const fromUrl = countryFromWorkdayUrl(doc.location?.href ?? "");
-    if (fromUrl) return fromUrl;
-    const found = jsonLdCountries(doc);
-    if (found.length === 0) {
-      for (const sel of LOCATION_SELECTORS) {
-        for (const el of Array.from(doc.querySelectorAll(sel)).slice(0, 4)) {
-          if (el.closest("form")) continue; // a form's own location field is the applicant's
-          const c = countryOfText((el.textContent || "").replace(/\s+/g, " "));
-          if (c) found.push(c);
-        }
-        if (found.length) break;
-      }
-    }
-    const distinct = [...new Set(found)];
-    return distinct.length === 1 ? distinct[0] : null;
+    const country = fromUrl ?? (countries.length === 1 ? countries[0] : null);
+    // One city: every place names it, and it lies in the job's country.
+    const keys = new Set(places.map((p) => (p.city ? cityKey(p.city) : "")));
+    const city =
+      country && places.length > 0 && keys.size === 1 && !keys.has("") && places.every((p) => p.country === country)
+        ? places[0].city
+        : null;
+    return { country, city };
   } catch {
-    return null;
+    return { country: null, city: null };
   }
+}
+
+export function detectJobCountry(doc: Document = document): string | null {
+  return detectJobPlace(doc).country;
 }
 
 /** The hiring company, or "" when the page only names its ATS vendor. */

@@ -481,6 +481,15 @@ export interface FlowStateResponse {
   state?: FlowState | null;
 }
 
+/** The top frame's answer to JOB_PLACE_GET (relayed for TOP_JOB_PLACE_GET):
+ *  where the job is, as the page around an embedded form states it. */
+export interface JobPlaceResponse {
+  ok: boolean;
+  country?: string | null;
+  city?: string | null;
+  company?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Résumé retailoring (backend POST /api/tailor-resume, /api/render-resume)
 // ---------------------------------------------------------------------------
@@ -572,6 +581,7 @@ export interface RenderCoverLetterResponse {
 export type ContentRequest =
   | { type: "PING" }
   | { type: "TOGGLE_PANEL" }
+  | { type: "JOB_PLACE_GET" }
   | {
       type: "SCAN_PAGE";
       profile: UserApplicationProfile | null;
@@ -736,6 +746,7 @@ export type BackgroundRequest =
   | { type: "GET_ACCESS_TOKEN" }
   | { type: "FLOW_STATE_GET" }
   | { type: "FLOW_STATE_SET"; state: FlowState | null }
+  | { type: "TOP_JOB_PLACE_GET" }
   | { type: "RECORD_APPLICATION"; application: ApplicationLog }
   | { type: "RECORD_TELEMETRY"; telemetry: AutofillTelemetry }
   | { type: "GET_OVERRIDES" }

@@ -41,6 +41,8 @@ export interface CachedJobContext {
   /** ISO code of the job's country, when the posting page said (JSON-LD /
    *  location line). Application steps (Workday) rarely repeat it. */
   country?: string | null;
+  /** The job's city, when the posting named exactly one. */
+  city?: string | null;
   ts: number; // epoch ms when captured
 }
 

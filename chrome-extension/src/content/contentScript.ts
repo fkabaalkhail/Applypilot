@@ -30,6 +30,7 @@ import type {
   FlowProgress,
   FlowState,
   FlowStateResponse,
+  JobPlaceResponse,
   FormOpName,
   FormOpResult,
   JobContext,
@@ -65,8 +66,8 @@ import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds, fillSelection, isDefaultSelected } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
-import { detectJobCountry, sanitizeCompany } from "./jobLocation";
-import { setResolveContext } from "./fieldResolver";
+import { detectJobPlace, sanitizeCompany, type JobPlace } from "./jobLocation";
+import { getResolveContext, setResolveContext } from "./fieldResolver";
 import { isHigh, profileFacts } from "./profileFacts";
 import { aiFillCandidates, isBoolish, needsOptionHarvest, planAiFill, planFillRoute, planOnDeviceReask, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { closestDemographicOption } from "./demographicMatch";
@@ -444,37 +445,73 @@ function initialize(): void {
     }
   })();
 
-  // The job's country and company, read once per URL: the question resolver
-  // answers "authorized to work in THIS country?" for the job's country.
+  // The job's country, city and company, read once per URL: the question
+  // resolver answers "authorized to work in THIS country?" for the job's
+  // country, and "located here, or would you relocate?" for its city.
   let resolveContextUrl = "";
   function refreshResolveContext(): void {
     if (resolveContextUrl === location.href) return;
     resolveContextUrl = location.href;
-    let country: string | null = null;
+    let place: JobPlace = { country: null, city: null };
     try {
-      country = detectJobCountry(document);
-      setResolveContext({ jobCountry: country, company: sanitizeCompany(extractJobIdentity().company) });
+      place = detectJobPlace(document);
+      setResolveContext({ jobCountry: place.country, jobCity: place.city, company: sanitizeCompany(extractJobIdentity().company) });
     } catch {
-      setResolveContext({ jobCountry: null, company: "" });
+      setResolveContext({ jobCountry: null, jobCity: null, company: "" });
     }
-    if (!country) void adoptCarriedJobCountry(resolveContextUrl);
+    if (!place.country) void adoptOutsidePlace(resolveContextUrl);
+  }
+
+  /** The place this frame cannot see, from the page around it (an embedded
+   *  form) or the posting page before it (a Workday application step). */
+  async function adoptOutsidePlace(forUrl: string): Promise<void> {
+    const adopted = (!isTopFrame && (await adoptTopFramePlace(forUrl))) || (await adoptCarriedJobCountry(forUrl));
+    if (adopted && lastFields.length > 0) {
+      runScan(); // re-resolve the place-dependent answers
+      reportFields();
+    }
   }
 
   /** An application step that shows no job location (Workday's) takes the
-   *  country its posting page showed, same host, captured within 6 hours. */
-  async function adoptCarriedJobCountry(forUrl: string): Promise<void> {
+   *  place its posting page showed, same host, captured within 6 hours. */
+  async function adoptCarriedJobCountry(forUrl: string): Promise<boolean> {
     try {
       const cached = await getLastJobContext();
-      if (!cached?.country || resolveContextUrl !== forUrl) return;
-      if (new URL(cached.url).host !== location.host) return;
-      setResolveContext({ jobCountry: cached.country });
-      if (lastFields.length > 0) {
-        runScan(); // re-resolve the country-dependent answers
-        reportFields();
-      }
+      if (!cached?.country || resolveContextUrl !== forUrl) return false;
+      if (new URL(cached.url).host !== location.host) return false;
+      setResolveContext({ jobCountry: cached.country, jobCity: cached.city ?? null });
+      return true;
     } catch {
-      // No cache / storage unavailable: the country stays unknown.
+      return false; // No cache / storage unavailable: the place stays unknown.
     }
+  }
+
+  /**
+   * A form in an iframe (Greenhouse's embed on brex.com, live 2026-10-03)
+   * shows no posting; the page around it states where the job is. Asked of
+   * this tab's top frame, so it is the page the user is on now.
+   */
+  async function adoptTopFramePlace(forUrl: string): Promise<boolean> {
+    if (isTopFrame) return false;
+    try {
+      const resp = await sendToBackground<JobPlaceResponse>({ type: "TOP_JOB_PLACE_GET" });
+      if (!resp?.ok || !resp.country || resolveContextUrl !== forUrl) return false;
+      setResolveContext({
+        jobCountry: resp.country,
+        jobCity: resp.city ?? null,
+        ...(getResolveContext().company ? {} : { company: resp.company ?? "" }),
+      });
+      return true;
+    } catch {
+      return false; // Top frame not ready / background asleep.
+    }
+  }
+
+  /** Before a fill: an embedded form still without the job's country asks the
+   *  page around it again (that page may have loaded after this frame). */
+  async function ensureJobPlace(): Promise<void> {
+    if (isTopFrame || getResolveContext().jobCountry) return;
+    await adoptTopFramePlace(resolveContextUrl);
   }
 
   function runScan(): ScanResponse {
@@ -810,6 +847,7 @@ function initialize(): void {
       // this fresh scan, so newly-mounted real fields are the ones filled.
       await waitForDomSettle(signal);
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
+      await ensureJobPlace();
       runScan();
       // A form an "Apply" click opens can still sit hidden while the site loads
       // (hiddenForm.ts). On the page the flow's entry click just opened, or on a
@@ -1976,12 +2014,14 @@ function initialize(): void {
     try {
       const ctx = extractJobContext();
       if (ctx.jobDescription && ctx.jobDescription.length >= MIN_CACHEABLE_DESC) {
+        const place = detectJobPlace(document);
         void saveLastJobContext({
           jobDescription: ctx.jobDescription,
           jobTitle: ctx.jobTitle,
           company: ctx.company,
           url: location.href,
-          country: detectJobCountry(document),
+          country: place.country,
+          city: place.city,
         });
       }
     } catch {
@@ -2092,6 +2132,16 @@ function initialize(): void {
       switch (message.type) {
         case "PING": {
           const response: PingResponse = { ok: true, frameToken: FRAME_TOKEN };
+          sendResponse(response);
+          return false;
+        }
+
+        case "JOB_PLACE_GET": {
+          // An embedded form in this tab asks where the job is (adoptTopFramePlace).
+          if (!isTopFrame) return false;
+          refreshResolveContext();
+          const c = getResolveContext();
+          const response: JobPlaceResponse = { ok: true, country: c.jobCountry, city: c.jobCity ?? null, company: c.company };
           sendResponse(response);
           return false;
         }
