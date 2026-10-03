@@ -308,3 +308,20 @@ describe("which abstentions keep a field from the backend", () => {
     expect(value(ask("Will you require relocation assistance or visa sponsorship?", { options: YES_NO }, p))).toBe("abstain");
   });
 });
+
+describe("high school questions are not the university's (Palantir on Lever, live 2026-10-03)", () => {
+  // "High School Name" got "University of Waterloo" and "Year of High School
+  // Graduation" got the university's 2027.
+  it("abstains on the high school's name and graduation year", () => {
+    expect(value(ask("High School Name", { controlType: "textarea", kind: "longText", category: "school" }))).toBe("abstain");
+    expect(value(ask("Year of High School Graduation", { options: ["2020", "2021", "2022", "2023", "2027"], category: "school" }))).toBe("abstain");
+    expect(value(ask("Which secondary school did you attend?", { category: "school" }))).toBe("abstain");
+  });
+
+  it("leaves the university and education-level questions to their own rules", () => {
+    const rule = (r: ReturnType<typeof ask>) => (r && r.status === "abstain" ? r.rule : "");
+    expect(rule(ask("Which university are you currently attending or did you last attend?", { category: "school" }))).not.toBe("high-school:not-in-profile");
+    expect(rule(ask("What is the highest level of education you have completed?", { options: ["High School", "Bachelor's", "Master's"] }))).not.toBe("high-school:not-in-profile");
+    expect(rule(ask("Do you have a high school diploma or GED?", { options: YES_NO }))).not.toBe("high-school:not-in-profile");
+  });
+});

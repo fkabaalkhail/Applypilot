@@ -29,7 +29,8 @@ import { isInPageChrome } from "./pageChrome";
 import { filterToScope, resolveFormScope, type ScopeEntry } from "./formScope";
 import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
-import { resolveField, type FieldResolution } from "./fieldResolver";
+import { resolveField, snapToOption, type FieldResolution } from "./fieldResolver";
+import { splitGreenhouseDate } from "./adapters/greenhouse";
 import { resolveCheckboxIntent } from "./checkboxIntent";
 import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
@@ -106,11 +107,14 @@ const CONSTRAINED_OPTION_TYPES: ReadonlySet<ControlType> = new Set<ControlType>(
 
 /** The DetectedField flags a resolution sets (absent when false, so field
  *  snapshots in existing tests and telemetry stay unchanged). */
-function resolutionFlags(r: FieldResolution): Pick<DetectedField, "deterministic" | "deviceAbstained" | "answerKind"> {
+function resolutionFlags(
+  r: FieldResolution
+): Pick<DetectedField, "deterministic" | "deviceAbstained" | "answerKind" | "dateFormat"> {
   return {
     ...(r.source === "question" && r.value !== null ? { deterministic: true } : {}),
     ...(r.deviceAbstained ? { deviceAbstained: true } : {}),
     answerKind: r.kind,
+    ...(r.dateFormat ? { dateFormat: r.dateFormat } : {}),
   };
 }
 
@@ -583,6 +587,51 @@ function reclassifyBareAddress(
   }
 }
 
+/** Inside an EDUCATION block (class / id / automation-id), and not first inside
+ *  an employment one. A wrapper naming both says nothing: Greenhouse's older
+ *  boards put EMPLOYMENT rows in `.education-experience-block` (Lyft). */
+function inEducationBlock(el: HTMLElement): boolean {
+  for (let a = el.parentElement, i = 0; a && i < 8; a = a.parentElement, i++) {
+    const marks = `${a.id} ${typeof a.className === "string" ? a.className : ""} ${a.getAttribute("data-automation-id") ?? ""}`;
+    const edu = /education/i.test(marks);
+    const work = /employment|experience|work-?history/i.test(marks);
+    if (edu !== work) return edu;
+  }
+  return false;
+}
+
+/**
+ * A row date inside an EDUCATION block is the school's date, not a job's.
+ * Greenhouse's education block has its own "Start date month / year" and "End
+ * date month / year" (`.education--date-container`, ids `start-month--0`): they
+ * classify as experience dates and were filled with the first JOB's dates
+ * (Twitch, Astranis, live 2026-10-03). The end date is the graduation, split
+ * into the month and year controls the way Greenhouse renders them (a bare
+ * year leaves the month blank); the profile has no education start date, so a
+ * start date gets nothing.
+ */
+function reclassifyEducationRowDates(
+  fields: DetectedField[],
+  registry: Map<string, RuntimeControl>,
+  profile: UserApplicationProfile | null
+): void {
+  for (const f of fields) {
+    if (f.category !== "experienceStartDate" && f.category !== "experienceEndDate") continue;
+    const el = registry.get(f.id)?.el;
+    if (!el || !inEducationBlock(el)) continue;
+    const isEnd = f.category === "experienceEndDate";
+    f.category = isEnd ? "graduationYear" : "unknown";
+    f.proposedValue = null;
+    if (!isEnd || !profile) continue;
+    const grad = splitGreenhouseDate(profile.education?.[f.groupIndex ?? 0]?.graduationYear ?? "");
+    if (!grad) continue;
+    const key = `${el.id} ${el.getAttribute("name") ?? ""} ${f.label}`.toLowerCase();
+    const value = /month/.test(key) ? grad.month : /year/.test(key) ? grad.year : "";
+    if (!value) continue;
+    f.proposedValue = f.options && f.options.length ? snapToOption(f.options, value, "graduationYear") : value;
+  }
+}
+
 export function scanPage(
   profile: UserApplicationProfile | null,
   fillEEO: boolean,
@@ -859,6 +908,7 @@ export function scanPage(
 
   // A bare "Address" next to separate City / Postal fields is the street line.
   reclassifyBareAddress(fields, registry, profile, adapter, fillEEO);
+  reclassifyEducationRowDates(fields, registry, profile);
 
   // Repeating-section rows → positional indices (Workday's instance-numbered rows).
   remapRepeatingRows(fields, registry, profile, adapter, fillEEO);

@@ -294,6 +294,9 @@ export interface DetectedField {
   deviceAbstained?: boolean;
   /** What kind of answer the field accepts (answerKind.ts), for diagnostics. */
   answerKind?: string;
+  /** The format a date control displays (content/dateControl.ts); any value
+   *  written to it is first fitted to this format, or dropped. */
+  dateFormat?: "YYYY-MM-DD" | "MM/DD/YYYY" | "DD/MM/YYYY" | "YYYY-MM" | "MM/YYYY";
 }
 
 // ---------------------------------------------------------------------------

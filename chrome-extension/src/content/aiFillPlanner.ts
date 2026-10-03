@@ -8,6 +8,7 @@
  */
 import type { AiFillField, DetectedField, FieldCategory } from "../shared/types";
 import { valueFitsKind, type AnswerKind } from "./answerKind";
+import { fitDate } from "./dateControl";
 
 /** Labels that read like a question worth answering even on a plain text input. */
 const QUESTION_LABEL =
@@ -130,7 +131,11 @@ export function planAiFill(
     // on-device one: its rule pass answers "city" for any label mentioning a
     // location, which put "Toronto" into a yes/no question.
     if (!backendAnswerFits(f, a.answer)) continue;
-    simpleTargets.push({ fieldId: f.id, value: a.answer });
+    // A date control takes the date in its own format (dateControl.ts): a
+    // picker re-parses anything else into a different day.
+    const value = f.dateFormat ? fitDate(a.answer, f.dateFormat) : a.answer;
+    if (value === null) continue;
+    simpleTargets.push({ fieldId: f.id, value });
   }
   return { simpleTargets };
 }

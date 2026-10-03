@@ -326,6 +326,11 @@ export function matchOption<T>(
     }
   }
   if (contained.length > 0) {
+    // A bare number (a year, a count) inside several options is not narrowed
+    // by how many OTHER words each adds: "2027" fits "January - June 2027"
+    // and "December 2027" equally, and the shorter one was picked (Ashby,
+    // live 2026-10-03). Refuse.
+    if (/^\d+$/.test(t) && contained.length > 1) return null;
     const firstWord = contained.filter((c) => c.first);
     const pool = firstWord.length > 0 ? firstWord : contained;
     const bestSize = Math.max(...pool.map((c) => c.size));
@@ -363,10 +368,13 @@ export function matchOption<T>(
       .split(" ")
       .filter((w) => w.length > 2);
     if (tokens.length === 0) continue;
-    // A token overlaps on equality OR a >=5-char shared prefix ("canada" ↔
-    // "canadian"), AI answers often use a morphological variant of the option.
+    // A token overlaps on equality OR as a morphological variant ("canada" ↔
+    // "canadian"): AI answers often use one. A variant shares at least 5
+    // leading characters AND most of the shorter word; a 5-letter stem alone
+    // made "Mechanical Engineering" a perfect match for "Mechatronics
+    // Engineering" (Greenhouse discipline list, live 2026-10-03).
     const overlap = tokens.filter(
-      (w) => targetSet.has(w) || targetTokens.some((tw) => sharedPrefixLen(w, tw) >= 5)
+      (w) => targetSet.has(w) || targetTokens.some((tw) => isVariant(w, tw))
     ).length;
     const score = overlap / tokens.length;
     // Incidental overlap must not select: one shared generic token scores 0.5
@@ -400,6 +408,14 @@ function sharedPrefixLen(a: string, b: string): number {
   let i = 0;
   while (i < n && a[i] === b[i]) i++;
   return i;
+}
+
+/** Two forms of one word ("canada" / "canadian" / "canadien", "engineer" /
+ *  "engineering"): a 5+ letter stem with at most an ending (3 letters) past it
+ *  on either side. Not two words sharing a stem ("mechanical" / "mechatronics"). */
+function isVariant(a: string, b: string): boolean {
+  const shared = sharedPrefixLen(a, b);
+  return shared >= 5 && Math.max(a.length, b.length) - shared <= 3;
 }
 
 /** The first number (comma thousands-separators tolerated) mentioned in text, or null. */

@@ -42,3 +42,47 @@ describe("a yes/no free-text question never takes a place name", () => {
     expect(f[0].proposedValue ?? "").not.toMatch(/toronto/i);
   });
 });
+
+describe("date controls take a whole date in their own format (dateControl.ts)", () => {
+  // Ashby's "What is your graduation date?" as rendered live (2026-10-03): a
+  // react-datepicker. The profile knows the YEAR only; the picker turned a
+  // typed "2027" into 12/31/2026.
+  const ashbyPicker = (label: string) =>
+    `<div class="ashby-application-form-field-entry"><label for="d">${label}</label><div class="react-datepicker-wrapper"><div class="react-datepicker__input-container"><input id="d" type="text" placeholder="Pick date..." class="ashby-application-form-input-date"></div></div></div>`;
+
+  it("a graduation YEAR is never typed into a date picker", () => {
+    const f = scan(ashbyPicker("What is your graduation date?"));
+    expect(f[0].proposedValue).toBeNull();
+    expect(f[0].dateFormat).toBe("MM/DD/YYYY");
+  });
+
+  it("nor into a native date input", () => {
+    const f = scan(`<label for="d">Graduation date</label><input id="d" type="date">`);
+    expect(f[0].proposedValue).toBeNull();
+  });
+
+  it("a plain text box asking for the graduation date still gets the year", () => {
+    const f = scan(`<label for="d">Graduation date</label><input id="d" type="text">`);
+    expect(f[0].proposedValue).toBe("2027");
+    expect(f[0].dateFormat).toBeUndefined();
+  });
+
+  it("a whole computed date goes into the picker in the picker's format", () => {
+    // TEST_TODAY 2026-10-03 + "2 weeks" notice → 2026-10-17.
+    const f = scan(ashbyPicker("Earliest start date"), { ...SPARSE_CANADIAN, noticePeriod: "2 weeks" });
+    expect(f[0].proposedValue).toBe("10/17/2026");
+  });
+});
+
+describe("a high school field never gets the university (Palantir on Lever, live 2026-10-03)", () => {
+  it("leaves High School Name and its graduation year blank", () => {
+    const f = scan(
+      `<label for="hs">High School Name</label><textarea id="hs"></textarea>` +
+        `<label for="hy">Year of High School Graduation</label><select id="hy"><option value="">Select...</option><option>2020</option><option>2021</option><option>2027</option></select>` +
+        `<label for="u">Which university are you currently attending or did you last attend?</label><input id="u" type="text">`
+    );
+    expect(f[0].proposedValue).toBeNull();
+    expect(f[1].proposedValue).toBeNull();
+    expect(f[2].proposedValue).toBe("University of Waterloo");
+  });
+});

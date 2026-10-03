@@ -1,0 +1,73 @@
+/**
+ * Greenhouse's EDUCATION block carries its own "Start date month / year" and
+ * "End date month / year" controls. They classify as experience dates, and the
+ * Greenhouse adapter filled them with the first JOB's dates: Jan 2025 - Apr
+ * 2025 (Shopify) as the applicant's university dates (Twitch, Astranis, live
+ * 2026-10-03). Markup below is the live structure, trimmed: ids and the
+ * `education--form` / `education--date-container` wrappers are verbatim; the
+ * month react-selects are native selects here (same option list).
+ */
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { scanPage } from "../src/content/formScanner";
+import { greenhouseAdapter } from "../src/content/adapters/greenhouse";
+import { stubLayout } from "./helpers/layout";
+import { SPARSE_CANADIAN } from "./fixtures/profiles";
+
+let restore: () => void;
+beforeAll(() => {
+  restore = stubLayout();
+});
+afterAll(() => restore());
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const monthSelect = (id: string, label: string): string =>
+  `<label for="${id}">${label}</label><select id="${id}"><option value=""></option>${MONTHS.map((m) => `<option>${m}</option>`).join("")}</select>`;
+const yearInput = (id: string, label: string): string => `<label for="${id}">${label}</label><input id="${id}" type="number">`;
+
+const PAGE = `<form>
+  <div class="education--container"><div class="education--form">
+    <label for="school--0">School</label><input id="school--0" type="text">
+    <div class="education--date-container">
+      ${monthSelect("start-month--0", "Start date month")}${yearInput("start-year--0", "Start date year")}
+      ${monthSelect("end-month--0", "End date month")}${yearInput("end-year--0", "End date year")}
+    </div>
+  </div></div>
+  <div class="employment--container"><div class="employment--form">
+    <label for="company-name-0">Company name</label><input id="company-name-0" type="text">
+    ${monthSelect("start-date-month-0", "Start date month")}${yearInput("start-date-year-0", "Start date year")}
+  </div></div>
+</form>`;
+
+const scan = (profile = SPARSE_CANADIAN) => {
+  document.body.innerHTML = PAGE;
+  const fields = scanPage(profile, false, greenhouseAdapter).fields;
+  const byId = (id: string) => fields.find((f) => document.querySelector(`[data-ap-field="${f.id}"]`)?.id === id);
+  return byId;
+};
+
+describe("education-row dates are the school's, never a job's", () => {
+  it("leaves the education START date blank (the profile has none)", () => {
+    const f = scan();
+    expect(f("start-month--0")?.proposedValue ?? null).toBeNull();
+    expect(f("start-year--0")?.proposedValue ?? null).toBeNull();
+  });
+
+  it("fills the education END year from the graduation, and leaves the month blank for a bare year", () => {
+    const f = scan();
+    expect(f("end-year--0")?.proposedValue).toBe("2027");
+    expect(f("end-month--0")?.proposedValue ?? null).toBeNull();
+    expect(f("end-year--0")?.category).toBe("graduationYear");
+  });
+
+  it("uses the graduation month when the profile has one", () => {
+    const f = scan({ ...SPARSE_CANADIAN, education: [{ ...SPARSE_CANADIAN.education![0], graduationYear: "2027-04" }] });
+    expect(f("end-month--0")?.proposedValue).toBe("April");
+    expect(f("end-year--0")?.proposedValue).toBe("2027");
+  });
+
+  it("the employment block still gets the job's dates", () => {
+    const f = scan();
+    expect(f("start-date-month-0")?.proposedValue).toBe("January");
+    expect(f("start-date-year-0")?.proposedValue).toBe("2025");
+  });
+});

@@ -272,4 +272,10 @@ describe("planAiFill: backend answers must fit the field's kind", () => {
     const t = field({ id: "t", answerKind: "longText", controlType: "textarea" });
     expect(planAiFill([t], [{ id: "t", answer: "I build robots." }]).simpleTargets).toHaveLength(1);
   });
+
+  it("a date control takes a whole date, re-emitted in its own format (Ashby picker, live 2026-10-03)", () => {
+    const d = field({ id: "d", label: "What is your graduation date?", answerKind: "date", dateFormat: "MM/DD/YYYY" });
+    expect(planAiFill([d], [{ id: "d", answer: "2027" }]).simpleTargets).toEqual([]);
+    expect(planAiFill([d], [{ id: "d", answer: "2027-04-30" }]).simpleTargets).toEqual([{ fieldId: "d", value: "04/30/2027" }]);
+  });
 });

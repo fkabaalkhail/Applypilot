@@ -846,6 +846,11 @@ function resolvePhoneCode(q: QuestionInput, n: string, facts: ProfileFacts, prof
 const UNANSWERABLE =
   /\bhow did you (hear|find|learn)\b|\bwhere did you (hear|see|find|learn)\b|\bwho referred\b|\breferred (you|by)\b|\bdo you think\b|\bin your opinion\b|\bwhat do you think\b|\bwhy (do|are|did|would) you\b|\bdescribe (a|an)\b|\btell us about (a|an|yourself)\b|\bwhat interests you\b|\bfamily member|\brelatives?\b|\bconflicts? of interest\b|\bnon compete|\bpreviously applied\b|\bapplied (to|for|with) (us|this)\b|\bbackground check\b|\bdrug (test|screen)\b|\bcriminal\b|\bconvicted\b/;
 
+/** A question about the applicant's HIGH school (its name, year, grades), which
+ *  no profile education row describes. */
+const HIGH_SCHOOL = /\b(high school|secondary school)\b/;
+const HIGH_SCHOOL_DETAIL = /\b(name|year|graduat\w*|date|attend\w*|where|which|gpa|grades?|location|city)\b/;
+
 export function resolveQuestion(
   q: QuestionInput,
   facts: ProfileFacts,
@@ -859,6 +864,13 @@ export function resolveQuestion(
   // what they ask depends on an answer we did not give.
   if (/^if\b/.test(n)) return abstain("conditional-follow-up");
   if (UNANSWERABLE.test(n)) return abstain("unanswerable-from-profile");
+  // The profile's education rows are post-secondary: their school and year
+  // answer the university question, never "High School Name" / "Year of High
+  // School Graduation" (Palantir on Lever, live 2026-10-03). A yes/no about a
+  // diploma is left to the education-level shapes below.
+  if (HIGH_SCHOOL.test(n) && HIGH_SCHOOL_DETAIL.test(n) && !isBooleanQuestion(q)) {
+    return abstain("high-school:not-in-profile");
+  }
 
   return (
     resolveWorkAuthorization(q, n, facts, profile, ctx) ??

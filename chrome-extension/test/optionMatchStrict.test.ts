@@ -76,6 +76,16 @@ describe("matchOption: ambiguity is refused", () => {
     expect(pick(["0-1 year", "1-3 years", "4-6 years", "Over 6 years"], "1.42")).toBe("1-3 years");
     expect(pick(["0-1 year", "1-3 years", "4-6 years", "Over 6 years"], "8")).toBe("Over 6 years");
   });
+
+  it("refuses a bare year inside several options, whatever words they add (Ashby, live 2026-10-03)", () => {
+    // Graduation year "2027" picked "December 2027" for having fewer extra
+    // words than "January - June 2027": a coin flip on the month.
+    const opts = ["2026", "January - June 2027", "December 2027", "May/June 2028", "December 2028", "2029"];
+    expect(pick(opts, "2027")).toBeNull();
+    expect(pick(opts, "2026")).toBe("2026");
+    expect(pick(opts, "2029")).toBe("2029");
+    expect(pick(["Class of 2026", "Class of 2027", "Class of 2028"], "2027")).toBe("Class of 2027");
+  });
 });
 
 describe("matchOption: unchanged behaviour", () => {
@@ -91,5 +101,13 @@ describe("matchOption: unchanged behaviour", () => {
 
   it("a morphological variant still matches ('Canada' → 'Canadian')", () => {
     expect(pick(["American", "Canadian", "Mexican"], "Canada")).toBe("Canadian");
+  });
+
+  it("two words sharing a stem are not variants (Greenhouse discipline, live 2026-10-03)", () => {
+    // "mecha" made "Mechanical Engineering" a PERFECT match for a Mechatronics
+    // student, and it was committed.
+    const disciplines = ["Chemical Engineering", "Electrical Engineering", "Mechanical Engineering", "Computer Science"];
+    expect(pick(disciplines, "Mechatronics Engineering")).toBeNull();
+    expect(pick(["Software Engineer", "Engineering Manager"], "Software Engineering")).toBe("Software Engineer");
   });
 });

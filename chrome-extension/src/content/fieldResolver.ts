@@ -18,6 +18,7 @@ import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile
 import { resolveAnswerWithAdapter } from "./adapters/apply";
 import type { SiteAdapter } from "./adapters/types";
 import { answerKindOf, optionPolarity, valueFitsKind, type AnswerKind } from "./answerKind";
+import { dateFormatFor, fitDate, type DateFormat } from "./dateControl";
 import type { FieldSignals } from "./domUtils";
 import { profileFacts } from "./profileFacts";
 import { resolveQuestion, type QuestionContext, type QuestionInput, type QuestionResult } from "./questionResolver";
@@ -45,6 +46,8 @@ export interface FieldResolution {
   rule?: string;
   /** The device recognized the question and decided it must stay blank. */
   deviceAbstained: boolean;
+  /** The format of a date control (dateControl.ts), when the field is one. */
+  dateFormat?: DateFormat;
 }
 
 let resolveContext: QuestionContext = { jobCountry: null, company: "" };
@@ -122,7 +125,24 @@ function coerceToKind(value: string, kind: AnswerKind): string | null {
   return v;
 }
 
+/**
+ * A date control (dateControl.ts) takes only a whole date in its own format:
+ * the value is re-emitted in that format, or the field stays blank when it
+ * lacks a part (a graduation YEAR for a day-precise picker).
+ */
 export function resolveField(input: FieldResolveInput): FieldResolution {
+  const r = resolveFieldValue(input);
+  const dateFormat = dateFormatFor(input.el, input.signals.typeHint, input.signals.placeholder);
+  if (!dateFormat) return r;
+  if (r.value === null) return { ...r, dateFormat };
+  const value = fitDate(r.value, dateFormat);
+  if (value === null) {
+    return { value: null, kind: r.kind, source: "none", deviceAbstained: false, rule: "wrong-kind:partial-date", dateFormat };
+  }
+  return { ...r, value, dateFormat };
+}
+
+function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   const { profile, category, control, signals, label } = input;
   const options = control.options;
   const kind = answerKindOf({
