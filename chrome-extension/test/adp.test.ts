@@ -43,7 +43,8 @@ describe("ADP div-layout markup, autofill", () => {
     expect(val("adp-lastname")).toBe("Doe");
     expect(val("adp-email")).toBe("john@example.com");
     expect(val("adp-phone")).toBe("+1 555 555 5555");
-    expect(val("adp-city")).toBe("Ottawa, ON, Canada");
+    // City gets the city part of the location string (2026-10-03).
+    expect(val("adp-city")).toBe("Ottawa");
     expect(val("adp-country")).toBe("Canada");
     expect(val("adp-resume")).toBe("");
     expect(val("adp-gender")).toBe("");

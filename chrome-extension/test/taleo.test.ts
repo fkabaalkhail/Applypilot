@@ -43,7 +43,8 @@ describe("Taleo table-layout markup, autofill", () => {
     expect(val("taleo-lastname")).toBe("Doe");
     expect(val("taleo-email")).toBe("john@example.com");
     expect(val("taleo-phone")).toBe("+1 555 555 5555");
-    expect(val("taleo-city")).toBe("Ottawa, ON, Canada");
+    // City gets the city part of the location string (2026-10-03).
+    expect(val("taleo-city")).toBe("Ottawa");
     expect(val("taleo-country")).toBe("Canada");
     expect(val("taleo-resume")).toBe("");
     expect(val("taleo-gender")).toBe("");

@@ -38,6 +38,9 @@ export interface CachedJobContext {
   jobTitle: string;
   company: string;
   url: string;
+  /** ISO code of the job's country, when the posting page said (JSON-LD /
+   *  location line). Application steps (Workday) rarely repeat it. */
+  country?: string | null;
   ts: number; // epoch ms when captured
 }
 

@@ -107,9 +107,11 @@ describe("resolveProfileValue, structured address mapping", () => {
     expect(resolveProfileValue("country", full, sel, false)).toBe("Canada");
   });
 
-  it("falls back to profile.location for city when addressCity is empty", () => {
+  // 2026-10-03: the CITY part of the location string, never the whole
+  // "Ottawa, ON, Canada" (which BambooHR/Jobvite City fields received live).
+  it("derives the city from profile.location when addressCity is empty", () => {
     const p = { addressCity: "", location: "Ottawa, ON, Canada" } as unknown as UserApplicationProfile;
-    expect(resolveProfileValue("addressCity", p, sel, false)).toBe("Ottawa, ON, Canada");
+    expect(resolveProfileValue("addressCity", p, sel, false)).toBe("Ottawa");
   });
 
   it("returns null when the profile has no value (and no fallback)", () => {

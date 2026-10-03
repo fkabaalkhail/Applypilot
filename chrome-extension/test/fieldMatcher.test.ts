@@ -65,9 +65,15 @@ describe("resolveProfileValue, index-aware repeating sections", () => {
     expect(resolveProfileValue("degree", p, { ...sel, groupIndex: 1 }, false)).toBe("MS");
     expect(resolveProfileValue("graduationYear", p, { ...sel, groupIndex: 0 }, false)).toBe("2018");
   });
-  it("resolves education without an index to entry [0] (unchanged)", () => {
-    expect(resolveProfileValue("school", p, { ...sel, groupIndex: null }, false)).toBe("MIT");
-    expect(resolveProfileValue("school", p, sel, false)).toBe("MIT");
+  // 2026-10-03: a single unindexed School/Degree/Graduation field means the
+  // applicant's PRIMARY education (in progress, else most recent graduation),
+  // not whichever entry happens to be listed first. All three read the same
+  // entry, so they stay consistent with each other.
+  it("resolves education without an index to the primary (most recent) entry", () => {
+    expect(resolveProfileValue("school", p, { ...sel, groupIndex: null }, false)).toBe("Stanford");
+    expect(resolveProfileValue("school", p, sel, false)).toBe("Stanford");
+    expect(resolveProfileValue("degree", p, sel, false)).toBe("MS");
+    expect(resolveProfileValue("graduationYear", p, sel, false)).toBe("2020");
   });
   it("resolves an indexed employment field to that experience entry", () => {
     expect(resolveProfileValue("currentCompany", p, { ...sel, groupIndex: 0 }, false)).toBe("Acme");

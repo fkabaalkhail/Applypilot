@@ -19,7 +19,10 @@ export function isDefaultSelected(field: DetectedField): boolean {
   return (
     field.fillable &&
     field.proposedValue !== null &&
-    field.confidence >= AUTOFILL_CONFIDENCE_THRESHOLD &&
+    // A computed answer is selected on its own evidence: the question shape it
+    // matched, not the category score (a "Do you live in the United States?"
+    // radio may classify weakly, yet its answer is certain).
+    (field.confidence >= AUTOFILL_CONFIDENCE_THRESHOLD || field.deterministic === true) &&
     !field.currentValue
   );
 }

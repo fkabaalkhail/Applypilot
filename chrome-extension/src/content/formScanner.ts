@@ -27,6 +27,7 @@ import { isInPageChrome } from "./pageChrome";
 import { filterToScope, resolveFormScope, type ScopeEntry } from "./formScope";
 import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./comboboxEngine";
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
+import { resolveField, type FieldResolution } from "./fieldResolver";
 import { resolveCheckboxIntent } from "./checkboxIntent";
 import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
@@ -100,6 +101,16 @@ const CONSTRAINED_OPTION_TYPES: ReadonlySet<ControlType> = new Set<ControlType>(
   "checkboxGroup",
   "ariaRadioGroup",
 ]);
+
+/** The DetectedField flags a resolution sets (absent when false, so field
+ *  snapshots in existing tests and telemetry stay unchanged). */
+function resolutionFlags(r: FieldResolution): Pick<DetectedField, "deterministic" | "deviceAbstained" | "answerKind"> {
+  return {
+    ...(r.source === "question" && r.value !== null ? { deterministic: true } : {}),
+    ...(r.deviceAbstained ? { deviceAbstained: true } : {}),
+    answerKind: r.kind,
+  };
+}
 
 /** Null out a proposed value that cannot land in a constrained-option control
  *  (e.g. the applicant's home city into a select of company offices). */
@@ -537,15 +548,23 @@ export function scanPage(
     registry.set(id, control);
 
     const label = bestDisplayLabel(signals);
-    let proposedValue = guardConstrainedOption(
-      resolveAnswerWithAdapter(adapter, category, profile, { controlType, options, groupIndex }, fillEEO, el),
-      controlType,
-      options
-    );
+    // Kind → question shapes → category value → kind/option gate (fieldResolver).
+    const resolved = resolveField({
+      adapter,
+      category,
+      sensitive,
+      profile,
+      control: { controlType, options, groupIndex, multi },
+      fillEEO,
+      el,
+      label,
+      signals,
+    });
+    let proposedValue = resolved.value;
     // A single checkbox is a boolean control: never write a text value into it.
     // Check clear application consent, skip marketing / ambiguous boxes (→ null,
     // so they're simply not selected rather than counted as failures).
-    if (controlType === "checkbox") {
+    if (controlType === "checkbox" && !resolved.deviceAbstained) {
       proposedValue = resolveCheckboxIntent(`${label} ${signals.nearby ?? ""}`, proposedValue);
     }
 
@@ -567,6 +586,7 @@ export function scanPage(
       inputType: signals.typeHint,
       groupIndex,
       currentValue: currentValueOf(el, controlType),
+      ...resolutionFlags(resolved),
     });
   }
 
@@ -581,21 +601,28 @@ export function scanPage(
 
     registry.set(id, { id, controlType: "radioGroup", radios });
 
-    const proposedValue = guardConstrainedOption(
-      resolveAnswerWithAdapter(adapter, category, profile, { controlType: "radioGroup", options, groupIndex }, fillEEO, first),
-      "radioGroup",
-      options
-    );
+    const label = bestDisplayLabel(signals);
+    const resolved = resolveField({
+      adapter,
+      category,
+      sensitive,
+      profile,
+      control: { controlType: "radioGroup", options, groupIndex },
+      fillEEO,
+      el: first,
+      label,
+      signals,
+    });
 
     const checked = radios.find((r) => r.checked);
     fields.push({
       id,
       category,
       confidence,
-      label: bestDisplayLabel(signals),
+      label,
       controlType: "radioGroup",
       required: radios.some((r) => isRequiredField(r, signals)),
-      proposedValue,
+      proposedValue: resolved.value,
       fillable: true,
       sensitive,
       note: noteFor("radioGroup", category),
@@ -604,6 +631,7 @@ export function scanPage(
       inputType: signals.typeHint,
       groupIndex,
       currentValue: checked ? radioOptionLabel(checked) : undefined,
+      ...resolutionFlags(resolved),
     });
   }
 
@@ -619,21 +647,28 @@ export function scanPage(
 
     registry.set(id, { id, controlType: "checkboxGroup", checkboxes });
 
-    const proposedValue = guardConstrainedOption(
-      resolveAnswerWithAdapter(adapter, category, profile, { controlType: "checkboxGroup", options, groupIndex }, fillEEO, first),
-      "checkboxGroup",
-      options
-    );
+    const label = bestDisplayLabel(signals);
+    const resolved = resolveField({
+      adapter,
+      category,
+      sensitive,
+      profile,
+      control: { controlType: "checkboxGroup", options, groupIndex },
+      fillEEO,
+      el: first,
+      label,
+      signals,
+    });
 
     const checkedLabels = checkboxes.filter((c) => c.checked).map(radioOptionLabel).filter(Boolean);
     fields.push({
       id,
       category,
       confidence,
-      label: bestDisplayLabel(signals),
+      label,
       controlType: "checkboxGroup",
       required: checkboxes.some((c) => isRequiredField(c, signals)),
-      proposedValue,
+      proposedValue: resolved.value,
       fillable: true,
       sensitive,
       note: noteFor("checkboxGroup", category),
@@ -642,6 +677,7 @@ export function scanPage(
       inputType: signals.typeHint,
       groupIndex,
       currentValue: checkedLabels.length ? checkedLabels.join(", ") : undefined,
+      ...resolutionFlags(resolved),
     });
   }
 

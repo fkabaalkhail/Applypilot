@@ -64,6 +64,8 @@ import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
+import { detectJobCountry, sanitizeCompany } from "./jobLocation";
+import { setResolveContext } from "./fieldResolver";
 import { aiFillCandidates, isBoolish, needsOptionHarvest, planAiFill, planFillRoute, planOnDeviceReask, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { closestDemographicOption } from "./demographicMatch";
 import { toApplicantProfile } from "./applicantProfile";
@@ -440,7 +442,41 @@ function initialize(): void {
     }
   })();
 
+  // The job's country and company, read once per URL: the question resolver
+  // answers "authorized to work in THIS country?" for the job's country.
+  let resolveContextUrl = "";
+  function refreshResolveContext(): void {
+    if (resolveContextUrl === location.href) return;
+    resolveContextUrl = location.href;
+    let country: string | null = null;
+    try {
+      country = detectJobCountry(document);
+      setResolveContext({ jobCountry: country, company: sanitizeCompany(extractJobIdentity().company) });
+    } catch {
+      setResolveContext({ jobCountry: null, company: "" });
+    }
+    if (!country) void adoptCarriedJobCountry(resolveContextUrl);
+  }
+
+  /** An application step that shows no job location (Workday's) takes the
+   *  country its posting page showed, same host, captured within 6 hours. */
+  async function adoptCarriedJobCountry(forUrl: string): Promise<void> {
+    try {
+      const cached = await getLastJobContext();
+      if (!cached?.country || resolveContextUrl !== forUrl) return;
+      if (new URL(cached.url).host !== location.host) return;
+      setResolveContext({ jobCountry: cached.country });
+      if (lastFields.length > 0) {
+        runScan(); // re-resolve the country-dependent answers
+        reportFields();
+      }
+    } catch {
+      // No cache / storage unavailable: the country stays unknown.
+    }
+  }
+
   function runScan(): ScanResponse {
+    refreshResolveContext();
     const result = scanPage(lastProfile, lastFillEEO);
     registry = result.registry;
     lastAdapter = result.adapter;
@@ -1813,6 +1849,7 @@ function initialize(): void {
           jobTitle: ctx.jobTitle,
           company: ctx.company,
           url: location.href,
+          country: detectJobCountry(document),
         });
       }
     } catch {

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { setResolveContext } from "../src/content/fieldResolver";
 import { mountWorkdayMyInfo } from "./fixtures/workday";
 import { stubLayout } from "./helpers/layout";
 import { scanPage } from "../src/content/formScanner";
@@ -55,19 +56,40 @@ describe("Workday My Information, detection", () => {
 });
 
 describe("Workday My Information, autofill", () => {
+  // "Are you legally authorized to work in THIS country?" is answered for the
+  // job's country. The profile says "Authorized to work in Canada", so with a
+  // Canadian job it is a Yes; with the country unknown it must stay blank.
+  afterEach(() => setResolveContext({ jobCountry: null, company: "" }));
+
   it("fills text fields, the country & work-auth dropdowns, and the sponsorship radio", async () => {
     mountWorkdayMyInfo(document);
+    setResolveContext({ jobCountry: "CA", company: "" });
     await runAutofill(MOCK_PROFILE, false);
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement).value;
     expect(val("wd-first")).toBe("John");
     expect(val("wd-last")).toBe("Doe");
     expect(val("wd-email")).toBe("john@example.com");
     expect(val("wd-phone")).toBe("+1 555 555 5555");
-    expect(val("wd-city")).toBe("Ottawa, ON, Canada");
+    // City gets the city part of the location string (2026-10-03).
+    expect(val("wd-city")).toBe("Ottawa");
     expect(val("wd-linkedin")).toBe("https://linkedin.com/in/johndoe");
     expect(document.getElementById("wd-country")!.textContent).toBe("Canada");
     expect(document.getElementById("wd-workauth")!.textContent).toBe("Yes");
     expect((document.querySelector('input[name="sponsorship"]:checked') as HTMLInputElement | null)?.value).toBe("No");
+  });
+
+  it("leaves 'authorized to work in this country?' blank when the job's country is unknown", async () => {
+    mountWorkdayMyInfo(document);
+    setResolveContext({ jobCountry: null, company: "" });
+    await runAutofill(MOCK_PROFILE, false);
+    expect(document.getElementById("wd-workauth")!.textContent).not.toBe("Yes");
+  });
+
+  it("does not answer 'this country' from a Canadian statement when the job is in the US", async () => {
+    mountWorkdayMyInfo(document);
+    setResolveContext({ jobCountry: "US", company: "" });
+    await runAutofill(MOCK_PROFILE, false);
+    expect(document.getElementById("wd-workauth")!.textContent).not.toBe("Yes");
   });
 
   it("never writes into the resume file input", async () => {

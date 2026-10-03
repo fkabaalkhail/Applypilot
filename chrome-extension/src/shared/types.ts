@@ -286,6 +286,14 @@ export interface DetectedField {
   /** 0-based repeating-row index parsed from the field name (`experience[1][company]`),
    *  or null/undefined when the field is not part of a repeating section. */
   groupIndex?: number | null;
+  /** The proposed value was COMPUTED from profile facts by the deterministic
+   *  question resolver (fieldResolver.ts): fill it on device, no backend. */
+  deterministic?: boolean;
+  /** The device recognized this question and decided the profile does not
+   *  settle it: leave it blank and never send it to the backend's guessers. */
+  deviceAbstained?: boolean;
+  /** What kind of answer the field accepts (answerKind.ts), for diagnostics. */
+  answerKind?: string;
 }
 
 // ---------------------------------------------------------------------------

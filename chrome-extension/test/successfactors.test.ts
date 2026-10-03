@@ -49,7 +49,8 @@ describe("SuccessFactors UI5 shadow DOM, autofill", () => {
     expect(inner("sf-lastname-host").value).toBe("Doe");
     expect(inner("sf-email-host").value).toBe("john@example.com");
     expect(inner("sf-phone-host").value).toBe("+1 555 555 5555");
-    expect(inner("sf-city-host").value).toBe("Ottawa, ON, Canada");
+    // City gets the city part of the location string (2026-10-03).
+    expect(inner("sf-city-host").value).toBe("Ottawa");
     expect(inner("sf-country-host").value).toBe("Canada");
     expect(inner("sf-resume-host").value).toBe("");
     expect(inner("sf-gender-host").value).toBe("");

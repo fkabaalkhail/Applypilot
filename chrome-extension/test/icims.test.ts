@@ -43,7 +43,8 @@ describe("iCIMS field markup, autofill", () => {
     expect(val("icims-lastname")).toBe("Doe");
     expect(val("icims-email")).toBe("john@example.com");
     expect(val("icims-phone")).toBe("+1 555 555 5555");
-    expect(val("icims-city")).toBe("Ottawa, ON, Canada");
+    // City gets the city part of the location string (2026-10-03).
+    expect(val("icims-city")).toBe("Ottawa");
     expect(val("icims-country")).toBe("Canada");
     expect(val("icims-resume")).toBe("");
     expect(val("icims-gender")).toBe("");

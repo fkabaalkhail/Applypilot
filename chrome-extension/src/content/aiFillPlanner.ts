@@ -15,6 +15,10 @@ const QUESTION_LABEL =
 /** Whether a field is eligible for AI fill at all (independent of its current value). */
 export function isAiCandidate(field: DetectedField): boolean {
   if (!field.fillable || field.sensitive) return false;
+  // The device recognized this question and the profile does not settle it
+  // ("authorized to work in the US?" for a Canadian citizen). The backend's
+  // rule pass would answer it anyway (Yes, for everyone): never send it.
+  if (field.deviceAbstained) return false;
   if (field.controlType === "file" || field.controlType === "customDropdown") return false;
   if (field.controlType === "textarea" || field.controlType === "contenteditable") return true;
   if (
@@ -182,9 +186,13 @@ export function planFillRoute(selected: DetectedField[], threshold: number): Fil
     // "Ambiguous checkbox value", send it to the option-aware AI pass instead.
     const checkboxMismatch =
       f.controlType === "checkbox" && f.proposedValue !== null && !isBoolish(f.proposedValue);
+    // A value COMPUTED from profile facts (fieldResolver's question shapes) is
+    // as deterministic as a transcribed one: fill it on device, never let a
+    // backend answer race it.
     const deterministic =
       !checkboxMismatch &&
-      LOCAL_FAST_PATH.has(f.category) && f.confidence >= threshold && f.proposedValue !== null;
+      f.proposedValue !== null &&
+      (f.deterministic === true || (LOCAL_FAST_PATH.has(f.category) && f.confidence >= threshold));
     if (deterministic) {
       localTargets.push({ fieldId: f.id, value: f.proposedValue as string });
     } else if (isAiCandidate(f)) {

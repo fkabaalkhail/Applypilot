@@ -17,6 +17,7 @@
 import { MIN_CATEGORY_CONFIDENCE } from "../shared/constants";
 import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile } from "../shared/types";
 import type { FieldSignals } from "./domUtils";
+import { isHigh, profileFacts } from "./profileFacts";
 
 // ---------------------------------------------------------------------------
 // Text normalization
@@ -822,7 +823,19 @@ export function resolveProfileValue(
 ): string | null {
   const orNull = (v: string | undefined): string | null => (v && v.trim() ? v : null);
   const gi = control.groupIndex ?? null;
-  const edu = profile.education?.[gi ?? 0];
+  // Derived facts (profileFacts.ts): only HIGH-confidence facts are used, so a
+  // value this returns is one the profile settles, never a best guess.
+  const facts = profileFacts(profile);
+  const loc = facts.location;
+  // Outside a repeating row, "your school" is the entry in progress (or the
+  // most recent one), not merely the first one listed.
+  const primary = facts.education.primary;
+  const edu =
+    gi !== null
+      ? profile.education?.[gi]
+      : primary
+        ? profile.education?.find((e) => (e.school || "").trim() === primary.school && (e.degree || "").trim() === primary.degree) ?? profile.education?.[0]
+        : profile.education?.[0];
 
   switch (category) {
     case "firstName":
@@ -844,20 +857,30 @@ export function resolveProfileValue(
       return orNull(profile.country);
     case "phoneDeviceType":
       return null;
-    case "location":
-      return orNull(profile.location);
+    case "location": {
+      if (profile.location?.trim()) return profile.location.trim();
+      // Composed from structured parts: "Toronto, ON, Canada".
+      const parts = [
+        isHigh(loc.city) ? loc.city.value : "",
+        isHigh(loc.region) ? loc.region.value.code : "",
+        isHigh(loc.country) ? loc.country.value.name : "",
+      ].filter(Boolean);
+      return parts.length >= 2 ? parts.join(", ") : null;
+    }
     case "addressStreet":
-      return orNull(profile.addressStreet);
+      // Only the street part: a one-line "1055 W Georgia St, Vancouver, BC…"
+      // is split, and its city/region/postal code go to their own fields.
+      return isHigh(loc.street) ? loc.street.value : null;
     case "addressCity":
-      // Fall back to the free-text location string when the structured city is
-      // absent (older profiles / mock mode fill "City" from `location`).
-      return orNull(profile.addressCity || profile.location);
+      // The CITY, derived from the address or the location string. Never the
+      // whole "Toronto, ON, Canada" string, which is what this used to write.
+      return isHigh(loc.city) ? loc.city.value : null;
     case "addressState":
-      return orNull(profile.addressState);
+      return orNull(profile.addressState) ?? (isHigh(loc.region) ? loc.region.value.name : null);
     case "postalCode":
-      return orNull(profile.postalCode);
+      return isHigh(loc.postalCode) ? loc.postalCode.value : null;
     case "country":
-      return orNull(profile.country);
+      return orNull(profile.country) ?? (isHigh(loc.country) ? loc.country.value.name : null);
     case "linkedin":
       return orNull(profile.linkedin);
     case "github":
@@ -865,14 +888,18 @@ export function resolveProfileValue(
     case "portfolio":
       return orNull(profile.portfolio);
     case "currentCompany":
-      return orNull(gi !== null ? profile.experience?.[gi]?.company : profile.currentCompany);
+      // Outside a repeating row: the stated current company, else the employer
+      // of the one experience row that is still running ("Present").
+      if (gi !== null) return orNull(profile.experience?.[gi]?.company);
+      return isHigh(facts.employment.currentCompany) ? facts.employment.currentCompany.value : null;
     case "currentTitle":
       // Greenhouse's "Current role" is a CHECKBOX ("this is my current role"),
       // sharing a label with the job-title text field but asking a different
       // question. Writing a title string into it can only fail as an ambiguous
       // checkbox value, so answer it the way experienceCurrent does.
       if (control.controlType === "checkbox") return currentRoleFlag(profile, gi);
-      return orNull(gi !== null ? profile.experience?.[gi]?.title : profile.currentTitle);
+      if (gi !== null) return orNull(profile.experience?.[gi]?.title);
+      return isHigh(facts.employment.currentTitle) ? facts.employment.currentTitle.value : null;
     // Experience dates / description only resolve inside a repeating row (gi set),
     // so a standalone "Start Date" (availability) never pulls an employment date.
     case "experienceStartDate":
@@ -909,15 +936,18 @@ export function resolveProfileValue(
     case "workAuthorization": {
       const v = orNull(profile.workAuthorization);
       if (!v) return null;
-      // Yes/No controls get a Yes/No answer; free-text gets the statement. A
-      // custom dropdown's options aren't known at scan time, but these screeners
-      // are virtually always Yes/No, so a combobox is treated as a choice.
-      return isYesNoChoice(control) ? toYesNo(v) : v;
+      // A Yes/No answer depends on WHICH country the question asks about, and
+      // "Authorized to work in Canada" says nothing about the United States.
+      // That judgment belongs to questionResolver (it reads the country and
+      // abstains when the profile does not cover it); reaching here with a
+      // choice control means it did not recognize the question, so abstain
+      // rather than turn the statement into a country-blind "Yes".
+      return isYesNoChoice(control) ? null : v;
     }
     case "sponsorship": {
       const v = orNull(profile.requiresSponsorship);
       if (!v) return null;
-      return isYesNoChoice(control) ? toYesNo(v) : v;
+      return isYesNoChoice(control) ? null : v;
     }
 
     // Screening answers stated once on the profile. Returned RAW: a constrained
