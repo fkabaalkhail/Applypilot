@@ -12,12 +12,13 @@
  * not know the day, and a picker must not be left to invent one.
  */
 
-export type DateFormat = "YYYY-MM-DD" | "MM/DD/YYYY" | "DD/MM/YYYY" | "YYYY-MM" | "MM/YYYY";
+export type DateFormat = "YYYY-MM-DD" | "MM/DD/YYYY" | "DD/MM/YYYY" | "YYYY-MM" | "MM/YYYY" | "DD Mon YYYY" | "Mon DD, YYYY";
 
 /** Datepicker widgets, by the class names their libraries give the input or
- *  its wrapper (react-datepicker, flatpickr, jQuery UI, bootstrap, MUI X). */
+ *  its wrapper (react-datepicker, flatpickr, jQuery UI, bootstrap, MUI X,
+ *  BambooHR's Fabric "fabInternal-DatePickerInput"). */
 const PICKER_CLASS =
-  /(^|\s)(react-datepicker__input-container|react-datepicker-wrapper|flatpickr-input|hasDatepicker|datepicker|date-picker|ashby-application-form-input-date|MuiPickersInputBase-root|MuiPickersTextField-root)(\s|$)/i;
+  /(^|\s)(react-datepicker__input-container|react-datepicker-wrapper|flatpickr-input|hasDatepicker|datepicker|date-picker|ashby-application-form-input-date|MuiPickersInputBase-root|MuiPickersTextField-root|[\w-]*DatePickerInput)(\s|$)/i;
 
 /** The format a control displays, or null when it is not a date control. */
 export function dateFormatFor(
@@ -28,14 +29,19 @@ export function dateFormatFor(
   const t = (inputType || "").toLowerCase();
   if (t === "date") return "YYYY-MM-DD";
   if (t === "month") return "YYYY-MM";
-  const ph = (placeholder || "").toLowerCase().replace(/\s+/g, "");
+  // A month NAME: "dd mon yyyy" (BambooHR, live 2026-10-03: a typed
+  // "05/03/2027" became "05 mon yyyy" in its mask), "mmm dd, yyyy".
+  const spaced = (placeholder || "").toLowerCase().trim();
+  if (/^dd[\s./-]+(mon|mmm)[\s./-]+y{4}$/.test(spaced)) return "DD Mon YYYY";
+  if (/^(mon|mmm)[\s./-]+dd,?[\s./-]+y{4}$/.test(spaced)) return "Mon DD, YYYY";
+  const ph = spaced.replace(/\s+/g, "");
   if (/dd[./-]mm[./-]y{2,4}/.test(ph)) return "DD/MM/YYYY";
   if (/mm[./-]dd[./-]y{2,4}/.test(ph)) return "MM/DD/YYYY";
   if (/y{4}[./-]mm[./-]dd/.test(ph)) return "YYYY-MM-DD";
   if (/^mm[./-]y{2,4}$/.test(ph)) return "MM/YYYY";
   if (/^y{4}[./-]mm$/.test(ph)) return "YYYY-MM";
   let picker = /^(pick|select|choose|enter)(a)?date/.test(ph);
-  for (let a: HTMLElement | null = el, i = 0; !picker && a && i < 3; a = a.parentElement, i++) {
+  for (let a: HTMLElement | null = el, i = 0; !picker && a && i < 5; a = a.parentElement, i++) {
     const cls = typeof a.className === "string" ? a.className : "";
     picker = PICKER_CLASS.test(cls) || a.getAttribute("data-provide") === "datepicker";
   }
@@ -45,6 +51,7 @@ export function dateFormatFor(
 }
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTH_RE = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?";
 const monthNum = (name: string): number => MONTHS.indexOf(name.slice(0, 3).toLowerCase()) + 1;
 
@@ -92,7 +99,7 @@ const pad = (n: number): string => String(n).padStart(2, "0");
 export function fitDate(value: string, format: DateFormat): string | null {
   const p = parseDate(value, format === "DD/MM/YYYY" ? "DM" : "MD");
   if (!p) return null;
-  const needsDay = format.includes("DD");
+  const needsDay = format !== "YYYY-MM" && format !== "MM/YYYY";
   if (p.m === undefined || (needsDay && p.d === undefined)) return null;
   switch (format) {
     case "YYYY-MM-DD":
@@ -105,5 +112,9 @@ export function fitDate(value: string, format: DateFormat): string | null {
       return `${p.y}-${pad(p.m)}`;
     case "MM/YYYY":
       return `${pad(p.m)}/${p.y}`;
+    case "DD Mon YYYY":
+      return `${pad(p.d!)} ${MONTH_ABBR[p.m - 1]} ${p.y}`;
+    case "Mon DD, YYYY":
+      return `${MONTH_ABBR[p.m - 1]} ${pad(p.d!)}, ${p.y}`;
   }
 }

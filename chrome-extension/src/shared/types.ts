@@ -311,7 +311,7 @@ export interface DetectedField {
   answerKind?: string;
   /** The format a date control displays (content/dateControl.ts); any value
    *  written to it is first fitted to this format, or dropped. */
-  dateFormat?: "YYYY-MM-DD" | "MM/DD/YYYY" | "DD/MM/YYYY" | "YYYY-MM" | "MM/YYYY";
+  dateFormat?: "YYYY-MM-DD" | "MM/DD/YYYY" | "DD/MM/YYYY" | "YYYY-MM" | "MM/YYYY" | "DD Mon YYYY" | "Mon DD, YYYY";
 }
 
 // ---------------------------------------------------------------------------

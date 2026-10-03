@@ -35,6 +35,17 @@ describe("dateFormatFor", () => {
     expect(dateFormatFor(null, "text", "MM/YYYY")).toBe("MM/YYYY");
   });
 
+  it("a month-name placeholder: BambooHR's Fabric date picker (live 2026-10-03)", () => {
+    // A typed "05/03/2027" became "05 mon yyyy" in its mask.
+    const el = input(
+      `<div class="fabric-1wqwf76-root fabInternal-DatePickerInput"><div class="MuiFormControl-root"><div class="MuiInputBase-root"><input id="FabricTextField-409" placeholder="dd mon yyyy" type="text" class="MuiInputBase-input"></div></div></div>`
+    );
+    expect(dateFormatFor(el, "text", "dd mon yyyy")).toBe("DD Mon YYYY");
+    expect(dateFormatFor(null, "text", "MMM DD, YYYY")).toBe("Mon DD, YYYY");
+    // The wrapper alone marks it a picker, even with no placeholder.
+    expect(dateFormatFor(el, "text", "")).toBe("MM/DD/YYYY");
+  });
+
   it("knows the common picker libraries by class", () => {
     expect(dateFormatFor(input(`<input class="form-control flatpickr-input">`), "text", "")).toBe("MM/DD/YYYY");
     expect(dateFormatFor(input(`<input class="hasDatepicker">`), "text", "")).toBe("MM/DD/YYYY");
@@ -64,6 +75,14 @@ describe("fitDate", () => {
     expect(fitDate("12 May 1999", "YYYY-MM-DD")).toBe("1999-05-12");
     expect(fitDate("2027-04", "MM/YYYY")).toBe("04/2027");
     expect(fitDate("April 2027", "YYYY-MM")).toBe("2027-04");
+  });
+
+  it("writes month names where the control shows them", () => {
+    expect(fitDate("2027-05-03", "DD Mon YYYY")).toBe("03 May 2027");
+    // A slash date is read month-first, the way formatDateFor writes it.
+    expect(fitDate("05/03/2027", "DD Mon YYYY")).toBe("03 May 2027");
+    expect(fitDate("2027-05-03", "Mon DD, YYYY")).toBe("May 03, 2027");
+    expect(fitDate("April 2027", "DD Mon YYYY")).toBeNull(); // no day: no invented one
   });
 
   it("reads a slash date in the control's own day/month order, and rejects impossible ones", () => {

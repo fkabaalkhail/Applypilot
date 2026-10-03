@@ -67,6 +67,18 @@ describe("date controls take a whole date in their own format (dateControl.ts)",
     expect(f[0].dateFormat).toBeUndefined();
   });
 
+  it("a graduation MONTH is no day either: the picker stays blank, a text box gets the month (Ramp on Ashby, live 2026-10-03)", () => {
+    const p = { ...SPARSE_CANADIAN, expectedGraduation: "2027-04" };
+    expect(scan(ashbyPicker("What is your graduation date?"), p)[0].proposedValue).toBeNull();
+    expect(scan(`<label for="d">Graduation date</label><input id="d" type="text">`, p)[0].proposedValue).toBe("April 2027");
+    expect(scan(`<label for="d">Expected graduation date</label><input id="d" type="month">`, p)[0].proposedValue).toBe("2027-04");
+  });
+
+  it("BambooHR's 'Date Available' takes the start date as dd Mon yyyy", () => {
+    const html = `<label for="FabricTextField-409">Date Available *</label><div class="fabInternal-DatePickerInput"><input id="FabricTextField-409" placeholder="dd mon yyyy" type="text"></div>`;
+    expect(scan(html, { ...SPARSE_CANADIAN, earliestStartDate: "2027-05-03" })[0].proposedValue).toBe("03 May 2027");
+  });
+
   it("a whole computed date goes into the picker in the picker's format", () => {
     // TEST_TODAY 2026-10-03 + "2 weeks" notice → 2026-10-17.
     const f = scan(ashbyPicker("Earliest start date"), { ...SPARSE_CANADIAN, noticePeriod: "2 weeks" });
