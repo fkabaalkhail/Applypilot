@@ -350,3 +350,10 @@ describe("demographic synonyms at scan time (Ashby gender checkboxes, live 2026-
     expect(f[0].proposedValue).toBe("Woman");
   });
 });
+
+describe("a stated channel offered several ways (Planet on Greenhouse, live 2026-10-03)", () => {
+  it("LinkedIn among Company Post / Employee Post / Job Search: the job search", () => {
+    const opts = ["BuiltIn Article", "BuiltIn Job Search", "Conference", "Event", "Glassdoor Article", "Glassdoor Job Search", "Indeed", "Instagram", "LinkedIn Company Post", "LinkedIn Employee Post", "LinkedIn Job Search", "News Article", "Other - Event", "Other - Job Site", "Other - Social Media", "Other - Webinar", "Otta", "Planet Event", "Planet Webinar"];
+    expect(value(ask("How did you first hear about Planet before applying for this position?", { options: opts }))).toBe("LinkedIn Job Search");
+  });
+});

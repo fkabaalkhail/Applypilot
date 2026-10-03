@@ -180,6 +180,11 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile): Questi
       if (!said.test(stated)) continue;
       const hit = unique(offered);
       if (hit) return answer(hit, "source:stated");
+      // Several of that channel ("LinkedIn Company Post" | "LinkedIn Employee
+      // Post" | "LinkedIn Job Search", Planet on Greenhouse): a posting found
+      // through Tailrd was found through a job search.
+      const viaSearch = opts.filter((o) => offered.test(qn(o)) && /\bjob (search|post|posting|board|listing|ad)s?\b/.test(qn(o)));
+      if (viaSearch.length === 1) return answer(viaSearch[0], "source:stated");
     }
   }
   for (const re of SOURCE_PREFERENCE) {
