@@ -600,6 +600,13 @@ export function scanPage(
   for (const el of candidates) {
     const controlType = controlTypeOf(el);
     if (controlType === null) continue;
+    // A role=radiogroup that only WRAPS native radios (Material UI renders two
+    // such wrappers per question) is presentation: the native group is the
+    // control. Scanned as an ARIA group it had no options and logged a failed
+    // fill beside the native group that filled (BambooHR, live 2026-10-03).
+    if (controlType === "ariaRadioGroup" && el.querySelector('input[type="radio"]') && !el.querySelector('[role="radio"]')) {
+      continue;
+    }
     // Never surface or fill a captcha widget's own controls, fill around it.
     if (isCaptchaField(el)) continue;
     // Skip cookie-consent / privacy-banner controls. They are real form

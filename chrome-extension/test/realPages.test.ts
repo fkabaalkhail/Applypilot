@@ -270,3 +270,15 @@ describe("select2-enhanced selects (Lever university picker, real markup)", () =
     expect(fields.some((f) => f.controlType === "combobox" && /select a university/i.test(f.label))).toBe(false);
   });
 });
+
+describe("role=radiogroup wrappers around NATIVE radios (BambooHR / MUI, real markup)", () => {
+  // MUI renders <fieldset role="radiogroup"><div role="radiogroup"><input type="radio">…:
+  // each wrapper was scanned as an ARIA radio group with no options and logged
+  // a failed fill next to the native group that actually filled.
+  it("is one radio question, not three", () => {
+    const fields = load("bamboohr", "bamboo-armstrong-coop");
+    const q = fields.filter((f) => f.label.includes("legally entitled to work in Canada"));
+    expect(q.map((f) => f.controlType)).toEqual(["radioGroup"]);
+    expect(q[0].proposedValue).toBe("Yes");
+  });
+});

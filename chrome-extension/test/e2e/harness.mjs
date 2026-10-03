@@ -255,6 +255,8 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
 export async function runCase(env, testCase) {
   const { ctx, sw, api } = env;
   if (testCase.profile) api.setProfile(testCase.profile);
+  // Résumés the sync advertises (an uploadable file makes the flow attach it).
+  api.setResumes(testCase.resumes ?? []);
   const pages = new Map(Object.entries(testCase.pages ?? {}).map(([u, h]) => [u.split("#")[0], h]));
   if (testCase.html !== undefined) pages.set(testCase.url.split("#")[0], testCase.html);
   const assets = new Map(Object.entries(testCase.assets ?? {}));

@@ -185,7 +185,8 @@ export default [
       "label:Toronto Office": null,
       "label:What year of study": null,
       "label:final year of study": null,
-      "label:Select a university or college": { re: "waterloo" },
+      // select2: the hidden native select is filled, labelled by its question.
+      "label:Post-Secondary institution": "University of Waterloo",
       "label:availability for a 4-month": null,
       "label:age range": null,
       "label:ethnicity": null,
