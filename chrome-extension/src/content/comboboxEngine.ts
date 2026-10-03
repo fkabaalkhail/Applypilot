@@ -20,6 +20,7 @@ import {
 } from "./domUtils";
 import { normalize } from "./fieldMatcher";
 import { matchOption } from "./writeEngine";
+import { looksLikePlaces, pickPlaceOption } from "./placeMatch";
 import {
   MULTISELECT_CONTAINER_FRAGMENT as WD_MULTISELECT_CONTAINER_FRAGMENT,
   SEARCH_BOX_FRAGMENT as WD_SEARCH_BOX_FRAGMENT,
@@ -46,6 +47,10 @@ export interface FillComboboxOptions {
   /** Force multi-select handling (value split into one chip per item). Also
    *  auto-detected from aria-multiselectable / react-select "is-multi". */
   multi?: boolean;
+  /** For a city/location field: the applicant's full place ("Toronto, ON,
+   *  Canada"). When the options read as places, the one that IS that place is
+   *  chosen (placeMatch.ts), never one that merely shares the city name. */
+  placeHint?: string;
 }
 
 const DEFAULTS = { openWaitMs: 1500, commitWaitMs: 2500, pollMs: 50 };
@@ -173,7 +178,7 @@ async function selectOne(
     open(trigger);
     listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
   }
-  let option = listbox ? findOption(listbox, value) : null;
+  let option = listbox ? findOption(listbox, value, opts.placeHint) : null;
   if (isTypeahead(trigger) && !option) {
     // Progressively broader filter texts: the full answer, its first word (a
     // literal-substring search finds "TypeScript" but not "TypeScript /
@@ -190,7 +195,7 @@ async function selectOne(
       const preTypeKey = optionsKey(getListbox(trigger));
       lastTyped = text;
       typeInto(trigger as HTMLInputElement, text);
-      const hit = await pollForMatch(trigger, value, preTypeKey, sleep, openWaitMs, pollMs);
+      const hit = await pollForMatch(trigger, value, preTypeKey, sleep, openWaitMs, pollMs, opts.placeHint);
       if (hit) {
         listbox = hit.lb;
         option = hit.opt;
@@ -349,7 +354,7 @@ function isTypeahead(trigger: HTMLElement): boolean {
 /** Cheap identity of a listbox's current options, change/settle detection. */
 function optionsKey(listbox: HTMLElement | null): string {
   if (!listbox) return "";
-  return deepQueryAll(listbox, '[role="option"]')
+  return optionsIn(listbox)
     .map((o) => optionText(o))
     .join(" ");
 }
@@ -369,7 +374,8 @@ async function pollForMatch(
   preTypeKey: string,
   sleep: (ms: number) => Promise<void>,
   budgetMs: number,
-  pollMs: number
+  pollMs: number,
+  placeHint?: string
 ): Promise<{ lb: HTMLElement; opt: HTMLElement } | null> {
   const reactionWindowMs = Math.min(budgetMs, 800);
   let lastKey = preTypeKey;
@@ -377,7 +383,7 @@ async function pollForMatch(
   let stablePolls = 0;
   for (let elapsed = 0; ; elapsed += pollMs) {
     const lb = getListbox(trigger);
-    const opt = lb ? findOption(lb, target) : null;
+    const opt = lb ? findOption(lb, target, placeHint) : null;
     if (lb && opt) return { lb, opt };
     const key = optionsKey(lb);
     // An EMPTY option list is the widget mid-flight, never its answer.
@@ -440,14 +446,41 @@ function byIdNear(el: HTMLElement, id: string): HTMLElement | null {
     const root = node.getRootNode() as Document | ShadowRoot;
     if (seen.has(root)) break;
     seen.add(root);
+    // Inside a component, the target can sit in a SIBLING component's shadow
+    // root (spl-autocomplete holds spl-input and spl-dropdown, each with its own
+    // root), so a shadow level is searched deeply; the document level stays a
+    // cheap getElementById (this runs on every poll while a menu opens).
     const hit =
       root instanceof ShadowRoot
-        ? (root.getElementById?.(id) ?? Array.from(root.querySelectorAll("[id]")).find((e) => e.id === id) ?? null)
+        ? (root.getElementById?.(id) ??
+          Array.from(root.querySelectorAll("[id]")).find((e) => e.id === id) ??
+          deepQueryAll(root, "[id]").find((e) => e.id === id) ??
+          null)
         : (root as Document).getElementById(id);
     if (hit) return hit as HTMLElement;
     node = root instanceof ShadowRoot ? root.host : null;
   }
   return null;
+}
+
+/**
+ * Every option of a listbox, including options PROJECTED into it through a
+ * <slot>. A web-component menu (SmartRecruiters' spl-dropdown) is a shadow-DOM
+ * listbox whose items are the host's light-DOM children, slotted in: they are
+ * not descendants of the listbox element, so a plain subtree query found none
+ * ("listbox had no options", live 2026-10-03). Each slotted item may itself
+ * keep its role=option node in its own shadow root.
+ */
+function optionsIn(listbox: HTMLElement): HTMLElement[] {
+  const out = new Set<HTMLElement>(deepQueryAll(listbox, '[role="option"]'));
+  for (const slot of deepQueryAll(listbox, "slot") as HTMLSlotElement[]) {
+    for (const assigned of slot.assignedElements({ flatten: true }) as HTMLElement[]) {
+      if (assigned.matches('[role="option"]')) out.add(assigned);
+      for (const o of deepQueryAll(assigned, '[role="option"]')) out.add(o);
+      if (assigned.shadowRoot) for (const o of deepQueryAll(assigned.shadowRoot, '[role="option"]')) out.add(o);
+    }
+  }
+  return [...out];
 }
 
 /** Locate the open listbox: prefer the one the combobox points at (it may be
@@ -502,13 +535,22 @@ function belongsToOtherWidget(lb: HTMLElement, trigger: HTMLElement): boolean {
 }
 
 function hasOptions(listbox: HTMLElement): boolean {
-  return deepQueryAll(listbox, '[role="option"]').length > 0;
+  return optionsIn(listbox).length > 0;
 }
 
-function findOption(listbox: HTMLElement, value: string): HTMLElement | null {
-  const options = deepQueryAll(listbox, '[role="option"]').filter(
+function findOption(listbox: HTMLElement, value: string, placeHint?: string): HTMLElement | null {
+  const options = optionsIn(listbox).filter(
     (o) => o.getAttribute("aria-disabled") !== "true"
   );
+  // Place suggestions are chosen as PLACES: token matching would read
+  // "Toronto, OH, US" as a perfect match for "Toronto, ON, Canada".
+  if (placeHint) {
+    const texts = options.map((o) => optionText(o));
+    if (looksLikePlaces(texts)) {
+      const i = pickPlaceOption(texts, placeHint);
+      return i >= 0 ? options[i] : null;
+    }
+  }
   return matchOption(
     options,
     (o) => optionText(o),
@@ -520,7 +562,30 @@ function findOption(listbox: HTMLElement, value: string): HTMLElement | null {
 /** Visible label of an option, ignoring nested check/icon glyph text. */
 function optionText(option: HTMLElement): string {
   const labelled = option.getAttribute("aria-label");
-  return cleanText(labelled) || cleanText(option.textContent);
+  return cleanText(labelled) || cleanText(option.textContent) || cleanText(flatText(option));
+}
+
+/**
+ * The text a user SEES in `el`, following <slot>s to the nodes projected into
+ * them. A web-component option (SmartRecruiters' spl-dropdown-item) is a
+ * `div[role=option]` in a shadow root whose label is the HOST's light-DOM text,
+ * projected through a slot, so its own textContent is empty.
+ */
+function flatText(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  if (node instanceof HTMLSlotElement) {
+    const assigned = node.assignedNodes({ flatten: true });
+    // An unfilled slot renders its fallback content.
+    return (assigned.length ? assigned : Array.from(node.childNodes)).map(flatText).join(" ");
+  }
+  if (node instanceof Element) {
+    if (/^(STYLE|SCRIPT|TEMPLATE)$/.test(node.tagName)) return "";
+    // A host renders its SHADOW tree (whose slots pull the light children
+    // in); walking both would count projected text twice.
+    const shadow = (node as HTMLElement).shadowRoot;
+    return Array.from((shadow ?? node).childNodes).map(flatText).join(" ");
+  }
+  return "";
 }
 
 /**
@@ -576,7 +641,7 @@ export async function harvestComboboxOptions(
 
 /** Non-disabled option labels of a listbox, trimmed for transport (cap 60). */
 function optionLabels(listbox: HTMLElement): string[] | undefined {
-  const labels = deepQueryAll(listbox, '[role="option"]')
+  const labels = optionsIn(listbox)
     .filter((o) => o.getAttribute("aria-disabled") !== "true")
     .map((o) => optionText(o))
     .filter((t) => t.length > 0)
@@ -620,7 +685,7 @@ function findMountedListbox(trigger: HTMLElement): HTMLElement | null {
  * suppressing the fill of a field nobody has answered.
  */
 export function readComboboxValue(trigger: HTMLElement): string | undefined {
-  const ownText = isButtonLikeTrigger(trigger) ? cleanText(trigger.textContent) : "";
+  const ownText = isButtonLikeTrigger(trigger) ? cleanText(trigger.textContent) || cleanText(flatText(trigger)) : "";
   const candidates = [
     trigger instanceof HTMLInputElement ? trigger.value : "",
     activeDescendantText(trigger),
@@ -689,7 +754,9 @@ function comboboxShowsValue(trigger: HTMLElement, value: string, selfTyped?: str
   if (trigger instanceof HTMLInputElement && trigger.value && trigger.value !== selfTyped) {
     candidates.push(trigger.value);
   }
-  if (trigger.tagName === "BUTTON") candidates.push(cleanText(trigger.textContent));
+  // A web-component button shows its selection through a <slot>, outside
+  // its own textContent (SmartRecruiters' phone "Country code").
+  if (trigger.tagName === "BUTTON") candidates.push(cleanText(trigger.textContent) || cleanText(flatText(trigger)));
   // SAP SuccessFactors' rcmpaginatedselect commits the choice into the input's
   // `title` while leaving `value` empty and the placeholder ("No Selection")
   // in place, so a successful selection read as "didn't stick" without this.

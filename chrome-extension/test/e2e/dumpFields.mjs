@@ -123,7 +123,20 @@ export function dumpFieldsInPage() {
       }
     }
     if (el.tagName === "BUTTON" || el.getAttribute("aria-haspopup") === "listbox") {
-      const t = clean(el.textContent);
+      // Slot-aware: a web-component trigger shows its selection through a <slot>.
+      const flat = (node) => {
+        if (node.nodeType === 3) return node.textContent || "";
+        if (node instanceof HTMLSlotElement) {
+          const a = node.assignedNodes({ flatten: true });
+          return (a.length ? a : Array.from(node.childNodes)).map(flat).join(" ");
+        }
+        if (node instanceof Element) {
+          if (/^(STYLE|SCRIPT|TEMPLATE)$/.test(node.tagName)) return "";
+          return Array.from((node.shadowRoot || node).childNodes).map(flat).join(" ");
+        }
+        return "";
+      };
+      const t = clean(el.textContent) || clean(flat(el));
       if (t && !/^(select( one)?|choose|please select|select\.\.\.|select…)$/i.test(t)) return t;
     }
     if (ad) {

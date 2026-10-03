@@ -186,7 +186,19 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\bphone\b/ },
       { re: /\bmobile\b|\bcell\b|\btelephone\b/ },
     ],
-    negative: /\bphone type\b|\bext(ension)?\b|\bcountry code\b|\bdevice type\b/,
+    negative: /\bphone type\b|\bext(ension)?\b|\bcountry code\b|\bdevice type\b|\b(dial(ing)?|calling) code\b/,
+  },
+  {
+    // The phone number's dialing-code picker ("Country code", "+1"). It used
+    // to fall to `location` on the word "country" and receive the applicant's
+    // city (SmartRecruiters, live 2026-10-03). questionResolver answers it with
+    // the country (or "+1") rendered into the picker's own options.
+    category: "phoneCountryCode",
+    patterns: [
+      { re: /\b(country|dial(ing)?|calling|phone|telephone|mobile) code\b/ },
+      { re: /\bcountry calling\b/ },
+    ],
+    negative: /\b(postal|zip|area|promo|discount|referral|verification|security|access|invite|invitation) code\b/,
   },
 
   // --- Structured address, more specific than the generic `location`, so these
@@ -256,7 +268,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\bpostal\b|\bzip\b/, weight: 0.7 },
       { re: /\bwhere (are you|do you) (located|based|live)\b/ },
     ],
-    negative: /\be ?mail\b|\bip address\b|\bweb ?site\b|\burl\b|\blinked ?in\b|\bgit ?hub\b/,
+    negative: /\be ?mail\b|\bip address\b|\bweb ?site\b|\burl\b|\blinked ?in\b|\bgit ?hub\b|\bcountry code\b|\b(dial(ing)?|calling) code\b/,
   },
 
   // --- Links ---

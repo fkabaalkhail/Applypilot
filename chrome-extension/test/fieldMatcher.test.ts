@@ -98,3 +98,12 @@ describe("resolveProfileValue, missing education/experience arrays", () => {
     expect(resolveProfileValue("education", bare, sel, false)).toBeNull();
   });
 });
+
+describe("classifyField: phone country code", () => {
+  // SmartRecruiters' phone "Country code" dropdown was classified as the
+  // applicant's LOCATION (live 2026-10-03).
+  it("'Country code' next to a phone number is the dialing code, not a location", () => {
+    const s = { label: "Country code", ariaLabel: "", placeholder: "", nearby: "", nameAttr: "", idAttr: "", autocomplete: "", typeHint: "", testId: "" };
+    expect(classifyField(s).category).toBe("phoneCountryCode");
+  });
+});

@@ -66,6 +66,7 @@ import { defaultSelectedIds } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
 import { detectJobCountry, sanitizeCompany } from "./jobLocation";
 import { setResolveContext } from "./fieldResolver";
+import { isHigh, profileFacts } from "./profileFacts";
 import { aiFillCandidates, isBoolish, needsOptionHarvest, planAiFill, planFillRoute, planOnDeviceReask, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { closestDemographicOption } from "./demographicMatch";
 import { toApplicantProfile } from "./applicantProfile";
@@ -521,7 +522,7 @@ function initialize(): void {
         outcomes.push({ fieldId: t.fieldId, ok: false, reason: "Field no longer found. Rescan the page" });
         continue;
       }
-      const res = await fillAriaCombobox(el, t.value, { multi: control?.multi });
+      const res = await fillAriaCombobox(el, t.value, { multi: control?.multi, placeHint: placeHintFor(t.fieldId) });
       // Carry the specific reason (couldn't-open / no-match / didn't-commit) into
       // telemetry, otherwise a dropdown failure is logged with an empty reason.
       outcomes.push({ fieldId: t.fieldId, ok: res.filled, reason: res.reason });
@@ -561,11 +562,29 @@ function initialize(): void {
         continue;
       }
       // Driver miss: best-effort ARIA fallback: may fill, or harvest options.
-      const fb = await fillAriaCombobox(control.el, t.value, { multi: control.multi });
+      const fb = await fillAriaCombobox(control.el, t.value, { multi: control.multi, placeHint: placeHintFor(t.fieldId) });
       outcomes.push({ fieldId: t.fieldId, ok: fb.filled, reason: fb.reason });
       if (!fb.filled && fb.options) reask.push({ fieldId: t.fieldId, options: fb.options });
     }
     return { outcomes, reask };
+  }
+
+  /**
+   * The applicant's full place ("Toronto, ON, Canada") for a city/location
+   * dropdown, so a suggestion list is chosen from as PLACES (Toronto, Ontario,
+   * never Toronto, Ohio). Only high-confidence parts; undefined when the
+   * profile does not pin at least two of city / region / country.
+   */
+  function placeHintFor(fieldId: string): string | undefined {
+    const f = lastFields.find((x) => x.id === fieldId);
+    if (!f || !lastProfile || (f.category !== "addressCity" && f.category !== "location")) return undefined;
+    const loc = profileFacts(lastProfile).location;
+    const parts = [
+      isHigh(loc.city) ? loc.city.value : "",
+      isHigh(loc.region) ? loc.region.value.code : "",
+      isHigh(loc.country) ? loc.country.value.name : "",
+    ].filter(Boolean);
+    return parts.length >= 2 ? parts.join(", ") : undefined;
   }
 
   /** Whether a tracked field is a custom ARIA dropdown (filled by comboboxEngine). */

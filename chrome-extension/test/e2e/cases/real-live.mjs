@@ -29,7 +29,7 @@ const TORONTO = { re: "toronto" };
 const LINKEDIN = P.linkedin;
 // Greenhouse's phone dial-code picker: "Canada" selects "Canada +1", and the
 // widget then displays only "+1".
-const DIAL_CODE_CANADA = { re: String.raw`canada|^\+1$` };
+const DIAL_CODE_CANADA = { re: String.raw`canada|^\+\s*1$` };
 
 const live = (c) => ({ mode: "live", profile: P, trigger: { fillTimeoutMs: 180000 }, ...c });
 
@@ -282,6 +282,8 @@ export default [
       "label:Email*": P.email,
       "label:Confirm your email": P.email,
       "label:City": TORONTO,
+      // The phone dial-code picker (a slotted web-component button).
+      "label:Country code": DIAL_CODE_CANADA,
       "label:Phone number": PHONE,
       "label:LinkedIn": LINKEDIN,
       "label:Facebook": null,
@@ -300,6 +302,8 @@ export default [
       "label:Email*": P.email,
       "label:Confirm your email": P.email,
       "label:City": TORONTO,
+      // The phone dial-code picker (a slotted web-component button).
+      "label:Country code": DIAL_CODE_CANADA,
       "label:Phone number": PHONE,
       "label:LinkedIn": LINKEDIN,
       "label:Website": null,
