@@ -102,13 +102,15 @@ describe("SetupWizard", () => {
     expect(putMock).toHaveBeenCalledWith(
       "/settings",
       expect.objectContaining({
-        job_title: "Software Engineering",
         regions: ["CA"],
         // Canonical value: the spelling scraped_jobs actually stores.
         experience_levels: ["internship"],
         prefilled_answers: expect.objectContaining({ job_types: "full_time" }),
       }),
     );
+    // The job FUNCTION is not the current job title the extension types (2026-10-03).
+    const settingsPut = putMock.mock.calls.find((c) => c[0] === "/settings")![1] as Record<string, unknown>;
+    expect(settingsPut).not.toHaveProperty("job_title");
     // The resume is uploaded inline via the real pipeline, not the old /settings/resume.
     expect(postMock).toHaveBeenCalledWith("/resumes/upload", expect.any(FormData));
     expect(postMock).not.toHaveBeenCalledWith("/settings/resume", expect.anything());

@@ -44,7 +44,9 @@ export default function SetupWizard() {
       await api.put("/settings", {
         first_name: answers.first_name,
         last_name: answers.last_name,
-        job_title: answers.job_functions[0] ?? "",
+        // No job_title: it is the CURRENT title the extension types into
+        // "Current job title" fields, and a job FUNCTION ("Software
+        // Engineering") is not one. The function seeds the feed filters below.
         location: answers.city,
         remote_only: answers.open_to_remote,
         work_type: answers.open_to_remote ? "remote" : "",
