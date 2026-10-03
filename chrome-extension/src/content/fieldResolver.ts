@@ -232,7 +232,11 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   let q: QuestionResult = null;
   // groupIndex alone is not proof of a repeating row: it is parsed from ids,
   // and Ashby's radio ids end "-labeled-radio-0". Only the row categories count.
-  const inRepeatingRow = control.groupIndex !== null && control.groupIndex !== undefined && ROW_CATEGORIES.has(category);
+  // A radio group is never a row's date or school control: Superhuman's "When
+  // is your expected graduation date?" radios (ids "…-labeled-radio-0") were
+  // treated as a row's graduation year and never reached the question resolver.
+  const isRadios = control.controlType === "radioGroup" || control.controlType === "ariaRadioGroup";
+  const inRepeatingRow = control.groupIndex !== null && control.groupIndex !== undefined && ROW_CATEGORIES.has(category) && !isRadios;
   if (!input.sensitive && !inRepeatingRow) {
     const question: QuestionInput = {
       label,

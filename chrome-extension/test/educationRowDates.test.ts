@@ -9,6 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { scanPage } from "../src/content/formScanner";
+import { isDefaultSelected } from "../src/shared/selection";
 import { greenhouseAdapter } from "../src/content/adapters/greenhouse";
 import { stubLayout } from "./helpers/layout";
 import { SPARSE_CANADIAN } from "./fixtures/profiles";
@@ -128,7 +129,22 @@ describe("Ashby's education dates and 'Still Student?' (Ramp / Superhuman, live 
 
   it("'Still Student?' is ticked while the degree is in progress", () => {
     expect(scanAshby().still?.proposedValue).toBe("yes");
+    // Selected on its own evidence (its label classifies weakly): proposed but never filled live.
+    expect(isDefaultSelected(scanAshby().still!)).toBe(true);
     const grad = { ...SPARSE_CANADIAN, education: [{ school: "University of Toronto", degree: "BSc", graduationYear: "2022" }] };
     expect(scanAshby(grad).still?.proposedValue).toBe("no");
+  });
+});
+
+describe("an Ashby radio group is never a row's graduation year (Superhuman, live 2026-10-03)", () => {
+  it("'When is your expected graduation date?' reaches the question resolver: the month-range option", () => {
+    const opts = ["2026", "January - June 2027", "December 2027", "May/June 2028", "December 2028", "2029"];
+    const uuid = "539c8672-218c-40a3-a472-12def86fba63";
+    const radios = opts
+      .map((o, i) => `<div><input type="radio" id="${uuid}-labeled-radio-${i}" name="${uuid}" value="${o}"><label for="${uuid}-labeled-radio-${i}">${o}</label></div>`)
+      .join("");
+    document.body.innerHTML = `<form><fieldset class="ashby-application-form-field-entry"><legend>When is your expected graduation date?</legend>${radios}</fieldset></form>`;
+    const f = scanPage({ ...SPARSE_CANADIAN, expectedGraduation: "2027-04" }, false).fields;
+    expect(f[0].proposedValue).toBe("January - June 2027");
   });
 });

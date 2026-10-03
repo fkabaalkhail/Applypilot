@@ -317,6 +317,8 @@ export async function runCase(env, testCase) {
       await sleep(600);
     }
     const after = await dumpAllFrames(page);
+    // Debugging hook: inspect the filled page (a widget's real DOM) before it closes.
+    if (testCase.afterFill) await testCase.afterFill(page, consoleLines);
     let state = null;
     if (testCase.stateSelector) {
       state = await page

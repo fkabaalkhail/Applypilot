@@ -186,7 +186,26 @@ const ASKS_RIGHT =
 const SPONSOR_TYPE = /\b(what|which) (type of |kind of |form of )?(visa )?(sponsorship|visa|work permit)\b|\b(type|kind|form) of (visa |work )?(sponsorship|visa|permit)\b/;
 const WITHOUT_SPONSOR = /\bwithout (the )?(need (for|of) |needing |requiring |requirement (for|of) )?(any )?(current or future )?(visa |employer |employment |immigration |company )?sponsor/;
 
+/**
+ * "Have you held H-1B status, or had an H-1B petition approved on your behalf
+ * in the past 6 years?" (Twitch, live 2026-10-03) asks about the PAST, and was
+ * answered as "will you need sponsorship?" (Yes, for a Canadian not authorized
+ * in the US). The profile's own statement says H-1B → Yes; a statement naming
+ * no US visa at all → No (the unencumbered default); any other US visa
+ * (F-1, OPT, TN, L-1…) → the applicant's to answer.
+ */
+function resolveH1bHistory(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
+  if (!/\bh ?1 ?b\b/.test(n) || !/\b(have|had|did|were) you\b[^?]*\b(held|had|been|filed|approved|registered|selected|petition)\w*/.test(n)) return null;
+  if (!isBooleanQuestion(q)) return abstain("h1b-history:not-yes-no");
+  const stated = (profile.workAuthorization || "").toLowerCase();
+  if (/\bh-?1 ?b\b/.test(stated)) return booleanResult(true, q, "h1b-history:stated");
+  if (/\b(f-?1|j-?1|m-?1|opt|cpt|stem opt|tn|l-?1|o-?1|e-?3|h-?4|ead|green card|visa)\b/.test(stated)) return abstain("h1b-history:other-us-visa");
+  return booleanResult(false, q, "default:no-h1b-history");
+}
+
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
+  const h1b = resolveH1bHistory(q, n, profile);
+  if (h1b) return h1b;
   const hasSponsor = SPONSOR.test(n);
   // "Will you require sponsorship … to legally work in the U.S.?" (ZipRecruiter,
   // live 2026-10-03) asks about SPONSORSHIP; its work-right words are only the

@@ -53,6 +53,13 @@ describe("work authorization and employment (Twitch on Greenhouse)", () => {
     expect(value(ask(q, { options: YES_NO }))).toBe("No");
     expect(value(ask(q, { options: YES_NO }, COMPLETE, { jobCountry: "CA", company: "" }))).toBe("Yes");
   });
+  it("H-1B HISTORY is not 'will you need sponsorship?' (it was answered Yes)", () => {
+    const q = "Have you held H-1B status, or had an H-1B petition approved on your behalf in the past 6 years?*";
+    expect(value(ask(q, { options: YES_NO }))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, { ...COMPLETE, workAuthorization: "H-1B visa holder" }))).toBe("Yes");
+    // A US student visa: maybe, maybe not. The applicant's to answer.
+    expect(value(ask(q, { options: YES_NO }, { ...COMPLETE, workAuthorization: "F-1 student visa (OPT eligible)" }))).toBe("abstain");
+  });
   it("'Are you currently a Twitch employee?' names the company with 'a … employee'", () => {
     expect(value(ask("Are you currently a Twitch employee?*", { options: YES_NO }))).toBe("No");
   });

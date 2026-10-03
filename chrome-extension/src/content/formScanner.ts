@@ -624,6 +624,9 @@ function reclassifyEducationRowDates(
     if (f.controlType === "checkbox" && el && profile && STILL_STUDENT.test(f.label) && inEducationBlock(el)) {
       const entry = profileFacts(profile).education.entries[f.groupIndex ?? 0];
       f.proposedValue = entry?.completed === false ? "yes" : entry?.completed === true ? "no" : null;
+      // Computed from the profile, so selected on its own evidence: the label
+      // classifies weakly, and the box was never filled (Ramp, live 2026-10-03).
+      if (f.proposedValue !== null) f.deterministic = true;
       continue;
     }
     if (f.category !== "experienceStartDate" && f.category !== "experienceEndDate") continue;

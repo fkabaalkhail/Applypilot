@@ -514,6 +514,11 @@ function initialize(): void {
     await adoptTopFramePlace(resolveContextUrl);
   }
 
+  /** A field's label for diagnostics (labels only, never the values). */
+  function labelOfField(id: string): string {
+    return (lastFields.find((f) => f.id === id)?.label ?? id).replace(/\s+/g, " ").slice(0, 48);
+  }
+
   function runScan(): ScanResponse {
     refreshResolveContext();
     const result = scanPage(lastProfile, lastFillEEO);
@@ -975,6 +980,17 @@ function initialize(): void {
         if (optionTargets.length > 0) {
           optionFill = await fillItems(noteIntent(optionTargets, { tier: "profile", pass: "options" }), true, signal);
         }
+        // Labels only (never values): which lazy dropdowns the device answered
+        // once their options were read, and which still wait for the AI.
+        if (misses.length > 0) {
+          const names = (ids: string[]): string => ids.map((id) => `"${labelOfField(id)}"`).join(", ");
+          const failed = optionFill.outcomes.filter((o) => !o.ok).map((o) => o.fieldId);
+          console.log(
+            `[Tailrd fill] answered on device after reading options: ${names(optionTargets.map((t) => t.fieldId)) || "none"}` +
+              (failed.length ? `; write failed: ${names(failed)}` : "") +
+              `; left for the AI: ${names(askBackend.map((f) => f.id)) || "none"}`
+          );
+        }
         let answers: PlannedAnswer[] = hits;
         try {
           if (askBackend.length > 0) {
@@ -1203,7 +1219,7 @@ function initialize(): void {
       if (cleared.length > 0 && !signal?.aborted) {
         await waitForDomSettle(signal);
         if (!signal?.aborted) {
-          console.log(`[Tailrd fill] re-writing ${cleared.length} field(s) the page cleared`);
+          console.log(`[Tailrd fill] re-writing ${cleared.length} field(s) the page cleared: ${cleared.map((r) => `"${labelOfField(r.fieldId)}"`).join(", ")}`);
           await fillItems(
             cleared.map((r) => ({ fieldId: r.fieldId, value: intended.get(r.fieldId) as string })),
             true,
@@ -1216,7 +1232,7 @@ function initialize(): void {
       lastRevertedIds = new Set(reverted.map((r) => r.fieldId));
       if (lastRevertedIds.size > 0) {
         console.log(
-          `[Tailrd fill] ${lastRevertedIds.size} field(s) no longer hold what was written, re-asking`
+          `[Tailrd fill] ${lastRevertedIds.size} field(s) no longer hold what was written, re-asking: ${[...lastRevertedIds].map((id) => `"${labelOfField(id)}"`).join(", ")}`
         );
       }
       // Push the re-scan's own view of the page (and its reverts) to the panel,
