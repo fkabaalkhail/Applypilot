@@ -122,14 +122,16 @@ async function overlayState(page) {
     .evaluate(() => {
       const sr = document.getElementById("applypilot-overlay-host")?.shadowRoot;
       const btn = sr?.querySelector("#ap-btn-autofill");
+      const banner = sr?.querySelector(".ap-banner");
       return {
         host: Boolean(document.getElementById("applypilot-overlay-host")),
         button: Boolean(btn),
         enabled: Boolean(btn && !btn.disabled),
         text: btn?.textContent?.trim() ?? "",
+        banner: banner && banner.style.display !== "none" ? (banner.textContent || "").trim() : "",
       };
     })
-    .catch(() => ({ host: false, button: false, enabled: false, text: "" }));
+    .catch(() => ({ host: false, button: false, enabled: false, text: "", banner: "" }));
 }
 
 async function togglePanel(sw, pageUrl) {
@@ -178,8 +180,12 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
   trace.clicked = true;
 
   // Busy → "Working…"; the click handler resolves when fillOnce has finished
-  // its whole pass (telemetry is sent at the very end of fillOnce).
+  // its whole pass (telemetry is sent at the very end of fillOnce). A fill that
+  // throws resets the button within one poll and shows "Autofill failed: …" in
+  // the banner, so "never saw busy" for a few seconds is an answer too, not a
+  // reason to sit out the whole timeout.
   const deadline = Date.now() + fillTimeoutMs;
+  const clickedAt = Date.now();
   let sawBusy = false;
   while (Date.now() < deadline) {
     st = await overlayState(page);
@@ -188,9 +194,18 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
       trace.telemetry = api.state.telemetry[telemetryBefore].body;
       break;
     }
+    if (/autofill failed/i.test(st.banner)) {
+      trace.error = `extension: ${st.banner}`;
+      break;
+    }
     if (sawBusy && !/working/i.test(st.text)) break;
-    await sleep(250);
+    if (!sawBusy && Date.now() - clickedAt > 8000) {
+      trace.error = `fill never started (button "${st.text}", banner "${st.banner}")`;
+      break;
+    }
+    await sleep(150);
   }
+  trace.banner = st.banner;
   // Let late commits / framework re-renders settle before reading the page.
   await sleep(1500);
   if (!trace.telemetry && api.state.telemetry.length > telemetryBefore) {
@@ -212,8 +227,12 @@ export async function runCase(env, testCase) {
   const consoleLines = [];
   page.on("console", (m) => {
     const t = m.text();
-    if (/\[Tailrd|\[adapter|\[combobox/i.test(t)) consoleLines.push(t.slice(0, 300));
+    if (/\[Tailrd|\[adapter|\[combobox/i.test(t) && !/refreshMainView/.test(t)) consoleLines.push(t.slice(0, 300));
+    else if (m.type() === "error" && /chrome-extension:|contentScript|Tailrd|applypilot/i.test(`${t} ${m.location()?.url ?? ""}`)) {
+      consoleLines.push(`ERROR ${t.slice(0, 400)}`);
+    }
   });
+  page.on("pageerror", (err) => consoleLines.push(`PAGEERROR ${String(err?.stack || err).slice(0, 400)}`));
   try {
     await page.goto(testCase.url, { waitUntil: "load", timeout: 60000 });
     if (testCase.beforeFill) await testCase.beforeFill(page);

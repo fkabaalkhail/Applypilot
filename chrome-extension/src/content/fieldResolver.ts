@@ -63,6 +63,12 @@ export function getResolveContext(): QuestionContext {
  *  answer. */
 const PASS_THROUGH: ReadonlySet<FieldCategory> = new Set<FieldCategory>(["accountPassword", "resumeUpload"]);
 
+/** Categories that live in repeating employment / education rows. */
+const ROW_CATEGORIES: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
+  "currentCompany", "currentTitle", "experienceStartDate", "experienceEndDate", "experienceDescription",
+  "experienceCurrent", "school", "degree", "fieldOfStudy", "graduationYear",
+]);
+
 /** Controls whose options are fully known at scan time. */
 const CONSTRAINED: ReadonlySet<ControlType> = new Set<ControlType>(["select", "radioGroup", "ariaRadioGroup", "checkboxGroup"]);
 
@@ -123,7 +129,9 @@ export function resolveField(input: FieldResolveInput): FieldResolution {
   //    row ("experience[1][start]") is transcription of THAT row, never a
   //    screening question.
   let q: QuestionResult = null;
-  const inRepeatingRow = control.groupIndex !== null && control.groupIndex !== undefined;
+  // groupIndex alone is not proof of a repeating row: it is parsed from ids,
+  // and Ashby's radio ids end "-labeled-radio-0". Only the row categories count.
+  const inRepeatingRow = control.groupIndex !== null && control.groupIndex !== undefined && ROW_CATEGORIES.has(category);
   if (!input.sensitive && !inRepeatingRow) {
     const question: QuestionInput = {
       label,

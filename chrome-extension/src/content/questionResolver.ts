@@ -452,11 +452,23 @@ const DOMAINS: Array<{ q: RegExp; title: RegExp }> = [
 function resolveYearsOfExperience(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   const m = /\b(?:years?|yrs)\s+(?:of\s+)?([a-z\s-]{0,60}?)\s*experience\b|\bhow (?:much|many years of)\s+([a-z\s-]{0,60}?)\s*experience\b|\bexperience \(years\)|\bexperience in years\b/.exec(n);
   if (!m) return null;
-  // "Years of experience WITH React / IN marketing / AS a nurse": a skill
-  // question, not the career total.
-  if (/\bexperience\s+(with|in|using|on|of|as|doing|working with|leading|managing)\b/.test(n)) return abstain("years-experience:narrowed");
   const qualifiers = (m[1] ?? m[2] ?? "").split(/[\s-]+/).filter(Boolean);
   const domainWords = qualifiers.filter((w) => !GENERIC_QUALIFIERS.has(w));
+  // "Years of experience WITH React", "…experience do you have IN marketing",
+  // "…AS a nurse": what follows narrows the question. A generic object ("in
+  // the industry", "in a professional setting") keeps it the career total; a
+  // field of work joins the domain check below; anything else (a skill, a
+  // tool, a product) is a question the profile cannot answer.
+  const narrowed =
+    /\bexperience\b(?:\s+(?:do|did|have|has|you|of|that|which|would|say|in total)){0,5}\s+(?:with|in|using|on|as|doing|working with|working in|leading|managing)\s+(?:a |an |the )?([a-z0-9 +#.-]{2,40})/.exec(n);
+  if (narrowed) {
+    const obj = narrowed[1].trim();
+    if (!/^(total|industry|the industry|professional (setting|capacity|environment)s?|similar roles?|this field|the field|related fields?|the workforce|a professional|full time|paid)\b/.test(obj)) {
+      domainWords.push(...obj.split(/\s+/).slice(0, 3));
+      const dom = DOMAINS.find((d) => d.q.test(obj));
+      if (!dom) return abstain("years-experience:narrowed");
+    }
+  }
   const total = facts.employment.totalYears;
   if (!isHigh(total)) return abstain("years-experience:unknown");
   if (domainWords.length > 0) {
@@ -506,7 +518,7 @@ function resolveEducationLevel(q: QuestionInput, n: string, facts: ProfileFacts)
     if (/\b(in|related|relevant) (to )?(a |the )?(computer|engineering|stem|related field|technical|science|business)\b|\bfield\b|\bmajor\b/.test(n)) {
       return abstain("degree-held:field-qualified");
     }
-    const pursuing = /\b(or (are )?(currently )?(pursuing|enrolled|working towards|working toward|completing)|in progress|expected)\b/.test(n);
+    const pursuing = /\b(or (are )?(you )?(currently )?(pursuing|enrolled|working towards|working toward|completing)|in progress|expected)\b/.test(n);
     const rank = pursuing ? ed.highestRank : ed.highestCompletedRank;
     if (isHigh(rank)) return booleanResult(rank.value >= asked, q, "degree-held");
     if (!pursuing && isHigh(ed.highestRank) && ed.highestRank.value < asked) return booleanResult(false, q, "degree-held:below");
@@ -803,7 +815,7 @@ function resolvePhoneCode(q: QuestionInput, n: string, facts: ProfileFacts, prof
  *  profile answers them, and a guess written into one reads as the applicant's
  *  own statement. Recognized so they are never filled by a category fallback. */
 const UNANSWERABLE =
-  /\bhow did you (hear|find|learn)\b|\bwhere did you (hear|see|find|learn)\b|\bwho referred\b|\breferred (you|by)\b|\bdo you think\b|\bin your opinion\b|\bwhat do you think\b|\bwhy (do|are|did|would) you\b|\bdescribe (a|an|your)\b|\btell us\b|\bwhat interests you\b|\bfamily member|\brelatives?\b|\bconflicts? of interest\b|\bnon compete|\bpreviously applied\b|\bapplied (to|for|with) (us|this)\b|\bbackground check\b|\bdrug (test|screen)\b|\bcriminal\b|\bconvicted\b/;
+  /\bhow did you (hear|find|learn)\b|\bwhere did you (hear|see|find|learn)\b|\bwho referred\b|\breferred (you|by)\b|\bdo you think\b|\bin your opinion\b|\bwhat do you think\b|\bwhy (do|are|did|would) you\b|\bdescribe (a|an)\b|\btell us about (a|an|yourself)\b|\bwhat interests you\b|\bfamily member|\brelatives?\b|\bconflicts? of interest\b|\bnon compete|\bpreviously applied\b|\bapplied (to|for|with) (us|this)\b|\bbackground check\b|\bdrug (test|screen)\b|\bcriminal\b|\bconvicted\b/;
 
 export function resolveQuestion(
   q: QuestionInput,

@@ -595,11 +595,16 @@ export function educationFacts(profile: UserApplicationProfile, today: Date): Ed
   const ranks = entries.map((e) => e.rank).filter((r): r is number => r !== null);
   const highestRank = ranks.length ? fact(Math.max(...ranks), entries.every((e) => e.rank !== null) ? "high" : "medium", "education:tiers") : null;
 
-  // Highest COMPLETED: every entry above it must be known-incomplete.
+  // Highest COMPLETED: every entry above it must be known-incomplete. When
+  // every entry is known to be still in progress, the applicant holds none of
+  // the listed degrees yet (rank 0): "Do you have a Bachelor's?" is a No.
   let highestCompletedRank: Fact<number> | null = null;
   const done = entries.filter((e) => e.completed === true && e.rank !== null).map((e) => e.rank as number);
   const unknownAbove = entries.some((e) => e.completed === null && e.rank !== null && e.rank > Math.max(0, ...done));
   if (done.length && !unknownAbove) highestCompletedRank = fact(Math.max(...done), "high", "education:completed-tiers");
+  else if (entries.length > 0 && entries.every((e) => e.completed === false)) {
+    highestCompletedRank = fact(0, "high", "education:none-completed-yet");
+  }
 
   const enrolled = entries.filter((e) => e.completed === false);
   const primary =

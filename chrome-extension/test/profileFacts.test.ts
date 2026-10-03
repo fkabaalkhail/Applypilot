@@ -220,7 +220,8 @@ describe("educationFacts", () => {
     );
     expect(e.currentlyEnrolled?.value).toBe(true);
     expect(e.highestRank?.value).toBe(4);
-    expect(e.highestCompletedRank).toBeNull();
+    // Nothing finished yet: a known "none", which answers "Do you have a degree?" No.
+    expect(e.highestCompletedRank).toMatchObject({ value: 0, confidence: "high" });
     expect(e.primary?.school).toBe("University of Waterloo");
   });
 

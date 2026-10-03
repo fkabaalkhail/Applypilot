@@ -15,6 +15,7 @@ import {
   collectSignals,
   deepQueryAll,
   isHiddenButLabeled,
+  isPlaceholderFiller,
   isUploadAffordance,
   isRequiredField,
   isVisible,
@@ -233,6 +234,42 @@ function radioOptionLabel(radio: HTMLInputElement): string {
 }
 
 /**
+ * The question of an option group that has no fieldset/radiogroup container:
+ * climb from the options' common ancestor and take the first text that sits
+ * OUTSIDE the options, the block's question.
+ *
+ * Lever renders every custom radio question as
+ *   <li class="application-question"><div class="application-label">Question?</div>
+ *     <div class="application-field"><ul><li><label><input type=radio>Yes</label></li>…
+ * where nearbyText from the first radio climbs three levels of empty siblings
+ * and gives up, so the group was labelled with its input's NAME
+ * ("cards[f6189244-…][field0]") and never recognized: "Are you legally able to
+ * work in Canada?" and the years-of-experience buckets went unanswered (live,
+ * 2026-10-03).
+ */
+function questionAboveOptions(members: HTMLInputElement[]): string {
+  if (members.length === 0) return "";
+  let common: HTMLElement | null = members[0].parentElement;
+  while (common && !members.every((m) => common!.contains(m))) common = common.parentElement;
+  const optionText = new Set(members.map((m) => cleanText(radioOptionLabel(m))).filter(Boolean));
+  for (let node = common, depth = 0; node && depth < 5 && !CONTAINER_CLIMB_BOUNDARY.has(node.tagName); node = node.parentElement, depth++) {
+    let text = "";
+    for (const child of Array.from(node.children)) {
+      if (members.some((m) => child.contains(m))) continue;
+      if (child.querySelector(OTHER_FIELD_SELECTOR) || child.matches(OTHER_FIELD_SELECTOR)) continue;
+      text += ` ${child.textContent ?? ""}`;
+    }
+    const t = cleanText(text);
+    if (t && t.length <= 300 && !optionText.has(t) && !isPlaceholderFiller(t)) return t;
+    // Another control's block: stop before borrowing a neighbour's question.
+    if (node.parentElement && Array.from(node.parentElement.querySelectorAll(OTHER_FIELD_SELECTOR)).some((c) => !members.includes(c as HTMLInputElement) && !node!.contains(c))) {
+      break;
+    }
+  }
+  return "";
+}
+
+/**
  * Signals for a group come from its container (fieldset legend, role=group/
  * radiogroup label, or (for a container with none of those) the heading text
  * immediately before it) rather than the individual buttons.
@@ -254,10 +291,27 @@ function groupSignals(members: HTMLInputElement[], container: Element | null): F
         );
       }
     }
+    // A <label> inside the group that labels none of its options is the
+    // group's question. Ashby renders every radio question this way:
+    // <fieldset><label for="<question id>">Question</label> + options, with no
+    // <legend>. Without this the label fell through to nearbyText(container),
+    // the text BEFORE the fieldset, which is the PREVIOUS question: "Do you
+    // think AI will take over the world?" was classified as a work-authorization
+    // question and answered "Yes" (live, 2026-10-03).
+    if (!label) {
+      const optionLabels = new Set<Element>();
+      for (const m of members) for (const l of Array.from(m.labels ?? [])) optionLabels.add(l);
+      const heading = Array.from(container.querySelectorAll("label")).find(
+        (l) => !optionLabels.has(l) && !l.querySelector("input, select, textarea") && cleanText(l.textContent)
+      );
+      if (heading) label = cleanText(heading.textContent);
+    }
     // No semantic label: a plain-<div> group's question is usually the heading
     // text right before the option list (the container itself, not the first
     // option, since the first option has no useful "previous sibling" text).
     if (!label) label = nearbyText(container as HTMLElement);
+  } else {
+    label = questionAboveOptions(members);
   }
   const base = collectSignals(first);
   return {
@@ -429,6 +483,44 @@ function remapRepeatingRows(
         f.options
       );
     }
+  }
+}
+
+const BARE_ADDRESS = /^[\W\d]*(home |mailing |street |current |residential |permanent )?address( line)?( ?1)?[\W]*$/i;
+
+/**
+ * "Address" alone classifies as the generic `location` (a one-line "where do
+ * you live"), which is right on a form with no other location fields. On a form
+ * that ALSO asks City or Postal code separately it means the street line:
+ * BambooHR got "Toronto, ON, Canada" in Address and City both (live,
+ * 2026-10-03). Re-resolved as addressStreet, which fills only a real street.
+ */
+function reclassifyBareAddress(
+  fields: DetectedField[],
+  registry: Map<string, RuntimeControl>,
+  profile: UserApplicationProfile | null,
+  adapter: SiteAdapter | null,
+  fillEEO: boolean
+): void {
+  const hasParts = fields.some((f) => f.category === "addressCity" || f.category === "postalCode");
+  if (!hasParts) return;
+  for (const f of fields) {
+    if (f.category !== "location" || !BARE_ADDRESS.test(f.label.trim())) continue;
+    const el = registry.get(f.id)?.el;
+    if (!el) continue;
+    f.category = "addressStreet";
+    const resolved = resolveField({
+      adapter,
+      category: "addressStreet",
+      sensitive: false,
+      profile,
+      control: { controlType: f.controlType, options: f.options, groupIndex: f.groupIndex ?? null },
+      fillEEO,
+      el,
+      label: f.label,
+      signals: collectSignals(el),
+    });
+    f.proposedValue = resolved.value;
   }
 }
 
@@ -683,6 +775,9 @@ export function scanPage(
 
   // Custom (non-<input>) résumé / cover-letter upload widgets (SuccessFactors).
   scanCustomUploads(fields, registry);
+
+  // A bare "Address" next to separate City / Postal fields is the street line.
+  reclassifyBareAddress(fields, registry, profile, adapter, fillEEO);
 
   // Repeating-section rows → positional indices (Workday's instance-numbered rows).
   remapRepeatingRows(fields, registry, profile, adapter, fillEEO);
