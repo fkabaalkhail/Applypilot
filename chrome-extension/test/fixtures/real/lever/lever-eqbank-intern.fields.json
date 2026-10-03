@@ -1,0 +1,253 @@
+{
+  "capturedAt": "2026-10-03T07:05:54.790Z",
+  "sourceUrl": "https://jobs.lever.co/eqbank/eefb3fa3-a55b-4bfd-b1b2-5419f35c7703/apply",
+  "finalUrl": "https://jobs.lever.co/eqbank/eefb3fa3-a55b-4bfd-b1b2-5419f35c7703/apply",
+  "fields": [
+    {
+      "key": "#resume-upload-input",
+      "type": "file",
+      "label": "Resume/CV ✱ATTACH RESUME/CVCouldn't auto-read resume.Analyzing resume...Success!",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=name",
+      "type": "text",
+      "label": "Full name✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=email",
+      "type": "email",
+      "label": "Email✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=phone",
+      "type": "text",
+      "label": "Phone ✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#location-input",
+      "type": "text",
+      "label": "Current location No location found. Try entering a different locationLoading",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=org",
+      "type": "text",
+      "label": "Current company",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=cards[5c4b455e-d5ac-4bed-a006-029b782f4413][field0]",
+      "type": "textarea",
+      "label": "Do you anticipate having any challenges with clearing a background check, including criminal, credit, education, employment Verification?",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=cards[cb759228-4853-4834-80be-25d9ed5f5dbb][field0]",
+      "type": "textarea",
+      "label": "What is the name of the school you are currently attending?✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=cards[b9fc5bb5-a874-42a8-ae8f-b1cc075b96bf][field0]",
+      "type": "select",
+      "label": "Are you legally entitled to work in Canada?✱",
+      "value": "",
+      "options": [
+        "Select...",
+        "Yes",
+        "No"
+      ],
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=cards[f2cea108-c52f-4fca-89c9-396b7bce8446][field0]",
+      "type": "radio",
+      "label": "Which year of studies are you currently in?✱",
+      "value": "",
+      "options": [
+        "First",
+        "Second",
+        "Third",
+        "Fourth",
+        "Graduate"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "radio=surveysResponses[54d5f494-8f40-45ec-a0d4-736d5c1eac87][responses][field0]",
+      "type": "radio",
+      "label": "Gender Identity:",
+      "value": "",
+      "options": [
+        "Female",
+        "Male",
+        "Non-binary",
+        "Two-spirit",
+        "Prefer not to say"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=surveysResponses[54d5f494-8f40-45ec-a0d4-736d5c1eac87][responses][field1]",
+      "type": "radio",
+      "label": "Do you self-identify as an Indigenous or Aboriginal person of North America (Including First Nations, Métis, Inuit)?",
+      "value": "",
+      "options": [
+        "Yes",
+        "No",
+        "Prefer not to say"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=surveysResponses[54d5f494-8f40-45ec-a0d4-736d5c1eac87][responses][field2]",
+      "type": "radio",
+      "label": "",
+      "value": "",
+      "options": [
+        "Yes",
+        "No",
+        "Prefer not to say"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=surveysResponses[54d5f494-8f40-45ec-a0d4-736d5c1eac87][responses][field3]",
+      "type": "radio",
+      "label": "",
+      "value": "",
+      "options": [
+        "Yes",
+        "No",
+        "Prefer not to say"
+      ],
+      "visible": true,
+      "required": false
+    }
+  ],
+  "frames": [
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha-enclave.html#frame=enclave&_channel=07yl5qqk2lk&_origin=https%3A%2F%2Fjobs.lever.co&host=jobs.lever.co&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1",
+      "fields": [
+        {
+          "key": "#g-recaptcha-response-0exbo6iag4lm",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        },
+        {
+          "key": "#h-captcha-response-0exbo6iag4lm",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    },
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha-enclave.html#frame=enclave&_channel=149a877eavp&_origin=https%3A%2F%2Fjobs.lever.co&host=jobs.lever.co&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1",
+      "fields": [
+        {
+          "key": "#g-recaptcha-response-087bvrqz339d",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        },
+        {
+          "key": "#h-captcha-response-087bvrqz339d",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    },
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha.html#frame=challenge&id=087bvrqz339d&host=jobs.lever.co&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=e33f87f8-88ec-4e1a-9a13-df9bbb1d8120&size=invisible&theme=light&origin=https%3A%2F%2Fnewassets.hcaptcha.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Faccounts.hcaptcha.com%22%2C%22recaptchacompat%22%3A%22true%22%2C%22custom%22%3Afalse%2C%22hl%22%3A%22en-GB%22%2C%22tplinks%22%3A%22on%22%2C%22andint%22%3A%22off%22%2C%22se%22%3A%2205219f0822161da4c4a6f3aed6bf6d6fae1ba8e1%22%2C%22pat%22%3A%22on%22%2C%22pstissuer%22%3A%22https%3A%2F%2Fpst-issuer.hcaptcha.com%22%2C%22endpoint%22%3A%22https%3A%2F%2Fapi.hcaptcha.com%22%2C%22theme%22%3A%22light%22%2C%22size%22%3A%22normal%22%2C%22confirm-nav%22%3Afalse%7D",
+      "fields": [
+        {
+          "key": "#display-language",
+          "type": "combobox",
+          "label": "EN - English, Select a language",
+          "value": "EN",
+          "visible": true,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    },
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha.html#frame=challenge&id=0exbo6iag4lm&host=jobs.lever.co&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=e33f87f8-88ec-4e1a-9a13-df9bbb1d8120&size=invisible&theme=light&origin=https%3A%2F%2Fnewassets.hcaptcha.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Faccounts.hcaptcha.com%22%2C%22recaptchacompat%22%3A%22true%22%2C%22custom%22%3Afalse%2C%22hl%22%3A%22en-GB%22%2C%22tplinks%22%3A%22on%22%2C%22andint%22%3A%22off%22%2C%22se%22%3A%2205219f0822161da4c4a6f3aed6bf6d6fae1ba8e1%22%2C%22pat%22%3A%22on%22%2C%22pstissuer%22%3A%22https%3A%2F%2Fpst-issuer.hcaptcha.com%22%2C%22endpoint%22%3A%22https%3A%2F%2Fapi.hcaptcha.com%22%2C%22theme%22%3A%22light%22%2C%22size%22%3A%22normal%22%2C%22confirm-nav%22%3Afalse%7D",
+      "fields": [
+        {
+          "key": "#display-language",
+          "type": "combobox",
+          "label": "EN - English, Select a language",
+          "value": "EN",
+          "visible": true,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    }
+  ]
+}

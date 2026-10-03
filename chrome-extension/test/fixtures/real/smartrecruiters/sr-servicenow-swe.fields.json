@@ -1,0 +1,158 @@
+{
+  "capturedAt": "2026-10-03T07:07:17.007Z",
+  "sourceUrl": "https://jobs.smartrecruiters.com/ServiceNow/744000149338366-software-engineer",
+  "finalUrl": "https://jobs.smartrecruiters.com/oneclick-ui/company/ServiceNow/publication/c6a55189-e797-4e24-93c8-7bd5cef0e2ef?dcr_ci=ServiceNow",
+  "fields": [
+    {
+      "key": "label=Choose a file or drop it here",
+      "type": "file",
+      "label": "Choose a file or drop it here",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=First name*",
+      "type": "text",
+      "label": "First name*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Last name*",
+      "type": "text",
+      "label": "Last name*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Email*",
+      "type": "email",
+      "label": "Email*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Confirm your email*",
+      "type": "email",
+      "label": "Confirm your email*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=City*",
+      "type": "combobox",
+      "label": "City*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Country code",
+      "type": "combobox",
+      "label": "Country code",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Search by country/region or code",
+      "type": "combobox",
+      "label": "Search by country/region or code",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Phone number",
+      "type": "tel",
+      "label": "Phone number",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=LinkedIn",
+      "type": "text",
+      "label": "LinkedIn",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Facebook",
+      "type": "text",
+      "label": "Facebook",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=X (fka Twitter)",
+      "type": "text",
+      "label": "X (fka Twitter)",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Website",
+      "type": "text",
+      "label": "Website",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Choose a file or drop it here",
+      "type": "file",
+      "label": "Choose a file or drop it here",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Let the company know about your interest working there",
+      "type": "textarea",
+      "label": "Let the company know about your interest working there",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}

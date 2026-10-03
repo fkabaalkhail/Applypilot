@@ -1,0 +1,190 @@
+{
+  "capturedAt": "2026-10-03T07:07:56.976Z",
+  "sourceUrl": "https://nexthopai.bamboohr.com/careers/64",
+  "finalUrl": "https://nexthopai.bamboohr.com/careers/64",
+  "fields": [
+    {
+      "key": "#nickname_hpcsaf",
+      "type": "text",
+      "label": "Please leave this field blank",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#firstName",
+      "type": "text",
+      "label": "First Name *",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#lastName",
+      "type": "text",
+      "label": "Last Name *",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#email",
+      "type": "text",
+      "label": "Email *",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#phone",
+      "type": "text",
+      "label": "Phone *",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#FabricTextField-322",
+      "type": "text",
+      "label": "Address",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#FabricTextField-323",
+      "type": "text",
+      "label": "City",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#fab-select324",
+      "type": "select",
+      "label": "Province",
+      "value": "",
+      "options": [],
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#FabricTextField-325",
+      "type": "text",
+      "label": "Postal Code",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#fab-select326",
+      "type": "select",
+      "label": "Country",
+      "value": "",
+      "options": [],
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=file-input",
+      "type": "file",
+      "label": "file-input",
+      "value": "",
+      "visible": false,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#FabricTextField-316",
+      "type": "text",
+      "label": "Date Available",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#websiteUrl",
+      "type": "text",
+      "label": "Website, Blog or Portfolio",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#linkedinUrl",
+      "type": "text",
+      "label": "LinkedIn URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#educationInstitutionName",
+      "type": "text",
+      "label": "College/University *",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=file-input",
+      "type": "file",
+      "label": "file-input",
+      "value": "",
+      "visible": false,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#g-recaptcha-response",
+      "type": "textarea",
+      "label": "",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#FabricTextField-41",
+      "type": "text",
+      "label": "Link to This Job",
+      "value": "https://nexthopai.bamboohr.com/careers/64",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": true
+    }
+  ],
+  "frames": []
+}

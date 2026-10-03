@@ -1,0 +1,58 @@
+{
+  "capturedAt": "2026-10-03T07:09:21.132Z",
+  "sourceUrl": "https://capitalone.wd12.myworkdayjobs.com/en-US/capital_one/job/Cambridge-MA/Part-Time-Applied-Data-Scientist_R1000592",
+  "finalUrl": "https://capitalone.wd12.myworkdayjobs.com/en-US/capital_one/job/Cambridge%2C-MA/Part-Time-Applied-Data-Scientist_R1000592/apply/applyManually",
+  "fields": [
+    {
+      "key": "#languageSelectorButton",
+      "type": "combobox",
+      "label": "",
+      "value": "English",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input-4",
+      "type": "text",
+      "label": "Email Address*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input-5",
+      "type": "password",
+      "label": "Password*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input-6",
+      "type": "password",
+      "label": "Verify New Password*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=website",
+      "type": "text",
+      "label": "Enter website. This input is for robots only, do not enter if you're human.",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}

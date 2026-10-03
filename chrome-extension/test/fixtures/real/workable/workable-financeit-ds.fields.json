@@ -1,0 +1,176 @@
+{
+  "capturedAt": "2026-10-03T07:06:51.955Z",
+  "sourceUrl": "https://apply.workable.com/financeit/j/D3CF97088A/apply/",
+  "finalUrl": "https://apply.workable.com/financeit/j/D3CF97088A/apply/",
+  "fields": [
+    {
+      "key": "#firstname",
+      "type": "text",
+      "label": "*First name",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#lastname",
+      "type": "text",
+      "label": "*Last name",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#email",
+      "type": "email",
+      "label": "*Email",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input_phone",
+      "type": "tel",
+      "label": "Phone",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#address",
+      "type": "text",
+      "label": "*AddressSVGs not supported by this browser.",
+      "value": "Gatineau, Canada",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#city",
+      "type": "text",
+      "label": "",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#postcode",
+      "type": "text",
+      "label": "",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#country",
+      "type": "text",
+      "label": "",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#summary",
+      "type": "textarea",
+      "label": "Summary (Optional)",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input_files_input_qVXTgtmA8SpKkF7R",
+      "type": "file",
+      "label": "SVGs not supported by this browser. Choose file",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=CA_11379",
+      "type": "text",
+      "label": "*What are your annual salary expectations?",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#cover_letter",
+      "type": "textarea",
+      "label": "Cover letter (Optional)",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "ariaradio=Are you comfortable commuting to our office 2-3x a week in D",
+      "type": "aria-radiogroup",
+      "label": "Are you comfortable commuting to our office 2-3x a week in Downtown Toronto?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=QA_12558420",
+      "type": "radio",
+      "label": "Are you comfortable commuting to our office 2-3x a week in Downtown Toronto?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "ariaradio=Are you eligible to work in Canada without sponsorship?",
+      "type": "aria-radiogroup",
+      "label": "Are you eligible to work in Canada without sponsorship?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=QA_12558421",
+      "type": "radio",
+      "label": "Are you eligible to work in Canada without sponsorship?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": true
+    }
+  ],
+  "frames": []
+}

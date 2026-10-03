@@ -1,0 +1,138 @@
+{
+  "capturedAt": "2026-10-03T07:07:37.089Z",
+  "sourceUrl": "https://jobs.smartrecruiters.com/BoschGroup/744000148575999-product-management-ai-tool-intern-8-months-40hrs-per-week-",
+  "finalUrl": "https://jobs.smartrecruiters.com/oneclick-ui/company/BoschGroup/publication/70832055-56fb-4b0e-bcd5-a70360ecca4a?dcr_ci=BoschGroup",
+  "fields": [
+    {
+      "key": "label=Choose a file or drop it here",
+      "type": "file",
+      "label": "Choose a file or drop it here",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=First name*",
+      "type": "text",
+      "label": "First name*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Last name*",
+      "type": "text",
+      "label": "Last name*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Email*",
+      "type": "email",
+      "label": "Email*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Confirm your email*",
+      "type": "email",
+      "label": "Confirm your email*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=City*",
+      "type": "combobox",
+      "label": "City*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Country code",
+      "type": "combobox",
+      "label": "Country code",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Search by country/region or code",
+      "type": "combobox",
+      "label": "Search by country/region or code",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Phone number",
+      "type": "tel",
+      "label": "Phone number",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=LinkedIn",
+      "type": "text",
+      "label": "LinkedIn",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Website",
+      "type": "text",
+      "label": "Website",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Choose a file or drop it here",
+      "type": "file",
+      "label": "Choose a file or drop it here",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Let the company know about your interest working there",
+      "type": "textarea",
+      "label": "Let the company know about your interest working there",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}

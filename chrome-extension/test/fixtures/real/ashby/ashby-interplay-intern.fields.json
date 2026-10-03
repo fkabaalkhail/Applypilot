@@ -1,0 +1,183 @@
+{
+  "capturedAt": "2026-10-03T07:06:29.519Z",
+  "sourceUrl": "https://jobs.ashbyhq.com/interplay/bdf67758-1f20-4a01-8bb3-ccebfa79e9ac/application",
+  "finalUrl": "https://jobs.ashbyhq.com/interplay/bdf67758-1f20-4a01-8bb3-ccebfa79e9ac/application",
+  "fields": [
+    {
+      "key": "label=OverviewApplication",
+      "type": "file",
+      "label": "OverviewApplication",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#_systemfield_name",
+      "type": "text",
+      "label": "Full Name",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#_systemfield_email",
+      "type": "email",
+      "label": "Email",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#_systemfield_resume",
+      "type": "file",
+      "label": "Resume",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=216c4362-519d-4131-93bc-9d1fa8ced17e",
+      "type": "text",
+      "label": "Please provide your LinkedIn Profile.",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Start typing...",
+      "type": "combobox",
+      "label": "Start typing...",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=8127bb1e-09f2-4605-be99-538b8f75cddc_ade235d9-42b3-4cc9-b1e7-5f5872d15c72",
+      "type": "radio",
+      "label": "Where are you located?",
+      "value": "",
+      "options": [
+        "New York Area",
+        "North America",
+        "South America",
+        "Other"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "label=Please take this test and upload a screenshot of the results",
+      "type": "file",
+      "label": "Please take this test and upload a screenshot of the results below: https://www.16personalities.com/free-personality-test",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=8127bb1e-09f2-4605-be99-538b8f75cddc_65a62856-2e30-4966-9fb1-e9b1de90fd9d",
+      "type": "radio",
+      "label": "Introvert (I) / Extrovert (E)",
+      "value": "",
+      "options": [
+        "I",
+        "E"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=8127bb1e-09f2-4605-be99-538b8f75cddc_36d957da-a1f7-42ef-b110-568918709723",
+      "type": "radio",
+      "label": "Sensing (S) / Intuition (N)",
+      "value": "",
+      "options": [
+        "S",
+        "N"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=8127bb1e-09f2-4605-be99-538b8f75cddc_4bd3eb23-dfed-41cc-9adc-c2d362fd8cd2",
+      "type": "radio",
+      "label": "Feeling (F) / Thinking (T)",
+      "value": "",
+      "options": [
+        "F",
+        "T"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=8127bb1e-09f2-4605-be99-538b8f75cddc_d1fd758e-1e43-47c0-8850-080019b470ca",
+      "type": "radio",
+      "label": "Perceiving (P) / Judging (J)",
+      "value": "",
+      "options": [
+        "P",
+        "J"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "name=9efb2216-e5ac-422d-9dff-1be8fdde623b",
+      "type": "checkbox",
+      "label": "No",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=ebe8abfa-09ef-4fd4-a188-4b4d297f79d1",
+      "type": "checkbox",
+      "label": "No",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=8127bb1e-09f2-4605-be99-538b8f75cddc_81bcb15f-08be-4fac-a8a8-5fc4e4bfcee7",
+      "type": "radio",
+      "label": "Do you think AI will take over the world?",
+      "value": "",
+      "options": [
+        "Yes",
+        "No",
+        "Maybe So"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "#g-recaptcha-response-100000",
+      "type": "textarea",
+      "label": "",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}

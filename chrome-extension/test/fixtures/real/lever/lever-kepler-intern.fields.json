@@ -1,0 +1,510 @@
+{
+  "capturedAt": "2026-10-03T07:05:59.783Z",
+  "sourceUrl": "https://jobs.lever.co/kepler/2ad02ce3-1d56-4aee-9f1d-5199c780c0c1/apply",
+  "finalUrl": "https://jobs.lever.co/kepler/2ad02ce3-1d56-4aee-9f1d-5199c780c0c1/apply",
+  "fields": [
+    {
+      "key": "#resume-upload-input",
+      "type": "file",
+      "label": "Resume/CV ✱ATTACH RESUME/CVCouldn't auto-read resume.Analyzing resume...Success!",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=name",
+      "type": "text",
+      "label": "Full name✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=email",
+      "type": "email",
+      "label": "Email✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=phone",
+      "type": "text",
+      "label": "Phone ✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#location-input",
+      "type": "text",
+      "label": "Current location No location found. Try entering a different locationLoading",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=org",
+      "type": "text",
+      "label": "Current company",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[LinkedIn]",
+      "type": "text",
+      "label": "LinkedIn URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[Twitter]",
+      "type": "text",
+      "label": "Twitter URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[GitHub]",
+      "type": "text",
+      "label": "GitHub URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[Portfolio]",
+      "type": "text",
+      "label": "Portfolio URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[Other]",
+      "type": "text",
+      "label": "Other website",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[Website/Blog]",
+      "type": "text",
+      "label": "Website/Blog URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=cards[f6189244-e242-4b19-8bac-bac28b3f023a][field0]",
+      "type": "radio",
+      "label": "Will you be enrolled as a student at a Canadian post-secondary institution for the duration of your internship? (Note enrolled does not necessarily mean taking classes if you are a part of an official co-op or internship program)✱",
+      "value": "",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "radio=cards[f6189244-e242-4b19-8bac-bac28b3f023a][field1]",
+      "type": "radio",
+      "label": "Will you be returning to your studies after the internship?✱",
+      "value": "",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "radio=cards[9c30079c-fb08-459a-a221-e9d67212b174][field0]",
+      "type": "radio",
+      "label": "Are you legally able to work in Canada according to the laws and regulations of the province or territory where you live?✱",
+      "value": "",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "name=cards[2a3eeb8b-3ca9-4f51-81a4-5499dadcc806][field0]",
+      "type": "textarea",
+      "label": "",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=cards[f543d1aa-4a26-428e-9edc-1708a8d28869][field0]",
+      "type": "radio",
+      "label": "This position requires you to work from the Toronto Office located at 24 Ward Street, Toronto ON M6H 4A6. Are you able to work from our Kepler office as required?✱",
+      "value": "",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "radio=cards[41b70cbd-a56b-4224-b15d-e1b537f32730][field0]",
+      "type": "radio",
+      "label": "What year of study are you in?✱",
+      "value": "",
+      "options": [
+        "1st",
+        "2nd",
+        "3rd",
+        "4th",
+        "5th",
+        "Masters",
+        "Higher"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "radio=cards[41b70cbd-a56b-4224-b15d-e1b537f32730][field1]",
+      "type": "radio",
+      "label": "If in your final year of study, does your University have flexibility in pushing out your graduation date?",
+      "value": "",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "#university-picker-d8b5ec93-e4ee-4c30-9346-e8eaa44c5ff5-0",
+      "type": "select",
+      "label": "What Post-Secondary institution do you attend?✱",
+      "value": "",
+      "options": [
+        "Select a university or college",
+        "ACAP University College",
+        "Auckland University of Technology",
+        "Australian Catholic University",
+        "Australian National University",
+        "Bond University",
+        "Carnegie Mellon University - Australia",
+        "Central Queensland University (CQUniversity)",
+        "Charles Darwin University",
+        "Charles Sturt University - Australia",
+        "Curtin University",
+        "Deakin University",
+        "Edith Cowan University",
+        "Federation University of Australia",
+        "Flinders University",
+        "Griffith University",
+        "James Cook University",
+        "La Trobe University",
+        "Macquarie University",
+        "Monash University",
+        "Murdoch University",
+        "Queensland University of Technology (QUT)",
+        "RMIT University",
+        "Royal Melbourne Institute of Technology",
+        "Southern Cross University",
+        "Swinburne University of Technology",
+        "Torrens University Australia",
+        "University of Adelaide",
+        "University of Canberra",
+        "University of Divinity",
+        "University of Melbourne",
+        "University of New England - Australia",
+        "University of New South Wales (UNSW) - Australia",
+        "University of Newcastle - Australia",
+        "University of Notre Dame Australia",
+        "University of Queensland",
+        "University of South Australia",
+        "University of Southern Queensland",
+        "University of Sydney",
+        "University of Tasmania",
+        "University of Technology, Sydney",
+        "University of the Sunshine Coast",
+        "University of Western Australia",
+        "University of Western Sydney",
+        "University of Wollongong",
+        "Victoria University",
+        "Fachhochschule Technikum Wien",
+        "University of Natural Resources and Life Sciences, Vienna",
+        "University of Vienna",
+        "University of Ghent",
+        "Technological Institute of Aeronautics",
+        "Acadia University",
+        "Algonquin College of Applied Arts and Technology",
+        "Athabasca University",
+        "Bishop's University",
+        "Brandon University",
+        "Brescia University College",
+        "British Columbia Institute of Technology (BCIT)",
+        "Brock University",
+        "Cambridge College of Technology - Canada",
+        "Canadian Mennonite University",
+        "Cape Breton University",
+        "Capilano University",
+        "Carleton University",
+        "CDI College of Business, Technology and Healthcare",
+        "Centennial College of Applied Arts and Technology",
+        "Centre d'études collégiales de Charlevoix",
+        "Charles Sturt University",
+        "Concordia University",
+        "Concordia University of Edmonton",
+        "Conestoga College",
+        "Crandall University",
+        "Dalhousie University",
+        "Dartmouth College - Canada",
+        "Devry Institute of Technology",
+        "Douglas College",
+        "Durham College of Applied Arts and Technology",
+        "Eastern College - Canada",
+        "Fairleigh Dickinson University - Canada",
+        "Fanshawe College of Applied Arts and Technology"
+      ],
+      "visible": false,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Select a university or college",
+      "type": "combobox",
+      "label": "Select a university or college",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=cards[c855023b-2513-4d95-b8aa-48e98c455136][field0]",
+      "type": "radio",
+      "label": "Please confirm your availability for a 4-month internship.",
+      "value": "",
+      "options": [
+        "I am available for 4 months beginning in the indicated start date.",
+        "I am NOT available for 4 months."
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=surveysResponses[c228d8ba-49fc-4102-9760-f057a46e4500][responses][field0]",
+      "type": "radio",
+      "label": "What is your age range?",
+      "value": "",
+      "options": [
+        "17 or younger",
+        "18-20",
+        "21-29",
+        "30-39",
+        "40-49",
+        "50-59",
+        "60 or older",
+        "Prefer not to answer"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=surveysResponses[c228d8ba-49fc-4102-9760-f057a46e4500][responses][field1]",
+      "type": "radio",
+      "label": "With which ethnicity do you identify?",
+      "value": "",
+      "options": [
+        "White or Caucasian",
+        "Hispanic, Latino, or Spanish origin",
+        "Black, African or Carribean",
+        "East Asian",
+        "South Asian",
+        "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+        "Middle Eastern or North African",
+        "Mixed or multiple ethnic groups",
+        "Other",
+        "Prefer not to answer"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=surveysResponses[c228d8ba-49fc-4102-9760-f057a46e4500][responses][field2]",
+      "type": "radio",
+      "label": "With which gender do you identify?",
+      "value": "",
+      "options": [
+        "Female",
+        "Male",
+        "Non-binary",
+        "Transgender",
+        "Gender non-confirming",
+        "Other",
+        "Prefer not to answer"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=surveysResponses[c228d8ba-49fc-4102-9760-f057a46e4500][responses][field3]",
+      "type": "radio",
+      "label": "With which sexual orientation do you identify?",
+      "value": "",
+      "options": [
+        "Heterosexual",
+        "Gay",
+        "Lesbian",
+        "Bisexual",
+        "Two-spirit",
+        "Pansexual",
+        "Asexual",
+        "Other",
+        "Prefer not to answer"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=surveysResponses[c228d8ba-49fc-4102-9760-f057a46e4500][responses][field4]",
+      "type": "radio",
+      "label": "Do you identify as a person with a visible or non-visible disability?",
+      "value": "",
+      "options": [
+        "Yes",
+        "No",
+        "Prefer not to answer"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=surveysResponses[c228d8ba-49fc-4102-9760-f057a46e4500][responses][field5]",
+      "type": "radio",
+      "label": "Are you a veteran/have you served in the military?",
+      "value": "",
+      "options": [
+        "Yes",
+        "No",
+        "Prefer not to answer"
+      ],
+      "visible": true,
+      "required": false
+    }
+  ],
+  "frames": [
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha-enclave.html#frame=enclave&_channel=04rvu34anf3a&_origin=https%3A%2F%2Fjobs.lever.co&host=jobs.lever.co&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1",
+      "fields": [
+        {
+          "key": "#g-recaptcha-response-0na1e6l1c6cl",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        },
+        {
+          "key": "#h-captcha-response-0na1e6l1c6cl",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    },
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha-enclave.html#frame=enclave&_channel=1xakv2cb2oir&_origin=https%3A%2F%2Fjobs.lever.co&host=jobs.lever.co&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1",
+      "fields": [
+        {
+          "key": "#g-recaptcha-response-013l70dc54wnf",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        },
+        {
+          "key": "#h-captcha-response-013l70dc54wnf",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    },
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha.html#frame=challenge&id=013l70dc54wnf&host=jobs.lever.co&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=e33f87f8-88ec-4e1a-9a13-df9bbb1d8120&size=invisible&theme=light&origin=https%3A%2F%2Fnewassets.hcaptcha.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Faccounts.hcaptcha.com%22%2C%22recaptchacompat%22%3A%22true%22%2C%22custom%22%3Afalse%2C%22hl%22%3A%22en-GB%22%2C%22tplinks%22%3A%22on%22%2C%22andint%22%3A%22off%22%2C%22se%22%3A%2205219f0822161da4c4a6f3aed6bf6d6fae1ba8e1%22%2C%22pat%22%3A%22on%22%2C%22pstissuer%22%3A%22https%3A%2F%2Fpst-issuer.hcaptcha.com%22%2C%22endpoint%22%3A%22https%3A%2F%2Fapi.hcaptcha.com%22%2C%22theme%22%3A%22light%22%2C%22size%22%3A%22normal%22%2C%22confirm-nav%22%3Afalse%7D",
+      "fields": [
+        {
+          "key": "#display-language",
+          "type": "combobox",
+          "label": "EN - English, Select a language",
+          "value": "EN",
+          "visible": true,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    },
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha.html#frame=challenge&id=0na1e6l1c6cl&host=jobs.lever.co&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=e33f87f8-88ec-4e1a-9a13-df9bbb1d8120&size=invisible&theme=light&origin=https%3A%2F%2Fnewassets.hcaptcha.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Faccounts.hcaptcha.com%22%2C%22recaptchacompat%22%3A%22true%22%2C%22custom%22%3Afalse%2C%22hl%22%3A%22en-GB%22%2C%22tplinks%22%3A%22on%22%2C%22andint%22%3A%22off%22%2C%22se%22%3A%2205219f0822161da4c4a6f3aed6bf6d6fae1ba8e1%22%2C%22pat%22%3A%22on%22%2C%22pstissuer%22%3A%22https%3A%2F%2Fpst-issuer.hcaptcha.com%22%2C%22endpoint%22%3A%22https%3A%2F%2Fapi.hcaptcha.com%22%2C%22theme%22%3A%22light%22%2C%22size%22%3A%22normal%22%2C%22confirm-nav%22%3Afalse%7D",
+      "fields": [
+        {
+          "key": "#display-language",
+          "type": "combobox",
+          "label": "EN - English, Select a language",
+          "value": "EN",
+          "visible": true,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    }
+  ]
+}

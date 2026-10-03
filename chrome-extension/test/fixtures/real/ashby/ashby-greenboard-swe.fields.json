@@ -1,0 +1,98 @@
+{
+  "capturedAt": "2026-10-03T07:06:20.516Z",
+  "sourceUrl": "https://jobs.ashbyhq.com/greenboard/e5deef5b-8667-48d7-be48-a0b6616eaba5/application",
+  "finalUrl": "https://jobs.ashbyhq.com/greenboard/e5deef5b-8667-48d7-be48-a0b6616eaba5/application",
+  "fields": [
+    {
+      "key": "label=OverviewApplication",
+      "type": "file",
+      "label": "OverviewApplication",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#_systemfield_name",
+      "type": "text",
+      "label": "Name",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#_systemfield_email",
+      "type": "email",
+      "label": "Email",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#_systemfield_resume",
+      "type": "file",
+      "label": "Resume",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=00a4205d-507e-42ea-980b-432e5ad364d4",
+      "type": "checkbox",
+      "label": "No",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=7a2f97f7-7a0c-4ad5-92b7-92aa51fff994",
+      "type": "checkbox",
+      "label": "No",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=38dbd747-b991-4c8a-8210-13da982234b0",
+      "type": "checkbox",
+      "label": "No",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=19a8afe4-ae08-4810-b670-39b2238dd8ac",
+      "type": "textarea",
+      "label": "What interests you about Greenboard?",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#g-recaptcha-response-100000",
+      "type": "textarea",
+      "label": "",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}

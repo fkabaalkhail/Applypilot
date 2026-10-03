@@ -1,0 +1,350 @@
+{
+  "capturedAt": "2026-10-03T07:05:49.379Z",
+  "sourceUrl": "https://jobs.lever.co/rover/303b3b2f-9679-4a77-8908-456e29240486/apply",
+  "finalUrl": "https://jobs.lever.co/rover/303b3b2f-9679-4a77-8908-456e29240486/apply",
+  "fields": [
+    {
+      "key": "#resume-upload-input",
+      "type": "file",
+      "label": "Resume/CV ✱ATTACH RESUME/CVCouldn't auto-read resume.Analyzing resume...Success!",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=name",
+      "type": "text",
+      "label": "Full name✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=email",
+      "type": "email",
+      "label": "Email✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=phone",
+      "type": "text",
+      "label": "Phone ✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#location-input",
+      "type": "text",
+      "label": "Current location No location found. Try entering a different locationLoading",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=org",
+      "type": "text",
+      "label": "Current company",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[LinkedIn]",
+      "type": "text",
+      "label": "LinkedIn URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[Twitter]",
+      "type": "text",
+      "label": "Twitter URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[GitHub]",
+      "type": "text",
+      "label": "GitHub URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[Portfolio]",
+      "type": "text",
+      "label": "Portfolio URL",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=urls[Other]",
+      "type": "text",
+      "label": "Other website",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=cards[fb5c103c-4111-4530-94b9-07965c4a027e][field0]",
+      "type": "file",
+      "label": "Upload file",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=cards[fb5c103c-4111-4530-94b9-07965c4a027e][field1]",
+      "type": "text",
+      "label": "Type your response",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=cards[fb5c103c-4111-4530-94b9-07965c4a027e][field2]",
+      "type": "radio",
+      "label": "Do you or will you require sponsorship in the future to work in the U.S.?✱",
+      "value": "",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "name=cards[fb5c103c-4111-4530-94b9-07965c4a027e][field3]",
+      "type": "text",
+      "label": "Type your response",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=cards[fb5c103c-4111-4530-94b9-07965c4a027e][field4]",
+      "type": "text",
+      "label": "Type your response",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=cards[fb5c103c-4111-4530-94b9-07965c4a027e][field5]",
+      "type": "text",
+      "label": "Type your response",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=cards[fb5c103c-4111-4530-94b9-07965c4a027e][field6]",
+      "type": "radio",
+      "label": "Do you currently live in or near Seattle? If not, are you willing to relocate to Seattle for the right opportunity?✱",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "name=cards[4b0bd6fd-6cda-4fbc-9944-5d4e945135e2][field0]",
+      "type": "textarea",
+      "label": "Please share why you feel that you are a good fit for this role.✱",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=cards[e839e9d5-71aa-434f-9bef-8f177066b510][field0]",
+      "type": "radio",
+      "label": "How many years of professional software development experience do you have?✱",
+      "value": "",
+      "options": [
+        "0-1 year",
+        "1-3 years",
+        "4-6 years",
+        "Over 6 years"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "name=eeo[gender]",
+      "type": "select",
+      "label": "GenderSelect ...MaleFemaleDecline to self-identify",
+      "value": "",
+      "options": [
+        "Select ...",
+        "Male",
+        "Female",
+        "Decline to self-identify"
+      ],
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=eeo[race]",
+      "type": "select",
+      "label": "RaceSelect ...Hispanic or LatinoWhite (Not Hispanic or Latino)Black or African American (Not Hispanic or Latino)Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)Asian (Not Hispanic or Latino)American Indian or Alaska Native (Not Hispanic or Latino)Two or More Races (Not Hispanic or Latino)Decline to self-identifyHispanic or LatinoA person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin regardless of race.White (Not Hispanic or Latino)A person having origins in any of the original peoples of Europe, the Middle East, or North Africa.Black or African American (Not Hispanic or Latino)A person having origins in any of the black racial groups of Africa.Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)A person having origins in any of the peoples of Hawaii, Guam, Samoa, or other Pacific Islands.Asian (Not Hispanic or Latino)A person having origins in any of the original peoples of the Far East, Southeast Asia, or the Indian Subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam.American Indian or Alaska Native (Not Hispanic or Latino)A person having origins in any of the original peoples of North and South America (including Central America), and who maintain tribal affiliation or community attachment.Two or More Races (Not Hispanic or Latino)All persons who identify with more than one of the above five races.",
+      "value": "",
+      "options": [
+        "Select ...",
+        "Hispanic or Latino",
+        "White (Not Hispanic or Latino)",
+        "Black or African American (Not Hispanic or Latino)",
+        "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+        "Asian (Not Hispanic or Latino)",
+        "American Indian or Alaska Native (Not Hispanic or Latino)",
+        "Two or More Races (Not Hispanic or Latino)",
+        "Decline to self-identify"
+      ],
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=eeo[veteran]",
+      "type": "select",
+      "label": "Veteran statusSelect ...I am a veteranI am not a veteranDecline to self-identify",
+      "value": "",
+      "options": [
+        "Select ...",
+        "I am a veteran",
+        "I am not a veteran",
+        "Decline to self-identify"
+      ],
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": [
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha-enclave.html#frame=enclave&_channel=0gax3j717drs&_origin=https%3A%2F%2Fjobs.lever.co&host=jobs.lever.co&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1",
+      "fields": [
+        {
+          "key": "#g-recaptcha-response-0d5q8qfdfjsg",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        },
+        {
+          "key": "#h-captcha-response-0d5q8qfdfjsg",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    },
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha-enclave.html#frame=enclave&_channel=18m6ieatefah&_origin=https%3A%2F%2Fjobs.lever.co&host=jobs.lever.co&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1",
+      "fields": [
+        {
+          "key": "#g-recaptcha-response-0dp2ae57hwbm",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        },
+        {
+          "key": "#h-captcha-response-0dp2ae57hwbm",
+          "type": "textarea",
+          "label": "",
+          "value": "",
+          "visible": false,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    },
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha.html#frame=challenge&id=0d5q8qfdfjsg&host=jobs.lever.co&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=e33f87f8-88ec-4e1a-9a13-df9bbb1d8120&size=invisible&theme=light&origin=https%3A%2F%2Fnewassets.hcaptcha.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Faccounts.hcaptcha.com%22%2C%22recaptchacompat%22%3A%22true%22%2C%22custom%22%3Afalse%2C%22hl%22%3A%22en-GB%22%2C%22tplinks%22%3A%22on%22%2C%22andint%22%3A%22off%22%2C%22se%22%3A%2205219f0822161da4c4a6f3aed6bf6d6fae1ba8e1%22%2C%22pat%22%3A%22on%22%2C%22pstissuer%22%3A%22https%3A%2F%2Fpst-issuer.hcaptcha.com%22%2C%22endpoint%22%3A%22https%3A%2F%2Fapi.hcaptcha.com%22%2C%22theme%22%3A%22light%22%2C%22size%22%3A%22normal%22%2C%22confirm-nav%22%3Afalse%7D",
+      "fields": [
+        {
+          "key": "#display-language",
+          "type": "combobox",
+          "label": "EN - English, Select a language",
+          "value": "EN",
+          "visible": true,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    },
+    {
+      "url": "https://newassets.hcaptcha.com/captcha/v1/05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1/static/hcaptcha.html#frame=challenge&id=0dp2ae57hwbm&host=jobs.lever.co&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&se=05219f0822161da4c4a6f3aed6bf6d6fae1ba8e1&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=e33f87f8-88ec-4e1a-9a13-df9bbb1d8120&size=invisible&theme=light&origin=https%3A%2F%2Fnewassets.hcaptcha.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Faccounts.hcaptcha.com%22%2C%22recaptchacompat%22%3A%22true%22%2C%22custom%22%3Afalse%2C%22hl%22%3A%22en-GB%22%2C%22tplinks%22%3A%22on%22%2C%22andint%22%3A%22off%22%2C%22se%22%3A%2205219f0822161da4c4a6f3aed6bf6d6fae1ba8e1%22%2C%22pat%22%3A%22on%22%2C%22pstissuer%22%3A%22https%3A%2F%2Fpst-issuer.hcaptcha.com%22%2C%22endpoint%22%3A%22https%3A%2F%2Fapi.hcaptcha.com%22%2C%22theme%22%3A%22light%22%2C%22size%22%3A%22normal%22%2C%22confirm-nav%22%3Afalse%7D",
+      "fields": [
+        {
+          "key": "#display-language",
+          "type": "combobox",
+          "label": "EN - English, Select a language",
+          "value": "EN",
+          "visible": true,
+          "required": false,
+          "disabled": false,
+          "readOnly": false
+        }
+      ]
+    }
+  ]
+}

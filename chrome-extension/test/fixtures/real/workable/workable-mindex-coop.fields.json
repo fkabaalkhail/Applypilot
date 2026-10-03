@@ -1,0 +1,288 @@
+{
+  "capturedAt": "2026-10-03T07:06:34.154Z",
+  "sourceUrl": "https://apply.workable.com/mindex/j/84B10DB922/apply/",
+  "finalUrl": "https://apply.workable.com/mindex/j/84B10DB922/apply/",
+  "fields": [
+    {
+      "key": "#firstname",
+      "type": "text",
+      "label": "*First name",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#lastname",
+      "type": "text",
+      "label": "*Last name",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#email",
+      "type": "email",
+      "label": "*Email",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#headline",
+      "type": "text",
+      "label": "Headline (Optional)",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input_phone",
+      "type": "tel",
+      "label": "Phone",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#address",
+      "type": "text",
+      "label": "*AddressSVGs not supported by this browser.",
+      "value": "Gatineau, Canada",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#city",
+      "type": "text",
+      "label": "",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#postcode",
+      "type": "text",
+      "label": "",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#country",
+      "type": "text",
+      "label": "",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input_files_input_ihzqPssCItWy9oZv",
+      "type": "file",
+      "label": "SVGs not supported by this browser. Choose file",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#summary",
+      "type": "textarea",
+      "label": "Summary (Optional)",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input_files_input_qE94ZPBrm7VdPj3n",
+      "type": "file",
+      "label": "SVGs not supported by this browser. Choose file",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#cover_letter",
+      "type": "textarea",
+      "label": "Cover letter (Optional)",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=CA_14604",
+      "type": "text",
+      "label": "*Salary Range",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "ariaradio=Are you available to participate in a full double-block co-o",
+      "type": "aria-radiogroup",
+      "label": "Are you available to participate in a full double-block co-op from January 2027 through August 2027?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=QA_12563770",
+      "type": "radio",
+      "label": "Are you available to participate in a full double-block co-op from January 2027 through August 2027?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "ariaradio=Are you able to work onsite at Mindex’s Rochester office at ",
+      "type": "aria-radiogroup",
+      "label": "Are you able to work onsite at Mindex’s Rochester office at least three days per week throughout the co-op?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=QA_12563778",
+      "type": "radio",
+      "label": "Are you able to work onsite at Mindex’s Rochester office at least three days per week throughout the co-op?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "ariaradio=Are you legally authorized to work in the United States?",
+      "type": "aria-radiogroup",
+      "label": "Are you legally authorized to work in the United States?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=QA_12457572",
+      "type": "radio",
+      "label": "Are you legally authorized to work in the United States?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "ariaradio=Do you live in the United States?",
+      "type": "aria-radiogroup",
+      "label": "Do you live in the United States?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=QA_12457573",
+      "type": "radio",
+      "label": "Do you live in the United States?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "ariaradio=Will you now, or in the future, require sponsorship for empl",
+      "type": "aria-radiogroup",
+      "label": "Will you now, or in the future, require sponsorship for employment visa status?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "radio=QA_12457574",
+      "type": "radio",
+      "label": "Will you now, or in the future, require sponsorship for employment visa status?",
+      "value": "",
+      "options": [
+        "YES",
+        "NO"
+      ],
+      "visible": true,
+      "required": true
+    },
+    {
+      "key": "#QA_12457575",
+      "type": "text",
+      "label": "*Were you referred to this job by a Mindex employee? If so, who?",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#QA_12457576",
+      "type": "text",
+      "label": "*Where did you see this job posting?",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}

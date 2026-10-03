@@ -1,0 +1,368 @@
+{
+  "capturedAt": "2026-10-03T07:05:38.767Z",
+  "sourceUrl": "https://job-boards.greenhouse.io/garnerhealth/jobs/6174213004",
+  "finalUrl": "https://job-boards.greenhouse.io/garnerhealth/jobs/6174213004",
+  "fields": [
+    {
+      "key": "#first_name",
+      "type": "text",
+      "label": "First Name*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#last_name",
+      "type": "text",
+      "label": "Last Name*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#preferred_name",
+      "type": "text",
+      "label": "Preferred First Name",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#email",
+      "type": "text",
+      "label": "Email*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#country",
+      "type": "combobox",
+      "label": "Country*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Country*",
+      "type": "text",
+      "label": "Country*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#iti-0__search-input",
+      "type": "combobox",
+      "label": "Search",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#phone",
+      "type": "tel",
+      "label": "Phone*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#candidate-location",
+      "type": "combobox",
+      "label": "Location (City)*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Location (City)*",
+      "type": "text",
+      "label": "Location (City)*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#resume",
+      "type": "file",
+      "label": "Attach",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#cover_letter",
+      "type": "file",
+      "label": "Attach",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#school--0",
+      "type": "combobox",
+      "label": "School*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Select...",
+      "type": "text",
+      "label": "Select...",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#degree--0",
+      "type": "combobox",
+      "label": "Degree*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Select...",
+      "type": "text",
+      "label": "Select...",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_19964585004",
+      "type": "combobox",
+      "label": "When is your expected graduation date?*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Select...",
+      "type": "text",
+      "label": "Select...",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_19964586004",
+      "type": "text",
+      "label": "LinkedIn Profile*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_19964587004",
+      "type": "text",
+      "label": "If 'Other' selected for School Name, please indicate here",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_19964588004",
+      "type": "text",
+      "label": "What is your desired salary?*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_19964589004",
+      "type": "combobox",
+      "label": "Are you legally authorized to work in the United States of America? *",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Select...",
+      "type": "text",
+      "label": "Select...",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_19964590004",
+      "type": "combobox",
+      "label": "Will you now or in the future require sponsorship for employment visa status (e.g., H-1B visa status)?*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Select...",
+      "type": "text",
+      "label": "Select...",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_19964591004",
+      "type": "combobox",
+      "label": "Are you currently based in or planning to relocate to the NYC area and willing to work in our NYC office 3 days a week?*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Select...",
+      "type": "text",
+      "label": "Select...",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_19964592004",
+      "type": "combobox",
+      "label": "Which state do you currently reside in?*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Select...",
+      "type": "text",
+      "label": "Select...",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=How would you describe your gender identity? (mark all that ",
+      "type": "combobox",
+      "label": "How would you describe your gender identity? (mark all that apply)",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=How would you describe your racial/ethnic background? (mark ",
+      "type": "combobox",
+      "label": "How would you describe your racial/ethnic background? (mark all that apply)",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=How would you describe your sexual orientation? (mark all th",
+      "type": "combobox",
+      "label": "How would you describe your sexual orientation? (mark all that apply)",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Do you identify as transgender?",
+      "type": "combobox",
+      "label": "Do you identify as transgender?",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Do you have a disability or chronic condition (physical, vis",
+      "type": "combobox",
+      "label": "Do you have a disability or chronic condition (physical, visual, auditory, cognitive, mental, emotional, or other) that substantially limits one or more of your major life activities, including mobility, communication (seeing, hearing, speaking), and learning?",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Are you a veteran or active member of the United States Arme",
+      "type": "combobox",
+      "label": "Are you a veteran or active member of the United States Armed Forces?",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#g-recaptcha-response-100000",
+      "type": "textarea",
+      "label": "Powered byGreenhouse",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}

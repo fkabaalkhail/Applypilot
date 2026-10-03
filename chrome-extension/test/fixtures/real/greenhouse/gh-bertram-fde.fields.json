@@ -1,0 +1,198 @@
+{
+  "capturedAt": "2026-10-03T07:05:43.512Z",
+  "sourceUrl": "https://job-boards.greenhouse.io/bertramcapitalmanagement/jobs/8789855002",
+  "finalUrl": "https://job-boards.greenhouse.io/bertramcapitalmanagement/jobs/8789855002",
+  "fields": [
+    {
+      "key": "#first_name",
+      "type": "text",
+      "label": "First Name*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#last_name",
+      "type": "text",
+      "label": "Last Name*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#email",
+      "type": "text",
+      "label": "Email*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#country",
+      "type": "combobox",
+      "label": "Country*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Country*",
+      "type": "text",
+      "label": "Country*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#iti-0__search-input",
+      "type": "combobox",
+      "label": "Search",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#phone",
+      "type": "tel",
+      "label": "Phone*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#candidate-location",
+      "type": "combobox",
+      "label": "Location (City)*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "label=Location (City)*",
+      "type": "text",
+      "label": "Location (City)*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#resume",
+      "type": "file",
+      "label": "Attach",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#cover_letter",
+      "type": "file",
+      "label": "Attach",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_38234899002",
+      "type": "text",
+      "label": "LinkedIn Profile",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_38234901002",
+      "type": "text",
+      "label": "Do you now or will you in the future require employer sponsorship to work in the United States? *",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_38442544002",
+      "type": "text",
+      "label": "Where did you complete your undergraduate degree? *",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#question_38442545002",
+      "type": "text",
+      "label": "Please share your scores on standardized tests. Example: ACT and SAT",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#gender",
+      "type": "combobox",
+      "label": "Gender",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#hispanic_ethnicity",
+      "type": "combobox",
+      "label": "Are you Hispanic/Latino?",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#veteran_status",
+      "type": "combobox",
+      "label": "Veteran Status",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#g-recaptcha-response-100000",
+      "type": "textarea",
+      "label": "Powered byGreenhouse",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}

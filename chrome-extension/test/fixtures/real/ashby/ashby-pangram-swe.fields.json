@@ -1,0 +1,100 @@
+{
+  "capturedAt": "2026-10-03T07:06:04.883Z",
+  "sourceUrl": "https://jobs.ashbyhq.com/pangramlabs/0512183c-2373-499c-8459-91d0fd2d72f3/application",
+  "finalUrl": "https://jobs.ashbyhq.com/pangramlabs/0512183c-2373-499c-8459-91d0fd2d72f3/application",
+  "fields": [
+    {
+      "key": "label=OverviewApplication",
+      "type": "file",
+      "label": "OverviewApplication",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#_systemfield_name",
+      "type": "text",
+      "label": "Name",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#_systemfield_email",
+      "type": "email",
+      "label": "Email",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#_systemfield_resume",
+      "type": "file",
+      "label": "Resume",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "radio=552278e2-2f9a-4edf-b073-400372a1cd3d_729837ef-737d-46ad-ac2a-bd40d5393b3c",
+      "type": "radio",
+      "label": "Are you authorized to work in the United States?",
+      "value": "",
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "visible": true,
+      "required": false
+    },
+    {
+      "key": "name=0d7ef46c-a40a-4000-b601-d1587de86f15",
+      "type": "textarea",
+      "label": "What is your opinion on the right use of AI tools in both coding and code review?",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#ddbfd7c3-b597-43ef-b45c-0b0b0e873261",
+      "type": "textarea",
+      "label": "Why Pangram? Please, no AI text",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "name=34f6c6b5-9eeb-4531-aff2-7daf4ecf42d5",
+      "type": "textarea",
+      "label": "Anything else you'd like to tell us? Please, no AI text.",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#g-recaptcha-response-100000",
+      "type": "textarea",
+      "label": "",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}

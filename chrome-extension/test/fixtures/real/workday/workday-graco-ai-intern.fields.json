@@ -1,0 +1,58 @@
+{
+  "capturedAt": "2026-10-03T07:09:34.917Z",
+  "sourceUrl": "https://graco.wd501.myworkdayjobs.com/en-US/graco_careers/job/Dayton-Minnesota-USA-French-Lake/AI-Intern_R0023511-1",
+  "finalUrl": "https://graco.wd501.myworkdayjobs.com/en-US/graco_careers/job/Dayton%2C-Minnesota%2C-USA-(French-Lake)/AI-Intern_R0023511-1/apply/applyManually",
+  "fields": [
+    {
+      "key": "#input-4",
+      "type": "text",
+      "label": "Email Address*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input-5",
+      "type": "password",
+      "label": "Password*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input-6",
+      "type": "password",
+      "label": "Verify New Password*",
+      "value": "",
+      "visible": true,
+      "required": true,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#input-9",
+      "type": "checkbox",
+      "label": "By checking the box you consent to creating a Candidate Home account.",
+      "value": "",
+      "visible": true,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    },
+    {
+      "key": "#d3c65318-2638-4e61-a697-7da8d40f7983",
+      "type": "text",
+      "label": "Enter website. This input is for robots only, do not enter if you're human.",
+      "value": "",
+      "visible": false,
+      "required": false,
+      "disabled": false,
+      "readOnly": false
+    }
+  ],
+  "frames": []
+}
