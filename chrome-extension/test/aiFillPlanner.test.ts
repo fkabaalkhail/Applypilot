@@ -234,3 +234,42 @@ describe("planReaskFields", () => {
     expect(out[0].inputType).toBe("date");
   });
 });
+
+/**
+ * Backend answers pass the same kind gate as on-device ones. With the AI out
+ * of credits the backend still answers from its rule pass, and one rule
+ * returns the applicant's CITY for any label containing "location": a
+ * free-text "Are you willing to relocate to our NYC location?" received
+ * "Toronto" (the "Quebec into a yes/no question" failure, via the backend).
+ */
+describe("planAiFill: backend answers must fit the field's kind", () => {
+  const field = (over: Partial<DetectedField>): DetectedField => ({
+    id: "f",
+    category: "unknown",
+    confidence: 0.4,
+    label: "",
+    controlType: "text",
+    required: false,
+    proposedValue: null,
+    fillable: true,
+    sensitive: false,
+    ...over,
+  });
+
+  it("drops a place name answering a yes/no question", () => {
+    const f = field({ id: "a", label: "Are you willing to relocate to our NYC location?", answerKind: "boolean" });
+    expect(planAiFill([f], [{ id: "a", answer: "Toronto" }]).simpleTargets).toEqual([]);
+    expect(planAiFill([f], [{ id: "a", answer: "Yes" }]).simpleTargets).toEqual([{ fieldId: "a", value: "Yes" }]);
+  });
+
+  it("drops a non-email for an email field and a non-number for a number field", () => {
+    const e = field({ id: "e", answerKind: "email" });
+    const n = field({ id: "n", answerKind: "number" });
+    expect(planAiFill([e, n], [{ id: "e", answer: "Maya" }, { id: "n", answer: "about three" }]).simpleTargets).toEqual([]);
+  });
+
+  it("free text still takes free text", () => {
+    const t = field({ id: "t", answerKind: "longText", controlType: "textarea" });
+    expect(planAiFill([t], [{ id: "t", answer: "I build robots." }]).simpleTargets).toHaveLength(1);
+  });
+});

@@ -293,3 +293,18 @@ describe("'able to work' is a work-right question only with a country and no arr
     expect(value(ask("Are you legally able to work in Canada according to the laws and regulations of the country?", { options: YES_NO }))).toBe("Yes");
   });
 });
+
+describe("which abstentions keep a field from the backend", () => {
+  it("legal-status abstentions are blocked from the backend's rule pass", () => {
+    const r = ask("Are you legally authorized to work in the United States?", { options: YES_NO });
+    expect(r).toMatchObject({ status: "abstain", blockBackend: true });
+  });
+  it("opinions and essays stay available to the backend AI", () => {
+    const r = ask("Do you think AI will take over the world?", { options: ["Yes", "No", "Maybe So"] });
+    expect(r).toMatchObject({ status: "abstain", blockBackend: false });
+  });
+  it("a compound relocation-or-sponsorship question is not answered from one half", () => {
+    const p = { ...SPARSE_CANADIAN, requiresSponsorship: "No" };
+    expect(value(ask("Will you require relocation assistance or visa sponsorship?", { options: YES_NO }, p))).toBe("abstain");
+  });
+});

@@ -59,7 +59,7 @@ export interface QuestionContext {
 
 export type QuestionResult =
   | { status: "answer"; value: string; confidence: Confidence; rule: string }
-  | { status: "abstain"; rule: string }
+  | { status: "abstain"; rule: string; blockBackend?: boolean }
   | null;
 
 const answer = (value: string, rule: string, confidence: Confidence = "high"): QuestionResult => ({
@@ -68,7 +68,16 @@ const answer = (value: string, rule: string, confidence: Confidence = "high"): Q
   confidence,
   rule,
 });
-const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule });
+/**
+ * Abstentions on LEGAL-STATUS facts (work authorization, sponsorship,
+ * citizenship, age) also keep the field from the backend: its rule pass
+ * answers those unconditionally ("authorized to work?" Yes, "sponsorship?"
+ * No, "18 or older?" Yes), so sending them is asking for a guess. Every
+ * other abstention leaves the field to the backend's AI (essays, opinions,
+ * a skill's years), which is the right tool once it has credits again.
+ */
+const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate)/;
+const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule, blockBackend: BLOCK_BACKEND_RULES.test(rule) });
 
 /** Lowercase, accents stripped, apostrophes dropped, punctuation → space. */
 export function qnorm(text: string): string {
@@ -171,6 +180,9 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   const hasRight = WORK_RIGHT.test(n) || isAbleToWorkInCountry(n, q.label);
   const hasSponsor = SPONSOR.test(n);
   if (!hasRight && !hasSponsor) return null;
+  // "Will you require relocation assistance or visa sponsorship?" asks two
+  // things; the sponsorship half alone cannot answer it.
+  if (hasSponsor && /\brelocat/.test(n)) return abstain("sponsorship:compound-question");
   const country = targetCountry(q, ctx);
   const residence = residenceOf(facts);
 

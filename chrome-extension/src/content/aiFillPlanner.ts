@@ -7,6 +7,7 @@
  * contentScript stays thin and this logic is fully unit-tested.
  */
 import type { AiFillField, DetectedField, FieldCategory } from "../shared/types";
+import { valueFitsKind, type AnswerKind } from "./answerKind";
 
 /** Labels that read like a question worth answering even on a plain text input. */
 const QUESTION_LABEL =
@@ -125,9 +126,26 @@ export function planAiFill(
   for (const f of candidates) {
     const a = byId.get(f.id);
     if (!a || !a.answer || !a.answer.trim()) continue;
+    // The backend's answer must fit what the field accepts, exactly like an
+    // on-device one: its rule pass answers "city" for any label mentioning a
+    // location, which put "Toronto" into a yes/no question.
+    if (!backendAnswerFits(f, a.answer)) continue;
     simpleTargets.push({ fieldId: f.id, value: a.answer });
   }
   return { simpleTargets };
+}
+
+/** Kinds whose format is checkable; choice kinds are matched strictly against
+ *  their options by the writer and the combobox engine instead. */
+const CHECKED_KINDS: ReadonlySet<string> = new Set(["boolean", "email", "phone", "url", "number", "date"]);
+
+function backendAnswerFits(field: DetectedField, answer: string): boolean {
+  const kind = field.answerKind as AnswerKind | undefined;
+  if (!kind || !CHECKED_KINDS.has(kind)) return true;
+  // A single checkbox and a Yes/No choice with known options are policed by
+  // their own writers (parseDesiredBool / strict option match).
+  if (kind === "boolean" && (field.controlType === "checkbox" || (field.options?.length ?? 0) > 0)) return true;
+  return valueFitsKind(answer, kind);
 }
 
 /** Count distinct filled fields across passes; later groups win for the same id. */

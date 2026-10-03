@@ -108,10 +108,13 @@ export function snapToOption(options: string[], value: string, category: FieldCa
 function coerceToKind(value: string, kind: AnswerKind): string | null {
   const v = value.trim();
   if (kind === "number") {
-    // "$120,000" → "120000"; "3 years" → "3"; two different numbers → refuse.
-    const nums = v.replace(/,/g, "").match(/\d+(?:\.\d+)?/g) ?? [];
-    if (nums.length === 1) return nums[0];
-    return null;
+    // "$120,000" → "120000"; "120k" → "120000"; "3 years" → "3"; two
+    // different numbers (a range) → refuse rather than pick one.
+    const flat = v.replace(/,/g, "");
+    const nums = flat.match(/\d+(?:\.\d+)?/g) ?? [];
+    if (nums.length !== 1) return null;
+    const k = /(\d+(?:\.\d+)?)\s*k\b/i.exec(flat);
+    return k ? String(Math.round(parseFloat(k[1]) * 1000)) : nums[0];
   }
   if (kind === "phone" || kind === "email" || kind === "url" || kind === "date") {
     return valueFitsKind(v, kind) ? v : null;
@@ -158,7 +161,7 @@ export function resolveField(input: FieldResolveInput): FieldResolution {
       kind,
     };
     q = resolveQuestion(question, profileFacts(profile), profile, resolveContext);
-    if (q?.status === "abstain") return none(true, q.rule);
+    if (q?.status === "abstain") return none(q.blockBackend === true, q.rule);
   }
 
   let value: string | null;
