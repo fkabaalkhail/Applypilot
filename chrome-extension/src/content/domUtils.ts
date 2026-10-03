@@ -152,6 +152,22 @@ export function associatedLabelText(el: HTMLElement): string {
   }
   const wrapping = el.closest("label");
   if (wrapping) return cleanText(wrapping.textContent);
+  return containerLabelText(el);
+}
+
+/**
+ * A label whose `for` names a CONTAINER of the control: Ashby's "Start Date"
+ * points at a div holding a month select and a year select, neither of which
+ * has an id. The year select took the month select's option text as its label
+ * ("Month...JanuaryFebruary...", live 2026-10-03).
+ */
+function containerLabelText(el: HTMLElement): string {
+  for (let a = el.parentElement, i = 0; a && i < 3; a = a.parentElement, i++) {
+    if (!a.id || /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(a.tagName)) continue;
+    const id = a.id;
+    const label = Array.from(a.ownerDocument.getElementsByTagName("label")).find((l) => l.htmlFor === id);
+    if (label) return cleanText(label.textContent);
+  }
   return "";
 }
 

@@ -586,6 +586,20 @@ export function degreeRank(text: string): number | null {
   return null;
 }
 
+/**
+ * One education row's graduation as text, refined by the stated expected
+ * graduation MONTH ("2027-04") when it is the row graduating that year (or the
+ * only row, undated): what split month / year controls fill from.
+ */
+export function graduationOfRow(profile: UserApplicationProfile, index: number): string {
+  const rows = profile.education ?? [];
+  const own = (rows[index]?.graduationYear ?? "").trim();
+  const m = /^(\d{4})-(\d{2})$/.exec((profile.expectedGraduation ?? "").trim());
+  if (!m) return own;
+  if (!own) return rows.length === 1 ? m[0] : own;
+  return own === m[1] ? m[0] : own;
+}
+
 export interface EducationEntryFacts {
   school: string;
   degree: string;

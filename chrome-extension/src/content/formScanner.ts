@@ -31,6 +31,7 @@ import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./combob
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
 import { resolveField, snapToOption, type FieldResolution } from "./fieldResolver";
 import { splitGreenhouseDate } from "./adapters/greenhouse";
+import { graduationOfRow, profileFacts } from "./profileFacts";
 import { isConsentText, resolveCheckboxIntent } from "./checkboxIntent";
 import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
@@ -607,8 +608,10 @@ function inEducationBlock(el: HTMLElement): boolean {
  * classify as experience dates and were filled with the first JOB's dates
  * (Twitch, Astranis, live 2026-10-03). The end date is the graduation, split
  * into the month and year controls the way Greenhouse renders them (a bare
- * year leaves the month blank); the profile has no education start date, so a
- * start date gets nothing.
+ * year leaves the month blank; the expected graduation month fills it); the
+ * profile has no education start date, so a start date gets nothing. Ashby's
+ * month and year selects carry no name of their own: their options tell them
+ * apart. "Still Student?" is ticked for a degree still in progress.
  */
 function reclassifyEducationRowDates(
   fields: DetectedField[],
@@ -616,20 +619,39 @@ function reclassifyEducationRowDates(
   profile: UserApplicationProfile | null
 ): void {
   for (const f of fields) {
+    const control = registry.get(f.id);
+    const el = control?.el ?? control?.checkboxes?.[0] ?? null;
+    if (f.controlType === "checkbox" && el && profile && STILL_STUDENT.test(f.label) && inEducationBlock(el)) {
+      const entry = profileFacts(profile).education.entries[f.groupIndex ?? 0];
+      f.proposedValue = entry?.completed === false ? "yes" : entry?.completed === true ? "no" : null;
+      continue;
+    }
     if (f.category !== "experienceStartDate" && f.category !== "experienceEndDate") continue;
-    const el = registry.get(f.id)?.el;
     if (!el || !inEducationBlock(el)) continue;
     const isEnd = f.category === "experienceEndDate";
     f.category = isEnd ? "graduationYear" : "unknown";
     f.proposedValue = null;
     if (!isEnd || !profile) continue;
-    const grad = splitGreenhouseDate(profile.education?.[f.groupIndex ?? 0]?.graduationYear ?? "");
+    const grad = splitGreenhouseDate(graduationOfRow(profile, f.groupIndex ?? 0));
     if (!grad) continue;
     const key = `${el.id} ${el.getAttribute("name") ?? ""} ${f.label}`.toLowerCase();
-    const value = /month/.test(key) ? grad.month : /year/.test(key) ? grad.year : "";
+    const part = /month/.test(key) ? "month" : /year/.test(key) ? "year" : datePartOfOptions(f.options);
+    const value = part === "month" ? grad.month : part === "year" ? grad.year : "";
     if (!value) continue;
     f.proposedValue = f.options && f.options.length ? snapToOption(f.options, value, "graduationYear") : value;
   }
+}
+
+/** "Still Student?", "Currently attending": the education row is in progress. */
+const STILL_STUDENT = /\bstill (a )?student\b|\bcurrent(ly)? (a )?student\b|\bcurrently (attending|enrolled|studying)\b|\bin progress\b/i;
+
+const MONTH_OPTION = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?$/i;
+/** A select that names no part: twelve months, or a run of years. */
+function datePartOfOptions(options: string[] | undefined): "month" | "year" | "" {
+  const opts = (options ?? []).map((o) => o.trim()).filter(Boolean);
+  if (opts.filter((o) => MONTH_OPTION.test(o)).length >= 12) return "month";
+  if (opts.filter((o) => /^(19|20)\d{2}$/.test(o)).length >= 3) return "year";
+  return "";
 }
 
 /**

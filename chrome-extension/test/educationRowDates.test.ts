@@ -71,3 +71,64 @@ describe("education-row dates are the school's, never a job's", () => {
     expect(f("start-date-year-0")?.proposedValue).toBe("2025");
   });
 });
+
+describe("the expected graduation MONTH fills split end-date controls (2026-10-03)", () => {
+  it("Greenhouse: End date month from the profile's expected graduation (Robinhood requires it)", () => {
+    const f = scan({ ...SPARSE_CANADIAN, expectedGraduation: "2027-04" });
+    expect(f("end-month--0")?.proposedValue).toBe("April");
+    expect(f("end-year--0")?.proposedValue).toBe("2027");
+  });
+
+  it("a month for another year is not this row's", () => {
+    const f = scan({ ...SPARSE_CANADIAN, expectedGraduation: "2028-04" });
+    expect(f("end-month--0")?.proposedValue ?? null).toBeNull();
+    expect(f("end-year--0")?.proposedValue).toBe("2027");
+  });
+});
+
+/**
+ * Ashby's education block as rendered live (Ramp, 2026-10-03; classes trimmed,
+ * structure and ids verbatim): each label points at a CONTAINER div holding a
+ * month select and a year select, neither with an id; "Still Student?" is a
+ * checkbox inside its own label.
+ */
+const ashbyDate = (id: string, label: string): string => {
+  const months = MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join("");
+  const years = Array.from({ length: 11 }, (_, i) => 2030 - i).map((y) => `<option value="${y}">${y}</option>`).join("");
+  return `<div class="_educationFlexField"><label class="ashby-application-form-question-title" for="${id}">${label}</label>
+    <div class="_stack _horizontal" id="${id}">
+      <div class="ashby-application-form-input-dropdown"><select class="ashby-application-form-input-dropdown-select"><option disabled="" hidden="" value="">Month...</option>${months}</select></div>
+      <div class="ashby-application-form-input-dropdown"><select class="ashby-application-form-input-dropdown-select"><option disabled="" hidden="" value="">Year...</option>${years}</select></div>
+    </div></div>`;
+};
+const ASHBY_EDU = `<form><div class="_educationEntry">
+  ${ashbyDate("_systemfield_education_history-startDate", "Start Date")}
+  ${ashbyDate("_systemfield_education_history-endDate", "End Date")}
+  <label class="ashby-application-form-question-title" for="_systemfield_education_history-isCurrent"><div><span><input type="checkbox" id="_systemfield_education_history-isCurrent"></span>Still Student?</div></label>
+</div></form>`;
+
+describe("Ashby's education dates and 'Still Student?' (Ramp / Superhuman, live 2026-10-03)", () => {
+  const scanAshby = (profile = { ...SPARSE_CANADIAN, expectedGraduation: "2027-04" }) => {
+    document.body.innerHTML = ASHBY_EDU;
+    const fields = scanPage(profile, false).fields;
+    const selects = Array.from(document.querySelectorAll("select"));
+    const at = (el: Element) => fields.find((x) => el.getAttribute("data-ap-field") === x.id);
+    return { selects: selects.map((s) => at(s)), still: at(document.getElementById("_systemfield_education_history-isCurrent")!) };
+  };
+
+  it("the year selects are named by their container's label, not the month list beside them", () => {
+    const { selects } = scanAshby();
+    expect(selects.map((f) => f?.label.replace(/\*$/, ""))).toEqual(["Start Date", "Start Date", "End Date", "End Date"]);
+  });
+
+  it("End Date takes the graduation month and year; Start Date stays blank", () => {
+    const { selects } = scanAshby();
+    expect(selects.map((f) => f?.proposedValue ?? null)).toEqual([null, null, "April", "2027"]);
+  });
+
+  it("'Still Student?' is ticked while the degree is in progress", () => {
+    expect(scanAshby().still?.proposedValue).toBe("yes");
+    const grad = { ...SPARSE_CANADIAN, education: [{ school: "University of Toronto", degree: "BSc", graduationYear: "2022" }] };
+    expect(scanAshby(grad).still?.proposedValue).toBe("no");
+  });
+});
