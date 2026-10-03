@@ -1023,3 +1023,35 @@ describe("comboboxDisplaysValue", () => {
     expect(comboboxDisplaysValue(el, "Mexico")).toBe(false);
   });
 });
+
+describe("an OPEN list's highlighted option is not a selection (SpaceX, live 2026-10-03)", () => {
+  // The react-select as the page held it after the fill: menu open, option 0
+  // highlighted through aria-activedescendant, nothing selected ("Select...").
+  const OPTION = "I have never worked for SpaceX, SpaceXAI, xAI, X, or Twitter";
+  const mount = (expanded: boolean): HTMLInputElement => {
+    document.body.innerHTML = `
+      <div class="select__control select__control--is-focused${expanded ? " select__control--menu-is-open" : ""}">
+        <div class="select__value-container">
+          <div class="select__placeholder" id="react-select-q-placeholder">Select...</div>
+          <div class="select__input-container" data-value="">
+            <input class="select__input" id="q" type="text" role="combobox" aria-expanded="${expanded}"
+              aria-haspopup="true" aria-activedescendant="react-select-q-option-0" aria-controls="react-select-q-listbox" value="">
+          </div>
+        </div>
+      </div>
+      <div class="select__menu"><div class="select__menu-list" role="listbox" id="react-select-q-listbox">
+        <div class="select__option select__option--is-focused" id="react-select-q-option-0" role="option">${OPTION}</div>
+        <div class="select__option" id="react-select-q-option-1" role="option">I am a current SpaceX employee</div>
+      </div></div>`;
+    return document.getElementById("q") as HTMLInputElement;
+  };
+
+  it("does not count as already displaying the value, so the field is driven", async () => {
+    const { comboboxDisplaysValue } = await import("../src/content/comboboxEngine");
+    expect(comboboxDisplaysValue(mount(true), OPTION)).toBe(false);
+  });
+
+  it("and the field still reads as empty", () => {
+    expect(readComboboxValue(mount(true))).toBeUndefined();
+  });
+});

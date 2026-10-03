@@ -707,8 +707,15 @@ function isButtonLikeTrigger(trigger: HTMLElement): boolean {
   );
 }
 
-/** Text of the option referenced by aria-activedescendant, if any. */
+/**
+ * Text of the option referenced by aria-activedescendant, if any, and only
+ * while the list is CLOSED. In an open list the active descendant is the
+ * keyboard HIGHLIGHT, not the selection: SpaceX's react-select was left open
+ * with option 0 highlighted, option 0 was the answer, and the field counted as
+ * already filled, so it was never driven and stayed empty (live 2026-10-03).
+ */
 function activeDescendantText(trigger: HTMLElement): string {
+  if (trigger.getAttribute("aria-expanded") === "true") return "";
   const active = trigger.getAttribute("aria-activedescendant");
   if (!active) return "";
   const opt = byIdNear(trigger, active);
