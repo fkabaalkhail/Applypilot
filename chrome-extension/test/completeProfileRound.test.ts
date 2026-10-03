@@ -306,3 +306,16 @@ describe("the education summary answers only compound questions (2026-10-03)", (
     expect(value(ask("What school are you currently attending / did you graduate from?", { kind: "text" }))).toBe("University of Waterloo");
   });
 });
+
+describe("default rules that must not over-reach (2026-10-03)", () => {
+  it("a lone 'Yes' option is not an acknowledgement unless the question asks to confirm", () => {
+    expect(value(ask("Have you applied to this company before?", { options: ["Yes"] }))).not.toBe("Yes");
+    expect(value(ask("Please confirm you have read the job description", { options: ["Yes"] }))).toBe("Yes");
+  });
+  it("'Professional Certification' with Yes/No asks whether you hold one: never consent", () => {
+    expect(value(ask("Professional Certification", { options: YES_NO }))).not.toBe("Yes");
+  });
+  it("an obstacle ruled out by the question is not an obstacle question", () => {
+    expect(value(ask("Do you have the ability to travel with no restrictions?", { options: YES_NO }))).not.toBe("No");
+  });
+});

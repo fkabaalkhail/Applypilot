@@ -113,9 +113,9 @@ const CHANNEL = /\b(linked ?in|indeed|glassdoor|company (website|site)|careers? 
 const UNLABELED = /^(select|choose|pick)( one| an option| all that apply)?$|^$/;
 
 /** An acknowledgement option: the only thing a form lets you answer. */
-const ACK_OPTION = /^(yes|i (will|understand|agree|acknowledge|confirm|accept|have read|consent)|acknowledged|agree|agreed|understood|confirmed)\b/;
+const ACK_OPTION = /^(i (will|understand|agree|acknowledge|confirm|accept|have read|consent)|acknowledged|agree|agreed|understood|confirmed)\b/;
 /** A titled policy / agreement with a Yes/No ("AI Policy for Application", Anthropic). */
-const TITLED_TERMS = /\b(polic(y|ies)|agreement|terms|notice|acknowledg\w*|attestation|certification|arbitration)\b/;
+const TITLED_TERMS = /\b(polic(y|ies)|agreement|terms|notice|acknowledg\w*|attestation|arbitration)\b/;
 
 /** Options a "how did you hear" answer may take, most truthful first for a
  *  Tailrd user (who found the posting through a job aggregator). */
@@ -279,7 +279,9 @@ export function resolveDefault(
   if (REQUIREMENT.test(n) && !ASSISTANCE.test(n) && (ACK_VERB.test(n) || /^(do|are|will|can|would) you\b/.test(n))) {
     // "Do you have any impediments to traveling internationally?" (Veeva on
     // Lever, live 2026-10-03, answered Yes): an obstacle question's clean answer is No.
-    if (OBSTACLE.test(n) && /\b(any|have|anticipate|foresee|are there)\b/.test(n)) return polar(false, q, "default:no-obstacle");
+    // An obstacle ASKED about ("any impediments", "anticipate challenges"), not
+    // one ruled out in the question ("travel with no restrictions").
+    if (OBSTACLE.test(n) && /\b(any|anticipate|foresee|are there)\b/.test(n)) return polar(false, q, "default:no-obstacle");
     // Options that answer through location ("currently located here" vs
     // "I'd relocate") need the choice, not a bare yes.
     const located = chooseLocated(q, profile, facts, ctx);
