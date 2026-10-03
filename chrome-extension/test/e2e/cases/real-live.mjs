@@ -166,6 +166,7 @@ export default [
       "name=eeo[gender]": "Decline to self-identify",
       "name=eeo[race]": "Decline to self-identify",
       "name=eeo[veteran]": "Decline to self-identify",
+      "name=cards[fb5c103c-4111-4530-94b9-07965c4a027e][field3]": "No",
     },
   }),
   live({
@@ -272,7 +273,7 @@ export default [
       "radio=QA_12457573": "NO",
       "label:Do you live in the United States": "NO",
       "radio=QA_12457574": null,
-      "label:referred to this job": null,
+      "label:referred to this job": "No",
       "label:Where did you see this job": "Online job board",
       // Workable's optional Education / Experience sections, when rendered.
       "#school": { ifPresent: "University of Waterloo" },
@@ -417,7 +418,7 @@ export default [
       "label:certifications": null,
       "label:total number of years of relevant experience": { oneOf: ["1", ""] },
       "label:current or past employee of ActioNet": "Neither",
-      "label:family member": null,
+      "label:family member": "No",
       "label:How did you hear": "ActioNet Career Page",
       "label:If referred by": null,
       "label:Job Fair": null,

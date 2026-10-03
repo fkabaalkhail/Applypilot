@@ -38,7 +38,7 @@ export default [
       "aria-radiogroup~live in the United States": "YES",
       "radio=QA_12457574": "YES",
       "aria-radiogroup~require sponsorship": "YES",
-      "label:referred to this job": null,
+      "label:referred to this job": "No",
       "label:Where did you see this job": "Online job board",
       // Rows the fill adds itself ("+ Add" Education / Experience), when Workable renders them.
       "#school": { ifPresent: "Massachusetts Institute of Technology" },
@@ -100,7 +100,7 @@ export default [
       "label:certifications": null,
       "label:total number of years of relevant experience": "0",
       "label:current or past employee of ActioNet": "Neither",
-      "label:family member": null,
+      "label:family member": "No",
       "label:How did you hear": "ActioNet Career Page",
       "label:If referred by": null,
       "label:Job Fair": null,
