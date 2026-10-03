@@ -97,7 +97,7 @@ function isSafeLiveRequest(req) {
  * Install the routing for one run. `pages` maps an exact URL (no hash) to the
  * HTML to serve for it. Returns a counter of what was blocked, for the report.
  */
-export async function installRouting(ctx, { apiUrl, pages, mode }) {
+export async function installRouting(ctx, { apiUrl, pages, mode, assets = new Map() }) {
   const blocked = [];
   await ctx.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
   await ctx.route("**/*", async (route) => {
@@ -107,6 +107,10 @@ export async function installRouting(ctx, { apiUrl, pages, mode }) {
     const html = pages.get(url);
     if (html !== undefined && req.method() === "GET") {
       return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html });
+    }
+    const asset = assets.get(url);
+    if (asset && req.method() === "GET") {
+      return route.fulfill({ status: 200, contentType: asset.contentType, body: asset.body });
     }
     if (mode === "live" && isSafeLiveRequest(req)) return route.continue();
     if (mode === "live") blocked.push(`${req.method()} ${url.slice(0, 120)}`);
@@ -179,15 +183,19 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
   // SmartRecruiters) the form renders later; a click before the panel has any
   // field selected is a silent no-op. Wait for the panel to report selected
   // fields, unchanged for a second (its own refreshMainView console beat).
-  const panel = page.__panel ?? { selected: 0, fields: 0, changedAt: Date.now() };
+  const panel = page.__panel ?? { selected: 0, fields: 0, changedAt: Date.now(), beats: [] };
   for (let waited = 0; waited < 25000; waited += 200) {
     if (panel.selected > 0 && Date.now() - panel.changedAt > 1000) break;
+    // A posting whose form opens behind an "Apply" button has no fields
+    // until the flow clicks it: after 8 s of nothing, press Autofill anyway.
+    if (panel.fields === 0 && waited >= 8000) break;
     await sleep(200);
   }
   trace.selectedAtClick = panel.selected;
   trace.fieldsAtClick = panel.fields;
 
   const telemetryBefore = api.state.telemetry.length;
+  const beatsBefore = panel.beats.length;
   await page.locator("#ap-btn-autofill").click({ timeout: 10000 });
   trace.clicked = true;
 
@@ -196,27 +204,42 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
   // throws resets the button within one poll and shows "Autofill failed: …" in
   // the banner, so "never saw busy" for a few seconds is an answer too, not a
   // reason to sit out the whole timeout.
+  // The first pass can be a zero-field page whose flow then clicks "Apply" and
+  // fills the NEXT page in the background, so "the button went idle" is not
+  // the end. The flow's own beats are: "Step N · filling…", "opening …",
+  // then a parked one ("paused: …", "Done. …", a Next-page gate) that means
+  // it is waiting for the user, which is when the page is final.
   const deadline = Date.now() + fillTimeoutMs;
   const clickedAt = Date.now();
+  const PARKED = /\b(paused|done\.|review and submit|review this page|then next page|waiting for|stopped)\b/i;
   let sawBusy = false;
+  let idleSince = 0;
   while (Date.now() < deadline) {
     st = await overlayState(page);
     if (/working/i.test(st.text)) sawBusy = true;
-    if (api.state.telemetry.length > telemetryBefore) {
-      trace.telemetry = api.state.telemetry[telemetryBefore].body;
-      break;
-    }
     if (/autofill failed/i.test(st.banner)) {
       trace.error = `extension: ${st.banner}`;
       break;
     }
-    if (sawBusy && !/working/i.test(st.text)) break;
-    if (!sawBusy && Date.now() - clickedAt > 8000) {
+    const newBeats = panel.beats.slice(beatsBefore);
+    const lastBeat = newBeats[newBeats.length - 1] ?? "";
+    const parked = PARKED.test(lastBeat);
+    const busy = /working/i.test(st.text);
+    if (!busy) idleSince = idleSince || Date.now();
+    else idleSince = 0;
+    if (parked && !busy && Date.now() - idleSince > 500) break;
+    // No flow beat at all (older builds / a page with nothing to do): idle for 3 s.
+    if (sawBusy && !busy && newBeats.length === 0 && Date.now() - idleSince > 3000) break;
+    if (!sawBusy && newBeats.length === 0 && Date.now() - clickedAt > 8000) {
       trace.error = `fill never started (button "${st.text}", banner "${st.banner}")`;
       break;
     }
     await sleep(150);
   }
+  if (api.state.telemetry.length > telemetryBefore) {
+    trace.telemetry = api.state.telemetry[api.state.telemetry.length - 1].body;
+  }
+  trace.beats = panel.beats.slice(beatsBefore);
   trace.banner = st.banner;
   // Let late commits / framework re-renders settle before reading the page.
   await sleep(1500);
@@ -234,13 +257,15 @@ export async function runCase(env, testCase) {
   if (testCase.profile) api.setProfile(testCase.profile);
   const pages = new Map(Object.entries(testCase.pages ?? {}).map(([u, h]) => [u.split("#")[0], h]));
   if (testCase.html !== undefined) pages.set(testCase.url.split("#")[0], testCase.html);
-  const blocked = await installRouting(ctx, { apiUrl: api.url, pages, mode: testCase.mode ?? "fixture" });
+  const assets = new Map(Object.entries(testCase.assets ?? {}));
+  const blocked = await installRouting(ctx, { apiUrl: api.url, pages, mode: testCase.mode ?? "fixture", assets });
   const page = await ctx.newPage();
   const consoleLines = [];
-  const panel = { selected: 0, fields: 0, changedAt: Date.now() };
+  const panel = { selected: 0, fields: 0, changedAt: Date.now(), beats: [] };
   page.__panel = panel;
   page.on("console", (m) => {
     const t = m.text();
+    if (/^\[Tailrd\] (Step \d|Done|Autofill flow stopped)/.test(t)) panel.beats.push(t.slice(9, 200));
     const beat = /refreshMainView selected=\s*(\d+)\s+of fields=\s*(\d+)/.exec(t);
     if (beat) {
       const selected = Number(beat[1]);
@@ -263,13 +288,33 @@ export async function runCase(env, testCase) {
     await sleep(testCase.settleMs ?? 800);
     const before = await dumpAllFrames(page);
     const trace = await triggerAutofill(page, sw, api, testCase.trigger ?? {});
+    // Blur everything and let the framework re-render: a value the framework
+    // never registered is reset to its (empty) state on this render, which is
+    // the "appears, then clears on blur" failure the state check exists for.
+    if (testCase.stateSelector) {
+      await page.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined)).catch(() => {});
+      await sleep(600);
+    }
     const after = await dumpAllFrames(page);
+    let state = null;
+    if (testCase.stateSelector) {
+      state = await page
+        .evaluate((sel) => {
+          const el = document.querySelector(sel);
+          try {
+            return el ? JSON.parse(el.textContent || "null") : null;
+          } catch {
+            return null;
+          }
+        }, testCase.stateSelector)
+        .catch(() => null);
+    }
     let screenshot = null;
     if (testCase.screenshotPath) {
       await page.screenshot({ path: testCase.screenshotPath, fullPage: true }).catch(() => {});
       screenshot = testCase.screenshotPath;
     }
-    return { before, after, trace, blocked: [...blocked], console: consoleLines, screenshot };
+    return { before, after, trace, blocked: [...blocked], console: consoleLines, screenshot, state };
   } finally {
     await page.close().catch(() => {});
   }

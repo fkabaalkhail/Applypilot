@@ -29,13 +29,26 @@ function findRecord(records, key) {
     const want = norm(key.slice(6));
     return records.find((r) => norm(r.label).includes(want)) ?? null;
   }
+  // "<type>~<label text>": the field of that type whose label contains the text
+  // (an ATS that renders a native radio AND an ARIA twin for one question).
+  const typed = /^([a-z-]+)~(.+)$/.exec(key);
+  if (typed) {
+    const want = norm(typed[2]);
+    return records.find((r) => r.type === typed[1] && norm(r.label).includes(want)) ?? null;
+  }
   return records.find((r) => r.key === key) ?? null;
 }
 
 function matches(expected, actual, beforeValue) {
   if (expected === null) return norm(actual) === "";
   if (typeof expected === "string") return norm(actual) === norm(expected);
-  if (expected.re) return new RegExp(expected.re, "i").test(String(actual ?? ""));
+  if (expected.re) {
+    try {
+      return new RegExp(expected.re, "i").test(String(actual ?? ""));
+    } catch {
+      return false; // a broken expectation fails its row, never the whole run
+    }
+  }
   if (expected.any) return norm(actual) !== "";
   if (expected.oneOf) return expected.oneOf.some((o) => norm(o) === norm(actual));
   if (expected.unchanged) return String(actual ?? "") === String(beforeValue ?? "");
@@ -85,6 +98,21 @@ export function evaluateCase(testCase, result) {
     if (String(rec.value ?? "") !== String(before)) {
       unexpected.push({ key: rec.key, label: rec.label, type: rec.type, before, actual: rec.value });
     }
+  }
+  // Framework state (React/Vue/Angular models exposed by the page): the value
+  // must have REGISTERED with the framework, not merely sit in the DOM.
+  for (const [key, expected] of Object.entries(testCase.expectState ?? {})) {
+    const actual = result.state ? result.state[key] : undefined;
+    const ok = result.state !== null && result.state !== undefined && matches(expected, actual ?? "", "");
+    rows.push({
+      key: `state.${key}`,
+      status: result.state ? (ok ? "PASS" : "FAIL") : "MISSING",
+      kind: expected === null ? "abstain" : "fill",
+      expected: describe(expected),
+      actual: actual ?? "",
+      label: "framework state",
+      type: "state",
+    });
   }
   const pass = rows.filter((r) => r.status === "PASS").length;
   const total = rows.length + unexpected.length;

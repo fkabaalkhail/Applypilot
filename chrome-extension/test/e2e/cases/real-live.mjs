@@ -27,6 +27,9 @@ const NAME = "Maya Tremblay";
 const PHONE = { re: "416\\D*555\\D*0142" };
 const TORONTO = { re: "toronto" };
 const LINKEDIN = P.linkedin;
+// Greenhouse's phone dial-code picker: "Canada" selects "Canada +1", and the
+// widget then displays only "+1".
+const DIAL_CODE_CANADA = { re: String.raw`canada|^\+1$` };
 
 const live = (c) => ({ mode: "live", profile: P, trigger: { fillTimeoutMs: 180000 }, ...c });
 
@@ -49,7 +52,7 @@ export default [
       "#email": P.email,
       // The phone dial-code picker (inside fieldset.phone-input): "Canada"
       // selects "Canada +1", and the widget then displays only "+1".
-      "#country": { re: "canada|^\+1$" },
+      "#country": DIAL_CODE_CANADA,
       "#phone": PHONE,
       "label:University of": { re: "^no" },
       "label:Miami HQ": null,
@@ -74,7 +77,7 @@ export default [
       "#email": P.email,
       // The phone dial-code picker (inside fieldset.phone-input): "Canada"
       // selects "Canada +1", and the widget then displays only "+1".
-      "#country": { re: "canada|^\+1$" },
+      "#country": DIAL_CODE_CANADA,
       "#phone": PHONE,
       "#candidate-location": TORONTO,
       "#school--0": { re: "waterloo" },
@@ -105,7 +108,7 @@ export default [
       "#email": P.email,
       // The phone dial-code picker (inside fieldset.phone-input): "Canada"
       // selects "Canada +1", and the widget then displays only "+1".
-      "#country": { re: "canada|^\+1$" },
+      "#country": DIAL_CODE_CANADA,
       "#phone": PHONE,
       "#candidate-location": TORONTO,
       "label:LinkedIn Profile": LINKEDIN,
@@ -236,7 +239,6 @@ export default [
       // Workable pre-fills Address from the visitor's IP geolocation; a
       // non-empty field is never overwritten.
       "#address": { unchanged: true },
-      "#summary": null,
       "#cover_letter": null,
       "label:Salary Range": null,
       "radio=QA_12563770": null,
@@ -345,7 +347,8 @@ export default [
       "#desiredPay": null,
       "#websiteUrl": null,
       "#linkedinUrl": LINKEDIN,
-      "label:legally entitled to work in Canada": "Yes",
+      // BambooHR renders a native radio and an ARIA twin per question.
+      "radio~legally entitled to work in Canada": "Yes",
       "label:background check": null,
       // BambooHR fills this itself with the posting URL; we must not touch it.
       "label:Link to This Job": { re: "bamboohr\.com|^$" },

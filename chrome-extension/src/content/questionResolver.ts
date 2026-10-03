@@ -294,8 +294,15 @@ function placeIn(label: string): { kind: "country"; code: string } | { kind: "re
   return null;
 }
 
+/** The APPLICANT is the one who lives/is located somewhere. "This position
+ *  requires you to work from the Toronto office located at …" is about the
+ *  office; reading it as residence answered a commute question (Lever, live
+ *  2026-10-03). */
+const APPLICANT_RESIDES =
+  /\b(do|are|have|did) you\b[^?]{0,60}?\b(live|living|reside|residing|located|based|resident|currently in)\b|\bare you (a |an )?(current )?resident\b|\byour (current )?(location|residence|city of residence|place of residence)\b|\bwhere (do|are) you\b/;
+
 function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
-  if (!RESIDE.test(n) || !isBooleanQuestion(q)) return null;
+  if (!RESIDE.test(n) || !APPLICANT_RESIDES.test(n) || !isBooleanQuestion(q)) return null;
   if (/\b(willing|open|able|plan|planning) to (relocate|move)\b/.test(n) && !/\b(live|reside|located|based)\b/.test(n)) return null;
   const place = placeIn(q.label);
   if (!place) return null;

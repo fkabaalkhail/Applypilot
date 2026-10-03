@@ -145,3 +145,16 @@ describe("pickLocationSuggestion", () => {
     expect(pickLocationSuggestion(["Torontonian Club"], "Toronto")).toBe(-1);
   });
 });
+
+describe("pickLocationSuggestion: Lever's real suggestion format", () => {
+  // Verbatim from jobs.lever.co/searchLocations?text=Toronto, 2026-10-03.
+  const live = ["Toronto, ON, CAN", "Toronto, OH, USA", "Toronto, Durham, England, GBR", "Toronto, IN, USA"];
+  it("matches places, not words: 'Canada'/'Ontario' ↔ 'CAN'/'ON'", () => {
+    expect(pickLocationSuggestion(live, "Toronto, ON, Canada")).toBe(0);
+    expect(pickLocationSuggestion(live, "Toronto, Ontario, Canada")).toBe(0);
+    expect(pickLocationSuggestion(live, "Toronto, Ohio")).toBe(1);
+  });
+  it("a bare city with several namesakes picks none", () => {
+    expect(pickLocationSuggestion(live, "Toronto")).toBe(-1);
+  });
+});

@@ -265,3 +265,15 @@ describe("helpers", () => {
     expect(formatDateFor(d, { ...base })).toBe("10/17/2026");
   });
 });
+
+describe("residence: the applicant must be the subject", () => {
+  // Lever, live 2026-10-03: the office is "located", not the applicant.
+  it("an office-location commute question is not a residence question", () => {
+    const label =
+      "This position requires you to work from the Toronto Office located at 196 Spadina Avenue. Are you able to commute to the office 3 days a week?";
+    expect(value(ask(label, { options: YES_NO }))).not.toBe("Yes");
+  });
+  it("still answers 'Are you currently based in Toronto?'", () => {
+    expect(value(ask("Are you currently based in Toronto?", { options: YES_NO }))).toBe("Yes");
+  });
+});

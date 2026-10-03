@@ -148,12 +148,33 @@ export function dumpFieldsInPage() {
       const isCombo =
         role === "combobox" || (el.getAttribute("aria-haspopup") || "").toLowerCase() === "listbox";
       if (tag === "input" && el.type === "radio") {
-        const groupKey = `${el.form ? el.form.id || "f" : "nf"}::${el.name || el.id}`;
+        // Name-less radios (Vue v-model) group by their question container.
+        let container = null;
+        if (!el.name) {
+          container = el.closest('fieldset, [role="radiogroup"]');
+          if (!container || container.querySelectorAll('input[type="radio"]').length < 2) {
+            container = null;
+            let node = el.parentElement;
+            for (let d = 0; d < 6 && node; d++, node = node.parentElement) {
+              if (node.querySelectorAll('input[type="radio"]').length >= 2) {
+                container = node;
+                break;
+              }
+            }
+          }
+        }
+        const groupKey = el.name
+          ? `${el.form ? el.form.id || "f" : "nf"}::${el.name}`
+          : container
+            ? container
+            : el;
         if (seenRadioGroups.has(groupKey)) continue;
         seenRadioGroups.add(groupKey);
         const members = el.name
           ? Array.from(root.querySelectorAll(`input[type="radio"][name="${CSS.escape(el.name)}"]`))
-          : [el];
+          : container
+            ? Array.from(container.querySelectorAll('input[type="radio"]'))
+            : [el];
         const checked = members.find((m) => m.checked);
         const label = groupLabel(el);
         out.push({

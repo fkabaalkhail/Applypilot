@@ -21,6 +21,7 @@ import { ADAPTERS } from "./registry";
 import { setNativeValue } from "./shared";
 import type { AdapterFillResult, FieldContext, FillContext, SiteAdapter } from "./types";
 import type { Classification } from "../fieldMatcher";
+import { countryByCode, countryFromName, regionFromText } from "../geo";
 
 const LEVER_HOST = /(^|\.)lever\.co$/i;
 const ORG_RE = /\borg(anization)?\b|current[_\s-]?(company|employer)/i;
@@ -55,21 +56,49 @@ function typeLikeUser(input: HTMLInputElement, text: string): void {
  * value. Exactly one such suggestion, or none: picking "Toronto, Ohio" for a
  * Toronto, Ontario applicant would be a confident wrong answer.
  */
+/** City, province/state and country of "Toronto, ON, CAN" / "Toronto, Ontario, Canada". */
+function placeOf(text: string): { city: string; region: string | null; country: string | null } {
+  const parts = text.split(",").map((p) => p.trim()).filter(Boolean);
+  let region: string | null = null;
+  let country: string | null = null;
+  for (const p of parts.slice(1)) {
+    const c = countryFromName(p) ?? (p.length === 2 && /^(us|ca|uk)$/i.test(p) ? countryByCode(p === "uk" || p === "UK" ? "GB" : p) : null);
+    if (c && !country) {
+      country = c.code;
+      continue;
+    }
+    const r = regionFromText(p);
+    if (r && !region) {
+      region = `${r.country}:${r.code}`;
+      if (!country) country = r.country;
+    }
+  }
+  return { city: norm(parts[0] ?? ""), region, country };
+}
+
+/**
+ * The suggestion to pick for `value` ("Toronto, ON, Canada"): the one that is
+ * the same PLACE, compared as places, not words: Lever writes "Toronto, ON,
+ * CAN" (ISO-3), a profile says "Canada" or "Ontario". Every part the value
+ * states must agree; exactly one suggestion must survive, or none is picked:
+ * "Toronto, OH, USA" for a Toronto, Ontario applicant would be a confident
+ * wrong answer.
+ */
 export function pickLocationSuggestion(suggestions: string[], value: string): number {
-  const parts = value.split(",").map((p) => norm(p)).filter(Boolean);
-  const city = parts[0];
-  if (!city) return -1;
-  const rest = parts.slice(1).join(" ").split(" ").filter(Boolean);
-  const candidates = suggestions
-    .map((s, i) => ({ i, first: norm(s.split(",")[0]), all: norm(s) }))
-    .filter((c) => c.first === city);
-  if (candidates.length === 1) return candidates[0].i;
-  // Several cities of that name: keep the ones that mention the region/country.
-  const REGION_EXPAND: Record<string, string> = { on: "ontario", bc: "british columbia", qc: "quebec", ab: "alberta", ns: "nova scotia" };
-  const agreeing = candidates.filter((c) =>
-    rest.every((w) => ` ${c.all} `.includes(` ${w} `) || (REGION_EXPAND[w] && c.all.includes(REGION_EXPAND[w])))
-  );
-  return agreeing.length === 1 ? agreeing[0].i : -1;
+  const want = placeOf(value);
+  if (!want.city) return -1;
+  const hits = suggestions
+    .map((s, i) => ({ i, place: placeOf(s) }))
+    .filter(({ place }) =>
+      place.city === want.city &&
+      (!want.region || !place.region || place.region === want.region) &&
+      (!want.country || !place.country || place.country === want.country)
+    );
+  if (hits.length === 1) return hits[0].i;
+  // Still several: keep the ones that state the region/country the value
+  // states (a suggestion silent on the country is weaker than one that agrees).
+  const explicit = hits.filter(({ place }) => (!want.region || place.region === want.region) && (!want.country || place.country === want.country));
+  return explicit.length === 1 ? explicit[0].i : -1;
 }
 
 /**

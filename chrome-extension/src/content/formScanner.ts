@@ -324,6 +324,40 @@ function groupSignals(members: HTMLInputElement[], container: Element | null): F
   };
 }
 
+/**
+ * Keys for radios that carry no `name`: the smallest container holding two or
+ * more radios and no other kind of field (a fieldset / radiogroup when there is
+ * one). One key per container, so its radios form one question.
+ */
+function namelessRadioKeys(): { keyFor(el: HTMLInputElement): string | null } {
+  const keys = new Map<Element, string>();
+  let n = 0;
+  const otherField = 'input:not([type="radio"]):not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea';
+  return {
+    keyFor(el: HTMLInputElement): string | null {
+      let container: Element | null = el.closest('fieldset, [role="radiogroup"]');
+      if (!container || container.querySelectorAll('input[type="radio"]').length < 2) {
+        container = null;
+        let node: Element | null = el.closest("label") ?? el.parentElement;
+        for (let depth = 0; depth < 5 && node && !CONTAINER_CLIMB_BOUNDARY.has(node.tagName); depth++) {
+          if (node.querySelectorAll('input[type="radio"]').length >= 2) {
+            if (node.querySelectorAll(otherField).length === 0) container = node;
+            break;
+          }
+          node = node.parentElement;
+        }
+      }
+      if (!container) return null;
+      let key = keys.get(container);
+      if (!key) {
+        key = `nameless-${n++}`;
+        keys.set(container, key);
+      }
+      return key;
+    },
+  };
+}
+
 /** Form-field types other than checkboxes, finding one inside a candidate
  *  checkbox-group container means we've climbed past the group's natural
  *  boundary into an unrelated section. */
@@ -536,6 +570,7 @@ export function scanPage(
 
   const candidates = deepQueryAll(document, CANDIDATE_SELECTOR);
   const radioGroups = new Map<string, HTMLInputElement[]>();
+  const nameless = namelessRadioKeys();
   const checkboxGroups = new Map<Element, HTMLInputElement[]>();
 
   for (const el of candidates) {
@@ -570,7 +605,12 @@ export function scanPage(
     if (!relaxed && el.closest('[aria-hidden="true"]')) continue;
 
     if (el instanceof HTMLInputElement && el.type === "radio") {
-      const groupKey = `${el.form?.id ?? "noform"}::${el.name || ensureFieldId(el)}`;
+      // A name ties a radio group together in the browser; a framework
+      // (Vue v-model, hand-rolled React) may tie it together instead and
+      // render no name at all. Those group by their question container.
+      const groupKey = el.name
+        ? `${el.form?.id ?? "noform"}::${el.name}`
+        : `container::${nameless.keyFor(el) ?? ensureFieldId(el)}`;
       const group = radioGroups.get(groupKey) ?? [];
       group.push(el);
       radioGroups.set(groupKey, group);
