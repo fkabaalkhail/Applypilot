@@ -14,7 +14,10 @@
  *   { unchanged: true} must hold exactly what it held before the fill
  *
  * Keys: the dump's own key ("#id", "name=x", "radio=x", "auto=x"), or
- * "label:<text>" to match the first field whose label contains <text>.
+ * "label:<text>" to match the first field whose label contains <text>, or
+ * "all:<type>~<text>" / "all:<text>" to match EVERY such field (a form that
+ * repeats one label, e.g. an "I don't wish to answer" box per EEO question,
+ * on a page whose ids change every load, like Ashby's).
  */
 export function norm(v) {
   return String(v ?? "")
@@ -75,6 +78,23 @@ export function evaluateCase(testCase, result) {
     // optional Education / Experience); checked when it is there.
     const optional = raw !== null && typeof raw === "object" && "ifPresent" in raw;
     const expected = optional ? raw.ifPresent : raw;
+    if (key.startsWith("all:")) {
+      const spec = key.slice(4);
+      const typed = /^([a-z-]+)~(.+)$/.exec(spec);
+      const want = norm(typed ? typed[2] : spec);
+      const hits = result.after.filter((r) => (!typed || r.type === typed[1]) && norm(r.label).includes(want));
+      if (hits.length === 0) {
+        if (!optional) rows.push({ key, status: "MISSING", expected: describe(expected), actual: "", label: "" });
+        continue;
+      }
+      hits.forEach((rec, i) => {
+        usedKeys.add(`${rec.frame}|${rec.key}`);
+        const before = beforeByKey.get(`${rec.frame}|${rec.key}`)?.value ?? "";
+        const ok = matches(expected, rec.value, before);
+        rows.push({ key: `${key}#${i + 1}`, status: ok ? "PASS" : "FAIL", kind: expected === null ? "abstain" : "fill", expected: describe(expected), actual: rec.value, label: rec.label, type: rec.type });
+      });
+      continue;
+    }
     const rec = findRecord(result.after, key);
     if (!rec) {
       if (!optional) rows.push({ key, status: "MISSING", expected: describe(expected), actual: "", label: "" });

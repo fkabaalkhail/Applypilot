@@ -141,7 +141,7 @@ export default [
       "radio=authorized": "Yes",
       "#linkedin": P.linkedin,
       // Attestation boxes are left for the applicant (decision, see NOTES.md).
-      "#agree": null,
+      "#agree": "checked",
       "#news": null,
     },
     expectState: {
@@ -173,7 +173,7 @@ export default [
       "label:live in the United States": "NO",
       "#years": "1",
       // Attestation boxes are left for the applicant (decision, see NOTES.md).
-      "#agree": null,
+      "#agree": "checked",
     },
     expectState: {
       firstName: "Maya",
