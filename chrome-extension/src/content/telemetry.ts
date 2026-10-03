@@ -34,6 +34,7 @@
  * document.
  */
 import { redactCaptureValue } from "./domCapture";
+import { placeOf } from "./placeMatch";
 import type {
   AutofillTelemetry, DetectedField, FieldCaptureRecord, FieldOutcomeRecord, FillDurations,
 } from "../shared/types";
@@ -91,6 +92,8 @@ export function finalOutcomes(
 export interface ObservedField {
   fieldId: string;
   value: string;
+  /** A single checkbox: unticked reads as "". */
+  checkbox?: boolean;
 }
 
 /** What one field was asked to hold. */
@@ -113,12 +116,30 @@ export interface IntendedField {
  *  Lenience is deliberately one-directional: a missed revert costs a record, a
  *  spurious one costs the user a question they already answered. */
 function sameValue(written: string, observed: string): boolean {
-  const core = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const core = (s: string): string =>
+    s
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
   const w = core(written);
   const o = core(observed);
   if (!w) return !o;
   if (!o) return false;
-  return w === o || o.includes(w) || w.includes(o);
+  if (w === o || o.includes(w) || w.includes(o)) return true;
+  // A place typeahead keeps its own spelling of the place typed: "Montréal,
+  // QC" became "Montreal, Quebec, Canada" (Superhuman on Ashby, live 2026-10-03).
+  if (written.includes(",") && observed.includes(",")) {
+    const a = placeOf(written);
+    const b = placeOf(observed);
+    return (
+      Boolean(a.city) &&
+      a.city === b.city &&
+      (!a.region || !b.region || a.region === b.region) &&
+      (!a.country || !b.country || a.country === b.country)
+    );
+  }
+  return false;
 }
 
 /** One field whose committed value disagrees with what was written. */
@@ -144,13 +165,17 @@ export function revertedFields(
   observed: ObservedField[],
   filledOk: ReadonlySet<string>
 ): RevertedField[] {
-  const byId = new Map(observed.map((o) => [o.fieldId, o.value]));
+  const byId = new Map(observed.map((o) => [o.fieldId, o]));
   const out: RevertedField[] = [];
   for (const { fieldId, value } of intended) {
     if (!filledOk.has(fieldId)) continue;
-    if (!byId.has(fieldId)) continue;
-    const now = (byId.get(fieldId) ?? "").trim();
+    const seen = byId.get(fieldId);
+    if (!seen) continue;
+    const now = seen.value.trim();
     if (sameValue(value, now)) continue;
+    // A box left unticked holds no value: the "no" written to it is "" on the
+    // page, not a clear to write again (Superhuman's "Still Student?").
+    if (seen.checkbox && now === "" && /^(no|unchecked|false)$/i.test(value.trim())) continue;
     out.push({ fieldId, cleared: now === "" });
   }
   return out;

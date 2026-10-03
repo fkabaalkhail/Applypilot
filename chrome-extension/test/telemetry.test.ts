@@ -189,6 +189,39 @@ describe("revertedFields", () => {
     const out = revertedFields([{ fieldId: "a", value: "Yes" }], [], new Set(["a"]));
     expect(out).toEqual([]);
   });
+
+  it("a place typeahead keeping its own spelling of the place typed is no revert (Superhuman on Ashby)", () => {
+    // Live 2026-10-03: "Montréal, QC" typed, "Montreal, Quebec, Canada" chosen.
+    const out = revertedFields(
+      [{ fieldId: "a", value: "Montréal, QC" }],
+      [{ fieldId: "a", value: "Montreal, Quebec, Canada" }],
+      new Set(["a"])
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("an accent the control drops is no revert", () => {
+    expect(revertedFields([{ fieldId: "a", value: "Université de Montréal" }], [{ fieldId: "a", value: "Universite de Montreal" }], new Set(["a"]))).toEqual([]);
+  });
+
+  it("a checkbox left unticked holds no value: 'no' written is no revert, and nothing to re-write", () => {
+    // Superhuman's "Still Student?" for a graduate: proposed "no", read back ""
+    // and re-written as "cleared" (live 2026-10-03).
+    expect(revertedFields([{ fieldId: "a", value: "no" }], [{ fieldId: "a", value: "", checkbox: true }], new Set(["a"]))).toEqual([]);
+    // A text field that held "No" and went blank WAS cleared.
+    expect(revertedFields([{ fieldId: "a", value: "No" }], [{ fieldId: "a", value: "" }], new Set(["a"]))).toEqual([{ fieldId: "a", cleared: true }]);
+    // A ticked box the page unticked was cleared too.
+    expect(revertedFields([{ fieldId: "a", value: "yes" }], [{ fieldId: "a", value: "", checkbox: true }], new Set(["a"]))).toEqual([{ fieldId: "a", cleared: true }]);
+  });
+
+  it("another place of the same name is still a revert", () => {
+    const out = revertedFields(
+      [{ fieldId: "a", value: "London, ON, Canada" }],
+      [{ fieldId: "a", value: "London, England, United Kingdom" }],
+      new Set(["a"])
+    );
+    expect(out).toEqual([{ fieldId: "a", cleared: false }]);
+  });
 });
 
 describe("a revert is a failure, not a fill", () => {

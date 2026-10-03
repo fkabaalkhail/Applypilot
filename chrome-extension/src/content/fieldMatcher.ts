@@ -763,6 +763,13 @@ export function deriveFieldOfStudy(degree: string): string | null {
   if (inForm && !/^(progress|view|process)\b/i.test(inForm[1].trim())) {
     return inForm[1].split(",")[0].trim() || null;
   }
+  // French: "<qualification> en <subject>" ("Baccalauréat en psychologie", a
+  // Montreal applicant, 2026-10-03), capitalized as a field on its own.
+  const enForm = /^\s*(?:baccalaur[ée]at|ma[iî]trise|doctorat|certificat|dipl[ôo]me|licence|d\.?e\.?c\.?)\b[^,]*?\ben\s+(.+)$/i.exec(degree || "");
+  if (enForm) {
+    const subject = enForm[1].split(",")[0].trim();
+    return subject ? subject.charAt(0).toUpperCase() + subject.slice(1) : null;
+  }
   const rest = (degree || "").replace(DEGREE_PREFIX_RE, "").trim();
   // Compared BEFORE truncating: a bare "Computer Science, Mathematics" with no
   // degree prefix names no degree at all, and must still return null.

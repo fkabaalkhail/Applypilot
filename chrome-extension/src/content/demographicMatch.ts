@@ -212,6 +212,9 @@ export function closestDemographicOption(
   const holding = opts.filter((o) => hasWords(o.n, v));
   if (holding.length > 0) return holding.length === 1 ? holding[0].raw : null;
   const inside = opts.filter((o) => hasWords(v, o.n));
+  // "Gay or Lesbian" holds both "Gay" and "Lesbian": an either-or names
+  // neither (Superhuman ticked "Lesbian", round 3, 2026-10-03).
+  if (inside.length > 1 && /\bor\b/.test(v)) return null;
   if (inside.length > 0) {
     const longest = Math.max(...inside.map((o) => o.n.length));
     const best = inside.filter((o) => o.n.length === longest);
@@ -228,7 +231,10 @@ export function closestDemographicOption(
     if (hits.length > 0) return hits.length === 1 ? hits[0].raw : null;
   }
 
-  // 3. Decline / prefer-not-to-say fallback.
+  // 3. A stated DECLINE finds the list's decline option. A substantive answer
+  //    the list cannot hold ("Two or More Races" on a mark-all-that-apply list)
+  //    is left to the applicant, never declined on their behalf.
+  if (!isDeclineText(value)) return null;
   const decline = opts.find((o) => DECLINE_PATTERNS.some((d) => o.n.includes(d)));
   return decline ? decline.raw : null;
 }

@@ -79,7 +79,7 @@ const answer = (value: string, rule: string, confidence: Confidence = "high"): Q
  * other abstention leaves the field to the backend's AI (essays, opinions,
  * a skill's years), which is the right tool once it has credits again.
  */
-const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country)/;
+const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled)/;
 const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule, blockBackend: BLOCK_BACKEND_RULES.test(rule) });
 
 /** Lowercase, accents stripped, apostrophes dropped, punctuation → space. */
@@ -708,6 +708,29 @@ function programAtLevel(q: QuestionInput, level: number, facts: ProfileFacts, ru
   return booleanResult(inProgress.some((x) => x.rank === level), q, rule);
 }
 
+/**
+ * "Which degree are you currently pursuing?" (Superhuman on Ashby, live
+ * 2026-10-03): the level of the degree in progress, ranked like the options.
+ * A graduate pursues none: the list's own "not a student" option, else blank
+ * and kept from the AI, which could only pick a degree they are not taking.
+ */
+function resolvePursuedDegree(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\b(which|what)\b.*\b(degree|program|level)\b.*\b(pursuing|working towards?|enrolled in|studying for)\b/.test(n)) return null;
+  if (/\bor (have |has )?(completed|graduated|earned|obtained)\b|\bmost recent\b|\bhighest\b/.test(n)) return null;
+  if (isBooleanQuestion(q) || !q.options?.length) return null;
+  const entries = facts.education.entries;
+  const inProgress = entries.filter((x) => x.completed === false);
+  if (inProgress.length === 0) {
+    if (entries.length === 0 || entries.some((x) => x.completed !== true)) return abstain("pursuing:unknown");
+    const none = q.options.filter((o) => /\bnot (currently )?(pursuing|enrolled|a student)\b|^(none|n a|not applicable)\b/.test(qnorm(o)));
+    return none.length === 1 ? answer(none[0], "pursuing:none") : abstain("pursuing:not-enrolled");
+  }
+  if (inProgress.some((x) => x.rank === null)) return abstain("pursuing:unranked");
+  const top = Math.max(...inProgress.map((x) => x.rank as number));
+  const hits = q.options.filter((o) => optionRank(o) === top);
+  return hits.length === 1 ? answer(hits[0], "pursuing") : abstain("pursuing:no-unique-option");
+}
+
 /** "Are you currently an advanced PhD candidate?" (NTT DATA on Ashby, live 2026-10-03). */
 function resolveDegreeCandidate(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   if (!/\bare you (currently )?(a |an )?(advanced )?\w*\s?(phd|ph d|doctoral|doctorate|masters?|mba|undergraduate|bachelors?) (candidate|student)\b/.test(n)) return null;
@@ -758,6 +781,11 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     }
     const withYear = q.options.filter((o) => o.includes(year));
     if (withYear.length === 1) return answer(withYear[0], "graduation:only-option-in-year");
+    // An EXPECTED graduation asked of a graduate: there is none to give, and
+    // the AI could only invent one (Superhuman on Ashby, live 2026-10-03).
+    if (primary.completed === true && /\b(expected|anticipated|projected)\b|\bwhen (will|do) you graduate\b/.test(n)) {
+      return abstain("graduation:not-enrolled");
+    }
     return abstain("graduation:no-unique-option");
   }
   // "…expected month and year of graduation?" in a text box (NinjaHoldings on
@@ -919,6 +947,62 @@ function resolveTimezone(q: QuestionInput, n: string, facts: ProfileFacts): Ques
   if (!zone) return abstain("timezone:unknown");
   const hits = q.options.filter((o) => ZONE_OPTION[zone].test(qnorm(o)));
   return hits.length === 1 ? answer(hits[0], "timezone") : abstain("timezone:no-matching-option");
+}
+
+/** Currencies an option list names, by the words a form uses. */
+const CURRENCY_OPTION: Record<string, RegExp> = {
+  USD: /\b(us|u s|united states) dollars?\b|\busd\b/,
+  CAD: /\bcanadian dollars?\b|\bcad\b/,
+  GBP: /\b(british )?pounds? sterling\b|\bbritish pounds?\b|\bgbp\b/,
+  EUR: /\beuros?\b|\beur\b/,
+  AUD: /\baustralian dollars?\b|\baud\b/,
+  INR: /\bindian rupees?\b|\binr\b/,
+  JPY: /\bjapanese yen\b|\bjpy\b/,
+};
+const DOLLAR_BY_COUNTRY: Record<string, string> = { US: "USD", CA: "CAD", AU: "AUD", NZ: "NZD", SG: "SGD", HK: "HKD" };
+
+/**
+ * A salary's currency or pay period asked as its own select beside the amount
+ * (Breezy: "US Dollar ($)" … and "Hourly | Weekly | Monthly | Yearly", left
+ * blank on every live page, 2026-10-03). Both read off the stated salary: the
+ * symbol or code ("£", "€", "CAD"), "$" by the applicant's country; "/hour"
+ * is Hourly, an annual-sized figure Yearly.
+ */
+function resolveSalaryUnit(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
+  const opts = (q.options ?? []).filter((o) => o.trim());
+  if (opts.length < 2 || isBooleanQuestion(q)) return null;
+  if (q.category !== "salary" && !/\b(salary|compensation|pay|wage|rate)\b/.test(n)) return null;
+  const salary = (profile.salaryExpectation || "").trim();
+  const s = salary.toLowerCase();
+  const isCurrencyList = opts.filter((o) => /\b(dollar|euro|pound|rupee|yen|franc|peso|yuan|krona|krone|rand|real)s?\b/i.test(o)).length >= 3;
+  if (isCurrencyList) {
+    if (!salary) return abstain("salary-currency:unknown");
+    const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+    const code = /£|\bgbp\b|\bpounds?\b/.test(s) ? "GBP"
+      : /€|\beur\b|\beuros?\b/.test(s) ? "EUR"
+      : /₹|\binr\b|\brupees?\b/.test(s) ? "INR"
+      : /¥|￥|\bjpy\b|\byen\b/.test(s) ? "JPY"
+      : /\bcad\b|\bc\$/.test(s) ? "CAD"
+      : /\busd\b|\bus\$/.test(s) ? "USD"
+      : /\$/.test(s) && home ? DOLLAR_BY_COUNTRY[home] ?? null
+      : null;
+    const re = code ? CURRENCY_OPTION[code] : undefined;
+    const hits = re ? opts.filter((o) => re.test(qnorm(o))) : [];
+    return hits.length === 1 ? answer(hits[0], "salary-currency") : abstain("salary-currency:unknown");
+  }
+  const periods = opts.filter((o) => /^(hourly|daily|weekly|bi ?weekly|monthly|yearly|annually|annual|per (hour|day|week|month|year|annum))$/.test(qnorm(o)));
+  if (periods.length >= 2) {
+    if (!salary) return abstain("salary-period:unknown");
+    const per = /\/\s*(h|hr|hour)\b|\b(hourly|per hour|an hour)\b/.test(s) ? /\b(hour|hourly)\b/
+      : /\/\s*(wk|week)\b|\b(weekly|per week)\b/.test(s) ? /\b(week|weekly)\b/
+      : /\/\s*(mo|month)\b|\b(monthly|per month)\b/.test(s) ? /\b(month|monthly)\b/
+      : /\/\s*(yr|year)\b|\b(yearly|annual|annually|per year|per annum|a year)\b/.test(s) || Number((s.match(/\d[\d\s,.]*/)?.[0] ?? "").replace(/[\s,]/g, "")) >= 1000
+        ? /\b(year|yearly|annual|annually|annum)\b/
+        : null;
+    const hits = per ? opts.filter((o) => per.test(qnorm(o))) : [];
+    return hits.length === 1 ? answer(hits[0], "salary-period") : abstain("salary-period:unknown");
+  }
+  return null;
 }
 
 const MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
@@ -1545,6 +1629,7 @@ export function resolveQuestion(
     resolveFormerEmployee(q, n, raw, facts, ctx) ??
     resolveCurrentlyEmployed(q, n, facts) ??
     resolveYearsOfExperience(q, n, facts) ??
+    resolvePursuedDegree(q, n, facts) ??
     resolveEducationLevel(q, n, facts) ??
     resolveDegreeCandidate(q, n, facts) ??
     resolveEnrollment(q, n, facts) ??
@@ -1558,6 +1643,7 @@ export function resolveQuestion(
     resolveZoneAvailability(q, n, facts) ??
     resolveDidGraduate(q, n, facts) ??
     resolvePeriodAvailability(q, n, facts) ??
+    resolveSalaryUnit(q, n, facts, profile) ??
     resolveLocalTo(q, n, facts, profile) ??
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??

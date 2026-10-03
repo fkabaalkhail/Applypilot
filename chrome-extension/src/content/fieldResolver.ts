@@ -245,7 +245,10 @@ function coerceToKind(value: string, kind: AnswerKind): string | null {
     const k = /(\d+(?:\.\d+)?)\s*k\b/i.exec(flat);
     return k ? String(Math.round(parseFloat(k[1]) * 1000)) : nums[0];
   }
-  if (kind === "phone" || kind === "email" || kind === "url" || kind === "date") {
+  // A URL input rejects a link without a scheme ("linkedin.com/in/…" was
+  // written into Superhuman's, live 2026-10-03): the page would not submit.
+  if (kind === "url") return valueFitsKind(v, kind) ? (/^https?:\/\//i.test(v) ? v : `https://${v}`) : null;
+  if (kind === "phone" || kind === "email" || kind === "date") {
     return valueFitsKind(v, kind) ? v : null;
   }
   return v;

@@ -107,11 +107,12 @@ describe("a veteran list that loads on open (Robinhood's combobox)", () => {
     const { fields, registry } = scanPage(profile, false, null);
     const f = fields.find((x) => x.category === "eeoVeteran")!;
     const opts = FORMS.robinhood.options;
-    // What the bare matcher would do: decline for the user.
-    expect(closestDemographicOption("eeoVeteran", f.proposedValue ?? "", opts)).toBe("I don't wish to answer");
+    // The bare matcher does not settle it either (it no longer declines a
+    // stated answer for the user, round 3).
+    expect(closestDemographicOption("eeoVeteran", f.proposedValue ?? "", opts)).toBeNull();
     const plan = planSensitiveReask(fields, [{ fieldId: f.id, options: opts }], (field, o) => resolveWithOptions(field, registry, profile, null, false, o));
     expect(plan).toEqual([]);
-    // The bare matcher still answers when re-resolution cannot run at all.
-    expect(planSensitiveReask(fields, [{ fieldId: f.id, options: opts }], () => undefined)).toEqual([{ fieldId: f.id, value: "I don't wish to answer" }]);
+    // The bare matcher is still consulted when re-resolution cannot run at all.
+    expect(planSensitiveReask(fields, [{ fieldId: f.id, options: ["I have never served in the military", "I am not a protected veteran"] }], () => undefined)).toEqual([{ fieldId: f.id, value: "I am not a protected veteran" }]);
   });
 });

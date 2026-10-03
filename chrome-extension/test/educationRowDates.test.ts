@@ -157,3 +157,102 @@ describe("an Ashby radio group is never a row's graduation year (Superhuman, liv
     expect(f[0].proposedValue).toBe("January - June 2027");
   });
 });
+
+/**
+ * Ashby's education history after "+ Add Education" (Superhuman, live
+ * 2026-10-03; markup verbatim, classes trimmed). Every row repeats the same ids
+ * (`_systemfield_education_history-degree` twice) and numbers nothing, so both
+ * rows read as "no row": each got the most recent school, degree and major,
+ * and the FIRST row's graduation year.
+ */
+const ashbyEntry = (years: number[]): string => {
+  const months = MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join("");
+  const yearOpts = years.map((y) => `<option value="${y}">${y}</option>`).join("");
+  const date = (id: string, label: string) => `<div class="_stack _vertical _educationFlexField">
+      <label class="_heading ashby-application-form-question-title" for="${id}">${label}</label>
+      <div class="_stack _horizontal" id="${id}">
+        <div class="_container ashby-application-form-input-dropdown"><select class="ashby-application-form-input-dropdown-select"><option disabled="" hidden="" value="">Month...</option>${months}</select></div>
+        <div class="_container ashby-application-form-input-dropdown"><select class="ashby-application-form-input-dropdown-select"><option disabled="" hidden="" value="">Year...</option>${yearOpts}</select></div>
+      </div></div>`;
+  return `<div class="_repeatableEducationEntry ashby-application-form-input-education-entry">
+    <div class="ashby-application-form-input-education-entry-header"><span>Education</span><button disabled=""><span>Delete</span></button></div>
+    <div class="_stack _vertical">
+      <div class="_stack _vertical">
+        <label class="_heading _required ashby-application-form-question-title" for="_systemfield_education_history-school">School</label>
+        <div class="_inputContainer"><input class="ashby-application-form-input-autocomplete" placeholder="Search schools..." aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox" role="combobox" value=""><button class="_toggleButton"></button></div>
+      </div>
+      <div class="_stack _horizontal">
+        <div class="_stack _vertical _educationFlexField"><label class="_heading ashby-application-form-question-title" for="_systemfield_education_history-degree">Degree</label><input id="_systemfield_education_history-degree" placeholder="e.g. Bachelor of Science" type="text" class="ashby-application-form-input-text" value=""></div>
+        <div class="_stack _vertical _educationFlexField"><label class="_heading ashby-application-form-question-title" for="_systemfield_education_history-major">Field of Study</label><input id="_systemfield_education_history-major" placeholder="e.g. Computer Science" type="text" class="ashby-application-form-input-text" value=""></div>
+      </div>
+      <div class="_stack _horizontal">
+        ${date("_systemfield_education_history-startDate", "Start Date")}
+        ${date("_systemfield_education_history-endDate", "End Date")}
+        <label class="_heading ashby-application-form-question-title" for="_systemfield_education_history-isCurrent"><div><span><input type="checkbox" id="_systemfield_education_history-isCurrent"></span>Still Student?</div></label>
+      </div>
+    </div></div>`;
+};
+const ASHBY_HISTORY = (rows: number) => {
+  const years = Array.from({ length: 25 }, (_, i) => 2030 - i);
+  return `<form><div class="ashby-application-form-section-container">
+    <div class="_fieldEntry ashby-application-form-field-entry" data-field-path="_systemfield_education_history">
+      <label class="_heading _required ashby-application-form-question-title" for="_systemfield_education_history">Education History</label>
+      <div>${Array.from({ length: rows }, () => ashbyEntry(years)).join("")}<button type="button">+ Add Education</button></div>
+    </div></div></form>`;
+};
+
+describe("Ashby's education rows are told apart by position (Superhuman, live 2026-10-03)", () => {
+  const OLDEST_FIRST = [
+    { school: "Université de Montréal", degree: "Baccalauréat en psychologie", graduationYear: "2017-05" },
+    { school: "Concordia University", degree: "Certificate in Computer Science", graduationYear: "2023-06" },
+  ];
+  const scanRows = (education: { school: string; degree: string; graduationYear: string }[]) => {
+    document.body.innerHTML = ASHBY_HISTORY(2);
+    const fields = scanPage({ ...SPARSE_CANADIAN, education }, false).fields;
+    const at = (el: Element) => fields.find((x) => el.getAttribute("data-ap-field") === x.id);
+    return Array.from(document.querySelectorAll(".ashby-application-form-input-education-entry")).map((row) => ({
+      school: at(row.querySelector("input[role=combobox]")!),
+      degree: at(row.querySelector("input[id$=-degree]")!),
+      major: at(row.querySelector("input[id$=-major]")!),
+      end: Array.from(row.querySelectorAll("[id$=-endDate] select")).map((s) => at(s)),
+      still: at(row.querySelector("input[type=checkbox]")!),
+    }));
+  };
+
+  it("each row takes its own school, degree and field of study", () => {
+    const [a, b] = scanRows(OLDEST_FIRST);
+    expect([a.school?.proposedValue, b.school?.proposedValue]).toEqual(["Université de Montréal", "Concordia University"]);
+    expect([a.degree?.proposedValue, b.degree?.proposedValue]).toEqual(["Baccalauréat en psychologie", "Certificate in Computer Science"]);
+    expect(b.major?.proposedValue).toBe("Computer Science");
+    expect([a.school?.groupIndex, b.school?.groupIndex]).toEqual([0, 1]);
+  });
+
+  it("each row's End Date is its own graduation, month and year", () => {
+    const [a, b] = scanRows(OLDEST_FIRST);
+    expect(a.end.map((f) => f?.proposedValue ?? null)).toEqual(["May", "2017"]);
+    expect(b.end.map((f) => f?.proposedValue ?? null)).toEqual(["June", "2023"]);
+    expect([a.still?.proposedValue, b.still?.proposedValue]).toEqual(["no", "no"]);
+  });
+
+  it("a graduation YEAR alone leaves Ashby's End Date blank: the page would pick today's month itself", () => {
+    // Live: choosing only the year set the month to October (the current
+    // month); choosing only the month set the year to 2026. An End Date of
+    // "October 2017" is invented, so neither part is written, nor asked of the AI.
+    const [a, b] = scanRows([
+      { school: "Université de Montréal", degree: "Baccalauréat en psychologie", graduationYear: "2017" },
+      { school: "Concordia University", degree: "Certificate in Computer Science", graduationYear: "2023" },
+    ]);
+    for (const row of [a, b]) {
+      expect(row.end.map((f) => f?.proposedValue ?? null)).toEqual([null, null]);
+      expect(row.end.every((f) => f?.deviceAbstained === true)).toBe(true);
+    }
+  });
+
+  it("one row on the page is the applicant's main education, as before", () => {
+    document.body.innerHTML = ASHBY_HISTORY(1);
+    const fields = scanPage({ ...SPARSE_CANADIAN, education: OLDEST_FIRST }, false).fields;
+    const school = fields.find((x) => document.querySelector("input[role=combobox]")!.getAttribute("data-ap-field") === x.id);
+    expect(school?.proposedValue).toBe("Concordia University");
+    expect(school?.groupIndex ?? null).toBeNull();
+  });
+});

@@ -579,12 +579,15 @@ export function employmentFacts(profile: UserApplicationProfile, today: Date): E
 // ---------------------------------------------------------------------------
 
 /** Tier rank (higher = more senior) and its canonical label. */
+// Quebec's degrees in French too ("Baccalauréat en psychologie", a Montreal
+// applicant, 2026-10-03): only "baccalauréat en / ès …" is a bachelor's, since
+// France's bare baccalauréat is the high-school diploma.
 export const DEGREE_TIERS: Array<{ rank: number; label: string; re: RegExp }> = [
-  { rank: 6, label: "Doctorate", re: /\b(ph\.?\s?d|doctorate|doctoral|doctor of philosophy|d\.?phil|ed\.?d)\b/i },
-  { rank: 5, label: "Master's Degree", re: /\b(master'?s?|m\.\s?(sc|s|a|eng|ed)\.?|msc|meng|mba|m\.?b\.?a|mfa|mph|llm)\b/i },
-  { rank: 4, label: "Bachelor's Degree", re: /\b(bachelor'?s?|baccalaureate|b\.\s?(sc|s|a|eng|comm|ed|tech|f\.?a)\.?|bsc|basc|beng|bcomm|bba|btech|undergraduate)\b/i },
+  { rank: 6, label: "Doctorate", re: /\b(ph\.?\s?d|doctorate|doctoral|doctor of philosophy|d\.?phil|ed\.?d|doctorat)\b/i },
+  { rank: 5, label: "Master's Degree", re: /\b(master'?s?|m\.\s?(sc|s|a|eng|ed)\.?|msc|meng|mba|m\.?b\.?a|mfa|mph|llm)\b|\bma[iî]trise\b/i },
+  { rank: 4, label: "Bachelor's Degree", re: /\b(bachelor'?s?|baccalaureate|b\.\s?(sc|s|a|eng|comm|ed|tech|f\.?a)\.?|bsc|basc|beng|bcomm|bba|btech|undergraduate)\b|\bbaccalaur[ée]at (en|[èe]s)\s/i },
   { rank: 3, label: "Associate Degree", re: /\b(associate'?s?( degree)?|a\.\s?(a|s)\.)\b/i },
-  { rank: 2, label: "Diploma", re: /\b(diploma|certificate|college diploma|advanced diploma)\b/i },
+  { rank: 2, label: "Diploma", re: /\b(diploma|certificate|college diploma|advanced diploma|certificat)\b|\bdipl[ôo]me\b/i },
   { rank: 1, label: "High School", re: /\b(high school|secondary school|ged)\b/i },
 ];
 

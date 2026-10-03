@@ -1338,7 +1338,7 @@ function initialize(): void {
     await waitForDomSettle(signal);
     if (signal?.aborted) return [];
     runScan();
-    return lastFields.map((f) => ({ fieldId: f.id, value: f.currentValue ?? "" }));
+    return lastFields.map((f) => ({ fieldId: f.id, value: f.currentValue ?? "", ...(f.controlType === "checkbox" ? { checkbox: true } : {}) }));
   }
 
   /**

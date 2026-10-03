@@ -5,7 +5,8 @@
  * options are verbatim from the live pages.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { profileFacts } from "../src/content/profileFacts";
+import { degreeRank, profileFacts } from "../src/content/profileFacts";
+import { deriveFieldOfStudy } from "../src/content/fieldMatcher";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
 import { scanPage } from "../src/content/formScanner";
 import type { AnswerKind } from "../src/content/answerKind";
@@ -299,5 +300,105 @@ describe("a phone widget that keeps the country code apart (Workable, live 2026-
     el.value = "555-0172";
     expect(verifyControl(control, "+1 408-555-0172")).toBe(false);
     el.remove();
+  });
+});
+
+describe("a salary's currency and pay period, each its own select (Breezy)", () => {
+  const CURRENCIES = ["US Dollar ($)", "Canadian Dollar ($)", "Euro (€)", "Australian Dollar ($)", "British Pound Sterling (£)", "Indian Rupee (₹)", "Japanese Yen (￥)"];
+  const PERIODS = ["Hourly", "Weekly", "Monthly", "Yearly"];
+  const Q = "Desired Salary*";
+  const sel = (options: string[]) => ({ options, controlType: "select" as const, kind: "choice" as const });
+  const who = (salaryExpectation: string, country: string) => ({ ...SPARSE_CANADIAN, salaryExpectation, country, location: "" });
+  it("the currency the applicant states, '$' read by their country", () => {
+    expect(value(ask(Q, sel(CURRENCIES), who("$135,000", "United States")))).toBe("US Dollar ($)");
+    expect(value(ask(Q, sel(CURRENCIES), who("75 000 $", "Canada")))).toBe("Canadian Dollar ($)");
+    expect(value(ask(Q, sel(CURRENCIES), who("£95,000", "United Kingdom")))).toBe("British Pound Sterling (£)");
+  });
+  it("the period it is stated per: an hourly rate is Hourly, an annual figure Yearly", () => {
+    expect(value(ask(Q, sel(PERIODS), who("$45/hour", "United States")))).toBe("Hourly");
+    expect(value(ask(Q, sel(PERIODS), who("$135,000", "United States")))).toBe("Yearly");
+    // A bare small number says neither.
+    expect(value(ask(Q, sel(PERIODS), who("45", "United States")))).not.toBe("Yearly");
+  });
+});
+
+describe("a student's questions asked of a graduate (Superhuman on Ashby, batch C)", () => {
+  const GRADUATE: UserApplicationProfile = {
+    ...CHANGER,
+    expectedGraduation: undefined,
+    education: [
+      { school: "Université de Montréal", degree: "Baccalauréat en psychologie", graduationYear: "2017" },
+      { school: "Concordia University", degree: "Certificate in Computer Science", graduationYear: "2023" },
+    ],
+  };
+  const GRAD_DATES = ["2026", "January - June 2027", "December 2027", "May/June 2028", "December 2028", "2029"];
+  const PURSUING = ["Bachelors", "Masters", "PhD"];
+
+  it("'When is your expected graduation date?': a graduate has none, and the AI is not asked to invent one", () => {
+    const r = ask("When is your expected graduation date?", { options: GRAD_DATES }, GRADUATE);
+    expect(r?.status).toBe("abstain");
+    expect(r && r.status === "abstain" && r.blockBackend).toBe(true);
+  });
+
+  it("a graduate whose year IS offered still gets it", () => {
+    const r = ask("When is your expected graduation date?", { options: ["2022", "2023", "2024"] }, GRADUATE);
+    expect(value(r)).toBe("2023");
+  });
+
+  it("'Which degree are you currently pursuing?': the degree in progress", () => {
+    expect(value(ask("Which degree are you currently pursuing?", { options: PURSUING }))).toBe("Bachelors");
+  });
+
+  it("'Which degree are you currently pursuing?': a graduate pursues none, and the AI is not asked", () => {
+    const r = ask("Which degree are you currently pursuing?", { options: PURSUING }, GRADUATE);
+    expect(r?.status).toBe("abstain");
+    expect(r && r.status === "abstain" && r.blockBackend).toBe(true);
+  });
+
+  it("a graduate takes the list's own 'not a student' option when it has one", () => {
+    expect(value(ask("What degree are you currently pursuing?", { options: [...PURSUING, "Not currently pursuing a degree"] }, GRADUATE))).toBe(
+      "Not currently pursuing a degree"
+    );
+  });
+
+  it("a degree in progress the list does not rank stays the applicant's", () => {
+    const certificate = { ...GRADUATE, education: [{ school: "Concordia University", degree: "Certificate in Computer Science", graduationYear: "2027" }] };
+    expect(ask("Which degree are you currently pursuing?", { options: PURSUING }, certificate)?.status).toBe("abstain");
+  });
+});
+
+describe("a profile link without a scheme, into a URL input (Superhuman on Ashby, batch C)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  const scanLink = (type: string) => {
+    document.body.innerHTML = `<form><label for="li">LinkedIn</label><input id="li" type="${type}"></form>`;
+    return scanPage({ ...SPARSE_CANADIAN, linkedin: "linkedin.com/in/alexcote" }, false).fields[0];
+  };
+  it("a type=url input takes it with https:// (the page rejects a URL without a scheme)", () => {
+    expect(scanLink("url").proposedValue).toBe("https://linkedin.com/in/alexcote");
+  });
+  it("a text input takes it as written", () => {
+    expect(scanLink("text").proposedValue).toBe("linkedin.com/in/alexcote");
+  });
+});
+
+describe("French degree names (a Montreal applicant; Superhuman on Ashby, batch C)", () => {
+  it("Quebec's university degrees are ranked", () => {
+    expect(degreeRank("Baccalauréat en psychologie")).toBe(4);
+    expect(degreeRank("Baccalauréat ès sciences en informatique")).toBe(4);
+    expect(degreeRank("Maîtrise en informatique")).toBe(5);
+    expect(degreeRank("Doctorat en chimie")).toBe(6);
+    expect(degreeRank("Certificat en administration")).toBe(2);
+  });
+  it("France's baccalauréat is a high-school diploma, not a bachelor's: unranked", () => {
+    expect(degreeRank("Baccalauréat scientifique")).toBeNull();
+  });
+  it("the field of study follows 'en'", () => {
+    expect(deriveFieldOfStudy("Baccalauréat en psychologie")).toBe("Psychologie");
+    expect(deriveFieldOfStudy("Maîtrise ès sciences en génie logiciel")).toBe("Génie logiciel");
+    expect(deriveFieldOfStudy("Certificat en administration des affaires")).toBe("Administration des affaires");
   });
 });

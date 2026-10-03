@@ -11,8 +11,9 @@ describe("closestDemographicOption", () => {
   it("maps Arab to White when no MENA option exists", () => {
     expect(closestDemographicOption("eeoRace", "Arab", RACE)).toBe("White");
   });
-  it("falls back to a decline option when nothing matches", () => {
-    expect(closestDemographicOption("eeoRace", "Klingon", RACE)).toBe("Prefer Not to Say");
+  it("an answer nothing matches is left to the applicant, never declined for them (round 3, 2026-10-03)", () => {
+    expect(closestDemographicOption("eeoRace", "Klingon", RACE)).toBeNull();
+    expect(closestDemographicOption("eeoRace", "Prefer not to say", RACE)).toBe("Prefer Not to Say");
   });
   it("returns null when there is no match and no decline option", () => {
     expect(closestDemographicOption("eeoRace", "Klingon", ["White", "Asian"])).toBeNull();
@@ -58,5 +59,26 @@ describe("closestDemographicOption: an answer broader than the options", () => {
     expect(closestDemographicOption("eeoGenderIdentity", "Male", ["Cisgender man", "Cisgender woman", "Transgender man", "Transgender woman", "Non-binary"])).toBeNull();
     // The option that IS the synonym still wins over a qualified one.
     expect(closestDemographicOption("eeoGenderIdentity", "Male", ["Transgender man", "Man", "Woman"])).toBe("Man");
+  });
+});
+
+/**
+ * Superhuman on Ashby with a non-binary applicant (round 3, 2026-10-03):
+ * "Gay or Lesbian" ticked "Lesbian" (the longer of two options inside it), and
+ * a race the list does not offer ("Two or More Races" on a mark-all-that-apply
+ * list) was DECLINED on the applicant's behalf. A disjunction names no single
+ * option; a stated answer is never turned into a decline.
+ */
+describe("closestDemographicOption: a stated answer the options do not settle", () => {
+  const ORIENTATION = ["I don't wish to answer", "I prefer to self-describe", "Queer", "Lesbian", "Gay", "Bisexual and/or pansexual", "Asexual", "Heterosexual"];
+  it("'Gay or Lesbian' picks neither", () => {
+    expect(closestDemographicOption("eeoSexualOrientation", "Gay or Lesbian", ORIENTATION)).toBeNull();
+  });
+  it("a stated race the list lacks is left to the applicant, not declined", () => {
+    const SUPERHUMAN = ["I don't wish to answer", "I prefer to self-describe", "White or European", "Southeast Asian", "South Asian", "Native Hawaiian or Pacific Islander", "Middle Eastern or North African", "Indigenous, American Indian or Alaska Native", "Hispanic, Latinx or of Spanish Origin", "East Asian", "Black or of African descent"];
+    expect(closestDemographicOption("eeoRace", "Two or More Races", SUPERHUMAN)).toBeNull();
+  });
+  it("a stated decline still finds the list's decline option", () => {
+    expect(closestDemographicOption("eeoRace", "Prefer not to say", ["White", "Asian", "I don't wish to answer"])).toBe("I don't wish to answer");
   });
 });

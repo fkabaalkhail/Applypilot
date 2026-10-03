@@ -24,6 +24,11 @@ const PAYLOCITY_EMAIL_CHECK = [String.raw`^https://recruiting\.paylocity\.com/Re
 // Not cases, measured 2026-10-03: ADP Workforce Now and iCIMS open their form
 // only behind a sign-in (an account these runs may not create), and a
 // CareerPuck board only links out to the employer's Greenhouse posting.
+// Also not cases (2026-10-03): Coinbase opens its form in a new tab, Samsara
+// lazy-loads its Greenhouse iframe only once scrolled to, Fivetran keeps the
+// form in an "Application" tab (a person opens it first; a run loading the
+// job page directly fills only what is visible), and both Rippling postings
+// were taken down (the URL redirects to the company's job list).
 
 export default [
   // ---------------------------------------------- batch A: new ATS families
@@ -40,17 +45,12 @@ export default [
   live({ id: "r3a-oracle-nokia", ats: "oracle", profile: NEW_GRAD_DECLINER, url: "https://fa-evmr-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/40261" }),
 
   // ------------------------------- batch B: embedded and familiar ATSs, new data
-  live({ id: "r3b-embed-coinbase", ats: "greenhouse", profile: US_GREENCARD_STUDENT, url: "https://www.coinbase.com/careers/positions/8175369?gh_jid=8175369" }),
   live({ id: "r3b-embed-mongodb", ats: "greenhouse", profile: US_VETERAN, url: "https://www.mongodb.com/careers/job/?gh_jid=7523751" }),
   live({ id: "r3b-embed-d2l", ats: "greenhouse", profile: NEW_GRAD_DECLINER, url: "https://www.d2l.com/careers/jobs/?job_id=6297078&gh_jid=6297078" }),
-  live({ id: "r3b-embed-samsara", ats: "greenhouse", profile: US_GREENCARD_STUDENT, url: "https://www.samsara.com/company/careers/roles/8226602?gh_jid=8226602" }),
-  live({ id: "r3b-embed-fivetran", ats: "greenhouse", profile: UK_SENIOR, url: "https://www.fivetran.com/careers/job?gh_jid=8005784003" }),
   live({ id: "r3b-embed-zipline", ats: "greenhouse", profile: US_GREENCARD_STUDENT, url: "https://www.zipline.com/open-roles/7986810003?gh_jid=7986810003" }),
   live({ id: "r3b-workable-mila", ats: "workable", profile: MONTREAL_CHANGER, url: "https://apply.workable.com/mila-2/j/1E81635604/apply/" }),
   live({ id: "r3b-workable-syntiant", ats: "workable", profile: UK_SENIOR, url: "https://apply.workable.com/syntiant/j/11DDC0AC87/apply/" }),
   live({ id: "r3b-workable-disa", ats: "workable", profile: US_GREENCARD_STUDENT, url: "https://apply.workable.com/disa-technologies/j/73E7609B99/apply/" }),
-  live({ id: "r3b-rippling-dialogue", ats: "rippling", profile: MONTREAL_CHANGER, url: "https://ats.rippling.com/dialogue-en/jobs/3c2341d5-604d-463c-8b79-5d1669d81e78" }),
-  live({ id: "r3b-rippling-cozey", ats: "rippling", profile: NEW_GRAD_DECLINER, url: "https://ats.rippling.com/cozey-internships/jobs/1e50d436-06c1-447c-b676-5e487b19433c" }),
   live({ id: "r3b-bamboo-nexthop", ats: "bamboohr", profile: NEW_GRAD_DECLINER, url: "https://nexthopai.bamboohr.com/careers/64" }),
 
   // ------------- batch C: forms the suite knows, answered by a different person

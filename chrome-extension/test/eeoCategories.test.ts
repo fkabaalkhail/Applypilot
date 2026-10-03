@@ -64,6 +64,8 @@ describe("on-device option matching", () => {
     const opts = ["Select One", "Heterosexual/Straight", "Gay or Lesbian", "Bisexual", "I don't wish to answer"];
     expect(closestDemographicOption("eeoSexualOrientation", "Straight", opts)).toBe("Heterosexual/Straight");
     expect(closestDemographicOption("eeoSexualOrientation", "Gay", opts)).toBe("Gay or Lesbian");
-    expect(closestDemographicOption("eeoSexualOrientation", "asexual", opts)).toBe("I don't wish to answer");
+    // A stated answer the list lacks is the applicant's to place (self-describe
+    // or decline), never declined for them (round 3, 2026-10-03).
+    expect(closestDemographicOption("eeoSexualOrientation", "asexual", opts)).toBeNull();
   });
 });

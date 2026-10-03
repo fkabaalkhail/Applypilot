@@ -31,7 +31,7 @@ import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./combob
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
 import { resolveField, snapToOption, type FieldResolution } from "./fieldResolver";
 import { splitGreenhouseDate } from "./adapters/greenhouse";
-import { graduationOfRow, profileFacts } from "./profileFacts";
+import { graduationOfRow, profileFacts, type EducationEntryFacts } from "./profileFacts";
 import { isConsentText, resolveCheckboxIntent } from "./checkboxIntent";
 import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
@@ -563,6 +563,100 @@ const REPEAT_CATEGORIES: ReadonlyArray<ReadonlySet<FieldCategory>> = [
   new Set<FieldCategory>(["school", "degree", "fieldOfStudy", "graduationYear"]),
 ];
 
+/** The field a row is recognized by, in order of preference. */
+const ROW_ANCHORS: ReadonlyArray<ReadonlyArray<FieldCategory>> = [
+  ["school", "degree"],
+  ["currentCompany", "currentTitle"],
+];
+
+/**
+ * Rows told apart by POSITION. Ashby repeats the same ids in every education
+ * row (`_systemfield_education_history-degree` twice) and numbers none, so
+ * both rows read as "no row": each took the most recent school, and the first
+ * row's graduation year (Superhuman, live 2026-10-03). When a row's anchor
+ * (School, Company) appears more than once as identical copies, each copy's
+ * row is the largest region around it holding no other copy, and the
+ * unnumbered row fields inside take that row's index. A region holding only
+ * its anchor is no row (a flat layout cannot be split this way): nothing is
+ * assigned then. Runs before the education-date pass, which reads the index.
+ */
+function assignRowsByPosition(
+  fields: DetectedField[],
+  registry: Map<string, RuntimeControl>,
+  profile: UserApplicationProfile | null,
+  adapter: SiteAdapter | null,
+  fillEEO: boolean
+): void {
+  if (!profile) return;
+  const elOf = (f: DetectedField): HTMLElement | null => {
+    const c = registry.get(f.id);
+    return c?.el ?? c?.radios?.[0] ?? c?.checkboxes?.[0] ?? null;
+  };
+  const rowCategories = new Set<FieldCategory>(REPEAT_CATEGORIES.flatMap((s) => [...s]));
+  for (const anchors of ROW_ANCHORS) {
+    const loose = fields.filter((f) => f.groupIndex == null && rowCategories.has(f.category) && elOf(f));
+    for (const anchor of anchors) {
+      const copies = loose.filter((f) => f.category === anchor);
+      if (copies.length < 2) continue;
+      const signature = (f: DetectedField): string => {
+        const el = elOf(f) as HTMLElement;
+        return [f.controlType, f.label.trim().toLowerCase(), el.id, el.getAttribute("name") ?? "", el.getAttribute("placeholder") ?? ""].join("|");
+      };
+      if (new Set(copies.map(signature)).size !== 1) continue;
+      const anchorEls = copies.map((f) => elOf(f) as HTMLElement);
+      const regions = anchorEls.map((a) => {
+        let region = a;
+        for (let p = a.parentElement; p; p = p.parentElement) {
+          const up = p;
+          if (anchorEls.some((o) => o !== a && up.contains(o))) break;
+          region = up;
+        }
+        return region;
+      });
+      const members = regions.map((r, i) => loose.filter((f) => f !== copies[i] && r.contains(elOf(f))));
+      if (members.some((m) => m.length === 0)) continue;
+      regions.forEach((_, i) => {
+        for (const f of [copies[i], ...members[i]]) {
+          f.groupIndex = i;
+          reresolveRowField(f, registry, profile, adapter, fillEEO);
+        }
+      });
+      break;
+    }
+  }
+}
+
+/** A field resolved again for the row it now belongs to. */
+function reresolveRowField(
+  f: DetectedField,
+  registry: Map<string, RuntimeControl>,
+  profile: UserApplicationProfile,
+  adapter: SiteAdapter | null,
+  fillEEO: boolean
+): void {
+  const control = registry.get(f.id);
+  const el = control?.el ?? control?.radios?.[0] ?? control?.checkboxes?.[0];
+  if (!el) return;
+  const options = el instanceof HTMLSelectElement ? selectOptions(el, Infinity) : f.options;
+  const resolved = resolveField({
+    adapter,
+    category: f.category,
+    sensitive: f.sensitive,
+    profile,
+    control: { controlType: f.controlType, options, groupIndex: f.groupIndex ?? null, multi: control?.multi },
+    fillEEO,
+    el,
+    label: f.label,
+    signals: collectSignals(el),
+  });
+  let value = resolved.value;
+  if (f.controlType === "checkbox" && !resolved.deviceAbstained) value = resolveCheckboxIntent(`${f.label} ${f.helpText ?? ""}`, value);
+  f.proposedValue = value;
+  delete f.deterministic;
+  delete f.deviceAbstained;
+  Object.assign(f, resolutionFlags(resolved));
+}
+
 /**
  * Remap repeating-section rows to 0-based POSITIONAL indices and re-resolve.
  * Workday numbers work-experience rows with an arbitrary instance id
@@ -681,7 +775,7 @@ function reclassifyEducationRowDates(
     const control = registry.get(f.id);
     const el = control?.el ?? control?.checkboxes?.[0] ?? null;
     if (f.controlType === "checkbox" && el && profile && STILL_STUDENT.test(f.label) && inEducationBlock(el)) {
-      const entry = profileFacts(profile).education.entries[f.groupIndex ?? 0];
+      const entry = educationRowFacts(profile, f.groupIndex);
       f.proposedValue = entry?.completed === false ? "yes" : entry?.completed === true ? "no" : null;
       // Computed from the profile, so selected on its own evidence: the label
       // classifies weakly, and the box was never filled (Ramp, live 2026-10-03).
@@ -698,18 +792,44 @@ function reclassifyEducationRowDates(
     // ticked and the page DISABLES the end date (Ashby; a year written first
     // was left disabled beside a month the page picked: "October 2027", live
     // 2026-10-03). The end date stays the page's, and away from the AI.
-    if (profileFacts(profile).education.entries[f.groupIndex ?? 0]?.completed === false && hasStillStudentBox(el)) {
+    if (educationRowFacts(profile, f.groupIndex)?.completed === false && hasStillStudentBox(el)) {
       f.deviceAbstained = true;
       continue;
     }
-    const grad = splitGreenhouseDate(graduationOfRow(profile, f.groupIndex ?? 0));
+    const grad = splitGreenhouseDate(graduationOfRow(profile, educationRowIndex(profile, f.groupIndex)));
     if (!grad) continue;
+    // Ashby keeps ONE date per row: choosing only the year set the month to
+    // today's ("October 2017"), only the month today's year (Superhuman, live
+    // 2026-10-03). A part the profile lacks would be the page's invention, so
+    // neither part is written, nor asked of the AI.
+    if ((!grad.month || !grad.year) && el.closest(".ashby-application-form-input-dropdown")) {
+      f.deviceAbstained = true;
+      continue;
+    }
     const key = `${el.id} ${el.getAttribute("name") ?? ""} ${f.label}`.toLowerCase();
     const part = /month/.test(key) ? "month" : /year/.test(key) ? "year" : datePartOfOptions(f.options);
     const value = part === "month" ? grad.month : part === "year" ? grad.year : "";
     if (!value) continue;
     f.proposedValue = f.options && f.options.length ? snapToOption(f.options, value, "graduationYear") : value;
   }
+}
+
+/** The profile education row a page row means: its own index, or for an
+ *  unnumbered row the one its School and Degree resolve to (the main
+ *  education: in progress, else the most recent), not merely the first listed.
+ *  Superhuman's lone row showed Concordia (2023) beside the first row's 2017. */
+function educationRowIndex(profile: UserApplicationProfile, groupIndex: number | null | undefined): number {
+  if (groupIndex != null) return groupIndex;
+  const primary = profileFacts(profile).education.primary;
+  const rows = profile.education ?? [];
+  const i = primary ? rows.findIndex((e) => (e.school || "").trim() === primary.school && (e.degree || "").trim() === primary.degree) : -1;
+  return i >= 0 ? i : 0;
+}
+
+function educationRowFacts(profile: UserApplicationProfile, groupIndex: number | null | undefined): EducationEntryFacts | undefined {
+  const row = profile.education?.[educationRowIndex(profile, groupIndex)];
+  if (!row) return undefined;
+  return profileFacts(profile).education.entries.find((e) => e.school === (row.school || "").trim() && e.degree === (row.degree || "").trim());
 }
 
 /** "Still Student?", "Currently attending": the education row is in progress. */
@@ -1055,6 +1175,8 @@ export function scanPage(
 
   // A bare "Address" next to separate City / Postal fields is the street line.
   reclassifyBareAddress(fields, registry, profile, adapter, fillEEO);
+  // Rows repeated with the same ids (Ashby) → indices by position.
+  assignRowsByPosition(fields, registry, profile, adapter, fillEEO);
   reclassifyEducationRowDates(fields, registry, profile);
 
   // Repeating-section rows → positional indices (Workday's instance-numbered rows).
