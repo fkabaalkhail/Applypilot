@@ -145,6 +145,7 @@ export default [
       "#hispanic_ethnicity": "Decline To Self Identify",
       "#question_37213454002": "Other/Not Applicable",
       "#question_37213457002": "Did not take/Do not recall",
+      "#question_37213458002": "Did not take/Do not recall",
       "#question_37213460002": "I have never worked for SpaceX, SpaceXAI, xAI, X, or Twitter",
     },
   }),
@@ -323,25 +324,8 @@ export default [
     },
   }),
   // ------------------------------------------------------------- Workable
-  live({
-    id: "live-heldout-workable-tsa",
-    ats: "workable",
-    url: "https://apply.workable.com/texas-sports-academy-main/j/A9A9F4A25A/apply/",
-    expect: {
-      "label:First name": "Maya",
-      "label:Last name": "Tremblay",
-      "label:Email": P.email,
-      "label:Phone": PHONE,
-      "label:School": "University of Waterloo",
-      "label:Field of study": "Mechatronics Engineering",
-      "#degree": "Bachelor of Applied Science in Mechatronics Engineering",
-      "label:Title": "Software Engineer Co-op",
-      "label:Company": "Kinaxis",
-      "label:Cover letter": null,
-      // Lives in Toronto: "NO" is right; blank is a miss.
-      "aria-radiogroup~Based in Austin": orBlank("NO"),
-    },
-  }),
+  // live-heldout-workable-tsa retired 2026-10-03: the posting was taken down
+  // (Workable's API answers 404 "Job not found"; the page renders no form).
   // ============================================================ ROUND 2
   // Twelve more postings, drawn the same way after round 1 was fixed. The blind
   // pass found ONE wrong write (the Robinhood consent below), now fixed.

@@ -1,3 +1,157 @@
+# Run with your real profile (2026-10-03, evening)
+
+You asked: "run for real with my profile". The extension ran on 40 live
+application pages (the complete round's 18 and the fresh round's 22) with your
+prod profile. The profile was read with SELECT-only queries and assembled by
+the backend's own builder, so the extension saw exactly what prod sends it.
+Nothing was submitted: every non-GET request was blocked except GraphQL
+queries, so no submissions, uploads or accounts. Your profile copy and the
+per-page results stay out of the repo (scratchpad, and the gitignored
+`test/e2e/results/`). Same branch, still local only, not pushed, not deployed.
+
+**TL;DR.** The first pass wrote **20 wrong answers (7 causes)** that the test
+profiles never triggered, and left **17 questions blank** that your profile
+can answer. All are fixed (`93f1d4a`, `5bead3d`, `7c77dac`), each with a test
+that fails on the old code. On the fixed build the 20 wrong answers are gone
+and the 17 blanks are filled, on the same live pages: 38 in the second full
+pass, Robinhood's and Anthropic's in single-page re-runs after their later
+fixes (one Lever location dropdown ignored its pick once; a known flaky
+widget). What is still blank is missing from your profile (list below) or
+genuinely yours to answer: essays, US work authorization and sponsorship,
+citizenship, recording consent.
+
+### Wrong answers on the first pass (fixed)
+
+| page(s) | question | wrote | cause | now |
+| --- | --- | --- | --- | --- |
+| Robinhood, Superhuman | race | one subgroup of a broader answer | the matcher took the first option containing the answer's word, though several options were narrower subgroups of it | left for you: you pick |
+| Robinhood | gender identity | a cisgender option | guessed from the gender answer; your gender identity is blank. The list loads only when opened, so the fix needed the retry path too (`5bead3d`) | "I don't wish to answer" |
+| ActioNet | current or former government employee? (and 2 follow-ups) | No | the "never a government employee" default ignored your federal internship | left for you |
+| ActioNet | Active Clearance/Public Trust? | Yes | your "Active clearance" read as a US clearance | left for you (the AI is kept out too) |
+| Lever (Palantir, Hermeus, Zoox, PCC, Neighbor, Arc'teryx, Veeva, Agiloft), Commvault, Rippling (4AG, FluidAI) | Current company | your internship employer | the backend sends the resume's first job whether or not it ended (yours ended 05/2026) | blank |
+| Enova | How did you hear? | Campus Career Site | a campus channel was the only "career site" option | LinkedIn (the default order) |
+| Anthropic | "the address from which you plan on working? If you would need to relocate, please type \"relocating\"" | your home city | the instruction was ignored; the role is in-office in the US | "relocating" (you said you will relocate) |
+
+### Blanks your profile answers (fixed)
+
+| page(s) | question | now |
+| --- | --- | --- |
+| 7 of the 8 Lever pages | Current location | "Gatineau, QC, CAN": your bare "Gatineau" matched Gatineau, Quebec and Gatineau, Haiti. On Arc'teryx, Lever ignored the pick once (a known flaky widget) |
+| Workable (Mindex, Rave, FSSI) | Title (required) | your internship title, beside the company already filled |
+| ActioNet | highest education | Some College |
+| SpaceX | GRE | Did not take/Do not recall |
+| Voldex | available in Eastern/Pacific hours? | Yes |
+| Enova | local to Chicago for summer 2027? | Yes (you are willing to relocate) |
+| Netlify | accommodation for the interview? | from the profile's disability answer (No only when it states none) |
+| Agiloft | disability (radios with no label) | the option matching the profile's disability answer |
+| Planet | how did you first hear about Planet? (required) | Other - Job Site |
+
+### Decisions (new policy; each is one rule, easy to reverse)
+
+1. **An EEO answer broader than the options is left for you**, not declined:
+   you stated it, so you pick the subgroup. An exact option still wins.
+2. **Gender identity split by cis/trans options needs a stated identity.**
+   Without one: an unqualified option that fits ("Man", "Non-binary"), else
+   the decline. LGBTQ+ is Yes for a stated orientation or identity that is
+   one, No only when both are stated and neither is.
+3. **"Current company / title" means a job still running.** The backend sends
+   the resume's first job whatever its end date; a field labelled current now
+   gets nothing when every job has ended. A bare "Company" / "Title" (an
+   experience entry) still gets the most recent job.
+4. **A clearance holds in your own country.** A question in another country's
+   terms ("Public Trust", "TS/SCI", DOE "Q") or on a job abroad is left for
+   you; "None" holds everywhere.
+5. **No "never a government employee" default when your history has a
+   government employer.** A procurement or government OFFICIAL is a role: a
+   developer intern's "No" there stands.
+6. **Answers from stated facts that were "blank by design" this morning:** an
+   interview accommodation is "No" only when the profile states no disability;
+   "will you be local to <city>?" follows your relocation answer (as Brex's
+   "plan to relocate" already did).
+7. **The default "how did you hear" is never a campus channel**, and among
+   several job searches it takes the one no brand names.
+
+### Fix in your profile (these are data, not bugs)
+
+1. **Current title is stored as "No".** The extension now ignores it.
+2. **Your salary expectation has a stray space inside the number.** It is
+   typed as written (Twitch, Planet, BambooHR, Agiloft), and ActioNet's
+   number-only box stays blank because it is not a number.
+3. **Earliest start 2026-08-28 is in the past**, so start-date questions get
+   today (10/03/2026) or "Immediately". Set it if you are applying for summer
+   2027 internships.
+4. **No expected graduation.** Your education ends "Present"; the 2028 date is
+   only in your resume's achievements text, which no field maps. About ten
+   pages asked (ZipRecruiter, Astranis, Figma, Robinhood, Palantir, Hermeus,
+   Superhuman, Ramp, Brattle, Enova, 4AG). Fill "Expected graduation".
+5. **Work authorization is one general "yes".** US-job authorization and
+   sponsorship questions stay blank (correct: nothing says what your US
+   status is). Fill "Authorized to work in the US" and "in Canada".
+6. **Gender identity is blank**, so cis/trans-split identity questions and
+   LGBTQ+ decline. Fill it if you want them answered.
+7. **No GPA, languages, cover letter or "how did you hear"**: those questions
+   stay blank or take the defaults.
+
+Items 4 and 5 are the new profile fields from today: they persist only once
+the backend and web app are deployed together.
+
+### Test results
+
+- **Unit:** 1443/1443 (129 files).
+- **Your profile, live (40 pages, nothing submitted):** first pass (build
+  `a497700`) 540 writes, 20 of them wrong; second pass (build `93f1d4a`) 538
+  writes, 18 of the 20 gone and the 17 blanks filled; the last two (Robinhood
+  identity, Anthropic address) fixed and verified page by page on the final
+  build.
+- **Pinned regression suite** (`results/after-real`, build `5bead3d`): 1457/1490
+  checks. Every miss was read: 11 cases differ by the intended answers above
+  (re-pinned), one posting was taken down (Workable TSA: API 404, removed
+  from the suite), one is SmartRecruiters' DataDome block on this machine (as
+  before).
+- **Final build, full re-run (`results/final-real`): stopped by the system
+  for low memory after 36 of 104 cases, all 36 passing** (9 of the 12
+  re-pinned cases among them, Anthropic's "relocating" included). The other
+  68 were not re-run on the final build; they passed on `5bead3d` apart from
+  the two above, and the final build's later changes (the relocation
+  instruction, the dumper's uuid keys) touch none of their questions.
+  Re-run with `node build.mjs && node test/e2e/run.mjs` when memory allows.
+
+### Needs you / manual verification
+
+**Your decisions**
+- **Military status is still inferred.** "What is your military status?" gets
+  "I have never served in the military" from a profile answer of "I am not a
+  protected veteran". Usually true, but the profile cannot say "never served"
+  (a veteran outside the protected classes answers the same). Unchanged since
+  this morning; say if you want it left to the user.
+- **Planet's "How did you find this position?"** now gets "Other - Job Site",
+  not "Planet Careers Page": job sites come first in the default order (a
+  posting found through Tailrd was found on a job site), and the new tie-break
+  lets it reach them.
+
+**Not verified**
+- **Resume attach:** not exercised (uploads are blocked in these runs). Your
+  stored PDF exists in prod (`has_file` true), so auto-attach has a file.
+- **Later steps:** 17 pages stop at the captcha and 12 at "attach your resume"
+  after step 1, so a second page of questions (if any) was not seen.
+- **The follow-up dialog** that asks you about what stays blank (the race
+  subgroup, for one) was not opened in these runs.
+- **Flaky widgets, both seen with test profiles too:** Lever's location
+  (Arc'teryx ignored the pick once) and Rippling FluidAI's location ("couldn't
+  open the dropdown").
+
+**Backend follow-up (not changed tonight)**
+- `backend/routers/profile.py:431` sends the resume's first job as
+  `currentCompany` whatever its end date, and `currentTitle` falls back to
+  that job's title only when the stored job title is empty (yours holds "No",
+  so the fallback never runs). The extension compensates now; anything else
+  reading the profile still sees an ended internship as current.
+- The stored title "No" most likely came from the extension's old follow-up
+  dialog saving a yes/no into the title slot; that save is blocked since
+  `3c0c919`. Onboarding no longer writes the job function there (`a497700`).
+
+---
+
 # Day session: answer every question without AI (2026-10-03)
 
 Same branch, still local only (NOT pushed, NOT deployed). You asked for three
@@ -284,13 +438,16 @@ blocked Workday's submit before (overnight bug list), so they stay empty.
   an empty extension version). `cd chrome-extension && node build.mjs`, then
   reload the unpacked extension.
 - **Intermittent, not fixed:** Hermeus's Lever location typeahead stayed blank
-  once (filled in the previous run); SpaceX's GRE dropdown did not open in
-  time to read its options once; Greenhouse's async School dropdown
-  (Robinhood) as before.
+  once (filled in the previous run); Greenhouse's async School dropdown
+  (Robinhood) as before. (SpaceX's GRE was listed here as a dropdown that
+  opened too late. Wrong: it was blank on every run, because its two "did not
+  take" options tied. Fixed in the real-profile run, see the top section.)
 - **Still blank by design:** essays, opinions, skill-specific questions
   ("experience with AI?", years of Roblox Studio), the applicant's
-  extracurriculars, interview-recording consent, accommodation requests,
-  sponsorship TYPE, a future location ("local to Chicago for summer 2027?").
+  extracurriculars, interview-recording consent, sponsorship TYPE.
+  (Accommodation requests and "local to Chicago for summer 2027?" were on this
+  list; the real-profile run answers them from stated facts now, see the top
+  section.)
 
 ---
 

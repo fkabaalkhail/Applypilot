@@ -37,6 +37,7 @@ export default [
       "#question_38315936002": "Yes",
       "#question_38315939002": "She/Her",
       "#question_38538535002": "No",
+      "#question_38315940002": "No",
     },
   }),
   live({
@@ -180,6 +181,7 @@ export default [
       "#question_69506863": "Yes",
       "#question_69521194": "April 2027",
       "#question_69521228": "Mechatronics Engineering",
+      "#question_69506866": "Yes",
     },
   }),
   live({
@@ -202,6 +204,7 @@ export default [
       "text~Website or Portfolio": "https://mayatremblay.dev",
       "name=5eb6b0b0-a0c5-4c1c-91c8-e2d4ff694575": "95000",
       "text~Where did you hear about the role?": "LinkedIn",
+      "text~This role requires regular collaboration during Eastern or Pacific Time": "Yes",
     },
   }),
   live({
@@ -366,6 +369,7 @@ export default [
       "radio=surveysResponses[2789f812-a302-4dbe-807b-e884874cf0d6][responses][field0]": "Female",
       "radio=surveysResponses[2789f812-a302-4dbe-807b-e884874cf0d6][responses][field1]": "White / Caucasian",
       "radio=surveysResponses[2789f812-a302-4dbe-807b-e884874cf0d6][responses][field2]": "I am not a protected veteran",
+      "radio=surveysResponses[2789f812-a302-4dbe-807b-e884874cf0d6][responses][field3]": "I don't have a disability or have a history/record of having a disability",
     },
   }),
   live({

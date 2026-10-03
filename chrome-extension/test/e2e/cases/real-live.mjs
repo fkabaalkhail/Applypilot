@@ -414,7 +414,8 @@ export default [
       "label:age 18 or older": "Yes",
       "label:Active Clearance": null,
       "label:Clearance Type": null,
-      "label:highest education": null,
+      // A degree in progress: "Some College", never "Bachelors" (was blank).
+      "label:highest education": "Some College",
       "label:certifications": null,
       "label:total number of years of relevant experience": { oneOf: ["1", ""] },
       "label:current or past employee of ActioNet": "Neither",

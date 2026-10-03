@@ -92,7 +92,9 @@ export function dumpFieldsInPage() {
   for (const r of roots) r.querySelectorAll("[id]").forEach((e) => idCounts.set(e.id, (idCounts.get(e.id) || 0) + 1));
   const nameCounts = new Map();
   const keyOf = (el, label) => {
-    if (el.id && idCounts.get(el.id) === 1 && !/^[0-9]/.test(el.id)) return `#${el.id}`;
+    // A uuid id is regenerated on every load (Ashby): keyed by it, the same box
+    // was "name=None of the above" on one run and "#a1d5ed5c-…" on the next.
+    if (el.id && idCounts.get(el.id) === 1 && !/^[0-9]/.test(el.id) && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(el.id)) return `#${el.id}`;
     const name = el.getAttribute("name");
     if (name) {
       const n = (nameCounts.get(name) || 0) + 1;
