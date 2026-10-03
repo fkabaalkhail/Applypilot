@@ -105,7 +105,17 @@ const GOV_OFFICIAL =
 const CRIMINAL = /\b(criminal|convicted|conviction|felony|misdemeanou?r|arrested|charged with|pending charges)\b/;
 
 const HOW_HEARD =
-  /\bhow did you (hear|find|learn|come across|discover)\b|\bwhere did you (hear|see|find|learn)\b|\bhow were you (referred|introduced)\b|\b(referral|application|candidate|job) source\b|\bsource of (application|referral)\b|\bhow did you get to know\b/;
+  /\bhow (did )?you (hear|heard|find|found|learn|learned|come across|came across|discover|discovered|connect|connected)\b|\bwhere did you (hear|see|find|learn)\b|\bhow were you (referred|introduced)\b|\b(referral|application|candidate|job) source\b|\bsource of (application|referral)\b|\bhow did you get to know\b/;
+
+/** Channels a "how did you hear" list offers; three or more in an unlabeled
+ *  question ("Select One", Hermeus on Lever) make it that question. */
+const CHANNEL = /\b(linked ?in|indeed|glassdoor|company (website|site)|careers? (page|site|website)|referral|career (fair|services)|job board|facebook|twitter|instagram|youtube|built ?in|handshake|recruiter|google)\b/;
+const UNLABELED = /^(select|choose|pick)( one| an option| all that apply)?$|^$/;
+
+/** An acknowledgement option: the only thing a form lets you answer. */
+const ACK_OPTION = /^(yes|i (will|understand|agree|acknowledge|confirm|accept|have read|consent)|acknowledged|agree|agreed|understood|confirmed)\b/;
+/** A titled policy / agreement with a Yes/No ("AI Policy for Application", Anthropic). */
+const TITLED_TERMS = /\b(polic(y|ies)|agreement|terms|notice|acknowledg\w*|attestation|certification|arbitration)\b/;
 
 /** Options a "how did you hear" answer may take, most truthful first for a
  *  Tailrd user (who found the posting through a job aggregator). */
@@ -130,6 +140,23 @@ const SOURCE_SYNONYMS: Array<[RegExp, RegExp]> = [
   [/\bother\b/, /\bother\b/],
 ];
 
+/**
+ * The unencumbered applicant's "No" typed into a text box: "*Were you referred
+ * to this job by a Mindex employee? If so, who?" (Workable), "Do you have a
+ * family member/relative that currently works at ActioNet?" (Jobvite).
+ */
+function unencumberedText(q: QuestionInput, n: string): QuestionResult {
+  if (q.kind !== "text" && q.kind !== "longText") return null;
+  if (!/^(are|were|was|have|has|had|do|did|is) you\b|^(are|were|have|do|did) (any|you)\b/.test(n)) return null;
+  if (PRIOR_APPLICATION.test(n)) return answer("No", "default:no-prior-application");
+  if (REFERRED.test(n) || /^were you referred\b/.test(n)) return answer("No", "default:not-referred");
+  if (RELATIVES.test(n) && /\b(work|employ|empl|staff|board|director|officer|relationship)\w*/.test(n)) return answer("No", "default:no-relatives-inside");
+  if (CONFLICTS.test(n)) return answer("No", "default:no-conflict");
+  if (NON_COMPETE.test(n)) return answer("No", "default:no-non-compete");
+  if (GOV_OFFICIAL.test(n)) return answer("No", "default:not-government-official");
+  return null;
+}
+
 function chooseSource(q: QuestionInput, profile: UserApplicationProfile): QuestionResult {
   const opts = realOptions(q);
   const stated = qn(profile.howDidYouHear ?? "");
@@ -140,7 +167,11 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile): Questi
   }
   const unique = (re: RegExp): string | null => {
     const hits = opts.filter((o) => re.test(qn(o)));
-    return hits.length === 1 ? hits[0] : null;
+    if (hits.length === 1) return hits[0];
+    // "Job Board (Indeed, Monster, etc.)" over "University Job Board"
+    // (Palantir on Lever): the general channel, when one is general.
+    const general = hits.filter((o) => !/\b(university|campus|school|college|internal)\b/.test(qn(o)));
+    return general.length === 1 ? general[0] : null;
   };
   if (stated) {
     const exact = opts.find((o) => qn(o) === stated);
@@ -198,8 +229,22 @@ export function resolveDefault(
     q.controlType === "combobox" || q.controlType === "customDropdown";
 
   if (HOW_HEARD.test(n) && !/\bif\b.*\b(referr|other)\b/.test(n)) return chooseSource(q, profile);
-  if (!choiceLike) return null; // the rest are yes/no families
+  const opts = realOptions(q);
+  if (UNLABELED.test(n) && opts.filter((o) => CHANNEL.test(qn(o))).length >= 3) return chooseSource(q, profile);
+  if (!choiceLike) return unencumberedText(q, n);
   if (CRIMINAL.test(n)) return null;
+  // A required list whose ONLY option is an acknowledgement ("I will read the
+  // arbitration agreement below.", Anthropic; "Summer 2027" under "Please
+  // confirm the season…", Astranis; live 2026-10-03): there is nothing else
+  // to answer.
+  if (opts.length === 1 && (ACK_OPTION.test(qn(opts[0])) || /\b(confirm|acknowledge|please read)\b/.test(n)) && !MARKETING.test(qn(opts[0]))) {
+    return answer(opts[0], "default:only-option");
+  }
+  // SMS consent asked by its options under a field-name label ("Phone": "Yes -
+  // I consent to receiving text messages", Ramp on Ashby).
+  if (n.split(" ").length <= 3 && opts.length > 0 && MARKETING.test(qn(opts.join(" "))) && /\b(consent|opt|receive|receiving|subscribe)\b/.test(qn(opts.join(" ")))) {
+    return polar(false, q, "default:marketing-opt-out");
+  }
 
   if (MARKETING.test(n) && !FUTURE_ROLES.test(n)) return polar(false, q, "default:marketing-opt-out");
   if (FUTURE_ROLES.test(n) && /\b(consider|keep|retain|share|contact|notify|would you like|interested)\b/.test(n)) {
@@ -217,6 +262,10 @@ export function resolveDefault(
 
   if (DEMOGRAPHIC.test(n)) return null;
   if (CONSENT_VERB.test(n) && CONSENT_OBJECT.test(n) && !RECORDING.test(n)) {
+    return polar(true, q, "default:consent");
+  }
+  // A titled policy or agreement with a bare Yes / No and no question in it.
+  if (!/\?/.test(q.label) && TITLED_TERMS.test(n) && !RECORDING.test(n) && n.split(" ").length <= 8 && opts.length === 2 && opts.every((o) => /^(yes|no)$/i.test(o.trim()))) {
     return polar(true, q, "default:consent");
   }
   if (/\bessential (functions|duties)\b/.test(n)) return polar(true, q, "default:essential-functions");

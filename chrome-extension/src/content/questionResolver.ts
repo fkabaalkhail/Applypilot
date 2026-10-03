@@ -165,7 +165,7 @@ const residenceOf = (facts: ProfileFacts): string | null =>
 // ---------------------------------------------------------------------------
 
 const WORK_RIGHT =
-  /\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able|legal right|right|permission) to (legally )?work\b|\bwork authori[sz]ation\b|\bwork permit\b|\blegally (work|be employed|employed)\b|\bauthori[sz]ation to work\b|\bwork legally\b/;
+  /\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able|legal right|right|permission) to (legally )?work\b|\bwork authori[sz]ation\b|\bwork permit\b|\blegally (work|be employed|employed)\b|\bauthori[sz]ation to work\b|\bwork legally\b|\b(eligible|authori[sz]ed|permitted|allowed) to (legally )?(begin|start|commence|accept|take up) (employment|work)\b|\beligible for employment\b/;
 
 /** "Are you able to work…" is a work RIGHT question only when it names a
  *  country and no arrangement: "able to work from our Kepler office" (Lever,
@@ -705,7 +705,7 @@ function resolveGpa(q: QuestionInput, n: string, profile: UserApplicationProfile
   const higher = /\b(graduate|masters?|doctorate|doctoral|phd|mba)\b/.test(n) && !/\bundergraduate\b/.test(n);
   const rank = facts.education.highestRank?.value ?? null;
   if (higher && rank !== null && rank < 5) {
-    const na = (q.options ?? []).filter((o) => /^(n a|na|not applicable|none|i do not have|no graduate)/.test(qnorm(o)));
+    const na = (q.options ?? []).filter((o) => /^(n a|na|none|i do not have|no graduate)\b|\bnot applicable\b/.test(qnorm(o)));
     return na.length === 1 ? answer(na[0], "gpa:not-applicable") : abstain("gpa:no-graduate-degree");
   }
   const stated = (profile.gpa ?? "").trim();
@@ -717,6 +717,67 @@ function resolveGpa(q: QuestionInput, n: string, profile: UserApplicationProfile
   }
   if (q.kind === "number") return num ? answer(num, "gpa:number") : abstain("gpa:not-numeric");
   return answer(stated, "gpa:stated");
+}
+
+/**
+ * "SAT Score*" / "ACT" / "GRE" (SpaceX, live 2026-10-03): the profile holds no
+ * test scores. When the list offers a "did not take / do not recall" option,
+ * that is the answer that claims nothing; otherwise blank.
+ */
+function resolveTestScore(q: QuestionInput, n: string): QuestionResult {
+  if (!/\b(sat|act|gre|gmat|lsat|mcat|toefl|ielts|psat)\b/.test(n) || !/\b(score|scores|result|results|test)\b/.test(n)) return null;
+  if (!q.options?.length) return q.kind === "text" || q.kind === "number" ? abstain("test-score:unknown") : null;
+  const na = q.options.filter((o) => /\b(did not take|have not taken|havent taken|not taken|do not recall|dont recall|not applicable|n a|none)\b/.test(qnorm(o)));
+  return na.length === 1 ? answer(na[0], "test-score:none-stated") : abstain("test-score:unknown");
+}
+
+/**
+ * "Are you open to relocation?" answered with WHERE (Twitch, live 2026-10-03:
+ * "No", "No, but I'm open to a remote position", "San Francisco, CA", …):
+ * willing → the job's own city when it is offered; not willing → "No", or the
+ * remote alternative for an applicant who prefers remote work.
+ */
+function resolveRelocationChoice(q: QuestionInput, n: string, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
+  if (!/\b(willing|open|able|prepared) to (relocate|move)\b|\brelocat(e|ion)\b/.test(n) || /\b(assistance|package|support|expenses?|reimburse)\b/.test(n)) return null;
+  const opts = (q.options ?? []).filter((o) => o.trim());
+  const places = opts.filter((o) => optionPolarity(o) === null && !/\b(remote|anywhere|other|none|n\/a)\b/i.test(o));
+  if (places.length < 2) return null;
+  const willing = polarityOf(profile.willingToRelocate || "");
+  if (willing === false) {
+    const remote = opts.filter((o) => optionPolarity(o) === false && /\bremote\b/i.test(o));
+    if (/^remote$/i.test((profile.workPreference || "").trim()) && remote.length === 1) return answer(remote[0], "relocation:choice-remote");
+    const no = opts.filter((o) => /^no$/i.test(o.trim()));
+    return no.length === 1 ? answer(no[0], "relocation:choice-no") : abstain("relocation:no-matching-option");
+  }
+  if (willing === true && ctx.jobCity) {
+    const city = qnorm(ctx.jobCity);
+    const hit = places.filter((o) => (" " + qnorm(o) + " ").includes(" " + city + " "));
+    if (hit.length === 1) return answer(hit[0], "relocation:choice-job-city");
+  }
+  return abstain("relocation:choice-unknown");
+}
+
+/**
+ * U.S. export-control / "U.S. person" status (SpaceX "Citizenship Status",
+ * Astranis, Hermeus; live 2026-10-03): U.S. citizen or national, lawful
+ * permanent resident, refugee, asylee (DACA). Every one of those may work in
+ * the US, so an applicant NOT authorized to work there is none of them: the
+ * "Other" / "None of the above" / "Foreign person" option. A citizen or
+ * permanent resident of the US picks theirs; anything else stays blank.
+ */
+const US_STATUS_OPTION = /\b(u ?s citizen|citizen of the united states|national of the united states|u ?s national|lawful permanent resident|permanent resident of the u|green card|refugee|asylee|daca|u ?s person|foreign person)\b/;
+function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts): QuestionResult {
+  const opts = (q.options ?? []).filter((o) => o.trim());
+  if (opts.filter((o) => US_STATUS_OPTION.test(qnorm(o))).length < 2) return null;
+  const us = facts.workAuth.byCountry.get("US");
+  const pick = (re: RegExp): QuestionResult => {
+    const hits = opts.filter((o) => re.test(qnorm(o)));
+    return hits.length === 1 ? answer(hits[0], "us-person-status") : abstain("us-person-status:no-matching-option");
+  };
+  if (us?.authorized === false) return pick(/^(\(?[a-z]\)?\s+)?other\b|\bnone of the above\b|\bforeign person\b|\bnot a u ?s person\b/);
+  if (us?.basis === "citizen") return pick(/\bu ?s citizen\b|\bcitizen (or national )?of the united states\b|^u ?s person\b/);
+  if (us?.basis === "permanent_resident") return pick(/\blawful permanent resident\b|\bgreen card\b/);
+  return abstain("us-person-status:unknown");
 }
 
 /** "What school do you attend?", "Where did you complete your undergraduate degree?" */
@@ -758,15 +819,37 @@ function sameCompany(a: string, b: string): boolean {
   return x === y || (x.length >= 4 && y.length >= 4 && (` ${x} `.includes(` ${y} `) || ` ${y} `.includes(` ${x} `)));
 }
 
+/**
+ * "SpaceX & SpaceXAI Employment History" (live 2026-10-03): the label names the
+ * company and only the OPTIONS say it is asking whether you worked there ("I
+ * have never worked for SpaceX, …", "I am a former SpaceX … employee"). The
+ * never-worked option, when no employer on the profile is one of the companies
+ * the label names.
+ */
+function resolveEmploymentHistoryChoice(q: QuestionInput, n: string, raw: string, facts: ProfileFacts): QuestionResult {
+  if (!/\bemployment history\b|\bwork history\b/.test(n) || !q.options?.length) return null;
+  const never = q.options.filter((o) => /\b(never (worked|been employed)|have not (worked|been employed)|no prior employment)\b/.test(qnorm(o)));
+  if (never.length !== 1) return null;
+  const names = (raw.match(/[A-Z][\w.'-]*/g) ?? []).filter((w) => !/^(Employment|History|Work|The|And|Of)$/.test(w));
+  if (names.length === 0 || facts.employment.employers.length === 0) return abstain("former-employee:no-history");
+  const worked = facts.employment.employers.some((e) => names.some((c) => sameCompany(e, c)));
+  return worked ? abstain("former-employee:history-choice") : answer(never[0], "former-employee:never");
+}
+
 function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: ProfileFacts, ctx: QuestionContext): QuestionResult {
+  const history = resolveEmploymentHistoryChoice(q, n, raw, facts);
+  if (history) return history;
   const shape =
     /\b(current|former|past|previous|prior)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b/.test(n);
   if (!shape) return null;
   if (/\b(relative|family|friend|spouse|referr|government|federal|military|public sector)\b/.test(n)) return null;
-  // The company: a capitalized name in the question ("…employee of ActioNet"),
-  // else an explicit pointer at the hiring company ("for us", "this company").
-  // Anything else ("worked at a startup") names no company we can check.
-  const named = /\b(?:of|by|for|at)\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,3})/.exec(raw);
+  // The company: a capitalized name in the question ("…employee of ActioNet",
+  // "a Twitch employee"), else an explicit pointer at the hiring company ("for
+  // us", "this company"). Anything else ("worked at a startup") names no
+  // company we can check.
+  const named =
+    /\b(?:of|by|for|at)\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,3})/.exec(raw) ??
+    /\b(?:a|an)\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,2})\s+(?:employee|contractor|intern)\b/.exec(raw);
   const pointsHere = /\b(for us|with us|here|this company|our company|the company|this organi[sz]ation|our organi[sz]ation)\b/.test(n);
   const company = named && !/^(us|our|the|this|any|a|an)$/i.test(named[1])
     ? named[1].replace(/[,.]+$/, "")
@@ -837,7 +920,7 @@ function resolveAvailability(q: QuestionInput, n: string, facts: ProfileFacts): 
   // must never answer with the applicant's availability.
   const startQ =
     (q.category === "startDate" ||
-      /\b(earliest|when (can|could|would) you (start|begin|join|commence)|available to (start|begin|join)|availability|date available|available (from|on|starting)|start availability|joining date|(desired|preferred|potential|anticipated|expected|possible|proposed) (start|starting) date|how soon can you start)\b/.test(n)) &&
+      /\b(earliest|when (can|could|would) you (start|begin|join|commence)|when (are|would) you (be )?(able|available) to (start|begin|join|commence)|available to (start|begin|join)|availability|date available|available (from|on|starting)|start availability|joining date|(desired|preferred|potential|anticipated|expected|possible|proposed) (start|starting) date|how soon can you start)\b/.test(n)) &&
     !/\b(end|finish|graduat|interview|employment|position held|worked)\b/.test(n);
   if (startQ && (q.kind === "date" || q.kind === "text") && !(q.options && q.options.length)) {
     if (!isHigh(av.earliestStart)) return abstain("start-date:unknown");
@@ -946,7 +1029,7 @@ const UNANSWERABLE =
 
 /** A follow-up conditioned on an earlier ANSWER. */
 const FOLLOW_UP =
-  /^if (yes|no|so|other|applicable|not|not applicable|you (answered|selected|chose|checked|said|indicated|replied|ticked|heard)|your answer|the answer|any of the above|none of the above|referred|referral)\b/;
+  /^if ([a-z] )?(yes|no|so|other|applicable|not|not applicable|you (answered|selected|chose|checked|said|indicated|replied|ticked|heard)|your answer|the answer|any of the above|none of the above|referred|referral)\b/;
 
 // ---------------------------------------------------------------------------
 // Conditional questions: "If you <condition>, <question>"
@@ -1073,6 +1156,7 @@ export function resolveQuestion(
 
   const resolved =
     resolveWorkAuthorization(q, n, facts, profile, ctx) ??
+    resolveUsPersonStatus(q, facts) ??
     resolveCitizenship(q, n, facts, ctx) ??
     resolveAge(q, n, facts) ??
     resolveSchoolMembership(q, n, facts) ??
@@ -1086,8 +1170,10 @@ export function resolveQuestion(
     resolveEnrollment(q, n, facts) ??
     resolveGraduation(q, n, facts) ??
     resolveGpa(q, n, profile, facts) ??
+    resolveTestScore(q, n) ??
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??
+    resolveRelocationChoice(q, n, profile, ctx) ??
     resolveStatedFacts(q, n, profile) ??
     resolvePhoneCode(q, n, facts, profile) ??
     null;

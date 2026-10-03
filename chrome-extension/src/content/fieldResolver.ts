@@ -80,6 +80,42 @@ const CHOICE_CONTROLS: ReadonlySet<ControlType> = new Set<ControlType>([
  *  on-device demographic matcher maps it to the form's own wording. */
 export const EEO_DECLINE = "Decline to self-identify";
 
+/** "Do you identify as transgender?": its own question, never an LGBTQ+ one. */
+const TRANS_Q = /\b(identify as|are you|consider yourself( to be)?)( a)? trans(gender)?\b|\btrans(gender)? (identity|status|experience)\b/i;
+const LGBTQ_Q = /\b(lgbt\w*|queer|gay|lesbian|bisexual|sexual orientation)\b/i;
+
+/**
+ * Gender identity asked three ways (live 2026-10-03). "Do you identify as
+ * transgender?" (Ashby) is answered from a cisgender / transgender identity.
+ * Plain gender options ("Female", "Male", "Gender non-binary" on
+ * PointClickCare; "Man", "Woman" on Ashby) take the GENDER answer, which an
+ * identity like "Cisgender" is not one of. Qualified options ("Cisgender
+ * woman") need both, so a cisgender woman never lands on "Cisgender man".
+ * undefined = no refinement.
+ */
+function refineGenderIdentity(
+  category: FieldCategory,
+  label: string,
+  options: string[] | undefined,
+  profile: UserApplicationProfile
+): string | null | undefined {
+  const identity = (profile.eeo?.genderIdentity ?? "").trim();
+  const gender = (profile.eeo?.gender ?? "").trim();
+  if ((category === "eeoOther" || category === "eeoGenderIdentity") && TRANS_Q.test(label) && !LGBTQ_Q.test(label)) {
+    if (/\bcis(gender)?\b/i.test(identity)) return "No";
+    if (/\btrans(gender)?\b/i.test(identity)) return "Yes";
+    return undefined;
+  }
+  if (category !== "eeoGenderIdentity" || !options?.length) return undefined;
+  const qualified = options.filter((o) => /\b(cis|trans)(gender)?\b/i.test(o));
+  if (qualified.length === 0) return /\b(male|female|man|woman)\b/i.test(options.join(" ")) && gender ? gender : undefined;
+  const kind = /\bcis(gender)?\b/i.test(identity) ? /\bcis(gender)?\b/i : /\btrans(gender)?\b/i.test(identity) ? /\btrans(gender)?\b/i : null;
+  const sex = /^(female|woman)$/i.test(gender) ? /\b(woman|female)\b/i : /^(male|man)$/i.test(gender) ? /\b(man|male)\b/i : null;
+  if (!kind || !sex) return undefined;
+  const both = qualified.filter((o) => kind.test(o) && sex.test(o));
+  return both.length === 1 ? both[0] : undefined;
+}
+
 function eeoDecline(category: FieldCategory, controlType: ControlType, options: string[] | undefined): string | null {
   if (!EEO_DECLINABLE.has(category) || !CHOICE_CONTROLS.has(controlType)) return null;
   const real = (options ?? []).filter((o) => o.trim());
@@ -215,6 +251,10 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   } else {
     value = resolveAnswerWithAdapter(input.adapter, category, profile, control, input.fillEEO, input.el);
     source = "category";
+  }
+  if (input.sensitive) {
+    const refined = refineGenderIdentity(category, label, options, profile);
+    if (refined !== undefined) value = refined;
   }
   // A demographic question the profile holds no answer for: decline (default).
   if ((value === null || !value.trim()) && input.sensitive) {
