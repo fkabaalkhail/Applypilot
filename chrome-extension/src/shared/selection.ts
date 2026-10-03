@@ -30,3 +30,24 @@ export function isDefaultSelected(field: DetectedField): boolean {
 export function defaultSelectedIds(fields: DetectedField[]): Set<string> {
   return new Set(fields.filter(isDefaultSelected).map((f) => f.id));
 }
+
+/**
+ * The fields one fill pass writes: the user's picked selection, PLUS every
+ * field the user never saw (absent when they clicked) that qualifies for the
+ * default selection. A fill pass creates rows itself (it clicks "Add
+ * education" / "Add experience" for the profile's entries), and those rows were
+ * never filled because only the ids picked at click time were written
+ * (Workable, live 2026-10-03). Fields the user saw and deselected stay out.
+ */
+export function fillSelection(
+  fields: DetectedField[],
+  picked: string[] | null,
+  knownAtClick: ReadonlySet<string> | null
+): Set<string> {
+  if (!picked) return defaultSelectedIds(fields);
+  const out = new Set(picked);
+  if (knownAtClick) {
+    for (const f of fields) if (!knownAtClick.has(f.id) && isDefaultSelected(f)) out.add(f.id);
+  }
+  return out;
+}

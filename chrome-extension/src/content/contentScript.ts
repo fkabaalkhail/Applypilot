@@ -62,7 +62,7 @@ import { LONG_TEXT, normalize } from "./fieldMatcher";
 import { answersWorthRemembering, planAnswerSaves } from "./answerGaps";
 import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
-import { defaultSelectedIds } from "../shared/selection";
+import { defaultSelectedIds, fillSelection } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
 import { detectJobCountry, sanitizeCompany } from "./jobLocation";
 import { setResolveContext } from "./fieldResolver";
@@ -794,7 +794,7 @@ function initialize(): void {
     return { reports, outcomes };
   }
 
-  async function fillOnce(ids: string[] | null, signal?: AbortSignal): Promise<StepTally> {
+  async function fillOnce(ids: string[] | null, signal?: AbortSignal, knownAtClick: ReadonlySet<string> | null = null): Promise<StepTally> {
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       // Let a React ATS finish hydrating before we scan+fill: filling a form
       // that is still swapping in its real fields captures throwaway controls
@@ -809,7 +809,9 @@ function initialize(): void {
       // filling, so a candidate with several jobs doesn't get only the first row.
       await expandRepeatingSections(signal);
       engine?.updateRegistry(registry);
-      const wanted = ids ? new Set(ids) : defaultSelectedIds(lastFields);
+      // The picked ids, plus rows this pass created itself ("Add education")
+      // that the user never saw to deselect.
+      const wanted = fillSelection(lastFields, ids, knownAtClick);
       const selected = lastFields.filter(
         (f) => wanted.has(f.id) && f.fillable && f.proposedValue !== null
       );
@@ -1446,7 +1448,10 @@ function initialize(): void {
       flowAbort?.abort(); // supersede any fill still running from a prior click
       flowAbort = new AbortController();
       const signal = flowAbort.signal;
-      const tally = await fillOnce(ids, signal);
+      // What the panel showed when Autofill was clicked: fields that appear
+      // after this (rows the fill itself adds) are filled by default.
+      const knownAtClick = new Set(lastFields.map((f) => f.id));
+      const tally = await fillOnce(ids, signal, knownAtClick);
       if (gen === flowGeneration && !signal.aborted) {
         flowController?.stop(); // a maybeResumeFlow may have set one mid-fill; this click wins
         flowController = new FlowController(makeFlowDeps());

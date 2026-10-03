@@ -46,6 +46,12 @@ export default [
       "aria-radiogroup~require sponsorship": "YES",
       "label:referred to this job": null,
       "label:Where did you see this job": null,
+      // Rows the fill adds itself ("+ Add" Education / Experience), when Workable renders them.
+      "#school": { ifPresent: "Massachusetts Institute of Technology" },
+      "#field_of_study": { ifPresent: "Computer Science" },
+      "#degree": { ifPresent: "Master of Science in Computer Science" },
+      "#title": { ifPresent: { re: "^(Machine Learning Intern)?$" } },
+      "#company": { ifPresent: { re: "^(Acme Robotics)?$" } },
     },
   }),
   live({
