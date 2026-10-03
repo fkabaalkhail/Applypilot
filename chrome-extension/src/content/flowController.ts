@@ -62,8 +62,10 @@ export interface FlowSnapshot {
 }
 
 export interface FlowDeps {
-  /** One full fill pass (fillOnce). null ids → default selection this step. */
-  fillStep(ids: string[] | null): Promise<StepTally>;
+  /** One full fill pass (fillOnce). null ids → default selection this step.
+   *  `afterEntry`: the page was just opened by an apply-entry click, where a
+   *  form still loading hidden is worth waiting for (hiddenForm.ts). */
+  fillStep(ids: string[] | null, ctx?: { afterEntry?: boolean }): Promise<StepTally>;
   snapshot(): FlowSnapshot;
   /** Force a fresh scan (updates what snapshot() returns). */
   rescan(): void;
@@ -136,6 +138,8 @@ export class FlowController {
   /** Set by notifyAdvanceRequested() when no gate is currently awaiting it,
    *  polled by waitForWallCleared, which has no resolver to hand out. */
   private advanceRequested = false;
+  /** The page about to be filled was opened by an apply-entry click. */
+  private openedFromEntry = false;
 
   constructor(private deps: FlowDeps) {}
 
@@ -188,8 +192,9 @@ export class FlowController {
       const wallDetail =
         account.wall === "signup" ? "creating account…" : account.wall === "login" ? "signing in…" : undefined;
 
-      const tally = pending ?? (await this.deps.fillStep(null));
+      const tally = pending ?? (await this.deps.fillStep(null, { afterEntry: this.openedFromEntry }));
       pending = null;
+      this.openedFromEntry = false;
       // Cumulative across steps: the final "done" beat reports the whole flow.
       this.lastTally = { ok: this.lastTally.ok + tally.ok, fail: this.lastTally.fail + tally.fail };
       this.emit("filling", { detail: wallDetail });
@@ -214,6 +219,7 @@ export class FlowController {
             if (this.stopRequested) return this.finishStopped();
             return this.finish("stopped", "Couldn't open the application from this page");
           }
+          this.openedFromEntry = true;
           continue;
         }
         if (!snap.scopeEl && recognized === 0) {

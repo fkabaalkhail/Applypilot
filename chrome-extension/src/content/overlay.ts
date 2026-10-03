@@ -2580,13 +2580,6 @@ function applyDefaultSelection(): void {
   overlayState.selected = defaultSelectedIds(overlayState.fields);
 }
 
-/** True when Autofill should start by clicking the page's apply-entry button,
- *  mirrors the flow controller's gate (no recognized fields + an entry). */
-function canStartFromEntry(): boolean {
-  const recognized = overlayState.fields.filter((f) => f.category !== "unknown").length;
-  return recognized === 0 && Boolean(overlayState.applyEntry);
-}
-
 // ---------------------------------------------------------------------------
 // Autofill
 // ---------------------------------------------------------------------------
@@ -2604,9 +2597,11 @@ function currentUploadResumeId(): number | null {
 
 async function doAutofill(): Promise<void> {
   if (!callbacks || overlayState.busy) return;
+  // Nothing picked is still a run: the flow opens the form from an "Apply"
+  // entry, waits for a form still loading hidden, or says no form was found.
+  // Returning here left a live button that silently did nothing (a BambooHR
+  // form opened a moment before the click, live 2026-10-03).
   const ids = [...overlayState.selected];
-  const entryStart = canStartFromEntry();
-  if (ids.length === 0 && !entryStart) return;
 
   overlayState.busy = true;
   overlayState.autofilling = true;

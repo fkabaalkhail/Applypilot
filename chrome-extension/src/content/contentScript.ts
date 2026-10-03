@@ -52,6 +52,7 @@ import type {
   UserApplicationProfile,
 } from "../shared/types";
 import { deepQueryAll, isVisible, cleanText } from "./domUtils";
+import { controlVisibility, formLooksHidden, waitForFormReveal } from "./hiddenForm";
 import { base64ToFile, downloadBase64File, injectResumeFile, type UploadResult } from "./fileUpload";
 import { openAiModal } from "./aiModalBridge";
 import { getLastJobContext, saveLastJobContext } from "../shared/storage";
@@ -794,7 +795,12 @@ function initialize(): void {
     return { reports, outcomes };
   }
 
-  async function fillOnce(ids: string[] | null, signal?: AbortSignal, knownAtClick: ReadonlySet<string> | null = null): Promise<StepTally> {
+  async function fillOnce(
+    ids: string[] | null,
+    signal?: AbortSignal,
+    knownAtClick: ReadonlySet<string> | null = null,
+    afterEntry = false
+  ): Promise<StepTally> {
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       // Let a React ATS finish hydrating before we scan+fill: filling a form
       // that is still swapping in its real fields captures throwaway controls
@@ -805,6 +811,34 @@ function initialize(): void {
       await waitForDomSettle(signal);
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       runScan();
+      // A form opened by an entry click can still sit hidden while the site
+      // loads (hiddenForm.ts). Wait for it to show (bounded; free when the
+      // page's form isn't hidden) when this pass has nothing to fill yet, or
+      // when the flow just clicked "Apply" and next to nothing is rendered: a
+      // stray field outside the hidden form must not end the wait (BambooHR).
+      // A user's own click waits only when it picked nothing: they pressed
+      // Autofill right after opening the form themselves, and the flow would
+      // otherwise click "Apply" again and toggle the form shut.
+      if (ids === null || ids.length === 0) {
+        const nothingYet = defaultSelectedIds(lastFields).size === 0;
+        if (nothingYet || (afterEntry && controlVisibility(document).shown <= 2)) {
+          const found = await waitForFormReveal(
+            {
+              measure: () => controlVisibility(document),
+              rescan: async () => {
+                await waitForDomSettle(signal);
+                runScan();
+                return nothingYet
+                  ? defaultSelectedIds(lastFields).size > 0
+                  : !formLooksHidden(controlVisibility(document));
+              },
+            },
+            signal
+          );
+          if (found) console.log("[Tailrd flow] hidden form shown, rescanned");
+        }
+      }
+      if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       // Create the extra work-experience / education rows the profile needs before
       // filling, so a candidate with several jobs doesn't get only the first row.
       await expandRepeatingSections(signal);
@@ -1298,7 +1332,7 @@ function initialize(): void {
 
   function makeFlowDeps(): FlowDeps {
     return {
-      fillStep: (ids) => fillOnce(ids, flowAbort?.signal),
+      fillStep: (ids, ctx) => fillOnce(ids, flowAbort?.signal, null, ctx?.afterEntry === true),
       snapshot: (): FlowSnapshot => ({
         fields: lastFields,
         scopeEl: lastScope,

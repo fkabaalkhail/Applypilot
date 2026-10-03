@@ -33,6 +33,35 @@ const DIAL_CODE_CANADA = { re: String.raw`canada|^\+\s*1$` };
 
 const live = (c) => ({ mode: "live", profile: P, trigger: { fillTimeoutMs: 180000 }, ...c });
 
+const NEXTHOP_EXPECT = {
+  "#nickname_hpcsaf": null,
+  "#firstName": "Maya",
+  "#lastName": "Tremblay",
+  "#email": P.email,
+  "#phone": PHONE,
+  "label:Address": null,
+  "label:City": "Toronto",
+  "label:Postal Code": null,
+  "label:Date Available": null,
+  "#websiteUrl": null,
+  "#linkedinUrl": LINKEDIN,
+  "#educationInstitutionName": "University of Waterloo",
+  // BambooHR fills this itself with the posting URL; we must not touch it.
+  "label:Link to This Job": { re: "bamboohr\.com|^$" },
+};
+
+/**
+ * The user clicks "Apply for This Job" (BambooHR then holds its form hidden for
+ * 2.5-5 s, live 2026-10-03). Clicked programmatically: at 1366x900 the auto-
+ * mounted panel covers BambooHR's right column, Apply button included, so a
+ * pointer click lands on the panel (NOTES.md, needs-you).
+ */
+async function userOpensBambooForm(page) {
+  const apply = page.locator('button:has-text("Apply for This Job"), a:has-text("Apply for This Job")').first();
+  await apply.waitFor({ state: "attached", timeout: 15000 });
+  await apply.evaluate((el) => el.click());
+}
+
 export default [
   // ---------------------------------------------------------------- Greenhouse
   live({
@@ -312,28 +341,26 @@ export default [
     },
   }),
   // ------------------------------------------------------------------ BambooHR
-  // No harness click on "Apply for This Job": the extension flow opens the form
-  // itself, and a second click on top of it toggled the form shut again.
+  // The posting cases start on the job page and let the extension open the form
+  // (a harness click on top of the flow's own toggled the form shut again);
+  // -user-opened clicks "Apply" itself and presses Autofill at once.
   live({
     id: "live-bamboo-nexthop",
     ats: "bamboohr",
     url: "https://nexthopai.bamboohr.com/careers/64",
-    expect: {
-      "#nickname_hpcsaf": null,
-      "#firstName": "Maya",
-      "#lastName": "Tremblay",
-      "#email": P.email,
-      "#phone": PHONE,
-      "label:Address": null,
-      "label:City": "Toronto",
-      "label:Postal Code": null,
-      "label:Date Available": null,
-      "#websiteUrl": null,
-      "#linkedinUrl": LINKEDIN,
-      "#educationInstitutionName": "University of Waterloo",
-      // BambooHR fills this itself with the posting URL; we must not touch it.
-      "label:Link to This Job": { re: "bamboohr\.com|^$" },
-    },
+    expect: NEXTHOP_EXPECT,
+  }),
+  live({
+    // The user opens the form and presses Autofill a moment later, while
+    // BambooHR still holds it hidden: the fill must wait for it, not click
+    // "Apply" again (which toggles the form shut).
+    id: "live-bamboo-nexthop-user-opened",
+    ats: "bamboohr",
+    url: "https://nexthopai.bamboohr.com/careers/64",
+    beforeFill: userOpensBambooForm,
+    settleMs: 0,
+    trigger: { fillTimeoutMs: 180000, clickImmediately: true },
+    expect: NEXTHOP_EXPECT,
   }),
   live({
     id: "live-bamboo-armstrong",

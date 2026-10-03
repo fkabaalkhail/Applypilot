@@ -156,7 +156,7 @@ async function togglePanel(sw, pageUrl) {
  * Open the panel (auto-mount or toolbar toggle), press Autofill, and wait for
  * the fill to finish. Returns a trace of what happened for the report.
  */
-export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillTimeoutMs = 150000 } = {}) {
+export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillTimeoutMs = 150000, clickImmediately = false } = {}) {
   const trace = { mounted: "none", clicked: false, finished: false, telemetry: null, ms: 0 };
   const started = Date.now();
   let st = await overlayState(page);
@@ -183,8 +183,10 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
   // SmartRecruiters) the form renders later; a click before the panel has any
   // field selected is a silent no-op. Wait for the panel to report selected
   // fields, unchanged for a second (its own refreshMainView console beat).
+  // clickImmediately: press it the moment it is enabled, as a user who opened
+  // the form a second ago would.
   const panel = page.__panel ?? { selected: 0, fields: 0, changedAt: Date.now(), beats: [] };
-  for (let waited = 0; waited < 25000; waited += 200) {
+  for (let waited = 0; !clickImmediately && waited < 25000; waited += 200) {
     if (panel.selected > 0 && Date.now() - panel.changedAt > 1000) break;
     // A posting whose form opens behind an "Apply" button has no fields
     // until the flow clicks it: after 8 s of nothing, press Autofill anyway.

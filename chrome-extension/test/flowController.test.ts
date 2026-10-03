@@ -319,6 +319,22 @@ describe("FlowController", () => {
     expect(opening.map((p) => p.detail)).toEqual(['opening "Apply"…', 'opening "Apply Manually"…']);
   });
 
+  it("tells the fill pass when its page was just opened by an apply entry", async () => {
+    // Posting ("Apply") → form page → (Next) → second page → terminal. Only the
+    // page the entry click opened may wait for a form still loading hidden
+    // (BambooHR, live 2026-10-03); an ordinary advance never waits on that.
+    const pages: DetectedField[][] = [[], [field("1", "First name")], [field("2", "Phone")]];
+    const { deps, progress } = makeDeps(pages, [null, advanceBtn(), terminalBtn()], ["Apply", null, null]);
+    const afterEntry: boolean[] = [];
+    deps.fillStep = async (_ids, ctx) => {
+      afterEntry.push(ctx?.afterEntry === true);
+      return tally();
+    };
+    await drive(new FlowController(deps), progress);
+    expect(afterEntry).toEqual([false, true, false]);
+    expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
   it("stops with a clear message when a field-less page has no entry", async () => {
     const { deps, progress } = makeDeps([[]], [null]);
     await new FlowController(deps).run(freshState(), null);
