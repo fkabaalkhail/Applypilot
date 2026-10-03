@@ -177,13 +177,22 @@ function isAbleToWorkInCountry(n: string, raw: string): boolean {
   return c !== null;
 }
 const SPONSOR = /\bsponsor(ship|ed|ing)?\b|\b(visa|immigration) (status|support|assistance|transfer)\b|\bh ?1 ?b\b/;
+/** Asks whether sponsorship is NEEDED ("will you require / do you need … sponsorship"). */
+const REQUIRES_SPONSOR = /\b(require|requires|requiring|need|needs|needing)\b[^?]{0,60}\bsponsor/;
+/** Asks for the work RIGHT itself ("are you legally authorized…", "do you have the right to work…"). */
+const ASKS_RIGHT =
+  /\b(are|is) (you|the applicant)\b[^?]{0,25}\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able)\b|\bdo you (have|hold|possess)\b[^?]{0,25}\b(right|authori[sz]ation|permit)\b/;
 /** Asks WHICH sponsorship or visa, not whether: no profile answer states it. */
 const SPONSOR_TYPE = /\b(what|which) (type of |kind of |form of )?(visa )?(sponsorship|visa|work permit)\b|\b(type|kind|form) of (visa |work )?(sponsorship|visa|permit)\b/;
 const WITHOUT_SPONSOR = /\bwithout (the )?(need (for|of) |needing |requiring |requirement (for|of) )?(any )?(current or future )?(visa |employer |employment |immigration |company )?sponsor/;
 
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
-  const hasRight = WORK_RIGHT.test(n) || isAbleToWorkInCountry(n, q.label);
   const hasSponsor = SPONSOR.test(n);
+  // "Will you require sponsorship … to legally work in the U.S.?" (ZipRecruiter,
+  // live 2026-10-03) asks about SPONSORSHIP; its work-right words are only the
+  // purpose. A work-right phrase counts when it is asked ("are you authorized…").
+  const sponsorAsked = hasSponsor && REQUIRES_SPONSOR.test(n) && !ASKS_RIGHT.test(n);
+  const hasRight = !sponsorAsked && (WORK_RIGHT.test(n) || isAbleToWorkInCountry(n, q.label));
   if (!hasRight && !hasSponsor) return null;
   // "Will you require relocation assistance or visa sponsorship?" asks two
   // things; the sponsorship half alone cannot answer it.
@@ -643,7 +652,12 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     return abstain("graduation:no-unique-option");
   }
   if (q.kind === "date" || /\bdate\b/.test(n)) {
-    return g.precision === "year" ? answer(year, "graduation:year-as-date", "high") : answer(formatDateFor(g.earliest, q), "graduation:date");
+    if (g.precision === "year") return answer(year, "graduation:year-as-date", "high");
+    // A month is not a day: "April 2027" suits a text box and a month control,
+    // and a day-precise picker gets nothing (dateControl), never an invented
+    // 1st (Ashby's "Pick date..." got 04/01/2027, live 2026-10-03).
+    if (g.precision === "month") return answer(`${monthName} ${year}`, "graduation:month-as-date");
+    return answer(formatDateFor(g.earliest, q), "graduation:date");
   }
   return answer(year, "graduation:year");
 }

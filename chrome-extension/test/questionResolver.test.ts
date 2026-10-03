@@ -83,6 +83,31 @@ describe("work authorization, country-aware", () => {
   });
 });
 
+describe("explicit per-country authorization beats the general sponsorship answer (live 2026-10-03)", () => {
+  // What a Canadian who finished onboarding has: not authorized in the US, and
+  // "No" to sponsorship, meaning Canada.
+  const P = { ...SPARSE_CANADIAN, requiresSponsorship: "No", authorizedUS: "No", authorizedCanada: "Yes" };
+  const US = { jobCountry: "US" as string | null, company: "" };
+  it("a US sponsorship question is Yes: not authorized there", () => {
+    // Hermeus on Lever got "No, I do not require sponsorship".
+    expect(value(ask("Do you require visa sponsorship for employment in the USA?✱", { options: ["Yes, I require sponsorship", "No, I do not require sponsorship"] }, P))).toBe("Yes, I require sponsorship");
+    // Robinhood, ZipRecruiter, Twitch (all Greenhouse) got "No".
+    expect(value(ask("Will you now (or in the future) require visa sponsorship in order to work in the US?*", { options: YES_NO }, P))).toBe("Yes");
+    expect(value(ask("Will you now, or in the future, require sponsorship (i.e. H-1B visa, etc.) to legally work in the U.S.?*", { options: YES_NO }, P))).toBe("Yes");
+    expect(value(ask("Your response is mandatory when applying for a U.S.-based position. Do you need, or will you need in the future, any immigration related support or sponsorship from Amazon to work in the U.S.?", { options: YES_NO }, P))).toBe("Yes");
+  });
+  it("an unscoped one follows the job's country, and abstains while it is unknown", () => {
+    const q = "Will you now or will you in the future require employment visa sponsorship?✱";
+    expect(value(ask(q, { options: YES_NO }, P, US))).toBe("Yes");
+    expect(value(ask(q, { options: YES_NO }, P, { jobCountry: "CA", company: "" }))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, P))).toBe("abstain");
+  });
+  it("Canada is still answered from the citizenship (and citizenship questions keep reading it)", () => {
+    expect(value(ask("Will you require sponsorship to work in Canada?", { options: YES_NO }, P))).toBe("No");
+    expect(value(ask("In which country/region do you have citizenship?*", { options: ["Brazil", "Canada", "United States"], kind: "choice" }, P))).toBe("Canada");
+  });
+});
+
 describe("conditional questions: the condition first", () => {
   const ACTIONET = ["Select an option...", "Yes", "No", "I am not a current or former government employee"];
   it("a false condition picks the option saying so (ActioNet on Jobvite, live 2026-10-03)", () => {

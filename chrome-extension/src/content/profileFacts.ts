@@ -382,6 +382,9 @@ export function workAuthFacts(profile: UserApplicationProfile): WorkAuthFacts {
  * employer asks, so it wins over the free-text reading for that country. Not
  * authorized there means sponsorship is needed to work there; authorized keeps
  * what the text said about the future (OPT: authorized now, sponsored later).
+ * An answer that agrees with the text keeps the text's richer basis: a
+ * "Canadian citizen" who says Yes for Canada is still a citizen of Canada (the
+ * citizenship questions read it).
  */
 function applyExplicitCountries(profile: UserApplicationProfile, byCountry: Map<string, CountryAuth>): void {
   const explicit: Array<[string, string | undefined]> = [
@@ -392,7 +395,8 @@ function applyExplicitCountries(profile: UserApplicationProfile, byCountry: Map<
     const p = polarityOf(stated ?? "");
     if (p === null) continue;
     const prev = byCountry.get(code);
-    byCountry.set(code, { authorized: p, needsSponsorship: p ? (prev?.needsSponsorship ?? false) : true, basis: "stated" });
+    if (prev && prev.authorized === p) continue;
+    byCountry.set(code, { authorized: p, needsSponsorship: p ? (prev?.needsSponsorship ?? null) : true, basis: "stated" });
   }
 }
 
@@ -425,6 +429,11 @@ export function needsSponsorshipIn(auth: WorkAuthFacts, countryCode: string | nu
   const stated = auth.statedSponsorship;
   if (countryCode) {
     const c = auth.byCountry.get(countryCode);
+    // Not authorized there: working there takes sponsorship, whatever the
+    // general answer says (a Canadian's "No" is about Canada). Live
+    // 2026-10-03: "authorized in the US: No" plus "requires sponsorship: No"
+    // answered "No, I do not require sponsorship" for a job in the USA.
+    if (c && c.authorized === false) return fact(true, "high", `sponsorship:not-authorized-${c.basis}`);
     // The applicant's own answer wins for any country their status covers.
     if (stated !== null && (c || (auth.byCountry.size === 0 && (!residence || residence === countryCode)))) {
       return fact(stated, "high", "sponsorship:stated");
@@ -433,7 +442,11 @@ export function needsSponsorshipIn(auth: WorkAuthFacts, countryCode: string | nu
     return null;
   }
   // No country in the question: only the applicant's own answer settles it,
-  // and only when their status is not confined to some OTHER country.
+  // and only when their status is not confined to some OTHER country. Not
+  // authorized somewhere, the question may well be about that place.
+  if (stated !== null && [...auth.byCountry.values()].some((c) => c.authorized === false)) {
+    return fact(stated, "medium", "sponsorship:stated-unscoped-not-everywhere");
+  }
   if (stated !== null) {
     if (auth.byCountry.size === 0 || (residence && auth.byCountry.has(residence)) || auth.byCountry.size === 1) {
       return fact(stated, "high", "sponsorship:stated-unscoped");

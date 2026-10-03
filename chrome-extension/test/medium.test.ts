@@ -11,6 +11,7 @@ import { stubLayout } from "./helpers/layout";
 import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
+import { setResolveContext } from "../src/content/fieldResolver";
 
 let restore: () => void;
 beforeAll(() => {
@@ -68,11 +69,18 @@ describe("SmartRecruiters", () => {
 });
 
 describe("Jobvite", () => {
-  it("fills text and the ARIA radiogroup (sponsorship = No); EEO declined", async () => {
+  it("fills text and the ARIA radiogroup (sponsorship = No for a job in Canada); EEO declined", async () => {
     mountJobviteForm(document);
     const c = cats();
     expect(c.has("firstName") && c.has("sponsorship")).toBe(true);
-    await runAutofill(PROFILE_NO_EEO, false);
+    // The fixture names no country; MOCK_PROFILE needs sponsorship for the US
+    // only, so the answer depends on the job's (2026-10-03).
+    setResolveContext({ jobCountry: "CA" });
+    try {
+      await runAutofill(PROFILE_NO_EEO, false);
+    } finally {
+      setResolveContext({ jobCountry: null });
+    }
     expect(val("jobvite-firstname")).toBe("John");
     expect(document.querySelector('[role="radio"][aria-checked="true"]')?.getAttribute("data-value")).toBe("No");
     // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.

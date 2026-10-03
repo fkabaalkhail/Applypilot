@@ -9,6 +9,7 @@ import { stubLayout } from "./helpers/layout";
 import { runAutofill, PROFILE_NO_EEO } from "./helpers/autofill";
 import { scanPage } from "../src/content/formScanner";
 import { MOCK_PROFILE } from "../src/api/mockProfile";
+import { setResolveContext } from "../src/content/fieldResolver";
 
 let restore: () => void;
 beforeAll(() => {
@@ -39,10 +40,31 @@ describe("Greenhouse", () => {
     expect(val("gh-country")).toBe("Canada");
     expect(val("gh-linkedin")).toBe("https://linkedin.com/in/johndoe");
     expect(val("gh-cover")).toBe("Please generate or insert the saved cover letter here.");
-    expect((document.querySelector('input[name="gh-sponsor"]:checked') as HTMLInputElement | null)?.value).toBe("No");
+    // MOCK_PROFILE is authorized in Canada but not the US, and this form names
+    // no country: "require sponsorship?" could be about either, so it stays
+    // blank (2026-10-03). With the job's country known it fills (next test).
+    expect(document.querySelector('input[name="gh-sponsor"]:checked')).toBeNull();
     expect(val("gh-resume")).toBe("");
     // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.
     expect(val("gh-gender")).toMatch(/decline|prefer not|not wish|wish to answer/i);
+  });
+});
+
+describe("Greenhouse sponsorship follows the job's country", () => {
+  it("No for a job in Canada, Yes for one in the US (the radio fills both ways)", async () => {
+    try {
+      mountGreenhouseForm(document);
+      setResolveContext({ jobCountry: "CA" });
+      await runAutofill(PROFILE_NO_EEO, false);
+      expect((document.querySelector('input[name="gh-sponsor"]:checked') as HTMLInputElement | null)?.value).toBe("No");
+      document.body.innerHTML = "";
+      mountGreenhouseForm(document);
+      setResolveContext({ jobCountry: "US" });
+      await runAutofill(PROFILE_NO_EEO, false);
+      expect((document.querySelector('input[name="gh-sponsor"]:checked') as HTMLInputElement | null)?.value).toBe("Yes");
+    } finally {
+      setResolveContext({ jobCountry: null });
+    }
   });
 });
 
