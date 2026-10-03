@@ -26,7 +26,7 @@ const MARKETING_RE =
  *  apply). Deliberately narrow: explicit first-person agreement or a named legal
  *  document, never a bare "yes/no" question. */
 const CONSENT_RE =
-  /\bi (?:agree|consent|accept|acknowledge|certify|confirm|authoriz(?:e|ed)|declare)\b|\b(?:agree|consent) to\b|\bterms (?:and|&) conditions\b|\bprivacy (?:policy|notice|statement)\b|\bdata (?:processing|protection|privacy)\b|\bgdpr\b|\bi have read\b/i;
+  /\bi (?:agree|consent|accept|acknowledge|understand|certify|confirm|authoriz(?:e|ed)|declare)\b|\b(?:agree|consent) to\b|\bterms (?:and|&) conditions\b|\bprivacy (?:policy|notice|statement)\b|\bdata (?:processing|protection|privacy)\b|\bgdpr\b|\bi have read\b/i;
 
 /** An application consent / agreement box (and not a marketing opt-in). */
 export function isConsentText(labelText: string): boolean {

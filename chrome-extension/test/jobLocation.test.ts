@@ -88,3 +88,13 @@ describe("detectJobPlace (country + city)", () => {
     expect(detectJobPlace(document)).toEqual({ country: null, city: null });
   });
 });
+
+describe("location lines written 'Country - City' (Veeva on Lever, live 2026-10-03)", () => {
+  it("read like 'City, Country'; an office name is never the city", () => {
+    document.head.innerHTML = "";
+    document.body.innerHTML = `<div class="posting-categories"><div class="location">Canada - Toronto</div></div>`;
+    expect(detectJobPlace(document)).toEqual({ country: "CA", city: "Toronto" });
+    document.body.innerHTML = `<div class="posting-categories"><div class="location">North Vancouver, Canada - Head Office</div></div>`;
+    expect(detectJobPlace(document)).toEqual({ country: "CA", city: null });
+  });
+});

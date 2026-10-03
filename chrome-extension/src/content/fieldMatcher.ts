@@ -144,6 +144,9 @@ const CATEGORY_SPECS: CategorySpec[] = [
   },
   {
     category: "lastName",
+    // "Preferred first and last name" is BOTH (Voldex on Ashby, live
+    // 2026-10-03: it got the last name alone).
+    negative: /\b(first|given) (and|&) (last|family) name\b/,
     patterns: [
       { re: /\b(last|family) name\b/ },
       { re: /\blastname\b|\blname\b|\bsurname\b/ },
@@ -153,6 +156,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
     category: "fullName",
     patterns: [
       { re: /\bfull name\b/ },
+      { re: /\b(first|given) (and|&) (last|family) name\b/ },
       { re: /\blegal name\b/ },
       { re: /^(your )?name$/ },
       { re: /\bcomplete name\b/ },
@@ -163,7 +167,8 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\bsign(ature)? (here|below)\b/, weight: 0.85 },
       { re: /\bplease sign\b/, weight: 0.85 },
     ],
-    negative: /\bfirst\b|\blast\b|\bgiven\b|\bfamily\b|\bmiddle\b|\buser ?name\b|\bcompany\b|\bemployer\b|\bschool\b|\bfile\b|\bcontact name\b|\bsign in\b|\bsign up\b/,
+    // "first and last name" names the whole name, so its "first" / "last" do not veto.
+    negative: /\b(first|given)\b(?! (and|&) (last|family) name)|(?<!\b(first|given) (and|&) )\b(last|family)\b|\bmiddle\b|\buser ?name\b|\bcompany\b|\bemployer\b|\bschool\b|\bfile\b|\bcontact name\b|\bsign in\b|\bsign up\b/,
   },
   {
     category: "email",

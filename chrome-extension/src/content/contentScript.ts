@@ -68,6 +68,7 @@ import { defaultSelectedIds, fillSelection, isDefaultSelected } from "../shared/
 import { extractJobContext, extractJobIdentity } from "./jobContext";
 import { detectJobPlace, sanitizeCompany, type JobPlace } from "./jobLocation";
 import { getResolveContext, setResolveContext } from "./fieldResolver";
+import { formCountryHint } from "./questionResolver";
 import { isHigh, profileFacts } from "./profileFacts";
 import { aiFillCandidates, isBoolish, needsOptionHarvest, planAiFill, planFillRoute, planOnDeviceReask, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { closestDemographicOption } from "./demographicMatch";
@@ -478,7 +479,15 @@ function initialize(): void {
     try {
       const cached = await getLastJobContext();
       if (!cached?.country || resolveContextUrl !== forUrl) return false;
-      if (new URL(cached.url).host !== location.host) return false;
+      const from = new URL(cached.url);
+      if (from.host !== location.host) return false;
+      // The SAME job only: an application step continues its posting's path
+      // (Workday ".../job/Toronto-ON/Engineer_R1" -> ".../Engineer_R1/apply").
+      // Every Lever company shares jobs.lever.co, and Arc'teryx's form took the
+      // PREVIOUS posting's country (US): "require sponsorship?" got Yes for a
+      // job in Canada (live 2026-10-03).
+      const posting = from.pathname.replace(/\/+$/, "");
+      if (posting.split("/").filter(Boolean).length < 2 || !location.pathname.startsWith(posting)) return false;
       setResolveContext({ jobCountry: cached.country, jobCity: cached.city ?? null });
       return true;
     } catch {
@@ -519,9 +528,21 @@ function initialize(): void {
     return (lastFields.find((f) => f.id === id)?.label ?? id).replace(/\s+/g, " ").slice(0, 48);
   }
 
+  let formHintUrl = "";
   function runScan(): ScanResponse {
     refreshResolveContext();
-    const result = scanPage(lastProfile, lastFillEEO);
+    let result = scanPage(lastProfile, lastFillEEO);
+    // No job country on the page: the form's own work-authorization questions
+    // may all name one (formCountryHint). Once per URL; a stated place that
+    // arrives later (top frame, carried posting) still overrides it.
+    if (!getResolveContext().jobCountry && formHintUrl !== location.href) {
+      formHintUrl = location.href;
+      const hint = formCountryHint(result.fields.map((f) => f.label));
+      if (hint) {
+        setResolveContext({ jobCountry: hint });
+        result = scanPage(lastProfile, lastFillEEO);
+      }
+    }
     registry = result.registry;
     lastAdapter = result.adapter;
     lastFields = result.fields;

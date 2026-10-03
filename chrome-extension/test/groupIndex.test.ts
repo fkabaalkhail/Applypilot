@@ -31,3 +31,14 @@ describe("detectGroupIndex", () => {
     expect(detectGroupIndex(sig({ nameAttr: "emp_2_education[5]" }))).toBe(5);
   });
 });
+
+describe("a trailing number is a row only when the id names a row field (2026-10-03)", () => {
+  it("Greenhouse row ids keep their index", () => {
+    expect(detectGroupIndex(sig({ idAttr: "company-name-1" }))).toBe(1);
+    expect(detectGroupIndex(sig({ idAttr: "school--0" }))).toBe(0);
+    expect(detectGroupIndex(sig({ idAttr: "start-date-month-2" }))).toBe(2);
+  });
+  it("Rippling's sequential 'field-31' is not row 31 (its Current company got the first job's employer)", () => {
+    expect(detectGroupIndex(sig({ idAttr: "field-31", nameAttr: "kQ8hZ2" }))).toBeNull();
+  });
+});

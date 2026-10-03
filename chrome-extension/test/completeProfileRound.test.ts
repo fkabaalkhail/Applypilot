@@ -212,3 +212,91 @@ describe("gender identity asked three ways (fieldResolver)", () => {
     expect(f[0].proposedValue).toBe("Cisgender woman");
   });
 });
+
+describe("fresh postings, blind round (2026-10-03): wrong writes", () => {
+  it("'enrolled in a PhD program' is No for a bachelor's student (Neighbor on Lever answered Yes)", () => {
+    expect(value(ask("Are you currently enrolled in a PhD program, completing by May of 2028?✱", { options: YES_NO }))).toBe("No");
+    expect(value(ask("Are you currently an advanced PhD candidate (or equivalent research stage)?", { options: YES_NO }))).toBe("No");
+  });
+  it("'any impediments to traveling internationally?' is No (Veeva answered Yes)", () => {
+    expect(value(ask("Do you have any impediments to traveling internationally?✱", { options: YES_NO }))).toBe("No");
+  });
+  it("'under 2 years' holds for 1.4 years: the GPA, never 'I have more than 2 years' (Veeva)", () => {
+    const opts = ["3.7 - 4.0", "3.3 - 3.69", "3.0 - 3.29", "2.7 - 2.99", "< 2.7", "N/A - I have more than 2 years of professional experience"];
+    expect(value(ask("If you have under 2 years of related professional experience, please provide your GPA.", { options: opts }))).toBe("3.7 - 4.0");
+  });
+  it("'1–2 years of experience' is met from 1 year (FSSI on Workable answered NO; label as captured, truncated)", () => {
+    expect(value(ask("1–2 years of experience in software engineering, full stack application development", { options: ["YES", "NO"], kind: "boolean" }))).toBe("YES");
+  });
+  it("a yes/no US-citizenship requirement is No for an applicant not authorized in the US, never 'Canada' (Striveworks)", () => {
+    const q = "Due to the nature of this role, this role requires US citizenship and eligibility to obtain a US security clearance (Secret or above), do you meet that requirement?*";
+    expect(value(ask(q, { controlType: "combobox", kind: "choice" }))).toBe("No");
+  });
+  it("school, program and graduation month together, not '2027' (Arc'teryx on Lever)", () => {
+    const q = "Please indicate your school, program/faculty, and expected month/year of graduation✱";
+    expect(value(ask(q, { controlType: "textarea", kind: "longText" }))).toBe(
+      "University of Waterloo, Bachelor of Applied Science in Mechatronics Engineering, expected graduation April 2027"
+    );
+  });
+});
+
+describe("fresh postings, blind round (2026-10-03): blanks the profile answers", () => {
+  it("authorized to work 'in the country that you are located' is the applicant's own country (Netlify)", () => {
+    expect(value(ask("Are you legally authorized to work in the country that you are located?", { controlType: "combobox", kind: "choice" }, COMPLETE, { jobCountry: null, company: "" }))).toBe("Yes");
+  });
+  it("'at least 18 years or older' (Commvault)", () => {
+    expect(value(ask("Are you at least 18 years or older?", { options: YES_NO }, { ...COMPLETE, dateOfBirth: "2004-02-11" }))).toBe("Yes");
+  });
+  it("'previously worked for this organization' with the company unnamed: No (Commvault)", () => {
+    expect(value(ask("Have you previously worked for this organization", { options: YES_NO }))).toBe("No");
+  });
+  it("'How did you first hear about …' (Planet)", () => {
+    expect(value(ask("How did you first hear about Planet before applying for this position?", { controlType: "combobox", kind: "choice" }))).toBe("LinkedIn");
+  });
+  it("channel options under 'how candidates find us' (Grow Therapy on Ashby; options as captured, truncated)", () => {
+    const opts = ["Social media ad (M", "LinkedIn", "Job board (Indeed,", "Grow website/caree", "Grow Engineering B", "Referral from a fr"];
+    expect(value(ask("This helps us understand how candidates find us and does not affect your application", { options: opts, controlType: "radioGroup" }))).toBe("LinkedIn");
+  });
+  it("a preferred start date among offered dates: the earliest start (The Exploration Company)", () => {
+    expect(value(ask("If selected for the internship, what would be your preferred start date?", { options: ["May 3, 2027", "May 17, 2027", "June 1, 2027"] }))).toBe("May 3, 2027");
+  });
+  it("'living in the US or Canada?' and the time zone, from where the applicant lives (Veeva)", () => {
+    expect(value(ask("Are you currently living in the US or Canada?✱", { options: ["USA", "Canada"] }))).toBe("Canada");
+    expect(value(ask("Which timezone are you currently located in?✱", { options: ["PST", "MST", "CST", "EST"] }))).toBe("EST");
+  });
+  it("'consent to communication via text?' is the SMS opt-in: No (FSSI)", () => {
+    expect(value(ask("Do you consent to communication via text?", { options: ["YES", "NO"], kind: "boolean" }))).toBe("NO");
+  });
+});
+
+describe("fresh postings, blind round: scan-level (2026-10-03)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  const scan = (html: string) => {
+    document.body.innerHTML = `<form>${html}</form>`;
+    return scanPage(COMPLETE, false, null).fields;
+  };
+
+  it("'Preferred first and last name' is the full name, not the last name (Voldex on Ashby got 'Tremblay')", () => {
+    const f = scan(`<label for="n">Preferred first and last name</label><input id="n" type="text">`);
+    expect(f[0].category).toBe("fullName");
+    expect(f[0].proposedValue).toBe("Maya Tremblay");
+  });
+
+  it("Veeva's acknowledgement and future-roles boxes are ticked", () => {
+    const ack = scan(`<label><input type="checkbox" name="a"> I understand that next steps will be sent via email and I have marked the sender as safe.</label>`);
+    expect(ack[0].proposedValue).toBe("yes");
+    const future = scan(`<label><input type="checkbox" name="b"> Yes, Veeva Systems can contact me about future job opportunities for up to 2 years.</label>`);
+    expect(future[0].proposedValue).toBe("yes");
+  });
+
+  it("the form's own work-authorization questions imply the job's country when the page states none (RAVE on Workable)", async () => {
+    const { formCountryHint } = await import("../src/content/questionResolver");
+    expect(formCountryHint(["Are you authorized to work in the US?", "Will you now, or in the future require sponsorship to be employed at RAVE?", "Are you able to work onsite in Laramie, WY?"])).toBe("US");
+    expect(formCountryHint(["Are you legally authorized to work in Canada?", "Are you legally authorized to work in the United States?"])).toBeNull();
+    expect(formCountryHint(["Where are you located?", "Are you willing to relocate to Canada?"])).toBeNull();
+  });
+});

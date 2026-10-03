@@ -65,10 +65,10 @@ function polar(value: boolean, q: QuestionInput, rule: string): QuestionResult {
 
 /** Opt-ins nobody needs to apply: answered NO. */
 const MARKETING =
-  /\b(marketing|newsletters?|subscribe|promotional|sms|text messages?|texts? (me|messages)|whats ?app|job alerts?|mailing list|keep (me )?(in touch|informed)|stay (in touch|informed)|receive (news|emails?|communications?|updates?|information|messages|notifications?))\b/;
+  /\b(marketing|newsletters?|subscribe|promotional|sms|text messages?|texts? (me|messages)|(via|by) text|text (communications?|updates|alerts)|whats ?app|job alerts?|mailing list|keep (me )?(in touch|informed)|stay (in touch|informed)|receive (news|emails?|communications?|updates?|information|messages|notifications?))\b/;
 
 /** Being kept on file for other roles: harmless and in the applicant's interest. */
-const FUTURE_ROLES = /\b(future (opportunities|openings|roles|positions|vacancies)|other (opportunities|roles|positions|openings)|talent (community|network|pool|pipeline)|consider(ed)? (me )?for (other|future))\b/;
+const FUTURE_ROLES = /\b(future (job |career |employment )?(opportunities|openings|roles|positions|vacancies)|other (opportunities|roles|positions|openings)|talent (community|network|pool|pipeline)|consider(ed)? (me )?for (other|future))\b/;
 
 /** Consent / certification an application cannot be submitted without. */
 const CONSENT_VERB =
@@ -89,7 +89,7 @@ const REQUIREMENT =
  *  assistance?"): the applicant's to make, never defaulted. */
 const ASSISTANCE = /\b(assistance|package|support|expenses?|benefits?|allowance|reimburs\w*|stipend|bonus|housing)\b/;
 /** "…challenges clearing a background check?": the clean answer is NO. */
-const OBSTACLE = /\b(challenges?|issues?|problems?|concerns?|difficult(y|ies)?|prevent you|preclude|disqualif\w*)\b/;
+const OBSTACLE = /\b(challenges?|issues?|problems?|concerns?|difficult(y|ies)?|prevent you|preclude|disqualif\w*|impediments?|barriers?|obstacles?|restrictions?|limitations?)\b/;
 
 const PRIOR_APPLICATION =
   /\b(have|did) you (ever |previously |already )?(applied|interviewed|submitted (an )?application)\b|\bpreviously (applied|interviewed)\b|\bapplied (here|before|previously)\b|\binterviewed (here|before|with us)\b/;
@@ -105,7 +105,7 @@ const GOV_OFFICIAL =
 const CRIMINAL = /\b(criminal|convicted|conviction|felony|misdemeanou?r|arrested|charged with|pending charges)\b/;
 
 const HOW_HEARD =
-  /\bhow (did )?you (hear|heard|find|found|learn|learned|come across|came across|discover|discovered|connect|connected)\b|\bwhere did you (hear|see|find|learn)\b|\bhow were you (referred|introduced)\b|\b(referral|application|candidate|job) source\b|\bsource of (application|referral)\b|\bhow did you get to know\b/;
+  /\bhow (did )?you (first |originally )?(hear|heard|find|found|learn|learned|come across|came across|discover|discovered|connect|connected)\b|\bwhere did you (hear|see|find|learn)\b|\bhow were you (referred|introduced)\b|\b(referral|application|candidate|job) source\b|\bsource of (application|referral)\b|\bhow did you get to know\b/;
 
 /** Channels a "how did you hear" list offers; three or more in an unlabeled
  *  question ("Select One", Hermeus on Lever) make it that question. */
@@ -230,7 +230,9 @@ export function resolveDefault(
 
   if (HOW_HEARD.test(n) && !/\bif\b.*\b(referr|other)\b/.test(n)) return chooseSource(q, profile);
   const opts = realOptions(q);
-  if (UNLABELED.test(n) && opts.filter((o) => CHANNEL.test(qn(o))).length >= 3) return chooseSource(q, profile);
+  if ((UNLABELED.test(n) || /\b(find|found|hear|heard|learn|learned|discover)\w* (us|about us|this (role|job|position))\b/.test(n)) && opts.filter((o) => CHANNEL.test(qn(o))).length >= 3) {
+    return chooseSource(q, profile);
+  }
   if (!choiceLike) return unencumberedText(q, n);
   if (CRIMINAL.test(n)) return null;
   // A required list whose ONLY option is an acknowledgement ("I will read the
@@ -252,6 +254,11 @@ export function resolveDefault(
   }
 
   if (PRIOR_APPLICATION.test(n)) return polar(false, q, "default:no-prior-application");
+  // "Have you previously worked for this organization" (Commvault): when the
+  // company's name is not on the page to check against the profile.
+  if (/\b(previously|ever|formerly|before) (worked|been employed) (for|at|with|by) (us|this (company|organi[sz]ation|employer|firm)|our (company|organi[sz]ation))\b/.test(n)) {
+    return polar(false, q, "default:not-former-employee");
+  }
   if (REFERRED.test(n)) return polar(false, q, "default:not-referred");
   if (RELATIVES.test(n) && /\b(work|employ|empl|staff|board|director|officer|relationship)\w*/.test(n)) {
     return polar(false, q, "default:no-relatives-inside");
@@ -270,7 +277,9 @@ export function resolveDefault(
   }
   if (/\bessential (functions|duties)\b/.test(n)) return polar(true, q, "default:essential-functions");
   if (REQUIREMENT.test(n) && !ASSISTANCE.test(n) && (ACK_VERB.test(n) || /^(do|are|will|can|would) you\b/.test(n))) {
-    if (/\bbackground (check|screen)/.test(n) && OBSTACLE.test(n)) return polar(false, q, "default:no-background-obstacle");
+    // "Do you have any impediments to traveling internationally?" (Veeva on
+    // Lever, live 2026-10-03, answered Yes): an obstacle question's clean answer is No.
+    if (OBSTACLE.test(n) && /\b(any|have|anticipate|foresee|are there)\b/.test(n)) return polar(false, q, "default:no-obstacle");
     // Options that answer through location ("currently located here" vs
     // "I'd relocate") need the choice, not a bare yes.
     const located = chooseLocated(q, profile, facts, ctx);

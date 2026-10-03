@@ -117,6 +117,13 @@ function booleanResult(value: boolean, q: QuestionInput, rule: string): Question
   return v ? answer(v, rule) : abstain(`${rule}:no-matching-option`);
 }
 
+/** A dropdown with no options yet, asked as a yes/no ("Are you…?", "Do you…?"). */
+function isYesNoDropdown(q: QuestionInput, n: string): boolean {
+  if (q.options && q.options.length) return false;
+  if (q.controlType !== "combobox" && q.controlType !== "customDropdown") return false;
+  return /^(are|do|will|would|can|could|have|has|is|did) you\b/.test(n);
+}
+
 /** The question asks for the boolean, its options (when known) allow it. */
 function isBooleanQuestion(q: QuestionInput): boolean {
   if (q.kind === "boolean") return true;
@@ -150,11 +157,33 @@ export function countryNamedIn(raw: string): { code: string } | "this-country" |
   return null;
 }
 
-function targetCountry(q: QuestionInput, ctx: QuestionContext): string | null {
+/** "…in the country that you are located?" (Netlify): the applicant's own country. */
+const RESIDENCE_COUNTRY = /\b(the )?country (that |where |in which )?you (are |currently )*(located|living|reside|live|based)\b|\byour (current )?country of residence\b/;
+
+function targetCountry(q: QuestionInput, ctx: QuestionContext, facts?: ProfileFacts): string | null {
   const named = countryNamedIn(q.label);
   if (named === "this-country") return ctx.jobCountry;
   if (named) return named.code;
+  if (facts && RESIDENCE_COUNTRY.test(qnorm(q.label))) return residenceOf(facts);
   return ctx.jobCountry;
+}
+
+/**
+ * The job's country as the FORM implies it, for a page that states none: when
+ * every work-authorization / sponsorship question that names a country names
+ * the same one ("Are you authorized to work in the US?" beside an unscoped
+ * "Will you require sponsorship?", RAVE on Workable, live 2026-10-03), the
+ * employer is asking about the country the job is in.
+ */
+export function formCountryHint(labels: string[]): string | null {
+  const found = new Set<string>();
+  for (const label of labels) {
+    const n = qnorm(label);
+    if (!WORK_RIGHT.test(n) && !SPONSOR.test(n)) continue;
+    const c = countryNamedIn(label);
+    if (c && c !== "this-country") found.add(c.code);
+  }
+  return found.size === 1 ? [...found][0] : null;
 }
 
 const residenceOf = (facts: ProfileFacts): string | null =>
@@ -220,7 +249,7 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   // would you require for the role?" (Brex, live 2026-10-03) wants the TYPE,
   // and got the work-authorization statement ("Canadian citizen").
   if (hasSponsor && SPONSOR_TYPE.test(n) && !isBooleanQuestion(q)) return abstain("sponsorship:type-unknown");
-  const country = targetCountry(q, ctx);
+  const country = targetCountry(q, ctx, facts);
   const residence = residenceOf(facts);
 
   // "Are you eligible to work in Canada without sponsorship?" = authorized AND no sponsorship.
@@ -254,8 +283,10 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
     return abstain("sponsorship:unknown");
   }
 
-  // Work authorization proper.
-  if (isBooleanQuestion(q)) {
+  // Work authorization proper. A dropdown whose options load only when opened
+  // ("Are you legally authorized to work in the country that you are located?",
+  // a Netlify react-select) is a yes/no by its words.
+  if (isBooleanQuestion(q) || isYesNoDropdown(q, n)) {
     const a = authorizedIn(facts.workAuth, country, residence);
     if (isHigh(a)) return booleanResult(a.value, q, "work-auth");
     return abstain("work-auth:unknown");
@@ -302,7 +333,13 @@ function resolveCitizenship(q: QuestionInput, n: string, facts: ProfileFacts, ct
   const country = countryNamedIn(q.label);
   const code = country === "this-country" ? ctx.jobCountry : country?.code ?? null;
   const known = facts.workAuth.byCountry;
-  if (isBooleanQuestion(q)) {
+  // A yes/no in words ("…requires US citizenship…, do you meet that
+  // requirement?", Striveworks on Greenhouse, live 2026-10-03) is a yes/no
+  // even before its options load: it was answered "Canada".
+  const yesNoWords = /\b(do|are|can|will|would) you\b[^?]*\??\s*$|\bdo you meet\b/.test(n) && !/\b(which|what) (country|countries)\b/.test(n);
+  if (isBooleanQuestion(q) || (yesNoWords && !(q.options && q.options.length))) {
+    // Not allowed to work there: certainly not a citizen there.
+    if (code && known.get(code)?.authorized === false) return booleanResult(false, q, "citizenship:not-authorized");
     if (!code) return abstain("citizenship:no-country");
     const c = known.get(code);
     if (!c) return abstain("citizenship:unknown");
@@ -442,7 +479,7 @@ function resolveRegionChoice(q: QuestionInput, n: string, facts: ProfileFacts): 
 
 /** "Where are you located?" with region/continent options ("North America"). */
 function resolveLocatedChoice(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
-  if (!/\bwhere (are you|do you) (currently )?(located|based|live|reside)\b|\b(current|your) location\b|\bregion of residence\b/.test(n)) return null;
+  if (!/\bwhere (are you|do you) (currently )?(located|based|live|reside)\b|\b(current|your) location\b|\bregion of residence\b|\bare you (currently )?(living|located|based|residing) in\b/.test(n)) return null;
   // A preference ("preferred work location", "which office") is not a residence.
   if (/\b(prefer|preferred|desired|willing|office|work location|would you like)\b/.test(n)) return null;
   if (!q.options || q.options.length < 2 || isBooleanOptionSet(q.options)) return null;
@@ -475,7 +512,7 @@ const AGE_MIN = /\b(?:at least|minimum(?: age)?(?: of)?|older than|over(?: the a
 const AGE_UNDER = /\b(?:under|younger than|below|less than)\s+(?:the age of\s+)?(\d{1,2})\b/;
 
 function resolveAge(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
-  const ageWord = /\bage\b|\bold\b|\byears of age\b/.test(n);
+  const ageWord = /\bage\b|\bold\b|\bolder\b|\byears of age\b/.test(n);
   const under = AGE_UNDER.exec(n);
   const min = under ? null : AGE_MIN.exec(n);
   if ((under || min) && ageWord) {
@@ -548,6 +585,15 @@ function resolveYearsOfExperience(q: QuestionInput, n: string, facts: ProfileFac
   const years = total.value;
   if (isBooleanQuestion(q)) {
     // "Do you have at least 3 years of experience?" / "3+ years" / "more than 5 years"
+    // "1-2 years of experience" (FSSI on Workable, live 2026-10-03, answered
+    // NO for 1.4 years): a range is met from its lower bound.
+    // (Normalized, "1–2 years" reads "1 2 years".)
+    const range = /\b(\d+(?:\.\d+)?)\s*(?:-|to|\s)\s*(\d+(?:\.\d+)?)\s*\+?\s*(years?|yrs)\b/.exec(n);
+    if (range) return booleanResult(years >= Number(range[1]), q, "years-experience:range");
+    // "under 2 years" is the inverse of "at least 2" (Veeva on Lever: its N/A
+    // option "I have more than 2 years" was picked for 1.4 years).
+    const under = /\b(under|less than|fewer than|below)\s+(\d+(?:\.\d+)?)\s*(years?|yrs)\b/.exec(n);
+    if (under) return booleanResult(years < Number(under[2]), q, "years-experience:under");
     const need = /\b(at least|minimum( of)?|more than|over|greater than)?\s*(\d+(?:\.\d+)?)\s*\+?\s*(or more\s+)?(years?|yrs)\b/.exec(n);
     if (!need) return abstain("years-experience:boolean-no-threshold");
     const threshold = Number(need[3]);
@@ -616,6 +662,10 @@ function resolveEnrollment(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   // more than enrollment, leave it.
   if (/\b(institution|university|college|school) (in|of|located)\b|\bpost secondary institution\b|\bduring\b|\bafter\b|\bthrough\b|\buntil\b/.test(n)) return abstain("enrollment:qualified");
   const e = facts.education.currentlyEnrolled;
+  // "…enrolled in a PhD program…?" asks about THAT level (Neighbor on Lever,
+  // live 2026-10-03: "Yes" for a bachelor's student).
+  const level = degreeLevelAsked(n);
+  if (level !== null) return programAtLevel(q, level, facts, "enrollment:level");
   // "…currently enrolled in OR have graduated from a university?": either one.
   if (/\bor (have |has )?(graduated|completed)\b|\bor (a )?(recent )?graduate\b/.test(n)) {
     if (isHigh(e) && e.value) return booleanResult(true, q, "enrollment:or-graduated");
@@ -624,6 +674,34 @@ function resolveEnrollment(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   }
   if (isHigh(e)) return booleanResult(e.value, q, "enrollment");
   return abstain("enrollment:unknown");
+}
+
+/** The degree level a question names ("PhD program", "master's student"), as a rank. */
+function degreeLevelAsked(n: string): number | null {
+  if (/\b(phd|ph d|doctoral|doctorate)\b/.test(n)) return 6;
+  if (/\b(masters?|graduate (program|student|degree)|mba)\b/.test(n) && !/\bundergraduate\b/.test(n)) return 5;
+  if (/\b(bachelors?|undergraduate)\b/.test(n)) return 4;
+  return null;
+}
+
+/** Is the applicant in a program at that level right now? From the rows in progress. */
+function programAtLevel(q: QuestionInput, level: number, facts: ProfileFacts, rule: string): QuestionResult {
+  const inProgress = facts.education.entries.filter((x) => x.completed === false);
+  if (inProgress.length === 0) {
+    return isHigh(facts.education.currentlyEnrolled) && facts.education.currentlyEnrolled.value === false
+      ? booleanResult(false, q, rule)
+      : abstain(rule + ":unknown");
+  }
+  if (inProgress.some((x) => x.rank === null)) return abstain(rule + ":unknown");
+  return booleanResult(inProgress.some((x) => x.rank === level), q, rule);
+}
+
+/** "Are you currently an advanced PhD candidate?" (NTT DATA on Ashby, live 2026-10-03). */
+function resolveDegreeCandidate(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\bare you (currently )?(a |an )?(advanced )?\w*\s?(phd|ph d|doctoral|doctorate|masters?|mba|undergraduate|bachelors?) (candidate|student)\b/.test(n)) return null;
+  if (!isBooleanQuestion(q) && q.controlType !== "combobox") return null;
+  const level = degreeLevelAsked(n);
+  return level === null ? null : programAtLevel(q, level, facts, "degree-candidate");
 }
 
 /** "Are you attending or a recent graduate of the University of X?" */
@@ -736,6 +814,82 @@ function resolveGpa(q: QuestionInput, n: string, profile: UserApplicationProfile
   }
   if (q.kind === "number") return num ? answer(num, "gpa:number") : abstain("gpa:not-numeric");
   return answer(stated, "gpa:stated");
+}
+
+/**
+ * "If selected for the internship, what would be your preferred start date?"
+ * offered as dates ("May 3, 2027" | "May 17, 2027" | "June 1, 2027", The
+ * Exploration Company on Ashby, live 2026-10-03): the applicant's earliest
+ * start when it is one of them, else the first date on or after it.
+ */
+function resolveStartDateChoice(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\b(start|starting|join|joining|availability|available)\b[^?]*\bdate\b|\bwhen (can|could|would) you (start|begin|join)\b/.test(n)) return null;
+  if (!q.options || q.options.length < 2) return null;
+  const av = facts.availability.earliestStart;
+  const dated = q.options
+    .map((o) => ({ o, d: /\d{4}/.test(o) ? new Date(o.replace(/(\d)(st|nd|rd|th)\b/, "$1") + " UTC") : null }))
+    .filter((x): x is { o: string; d: Date } => x.d !== null && !Number.isNaN(x.d.getTime()));
+  if (dated.length < 2 || dated.length !== q.options.filter((o) => o.trim()).length) return null;
+  if (!isHigh(av)) return abstain("start-date-choice:unknown");
+  const day = (d: Date): number => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const target = day(av.value);
+  const onOrAfter = dated.filter((x) => day(x.d) >= target).sort((a, b) => day(a.d) - day(b.d));
+  return onOrAfter.length > 0 ? answer(onOrAfter[0].o, "start-date-choice") : abstain("start-date-choice:all-earlier");
+}
+
+/** Time zones by region; a state split between zones is left out (not guessed). */
+const ZONE_OF_REGION: Record<string, string> = {
+  // Canada
+  "CA-BC": "pacific", "CA-AB": "mountain", "CA-SK": "central", "CA-MB": "central", "CA-ON": "eastern", "CA-QC": "eastern",
+  "CA-NB": "atlantic", "CA-NS": "atlantic", "CA-PE": "atlantic", "CA-NL": "newfoundland", "CA-NT": "mountain",
+  // United States (whole states only)
+  "US-NY": "eastern", "US-NJ": "eastern", "US-PA": "eastern", "US-MA": "eastern", "US-CT": "eastern", "US-RI": "eastern",
+  "US-VT": "eastern", "US-NH": "eastern", "US-ME": "eastern", "US-DE": "eastern", "US-MD": "eastern", "US-DC": "eastern",
+  "US-VA": "eastern", "US-WV": "eastern", "US-NC": "eastern", "US-SC": "eastern", "US-GA": "eastern", "US-OH": "eastern",
+  "US-IL": "central", "US-WI": "central", "US-MN": "central", "US-IA": "central", "US-MO": "central", "US-AR": "central",
+  "US-LA": "central", "US-MS": "central", "US-AL": "central", "US-OK": "central",
+  "US-CO": "mountain", "US-UT": "mountain", "US-WY": "mountain", "US-MT": "mountain", "US-NM": "mountain", "US-AZ": "mountain",
+  "US-CA": "pacific", "US-WA": "pacific", "US-NV": "pacific",
+};
+const ZONE_OPTION: Record<string, RegExp> = {
+  pacific: /\b(p[sd]?t|pacific)\b/, mountain: /\b(m[sd]?t|mountain)\b/, central: /\b(c[sd]?t|central)\b/,
+  eastern: /\b(e[sd]?t|eastern)\b/, atlantic: /\b(a[sd]?t|atlantic)\b/, newfoundland: /\b(n[sd]?t|newfoundland)\b/,
+};
+/** "Which timezone are you currently located in?" [PST|MST|CST|EST] (Veeva on Lever). */
+function resolveTimezone(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\btime ?zone\b/.test(n) || !q.options?.length) return null;
+  if (/\b(prefer|preferred|willing|able to work|overlap|collaborat)\w*\b/.test(n)) return null; // a preference, not where they are
+  const region = isHigh(facts.location.region) ? facts.location.region.value : null;
+  const zone = region ? ZONE_OF_REGION[region.country + "-" + region.code] : undefined;
+  if (!zone) return abstain("timezone:unknown");
+  const hits = q.options.filter((o) => ZONE_OPTION[zone].test(qnorm(o)));
+  return hits.length === 1 ? answer(hits[0], "timezone") : abstain("timezone:no-matching-option");
+}
+
+/**
+ * "Please indicate your school, program/faculty, and expected month/year of
+ * graduation" in a text box (Arc'teryx on Lever, live 2026-10-03): it got
+ * "2027". The three facts together, from the education row in progress (or
+ * the most recent one).
+ */
+function resolveEducationSummary(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (q.kind !== "text" && q.kind !== "longText") return null;
+  const asksSchool = /\b(school|university|college|institution)\b/.test(n);
+  const asksProgram = /\b(program|programme|faculty|degree|major|field of study|discipline)\b/.test(n);
+  const asksGrad = /\bgraduat\w*\b|\bcompletion\b/.test(n);
+  if ([asksSchool, asksProgram, asksGrad].filter(Boolean).length < 2) return null;
+  const e = facts.education.primary;
+  if (!e?.school) return abstain("education-summary:unknown");
+  const parts: string[] = [];
+  if (asksSchool) parts.push(e.school);
+  if (asksProgram && e.degree) parts.push(e.degree);
+  if (asksGrad && e.graduation) {
+    const g = e.graduation;
+    const y = g.earliest.getUTCFullYear();
+    const when = g.precision === "year" ? String(y) : g.earliest.toLocaleString("en-US", { month: "long", timeZone: "UTC" }) + " " + y;
+    parts.push((e.completed === false ? "expected graduation " : "graduated ") + when);
+  }
+  return parts.length >= 2 ? answer(parts.join(", "), "education-summary") : abstain("education-summary:partial");
 }
 
 /**
@@ -1205,10 +1359,14 @@ export function resolveQuestion(
     resolveCurrentlyEmployed(q, n, facts) ??
     resolveYearsOfExperience(q, n, facts) ??
     resolveEducationLevel(q, n, facts) ??
+    resolveDegreeCandidate(q, n, facts) ??
     resolveEnrollment(q, n, facts) ??
+    resolveEducationSummary(q, n, facts) ??
     resolveGraduation(q, n, facts) ??
     resolveGpa(q, n, profile, facts) ??
     resolveTestScore(q, n) ??
+    resolveStartDateChoice(q, n, facts) ??
+    resolveTimezone(q, n, facts) ??
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??
     resolveRelocationChoice(q, n, profile, ctx) ??

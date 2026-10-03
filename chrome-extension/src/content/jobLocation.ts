@@ -46,14 +46,16 @@ export interface JobPlace {
 /** Several places in one line ("New York, NY; San Francisco, CA", "Toronto or
  *  Remote", "3 Locations") name no single city. */
 const MANY_PLACES = /[;|/&•·]|\s(or|and)\s|\blocations\b|\bmultiple\b/i;
-const NOT_A_CITY = /^(remote|hybrid|on ?site|in ?office|anywhere|worldwide|global|flexible|various|hq|headquarters)$/i;
+const NOT_A_CITY = /\b(remote|hybrid|on ?site|in ?office|office|anywhere|worldwide|global|flexible|various|hq|headquarters|campus)\b/i;
 
 function placeOfText(text: string): JobPlace | null {
   const t = (text || "").replace(/\s+/g, " ").trim();
   if (!t || t.length > 120) return null;
   const whole = countryFromName(t);
   if (whole) return { country: whole.code, city: null };
-  const parsed = parseAddress(t.replace(/^remote\s*[-–:(]?\s*/i, "").replace(/\)$/, ""));
+  // "Canada - Toronto" (Veeva on Lever) is two parts, like "Toronto, Canada".
+  const parts = t.replace(/^remote\s*[-–:(]?\s*/i, "").replace(/\)$/, "").replace(/\s+[-–]\s+/g, ", ");
+  const parsed = parseAddress(parts);
   const country = parsed.country?.code ?? parsed.region?.country ?? parsed.postal?.country ?? null;
   if (!country) return null;
   // A city counts only when the place around it is named too, and the line
