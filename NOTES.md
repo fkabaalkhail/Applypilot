@@ -1,3 +1,299 @@
+# Day session: answer every question without AI (2026-10-03)
+
+Same branch, still local only (NOT pushed, NOT deployed). You asked for three
+things: Brex's form filled properly; every question answered without AI
+(mapping and defaults, with AI only for essays and the genuinely unanswerable);
+and new profile fields wherever no mapping could supply an answer, added to the
+extension panel, the web app and onboarding. Then: test on real pages, fix,
+retest. The overnight notes below are unchanged except where this section
+says it supersedes them.
+
+**TL;DR.** The extension now answers the standard screening questions on the
+device: consent, posting requirements, prior applications and referrals,
+relatives inside, conflicts, government officials, how you heard about the
+job, relocation, EEO (declined when the profile says nothing), start dates, test
+scores, export-control status and more. AI is left for essays and judgement
+questions. Five profile answers no mapping can supply (US / Canada work
+authorization, how you heard, expected graduation month, GPA) are in the
+extension panel, the web Profile page, onboarding and the backend. Brex now
+fills completely: every question is answered except three correctly blank
+follow-ups.
+
+Testing on real pages found real bugs in every round:
+- **Complete-profile round:** "no sponsorship needed" for US jobs on 7 pages,
+  caused by that morning's own new per-country field. Also a mangled BambooHR
+  date, an invented graduation day, an H-1B history question answered as
+  sponsorship, and a dropdown counted as filled when it was empty.
+- **Blind round on 22 postings never seen before:** 9 wrong writes.
+- **Regression runs of the pinned suite:** 3 more (ActioNet, ZipRecruiter, an
+  Ashby end date).
+- **Read-through of my own new rules:** 3 that would have over-reached, plus one
+  answer that was right only by luck.
+
+All are fixed, each with a test that fails on the old code. On the final build:
+- the pinned regression suite passes **64/64 cases (42 live pages), 825/825
+  checks**;
+- the two new committed live rounds (40 more pages, 626 reviewed pins) pass
+  **40/40**, the run they were pinned from;
+- unit tests: **1411/1411**.
+
+Not pushed, not deployed.
+
+### What changed today (commits on top of the overnight `c0b43f3`)
+
+| commit | what |
+| --- | --- |
+| `ce65496` | **Default answers on device** (`defaultAnswers.ts`), **EEO decline**, **consent policy**, react-select options re-resolved on device, a recovery pass for fields the page clears, a pass for questions that appear during the fill |
+| `1c63c18` | e2e expectations re-pinned to the new policy (101 new writes reviewed one by one first) |
+| `15ddffc` | **Five new profile answers** across the extension panel, web Profile page, onboarding and backend |
+| `bd01bfe` | **The job's city**, and an embedded form asks the page around it where the job is |
+| `7f217c1` | **Conditional questions** answered only when their condition holds; "what sponsorship would you require?" no longer gets the authorization statement |
+| `a11f4a3` | `COMPLETE_CANADIAN` e2e profile (every screening answer filled in) |
+| `22f7628` | Never "no sponsorship needed" for a country the applicant cannot work in; citizenship kept beside the explicit answers |
+| `3702db9` | Month-name date pickers ("dd mon yyyy"); a graduation month never becomes a day |
+| `a167849` | Education end month from the expected graduation; Ashby's unlabeled date selects; "Still Student?" |
+| `d4505e3` | The blanks a complete profile left on live pages (work right, employment history, export status, test scores, channels, acknowledgements, SMS, gender identity, …) |
+| `93d19b5` | Languages checklist, "Other" for an unlisted major, the disability form's signature date |
+| `7f65ee4` | An open list's highlighted option is not a selection |
+| `b7e71e1` | H-1B history; Ashby graduation radios; "Still Student?" selection; label-only fill diagnostics; e2e `afterFill` hook |
+| `1ee0260` | Blind round on 22 fresh postings: 9 wrong writes and the blanks behind them (incl. same-job-only carry-over, "Country - City", form-implied job country) |
+| `b455627` | A current student's Ashby End Date is the page's; "did you graduate from" is no date |
+| `93966d7` | Three default rules narrowed before they meet a page |
+| `4004008` | Start-time spans; no dates in numeric buckets; demographic synonyms at scan time; form-country hint retried |
+| `926f39a` | A stated channel offered several ways picks its job-search variant |
+| `23e1f67`, `441016a` | The two live rounds committed as cases (`real-live-complete.mjs`, `real-live-fresh.mjs`); re-pins after review |
+
+### Decisions (these supersede overnight decisions #1 and #7 where they differ)
+
+1. **Defaults answer as a typical applicant who accepts the posting's terms
+   and is unencumbered.** Yes to: application consents and certifications,
+   in-office / on-site / hybrid / travel / schedule requirements, background
+   checks, essential functions, being considered for future roles. No to: applied
+   or interviewed before, referred by an employee, relatives inside, conflicts of
+   interest, non-competes, government official, background-check obstacles,
+   marketing / SMS / newsletter opt-ins. A profile fact always wins over a
+   default (a stated "won't relocate" answers No).
+2. **Never defaulted:** work authorization, sponsorship, citizenship, criminal
+   history, relocation ASSISTANCE (a request, not a requirement), recording /
+   AI-notetaker consent, and in-office requirements when the profile says Remote.
+   Those stay blank unless the profile states them.
+3. **Consent: every application consent is given, including the
+   demographic-data consent.** You asked for all questions to be answered, so
+   this reverses the overnight fix for bug #36 by design. Decision #7's
+   inconsistency is gone: clear consent wording is always ticked.
+4. **EEO with no profile answer → the decline option** ("Decline to
+   self-identify", "I don't wish to answer"). It discloses nothing and stops a
+   required EEO question from blocking submit. A list with no decline option
+   stays blank (Workday's veteran select).
+5. **"How did you hear about us"**: the profile's answer, mapped onto the form's
+   wording ("Career fair" → "University Career Fair"). With none set: a job-board
+   option, else the company website, else "internet", else LinkedIn, else
+   "Other". Free text gets "Online job board".
+6. **"Are you located here, or would you relocate?"**: "located here" when the
+   profile city is the job's city, "relocate" otherwise, "No" when the profile
+   says it won't relocate.
+7. **A question with a condition on the applicant** ("If you are a current or
+   former government employee, …?") is answered only when the condition holds.
+   False → the option saying it does not apply, or blank. Unknown → blank.
+   Hypotheticals ("If you are offered the position, …") hold.
+8. **A required list whose ONLY option is an acknowledgement is answered with
+   it.** This includes Anthropic's "Agreement to Arbitrate" ("I understand and
+   agree to the terms…"), a waiver of the right to sue. That follows from "answer
+   every question" and the form offers nothing else, but it is a legal agreement
+   made on the user's behalf, so **you may want it excluded** (one regex in
+   `defaultAnswers.ts`, `ACK_OPTION`).
+9. **No test scores on the profile → "Did not take / Do not recall"** when the
+   list offers it (SpaceX's SAT/ACT/GRE). It claims nothing. A free-text score
+   box stays blank.
+10. **U.S. export-control status is inferred only from US work authorization.**
+    Not authorized in the US means none of citizen / permanent resident / refugee
+    / asylee / DACA (each of those may work there), so "Other" / "None of the
+    above" / "Foreign person". Nothing said about the US → blank.
+11. **"Open to relocation?" answered with a list of cities → the job's own
+    city** when the applicant is willing to relocate; "No" (or the remote
+    alternative for a Remote preference) when not.
+12. **Backend scope widened.** The new fields needed `backend/routers/profile.py`
+   and `fill.py` (no migration: they live in `user_settings.prefilled_answers`
+   under exact keys, never mined from other answers). The overnight run was
+   extension-only; today's request required the web app and backend too.
+
+### New profile answers (no mapping can supply these)
+
+`authorizedUS`, `authorizedCanada` (Yes/No), `howDidYouHear`,
+`expectedGraduation` (a month, `YYYY-MM`) and `gpa`. They are in the extension
+panel (Preferences), the web Profile page, the backend profile API and the AI
+fill context. Onboarding asks the two authorization questions (Role step) and the
+expected graduation month (Experience step), and saves only what was answered (a
+blank stays "not answered", never "No"). The option lists are twins pinned by
+tests on both sides (`SCREENING_CHOICES` ⇄ `SCREENING_OPTIONS`).
+What they unlock: "authorized to work in the US?" for a Canadian (before:
+always blank), "When do you graduate?" with month-range options ("January - June
+2027", "Spring 2027", "December 2026 - November 2027"), GPA buckets, and the
+user's real channel instead of the default.
+
+### Bugs found on real pages today, each fixed with a regression test
+
+**Wrong answers written (the serious ones):**
+1. **"No sponsorship needed" for a US job from a Canadian not authorized in the
+   US** (`22f7628`). The general "requires sponsorship: No" (meant for Canada)
+   beat the explicit "authorized in the US: No" for every US question: Hermeus
+   got "No, I do not require sponsorship" for "…employment in the USA?", and
+   Robinhood, ZipRecruiter, Twitch, Mindex, Palantir and Anthropic got "No". This
+   bug came in with the new per-country field (`15ddffc`) and was caught by the
+   complete-profile round before it shipped anywhere. Now: not authorized there →
+   sponsorship needed there; an unscoped question with the job's country unknown
+   stays blank for such an applicant; "require sponsorship … to legally work in
+   the U.S." is a sponsorship question, not an authorization one.
+2. **"If you are a current or former government employee, have you recused
+   yourself…?" answered "No"** (ActioNet, `7f217c1`), which reads as an unrecused
+   conflict. The form offered "I am not a current or former government
+   employee". Conditional questions now evaluate their condition first.
+3. **"…what sponsorship would you require?" got "Canadian citizen"** (Brex,
+   `7f217c1`): the type of sponsorship is the applicant's to say; now blank.
+4. **"Date Available" typed as "05 mon yyyy"** (BambooHR, `3702db9`): its Fabric
+   date picker wants "03 May 2027" and mangled our "05/03/2027".
+5. **A graduation month became a day** (Ramp's Ashby picker got "04/01/2027",
+   `3702db9`). The day is unknown, so a day-precise picker stays blank.
+6. **"Cisgender man" could be picked for a cisgender woman** listed after it
+   (`d4505e3`); identity and gender must now both match.
+7. **"Relocation assistance?" answered Yes**, **"currently enrolled OR graduated"
+   answered No for graduates**, and **"a university" read as a school name**
+   (`ce65496`, `7f217c1`).
+8. **A dropdown counted as filled when it was not** (`7f65ee4`). An open list's
+   highlighted option (`aria-activedescendant`) was read as the selection, so
+   SpaceX's "Employment History" was skipped as "already showing the answer",
+   reported as written, and confirmed by the end-of-fill check. The page held
+   nothing. This could hit any react-select left open with the answer
+   highlighted.
+9. **"Have you held H-1B status…?" answered as a sponsorship question** (Yes,
+   Twitch; `b7e71e1`).
+10. **Blind round on 22 postings never seen before** (`1ee0260`), complete
+    profile, 9 wrong writes:
+    - "Preferred first and last name" → last name only.
+    - "enrolled in a PhD program?" → Yes for a bachelor's student.
+    - "any impediments to traveling internationally?" → Yes.
+    - "If you have under 2 years…" → "N/A - I have more than 2 years" (she has 1.4).
+    - "1–2 years of experience" → NO.
+    - "school, program and expected month/year" → "2027".
+    - Arc'teryx sponsorship → Yes for a job in Canada. The job's country was
+      carried over from the previous Lever posting: every Lever company shares
+      one host. Carry-over now requires the same job's URL path.
+    - Rippling "Current company" → the first job (sequential ids "field-31"
+      read as row 31).
+    - A US-citizenship requirement that resolved to "Canada". It was blank only
+      because no option matched.
+
+    All 9 are fixed with tests that fail on the old code.
+11. **Regression runs of the pinned suite** found three more:
+    - ZipRecruiter: "What school are you currently attending / did you graduate
+      from?" → school plus graduation date. The verb "graduate" is not a date
+      question.
+    - Ashby (Ramp, Superhuman): a disabled End Date read "October 2027". Ticking
+      "Still Student?" disables End Date, and a year written first was left
+      beside a month the page picked. A current student's End Date is now left
+      to the page (`b455627`).
+12. **Read-through of my own new rules** (`93966d7`, `4004008`):
+    - A lone "Yes" option would have been taken as an acknowledgement ("Have you
+      applied before? [Yes]").
+    - "Professional Certification [Yes/No]" would have been read as consent.
+    - "travel with no restrictions" would have been an obstacle question.
+    - Striveworks' "12+ weeks from offer acceptance" was right only by luck: the
+      option matcher read the start date's year (2027) as a number of weeks. A
+      start next week would have landed there too.
+
+**Blank answers the profile could give (fixed):** Brex's "authorized to work in
+the stated location" (the job's place is now read from the page around an
+embedded form, `bd01bfe`); Greenhouse/Ashby education end month, "Still
+Student?" and Ashby's unlabeled year selects (`a167849`); citizenship country
+after the new per-country answers (`22f7628`); relocation answered with a list
+of cities (the job's city), "a Twitch employee", "legally eligible to begin
+employment", employment history asked through its options, US export-control
+status, graduate GPA "Other/Not Applicable", SAT "Did not take/Do not recall",
+"how you heard" / "how did you connect" / an unlabeled channel list, single-option
+acknowledgements (Anthropic's arbitration agreement), Anthropic's "AI Policy"
+Yes, SMS consent asked through options, "No" typed into "Were you referred? If
+so, who?", "join as an intern" start date (`d4505e3`); languages checklist,
+"Other" for an unlisted major, the disability form's signature date (`93d19b5`);
+a current student's "Still Student?" and Superhuman's graduation radios
+(`b7e71e1`); "in the country that you are located", "at least 18 years or
+older", "previously worked for this organization", "how did you FIRST hear",
+preferred start dates offered as dates, "living in the US or Canada?", the time
+zone, SMS "via text", "I understand…" acknowledgement boxes, future-job opt-ins,
+and the job's country implied by the form's own work-auth questions (`1ee0260`);
+start-time spans ("Over a month from offer"), Ashby's gender boxes ("Woman"),
+and a stated channel offered several ways (`4004008`, `926f39a`).
+
+**Not a gap:** Workable's `#city` / `#postcode` / `#country` are `aria-hidden`,
+`tabindex=-1` helper inputs, not questions. Filling hidden inputs is what
+blocked Workday's submit before (overnight bug list), so they stay empty.
+
+### Test results
+
+- **Extension unit suite:** 1411/1411 in 129 files (1331 in 128 at the start of
+  the day). Every bug above has a test that fails on the code before its fix. I
+  checked each one by swapping in the old file and running it.
+- **Web app:** profile parity + settings 19/19, onboarding (SetupWizard) 13/13.
+  The new onboarding and Profile fields rendered in a real browser at 13
+  viewports (responsive audit: 0 high, 0 medium findings).
+- **Backend:** profile + fill-profile tests 40 passed (run isolated, see
+  overnight notes).
+- **Real-extension e2e, final build (`results/final-1`):**
+  - **Regression suite: 64/64 cases (42 live pages), 825/825 checks**, scored at
+    run time against pins set before the run.
+  - **Two new committed live rounds:** `real-live-complete.mjs` (18 pages,
+    complete profile) and `real-live-fresh.mjs` (22 new postings). 40/40 against
+    pins taken from that same run, so that number is a baseline, not a test. The
+    pins were checked against the earlier reviewed run (`results/all-2`), where
+    every write was read by hand. The final run differed from it only by the
+    reviewed improvements and one intermittent blank.
+  - The earlier reviewed run, re-scored against the final regression pins:
+    63/64. The miss: Twitch's Degree dropdown left blank once (Greenhouse's
+    async dropdowns drop occasionally; blank, never wrong).
+- **Extension panel and web Profile page:** screenshots show the five new
+  answers in the panel's "Your Autofill Information → Preference" (filled from
+  the profile) and as rows on the web Profile page (responsive audit: 0 high, 0
+  medium).
+
+### Needs you / needs manual verification (today)
+
+**Your decisions**
+1. **Anthropic's arbitration agreement** is now accepted on the user's behalf:
+   a required list whose only option is "I understand and agree…" (decision 8
+   above). Say if you want legal waivers excluded.
+2. **"I have never held H-1B status" is a default** for profiles that name no
+   US visa; "Did not take / Do not recall" for SAT/ACT/GRE; "Other" for an
+   unlisted major. Each is the answer that claims nothing, and each is easy to
+   reverse.
+3. **Rippling picks its phone country from the browser locale.** This test
+   machine's Chromium runs en-GB, so it shows "+44 GB" (seen with no extension
+   loaded). A user on en-US or en-CA gets "+1", so this is not a real-user
+   problem, and the extension never overwrites a pre-filled value (overnight
+   decision 8). Tell me if your users' locales vary enough to need a
+   dial-code exception.
+
+**Needs manual verification**
+- **Deploy together.** The new profile answers are saved through the backend's
+  profile API (`profile.py`, `fill.py`). Until that backend is deployed, prod
+  ignores the unknown keys, so answers entered in the panel, the Profile page
+  or onboarding will not persist. Ship backend and web app in the same push.
+- **Web onboarding and Profile page:** rendered in a real browser at phone and
+  laptop sizes (responsive audit: 0 high, 0 medium; the radios and the month
+  input work), and covered by unit tests. A real save against the backend was
+  not run (no deployed backend with the new keys).
+- **Your installed extension is the old build** (prod report 183 from Brex had
+  an empty extension version). `cd chrome-extension && node build.mjs`, then
+  reload the unpacked extension.
+- **Intermittent, not fixed:** Hermeus's Lever location typeahead stayed blank
+  once (filled in the previous run); SpaceX's GRE dropdown did not open in
+  time to read its options once; Greenhouse's async School dropdown
+  (Robinhood) as before.
+- **Still blank by design:** essays, opinions, skill-specific questions
+  ("experience with AI?", years of Roblox Studio), the applicant's
+  extracurriculars, interview-recording consent, accommodation requests,
+  sponsorship TYPE, a future location ("local to Chicago for summer 2027?").
+
+---
+
 # Overnight run: deterministic autofill (2026-10-03)
 
 Branch: `night/deterministic-autofill` (local only, NOT pushed, NOT deployed).
