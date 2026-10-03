@@ -70,8 +70,7 @@ import { detectJobPlace, sanitizeCompany, type JobPlace } from "./jobLocation";
 import { getResolveContext, setResolveContext } from "./fieldResolver";
 import { formCountryHint } from "./questionResolver";
 import { isHigh, profileFacts } from "./profileFacts";
-import { aiFillCandidates, isBoolish, needsOptionHarvest, planAiFill, planFillRoute, planOnDeviceReask, planReaskFields, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
-import { closestDemographicOption } from "./demographicMatch";
+import { aiFillCandidates, isBoolish, needsOptionHarvest, planAiFill, planFillRoute, planOnDeviceReask, planReaskFields, planSensitiveReask, tallyOutcomes, toAiFillField, type PlannedAnswer, type ReaskCandidate } from "./aiFillPlanner";
 import { toApplicantProfile } from "./applicantProfile";
 import { splitByCache, cacheAnswers } from "./answerCache";
 import { AUTOFILL_CONFIDENCE_THRESHOLD } from "../shared/constants";
@@ -1071,14 +1070,13 @@ function initialize(): void {
       const sensitiveReask = reaskCandidates.filter((c) => lastFields.find((f) => f.id === c.fieldId)?.sensitive);
       const openReask = reaskCandidates.filter((c) => !lastFields.find((f) => f.id === c.fieldId)?.sensitive);
       if (sensitiveReask.length > 0 && !signal?.aborted) {
-        const demoTargets: { fieldId: string; value: string }[] = [];
         for (const c of sensitiveReask) {
           const f = lastFields.find((x) => x.id === c.fieldId);
-          if (!f) continue;
-          f.options = c.options; // panel shows the real choices
-          const choice = closestDemographicOption(f.category, f.proposedValue ?? "", c.options);
-          if (choice) demoTargets.push({ fieldId: c.fieldId, value: choice });
+          if (f) f.options = c.options; // panel shows the real choices
         }
+        const demoTargets = planSensitiveReask(lastFields, sensitiveReask, (field, options) =>
+          resolveWithOptions(field, registry, lastProfile, lastAdapter, lastFillEEO, options)
+        );
         // Tier 3, on-device: these values never leave the machine, and the
         // telemetry record says only that the device answered, never what.
         if (demoTargets.length > 0) {
@@ -1161,13 +1159,9 @@ function initialize(): void {
           );
           // A revealed demographic dropdown whose value missed: its closest
           // option, on device (the same rule as the re-ask round above).
-          const demo: { fieldId: string; value: string }[] = [];
-          for (const c of revealFill.reask) {
-            const rf = lastFields.find((x) => x.id === c.fieldId);
-            if (!rf?.sensitive) continue;
-            const choice = closestDemographicOption(rf.category, rf.proposedValue ?? "", c.options);
-            if (choice) demo.push({ fieldId: c.fieldId, value: choice });
-          }
+          const demo = planSensitiveReask(lastFields, revealFill.reask, (field, options) =>
+            resolveWithOptions(field, registry, lastProfile, lastAdapter, lastFillEEO, options)
+          );
           if (demo.length > 0) {
             const again = await fillItems(noteIntent(demo, { tier: "device" }), true, signal);
             revealFill = { reports: [...revealFill.reports, ...again.reports], outcomes: [...revealFill.outcomes, ...again.outcomes], reask: [] };

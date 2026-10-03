@@ -7,7 +7,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { profileFacts } from "../src/content/profileFacts";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
-import { scanPage } from "../src/content/formScanner";
+import { resolveWithOptions, scanPage } from "../src/content/formScanner";
+import { planSensitiveReask } from "../src/content/aiFillPlanner";
+import { closestDemographicOption } from "../src/content/demographicMatch";
 import type { AnswerKind } from "../src/content/answerKind";
 import type { ControlType, UserApplicationProfile } from "../src/shared/types";
 import { stubLayout } from "./helpers/layout";
@@ -423,6 +425,22 @@ describe("demographic answers the profile does not narrow (Robinhood and Superhu
     const f = scan(html, REAL_EEO);
     expect(f).toHaveLength(1);
     expect(f[0].proposedValue ?? null).toBeNull();
+  });
+  it("a list that loads on open gets the same rule once read: Robinhood's identity combobox declines", () => {
+    // Its options are not in the page until it opens, so the scan proposed
+    // the gender and the fill's re-ask used the bare matcher: blank, live.
+    document.body.innerHTML = `<form><label for="gi">What is your gender identity?*</label><input id="gi" role="combobox" aria-expanded="false" aria-haspopup="listbox"></form>`;
+    const profile = { ...COMPLETE, eeo: REAL_EEO };
+    const { fields, registry } = scanPage(profile, false, null);
+    const f = fields.find((x) => x.category === "eeoGenderIdentity");
+    expect(f).toBeDefined();
+    const opts = ["Cisgender woman", "Cisgender man", "Transgender woman", "Transgender man", "Non-binary", "Two-spirit", "I don't wish to answer"];
+    // The fill's re-ask plan for sensitive fields: the scan's own rules first.
+    const plan = planSensitiveReask(fields, [{ fieldId: f!.id, options: opts }], (field, o) => resolveWithOptions(field, registry, profile, null, false, o));
+    expect(plan).toEqual([{ fieldId: f!.id, value: "I don't wish to answer" }]);
+    // What the re-ask used before: the bare matcher, which (rightly) will not
+    // guess a cisgender option, and so left a required question blank.
+    expect(closestDemographicOption("eeoGenderIdentity", f!.proposedValue ?? "", opts)).toBeNull();
   });
   const LGBTQ = radios("Do you identify as part of the LGBTQ+ community?", "l", ["Yes", "No", "I don't wish to answer"]);
   it("LGBTQ+ is No only when the orientation AND the identity are stated and neither is", () => {

@@ -9,6 +9,7 @@
 import type { AiFillField, DetectedField, FieldCategory } from "../shared/types";
 import { valueFitsKind, type AnswerKind } from "./answerKind";
 import { fitDate } from "./dateControl";
+import { closestDemographicOption } from "./demographicMatch";
 
 /** Labels that read like a question worth answering even on a plain text input. */
 const QUESTION_LABEL =
@@ -278,6 +279,30 @@ export function planOnDeviceReask(
     else remaining.push(c);
   }
   return { targets, remaining };
+}
+
+/**
+ * The sensitive (EEO) fields whose write missed, answered ON DEVICE from the
+ * harvested options: by the rules the scan applies once options are known
+ * (`reresolve`), then by the bare demographic matcher. Robinhood's gender
+ * identity list loads only when opened, so the scan never saw it, and the bare
+ * matcher alone left it blank where the scan's rule declines (a real profile,
+ * 2026-10-03). These values never leave the device.
+ */
+export function planSensitiveReask(
+  fields: DetectedField[],
+  candidates: ReaskCandidate[],
+  reresolve: (field: DetectedField, options: string[]) => string | null
+): { fieldId: string; value: string }[] {
+  const byId = new Map(fields.map((f) => [f.id, f]));
+  const targets: { fieldId: string; value: string }[] = [];
+  for (const c of candidates) {
+    const f = byId.get(c.fieldId);
+    if (!f?.sensitive || c.options.length === 0) continue;
+    const choice = reresolve(f, c.options) ?? closestDemographicOption(f.category, f.proposedValue ?? "", c.options);
+    if (choice) targets.push({ fieldId: c.fieldId, value: choice });
+  }
+  return targets;
 }
 
 /**
