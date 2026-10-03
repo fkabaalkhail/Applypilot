@@ -240,6 +240,9 @@ export type FieldCategory =
   | "eeoDisability"
   | "eeoSexualOrientation"
   | "eeoOther"
+  // The date beside a signature ("Date" under the disability self-ID form's
+  // Name, Lever's eeo[disabilitySignatureDate]; "Today's date"): today.
+  | "signatureDate"
   // Account signup password: first-class but locked down: scanned so the
   // account sub-flow can fill it, but never generically fillable or AI-eligible.
   | "accountPassword"

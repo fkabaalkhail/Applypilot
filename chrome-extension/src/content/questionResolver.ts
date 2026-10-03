@@ -732,6 +732,25 @@ function resolveTestScore(q: QuestionInput, n: string): QuestionResult {
 }
 
 /**
+ * "Language Skill(s) (Check all that apply)" (Palantir on Lever, live
+ * 2026-10-03: "English (ENG)", "French (FRA)", …): the profile's languages
+ * among the options, any level but a beginner's.
+ */
+function resolveLanguageChoice(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
+  if (!/\blanguages?\b/.test(n) || !q.options?.length) return null;
+  if (q.controlType !== "checkboxGroup" && q.kind !== "multiChoice") return null;
+  const spoken = (profile.languages || "")
+    .split(/[,;\n]+/)
+    .map((l) => l.trim())
+    .filter((l) => l && !/\((basic|beginner|elementary|limited|a1|a2)\b/i.test(l))
+    .map((l) => qnorm(l.replace(/\(.*$/, "")))
+    .filter(Boolean);
+  if (spoken.length === 0) return abstain("language:unknown");
+  const picks = q.options.filter((o) => spoken.some((l) => (" " + qnorm(o) + " ").includes(" " + l + " ")));
+  return picks.length > 0 ? answer(picks.join(", "), "language:choice") : abstain("language:no-matching-option");
+}
+
+/**
  * "Are you open to relocation?" answered with WHERE (Twitch, live 2026-10-03:
  * "No", "No, but I'm open to a remote position", "San Francisco, CA", …):
  * willing → the job's own city when it is offered; not willing → "No", or the
@@ -1174,6 +1193,7 @@ export function resolveQuestion(
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??
     resolveRelocationChoice(q, n, profile, ctx) ??
+    resolveLanguageChoice(q, n, profile) ??
     resolveStatedFacts(q, n, profile) ??
     resolvePhoneCode(q, n, facts, profile) ??
     null;

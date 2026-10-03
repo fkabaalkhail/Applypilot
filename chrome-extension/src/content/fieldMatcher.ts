@@ -64,6 +64,13 @@ const PROSE_WORDS = 25;
 
 // Order matters only for tie-breaking: more specific categories come first.
 const CATEGORY_SPECS: CategorySpec[] = [
+  {
+    // Today's date beside a signature. Lever names its disability-form date
+    // eeo[disabilitySignatureDate] under a bare "Date" label (live 2026-10-03).
+    // Listed first: "disability" in that name must not win the tie.
+    category: "signatureDate",
+    patterns: [{ re: /\b(signature date|date of signature|date signed|todays? date|today s date)\b/ }],
+  },
   // --- EEO / demographics (sensitive, detected, never filled by default) ---
   {
     category: "eeoGenderIdentity",
@@ -1026,6 +1033,11 @@ export function resolveProfileValue(
       return orNull(profile.eeo?.sexualOrientation);
     case "eeoOther":
       return null;
+    case "signatureDate": {
+      const d = new Date();
+      const pad = (n: number): string => String(n).padStart(2, "0");
+      return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+    }
 
     // Account signup password: never resolved from the profile; it is written
     // only by the account sub-flow, never generically.

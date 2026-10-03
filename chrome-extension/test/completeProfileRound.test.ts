@@ -147,6 +147,14 @@ describe("channels, acknowledgements, opt-outs", () => {
   });
 });
 
+describe("Palantir on Lever", () => {
+  it("languages, check all that apply: the profile's, any level but a beginner's", () => {
+    const opts = ["English (ENG)", "Spanish (SPA)", "French (FRA)", "German (DEU)", "Japanese (JPN)", "Choose not to disclose", "Other"];
+    const p = { ...COMPLETE, languages: "English (Native), French (Professional), Spanish (Basic)" };
+    expect(value(ask("Language Skill(s) (Check all that apply)✱", { options: opts, controlType: "checkboxGroup", kind: "multiChoice" }, p))).toBe("English (ENG), French (FRA)");
+  });
+});
+
 describe("gender identity asked three ways (fieldResolver)", () => {
   let restore: () => void;
   beforeAll(() => {
@@ -177,6 +185,21 @@ describe("gender identity asked three ways (fieldResolver)", () => {
     const f = scan(radios("Gender Identity", "g", ["Female", "Male", "Gender non-binary", "Not Listed", "Prefer not to disclose"]));
     expect(f[0].proposedValue).toBe("Female");
   });
+  it("the disability form's signature date is today (Lever names it eeo[disabilitySignatureDate] under a bare 'Date')", () => {
+    const f = scan(`<div class="application-question"><div class="application-label">Date</div><input type="text" name="eeo[disabilitySignatureDate]"></div>`);
+    expect(f[0].category).toBe("signatureDate");
+    expect(f[0].proposedValue).toBe("10/03/2026"); // TEST_TODAY
+    // A bare "Date" with nothing saying it is a signature's stays as it was.
+    const g = scan(`<label for="d">Date</label><input id="d" type="text">`);
+    expect(g[0]?.category ?? "unknown").not.toBe("signatureDate");
+  });
+
+  it("a major the list does not carry is 'Other', never a sibling (Palantir on Lever)", () => {
+    const opts = ["Select...", "Computer Science", "Computer Engineering", "Applied Mathematics", "Physics", "Economics", "Cognitive Science", "Information Science", "Data Science", "Data Engineering", "Other"];
+    const f = scan(`<label for="m">What is your major? Please choose the closest response, and the one closer to the top of the list if you are double majoring.</label><select id="m">${opts.map((o) => `<option>${o}</option>`).join("")}</select>`);
+    expect(f[0].proposedValue).toBe("Other");
+  });
+
   it("qualified options need identity AND gender: never 'Cisgender man' for a cisgender woman", () => {
     const f = scan(radios("What is your gender identity?", "q", ["Cisgender man", "Cisgender woman", "Transgender man", "Transgender woman", "Non-binary", "I don't wish to answer"]));
     expect(f[0].proposedValue).toBe("Cisgender woman");

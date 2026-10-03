@@ -162,6 +162,13 @@ export function snapToOption(options: string[], value: string, category: FieldCa
       if (hits.length === 1) return hits[0];
     }
   }
+  // A major the list does not carry ("Mechatronics Engineering" among Computer
+  // Science / Computer Engineering / … / Other, Palantir on Lever): "Other" is
+  // true, a sibling discipline is not.
+  if (category === "fieldOfStudy") {
+    const other = options.filter((o) => /^other(\s*\(.*\))?\W*$/i.test(o.trim()));
+    if (other.length === 1) return other[0];
+  }
   return null;
 }
 
