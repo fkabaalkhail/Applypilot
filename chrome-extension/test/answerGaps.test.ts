@@ -384,3 +384,12 @@ describe("selectAnswerGaps, fields the page reverted", () => {
     expect(selectAnswerGaps([f], NO_JOB, new Set([f.id]))).toHaveLength(0);
   });
 });
+
+describe("a yes/no never lands in a name slot (a real profile held the job title 'No', 2026-10-03)", () => {
+  it("does not save 'No' as the current title, but still saves a real title", () => {
+    const g = gap({ category: "currentTitle" as FieldCategory, question: "Current role", controlType: "select", options: ["Yes", "No"] });
+    expect(planAnswerSaves([{ gap: g, value: "No" }]).profilePatch).toEqual({});
+    const t = gap({ category: "currentTitle" as FieldCategory, question: "Current job title", controlType: "text", options: [] });
+    expect(planAnswerSaves([{ gap: t, value: "Software Developer" }]).profilePatch).toEqual({ currentTitle: "Software Developer" });
+  });
+});

@@ -535,8 +535,15 @@ export function employmentFacts(profile: UserApplicationProfile, today: Date): E
 
   let currentCompany: Fact<string> | null = null;
   let currentTitle: Fact<string> | null = null;
-  if (profile.currentCompany?.trim()) currentCompany = fact(profile.currentCompany.trim(), "high", "profile:currentCompany");
-  if (profile.currentTitle?.trim()) currentTitle = fact(profile.currentTitle.trim(), "high", "profile:currentTitle");
+  // A yes/no stored where a title or company belongs (a real profile held the
+  // job title "No", 2026-10-03) is no title: it would be typed as one.
+  const NOT_A_NAME = /^(yes|no|y|n|true|false|n\/?a|none|null|-+)$/i;
+  if (profile.currentCompany?.trim() && !NOT_A_NAME.test(profile.currentCompany.trim())) {
+    currentCompany = fact(profile.currentCompany.trim(), "high", "profile:currentCompany");
+  }
+  if (profile.currentTitle?.trim() && !NOT_A_NAME.test(profile.currentTitle.trim())) {
+    currentTitle = fact(profile.currentTitle.trim(), "high", "profile:currentTitle");
+  }
   if (currentRows.length === 1) {
     const r = currentRows[0].row;
     if (!currentCompany && r.company?.trim()) currentCompany = fact(r.company.trim(), "high", "experience:current-row");
@@ -634,8 +641,13 @@ export function educationFacts(profile: UserApplicationProfile, today: Date): Ed
   };
   const entries: EducationEntryFacts[] = rows
     .map((e) => {
-      const graduation = refine(parseDateSpan(String(e.graduationYear ?? "").trim()));
+      const gradText = String(e.graduationYear ?? "").trim();
+      const graduation = refine(parseDateSpan(gradText));
       let completed: boolean | null = null;
+      // A résumé's education end date of "Present" (the backend maps the end
+      // date to graduationYear) means still studying: the date is unknown, the
+      // status is not (a real profile, 2026-10-03).
+      if (!graduation && /^(present|current|currently|ongoing|now|in progress|to date)$/i.test(gradText)) completed = false;
       if (graduation) {
         if (graduation.latest < now) completed = true;
         else if (graduation.earliest > now) completed = false;

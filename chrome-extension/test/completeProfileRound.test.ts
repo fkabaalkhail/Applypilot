@@ -379,3 +379,17 @@ describe("one checkbox per demographic option (Superhuman on Ashby, live 2026-10
     expect(fields[0].proposedValue).toBe("Woman");
   });
 });
+
+describe("a real profile's shapes (user 44, read from prod 2026-10-03)", () => {
+  it("an education end of 'Present' is a degree in progress", () => {
+    const p = { ...SPARSE_CANADIAN, education: [{ school: "University of Ottawa", degree: "Bachelor of Applied Science (Honours) in Software Engineering", graduationYear: "Present" }] };
+    const f = profileFacts(p, TEST_TODAY);
+    expect(f.education.entries[0].completed).toBe(false);
+    expect(f.education.currentlyEnrolled?.value).toBe(true);
+    expect(value(ask("Are you currently enrolled in a university program?", { options: YES_NO }, p))).toBe("Yes");
+  });
+  it("a stored job title of 'No' is no title", () => {
+    const p = { ...SPARSE_CANADIAN, currentTitle: "No", experience: [] };
+    expect(profileFacts(p, TEST_TODAY).employment.currentTitle).toBeNull();
+  });
+});

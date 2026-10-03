@@ -224,6 +224,12 @@ export function answersWorthRemembering(
   );
 }
 
+/** Profile slots that hold a name or a place, never a yes/no. */
+const NAME_SLOTS: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
+  "firstName", "lastName", "fullName", "currentTitle", "currentCompany", "school", "degree", "fieldOfStudy",
+  "location", "addressStreet", "addressCity", "addressState", "postalCode", "country", "linkedin", "github", "portfolio",
+]);
+
 /** Where a batch of answers should be written. One sink: the user's profile. */
 export interface AnswerSavePlan {
   /** Merged patch for PUT /api/user/application-profile (may be empty). */
@@ -251,6 +257,10 @@ export function planAnswerSaves(answers: readonly AnsweredGap[]): AnswerSavePlan
     const answer = value.trim();
     if (!answer) continue;
     if (!isProfileCategory(gap.category)) continue;
+    // A yes/no answers the QUESTION, it is not a name: saved into a text slot
+    // it becomes the user's job title ("No", found on a real profile,
+    // 2026-10-03) and is typed into every "Current title" after that.
+    if (NAME_SLOTS.has(gap.category) && /^(yes|no|y|n|true|false|n\/?a|none)$/i.test(answer)) continue;
     profileEntries.push({ category: gap.category, value: answer });
   }
 
