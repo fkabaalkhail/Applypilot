@@ -133,3 +133,42 @@ export const ADDRESS_ONLY = {
   addressStreet: "1055 W Georgia St, Vancouver, BC V6E 3P3, Canada",
   workAuthorization: "Permanent resident of Canada",
 };
+
+/**
+ * A COMPLETE profile: SPARSE_CANADIAN after the user finished onboarding and
+ * every Profile-page answer, the 2026-10-03 fields included (per-country work
+ * authorization, channel, graduation month, GPA). The yardstick for "answers
+ * every question without AI": what this profile leaves blank is either an
+ * essay or a gap to close.
+ */
+export const COMPLETE_CANADIAN = {
+  ...SPARSE_CANADIAN,
+  country: "Canada",
+  github: "https://github.com/mayatremblay",
+  portfolio: "https://mayatremblay.dev",
+  requiresSponsorship: "No",
+  authorizedUS: "No",
+  authorizedCanada: "Yes",
+  dateOfBirth: "2004-02-11",
+  willingToRelocate: "Yes",
+  workPreference: "Hybrid",
+  noticePeriod: "2 weeks",
+  earliestStartDate: "2027-05-03",
+  securityClearance: "None",
+  driversLicense: "Yes",
+  languages: "English (Native), French (Professional)",
+  howDidYouHear: "LinkedIn",
+  expectedGraduation: "2027-04",
+  gpa: "3.7/4.0",
+  salaryExpectation: "95000",
+  eeo: {
+    gender: "Female",
+    genderIdentity: "Cisgender",
+    pronouns: "She/Her",
+    race: "White",
+    hispanicLatino: "No",
+    veteranStatus: "I am not a protected veteran",
+    disabilityStatus: "No, I do not have a disability",
+    sexualOrientation: "Heterosexual",
+  },
+};
