@@ -14,12 +14,6 @@ import { ADDRESS_ONLY, US_F1_STUDENT } from "../profiles.mjs";
 
 const live = (c) => ({ mode: "live", trigger: { fillTimeoutMs: 180000 }, ...c });
 
-async function openBambooForm(page) {
-  const btn = page.locator('button:has-text("Apply for This Job"), a:has-text("Apply for This Job")').first();
-  if (await btn.isVisible().catch(() => false)) await btn.click().catch(() => {});
-  await page.waitForTimeout(2500);
-}
-
 export default [
   live({
     id: "live-workable-mindex-us-f1",
@@ -59,7 +53,6 @@ export default [
     ats: "bamboohr",
     url: "https://armstrongfluidtechnology.bamboohr.com/careers/1001",
     profile: ADDRESS_ONLY,
-    beforeFill: openBambooForm,
     expect: {
       "#nickname_hpcsaf": null,
       "#firstName": "Sam",

@@ -295,6 +295,9 @@ export async function runCase(env, testCase) {
     } catch {
       // older Chromium / non-http URL: nothing to clear
     }
+    // Domain-wide cookies too: two employers on *.bamboohr.com share them, and
+    // the second case behaved differently after the first.
+    await ctx.clearCookies().catch(() => {});
     await page.goto(testCase.url, { waitUntil: "load", timeout: 60000 });
     if (testCase.beforeFill) await testCase.beforeFill(page);
     await sleep(testCase.settleMs ?? 800);

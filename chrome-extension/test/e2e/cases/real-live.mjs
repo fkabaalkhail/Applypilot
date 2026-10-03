@@ -33,12 +33,6 @@ const DIAL_CODE_CANADA = { re: String.raw`canada|^\+\s*1$` };
 
 const live = (c) => ({ mode: "live", profile: P, trigger: { fillTimeoutMs: 180000 }, ...c });
 
-async function openBambooForm(page) {
-  const btn = page.locator('button:has-text("Apply for This Job"), a:has-text("Apply for This Job")').first();
-  if (await btn.isVisible().catch(() => false)) await btn.click().catch(() => {});
-  await page.waitForTimeout(2500);
-}
-
 export default [
   // ---------------------------------------------------------------- Greenhouse
   live({
@@ -318,11 +312,12 @@ export default [
     },
   }),
   // ------------------------------------------------------------------ BambooHR
+  // No harness click on "Apply for This Job": the extension flow opens the form
+  // itself, and a second click on top of it toggled the form shut again.
   live({
     id: "live-bamboo-nexthop",
     ats: "bamboohr",
     url: "https://nexthopai.bamboohr.com/careers/64",
-    beforeFill: openBambooForm,
     expect: {
       "#nickname_hpcsaf": null,
       "#firstName": "Maya",
@@ -344,7 +339,6 @@ export default [
     id: "live-bamboo-armstrong",
     ats: "bamboohr",
     url: "https://armstrongfluidtechnology.bamboohr.com/careers/1001",
-    beforeFill: openBambooForm,
     expect: {
       "#nickname_hpcsaf": null,
       "#firstName": "Maya",
