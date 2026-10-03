@@ -231,3 +231,14 @@ describe("Workday searchBox multiselect", () => {
     expect(chipTexts().length).toBeLessThan(2);
   });
 });
+
+describe("deriveFieldOfStudy: '<qualification> in <subject>' (2026-10-03)", () => {
+  it("takes the subject after ' in ', whatever the qualification words", () => {
+    expect(deriveFieldOfStudy("Bachelor of Applied Science in Mechatronics Engineering")).toBe("Mechatronics Engineering");
+    expect(deriveFieldOfStudy("Master of Science in Computer Science")).toBe("Computer Science");
+    expect(deriveFieldOfStudy("Bachelor of Arts in English, Minor in History")).toBe("English");
+  });
+  it("'in progress' is not a subject", () => {
+    expect(deriveFieldOfStudy("Bachelor's degree in progress")).toBeNull();
+  });
+});

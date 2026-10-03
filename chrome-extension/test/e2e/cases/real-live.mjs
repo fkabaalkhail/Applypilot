@@ -186,7 +186,7 @@ export default [
       "label:What year of study": null,
       "label:final year of study": null,
       // select2: the hidden native select is filled, labelled by its question.
-      "label:Post-Secondary institution": "University of Waterloo",
+      "select~Post-Secondary institution": "University of Waterloo",
       "label:availability for a 4-month": null,
       "label:age range": null,
       "label:ethnicity": null,
@@ -250,6 +250,12 @@ export default [
       "radio=QA_12457574": null,
       "label:referred to this job": null,
       "label:Where did you see this job": null,
+      // Workable's optional Education / Experience sections, when rendered.
+      "#school": { ifPresent: "University of Waterloo" },
+      "#field_of_study": { ifPresent: "Mechatronics Engineering" },
+      "#degree": { ifPresent: { re: "bachelor" } },
+      "#title": { ifPresent: "Software Engineer Co-op" },
+      "#company": { ifPresent: "Kinaxis" },
     },
   }),
   live({

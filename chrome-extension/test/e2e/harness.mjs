@@ -285,6 +285,16 @@ export async function runCase(env, testCase) {
   });
   page.on("pageerror", (err) => consoleLines.push(`PAGEERROR ${String(err?.stack || err).slice(0, 400)}`));
   try {
+    // Every case starts from a clean site: ATSes persist drafts (Workable
+    // restores the previous applicant's answers from site storage, which the
+    // extension then rightly refuses to overwrite).
+    try {
+      const cdp = await ctx.newCDPSession(page);
+      await cdp.send("Storage.clearDataForOrigin", { origin: new URL(testCase.url).origin, storageTypes: "all" });
+      await cdp.detach();
+    } catch {
+      // older Chromium / non-http URL: nothing to clear
+    }
     await page.goto(testCase.url, { waitUntil: "load", timeout: 60000 });
     if (testCase.beforeFill) await testCase.beforeFill(page);
     await sleep(testCase.settleMs ?? 800);

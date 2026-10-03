@@ -70,10 +70,14 @@ export function evaluateCase(testCase, result) {
   const usedKeys = new Set();
   const beforeByKey = new Map(result.before.map((r) => [`${r.frame}|${r.key}`, r]));
   const expectations = testCase.expect ?? {};
-  for (const [key, expected] of Object.entries(expectations)) {
+  for (const [key, raw] of Object.entries(expectations)) {
+    // { ifPresent: x }: a section the ATS renders only sometimes (Workable's
+    // optional Education / Experience); checked when it is there.
+    const optional = raw !== null && typeof raw === "object" && "ifPresent" in raw;
+    const expected = optional ? raw.ifPresent : raw;
     const rec = findRecord(result.after, key);
     if (!rec) {
-      rows.push({ key, status: "MISSING", expected: describe(expected), actual: "", label: "" });
+      if (!optional) rows.push({ key, status: "MISSING", expected: describe(expected), actual: "", label: "" });
       continue;
     }
     usedKeys.add(`${rec.frame}|${rec.key}`);

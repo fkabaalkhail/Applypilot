@@ -752,10 +752,20 @@ const DEGREE_PREFIX_RE =
  * anyway.
  */
 export function deriveFieldOfStudy(degree: string): string | null {
+  // "<qualification> in <subject>": the subject follows " in ", whatever the
+  // qualification says. The prefix list below cannot name every "of X"
+  // variant: "Bachelor of Applied Science in Mechatronics Engineering" left
+  // "Applied Science in Mechatronics Engineering" (Workable, live 2026-10-03).
+  const inForm = /^\s*(?:bachelor|master|doctor|associate|diploma|certificate|ph\.?\s?d|b\.?\s?[a-z]{1,4}\.?|m\.?\s?[a-z]{1,4}\.?)\b[^,]*?\bin\s+(.+)$/i.exec(degree || "");
+  if (inForm && !/^(progress|view|process)\b/i.test(inForm[1].trim())) {
+    return inForm[1].split(",")[0].trim() || null;
+  }
   const rest = (degree || "").replace(DEGREE_PREFIX_RE, "").trim();
   // Compared BEFORE truncating: a bare "Computer Science, Mathematics" with no
   // degree prefix names no degree at all, and must still return null.
   if (!rest || rest.toLowerCase() === (degree || "").trim().toLowerCase()) return null;
+  // "Bachelor's degree in progress" names a status, not a subject.
+  if (/^(progress|view|process)\b/i.test(rest)) return null;
   return rest.split(",")[0].trim() || null;
 }
 
