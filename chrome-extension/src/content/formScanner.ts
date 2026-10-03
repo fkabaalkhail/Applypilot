@@ -245,11 +245,30 @@ function categoryOfOptions(options: string[]): { category: FieldCategory; confid
   return null;
 }
 
-/** The label of one radio button (its own label, value as fallback). */
+/** The label of one radio button or checkbox: its own label, else the text
+ *  printed right after it, else its value (never the browser's default "on"). */
 function radioOptionLabel(radio: HTMLInputElement): string {
   const labels = radio.labels;
   if (labels && labels.length > 0) return cleanText(labels[0].textContent);
-  return radio.value || "";
+  const aria = cleanText(radio.getAttribute("aria-label"));
+  if (aria) return aria;
+  // No <label>: Breezy prints <input type="checkbox"><span>C#</span>, and every
+  // option read "on" (Vagaro, live 2026-10-03).
+  const after = textAfterBox(radio);
+  if (after) return after;
+  return radio.value && radio.value !== "on" ? radio.value : "";
+}
+
+/** The text between a box and the next control, within its parent. */
+function textAfterBox(box: HTMLInputElement): string {
+  let text = "";
+  for (let node = box.nextSibling; node; node = node.nextSibling) {
+    if (node.nodeType === Node.ELEMENT_NODE && ((node as Element).matches("input, select, textarea, button") || (node as Element).querySelector("input, select, textarea"))) break;
+    text += ` ${node.textContent ?? ""}`;
+    if (text.length > 120) break;
+  }
+  const t = cleanText(text);
+  return t.length <= 120 ? t : "";
 }
 
 /**
@@ -288,6 +307,22 @@ function questionAboveOptions(members: HTMLInputElement[]): string {
   return "";
 }
 
+/** Inputs a user fills in (choices included); hidden mirrors and buttons are not. */
+const USER_INPUT_SELECTOR =
+  'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]), select, textarea';
+
+/** A container with two or more visible inputs besides the group's own is a
+ *  section of the form, not the group's question (one "Other: ___" box beside
+ *  the options still leaves it the group's). */
+function isSectionContainer(container: Element, members: HTMLInputElement[]): boolean {
+  let others = 0;
+  for (const c of container.querySelectorAll<HTMLElement>(USER_INPUT_SELECTOR)) {
+    if (members.includes(c as HTMLInputElement) || !isVisible(c)) continue;
+    if (++others >= 2) return true;
+  }
+  return false;
+}
+
 /**
  * Signals for a group come from its container (fieldset legend, role=group/
  * radiogroup label, or (for a container with none of those) the heading text
@@ -296,6 +331,11 @@ function questionAboveOptions(members: HTMLInputElement[]): string {
 function groupSignals(members: HTMLInputElement[], container: Element | null): FieldSignals {
   const first = members[0];
   let label = "";
+  // A <fieldset> holding other questions is a SECTION: its legend ("3.
+  // Questions", Pinpoint, live 2026-10-03) named every radio question in it,
+  // and each was answered from its category without being read. The question
+  // above the options is the group's own.
+  if (container && isSectionContainer(container, members)) container = null;
   if (container) {
     const legend = container.querySelector("legend");
     label = cleanText(legend?.textContent) || cleanText(container.getAttribute("aria-label"));

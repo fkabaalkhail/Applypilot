@@ -1,0 +1,165 @@
+/**
+ * Round 3 (2026-10-03, evening): new ATS families (JazzHR, Breezy, Recruitee,
+ * Pinpoint, Paylocity, ADP, iCIMS, Oracle) and five new personas. Each test is
+ * a write a live page got wrong, or a blank a stated fact answers; labels and
+ * options are verbatim from the live pages.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { profileFacts } from "../src/content/profileFacts";
+import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
+import { scanPage } from "../src/content/formScanner";
+import type { AnswerKind } from "../src/content/answerKind";
+import type { ControlType, UserApplicationProfile } from "../src/shared/types";
+import { SPARSE_CANADIAN, TEST_TODAY } from "./fixtures/profiles";
+import { stubLayout } from "./helpers/layout";
+
+const YES_NO = ["Yes", "No"];
+
+/** A career changer: six years teaching, then software since 2024. */
+const CHANGER: UserApplicationProfile = {
+  ...SPARSE_CANADIAN,
+  location: "Montréal, QC",
+  country: "Canada",
+  skills: ["TypeScript", "React", "Node.js"],
+  experience: [
+    { company: "Commission scolaire de Montréal", title: "Teacher", startDate: "2017-08", endDate: "2023-06", description: "" },
+    { company: "Lightspeed Commerce", title: "Junior Software Developer", startDate: "2024-02", endDate: "Present", description: "" },
+  ],
+};
+
+function ask(
+  label: string,
+  opts: { options?: string[]; controlType?: ControlType; kind?: AnswerKind } = {},
+  profile: UserApplicationProfile = SPARSE_CANADIAN,
+  ctx: { jobCountry: string | null; company: string; jobCity?: string | null } = { jobCountry: "US", company: "" }
+) {
+  const q: QuestionInput = {
+    label,
+    controlType: opts.controlType ?? (opts.options ? "radioGroup" : "text"),
+    options: opts.options,
+    category: "unknown",
+    kind: opts.kind ?? (opts.options ? (opts.options.length === 2 && opts.options[0] === "Yes" ? "boolean" : "choice") : "text"),
+  };
+  return resolveQuestion(q, profileFacts(profile, TEST_TODAY), profile, ctx);
+}
+const value = (r: ReturnType<typeof ask>) => (r && r.status === "answer" ? r.value : r?.status ?? null);
+
+describe("experience narrowed to a skill, however it is phrased (Vagaro on Breezy)", () => {
+  const VAGARO = ["No Experience / Experience with other but no C# / ASP.NET Core", "Less than 1 year", "1-2 years", "3+ years"];
+  it("'years … developing applications using C# and ASP.NET Core' is not the career total", () => {
+    const q = "How many years of hands-on experience do you have developing applications using C# and ASP.NET Core?* A response is required";
+    expect(value(ask(q, { options: VAGARO }, CHANGER))).not.toBe("3+ years");
+  });
+  it("a plain career-total question still gets the total", () => {
+    expect(value(ask("How many years of professional experience do you have?", { options: ["0-1", "1-3", "3-5", "5+"] }, CHANGER))).toBe("5+");
+  });
+});
+
+describe("race asked together with Hispanic origin (EEO-1 combined list; Vagaro on Breezy)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  const VAGARO = ["White (not Hispanic or Latino)", "Black or African-American (not Hispanic or Latino)", "Asian (not Hispanic or Latino)", "American Indian or Alaskan Native (not Hispanic or Latino)", "Native Hawaiian or other Pacific islander (not Hispanic or Latino)", "Two or more races/ethnicities (not Hispanic or Latino)", "Hispanic or Latino (including Black individuals whose origins are Hispanic)", "I don't wish to answer"];
+  const propose = (eeo: Record<string, string>) => {
+    document.body.innerHTML = `<form><fieldset><legend>Race or Ethnicity</legend>${VAGARO.map((o, i) => `<label><input type="radio" name="race_ethnicity" value="${i}">${o}</label>`).join("")}</fieldset></form>`;
+    const f = scanPage({ ...SPARSE_CANADIAN, eeo }, false, null).fields;
+    expect(f[0].category).toBe("eeoRace");
+    return f[0].proposedValue ?? null;
+  };
+  it("a Hispanic applicant gets the Hispanic or Latino option, never a '(not Hispanic or Latino)' one", () => {
+    expect(propose({ race: "Two or More Races", hispanicLatino: "Yes" })).toBe("Hispanic or Latino (including Black individuals whose origins are Hispanic)");
+    expect(propose({ race: "White", hispanicLatino: "Yes" })).toBe("Hispanic or Latino (including Black individuals whose origins are Hispanic)");
+  });
+  it("a non-Hispanic applicant keeps their race option", () => {
+    expect(propose({ race: "Two or More Races", hispanicLatino: "No" })).toBe("Two or more races/ethnicities (not Hispanic or Latino)");
+    expect(propose({ race: "Asian", hispanicLatino: "No" })).toBe("Asian (not Hispanic or Latino)");
+  });
+});
+
+describe("graduation asked by month and year (NinjaHoldings on Breezy)", () => {
+  const Q = "What is your expected month and year of graduation?*A response is required";
+  const STUDENT: UserApplicationProfile = {
+    ...SPARSE_CANADIAN,
+    expectedGraduation: "2027-12",
+    education: [{ school: "San José State University", degree: "Bachelor of Science in Software Engineering", graduationYear: "2027" }],
+  };
+  it("the month and the year, not the year alone", () => {
+    expect(value(ask(Q, {}, STUDENT))).toBe("December 2027");
+  });
+  it("a year-only profile leaves a month question to the applicant", () => {
+    expect(value(ask(Q, {}, { ...STUDENT, expectedGraduation: "" }))).not.toBe("2027");
+  });
+});
+
+describe("a fact asked together with an essay (NinjaHoldings on Breezy)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  it("'What is your major? Please describe why…' in a long-text box is not answered with the major alone", () => {
+    document.body.innerHTML = `<form><label for="m">What is your major? Please describe why you feel it is applicable to our summer internship.*</label><textarea id="m"></textarea></form>`;
+    const f = scanPage({ ...SPARSE_CANADIAN }, false, null).fields;
+    expect(f[0].proposedValue ?? null).toBeNull();
+  });
+  it("a plain 'What is your major?' box still gets the major", () => {
+    document.body.innerHTML = `<form><label for="m">What is your major?</label><input id="m" type="text"></form>`;
+    const f = scanPage({ ...SPARSE_CANADIAN }, false, null).fields;
+    expect(f[0].proposedValue).toBe("Mechatronics Engineering");
+  });
+});
+
+describe("options with no <label>: the text beside the box (Vagaro on Breezy)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  it("a checkbox list reads 'C#', 'ASP.NET Core', … not 'on'", () => {
+    const opts = ["C#", "ASP.NET Core", "RESTful APIs", "None of the above"];
+    document.body.innerHTML = `<form><div class="multiplechoice"><h3>Which of the following have you worked with in a professional, internship, or project environment?<span class="required">*</span></h3><ul class="options">${opts
+      .map((o) => `<li class="option"><input type="checkbox" name="section_1786658626286_question_6" required="required"><span class="ng-binding">${o}</span></li>`)
+      .join("")}</ul></div></form>`;
+    const f = scanPage({ ...SPARSE_CANADIAN }, false, null).fields;
+    expect(f).toHaveLength(1);
+    expect(f[0].options).toEqual(opts);
+  });
+});
+
+describe("Paylocity (ATB Technologies, live 2026-10-03)", () => {
+  const SOURCES = ["Online Job Board", "Company Website", "Friend or Family Member", "Current Employee", "Other"];
+  const Q = "How did you hear about us?(optional)";
+  it("a stated channel the list does not offer is 'Other', not the default job board", () => {
+    expect(value(ask(Q, { options: SOURCES }, { ...SPARSE_CANADIAN, howDidYouHear: "Career fair" }))).toBe("Other");
+  });
+  it("a job site the list does not name is still a job board; no stated channel takes the default", () => {
+    expect(value(ask(Q, { options: SOURCES }, { ...SPARSE_CANADIAN, howDidYouHear: "LinkedIn" }))).toBe("Online Job Board");
+    expect(value(ask(Q, { options: SOURCES }, { ...SPARSE_CANADIAN, howDidYouHear: "" }))).toBe("Online Job Board");
+  });
+  it("'Did you Graduate?' follows the education the profile has in progress", () => {
+    expect(value(ask("Did you Graduate?", { options: YES_NO }, { ...SPARSE_CANADIAN, expectedGraduation: "2027-12" }))).toBe("No");
+    const done = { ...SPARSE_CANADIAN, education: [{ school: "University of Waterloo", degree: "Bachelor of Applied Science", graduationYear: "2024" }] };
+    expect(value(ask("Did you Graduate?", { options: YES_NO }, done))).toBe("Yes");
+  });
+});
+
+describe("an education row's city is the school's, not the applicant's (Paylocity)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  it("educationHistory.city.0 stays blank; the applicant's own City still fills", () => {
+    const p = { ...SPARSE_CANADIAN, location: "Gatineau, QC, Canada", addressCity: "Gatineau" };
+    document.body.innerHTML = `<form>
+      <div class="form-group"><label for="info.city">City</label><input id="info.city" type="text"></div>
+      <div class="form-group"><label for="educationHistory.name.0">School Name (required)</label><input id="educationHistory.name.0" type="text"></div>
+      <div class="form-group"><label for="educationHistory.city.0">City</label><input id="educationHistory.city.0" type="text"></div>
+    </form>`;
+    const f = scanPage(p, false, null).fields;
+    const cities = f.filter((x) => x.label === "City");
+    expect(cities.map((x) => x.proposedValue ?? null)).toEqual(["Gatineau", null]);
+  });
+});

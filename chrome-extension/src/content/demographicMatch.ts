@@ -163,6 +163,21 @@ export function veteranOption(value: string, label: string, options: string[]): 
   }
 }
 
+/**
+ * A race list that also asks Hispanic origin (EEO-1's combined form: "White
+ * (not Hispanic or Latino)" … "Hispanic or Latino"). A Hispanic applicant is
+ * the Hispanic option whatever their race; "Two or more races (not Hispanic or
+ * Latino)" contradicted a stated "Yes" (Vagaro on Breezy, live 2026-10-03).
+ * undefined: not a combined list, or the applicant is not stated Hispanic
+ * (race matching as usual); null: no single Hispanic option to take.
+ */
+export function hispanicRaceOption(hispanic: string, options: string[]): string | null | undefined {
+  if (!options.some((o) => /\bnot hispanic\b/i.test(o))) return undefined;
+  if (!/^(yes|y|hispanic|latin[oax])\b/i.test(hispanic.trim())) return undefined;
+  const hits = options.filter((o) => /\b(hispanic|latin[oax])/i.test(o) && !/\bnot hispanic\b/i.test(o));
+  return hits.length === 1 ? hits[0] : null;
+}
+
 /** The option that declines to answer ("I don't wish to answer", "Decline To
  *  Self Identify"), when the list has exactly one. */
 export function declineOption(options: string[]): string | null {

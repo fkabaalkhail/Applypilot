@@ -241,7 +241,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
     category: "postalCode",
     patterns: [
       { re: /\bpostal code\b/ },
-      { re: /\bpost code\b/ },
+      { re: /\bpost ?code\b/ }, // "Postcode" (UK; Pinpoint, live 2026-10-03)
       { re: /\bzip( ?code)?\b/ },
       { re: /\bcode postal\b/ }, // FR
       { re: /\bpostal\b/, weight: 0.9 },

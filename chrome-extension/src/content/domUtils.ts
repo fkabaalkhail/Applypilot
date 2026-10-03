@@ -279,7 +279,24 @@ function implicitBlockOf(el: HTMLElement): HTMLElement | null {
  *  resolves to the block. Falls back to a structural block when the page marks
  *  up none; null when even that cannot be decided. */
 function fieldBlockOf(el: HTMLElement): HTMLElement | null {
-  return el.parentElement?.closest<HTMLElement>(FIELD_BLOCK_SELECTOR) ?? implicitBlockOf(el);
+  const marked = el.parentElement?.closest<HTMLElement>(FIELD_BLOCK_SELECTOR) ?? null;
+  // A marked block holding OTHER controls is a section of the form, not this
+  // field's block: Pinpoint's "1. Personal Details … Apply with LinkedIn"
+  // <fieldset> labelled four address boxes "LinkedIn" (live 2026-10-03). The
+  // field's own unmarked wrapper ("Address Line 1" + its input) is the block.
+  if (marked && sharesBlockWithOthers(marked, el)) return implicitBlockOf(el) ?? marked;
+  return marked ?? implicitBlockOf(el);
+}
+
+/** Inputs a user fills in; a hidden mirror (Workday's) or a button is not one. */
+const USER_INPUT_SELECTOR =
+  'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]), select, textarea';
+
+/** `block` holds another visible input besides `el` (and outside `el`'s own subtree). */
+function sharesBlockWithOthers(block: HTMLElement, el: HTMLElement): boolean {
+  return [...block.querySelectorAll<HTMLElement>(USER_INPUT_SELECTOR)].some(
+    (c) => c !== el && !el.contains(c) && !c.contains(el) && !c.closest('[aria-hidden="true"]') && isVisible(c)
+  );
 }
 
 /**

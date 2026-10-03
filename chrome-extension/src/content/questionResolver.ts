@@ -562,8 +562,11 @@ function resolveYearsOfExperience(q: QuestionInput, n: string, facts: ProfileFac
   // the industry", "in a professional setting") keeps it the career total; a
   // field of work joins the domain check below; anything else (a skill, a
   // tool, a product) is a question the profile cannot answer.
+  // An activity may come between ("…experience do you have developing
+  // applications using C# and ASP.NET Core?", Vagaro on Breezy, live
+  // 2026-10-03: answered "3+ years" from six years of teaching).
   const narrowed =
-    /\bexperience\b(?:\s+(?:do|did|have|has|you|of|that|which|would|say|in total)){0,5}\s+(?:with|in|using|on|as|doing|working with|working in|leading|managing)\s+(?:a |an |the )?([a-z0-9 +#.-]{2,40})/.exec(n);
+    /\bexperience\b(?:\s+(?:do|did|have|has|you|of|that|which|would|say|in total)){0,5}(?:\s+[a-z]+ing(?:\s+[a-z]+){0,3}?)?\s+(?:with|in|using|on|as|doing|working with|working in|leading|managing)\s+(?:a |an |the )?([a-z0-9 +#.-]{2,40})/.exec(n);
   if (narrowed) {
     const obj = narrowed[1].trim();
     if (!/^(total|industry|the industry|professional (setting|capacity|environment)s?|similar roles?|this field|the field|related fields?|the workforce|a professional|full time|paid)\b/.test(obj)) {
@@ -757,6 +760,12 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     if (withYear.length === 1) return answer(withYear[0], "graduation:only-option-in-year");
     return abstain("graduation:no-unique-option");
   }
+  // "…expected month and year of graduation?" in a text box (NinjaHoldings on
+  // Breezy, live 2026-10-03: "2027" for December 2027): the month it asks
+  // for, or nothing when the profile knows only the year.
+  if (/\bmonths?\b/.test(n) && q.kind !== "date") {
+    return g.precision === "year" ? abstain("graduation:month-unknown") : answer(`${monthName} ${year}`, "graduation:month-year");
+  }
   if (q.kind === "date" || /\bdate\b/.test(n)) {
     if (g.precision === "year") return answer(year, "graduation:year-as-date", "high");
     // A month is not a day: "April 2027" suits a text box and a month control,
@@ -910,6 +919,14 @@ function resolveTimezone(q: QuestionInput, n: string, facts: ProfileFacts): Ques
   if (!zone) return abstain("timezone:unknown");
   const hits = q.options.filter((o) => ZONE_OPTION[zone].test(qnorm(o)));
   return hits.length === 1 ? answer(hits[0], "timezone") : abstain("timezone:no-matching-option");
+}
+
+/** "Did you Graduate?" (Paylocity's education row, live 2026-10-03): whether
+ *  the education the profile means (in progress first) is finished. */
+function resolveDidGraduate(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/^(did|have) you graduate(d)?\b/.test(n) || !isBooleanQuestion(q)) return null;
+  const done = facts.education.primary?.completed;
+  return done === true || done === false ? booleanResult(done, q, "education:graduated") : abstain("education:graduated-unknown");
 }
 
 /** A zone named in running text: full names and three-letter codes only ("at"
@@ -1503,6 +1520,7 @@ export function resolveQuestion(
     resolveStartBucket(q, n, facts) ??
     resolveTimezone(q, n, facts) ??
     resolveZoneAvailability(q, n, facts) ??
+    resolveDidGraduate(q, n, facts) ??
     resolveLocalTo(q, n, facts, profile) ??
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??

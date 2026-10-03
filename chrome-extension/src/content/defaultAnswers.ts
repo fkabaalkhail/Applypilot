@@ -227,6 +227,14 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile): Questi
       const viaSearch = opts.filter((o) => offered.test(qn(o)) && /\bjob (search|post|posting|board|listing|ad)s?\b/.test(qn(o)));
       if (viaSearch.length === 1) return answer(viaSearch[0], "source:stated");
     }
+    // A stated channel the list does not offer. A job site is still a job
+    // board ("LinkedIn" -> "Online Job Board", below); anything else is
+    // "Other", never the default job board ("Career fair" got "Online Job
+    // Board" on Paylocity, live 2026-10-03).
+    if (!/\b(linked ?in|indeed|glassdoor|monster|zip ?recruiter|job (board|site|search)s?|online)\b/.test(stated)) {
+      const other = opts.filter((o) => /^other\b/.test(qn(o)));
+      return other.length === 1 ? answer(other[0], "source:stated-other") : null;
+    }
   }
   // No stated channel: never a campus one, even as the only careers-site
   // option ("Campus Career Site", Enova on Greenhouse, a real profile

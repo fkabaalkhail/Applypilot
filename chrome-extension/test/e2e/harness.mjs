@@ -101,7 +101,10 @@ function isSafeLiveRequest(req) {
  * Install the routing for one run. `pages` maps an exact URL (no hash) to the
  * HTML to serve for it. Returns a counter of what was blocked, for the report.
  */
-export async function installRouting(ctx, { apiUrl, pages, mode, assets = new Map() }) {
+export async function installRouting(ctx, { apiUrl, pages, mode, assets = new Map(), allowRequests = [] }) {
+  // A case may name read-only endpoints its page needs to keep working (an
+  // email-validation lookup): never a submission, an upload or an account.
+  const allowed = allowRequests.map((re) => new RegExp(re));
   const blocked = [];
   await ctx.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
   await ctx.route("**/*", async (route) => {
@@ -116,7 +119,7 @@ export async function installRouting(ctx, { apiUrl, pages, mode, assets = new Ma
     if (asset && req.method() === "GET") {
       return route.fulfill({ status: 200, contentType: asset.contentType, body: asset.body });
     }
-    if (mode === "live" && isSafeLiveRequest(req)) return route.continue();
+    if (mode === "live" && (isSafeLiveRequest(req) || allowed.some((re) => re.test(url)))) return route.continue();
     if (mode === "live") blocked.push(`${req.method()} ${url.slice(0, 120)}`);
     return route.abort();
   });
@@ -266,7 +269,7 @@ export async function runCase(env, testCase) {
   const pages = new Map(Object.entries(testCase.pages ?? {}).map(([u, h]) => [u.split("#")[0], h]));
   if (testCase.html !== undefined) pages.set(testCase.url.split("#")[0], testCase.html);
   const assets = new Map(Object.entries(testCase.assets ?? {}));
-  const blocked = await installRouting(ctx, { apiUrl: api.url, pages, mode: testCase.mode ?? "fixture", assets });
+  const blocked = await installRouting(ctx, { apiUrl: api.url, pages, mode: testCase.mode ?? "fixture", assets, allowRequests: testCase.allowRequests });
   const page = await ctx.newPage();
   const consoleLines = [];
   const panel = { selected: 0, fields: 0, changedAt: Date.now(), beats: [] };

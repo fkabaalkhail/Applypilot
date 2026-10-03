@@ -23,7 +23,7 @@ import type { FieldSignals } from "./domUtils";
 import { isHigh, profileFacts } from "./profileFacts";
 import { resolveQuestion, type QuestionContext, type QuestionInput, type QuestionResult } from "./questionResolver";
 import { countryFromName } from "./geo";
-import { closestDemographicOption, declineOption, veteranOption } from "./demographicMatch";
+import { closestDemographicOption, declineOption, hispanicRaceOption, veteranOption } from "./demographicMatch";
 import { matchOption } from "./writeEngine";
 
 export interface FieldResolveInput {
@@ -133,6 +133,12 @@ function refineGenderIdentity(
   return both.length === 1 ? both[0] : undefined;
 }
 
+const APPLICANT_ADDRESS: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
+  "location", "addressStreet", "addressCity", "addressState", "postalCode", "country",
+]);
+/** A field named for an education or employment history row. */
+const HISTORY_ROW = /education|school|employ|experience|work ?history|job ?history|workhistory/i;
+
 const CURRENT_JOB_LABEL = /\b(current|currently|present|presently)\b/i;
 const RECENT_JOB_LABEL = /\b(most recent|recent|previous|last|latest|former)\b/i;
 
@@ -192,6 +198,10 @@ const SINGLE_LINE_FACTS: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
 function isProsePrompt(label: string): boolean {
   const words = (label || "").trim().split(/\s+/).filter(Boolean);
   if (words.length <= 5) return false;
+  // A fact asked WITH an essay is still an essay: "What is your major? Please
+  // describe why you feel it is applicable…" got the major alone
+  // (NinjaHoldings on Breezy, live 2026-10-03).
+  if (/\b(describe|explain|elaborate|tell us|why (do|did|would|are|is)|in your own words)\b/i.test(label)) return true;
   return !/\b(name of|what is your|what's your|your current|please (enter|provide|list|state) (your|the name))\b/i.test(label);
 }
 
@@ -315,6 +325,12 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
     value = resolveAnswerWithAdapter(input.adapter, category, profile, control, input.fillEEO, input.el);
     source = "category";
   }
+  // An education or employment row's City / State / Country belongs to the
+  // school or the employer, never to the applicant's address (Paylocity's
+  // "educationHistory.city.0" got the applicant's city, live 2026-10-03).
+  if (source === "category" && APPLICANT_ADDRESS.has(category) && HISTORY_ROW.test(`${signals.nameAttr} ${signals.idAttr}`)) {
+    return none(true, "row:not-applicant-address");
+  }
   if (
     (category === "currentCompany" || category === "currentTitle") &&
     source === "category" &&
@@ -335,6 +351,12 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
     const veteran = veteranOption(value, label, options);
     if (veteran === null) return none(false, "eeo:veteran-not-settled");
     if (veteran !== undefined) value = veteran;
+  }
+  // Race and Hispanic origin asked in one list: a Hispanic applicant's answer.
+  if (input.sensitive && category === "eeoRace" && options?.length) {
+    const hispanic = hispanicRaceOption(profile.eeo?.hispanicLatino ?? "", options);
+    if (hispanic === null) return none(false, "eeo:race-hispanic-unsettled");
+    if (hispanic !== undefined) value = hispanic;
   }
   // A demographic question the profile holds no answer for: decline (default).
   if ((value === null || !value.trim()) && input.sensitive) {
