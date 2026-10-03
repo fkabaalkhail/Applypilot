@@ -32,3 +32,24 @@ describe("resolveCheckboxIntent", () => {
     expect(resolveCheckboxIntent("Do you require sponsorship?", "No")).toBe("No");
   });
 });
+
+/**
+ * REGRESSION (Robinhood on Greenhouse, live 2026-10-03): "By checking this box,
+ * I consent to Robinhood collecting, storing, and processing my responses to
+ * the demographic data surveys above." classifies as a demographic (EEO) field
+ * at high confidence, so its consent "yes" passed the selection gate and was
+ * TICKED for an applicant who had answered none of the surveys. A sensitive
+ * box carries only the user's own profile answer (shared/selection.ts).
+ */
+describe("resolveCheckboxIntent: sensitive (demographic) boxes", () => {
+  const ROBINHOOD =
+    "By checking this box, I consent to Robinhood collecting, storing, and processing my responses to the demographic data surveys above.";
+
+  it("never ticks a demographic consent for its wording", () => {
+    expect(resolveCheckboxIntent(ROBINHOOD, null, true)).toBeNull();
+  });
+
+  it("still takes the user's own yes/no answer", () => {
+    expect(resolveCheckboxIntent("I identify as LGBTQ+", "Yes", true)).toBe("Yes");
+  });
+});

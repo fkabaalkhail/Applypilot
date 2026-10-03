@@ -86,3 +86,14 @@ describe("a high school field never gets the university (Palantir on Lever, live
     expect(f[2].proposedValue).toBe("University of Waterloo");
   });
 });
+
+describe("a demographic-data consent box is never ticked for the user (Robinhood, live 2026-10-03)", () => {
+  it("leaves it unticked when the user gave no demographic answers", () => {
+    const f = scan(
+      `<div class="checkbox__wrapper"><input type="checkbox" id="gdpr_demographic_data_consent_given_1" name="gdpr_demographic_data_consent_given" required>` +
+        `<label for="gdpr_demographic_data_consent_given_1">By checking this box, I consent to Robinhood collecting, storing, and processing my responses to the demographic data surveys above.</label></div>`
+    );
+    expect(f[0].sensitive).toBe(true);
+    expect(f[0].proposedValue).toBeNull();
+  });
+});

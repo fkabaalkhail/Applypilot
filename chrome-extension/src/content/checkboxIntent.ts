@@ -37,11 +37,17 @@ function looksBoolean(v: string): boolean {
  * @param labelText  the checkbox's display label plus any nearby help text
  * @param rawValue   the value the generic category resolver proposed (may be a
  *                   misclassified text value, a genuine yes/no, or null)
+ * @param sensitive  a demographic (EEO) box: answered only from the user's own
+ *                   profile answer, never ticked for its consent wording. "I
+ *                   consent to … processing my responses to the demographic
+ *                   data surveys above" was ticked for an applicant who had
+ *                   answered none of them (Robinhood on Greenhouse, live
+ *                   2026-10-03); see the invariant in shared/selection.ts.
  */
-export function resolveCheckboxIntent(labelText: string, rawValue: string | null): string | null {
+export function resolveCheckboxIntent(labelText: string, rawValue: string | null, sensitive = false): string | null {
   const text = labelText ?? "";
   if (MARKETING_RE.test(text)) return null;
-  if (CONSENT_RE.test(text)) return "yes";
+  if (!sensitive && CONSENT_RE.test(text)) return "yes";
   if (rawValue !== null && looksBoolean(rawValue)) return rawValue;
   return null;
 }

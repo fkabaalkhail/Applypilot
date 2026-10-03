@@ -787,7 +787,7 @@ export function scanPage(
     // Check clear application consent, skip marketing / ambiguous boxes (→ null,
     // so they're simply not selected rather than counted as failures).
     if (controlType === "checkbox" && !resolved.deviceAbstained) {
-      proposedValue = resolveCheckboxIntent(`${label} ${signals.nearby ?? ""}`, proposedValue);
+      proposedValue = resolveCheckboxIntent(`${label} ${signals.nearby ?? ""}`, proposedValue, sensitive);
     }
 
     fields.push({
