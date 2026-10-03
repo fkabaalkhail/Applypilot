@@ -357,3 +357,25 @@ describe("a stated channel offered several ways (Planet on Greenhouse, live 2026
     expect(value(ask("How did you first hear about Planet before applying for this position?", { options: opts }))).toBe("LinkedIn Job Search");
   });
 });
+
+describe("one checkbox per demographic option (Superhuman on Ashby, live 2026-10-03)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  // Verbatim structure: each box is its own control, NAMED after its option.
+  const OPTS = ["Man", "Woman", "Non-binary", "I prefer to self-describe", "I don't wish to answer"];
+  const FIELDSET = `<fieldset><label for="gh_quest_8662">How would you describe your gender identity? (mark all that apply)</label>${OPTS
+    .map((o, i) => `<div><span data-disabled="false"><input type="checkbox" id="U_gh_quest_8662-labeled-checkbox-${i}" name="${o}"></span><label for="U_gh_quest_8662-labeled-checkbox-${i}">${o}</label></div>`)
+    .join("")}</fieldset>`;
+  it("the fieldset is one group proposing 'Woman' for a Female profile whose identity is Cisgender", () => {
+    // It stayed blank before the demographic synonyms applied at scan time; with
+    // them it was ticked live (results/final-1).
+    document.body.innerHTML = `<form>${FIELDSET}</form>`;
+    const fields = scanPage(COMPLETE, false, null).fields;
+    expect(fields).toHaveLength(1);
+    expect(fields[0].controlType).toBe("checkboxGroup");
+    expect(fields[0].proposedValue).toBe("Woman");
+  });
+});

@@ -11,7 +11,7 @@
  * sponsorship question, a BambooHR date typed into a "dd mon yyyy" mask, a
  * graduation month turned into an invented day, and a react-select counted as
  * filled because its open list highlighted the answer. Every write below was
- * reviewed by hand on the run that pinned it (results/all-2). Greenhouse's
+ * reviewed by hand on the run that pinned it (results/final-1). Greenhouse's
  * async School / Degree / Discipline dropdowns and Lever's location typeahead
  * drop intermittently (blank, never wrong): "this value or blank".
  */
@@ -366,20 +366,21 @@ export default [
       "name=5b200700-e6f9-40cc-bf21-7be8bbfbe819": "Maya",
       "#_systemfield_email": "maya.tremblay@example.com",
       "name=44d2849c-6823-46fa-8b7f-f298d53192c3": "(416) 555-0142",
-      "#a8ba06f1-c868-4bfd-ac9f-a1e1b42c778a": "https://www.linkedin.com/in/maya-tremblay",
+      "url~LinkedIn URL": "https://www.linkedin.com/in/maya-tremblay",
       "name=1cdfa9fe-d4d1-4d0b-8708-c0084402f93c": "LinkedIn",
       "label=Start typing...": "Toronto, Ontario, Canada",
-      "radio=4f8ed921-c88f-4036-8bbe-361c38073000_9eee63bb-7afb-4f4c-a509-06e1d96ffb3e": "Bachelors",
-      "radio=4f8ed921-c88f-4036-8bbe-361c38073000_a7743ea8-d9da-4d62-b792-78e66ce280d0": "January - June 2027",
+      "radio~Which degree are you currently pursuing?": "Bachelors",
+      "radio~When is your expected graduation date?": "January - June 2027",
       "label=Search schools...": "University of Waterloo",
       "#_systemfield_education_history-degree": orBlank("Bachelor of Applied Science in Mechatronics Engineering"),
       "#_systemfield_education_history-major": "Mechatronics Engineering",
       "#_systemfield_education_history-isCurrent": "checked",
-      "radio=a4f97be5-bad1-4797-9198-3058c22007c5_gh_quest_8657": "No, I am not a veteran or active member",
-      "radio=a4f97be5-bad1-4797-9198-3058c22007c5_gh_quest_8658": "No",
-      "#a4f97be5-bad1-4797-9198-3058c22007c5_gh_quest_8661-labeled-checkbox-2": "checked",
-      "radio=a4f97be5-bad1-4797-9198-3058c22007c5_gh_quest_8659": "No",
-      "#a4f97be5-bad1-4797-9198-3058c22007c5_gh_quest_8660-labeled-checkbox-4": "checked",
+      "radio~Are you a veteran or active member of the United S": "No, I am not a veteran or active member",
+      "radio~Do you have a disability or chronic condition (phy": "No",
+      "checkbox~White or European": "checked",
+      "radio~Do you identify as transgender?": "No",
+      "checkbox~Woman": "checked",
+      "checkbox~Heterosexual": "checked",
     },
   }),
   live({
@@ -389,12 +390,12 @@ export default [
     expect: {
       "#_systemfield_name": "Maya Tremblay",
       "name=51115780-e97b-41a0-9016-97cb5ce7bcae": "Maya",
-      "#ff014508-bac7-40da-88f4-725acaba597b": "She/Her",
+      "text~Pronouns": "She/Her",
       "#_systemfield_email": "maya.tremblay@example.com",
       "name=5475de15-4bf0-45f1-acea-2f38cc51d1ec": "(416) 555-0142",
       "radio=communicationConsent": "No - I do not consent to receiving text messages",
-      "#a2f65c0b-ba68-4e15-a04c-4b9bfc813d40": "https://www.linkedin.com/in/maya-tremblay",
-      "#bfe751b6-f306-4a97-838e-b188e0f7ba2c": "https://github.com/mayatremblay",
+      "text~LinkedIn Profile": "https://www.linkedin.com/in/maya-tremblay",
+      "text~Github Profile": "https://github.com/mayatremblay",
       "label=Search schools...": "University of Waterloo",
       "#_systemfield_education_history-degree": orBlank("Bachelor of Applied Science in Mechatronics Engineering"),
       "#_systemfield_education_history-major": "Mechatronics Engineering",
@@ -409,11 +410,11 @@ export default [
       "#_systemfield_name": "Maya Tremblay",
       "name=187cd0e9-cd4f-4be4-9879-ddfdbc3f0856": "Maya",
       "#_systemfield_email": "maya.tremblay@example.com",
-      "radio=31797c1c-5fdc-4cc4-8ebb-39e806919f00_8b6daa4e-adb5-42c2-93d3-25ca054ffbd6": "Yes, I am able and willing to work in the office location listed in the job description.",
+      "radio~I acknowledge that Gecko has an in-office culture,": "Yes, I am able and willing to work in the office location listed in the job description.",
       "label=Start typing...": "LinkedIn Jobs",
-      "radio=4f53efa9-3d1e-4218-9c14-e1758939a0e4__systemfield_eeoc_gender": "Female",
-      "radio=4f53efa9-3d1e-4218-9c14-e1758939a0e4__systemfield_eeoc_race": "White (Not Hispanic or Latino)",
-      "radio=4f53efa9-3d1e-4218-9c14-e1758939a0e4__systemfield_eeoc_veteran_status": "I am not a protected veteran",
+      "radio~Input gender": "Female",
+      "radio~Race": "White (Not Hispanic or Latino)",
+      "radio~Veteran Status": "I am not a protected veteran",
     },
   }),
   live({
@@ -437,6 +438,8 @@ export default [
       "radio=QA_12457572": "NO",
       "ariaradio=Do you live in the United States?": "NO",
       "radio=QA_12457573": "NO",
+      "ariaradio=Will you now, or in the future, require sponsorship for empl": "YES",
+      "radio=QA_12457574": "YES",
       "#QA_12457575": "No",
       "#QA_12457576": "LinkedIn",
     },
