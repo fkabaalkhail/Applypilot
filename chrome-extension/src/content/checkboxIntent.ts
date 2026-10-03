@@ -28,6 +28,12 @@ const MARKETING_RE =
 const CONSENT_RE =
   /\bi (?:agree|consent|accept|acknowledge|certify|confirm|authoriz(?:e|ed)|declare)\b|\b(?:agree|consent) to\b|\bterms (?:and|&) conditions\b|\bprivacy (?:policy|notice|statement)\b|\bdata (?:processing|protection|privacy)\b|\bgdpr\b|\bi have read\b/i;
 
+/** An application consent / agreement box (and not a marketing opt-in). */
+export function isConsentText(labelText: string): boolean {
+  const text = labelText ?? "";
+  return !MARKETING_RE.test(text) && CONSENT_RE.test(text);
+}
+
 /** True when a string already expresses a clear boolean the writer accepts. */
 function looksBoolean(v: string): boolean {
   return /^(yes|y|true|1|agree|checked|no|n|false|0|unchecked)$/i.test(v.trim());
@@ -37,17 +43,17 @@ function looksBoolean(v: string): boolean {
  * @param labelText  the checkbox's display label plus any nearby help text
  * @param rawValue   the value the generic category resolver proposed (may be a
  *                   misclassified text value, a genuine yes/no, or null)
- * @param sensitive  a demographic (EEO) box: answered only from the user's own
- *                   profile answer, never ticked for its consent wording. "I
- *                   consent to … processing my responses to the demographic
- *                   data surveys above" was ticked for an applicant who had
- *                   answered none of them (Robinhood on Greenhouse, live
- *                   2026-10-03); see the invariant in shared/selection.ts.
+ *
+ * Consent is given for EVERY application consent, demographic-data ones
+ * included (2026-10-03, "answer all questions"): a demographic question with no
+ * profile answer is now answered "decline", so consenting to the processing of
+ * "my responses to the demographic surveys" (Robinhood) covers declines or the
+ * user's own answers, and a required box no longer blocks the submit.
  */
-export function resolveCheckboxIntent(labelText: string, rawValue: string | null, sensitive = false): string | null {
+export function resolveCheckboxIntent(labelText: string, rawValue: string | null): string | null {
   const text = labelText ?? "";
   if (MARKETING_RE.test(text)) return null;
-  if (!sensitive && CONSENT_RE.test(text)) return "yes";
+  if (CONSENT_RE.test(text)) return "yes";
   if (rawValue !== null && looksBoolean(rawValue)) return rawValue;
   return null;
 }

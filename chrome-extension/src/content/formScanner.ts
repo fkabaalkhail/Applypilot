@@ -31,7 +31,7 @@ import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./combob
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
 import { resolveField, snapToOption, type FieldResolution } from "./fieldResolver";
 import { splitGreenhouseDate } from "./adapters/greenhouse";
-import { resolveCheckboxIntent } from "./checkboxIntent";
+import { isConsentText, resolveCheckboxIntent } from "./checkboxIntent";
 import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
 import { detectGroupIndex } from "./groupIndex";
@@ -632,6 +632,39 @@ function reclassifyEducationRowDates(
   }
 }
 
+/**
+ * A field resolved again now that its widget's REAL options are known. A
+ * react-select mounts its list only when opened, so at scan time a question
+ * whose answer depends on the options ("Yes, I'd relocate prior to the start"
+ * vs "Yes, I'm currently located here"; which channel "How did you hear" offers)
+ * can only propose a generic value. With the options it resolves on device, to
+ * an exact option, instead of waiting for the AI (Brex, live 2026-10-03).
+ */
+export function resolveWithOptions(
+  field: DetectedField,
+  registry: Map<string, RuntimeControl>,
+  profile: UserApplicationProfile | null,
+  adapter: SiteAdapter | null,
+  fillEEO: boolean,
+  options: string[]
+): string | null {
+  const control = registry.get(field.id);
+  const el = control?.el ?? control?.radios?.[0] ?? control?.checkboxes?.[0];
+  if (!el || !profile || options.length === 0) return null;
+  const resolved = resolveField({
+    adapter,
+    category: field.category,
+    sensitive: field.sensitive,
+    profile,
+    control: { controlType: field.controlType, options, groupIndex: field.groupIndex ?? null, multi: control?.multi },
+    fillEEO,
+    el,
+    label: field.label,
+    signals: collectSignals(el),
+  });
+  return resolved.value;
+}
+
 export function scanPage(
   profile: UserApplicationProfile | null,
   fillEEO: boolean,
@@ -786,8 +819,14 @@ export function scanPage(
     // A single checkbox is a boolean control: never write a text value into it.
     // Check clear application consent, skip marketing / ambiguous boxes (→ null,
     // so they're simply not selected rather than counted as failures).
+    let consentTick = false;
     if (controlType === "checkbox" && !resolved.deviceAbstained) {
-      proposedValue = resolveCheckboxIntent(`${label} ${signals.nearby ?? ""}`, proposedValue, sensitive);
+      const text = `${label} ${signals.nearby ?? ""}`;
+      proposedValue = resolveCheckboxIntent(text, proposedValue);
+      // A consent tick is selected on its own evidence, whatever the label's
+      // category score: whether it got ticked used to depend on how confidently
+      // its words happened to classify.
+      consentTick = proposedValue === "yes" && isConsentText(text);
     }
 
     fields.push({
@@ -809,6 +848,7 @@ export function scanPage(
       groupIndex,
       currentValue: currentValueOf(el, controlType),
       ...resolutionFlags(resolved),
+      ...(consentTick ? { deterministic: true } : {}),
     });
   }
 

@@ -35,7 +35,7 @@ describe("Taleo table-layout markup, detection", () => {
 });
 
 describe("Taleo table-layout markup, autofill", () => {
-  it("fills text fields and the country select; skips resume + EEO (no EEO data)", async () => {
+  it("fills text fields and the country select; skips resume; EEO declined (no EEO data)", async () => {
     mountTaleoForm(document);
     await runAutofill(PROFILE_NO_EEO, false);
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value;
@@ -47,6 +47,7 @@ describe("Taleo table-layout markup, autofill", () => {
     expect(val("taleo-city")).toBe("Ottawa");
     expect(val("taleo-country")).toBe("Canada");
     expect(val("taleo-resume")).toBe("");
-    expect(val("taleo-gender")).toBe("");
+    // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.
+    expect(val("taleo-gender")).toMatch(/decline|prefer not|not wish|wish to answer/i);
   });
 });

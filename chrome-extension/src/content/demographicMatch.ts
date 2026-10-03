@@ -20,6 +20,10 @@ const DECLINE_PATTERNS = [
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+/** `needle` appears in `hay` as whole words. Substrings read "male" inside
+ *  "female" and "man" inside "woman" (2026-10-03). */
+const hasWords = (hay: string, needle: string): boolean => ` ${hay} `.includes(` ${needle} `);
+
 /** Priority-ordered option substrings for a normalized profile value. */
 const RACE: Record<string, string[]> = {
   "arab": ["middle eastern", "north african", "mena", "white"],
@@ -92,6 +96,13 @@ function tableFor(category: FieldCategory): Record<string, string[]> | null {
   }
 }
 
+/** The option that declines to answer ("I don't wish to answer", "Decline To
+ *  Self Identify"), when the list has exactly one. */
+export function declineOption(options: string[]): string | null {
+  const hits = options.filter((o) => DECLINE_PATTERNS.some((d) => norm(o).includes(d)));
+  return hits.length === 1 ? hits[0] : null;
+}
+
 export function closestDemographicOption(
   category: FieldCategory,
   value: string,
@@ -101,13 +112,13 @@ export function closestDemographicOption(
   const v = norm(value);
   if (opts.length === 0 || !v) return null;
 
-  // 1. Direct containment either direction.
-  const direct = opts.find((o) => o.n === v || o.n.includes(v) || v.includes(o.n));
+  // 1. Direct containment either direction, on whole words.
+  const direct = opts.find((o) => o.n === v || hasWords(o.n, v) || hasWords(v, o.n));
   if (direct) return direct.raw;
 
   // 2. Synonym / nearest-neighbour candidates, in priority order.
   for (const cand of tableFor(category)?.[v] ?? []) {
-    const hit = opts.find((o) => o.n.includes(cand));
+    const hit = opts.find((o) => hasWords(o.n, cand));
     if (hit) return hit.raw;
   }
 

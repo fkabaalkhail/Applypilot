@@ -98,11 +98,13 @@ describe("Workday My Information, autofill", () => {
     expect((document.getElementById("wd-resume") as HTMLInputElement).value).toBe("");
   });
 
-  it("leaves EEO selects untouched when the profile has no EEO data", async () => {
+  it("declines EEO selects (never a demographic value) when the profile has no EEO data", async () => {
     mountWorkdayMyInfo(document);
     await runAutofill(PROFILE_NO_EEO, false);
-    expect((document.getElementById("wd-gender") as HTMLSelectElement).value).toBe("");
-    expect((document.getElementById("wd-ethnicity") as HTMLSelectElement).value).toBe("");
+    // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.
+    expect((document.getElementById("wd-gender") as HTMLSelectElement).value).toMatch(/decline|prefer not|not wish|wish to answer/i);
+    expect((document.getElementById("wd-ethnicity") as HTMLSelectElement).value).toMatch(/decline|prefer not|not wish|wish to answer/i);
+    // No decline option in this list ("I am not a veteran" | "I am a veteran"): never guessed.
     expect((document.getElementById("wd-veteran") as HTMLSelectElement).value).toBe("");
   });
 });

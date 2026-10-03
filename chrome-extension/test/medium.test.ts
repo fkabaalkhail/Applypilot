@@ -27,7 +27,7 @@ const singleValue = (wrapId: string) =>
 const cats = () => new Set(scanPage(MOCK_PROFILE, false).fields.map((f) => f.category));
 
 describe("Ashby", () => {
-  it("detects + fills text, react-select country; skips resume + EEO", async () => {
+  it("detects + fills text, react-select country; skips resume, EEO declined", async () => {
     mountAshbyForm(document);
     const c = cats();
     expect(c.has("firstName") && c.has("email") && c.has("country") && c.has("resumeUpload")).toBe(true);
@@ -36,7 +36,8 @@ describe("Ashby", () => {
     expect(val("ashby-email")).toBe("john@example.com");
     expect(singleValue("ashby-country")).toBe("Canada");
     expect(val("ashby-resume")).toBe("");
-    expect(val("ashby-gender")).toBe("");
+    // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.
+    expect(val("ashby-gender")).toMatch(/decline|prefer not|not wish|wish to answer/i);
   });
 });
 
@@ -67,14 +68,15 @@ describe("SmartRecruiters", () => {
 });
 
 describe("Jobvite", () => {
-  it("fills text and the ARIA radiogroup (sponsorship = No); skips EEO", async () => {
+  it("fills text and the ARIA radiogroup (sponsorship = No); EEO declined", async () => {
     mountJobviteForm(document);
     const c = cats();
     expect(c.has("firstName") && c.has("sponsorship")).toBe(true);
     await runAutofill(PROFILE_NO_EEO, false);
     expect(val("jobvite-firstname")).toBe("John");
     expect(document.querySelector('[role="radio"][aria-checked="true"]')?.getAttribute("data-value")).toBe("No");
-    expect(val("jobvite-gender")).toBe("");
+    // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.
+    expect(val("jobvite-gender")).toMatch(/decline|prefer not|not wish|wish to answer/i);
   });
 });
 

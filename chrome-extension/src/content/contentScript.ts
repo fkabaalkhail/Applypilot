@@ -58,12 +58,12 @@ import { openAiModal } from "./aiModalBridge";
 import { getLastJobContext, saveLastJobContext } from "../shared/storage";
 
 const MIN_CACHEABLE_DESC = 200;
-import { FRAME_TOKEN, observePage, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
+import { FRAME_TOKEN, observePage, resolveWithOptions, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
 import { LONG_TEXT, normalize } from "./fieldMatcher";
 import { answersWorthRemembering, planAnswerSaves } from "./answerGaps";
 import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
-import { defaultSelectedIds, fillSelection } from "../shared/selection";
+import { defaultSelectedIds, fillSelection, isDefaultSelected } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
 import { detectJobCountry, sanitizeCompany } from "./jobLocation";
 import { setResolveContext } from "./fieldResolver";
@@ -903,6 +903,8 @@ function initialize(): void {
         { reports: [], outcomes: [], reask: [] };
       let fallbackFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
+      let optionFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
+        { reports: [], outcomes: [], reask: [] };
       const backendStartedAt = performance.now();
       if (backendFields.length > 0 && !signal?.aborted) {
         const { hits, misses } = splitByCache(backendFields);
@@ -921,17 +923,31 @@ function initialize(): void {
           );
           if (harvested && harvested.length > 0) f.options = harvested;
         }
+        // With the real options known, answer on device whatever no longer needs
+        // the AI (a default or profile answer that needed the option list).
+        const optionTargets: { fieldId: string; value: string }[] = [];
+        const askBackend: typeof misses = [];
+        for (const f of misses) {
+          const v = f.options?.length
+            ? resolveWithOptions(f, registry, lastProfile, lastAdapter, lastFillEEO, f.options)
+            : null;
+          if (v) optionTargets.push({ fieldId: f.id, value: v });
+          else askBackend.push(f);
+        }
+        if (optionTargets.length > 0) {
+          optionFill = await fillItems(noteIntent(optionTargets, { tier: "profile", pass: "options" }), true, signal);
+        }
         let answers: PlannedAnswer[] = hits;
         try {
-          if (misses.length > 0) {
+          if (askBackend.length > 0) {
             const resp = await sendToBackground<AiFillResponse>({
               type: "AI_FILL",
-              fields: misses.map(toAiFillField),
+              fields: askBackend.map(toAiFillField),
               jobContext: extractJobContext(),
               profile: lastProfile ? toApplicantProfile(lastProfile) : undefined,
             });
             if (resp?.ok) {
-              cacheAnswers(misses, resp.answers);
+              cacheAnswers(askBackend, resp.answers);
               answers = [...hits, ...resp.answers];
               noteDrops(resp.dropped);
             }
@@ -972,7 +988,7 @@ function initialize(): void {
         { reports: [], outcomes: [], reask: [] };
       let deviceReaskFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
         { reports: [], outcomes: [], reask: [] };
-      const reaskCandidates = [...localFill.reask, ...aiFill.reask, ...fallbackFill.reask];
+      const reaskCandidates = [...localFill.reask, ...optionFill.reask, ...aiFill.reask, ...fallbackFill.reask];
       // Sensitive (EEO) fields NEVER reach the backend, pick their closest
       // option ON-DEVICE from the harvested list. Everything else re-asks the AI.
       const sensitiveReask = reaskCandidates.filter((c) => lastFields.find((f) => f.id === c.fieldId)?.sensitive);
@@ -1000,8 +1016,11 @@ function initialize(): void {
         // Anything the profile already answers is snapped to a real option HERE,
         // on device, before the backend is consulted. Free, instant, and it
         // keeps a fact the user stated from depending on the AI being reachable.
-        const onDevice = planOnDeviceReask(lastFields, openReask, (options, value) =>
-          matchOption(options, (o) => o, (o) => o, value)
+        const onDevice = planOnDeviceReask(
+          lastFields,
+          openReask,
+          (options, value) => matchOption(options, (o) => o, (o) => o, value),
+          (field, options) => resolveWithOptions(field, registry, lastProfile, lastAdapter, lastFillEEO, options)
         );
         if (onDevice.targets.length > 0) {
           deviceReaskFill = await fillItems(
@@ -1044,10 +1063,46 @@ function initialize(): void {
         ? { reports: [], outcomes: [] as PassOutcome[] }
         : await retryDependentDropdowns(signal);
 
+      // Questions the fill itself revealed. A conditional question mounts only
+      // once an earlier answer is in ("Please identify your race" appears after
+      // "Hispanic/Latino?" is answered; Greenhouse, Brex live 2026-10-03), so it
+      // was never in this pass's selection. Rescan once and fill what is new and
+      // qualifies; one pass, so a page that keeps growing cannot loop us.
+      let revealFill: { reports: FieldReport[]; outcomes: { fieldId: string; ok: boolean }[]; reask: ReaskCandidate[] } =
+        { reports: [], outcomes: [], reask: [] };
+      if (!signal?.aborted) {
+        await waitForDomSettle(signal);
+        runScan();
+        engine?.updateRegistry(registry);
+        const revealed = lastFields.filter((f) => !intended.has(f.id) && !wanted.has(f.id) && isDefaultSelected(f));
+        if (revealed.length > 0 && !signal?.aborted) {
+          console.log(`[Tailrd fill] ${revealed.length} question(s) appeared during the fill, filling them`);
+          revealFill = await fillItems(
+            noteIntent(revealed.map((f) => ({ fieldId: f.id, value: f.proposedValue as string })), { tier: "profile", pass: "revealed" }),
+            true,
+            signal
+          );
+          // A revealed demographic dropdown whose value missed: its closest
+          // option, on device (the same rule as the re-ask round above).
+          const demo: { fieldId: string; value: string }[] = [];
+          for (const c of revealFill.reask) {
+            const rf = lastFields.find((x) => x.id === c.fieldId);
+            if (!rf?.sensitive) continue;
+            const choice = closestDemographicOption(rf.category, rf.proposedValue ?? "", c.options);
+            if (choice) demo.push({ fieldId: c.fieldId, value: choice });
+          }
+          if (demo.length > 0) {
+            const again = await fillItems(noteIntent(demo, { tier: "device" }), true, signal);
+            revealFill = { reports: [...revealFill.reports, ...again.reports], outcomes: [...revealFill.outcomes, ...again.outcomes], reask: [] };
+          }
+        }
+      }
+
       phase.reaskMs = since(reaskStartedAt);
 
       const { ok, fail, total } = tallyOutcomes(
         localFill.reports,
+        optionFill.reports,
         aiFill.reports,
         fallbackFill.reports,
         reaskFill.reports,
@@ -1055,25 +1110,28 @@ function initialize(): void {
         deviceReaskFill.reports,
         missingFill.reports,
         cascadeFill.reports,
+        revealFill.reports,
         localFill.outcomes,
+        optionFill.outcomes,
         aiFill.outcomes,
         fallbackFill.outcomes,
         reaskFill.outcomes,
         demoFill.outcomes,
         deviceReaskFill.outcomes,
         missingFill.outcomes,
-        cascadeFill.outcomes
+        cascadeFill.outcomes,
+        revealFill.outcomes
       );
 
       const allReports = [
-        ...localFill.reports, ...aiFill.reports, ...fallbackFill.reports,
+        ...localFill.reports, ...optionFill.reports, ...aiFill.reports, ...fallbackFill.reports,
         ...reaskFill.reports, ...demoFill.reports, ...deviceReaskFill.reports,
-        ...missingFill.reports, ...cascadeFill.reports,
+        ...missingFill.reports, ...cascadeFill.reports, ...revealFill.reports,
       ];
       const allOutcomes = [
-        ...localFill.outcomes, ...aiFill.outcomes, ...fallbackFill.outcomes,
+        ...localFill.outcomes, ...optionFill.outcomes, ...aiFill.outcomes, ...fallbackFill.outcomes,
         ...reaskFill.outcomes, ...demoFill.outcomes, ...deviceReaskFill.outcomes,
-        ...missingFill.outcomes, ...cascadeFill.outcomes,
+        ...missingFill.outcomes, ...cascadeFill.outcomes, ...revealFill.outcomes,
       ];
       // Terminal re-scan: read the page back once the fill has settled, and
       // diff what it holds against what was written.
@@ -1083,7 +1141,7 @@ function initialize(): void {
       // on blur, on its own validation, or on a re-render triggered by a LATER
       // field, and a per-write check has moved on by then. This is the only
       // point where "the page actually holds the answer" can be observed.
-      const observed = signal?.aborted ? [] : await observePageState(signal);
+      let observed = signal?.aborted ? [] : await observePageState(signal);
       const okIds = new Set(
         [...finalOutcomes(allReports, allOutcomes).ok]
           .filter(([, isOk]) => isOk)
@@ -1095,13 +1153,29 @@ function initialize(): void {
         wroteOk: okIds,
         dropped: [...droppedByBackend.values()],
       };
-      lastRevertedIds = new Set(
-        revertedFields(
-          [...intended].map(([fieldId, value]) => ({ fieldId, value })),
-          observed,
-          okIds
-        ).map((r) => r.fieldId)
-      );
+      const intendedList = [...intended].map(([fieldId, value]) => ({ fieldId, value }));
+      let reverted = revertedFields(intendedList, observed, okIds);
+      // One recovery pass. A field the page CLEARED after a successful write was
+      // wiped by a re-render a later field triggered (Greenhouse re-renders its
+      // React form when a dropdown is picked; names and email went blank, Brex
+      // live 2026-10-03). Once the page settles, write it once more. A value the
+      // page CHANGED (reformatting, the user typing) is never fought, and one
+      // pass only: a field the page keeps clearing stays reported.
+      const cleared = reverted.filter((r) => r.cleared && intended.get(r.fieldId));
+      if (cleared.length > 0 && !signal?.aborted) {
+        await waitForDomSettle(signal);
+        if (!signal?.aborted) {
+          console.log(`[Tailrd fill] re-writing ${cleared.length} field(s) the page cleared`);
+          await fillItems(
+            cleared.map((r) => ({ fieldId: r.fieldId, value: intended.get(r.fieldId) as string })),
+            true,
+            signal
+          );
+          observed = signal?.aborted ? observed : await observePageState(signal);
+          reverted = revertedFields(intendedList, observed, okIds);
+        }
+      }
+      lastRevertedIds = new Set(reverted.map((r) => r.fieldId));
       if (lastRevertedIds.size > 0) {
         console.log(
           `[Tailrd fill] ${lastRevertedIds.size} field(s) no longer hold what was written, re-asking`

@@ -131,8 +131,9 @@ describe("age", () => {
     expect(value(ask("Are you 18 years of age or older?", { options: YES_NO }, dob))).toBe("Yes");
     expect(value(ask("Are you under the age of 18?", { options: YES_NO }, dob))).toBe("No");
   });
-  it("abstains without a date of birth", () => {
-    expect(value(ask("Are you age 18 or older?", { options: ["Select an option...", "Yes", "No"] }))).toBe("abstain");
+  it("without a date of birth, an adult (18+) gate defaults to Yes; a higher bar stays the applicant's", () => {
+    expect(value(ask("Are you age 18 or older?", { options: ["Select an option...", "Yes", "No"] }))).toBe("Yes");
+    expect(value(ask("Are you 21 years of age or older?", { options: YES_NO }))).toBe("abstain");
   });
   it("places an exact age in its bucket", () => {
     expect(value(ask("What is your age range?", { options: ["17 or younger", "18-20", "21-29", "30-39"] }, dob))).toBe("21-29");
@@ -223,10 +224,19 @@ describe("availability", () => {
 });
 
 describe("never answered from a profile", () => {
-  it("opinions, channels, referrals, background checks", () => {
+  it("opinions and a referrer's name stay unanswered; criminal history too", () => {
     expect(value(ask("Do you think AI will take over the world?", { options: ["Yes", "No", "Maybe So"] }))).toBe("abstain");
-    expect(value(ask("How did you hear about us?", { options: ["LinkedIn", "Indeed"] }))).toBe("abstain");
-    expect(value(ask("Do you anticipate having any challenges with clearing a background check?", { kind: "longText" }))).toBe("abstain");
+    expect(value(ask("Who referred you?"))).toBe("abstain");
+    expect(value(ask("Have you ever been convicted of a felony?", { options: YES_NO }))).toBe("abstain");
+  });
+  it("channels, prior applications and background checks get the documented defaults (defaultAnswers.ts)", () => {
+    expect(value(ask("How did you hear about us?", { options: ["LinkedIn", "Indeed"] }))).toBe("LinkedIn");
+    expect(value(ask("How did you hear about us?", { options: ["LinkedIn", "Job Board", "Referral"] }))).toBe("Job Board");
+    expect(value(ask("Do you anticipate having any challenges with clearing a background check?", { options: YES_NO }))).toBe("No");
+    expect(value(ask("Are you willing to undergo a background check?", { options: YES_NO }))).toBe("Yes");
+    expect(value(ask("Have you previously applied to Acme?", { options: YES_NO }))).toBe("No");
+    // A free-text question a bare yes/no would not answer stays for the AI.
+    expect(ask("Do you anticipate having any challenges with clearing a background check?", { kind: "longText" })).toBeNull();
   });
   it("conditional follow-ups", () => {
     expect(value(ask("If 'Other' selected for School Name, please indicate here"))).toBe("abstain");
@@ -244,9 +254,10 @@ describe("stated facts", () => {
     expect(value(ask("Are you fluent in French?", { options: YES_NO }, p))).toBe("Yes");
     expect(value(ask("Do you speak Spanish?", { options: YES_NO }, p))).toBe("abstain");
   });
-  it("relocation ASSISTANCE is not willingness", () => {
+  it("relocation ASSISTANCE is not willingness, and is never defaulted", () => {
     const p = { ...SPARSE_CANADIAN, willingToRelocate: "Yes" };
     expect(value(ask("Will you require relocation assistance?", { options: YES_NO }, p))).not.toBe("Yes");
+    expect(value(ask("Will you require relocation assistance?", { options: YES_NO }))).not.toBe("Yes");
   });
 });
 
@@ -271,7 +282,9 @@ describe("residence: the applicant must be the subject", () => {
   it("an office-location commute question is not a residence question", () => {
     const label =
       "This position requires you to work from the Toronto Office located at 196 Spadina Avenue. Are you able to commute to the office 3 days a week?";
-    expect(value(ask(label, { options: YES_NO }))).not.toBe("Yes");
+    const r = ask(label, { options: YES_NO });
+    // Answered as an accepted REQUIREMENT of the posting, never as residence.
+    expect(r && r.status === "answer" ? r.rule : "").toBe("default:accepts-requirement");
   });
   it("still answers 'Are you currently based in Toronto?'", () => {
     expect(value(ask("Are you currently based in Toronto?", { options: YES_NO }))).toBe("Yes");
@@ -284,7 +297,8 @@ describe("'able to work' is a work-right question only with a country and no arr
     const label =
       "This position requires you to work from the Toronto Office located at 24 Ward Street, Toronto ON M6H 4A6. Are you able to work from our Kepler office as required?";
     const r = ask(label, { options: YES_NO }, SPARSE_CANADIAN, { jobCountry: "CA", company: "Kepler" });
-    expect(value(r)).not.toBe("Yes");
+    // Office attendance is an accepted requirement, not work authorization.
+    expect(r && r.status === "answer" ? r.rule : "").toBe("default:accepts-requirement");
   });
   it("'Are you able to work in Canada?' is", () => {
     expect(value(ask("Are you able to work in Canada?", { options: YES_NO }))).toBe("Yes");

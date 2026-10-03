@@ -35,7 +35,7 @@ describe("ADP div-layout markup, detection", () => {
 });
 
 describe("ADP div-layout markup, autofill", () => {
-  it("fills text fields and the country select; skips resume + EEO (no EEO data)", async () => {
+  it("fills text fields and the country select; skips resume; EEO declined (no EEO data)", async () => {
     mountAdpForm(document);
     await runAutofill(PROFILE_NO_EEO, false);
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value;
@@ -47,6 +47,7 @@ describe("ADP div-layout markup, autofill", () => {
     expect(val("adp-city")).toBe("Ottawa");
     expect(val("adp-country")).toBe("Canada");
     expect(val("adp-resume")).toBe("");
-    expect(val("adp-gender")).toBe("");
+    // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.
+    expect(val("adp-gender")).toMatch(/decline|prefer not|not wish|wish to answer/i);
   });
 });

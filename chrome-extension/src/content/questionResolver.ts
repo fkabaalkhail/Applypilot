@@ -38,6 +38,7 @@ import {
   type ProfileFacts,
 } from "./profileFacts";
 import { matchOption } from "./writeEngine";
+import { resolveDefault } from "./defaultAnswers";
 
 export interface QuestionInput {
   label: string;
@@ -55,6 +56,8 @@ export interface QuestionContext {
   jobCountry: string | null;
   /** The hiring company's name, when known. */
   company: string;
+  /** The job's city, when the page says ("San Francisco"). */
+  jobCity?: string | null;
 }
 
 export type QuestionResult =
@@ -840,11 +843,17 @@ function resolvePhoneCode(q: QuestionInput, n: string, facts: ProfileFacts, prof
 // Entry point
 // ---------------------------------------------------------------------------
 
-/** Questions about opinions, motivations, referrals or channels: nothing on a
- *  profile answers them, and a guess written into one reads as the applicant's
- *  own statement. Recognized so they are never filled by a category fallback. */
+/** Questions about opinions, motivations, a referrer's name, or criminal
+ *  history: nothing on a profile answers them and no default may (a guess there
+ *  reads as the applicant's own statement). Recognized so they are never filled
+ *  by a category fallback. Channels, prior applications, relatives, conflicts,
+ *  background checks and the like are answered by defaultAnswers.ts. */
 const UNANSWERABLE =
-  /\bhow did you (hear|find|learn)\b|\bwhere did you (hear|see|find|learn)\b|\bwho referred\b|\breferred (you|by)\b|\bdo you think\b|\bin your opinion\b|\bwhat do you think\b|\bwhy (do|are|did|would) you\b|\bdescribe (a|an)\b|\btell us about (a|an|yourself)\b|\bwhat interests you\b|\bfamily member|\brelatives?\b|\bconflicts? of interest\b|\bnon compete|\bpreviously applied\b|\bapplied (to|for|with) (us|this)\b|\bbackground check\b|\bdrug (test|screen)\b|\bcriminal\b|\bconvicted\b/;
+  /\bwho referred\b|\breferred by (whom|who)\b|\b(name|names) of (the |your )?(referr\w*|employee)\b|\bdo you think\b|\bin your opinion\b|\bwhat do you think\b|\bwhy (do|are|did|would) you\b|\bdescribe (a|an)\b|\btell us about (a|an|yourself)\b|\bwhat interests you\b|\bcriminal\b|\bconvicted\b|\bfelony\b/;
+
+/** Abstentions that only mean "the profile is silent": the default answer, if
+ *  one applies, takes over (a profile fact always runs first). */
+const DEFAULTABLE = /^(relocation:unknown|former-employee:no-history|former-employee:no-company|age-gate:no-dob)/;
 
 /** A question about the applicant's HIGH school (its name, year, grades), which
  *  no profile education row describes. */
@@ -872,7 +881,7 @@ export function resolveQuestion(
     return abstain("high-school:not-in-profile");
   }
 
-  return (
+  const resolved =
     resolveWorkAuthorization(q, n, facts, profile, ctx) ??
     resolveCitizenship(q, n, facts, ctx) ??
     resolveAge(q, n, facts) ??
@@ -890,6 +899,13 @@ export function resolveQuestion(
     resolveAvailability(q, n, facts) ??
     resolveStatedFacts(q, n, profile) ??
     resolvePhoneCode(q, n, facts, profile) ??
-    null
-  );
+    null;
+  if (resolved && (resolved.status === "answer" || !DEFAULTABLE.test(resolved.rule))) return resolved;
+  // An adult-applicant gate with no date of birth: 18 or older is the default;
+  // a higher bar (21) stays the applicant's to answer.
+  if (resolved?.rule === "age-gate:no-dob") {
+    const min = Number(AGE_MIN.exec(n)?.slice(1).find(Boolean) ?? NaN);
+    return min <= 18 && !AGE_UNDER.test(n) ? booleanResult(true, q, "default:adult") : resolved;
+  }
+  return resolveDefault(q, n, profile, facts, ctx) ?? resolved;
 }

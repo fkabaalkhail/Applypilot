@@ -133,6 +133,11 @@
       "description": "Optional screening answer: SPOKEN languages, not programming languages (those are `skills`).",
       "examples": ["English (Native), French (Professional)"]
     },
+    "howDidYouHear": {
+      "type": "string",
+      "description": "Optional screening answer: the channel named for \"How did you hear about us?\". Blank means \"Job board\".",
+      "examples": ["LinkedIn", "Job board", "Company website", "Referral", "Career fair", "Social media", "Other"]
+    },
     "eeo": { "$ref": "#/$defs/eeoAnswers" }
   },
   "$defs": {

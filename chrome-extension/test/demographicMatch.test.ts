@@ -21,3 +21,17 @@ describe("closestDemographicOption", () => {
     expect(closestDemographicOption("eeoGender", "Woman", ["Male", "Female", "Non-binary"])).toBe("Female");
   });
 });
+
+/**
+ * REGRESSION (2026-10-03): the matcher tested SUBSTRINGS, so "male" was found
+ * inside "female" and "man" inside "woman", and whichever option came first
+ * won. Most forms list Female / Woman first, so a male applicant got Female.
+ * Same bug class as the driver's old pickOption (optionMatch.ts).
+ */
+describe("closestDemographicOption: whole words only", () => {
+  it("never reads Male as Female, or Man as Woman, whatever the option order", () => {
+    expect(closestDemographicOption("eeoGender", "Male", ["Female", "Male", "Decline to self-identify"])).toBe("Male");
+    expect(closestDemographicOption("eeoGender", "Man", ["Woman", "Man", "Non-binary"])).toBe("Man");
+    expect(closestDemographicOption("eeoGender", "man", ["Woman", "Male", "I prefer not to say"])).toBe("Male");
+  });
+});

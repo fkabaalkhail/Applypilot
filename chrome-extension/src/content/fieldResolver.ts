@@ -23,6 +23,7 @@ import type { FieldSignals } from "./domUtils";
 import { profileFacts } from "./profileFacts";
 import { resolveQuestion, type QuestionContext, type QuestionInput, type QuestionResult } from "./questionResolver";
 import { countryFromName } from "./geo";
+import { declineOption } from "./demographicMatch";
 import { matchOption } from "./writeEngine";
 
 export interface FieldResolveInput {
@@ -65,6 +66,26 @@ export function getResolveContext(): QuestionContext {
  *  keep their dedicated matcher (demographicMatch) and never take a computed
  *  answer. */
 const PASS_THROUGH: ReadonlySet<FieldCategory> = new Set<FieldCategory>(["accountPassword", "resumeUpload"]);
+
+/** Demographic questions answered "decline" when the profile holds no answer:
+ *  it discloses nothing, and a required one no longer blocks the submit. */
+const EEO_DECLINABLE: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
+  "eeoGender", "eeoRace", "eeoHispanic", "eeoVeteran", "eeoDisability",
+  "eeoGenderIdentity", "eeoSexualOrientation", "eeoPronouns", "eeoOther",
+]);
+const CHOICE_CONTROLS: ReadonlySet<ControlType> = new Set<ControlType>([
+  "select", "radioGroup", "ariaRadioGroup", "combobox", "customDropdown", "checkboxGroup",
+]);
+/** What a decline reads as before a lazy dropdown's options are known; the
+ *  on-device demographic matcher maps it to the form's own wording. */
+export const EEO_DECLINE = "Decline to self-identify";
+
+function eeoDecline(category: FieldCategory, controlType: ControlType, options: string[] | undefined): string | null {
+  if (!EEO_DECLINABLE.has(category) || !CHOICE_CONTROLS.has(controlType)) return null;
+  const real = (options ?? []).filter((o) => o.trim());
+  if (real.length > 0) return declineOption(real);
+  return controlType === "combobox" || controlType === "customDropdown" ? EEO_DECLINE : null;
+}
 
 /** Categories that live in repeating employment / education rows. */
 const ROW_CATEGORIES: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
@@ -194,6 +215,11 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   } else {
     value = resolveAnswerWithAdapter(input.adapter, category, profile, control, input.fillEEO, input.el);
     source = "category";
+  }
+  // A demographic question the profile holds no answer for: decline (default).
+  if ((value === null || !value.trim()) && input.sensitive) {
+    const decline = eeoDecline(category, control.controlType, options);
+    if (decline) return { value: decline, kind, source: "question", rule: "default:eeo-decline", deviceAbstained: false };
   }
   if (value === null || !value.trim()) return none();
 

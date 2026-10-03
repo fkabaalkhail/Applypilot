@@ -235,9 +235,9 @@ describe("Jobvite (jobs.jobvite.com, real markup)", () => {
     expect(byLabel(fields, "total number of years of relevant experience").proposedValue).toBe("1");
   });
 
-  it("'age 18 or older?' stays blank without a date of birth", () => {
+  it("'age 18 or older?' defaults to Yes without a date of birth (an adult applicant)", () => {
     const fields = load("jobvite", "jobvite-actionet-jrdev");
-    expect(byLabel(fields, "age 18 or older").proposedValue).toBeNull();
+    expect(byLabel(fields, "age 18 or older").proposedValue).toBe("Yes");
   });
 
   it("highest education stays blank while the degree is still in progress", () => {

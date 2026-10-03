@@ -48,7 +48,8 @@ describe("checkbox group, detection", () => {
     expect(f.controlType).toBe("checkboxGroup");
     expect(f.category).toBe("unknown"); // the question, not the option text
     expect(f.options).toEqual(["LinkedIn", "Glassdoor", "Notion Blog", "Conference or Meetup"]);
-    expect(f.proposedValue).toBeNull(); // never writes a profile URL into it
+    // The channel default (defaultAnswers.ts), never the profile's LinkedIn URL.
+    expect(f.proposedValue).toBe("LinkedIn");
   });
 });
 
@@ -91,12 +92,13 @@ describe("standalone checkbox, unchanged", () => {
 });
 
 describe("EEO checkbox group, gated", () => {
-  it("is sensitive; fills only when the profile carries the answer", () => {
+  it("is sensitive; the profile's answer, else the list's own decline option", () => {
     selectAllThatApply("Race/Ethnicity (select all that apply)", ["Asian", "White", "Decline to self-identify"]);
     const off = scanPage({ ...MOCK_PROFILE, eeo: undefined }, false).fields[0];
     expect(off.category).toBe("eeoRace");
     expect(off.sensitive).toBe(true);
-    expect(off.proposedValue).toBeNull();
+    // No EEO data: declined, never a demographic value (defaultAnswers policy).
+    expect(off.proposedValue).toBe("Decline to self-identify");
 
     const withEeo: UserApplicationProfile = { ...MOCK_PROFILE, eeo: { race: "Asian" } };
     const on = scanPage(withEeo, true).fields[0];
@@ -145,7 +147,8 @@ describe("checkbox group, detection (no fieldset)", () => {
     expect(f.controlType).toBe("checkboxGroup");
     expect(f.category).toBe("unknown"); // the question, not the option text
     expect(f.options).toEqual(["LinkedIn", "Glassdoor", "Notion Blog", "Conference or Meetup"]);
-    expect(f.proposedValue).toBeNull(); // never writes a profile URL into it
+    // The channel default (defaultAnswers.ts), never the profile's LinkedIn URL.
+    expect(f.proposedValue).toBe("LinkedIn");
     expect(f.label).toBe("How did you hear about this opportunity? (select all that apply)");
   });
 });

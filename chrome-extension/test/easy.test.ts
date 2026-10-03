@@ -23,7 +23,7 @@ const val = (id: string) =>
   (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value;
 
 describe("Greenhouse", () => {
-  it("detects + fills the full form; skips resume + EEO", async () => {
+  it("detects + fills the full form; skips resume, EEO declined", async () => {
     mountGreenhouseForm(document);
     const fields = scanPage(MOCK_PROFILE, false).fields;
     expect(fields.find((f) => f.category === "eeoGender")?.sensitive).toBe(true);
@@ -41,7 +41,8 @@ describe("Greenhouse", () => {
     expect(val("gh-cover")).toBe("Please generate or insert the saved cover letter here.");
     expect((document.querySelector('input[name="gh-sponsor"]:checked') as HTMLInputElement | null)?.value).toBe("No");
     expect(val("gh-resume")).toBe("");
-    expect(val("gh-gender")).toBe("");
+    // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.
+    expect(val("gh-gender")).toMatch(/decline|prefer not|not wish|wish to answer/i);
   });
 });
 

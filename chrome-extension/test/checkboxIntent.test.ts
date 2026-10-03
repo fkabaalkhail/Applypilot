@@ -34,22 +34,27 @@ describe("resolveCheckboxIntent", () => {
 });
 
 /**
- * REGRESSION (Robinhood on Greenhouse, live 2026-10-03): "By checking this box,
- * I consent to Robinhood collecting, storing, and processing my responses to
- * the demographic data surveys above." classifies as a demographic (EEO) field
- * at high confidence, so its consent "yes" passed the selection gate and was
- * TICKED for an applicant who had answered none of the surveys. A sensitive
- * box carries only the user's own profile answer (shared/selection.ts).
+ * Robinhood on Greenhouse, live 2026-10-03: "By checking this box, I consent to
+ * Robinhood collecting, storing, and processing my responses to the demographic
+ * data surveys above." It was briefly never ticked (bug #36). The policy since
+ * the "answer all questions" instruction: every application consent is given,
+ * because every demographic question is now answered (the user's own answer, or
+ * "decline"), so the consent covers exactly that and a REQUIRED box no longer
+ * blocks the submit. Marketing opt-ins are still never ticked.
  */
-describe("resolveCheckboxIntent: sensitive (demographic) boxes", () => {
+describe("resolveCheckboxIntent: demographic-data consent", () => {
   const ROBINHOOD =
     "By checking this box, I consent to Robinhood collecting, storing, and processing my responses to the demographic data surveys above.";
 
-  it("never ticks a demographic consent for its wording", () => {
-    expect(resolveCheckboxIntent(ROBINHOOD, null, true)).toBeNull();
+  it("is given like every application consent", () => {
+    expect(resolveCheckboxIntent(ROBINHOOD, null)).toBe("yes");
+  });
+
+  it("a marketing opt-in phrased as consent is still never ticked", () => {
+    expect(resolveCheckboxIntent("I consent to receive marketing emails about future events", null)).toBeNull();
   });
 
   it("still takes the user's own yes/no answer", () => {
-    expect(resolveCheckboxIntent("I identify as LGBTQ+", "Yes", true)).toBe("Yes");
+    expect(resolveCheckboxIntent("I identify as LGBTQ+", "Yes")).toBe("Yes");
   });
 });

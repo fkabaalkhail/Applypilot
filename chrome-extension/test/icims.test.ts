@@ -35,7 +35,7 @@ describe("iCIMS field markup, detection", () => {
 });
 
 describe("iCIMS field markup, autofill", () => {
-  it("fills text fields and the country select; skips resume + EEO (no EEO data)", async () => {
+  it("fills text fields and the country select; skips resume; EEO declined (no EEO data)", async () => {
     mountIcimsForm(document);
     await runAutofill(PROFILE_NO_EEO, false);
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value;
@@ -47,6 +47,7 @@ describe("iCIMS field markup, autofill", () => {
     expect(val("icims-city")).toBe("Ottawa");
     expect(val("icims-country")).toBe("Canada");
     expect(val("icims-resume")).toBe("");
-    expect(val("icims-gender")).toBe("");
+    // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.
+    expect(val("icims-gender")).toMatch(/decline|prefer not|not wish|wish to answer/i);
   });
 });

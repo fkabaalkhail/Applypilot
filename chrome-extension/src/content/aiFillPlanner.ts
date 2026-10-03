@@ -258,7 +258,8 @@ export interface ReaskCandidate {
 export function planOnDeviceReask(
   fields: DetectedField[],
   candidates: ReaskCandidate[],
-  snap: (options: string[], value: string) => string | null
+  snap: (options: string[], value: string) => string | null,
+  reresolve?: (field: DetectedField, options: string[]) => string | null
 ): { targets: { fieldId: string; value: string }[]; remaining: ReaskCandidate[] } {
   const byId = new Map(fields.map((f) => [f.id, f]));
   const targets: { fieldId: string; value: string }[] = [];
@@ -266,7 +267,11 @@ export function planOnDeviceReask(
   for (const c of candidates) {
     const f = byId.get(c.fieldId);
     const value = f?.proposedValue;
-    const choice = f && value && c.options.length > 0 ? snap(c.options, value) : null;
+    let choice = f && value && c.options.length > 0 ? snap(c.options, value) : null;
+    // The question asked again with the real options: an answer that depends on
+    // them ("Yes, I'd relocate…" vs "Yes, I'm currently located here") is
+    // decided on device instead of by the backend.
+    if (!choice && f && reresolve && c.options.length > 0) choice = reresolve(f, c.options);
     // No stated value, or nothing it matches: this one is a genuine question,
     // and the backend is the right place to answer it.
     if (choice) targets.push({ fieldId: c.fieldId, value: choice });

@@ -334,6 +334,19 @@ describe("Lyft/Greenhouse: known answers recover without the backend", () => {
     expect(remaining).toEqual(candidates);
   });
 
+  it("asks the question again with the real options before the backend (Brex, live 2026-10-03)", () => {
+    // Scan time proposed a bare "Yes" for an in-office requirement whose
+    // react-select offers two Yes options; with the options the on-device
+    // resolver picks the right one instead of the dead AI.
+    const fields = [field({ id: "office", proposedValue: "Yes" })];
+    const options = ["Yes, I’m currently located here", "Yes, I’d relocate prior to the start of the role", "No, I’m not located nearby"];
+    const { targets, remaining } = planOnDeviceReask(fields, [{ fieldId: "office", options }], snap, (f, opts) =>
+      f.id === "office" ? opts[1] : null
+    );
+    expect(targets).toEqual([{ fieldId: "office", value: options[1] }]);
+    expect(remaining).toEqual([]);
+  });
+
   it("leaves a stated value that matches no option for the backend", () => {
     // "Authorized to work in Canada" against citizenship options: the backend
     // is option-aware and can map it; writing it raw would fail.

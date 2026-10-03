@@ -80,6 +80,11 @@ export interface UserApplicationProfile {
   securityClearance?: string;
   driversLicense?: string;
   languages?: string;
+  /** "How did you hear about us?": the channel the applicant names by default
+   *  (LinkedIn | Job board | Company website | Referral | Career fair | Social
+   *  media | Other). Blank means "Job board", the truthful default for a
+   *  Tailrd user (see content/defaultAnswers.ts). */
+  howDidYouHear?: string;
   education: EducationEntry[];
   experience: ExperienceEntry[];
   skills: string[];

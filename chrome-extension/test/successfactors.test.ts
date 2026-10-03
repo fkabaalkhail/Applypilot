@@ -42,7 +42,7 @@ describe("SuccessFactors UI5 shadow DOM, detection", () => {
 });
 
 describe("SuccessFactors UI5 shadow DOM, autofill", () => {
-  it("fills the inner shadow controls; skips resume + EEO (no EEO data)", async () => {
+  it("fills the inner shadow controls; skips resume; EEO declined (no EEO data)", async () => {
     mountSuccessFactorsForm(document);
     await runAutofill(PROFILE_NO_EEO, false);
     expect(inner("sf-firstname-host").value).toBe("John");
@@ -53,7 +53,8 @@ describe("SuccessFactors UI5 shadow DOM, autofill", () => {
     expect(inner("sf-city-host").value).toBe("Ottawa");
     expect(inner("sf-country-host").value).toBe("Canada");
     expect(inner("sf-resume-host").value).toBe("");
-    expect(inner("sf-gender-host").value).toBe("");
+    // No EEO data: the form's own decline option (defaultAnswers policy, 2026-10-03), never a demographic value.
+    expect(inner("sf-gender-host").value).toMatch(/decline|prefer not|not wish|wish to answer/i);
   });
 });
 

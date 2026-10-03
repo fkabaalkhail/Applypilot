@@ -70,14 +70,15 @@ export function optionPolarity(text: string): boolean | null {
   const t = norm(text);
   if (!t) return null;
   if (DECLINE_RE.test(t)) return null;
-  if (/^(yes|y|true|oui|si|correct|affirmative)\b/.test(t)) return true;
+  if (/^(yes|y|true|oui|si|correct|affirmative|agree|accept|accepted|consent)\b/.test(t)) return true;
+  if (/^(disagree|do not agree|dont agree|reject)\b/.test(t)) return false;
   // "non" only on its own (French "no"): "Non-binary" is not a No.
   if (/^(no|n|not|never|false|none|incorrect)\b/.test(t) || t === "non") return false;
   if (/^(i|we)\b/.test(t)) {
     if (/\b(not|never|dont|doesnt|didnt|wont|cannot|cant|havent|hasnt|isnt|arent|wasnt|no longer|am not|do not|will not|would not|have not|unable)\b/.test(t)) {
       return false;
     }
-    if (/^(i|we) (am|do|will|would|have|can|require|need|currently|hold|possess|agree|accept|confirm|certify|understand|acknowledge)\b/.test(t)) return true;
+    if (/^(i|we) (am|do|will|would|have|can|require|need|currently|hold|possess|agree|accept|confirm|certify|understand|acknowledge|consent|authori[sz]e|give|grant)\b/.test(t)) return true;
   }
   return null;
 }
