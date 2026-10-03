@@ -1,0 +1,311 @@
+/**
+ * HELD-OUT live pages: twelve postings drawn at random (md5 order) from prod
+ * `scraped_jobs` on 2026-10-03, AFTER the night's fixes, excluding every
+ * company already in the corpus. The first run was blind (no expectations,
+ * every write reviewed by hand); it found five wrong writes, now fixed and
+ * pinned here:
+ *
+ *  - Ramp (Ashby): graduation year typed into a date picker → "12/31/2026"
+ *  - Superhuman (Ashby), ZipRecruiter (Greenhouse): a bare year "2027" picked
+ *    one of two options it fits
+ *  - Twitch, Astranis (Greenhouse): the education row's start/end dates got
+ *    the first JOB's dates
+ *  - Astranis (Greenhouse): "Mechanical Engineering" for a Mechatronics student
+ *  - Palantir (Lever): "High School Name" / its year got the university's
+ *
+ * `{ oneOf: [answer, ""] }` marks a field where blank is a miss, not a wrong
+ * write (an answer the profile settles but the fill may not reach), so the
+ * case pins "never a different value" without being flaky.
+ */
+import { SPARSE_CANADIAN } from "../profiles.mjs";
+
+const P = SPARSE_CANADIAN;
+const NAME = "Maya Tremblay";
+const PHONE = { re: "416\\D*555\\D*0142" };
+const TORONTO = { re: "toronto" };
+const LINKEDIN = P.linkedin;
+const DIAL_CODE_CANADA = { re: String.raw`canada|^\+\s*1$` };
+const orBlank = (v) => ({ oneOf: [v, ""] });
+
+const live = (c) => ({ mode: "live", profile: P, trigger: { fillTimeoutMs: 180000 }, ...c });
+
+export default [
+  // ---------------------------------------------------------------- Ashby
+  live({
+    id: "live-heldout-ashby-superhuman",
+    ats: "ashby",
+    url: "https://jobs.ashbyhq.com/superhuman%20platform%20inc/e6b917b1-325a-47d0-b267-b279b0efdad0/application",
+    expect: {
+      "label:Legal Full Name": NAME,
+      "label:Preferred First Name": "Maya",
+      "label:Email": P.email,
+      "tel~Phone": PHONE,
+      "label:LinkedIn URL": LINKEDIN,
+      "label:How did you hear about this job?": null,
+      "label:Start typing": TORONTO,
+      "label:Which degree are you currently pursuing?": "Bachelors",
+      // Options: 2026 | January - June 2027 | December 2027 | … The profile
+      // knows the YEAR only: two options fit.
+      "label:When is your expected graduation date?": null,
+      "label:Search schools": "University of Waterloo",
+      "label:Field of Study": "Mechatronics Engineering",
+      "#_systemfield_education_history-degree": "Bachelor of Applied Science in Mechatronics Engineering",
+      "label:Are you a veteran": null,
+      "label:Do you have a disability": null,
+      "label:Do you identify as transgender": null,
+    },
+  }),
+  live({
+    id: "live-heldout-ashby-beacon",
+    ats: "ashby",
+    url: "https://jobs.ashbyhq.com/beaconsoftware/be0e101c-faba-41c2-996e-d70e98b9d4ee/application",
+    expect: {
+      "#_systemfield_name": NAME,
+      "label:Email": P.email,
+      "label:Phone Number": PHONE,
+      "label:LinkedIn Profile": LINKEDIN,
+      "label:Start typing": TORONTO,
+      "label:How did you hear about Beacon?": null,
+      "label:What is your current age?": null,
+      "label:What is your gender identity?": null,
+    },
+  }),
+  live({
+    id: "live-heldout-ashby-gecko",
+    ats: "ashby",
+    url: "https://jobs.ashbyhq.com/gecko-robotics/c097505b-0a28-4a33-a917-268f463641e8/application",
+    expect: {
+      "label:Full Legal Name": NAME,
+      "label:Preferred Name": "Maya",
+      "label:Email": P.email,
+      "label:I acknowledge that Gecko has an in-office culture": null,
+      "label:Input gender": null,
+      "label:Veteran Status": null,
+    },
+  }),
+  live({
+    id: "live-heldout-ashby-ramp",
+    ats: "ashby",
+    url: "https://jobs.ashbyhq.com/ramp/b39ceb08-a0a7-4f8b-a760-2fb88e209956/application",
+    expect: {
+      "label:Legal Name": NAME,
+      "label:Preferred First Name": "Maya",
+      "label:Pronouns": null,
+      "label:Email": P.email,
+      "tel~Phone": PHONE,
+      // The SMS-consent radio Ashby labels "Phone": never consented for the user.
+      "radio~Phone": null,
+      "label:LinkedIn Profile": LINKEDIN,
+      "label:Github Profile": null,
+      "label:Search schools": "University of Waterloo",
+      "label:Field of Study": "Mechatronics Engineering",
+      "#_systemfield_education_history-degree": "Bachelor of Applied Science in Mechatronics Engineering",
+      // "What is your graduation date?", a react-datepicker: the year alone
+      // became 12/31/2026.
+      "label:Pick date": null,
+      "label:Show us something you": null,
+    },
+  }),
+  // ----------------------------------------------------------- Greenhouse
+  live({
+    id: "live-heldout-gh-spacex",
+    ats: "greenhouse",
+    url: "https://boards.greenhouse.io/spacex/jobs/8622574002?gh_jid=8622574002",
+    expect: {
+      "label:First Name": "Maya",
+      "label:Last Name": "Tremblay",
+      "#preferred_name": "Maya",
+      "label:Email": P.email,
+      "#country": DIAL_CODE_CANADA,
+      "tel~Phone": PHONE,
+      "label:Location (City)": TORONTO,
+      "label:School": "University of Waterloo",
+      "label:Degree": "Bachelor's Degree",
+      "label:Discipline": "Mechatronics Engineering",
+      "label:LinkedIn Profile": LINKEDIN,
+      "label:How did you hear about this job?": null,
+      "label:GPA (Undergraduate)": null,
+      "label:SAT Score": null,
+      "label:Active Security Clearance": null,
+      "label:Are you legally authorized to work in the United States?": null,
+      "label:Citizenship Status": null,
+      "label:Gender": null,
+      "label:Veteran Status": null,
+    },
+  }),
+  live({
+    id: "live-heldout-gh-twitch",
+    ats: "greenhouse",
+    url: "https://job-boards.greenhouse.io/twitch/jobs/8700578002",
+    expect: {
+      "label:First Name": "Maya",
+      "label:Last Name": "Tremblay",
+      "label:Email": P.email,
+      "#country": DIAL_CODE_CANADA,
+      "tel~Phone": PHONE,
+      "label:Location (City)": TORONTO,
+      "label:School": "University of Waterloo",
+      "label:Degree": "Bachelor's Degree",
+      // No Mechatronics option: the broad parent discipline, or nothing.
+      "label:Discipline": orBlank("Engineering"),
+      // The EDUCATION row's dates: unknown start, graduation year as the end.
+      "#start-month--0": null,
+      "#start-year--0": null,
+      "#end-month--0": null,
+      "#end-year--0": "2027",
+      "label:LinkedIn Profile": LINKEDIN,
+      "label:Are you currently a Twitch employee?": orBlank("No"),
+      "label:Are you a current employee with Amazon": "No",
+      "label:Have you previously been employed by Amazon": "No",
+      "label:Have you previously applied to Amazon": null,
+      "label:Are you open to relocation?": null,
+      "label:If offered employment by Amazon, would you be legally eligible": null,
+      "label:In which country/region do you have citizenship?": "Canada",
+      // "For the sole purpose of determining export licensing requirements, …
+      // country of citizenship": Canada.
+      "#question_37744080002": "Canada",
+      "label:What is your expected total base pay": null,
+      "label:Gender": null,
+    },
+  }),
+  live({
+    id: "live-heldout-gh-ziprecruiter",
+    ats: "greenhouse",
+    url: "https://job-boards.greenhouse.io/ziprecruiter/jobs/8180455",
+    expect: {
+      "label:First Name": "Maya",
+      "label:Last Name": "Tremblay",
+      "label:Email": P.email,
+      "#country": DIAL_CODE_CANADA,
+      "tel~Phone": PHONE,
+      "label:Location (City)": TORONTO,
+      // Its react-select failed to open in 1 run of 5 (a miss, never wrong).
+      "#school--0": orBlank("University of Waterloo"),
+      "label:Degree": "Bachelor's Degree",
+      "label:What school are you currently attending": "University of Waterloo",
+      // Buckets "December 2026 - November 2027" | "December 2027 - November
+      // 2028": a bare 2027 fits both.
+      "label:When is your anticipated graduation date?": null,
+      "label:Are you legally authorized to work in the United States": null,
+      "label:Will you now, or in the future, require sponsorship": null,
+      "label:What archetype are you most closely aligned with?": null,
+      "label:How did you hear about this opportunity?": null,
+    },
+  }),
+  live({
+    id: "live-heldout-gh-astranis",
+    ats: "greenhouse",
+    url: "https://job-boards.greenhouse.io/astranis/jobs/4704716006",
+    expect: {
+      "label:First Name": "Maya",
+      "label:Last Name": "Tremblay",
+      "label:Email": P.email,
+      "#country": DIAL_CODE_CANADA,
+      "tel~Phone": PHONE,
+      "label:Location (City)": TORONTO,
+      "label:School": "University of Waterloo",
+      "label:Degree": "Bachelor's Degree",
+      // Was "Mechanical Engineering": a shared stem is not the same discipline.
+      "label:Discipline": null,
+      "#start-month--0": null,
+      "#start-year--0": null,
+      "#end-month--0": null,
+      "#end-year--0": "2027",
+      "label:What is the most impressive thing you have ever accomplished?": null,
+      "label:Please confirm the season you are applying for.": null,
+      "label:When are you able to join Astranis as an intern?": null,
+      "label:How did you hear about Astranis?": null,
+      "label:LinkedIn Profile": LINKEDIN,
+      "label:By selecting YES, I consent to receive recruiting SMS": null,
+    },
+  }),
+  // ---------------------------------------------------------------- Lever
+  live({
+    id: "live-heldout-lever-palantir",
+    ats: "lever",
+    url: "https://jobs.lever.co/palantir/d5486403-c050-4920-b2e0-91b69b61ebb2/apply",
+    expect: {
+      "label:Full name": NAME,
+      "label:Email": P.email,
+      "label:Phone": PHONE,
+      "label:Current location": { re: "^(Toronto, ON, CAN)?$" },
+      "label:Current company": "Kinaxis",
+      // Lever cards labelled only "Type your response": Preferred Name.
+      "name=cards[a69a985a-eae9-4c14-90fb-b5a4b891523e][field1]": "Maya",
+      "label:LinkedIn URL": LINKEDIN,
+      "label:High School Name": null,
+      "label:Year of High School Graduation": null,
+      "label:Which university are you currently attending": "University of Waterloo",
+      "label:Please include your intended graduation year": "2027",
+      "label:What is your major?": null,
+      "label:Are you legally authorized to work in the country for which you are applying": null,
+      "label:Will you now or in the future require sponsorship": null,
+      "label:Please tell us how you heard about this internship": null,
+    },
+  }),
+  live({
+    id: "live-heldout-lever-shieldai",
+    ats: "lever",
+    url: "https://jobs.lever.co/shieldai/87d982f2-8b2b-4c73-9a19-71e461c7b724/apply",
+    expect: {
+      "label:Which location are you applying for?": null,
+      "label:Full name": NAME,
+      "label:Email": P.email,
+      "label:Phone": PHONE,
+      "label:Current location": { re: "^(Toronto, ON, CAN)?$" },
+      "label:Current company": "Kinaxis",
+      // "Please state your full legal name:" (a card labelled "Type your response").
+      "name=cards[eb3750bb-e1f0-473c-a54d-012919c5e349][field0]": NAME,
+      "label:LinkedIn URL": LINKEDIN,
+      "label:Are you authorized to work in the United States?": null,
+      "label:Will you require sponsorship for employment now or in the future?": null,
+      "label:How did you hear about us?": null,
+      "label:Are you local to or willing to relocate?": null,
+    },
+  }),
+  live({
+    id: "live-heldout-lever-hermeus",
+    ats: "lever",
+    url: "https://jobs.lever.co/hermeus/78008094-ca81-4a0c-9a18-93b30f932acd/apply",
+    expect: {
+      "label:Full name": NAME,
+      "label:Email": P.email,
+      "label:Phone": PHONE,
+      "label:Current location": { re: "^(Toronto, ON, CAN)?$" },
+      "label:Current company": "Kinaxis",
+      // Cards: Legal First Name, Legal Last Name, Preferred First Name, Nick Name.
+      "name=cards[c6cebbb8-69f4-49e4-b460-65e8a2086404][field0]": "Maya",
+      "name=cards[c6cebbb8-69f4-49e4-b460-65e8a2086404][field1]": "Tremblay",
+      "name=cards[c6cebbb8-69f4-49e4-b460-65e8a2086404][field2]": "Maya",
+      "name=cards[c6cebbb8-69f4-49e4-b460-65e8a2086404][field3]": null,
+      "label:LinkedIn URL": LINKEDIN,
+      "label:Are you legally authorized to work for any employer in the United States": null,
+      // Fall 2026 | Spring 2027 | Summer 2027 | Fall 2027 …: a year is not a season.
+      "label:When do you expect to graduate?": null,
+      "label:What degree are you pursuing?": "Bachelor’s",
+      "label:What is your location?": "Canada",
+      "label:What is your age range?": null,
+      "label:Do you require visa sponsorship for employment in the USA?": null,
+    },
+  }),
+  // ------------------------------------------------------------- Workable
+  live({
+    id: "live-heldout-workable-tsa",
+    ats: "workable",
+    url: "https://apply.workable.com/texas-sports-academy-main/j/A9A9F4A25A/apply/",
+    expect: {
+      "label:First name": "Maya",
+      "label:Last name": "Tremblay",
+      "label:Email": P.email,
+      "label:Phone": PHONE,
+      "label:School": "University of Waterloo",
+      "label:Field of study": "Mechatronics Engineering",
+      "#degree": "Bachelor of Applied Science in Mechatronics Engineering",
+      "label:Title": "Software Engineer Co-op",
+      "label:Company": "Kinaxis",
+      "label:Cover letter": null,
+      // Lives in Toronto: "NO" is right; blank is a miss.
+      "aria-radiogroup~Based in Austin": orBlank("NO"),
+    },
+  }),
+];
