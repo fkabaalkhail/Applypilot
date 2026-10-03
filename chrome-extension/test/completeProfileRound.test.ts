@@ -380,7 +380,7 @@ describe("one checkbox per demographic option (Superhuman on Ashby, live 2026-10
   });
 });
 
-describe("a real profile's shapes (user 44, read from prod 2026-10-03)", () => {
+describe("a real profile's shapes (read from prod 2026-10-03)", () => {
   it("an education end of 'Present' is a degree in progress", () => {
     const p = { ...SPARSE_CANADIAN, education: [{ school: "University of Ottawa", degree: "Bachelor of Applied Science (Honours) in Software Engineering", graduationYear: "Present" }] };
     const f = profileFacts(p, TEST_TODAY);
@@ -391,5 +391,179 @@ describe("a real profile's shapes (user 44, read from prod 2026-10-03)", () => {
   it("a stored job title of 'No' is no title", () => {
     const p = { ...SPARSE_CANADIAN, currentTitle: "No", experience: [] };
     expect(profileFacts(p, TEST_TODAY).employment.currentTitle).toBeNull();
+  });
+});
+
+describe("demographic answers the profile does not narrow (Robinhood and Superhuman, 2026-10-03)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  const REAL_EEO = { gender: "Male", race: "Asian", hispanicLatino: "No", sexualOrientation: "Heterosexual", genderIdentity: "" };
+  const radios = (label: string, name: string, options: string[]) =>
+    `<fieldset><legend>${label}</legend>${options.map((o, i) => `<label><input type="radio" name="${name}" value="${i}">${o}</label>`).join("")}</fieldset>`;
+  const scan = (html: string, eeo: Record<string, string>) => {
+    document.body.innerHTML = `<form>${html}</form>`;
+    return scanPage({ ...COMPLETE, eeo }, false, null).fields;
+  };
+  const IDENTITY = ["Cisgender man", "Cisgender woman", "Transgender man", "Transgender woman", "Non-binary", "I don't wish to answer"];
+  it("a blank gender identity declines among cis/trans options, never 'Cisgender man' from 'Male'", () => {
+    expect(scan(radios("What is your gender identity?", "q", IDENTITY), REAL_EEO)[0].proposedValue).toBe("I don't wish to answer");
+  });
+  it("a blank gender identity still answers an unqualified option the gender names", () => {
+    const f = scan(radios("What is your gender identity?", "q", ["Man", "Woman", "Non-binary", "Transgender", "I don't wish to answer"]), REAL_EEO);
+    expect(f[0].proposedValue).toBe("Man");
+  });
+  it("'Asian' ticks none of Superhuman's Asian subgroups (it stays for the user)", () => {
+    const OPTS = ["I don't wish to answer", "I prefer to self-describe", "White or European", "Southeast Asian", "South Asian", "Native Hawaiian or Pacific Islander", "Middle Eastern or North African", "Indigenous, American Indian or Alaska Native", "Hispanic, Latinx or of Spanish Origin", "East Asian", "Black or of African descent"];
+    const html = `<fieldset><label for="gh_quest_8663">How would you describe your racial/ethnic background? (mark all that apply)</label>${OPTS
+      .map((o, i) => `<div><span data-disabled="false"><input type="checkbox" id="U_gh_quest_8663-labeled-checkbox-${i}" name="${o}"></span><label for="U_gh_quest_8663-labeled-checkbox-${i}">${o}</label></div>`)
+      .join("")}</fieldset>`;
+    const f = scan(html, REAL_EEO);
+    expect(f).toHaveLength(1);
+    expect(f[0].proposedValue ?? null).toBeNull();
+  });
+  const LGBTQ = radios("Do you identify as part of the LGBTQ+ community?", "l", ["Yes", "No", "I don't wish to answer"]);
+  it("LGBTQ+ is No only when the orientation AND the identity are stated and neither is", () => {
+    expect(scan(LGBTQ, { ...REAL_EEO, genderIdentity: "Cisgender" })[0].proposedValue).toBe("No");
+    expect(scan(LGBTQ, REAL_EEO)[0].proposedValue).toBe("I don't wish to answer");
+  });
+  it("LGBTQ+ is Yes for a stated orientation or identity that is one", () => {
+    expect(scan(LGBTQ, { ...REAL_EEO, sexualOrientation: "Bisexual" })[0].proposedValue).toBe("Yes");
+    expect(scan(LGBTQ, { ...REAL_EEO, genderIdentity: "Transgender" })[0].proposedValue).toBe("Yes");
+  });
+});
+
+describe("a real profile's history (ActioNet, Commvault and Workable, 2026-10-03)", () => {
+  // The shapes that matter, as read from prod: a federal internship that
+  // ENDED in May, a stored title of "No", an "Active clearance", a
+  // bachelor's in progress.
+  const REAL: UserApplicationProfile = {
+    ...SPARSE_CANADIAN,
+    location: "Gatineau",
+    addressCity: "Gatineau",
+    addressState: "Quebec",
+    country: "Canada",
+    workAuthorization: "yes",
+    requiresSponsorship: "no",
+    securityClearance: "Active clearance",
+    willingToRelocate: "Yes",
+    currentCompany: "Public Services and Procurement Canada",
+    currentTitle: "No",
+    education: [{ school: "University of Ottawa", degree: "Bachelor of Applied Science (Honours) in Software Engineering", graduationYear: "Present" }],
+    experience: [{ company: "Public Services and Procurement Canada", title: "Software Developer & Tester (Intern)", startDate: "10/2025", endDate: "05/2026", description: "" }],
+  };
+  const SELECT = ["Select an option...", "Yes", "No"];
+  const NOT_GOV = [...SELECT, "I am not a current or former government employee"];
+
+  it("a federal employer in the history leaves 'current or former government employee?' to the applicant", () => {
+    expect(value(ask("Are you a current or former government employee?*", { options: SELECT }, REAL))).not.toBe("No");
+    const follow = "If you are a current or former government employee, have you recused yourself in writing to the appropriate government official from working on all contracts or programs involving ActioNet?*";
+    expect(value(ask(follow, { options: NOT_GOV }, REAL))).not.toBe("I am not a current or former government employee");
+    // A private-sector history keeps the default.
+    expect(value(ask("Are you a current or former government employee?*", { options: SELECT }))).toBe("No");
+  });
+  it("a procurement OFFICIAL is a role: a developer intern's 'No' stands", () => {
+    const q = "Are you currently or have you ever been a procurement official (i.e. Procuring Contracting Officer; Source Selection Authority; Member of Source Selection Evaluation Board; Chief of Financial or Technical Evaluation Team; Program Manager; Deputy Program Manager; and Administrative Contracting Officers)?*";
+    expect(value(ask(q, { options: SELECT }, REAL))).toBe("No");
+    const officer = { ...REAL, experience: [{ ...REAL.experience![0], title: "Procurement Officer" }] };
+    expect(value(ask(q, { options: SELECT }, officer))).not.toBe("No");
+  });
+  it("an 'Active clearance' is no answer to a US 'Clearance/Public Trust' question from a Canadian", () => {
+    expect(value(ask("Do you have an Active Clearance/Public Trust?*", { options: SELECT }, REAL, { jobCountry: null, company: "" }))).toBe("abstain");
+    expect(value(ask("Do you have an active security clearance?", { options: YES_NO }, REAL, { jobCountry: "US", company: "" }))).toBe("abstain");
+    // At home it holds, and "None" holds anywhere.
+    expect(value(ask("Do you have an active security clearance?", { options: YES_NO }, REAL, { jobCountry: "CA", company: "" }))).toBe("Yes");
+    expect(value(ask("Do you have an Active Clearance/Public Trust?*", { options: SELECT }, { ...REAL, securityClearance: "None" }))).toBe("No");
+  });
+  it("'highest education' for a bachelor's in progress is Some College, never the degree", () => {
+    const opts = ["Select an option...", "High School", "GED", "Associates", "Bachelors", "Masters", "Ph.D", "Some College", "Technical School", "None"];
+    expect(value(ask("What is your highest education?*", { options: opts }, REAL))).toBe("Some College");
+    expect(value(ask("What is your highest education?*", { options: ["High School", "Bachelors", "Masters"] }, REAL))).not.toBe("Bachelors");
+  });
+
+  describe("current job vs most recent job (scan)", () => {
+    let restore: () => void;
+    beforeAll(() => {
+      restore = stubLayout();
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(TEST_TODAY);
+    });
+    afterAll(() => {
+      restore();
+      vi.useRealTimers();
+    });
+    const proposals = (html: string, profile: UserApplicationProfile = REAL) => {
+      document.body.innerHTML = `<form>${html}</form>`;
+      return Object.fromEntries(scanPage(profile, false, null).fields.map((f) => [f.label.replace(/[*\s]+$/, ""), f.proposedValue ?? null]));
+    };
+    it("'Current Company' / 'Current Job Title' stay blank once the last job has ended (Commvault)", () => {
+      const p = proposals(`<label for="c">Current Company</label><input id="c" type="text"><label for="t">Current Job Title</label><input id="t" type="text">`);
+      expect(p["Current Company"]).toBeNull();
+      expect(p["Current Job Title"]).toBeNull();
+      // A job still running is current.
+      const running = { ...REAL, experience: [{ ...REAL.experience![0], endDate: "Present" }] };
+      expect(proposals(`<label for="c">Current Company</label><input id="c" type="text">`, running)["Current Company"]).toBe("Public Services and Procurement Canada");
+    });
+    it("a bare Company / Title entry is the most recent job, title from the same row (Workable)", () => {
+      const p = proposals(`<label for="company">Company (Optional)</label><input id="company" type="text"><label for="title">Title</label><input id="title" type="text">`);
+      expect(p["Company (Optional)"]).toBe("Public Services and Procurement Canada");
+      expect(p["Title"]).toBe("Software Developer & Tester (Intern)");
+    });
+  });
+});
+
+describe("blanks a stated fact answers (a real profile's run, 2026-10-03; labels and options verbatim)", () => {
+  const HOME_QC: UserApplicationProfile = {
+    ...SPARSE_CANADIAN,
+    location: "Gatineau",
+    addressCity: "Gatineau",
+    addressState: "Quebec",
+    country: "Canada",
+    willingToRelocate: "Yes",
+    eeo: { disabilityStatus: "No, I do not have a disability" },
+  };
+  it("GRE: the plain 'did not take' beside 'Other - did not take' (SpaceX)", () => {
+    const opts = ["Did not take/Do not recall", "Other - did not take", "340 out of 340", "339 out of 340", "338 out of 340"];
+    expect(value(ask("GRE Score*", { options: opts }, HOME_QC))).toBe("Did not take/Do not recall");
+  });
+  it("available in Eastern or Pacific hours: Yes from Quebec, a willingness from Alberta (Voldex)", () => {
+    const q = "This role requires regular collaboration during Eastern or Pacific Time business hours. Are you available to work within these time zones?";
+    expect(value(ask(q, { controlType: "text", kind: "text" }, HOME_QC))).toBe("Yes");
+    const alberta = { ...HOME_QC, location: "Calgary", addressCity: "Calgary", addressState: "Alberta" };
+    expect(value(ask(q, { controlType: "text", kind: "text" }, alberta))).not.toBe("Yes");
+  });
+  it("'Will you be local to Chicago for the summer?': Yes for an applicant who will relocate (Enova)", () => {
+    const q = "This internship will be held in our Chicago office in a hybrid model. Will you be local to Chicago for the summer of 2027?*";
+    expect(value(ask(q, { options: YES_NO }, HOME_QC))).toBe("Yes");
+    expect(value(ask(q, { options: YES_NO }, { ...HOME_QC, willingToRelocate: "No" }))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, { ...HOME_QC, willingToRelocate: "" }))).not.toBe("Yes");
+  });
+  it("an interview accommodation: No only for an applicant who stated no disability (Netlify)", () => {
+    const q = "Will you need an accommodation for your interview?";
+    expect(value(ask(q, { options: YES_NO }, HOME_QC))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, { ...HOME_QC, eeo: {} }))).not.toBe("No");
+  });
+});
+
+describe("a question named only by its options (Agiloft on Lever, 2026-10-03)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  // Verbatim: the disability radios carry no label, legend or question text,
+  // so the group was "unknown" and stayed blank for every profile.
+  const OPTS = ["I have a disability or have a history/record of having a disability", "I don't have a disability or have a history/record of having a disability", "Decline to self-identify"];
+  const HTML = OPTS.map((o, i) => `<label><input type="radio" name="surveysResponses[2789f812][responses][field3]" value="${i}">${o}</label>`).join("");
+  it("the standard disability answers name their question", () => {
+    document.body.innerHTML = `<form>${HTML}</form>`;
+    const p = { ...SPARSE_CANADIAN, eeo: { disabilityStatus: "No, I do not have a disability" } };
+    const f = scanPage(p, false, null).fields;
+    expect(f).toHaveLength(1);
+    expect(f[0].category).toBe("eeoDisability");
+    expect(f[0].sensitive).toBe(true);
+    expect(f[0].proposedValue).toBe("I don't have a disability or have a history/record of having a disability");
   });
 });

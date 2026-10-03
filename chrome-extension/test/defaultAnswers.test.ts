@@ -121,6 +121,16 @@ describe("how did you hear about us", () => {
   it("a referral follow-up is not the channel question", () => {
     expect(value(ask("If you heard about us through a referral, please state the Brex employee's name", { controlType: "text", kind: "text" }))).toBe("abstain");
   });
+  // A real profile with no stated channel, 2026-10-03 (options verbatim, read
+  // with the dropdowns opened).
+  it("never defaults to a CAMPUS channel, even as the only careers-site option (Enova)", () => {
+    const enova = ["Agency", "Built in Chicago", "Campus Career Site", "Campus Event", "Campus Career Fair", "CareerBuilder", "Conference", "Facebook", "Glassdoor", "Indeed", "LinkedIn", "Meetup", "Grace Hopper", "Other", "Twitter"];
+    expect(value(ask("How did you hear about this job?*", { options: enova }))).not.toMatch(/campus/i);
+  });
+  it("among named job searches, the unnamed 'job site' is the default (Planet left it blank)", () => {
+    const planet = ["BuiltIn Article", "BuiltIn Job Search", "Conference", "Event", "Glassdoor Article", "Glassdoor Job Search", "Indeed", "Instagram", "LinkedIn Company Post", "LinkedIn Employee Post", "LinkedIn Job Search", "News Article", "Other - Event", "Other - Job Site", "Other - Social Media", "Other - Webinar", "Otta", "Planet Event", "Planet Webinar"];
+    expect(value(ask("How did you first hear about Planet before applying for this position?*", { options: planet }))).toBe("Other - Job Site");
+  });
 });
 
 describe("profile answers added 2026-10-03 (no mapping can supply these)", () => {

@@ -79,7 +79,7 @@ const answer = (value: string, rule: string, confidence: Confidence = "high"): Q
  * other abstention leaves the field to the backend's AI (essays, opinions,
  * a skill's years), which is the right tool once it has credits again.
  */
-const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply)/;
+const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country)/;
 const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule, blockBackend: BLOCK_BACKEND_RULES.test(rule) });
 
 /** Lowercase, accents stripped, apostrophes dropped, punctuation → space. */
@@ -639,6 +639,15 @@ function resolveEducationLevel(q: QuestionInput, n: string, facts: ProfileFacts)
   if (!LEVEL_Q.test(n)) return null;
   const completedAsked = /\b(completed|attained|obtained|achieved|earned)\b/.test(n);
   const rank = ed.highestCompletedRank;
+  // A degree in progress with none completed past high school: "Some College"
+  // is the level held under either reading of "highest" (a bachelor's
+  // student on ActioNet's Jobvite form, a real profile, 2026-10-03). Only
+  // when the list offers it.
+  const studying = ed.entries.some((x) => x.completed === false && x.rank !== null && x.rank >= 3);
+  if (studying && (!isHigh(rank) || rank.value <= 1) && q.options?.length) {
+    const some = q.options.filter((o) => /\bsome (college|university|post ?secondary)\b/.test(qnorm(o)));
+    if (some.length === 1) return answer(some[0], "education-level:some-college");
+  }
   // Highest level with something still in progress above it: "completed"
   // questions take the completed level; ambiguous wording abstains.
   if (!isHigh(rank)) return abstain("education-level:unknown");
@@ -903,6 +912,49 @@ function resolveTimezone(q: QuestionInput, n: string, facts: ProfileFacts): Ques
   return hits.length === 1 ? answer(hits[0], "timezone") : abstain("timezone:no-matching-option");
 }
 
+/** A zone named in running text: full names and three-letter codes only ("at"
+ *  and "et" are words). */
+const ZONE_IN_TEXT: Record<string, RegExp> = {
+  pacific: /\b(pacific|p[sd]t)\b/, mountain: /\b(mountain|m[sd]t)\b/, central: /\b(central|c[sd]t)\b/,
+  eastern: /\b(eastern|e[sd]t)\b/, atlantic: /\b(atlantic|a[sd]t)\b/, newfoundland: /\b(newfoundland|n[sd]t)\b/,
+};
+
+/**
+ * "This role requires regular collaboration during Eastern or Pacific Time
+ * business hours. Are you available to work within these time zones?" (Voldex
+ * on Ashby, left blank 2026-10-03): Yes for an applicant who lives in one of
+ * the zones named. Anyone else's answer is a willingness, theirs to give.
+ */
+function resolveZoneAvailability(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\btime ?zones?\b|\btime business hours\b/.test(n)) return null;
+  if (!/\b(available|able) to work\b|\bwork (within|during|in) (these|those|this|the following|the|our)\b/.test(n)) return null;
+  if (q.options?.length && !isBooleanQuestion(q)) return null; // "which zone": resolveTimezone
+  const named = Object.keys(ZONE_IN_TEXT).filter((z) => ZONE_IN_TEXT[z].test(n));
+  if (named.length === 0) return null;
+  const region = isHigh(facts.location.region) ? facts.location.region.value : null;
+  const zone = region ? ZONE_OF_REGION[region.country + "-" + region.code] : undefined;
+  if (!zone) return abstain("timezone:unknown");
+  return named.includes(zone) ? booleanResult(true, q, "timezone:lives-in-zone") : abstain("timezone:willingness");
+}
+
+/**
+ * "This internship will be held in our Chicago office in a hybrid model. Will
+ * you be local to Chicago for the summer of 2027?" (Enova on Greenhouse, left
+ * blank 2026-10-03): yes for an applicant who lives there or will relocate,
+ * no for one who lives elsewhere and will not.
+ */
+function resolveLocalTo(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
+  const m = /\bwill you (?:be|live|reside) (?:local|located|living|based) (?:to|in|near) (?:the )?([a-z ]+?)(?: area| region| office)?(?: for| during| this| next| by| in|$)/.exec(n);
+  if (!m || !isBooleanQuestion(q)) return null;
+  const named = m[1].trim();
+  const city = isHigh(facts.location.city) ? qnorm(facts.location.city.value) : null;
+  if (city && named === city) return booleanResult(true, q, "local:lives-there");
+  const relocate = polarityOf(profile.willingToRelocate || "");
+  if (relocate === true) return booleanResult(true, q, "local:will-relocate");
+  if (relocate === false && city) return booleanResult(false, q, "local:lives-elsewhere");
+  return abstain("local:unknown");
+}
+
 /**
  * "Please indicate your school, program/faculty, and expected month/year of
  * graduation" in a text box (Arc'teryx on Lever, live 2026-10-03): it got
@@ -941,7 +993,10 @@ function resolveTestScore(q: QuestionInput, n: string): QuestionResult {
   if (!/\b(sat|act|gre|gmat|lsat|mcat|toefl|ielts|psat)\b/.test(n) || !/\b(score|scores|result|results|test)\b/.test(n)) return null;
   if (!q.options?.length) return q.kind === "text" || q.kind === "number" ? abstain("test-score:unknown") : null;
   const na = q.options.filter((o) => /\b(did not take|have not taken|havent taken|not taken|do not recall|dont recall|not applicable|n a|none)\b/.test(qnorm(o)));
-  return na.length === 1 ? answer(na[0], "test-score:none-stated") : abstain("test-score:unknown");
+  // "Did not take/Do not recall" beside "Other - did not take" (SpaceX's GRE,
+  // left blank 2026-10-03): the plain one.
+  const plain = na.length > 1 ? na.filter((o) => !/\bother\b/.test(qnorm(o))) : na;
+  return plain.length === 1 ? answer(plain[0], "test-score:none-stated") : abstain("test-score:unknown");
 }
 
 /**
@@ -1177,7 +1232,16 @@ function statedBoolean(q: QuestionInput, value: string | undefined, rule: string
   return booleanResult(p, q, rule);
 }
 
-function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
+/** The country a clearance question's own words belong to ("Public Trust",
+ *  "TS/SCI", DOE "Q" are US; "Reliability Status" is Canadian). */
+function clearanceCountry(n: string): string | null {
+  if (/\bpublic trust\b|\bts sci\b|\btop secret sci\b|\bdoe (l|q)\b|\bpolygraph\b|\bdod\b|\b(u s|us|united states) (government |security )?clearance\b/.test(n)) return "US";
+  if (/\breliability status\b|\benhanced reliability\b|\bgovernment of canada\b|\bcanadian (security )?clearance\b/.test(n)) return "CA";
+  if (/\bbpss\b|\bnppv\b|\bdeveloped vetting\b|\b(sc|dv) (clearance|cleared)\b/.test(n)) return "GB";
+  return null;
+}
+
+function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicationProfile, facts: ProfileFacts, ctx: QuestionContext): QuestionResult {
   if (!isBooleanQuestion(q)) {
     // "Clearance type / level" select: "None" when the applicant holds none.
     if (/\bclearance\b/.test(n) && q.options?.length && /^none$/i.test((profile.securityClearance || "").trim())) {
@@ -1196,6 +1260,14 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
   if (/\bclearance\b/.test(n) && !/\b(customs|credit|medical)\b/.test(n)) {
     const c = (profile.securityClearance || "").trim().toLowerCase();
     if (!c) return abstain("clearance:unknown");
+    // A clearance is a national credential, held where it was granted, taken
+    // as the applicant's own country. A question in another country's words
+    // ("Public Trust") or on a job abroad is not answered from it: a Canadian
+    // profile said Yes to a US contractor's "Active Clearance/Public Trust?"
+    // (ActioNet on Jobvite, a real profile, 2026-10-03). "None" holds anywhere.
+    const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+    const asked = clearanceCountry(n) ?? ctx.jobCountry;
+    if (c !== "none" && home && asked && asked !== home) return abstain("clearance:other-country");
     const active = /\bactive\b/.test(c);
     const eligible = /\beligible|previously\b/.test(c);
     if (/\b(able|eligible|willing) to (obtain|get|acquire)\b/.test(n)) return eligible || active ? booleanResult(true, q, "clearance:obtainable") : abstain("clearance:obtainable-unknown");
@@ -1408,11 +1480,13 @@ export function resolveQuestion(
     resolveStartDateChoice(q, n, facts) ??
     resolveStartBucket(q, n, facts) ??
     resolveTimezone(q, n, facts) ??
+    resolveZoneAvailability(q, n, facts) ??
+    resolveLocalTo(q, n, facts, profile) ??
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??
     resolveRelocationChoice(q, n, profile, ctx) ??
     resolveLanguageChoice(q, n, profile) ??
-    resolveStatedFacts(q, n, profile) ??
+    resolveStatedFacts(q, n, profile, facts, ctx) ??
     resolvePhoneCode(q, n, facts, profile) ??
     null;
   if (resolved && (resolved.status === "answer" || !DEFAULTABLE.test(resolved.rule))) return resolved;

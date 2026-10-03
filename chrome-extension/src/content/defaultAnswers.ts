@@ -101,7 +101,43 @@ const CONFLICTS = /\bconflicts? of interest\b|\boutside (business|employment) (a
 const NON_COMPETE =
   /\bnon ?compet\w*|\bnon ?solicit\w*|\brestrictive covenants?\b|\b(agreements?|contracts?) that (would |may |might )?(restrict|prevent|limit|prohibit)\b/;
 const GOV_OFFICIAL =
-  /\b(government|public|foreign) officials?\b|\bprocurement officials?\b|\bpolitically exposed\b|\b(current|former|currently|formerly)\b[^?]{0,30}\b(government|federal|state|public sector) (employee|official)s?\b/;
+  /\b(government|public|foreign) officials?\b|\bprocurement officials?\b|\bpolitically exposed\b|\b(current|former|currently|formerly)\b[^?]{0,30}\b(government|federal|state|public sector) officials?\b/;
+const GOV_EMPLOYEE = /\b(current|former|currently|formerly)\b[^?]{0,30}\b(government|federal|state|public sector) employees?\b/;
+/** An employer that is a government body ("Public Services and Procurement
+ *  Canada", "City of Ottawa", "U.S. Department of Energy"). Broad on purpose: a
+ *  false hit only leaves the question to the applicant. */
+const GOV_EMPLOYER =
+  /\b(government|gouvernement|ministry|ministere|department of|dept of|federal|provincial|municipal|municipality|city of|town of|county of|region of|province of|state of|public services?|public sector|procurement|parliament|senate|house of commons|legislative|legislature|treasury|revenue agency|border services|armed forces|army|navy|air force|marine corps|coast guard|national guard|police|rcmp|crown corporation)\b|\b(health|transport|statistics|service|parks|environment|justice|finance|heritage|agriculture|immigration|fisheries|infrastructure|natural resources|global affairs|veterans affairs|public safety|indigenous services|shared services|library and archives|elections) canada\b|\bcanada (revenue|border|post)\b|\b(nasa|noaa|usps|fbi|cia|nsa)\b|\b(u s|united states) (department|army|navy|air force|government)\b/;
+/** A title naming an official's role, not just a job at a government body. */
+const OFFICIAL_TITLE = /\b(official|officer|minister|commissioner|contracting|procurement|purchasing|buyer|director general)\b/;
+
+/**
+ * The applicant's history with government: an employer that is one, and a
+ * title there that names an official's role. "Are you a current or former
+ * government employee?" was answered No for a profile whose last job was a
+ * federal internship (ActioNet on Jobvite, a real profile, 2026-10-03).
+ */
+function governmentHistory(profile: UserApplicationProfile): { employer: boolean; official: boolean } {
+  const isGov = (company: string): boolean => {
+    const c = qn(company);
+    return Boolean(c) && GOV_EMPLOYER.test(c) && !/\b(university|college|hospital)\b/.test(c);
+  };
+  const rows = (profile.experience ?? []).filter((r) => r && isGov(r.company ?? ""));
+  return {
+    employer: rows.length > 0 || isGov(profile.currentCompany ?? ""),
+    official: rows.some((r) => OFFICIAL_TITLE.test(qn(r.title ?? ""))),
+  };
+}
+
+/** The "never a government employee / official" default, unless the history says otherwise. */
+function notGovernment(n: string, profile: UserApplicationProfile): boolean | null {
+  const employee = GOV_EMPLOYEE.test(n);
+  if (!employee && !GOV_OFFICIAL.test(n)) return null;
+  const gov = governmentHistory(profile);
+  // An OFFICIAL is a role, not an employer: a developer intern at a
+  // department is a government employee, and still no procurement official.
+  return !(employee ? gov.employer : gov.official);
+}
 const CRIMINAL = /\b(criminal|convicted|conviction|felony|misdemeanou?r|arrested|charged with|pending charges)\b/;
 
 const HOW_HEARD =
@@ -129,6 +165,10 @@ const SOURCE_PREFERENCE: RegExp[] = [
   /\bother\b/,
 ];
 
+/** A channel named for a brand ("LinkedIn Job Search", "Glassdoor Article"). */
+const NAMED_SOURCE =
+  /\b(linked ?in|indeed|glassdoor|zip ?recruiter|monster|simply ?hired|dice|built ?in|wellfound|angel ?list|handshake|otta|facebook|instagram|twitter|tiktok|youtube|reddit|career ?builder)\b/;
+
 /** Map the applicant's stated source (profile.howDidYouHear) onto option words. */
 const SOURCE_SYNONYMS: Array<[RegExp, RegExp]> = [
   [/\blinked ?in\b/, /\blinked ?in\b/],
@@ -145,7 +185,7 @@ const SOURCE_SYNONYMS: Array<[RegExp, RegExp]> = [
  * to this job by a Mindex employee? If so, who?" (Workable), "Do you have a
  * family member/relative that currently works at ActioNet?" (Jobvite).
  */
-function unencumberedText(q: QuestionInput, n: string): QuestionResult {
+function unencumberedText(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
   if (q.kind !== "text" && q.kind !== "longText") return null;
   if (!/^(are|were|was|have|has|had|do|did|is) you\b|^(are|were|have|do|did) (any|you)\b/.test(n)) return null;
   if (PRIOR_APPLICATION.test(n)) return answer("No", "default:no-prior-application");
@@ -153,7 +193,8 @@ function unencumberedText(q: QuestionInput, n: string): QuestionResult {
   if (RELATIVES.test(n) && /\b(work|employ|empl|staff|board|director|officer|relationship)\w*/.test(n)) return answer("No", "default:no-relatives-inside");
   if (CONFLICTS.test(n)) return answer("No", "default:no-conflict");
   if (NON_COMPETE.test(n)) return answer("No", "default:no-non-compete");
-  if (GOV_OFFICIAL.test(n)) return answer("No", "default:not-government-official");
+  const notGov = notGovernment(n, profile);
+  if (notGov !== null) return notGov ? answer("No", "default:not-government-official") : null;
   return null;
 }
 
@@ -187,9 +228,16 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile): Questi
       if (viaSearch.length === 1) return answer(viaSearch[0], "source:stated");
     }
   }
+  // No stated channel: never a campus one, even as the only careers-site
+  // option ("Campus Career Site", Enova on Greenhouse, a real profile
+  // 2026-10-03), and among several job searches the one no brand names
+  // ("Other - Job Site" beside "LinkedIn Job Search", Planet: left blank).
+  const general = opts.filter((o) => !/\b(university|campus|school|college|internal)\b/.test(qn(o)));
   for (const re of SOURCE_PREFERENCE) {
-    const hit = unique(re);
-    if (hit) return answer(hit, "source:default");
+    const hits = general.filter((o) => re.test(qn(o)));
+    if (hits.length === 1) return answer(hits[0], "source:default");
+    const unbranded = hits.filter((o) => !NAMED_SOURCE.test(qn(o)));
+    if (hits.length > 1 && unbranded.length === 1) return answer(unbranded[0], "source:default");
   }
   return null;
 }
@@ -238,8 +286,14 @@ export function resolveDefault(
   if ((UNLABELED.test(n) || /\b(find|found|hear|heard|learn|learned|discover)\w* (us|about us|this (role|job|position))\b/.test(n)) && opts.filter((o) => CHANNEL.test(qn(o))).length >= 3) {
     return chooseSource(q, profile);
   }
-  if (!choiceLike) return unencumberedText(q, n);
+  if (!choiceLike) return unencumberedText(q, n, profile);
   if (CRIMINAL.test(n)) return null;
+  // "Will you need an accommodation for your interview?" (Netlify, left blank
+  // 2026-10-03): No for an applicant who stated no disability. Anyone else
+  // answers it themselves. Read on the device; only the No leaves it.
+  if (/\baccommodations?\b/.test(n) && /\b(need|require|request)\w*\b/.test(n) && /\b(interview|hiring|application|recruit\w*)\b/.test(n)) {
+    return /^no\b|\bdo not have\b|\bdont have\b/.test(qn(profile.eeo?.disabilityStatus ?? "")) ? polar(false, q, "default:no-accommodation") : null;
+  }
   // A required list whose ONLY option is an acknowledgement ("I will read the
   // arbitration agreement below.", Anthropic; "Summer 2027" under "Please
   // confirm the season…", Astranis; live 2026-10-03): there is nothing else
@@ -270,7 +324,8 @@ export function resolveDefault(
   }
   if (CONFLICTS.test(n)) return polar(false, q, "default:no-conflict");
   if (NON_COMPETE.test(n)) return polar(false, q, "default:no-non-compete");
-  if (GOV_OFFICIAL.test(n)) return polar(false, q, "default:not-government-official");
+  const notGov = notGovernment(n, profile);
+  if (notGov !== null) return notGov ? polar(false, q, "default:not-government-official") : null;
 
   if (DEMOGRAPHIC.test(n)) return null;
   if (CONSENT_VERB.test(n) && CONSENT_OBJECT.test(n) && !RECORDING.test(n)) {

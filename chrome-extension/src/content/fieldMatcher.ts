@@ -880,14 +880,19 @@ export function resolveProfileValue(
     case "phoneDeviceType":
       return null;
     case "location": {
-      if (profile.location?.trim()) return profile.location.trim();
+      const stated = profile.location?.trim() ?? "";
+      // A bare city the address agrees with ("Gatineau", a real profile,
+      // 2026-10-03) is completed from it below: alone it names two places on
+      // Lever's typeahead (Quebec and Haiti), which then picks neither.
+      const bareCity = Boolean(stated) && !stated.includes(",") && isHigh(loc.city) && loc.city.value.toLowerCase() === stated.toLowerCase();
+      if (stated && !bareCity) return stated;
       // Composed from structured parts: "Toronto, ON, Canada".
       const parts = [
         isHigh(loc.city) ? loc.city.value : "",
         isHigh(loc.region) ? loc.region.value.code : "",
         isHigh(loc.country) ? loc.country.value.name : "",
       ].filter(Boolean);
-      return parts.length >= 2 ? parts.join(", ") : null;
+      return parts.length >= 2 ? parts.join(", ") : stated || null;
     }
     case "addressStreet":
       // Only the street part: a one-line "1055 W Georgia St, Vancouver, BC…"

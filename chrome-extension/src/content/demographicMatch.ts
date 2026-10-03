@@ -112,14 +112,32 @@ export function closestDemographicOption(
   const v = norm(value);
   if (opts.length === 0 || !v) return null;
 
-  // 1. Direct containment either direction, on whole words.
-  const direct = opts.find((o) => o.n === v || hasWords(o.n, v) || hasWords(v, o.n));
-  if (direct) return direct.raw;
+  // 1. The answer itself, then the one option holding it ("Asian" in "Asian
+  //    (Not Hispanic or Latino)"), then the longest option it holds ("No" in
+  //    "No, I do not have a disability"). Several options holding it are each
+  //    NARROWER than the answer: "Asian" names none of East, South and
+  //    Southeast Asian, and the first listed won (a real profile on Robinhood,
+  //    2026-10-03). Ambiguity is no answer, and no decline either: the user
+  //    gave one, so the field is left for them to pick.
+  const exact = opts.find((o) => o.n === v);
+  if (exact) return exact.raw;
+  const holding = opts.filter((o) => hasWords(o.n, v));
+  if (holding.length > 0) return holding.length === 1 ? holding[0].raw : null;
+  const inside = opts.filter((o) => hasWords(v, o.n));
+  if (inside.length > 0) {
+    const longest = Math.max(...inside.map((o) => o.n.length));
+    const best = inside.filter((o) => o.n.length === longest);
+    return best.length === 1 ? best[0].raw : null;
+  }
 
-  // 2. Synonym / nearest-neighbour candidates, in priority order.
+  // 2. Synonym / nearest-neighbour candidates, in priority order: the option
+  //    that IS the candidate, else the one option holding it. "man" is held by
+  //    "Cisgender man" and "Transgender man" alike: no answer.
   for (const cand of tableFor(category)?.[v] ?? []) {
-    const hit = opts.find((o) => hasWords(o.n, cand));
-    if (hit) return hit.raw;
+    const same = opts.find((o) => o.n === cand);
+    if (same) return same.raw;
+    const hits = opts.filter((o) => hasWords(o.n, cand));
+    if (hits.length > 0) return hits.length === 1 ? hits[0].raw : null;
   }
 
   // 3. Decline / prefer-not-to-say fallback.

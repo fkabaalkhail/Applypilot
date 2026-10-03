@@ -232,6 +232,19 @@ function ariaRadioOptions(group: HTMLElement): string[] {
     .slice(0, 30);
 }
 
+/**
+ * A choice group nothing names but its options: the standard self-ID answer
+ * sets say which question they answer. Agiloft's disability radios on Lever
+ * carry no label, legend or question text, so the group was "unknown" and
+ * stayed blank for every profile (2026-10-03).
+ */
+function categoryOfOptions(options: string[]): { category: FieldCategory; confidence: number; sensitive: boolean } | null {
+  const count = (re: RegExp): number => options.filter((o) => re.test(o.toLowerCase())).length;
+  if (count(/\bdisabilit(y|ies)\b/) >= 2) return { category: "eeoDisability", confidence: 0.9, sensitive: true };
+  if (count(/\bprotected veterans?\b/) >= 2) return { category: "eeoVeteran", confidence: 0.9, sensitive: true };
+  return null;
+}
+
 /** The label of one radio button (its own label, value as fallback). */
 function radioOptionLabel(radio: HTMLInputElement): string {
   const labels = radio.labels;
@@ -902,8 +915,12 @@ export function scanPage(
     const id = ensureFieldId(first);
     const signals = groupSignals(radios, first.closest('fieldset, [role="radiogroup"]'));
     const groupIndex = detectGroupIndex(signals);
-    const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "radioGroup" });
     const options = radios.map(radioOptionLabel).filter(Boolean).slice(0, 30);
+    let { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "radioGroup" });
+    if (category === "unknown") {
+      const named = categoryOfOptions(options);
+      if (named) ({ category, confidence, sensitive } = named);
+    }
 
     registry.set(id, { id, controlType: "radioGroup", radios });
 

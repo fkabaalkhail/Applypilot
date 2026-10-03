@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { classifyField, resolveProfileValue } from "../src/content/fieldMatcher";
 import { scanPage } from "../src/content/formScanner";
+import { pickLocationSuggestion } from "../src/content/adapters/lever";
 import { stubLayout } from "./helpers/layout";
 import type { FieldSignals } from "../src/content/domUtils";
 import type { UserApplicationProfile } from "../src/shared/types";
@@ -128,6 +129,29 @@ describe("resolveProfileValue, structured address mapping", () => {
     expect(resolveProfileValue("postalCode", empty, sel, false)).toBeNull();
     expect(resolveProfileValue("country", empty, sel, false)).toBeNull();
     expect(resolveProfileValue("addressCity", empty, sel, false)).toBeNull();
+  });
+});
+
+/**
+ * REGRESSION (a real profile, 2026-10-03): location "Gatineau", with the
+ * province and country stored apart. Lever's typeahead lists two Gatineaus
+ * (verbatim from jobs.lever.co/searchLocations?text=Gatineau), so the bare
+ * city picked neither, and "Current location" stayed blank on all eight
+ * Lever pages.
+ */
+describe("resolveProfileValue: a bare-city location is completed from the address", () => {
+  const p = { location: "Gatineau", addressCity: "Gatineau", addressState: "Quebec", country: "Canada" } as unknown as UserApplicationProfile;
+  it("adds the region and country the profile stores apart", () => {
+    expect(resolveProfileValue("location", p, sel, false)).toBe("Gatineau, QC, Canada");
+  });
+  it("so Lever's picker takes the Canadian Gatineau", () => {
+    const live = ["Gatineau, QC, CAN", "Gatineau, Jeremi, Depatman Grandans, HTI"];
+    expect(pickLocationSuggestion(live, "Gatineau")).toBe(-1);
+    expect(pickLocationSuggestion(live, resolveProfileValue("location", p, sel, false)!)).toBe(0);
+  });
+  it("leaves a location naming more than a city, or a different city, as stated", () => {
+    expect(resolveProfileValue("location", { ...p, location: "Ottawa, ON, Canada" } as UserApplicationProfile, sel, false)).toBe("Ottawa, ON, Canada");
+    expect(resolveProfileValue("location", { ...p, location: "Montreal" } as UserApplicationProfile, sel, false)).toBe("Montreal");
   });
 });
 

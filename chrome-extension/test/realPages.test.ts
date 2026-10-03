@@ -240,9 +240,11 @@ describe("Jobvite (jobs.jobvite.com, real markup)", () => {
     expect(byLabel(fields, "age 18 or older").proposedValue).toBe("Yes");
   });
 
-  it("highest education stays blank while the degree is still in progress", () => {
+  it("highest education is never the degree still in progress: 'Some College', which the list offers", () => {
+    // Blank until 2026-10-03, to keep "Bachelors" off a student's form; the
+    // list's own "Some College" says what is held without claiming the degree.
     const fields = load("jobvite", "jobvite-actionet-jrdev");
-    expect(byLabel(fields, "highest education").proposedValue).toBeNull();
+    expect(byLabel(fields, "highest education").proposedValue).toBe("Some College");
   });
 });
 

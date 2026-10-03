@@ -35,3 +35,28 @@ describe("closestDemographicOption: whole words only", () => {
     expect(closestDemographicOption("eeoGender", "man", ["Woman", "Male", "I prefer not to say"])).toBe("Male");
   });
 });
+
+/**
+ * REGRESSION (a real profile on Robinhood, 2026-10-03): "Asian" became "East
+ * Asian" because the first option holding the word won. An answer broader
+ * than every option it fits names none of them, so the field stays blank and
+ * the user picks. Options verbatim from Superhuman's race question (Ashby).
+ */
+describe("closestDemographicOption: an answer broader than the options", () => {
+  const SUPERHUMAN = ["I don't wish to answer", "I prefer to self-describe", "White or European", "Southeast Asian", "South Asian", "Native Hawaiian or Pacific Islander", "Middle Eastern or North African", "Indigenous, American Indian or Alaska Native", "Hispanic, Latinx or of Spanish Origin", "East Asian", "Black or of African descent"];
+  it("never picks one subgroup of 'Asian', and never declines for the user either", () => {
+    expect(closestDemographicOption("eeoRace", "Asian", SUPERHUMAN)).toBeNull();
+  });
+  it("an exact option beats a narrower one listed before it", () => {
+    expect(closestDemographicOption("eeoRace", "Asian", ["East Asian", "Asian", "White"])).toBe("Asian");
+  });
+  it("the one option holding the answer is still the answer", () => {
+    expect(closestDemographicOption("eeoRace", "Asian", ["White (Not Hispanic or Latino)", "Asian (Not Hispanic or Latino)", "Decline to self-identify"])).toBe("Asian (Not Hispanic or Latino)");
+    expect(closestDemographicOption("eeoDisability", "No, I do not have a disability", ["Yes, I have a disability (or previously had a disability)", "No, I do not have a disability and have not had one in the past", "I do not want to answer"])).toBe("No, I do not have a disability and have not had one in the past");
+  });
+  it("a synonym held by several options is no answer: 'Male' is not 'Cisgender man'", () => {
+    expect(closestDemographicOption("eeoGenderIdentity", "Male", ["Cisgender man", "Cisgender woman", "Transgender man", "Transgender woman", "Non-binary"])).toBeNull();
+    // The option that IS the synonym still wins over a qualified one.
+    expect(closestDemographicOption("eeoGenderIdentity", "Male", ["Transgender man", "Man", "Woman"])).toBe("Man");
+  });
+});

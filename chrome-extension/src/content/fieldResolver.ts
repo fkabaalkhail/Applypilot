@@ -20,7 +20,7 @@ import type { SiteAdapter } from "./adapters/types";
 import { answerKindOf, optionPolarity, valueFitsKind, type AnswerKind } from "./answerKind";
 import { dateFormatFor, fitDate, type DateFormat } from "./dateControl";
 import type { FieldSignals } from "./domUtils";
-import { profileFacts } from "./profileFacts";
+import { isHigh, profileFacts } from "./profileFacts";
 import { resolveQuestion, type QuestionContext, type QuestionInput, type QuestionResult } from "./questionResolver";
 import { countryFromName } from "./geo";
 import { closestDemographicOption, declineOption } from "./demographicMatch";
@@ -101,6 +101,15 @@ function refineGenderIdentity(
 ): string | null | undefined {
   const identity = (profile.eeo?.genderIdentity ?? "").trim();
   const gender = (profile.eeo?.gender ?? "").trim();
+  // "Do you identify as LGBTQ+?": Yes for a stated orientation or identity
+  // that is one; No only when BOTH are stated and neither is. A cisgender
+  // identity says nothing about orientation, so it never answers alone.
+  if (category === "eeoOther" && /\blgbt/i.test(label)) {
+    const orientation = (profile.eeo?.sexualOrientation ?? "").trim();
+    if (/\b(gay|lesbian|bisexual|queer|pansexual)\b/i.test(orientation) || /\btrans(gender)?\b/i.test(identity)) return "Yes";
+    if (/^(heterosexual|straight)$/i.test(orientation) && /\bcis(gender)?\b/i.test(identity)) return "No";
+    return undefined;
+  }
   if ((category === "eeoOther" || category === "eeoGenderIdentity") && TRANS_Q.test(label) && !LGBTQ_Q.test(label)) {
     if (/\bcis(gender)?\b/i.test(identity)) return "No";
     if (/\btrans(gender)?\b/i.test(identity)) return "Yes";
@@ -110,10 +119,53 @@ function refineGenderIdentity(
   const qualified = options.filter((o) => /\b(cis|trans)(gender)?\b/i.test(o));
   if (qualified.length === 0) return /\b(male|female|man|woman)\b/i.test(options.join(" ")) && gender ? gender : undefined;
   const kind = /\bcis(gender)?\b/i.test(identity) ? /\bcis(gender)?\b/i : /\btrans(gender)?\b/i.test(identity) ? /\btrans(gender)?\b/i : null;
+  // Options split by cis/trans and the profile states neither: "Cisgender
+  // man" from "Male" claims an identity the user never gave (a real profile
+  // on Robinhood, 2026-10-03). Only an unqualified option ("Man",
+  // "Non-binary") may answer; else decline, as for any unanswered EEO question.
+  if (!kind) {
+    const plain = options.filter((o) => !qualified.includes(o));
+    return gender ? closestDemographicOption(category, gender, plain) : null;
+  }
   const sex = /^(female|woman)$/i.test(gender) ? /\b(woman|female)\b/i : /^(male|man)$/i.test(gender) ? /\b(man|male)\b/i : null;
-  if (!kind || !sex) return undefined;
+  if (!sex) return undefined;
   const both = qualified.filter((o) => kind.test(o) && sex.test(o));
   return both.length === 1 ? both[0] : undefined;
+}
+
+const CURRENT_JOB_LABEL = /\b(current|currently|present|presently)\b/i;
+const RECENT_JOB_LABEL = /\b(most recent|recent|previous|last|latest|former)\b/i;
+
+/**
+ * The company / title for a field outside a repeating row, read against the
+ * DATED experience rows. The backend sends the resume's first job as the
+ * current company whatever its end date: a real profile's internship that
+ * ended in May 2026 was typed into "Current company" in October (Lever,
+ * Commvault). So a label that says current gets a job still running or
+ * nothing (null), and a bare "Company" / "Title" (Workable's experience
+ * entry) gets the most recent job, its title from the same row as the
+ * company. undefined = keep the value as resolved.
+ */
+function employmentForLabel(
+  category: FieldCategory,
+  label: string,
+  profile: UserApplicationProfile,
+  value: string | null
+): string | null | undefined {
+  const emp = profileFacts(profile).employment;
+  const rows = (profile.experience ?? []).filter((r) => r && (r.company?.trim() || r.title?.trim()));
+  const same = (a: string | undefined, b: string): boolean => (a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
+  if (CURRENT_JOB_LABEL.test(label) && !RECENT_JOB_LABEL.test(label)) {
+    const ended = emp.currentlyEmployed?.value === false;
+    const fromRow = value !== null && rows.some((r) => same(category === "currentCompany" ? r.company : r.title, value));
+    return ended && fromRow ? null : undefined;
+  }
+  if (category === "currentTitle" && !value) {
+    const company = isHigh(emp.currentCompany) ? emp.currentCompany.value : emp.mostRecentCompany?.value ?? "";
+    const row = company ? rows.find((r) => same(r.company, company)) : undefined;
+    return row?.title?.trim() || undefined;
+  }
+  return undefined;
 }
 
 function eeoDecline(category: FieldCategory, controlType: ControlType, options: string[] | undefined): string | null {
@@ -262,6 +314,16 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   } else {
     value = resolveAnswerWithAdapter(input.adapter, category, profile, control, input.fillEEO, input.el);
     source = "category";
+  }
+  if (
+    (category === "currentCompany" || category === "currentTitle") &&
+    source === "category" &&
+    control.controlType !== "checkbox" &&
+    (control.groupIndex ?? null) === null
+  ) {
+    const adjusted = employmentForLabel(category, label, profile, value);
+    if (adjusted === null) return none(true, "employment:not-current");
+    if (adjusted !== undefined) value = adjusted;
   }
   if (input.sensitive) {
     const refined = refineGenderIdentity(category, label, options, profile);
