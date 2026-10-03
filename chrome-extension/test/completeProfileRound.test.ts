@@ -319,3 +319,34 @@ describe("default rules that must not over-reach (2026-10-03)", () => {
     expect(value(ask("Do you have the ability to travel with no restrictions?", { options: YES_NO }))).not.toBe("No");
   });
 });
+
+describe("start-time spans and demographic synonyms (2026-10-03, second pass)", () => {
+  const STRIVE = ["Immediately", "2 to 4 weeks from offer acceptance", "4-8 weeks from offer acceptance", "8-12 weeks from offer acceptance", "12+ weeks from offer acceptance"];
+  it("the span holding the days until the earliest start (Agiloft 'Availability?', Striveworks)", () => {
+    expect(value(ask("Availability?✱", { options: ["Immediately", "Two weeks from offer", "Over a month from offer"], controlType: "checkboxGroup", kind: "multiChoice" }))).toBe("Over a month from offer");
+    const q = "What is your earliest available start date for full-time employment in this role?*";
+    expect(value(ask(q, { options: STRIVE }))).toBe("12+ weeks from offer acceptance");
+    // 17 days out: "2 to 4 weeks". The old matcher read the date's year (2026) as a number: "12+ weeks".
+    expect(value(ask(q, { options: STRIVE }, { ...COMPLETE, earliestStartDate: "2026-10-20" }))).toBe("2 to 4 weeks from offer acceptance");
+  });
+  it("a date is never placed in numeric buckets by its digits", async () => {
+    const { matchOption } = await import("../src/content/optionMatch");
+    expect(matchOption(STRIVE, (o) => o, (o) => o, "2026-10-20")).toBeNull();
+  });
+});
+
+describe("demographic synonyms at scan time (Ashby gender checkboxes, live 2026-10-03)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  it("'Female' ticks 'Woman' among Man / Woman / Non-binary", () => {
+    const opts = ["Man", "Woman", "Non-binary", "I prefer to self-describe", "I don't wish to answer"];
+    document.body.innerHTML = `<form><fieldset><legend>Gender identity</legend>${opts
+      .map((o, i) => `<label><input type="checkbox" name="g" value="${i}">${o}</label>`)
+      .join("")}</fieldset></form>`;
+    const f = scanPage(COMPLETE, false, null).fields;
+    expect(f[0].proposedValue).toBe("Woman");
+  });
+});

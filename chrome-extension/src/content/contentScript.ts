@@ -535,10 +535,12 @@ function initialize(): void {
     // No job country on the page: the form's own work-authorization questions
     // may all name one (formCountryHint). Once per URL; a stated place that
     // arrives later (top frame, carried posting) still overrides it.
+    // Marked done only once a hint is found: Workable renders its questions
+    // after the first scan, and the hint was never looked for again (Mindex).
     if (!getResolveContext().jobCountry && formHintUrl !== location.href) {
-      formHintUrl = location.href;
       const hint = formCountryHint(result.fields.map((f) => f.label));
       if (hint) {
+        formHintUrl = location.href;
         setResolveContext({ jobCountry: hint });
         result = scanPage(lastProfile, lastFillEEO);
       }

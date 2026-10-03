@@ -837,6 +837,43 @@ function resolveStartDateChoice(q: QuestionInput, n: string, facts: ProfileFacts
   return onOrAfter.length > 0 ? answer(onOrAfter[0].o, "start-date-choice") : abstain("start-date-choice:all-earlier");
 }
 
+/** An option's span in days from now ("Immediately", "2 to 4 weeks from offer
+ *  acceptance", "12+ weeks", "Over a month from offer"), or null. */
+function durationRange(option: string): [number, number] | null {
+  const WORDS: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, eight: 8, ten: 10, twelve: 12 };
+  const t = qnorm(option).replace(/\b(an?|one|two|three|four|five|six|eight|ten|twelve)\b(?= (day|week|month)s?\b)/g, (w) => String(WORDS[w]));
+  if (/\b(immediately|immediate|asap|right away)\b/.test(t)) return [0, 7];
+  const unit = (u: string): number => (u.startsWith("day") ? 1 : u.startsWith("week") ? 7 : 30);
+  let m: RegExpExecArray | null;
+  if ((m = /\b(\d+)\s*(?:to\s+|\s)(\d+)\s*(day|week|month)s?\b/.exec(t))) return [+m[1] * unit(m[3]), +m[2] * unit(m[3])];
+  if ((m = /\b(\d+)\s*\+\s*(day|week|month)s?\b/.exec(t))) return [+m[1] * unit(m[2]), Infinity];
+  if ((m = /\b(more than|over|longer than|after|beyond)\s+(\d+)\s*(day|week|month)s?\b/.exec(t))) return [+m[2] * unit(m[3]) + 1, Infinity];
+  if ((m = /\b(within|less than|under|up to|no more than)\s+(\d+)\s*(day|week|month)s?\b/.exec(t))) return [0, +m[2] * unit(m[3])];
+  if ((m = /\b(\d+)\s*(day|week|month)s?\b/.exec(t))) {
+    const d = +m[1] * unit(m[2]);
+    return [Math.max(0, d - 3), d + 3];
+  }
+  return null;
+}
+
+/**
+ * "Availability?" / "earliest available start date" answered with spans from
+ * now ("Immediately" | "Two weeks from offer" | "Over a month from offer",
+ * Agiloft on Lever; "2 to 4 weeks … 12+ weeks from offer acceptance",
+ * Striveworks): the span holding the days until the applicant's earliest start.
+ */
+function resolveStartBucket(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!q.options || q.options.length < 2) return null;
+  if (!/\b(availability|available|start|starting|join|joining|begin)\b/.test(n)) return null;
+  const spans = q.options.map((o) => ({ o, r: durationRange(o) })).filter((x): x is { o: string; r: [number, number] } => x.r !== null);
+  if (spans.length < 2) return null;
+  const av = facts.availability.earliestStart;
+  if (!isHigh(av)) return abstain("start-bucket:unknown");
+  const days = Math.max(0, Math.ceil((av.value.getTime() - facts.today.getTime()) / 86400000));
+  const hits = spans.filter((x) => days >= x.r[0] && days <= x.r[1]).sort((a, b) => a.r[1] - a.r[0] - (b.r[1] - b.r[0]));
+  return hits.length > 0 ? answer(hits[0].o, "start-bucket") : abstain("start-bucket:no-matching-option");
+}
+
 /** Time zones by region; a state split between zones is left out (not guessed). */
 const ZONE_OF_REGION: Record<string, string> = {
   // Canada
@@ -1369,6 +1406,7 @@ export function resolveQuestion(
     resolveGpa(q, n, profile, facts) ??
     resolveTestScore(q, n) ??
     resolveStartDateChoice(q, n, facts) ??
+    resolveStartBucket(q, n, facts) ??
     resolveTimezone(q, n, facts) ??
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??

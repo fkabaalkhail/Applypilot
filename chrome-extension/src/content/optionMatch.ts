@@ -111,7 +111,11 @@ export function matchOption<T>(
   // years") all reduce to the same handful of tokens ("years" / "000") once
   // normalized, so generic token overlap can't tell them apart. Place the
   // answer's number inside exactly one bucket, or refuse.
-  const targetNum = firstNumber(target);
+  // A DATE is no number to place in buckets: "2027-05-03" read as 2027 landed
+  // in "12+ weeks from offer acceptance" (Striveworks, live 2026-10-03: right
+  // only by luck; a start next week would have landed there too).
+  const isDate = /^\d{4}-\d{1,2}(-\d{1,2})?$|^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$/.test(target.trim());
+  const targetNum = isDate ? null : firstNumber(target);
   if (targetNum !== null && ranged.length > 0) {
     const hits = ranged.filter((item) => {
       const range = parseRange(getText(item))!;

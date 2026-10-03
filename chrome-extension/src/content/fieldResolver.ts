@@ -23,7 +23,7 @@ import type { FieldSignals } from "./domUtils";
 import { profileFacts } from "./profileFacts";
 import { resolveQuestion, type QuestionContext, type QuestionInput, type QuestionResult } from "./questionResolver";
 import { countryFromName } from "./geo";
-import { declineOption } from "./demographicMatch";
+import { closestDemographicOption, declineOption } from "./demographicMatch";
 import { matchOption } from "./writeEngine";
 
 export interface FieldResolveInput {
@@ -299,7 +299,7 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   if (options && options.length > 0 && (CONSTRAINED.has(control.controlType) || control.controlType === "combobox")) {
     if (control.controlType === "checkboxGroup" || control.multi) {
       const parts = value.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
-      const hits = parts.map((p) => snapToOption(options, p, category));
+      const hits = parts.map((p) => snapToOption(options, p, category) ?? (input.sensitive ? closestDemographicOption(category, p, options) : null));
       if (hits.some((h) => h === null)) {
         const ok = hits.filter((h): h is string => h !== null);
         if (ok.length === 0) return none(false, "no-confident-option");
@@ -307,7 +307,9 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
       }
       return { value: (hits as string[]).join(", "), kind, source, rule, deviceAbstained: false };
     }
-    const snapped = snapToOption(options, value, category);
+    // A demographic answer in other words ("Female" among Man / Woman, Ashby):
+    // the on-device demographic matcher knows the synonyms.
+    const snapped = snapToOption(options, value, category) ?? (input.sensitive ? closestDemographicOption(category, value, options) : null);
     if (!snapped) return none(false, "no-confident-option");
     value = snapped;
   }
