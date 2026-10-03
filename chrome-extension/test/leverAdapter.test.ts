@@ -1,6 +1,6 @@
 // chrome-extension/test/leverAdapter.test.ts
 import { describe, it, expect, beforeEach } from "vitest";
-import { leverAdapter } from "../src/content/adapters/lever";
+import { leverAdapter, pickLocationSuggestion } from "../src/content/adapters/lever";
 import type { FieldContext, FillContext } from "../src/content/adapters/types";
 import type { RuntimeControl } from "../src/content/formScanner";
 
@@ -71,5 +71,77 @@ describe("leverAdapter location typeahead", () => {
     el.name = "cards[abc][field0]";
     document.body.append(el);
     expect(leverAdapter.fillOperation!(fill(el, "hello"))).toBeUndefined();
+  });
+});
+
+/**
+ * Lever's live "Current location" (2026-10-03, three real forms): a typeahead
+ * that searches as you type, renders suggestions into `.dropdown-results`, and
+ * CLEARS an entry that was not picked from that list. The text+hidden-JSON write
+ * above left the field empty on every live page; the fill now types the city and
+ * clicks Lever's own suggestion.
+ */
+describe("leverAdapter location typeahead (live markup)", () => {
+  function mountLiveLocation(suggestionsFor: (q: string) => string[]) {
+    const wrap = document.createElement("li");
+    wrap.className = "application-question";
+    wrap.innerHTML =
+      '<div class="application-field"><input class="location-input" data-qa="location-input" id="location-input" type="text" name="location">' +
+      '<input id="selected-location" type="hidden" name="selectedLocation">' +
+      '<div class="dropdown-container"><div class="dropdown-results"></div></div></div>';
+    document.body.append(wrap);
+    const input = wrap.querySelector("#location-input") as HTMLInputElement;
+    const hidden = wrap.querySelector("#selected-location") as HTMLInputElement;
+    const results = wrap.querySelector(".dropdown-results") as HTMLElement;
+    input.addEventListener("input", () => {
+      const q = input.value;
+      setTimeout(() => {
+        results.innerHTML = "";
+        for (const s of suggestionsFor(q)) {
+          const d = document.createElement("div");
+          d.className = "dropdown-location";
+          d.textContent = s;
+          d.addEventListener("click", () => {
+            input.value = s;
+            hidden.value = JSON.stringify({ name: s });
+            results.innerHTML = "";
+          });
+          results.append(d);
+        }
+      }, 50);
+    });
+    return { input, hidden };
+  }
+  const fillCtx = (el: HTMLInputElement, value: string): FillContext => ({
+    control: { id: "loc", controlType: "text", el } as RuntimeControl,
+    value,
+    el,
+  });
+
+  it("types the city and clicks Lever's matching suggestion", async () => {
+    const { input, hidden } = mountLiveLocation((q) =>
+      q.toLowerCase().startsWith("toronto") ? ["Toronto, Ontario, Canada", "Toronto, Ohio, United States"] : []
+    );
+    const result = await leverAdapter.fillOperation!(fillCtx(input, "Toronto, ON, Canada"))!;
+    expect(result.filled).toBe(true);
+    expect(input.value).toBe("Toronto, Ontario, Canada");
+    expect(JSON.parse(hidden.value).name).toBe("Toronto, Ontario, Canada");
+  });
+
+  it("refuses an ambiguous list rather than pick the wrong Toronto", async () => {
+    const { input, hidden } = mountLiveLocation(() => ["Toronto, Ohio, United States", "Toronto, Kansas, United States"]);
+    const result = await leverAdapter.fillOperation!(fillCtx(input, "Toronto, ON, Canada"))!;
+    expect(result.filled).toBe(false);
+    expect(input.value).toBe("");
+    expect(hidden.value).toBe("");
+  });
+});
+
+describe("pickLocationSuggestion", () => {
+  it("one city of that name is enough; several need the region to agree", () => {
+    expect(pickLocationSuggestion(["Toronto, Ontario, Canada"], "Toronto")).toBe(0);
+    expect(pickLocationSuggestion(["Toronto, Ohio, US", "Toronto, Ontario, Canada"], "Toronto, ON, Canada")).toBe(1);
+    expect(pickLocationSuggestion(["Toronto, Ohio, US", "Toronto, Ontario, Canada"], "Toronto")).toBe(-1);
+    expect(pickLocationSuggestion(["Torontonian Club"], "Toronto")).toBe(-1);
   });
 });

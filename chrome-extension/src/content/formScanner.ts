@@ -14,6 +14,7 @@ import {
   cleanText,
   collectSignals,
   deepQueryAll,
+  EXTENSION_UI_HOST_IDS,
   isHiddenButLabeled,
   isPlaceholderFiller,
   isUploadAffordance,
@@ -889,6 +890,9 @@ export function openShadowRoots(root: Document | ShadowRoot): ShadowRoot[] {
   const out: ShadowRoot[] = [];
   const visit = (node: Document | ShadowRoot): void => {
     node.querySelectorAll("*").forEach((el) => {
+      // Our own panel is not part of the page: observing it turned every
+      // panel repaint into a "page change" and a rescan (see observePage).
+      if (EXTENSION_UI_HOST_IDS.has((el as HTMLElement).id)) return;
       const sr = (el as HTMLElement).shadowRoot;
       if (sr) {
         out.push(sr);
@@ -898,6 +902,16 @@ export function openShadowRoots(root: Document | ShadowRoot): ShadowRoot[] {
   };
   visit(root);
   return out;
+}
+
+/** A mutation that happened inside (or to) the extension's own UI host. */
+function isOwnUiMutation(m: MutationRecord): boolean {
+  const target = m.target as Node;
+  const root = target.getRootNode?.();
+  const host = root instanceof ShadowRoot ? (root.host as HTMLElement) : null;
+  if (host && EXTENSION_UI_HOST_IDS.has(host.id)) return true;
+  const nodes = [...Array.from(m.addedNodes), ...Array.from(m.removedNodes)];
+  return nodes.length > 0 && nodes.every((n) => n instanceof HTMLElement && EXTENSION_UI_HOST_IDS.has(n.id));
 }
 
 /**
@@ -921,7 +935,12 @@ export function observePage(onChange: () => void): MutationObserver {
     }
   };
   const observer = new MutationObserver((mutations) => {
-    const relevant = mutations.some((m) => m.addedNodes.length > 0 || m.removedNodes.length > 0);
+    // Only the PAGE changing is a reason to rescan. The panel repainting itself
+    // (job-card logo swap, button label) used to count, and the rescan it
+    // caused repainted the panel again: a rescan every 500 ms, forever.
+    const relevant = mutations.some(
+      (m) => (m.addedNodes.length > 0 || m.removedNodes.length > 0) && !isOwnUiMutation(m)
+    );
     if (!relevant) return;
     attach(); // pick up newly-added shadow roots
     if (timer) clearTimeout(timer);

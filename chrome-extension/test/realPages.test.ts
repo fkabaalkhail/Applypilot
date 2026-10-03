@@ -32,6 +32,7 @@ function load(ats: string, slug: string): DetectedField[] {
   const html = readFileSync(path.join(REAL, ats, `${slug}.html`), "utf8");
   const meta = JSON.parse(readFileSync(path.join(REAL, ats, `${slug}.fields.json`), "utf8")) as { finalUrl: string };
   document.documentElement.innerHTML = html.replace(/^<!doctype html>\s*/i, "").replace(/^<html[^>]*>|<\/html>\s*$/gi, "");
+  hydrateDeclarativeShadowRoots(document);
   const url = new URL(meta.finalUrl);
   const fields = scanPage(SPARSE_CANADIAN, false, getAdapter(url.hostname, url.href)).fields;
   scans.set(key, fields);
@@ -39,6 +40,23 @@ function load(ats: string, slug: string): DetectedField[] {
 }
 
 vi.setConfig({ testTimeout: 60000 });
+
+/**
+ * The capture serializes open shadow roots as declarative shadow DOM
+ * (`<template shadowrootmode="open">`), which a browser attaches on parse but
+ * jsdom's innerHTML leaves inert. Attach them, innermost first.
+ */
+function hydrateDeclarativeShadowRoots(root: Document | ShadowRoot | Element): void {
+  const templates = Array.from(root.querySelectorAll("template[shadowrootmode]")) as HTMLTemplateElement[];
+  for (const t of templates) {
+    const host = t.parentElement;
+    if (!host || host.shadowRoot) continue;
+    const sr = host.attachShadow({ mode: (t.getAttribute("shadowrootmode") as ShadowRootMode) || "open" });
+    sr.append(t.content.cloneNode(true));
+    t.remove();
+    hydrateDeclarativeShadowRoots(sr);
+  }
+}
 
 const byLabel = (fields: DetectedField[], text: string): DetectedField => {
   const f = fields.find((x) => x.label.toLowerCase().includes(text.toLowerCase()));
@@ -225,5 +243,20 @@ describe("Jobvite (jobs.jobvite.com, real markup)", () => {
   it("highest education stays blank while the degree is still in progress", () => {
     const fields = load("jobvite", "jobvite-actionet-jrdev");
     expect(byLabel(fields, "highest education").proposedValue).toBeNull();
+  });
+});
+
+describe("SmartRecruiters (jobs.smartrecruiters.com oneclick-ui, real markup)", () => {
+  it("'Let the company know about your interest…' never receives the employer's name", () => {
+    const fields = load("smartrecruiters", "sr-servicenow-swe");
+    expect(byLabel(fields, "Let the company know").proposedValue).toBeNull();
+  });
+
+  // (The phone input sits deeper in Lit components than the snapshot keeps;
+  // the live e2e run covers it.)
+  it("both email boxes get the email", () => {
+    const fields = load("smartrecruiters", "sr-servicenow-swe");
+    expect(byLabel(fields, "Email*").proposedValue).toBe(SPARSE_CANADIAN.email);
+    expect(byLabel(fields, "Confirm your email").proposedValue).toBe(SPARSE_CANADIAN.email);
   });
 });

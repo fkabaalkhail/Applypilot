@@ -175,6 +175,18 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
   }
   if (!st.enabled) return { ...trace, error: `Autofill button never enabled (text=${st.text})` };
 
+  // The button is live as soon as the profile loads, but on an SPA (Ashby,
+  // SmartRecruiters) the form renders later; a click before the panel has any
+  // field selected is a silent no-op. Wait for the panel to report selected
+  // fields, unchanged for a second (its own refreshMainView console beat).
+  const panel = page.__panel ?? { selected: 0, fields: 0, changedAt: Date.now() };
+  for (let waited = 0; waited < 25000; waited += 200) {
+    if (panel.selected > 0 && Date.now() - panel.changedAt > 1000) break;
+    await sleep(200);
+  }
+  trace.selectedAtClick = panel.selected;
+  trace.fieldsAtClick = panel.fields;
+
   const telemetryBefore = api.state.telemetry.length;
   await page.locator("#ap-btn-autofill").click({ timeout: 10000 });
   trace.clicked = true;
@@ -225,8 +237,20 @@ export async function runCase(env, testCase) {
   const blocked = await installRouting(ctx, { apiUrl: api.url, pages, mode: testCase.mode ?? "fixture" });
   const page = await ctx.newPage();
   const consoleLines = [];
+  const panel = { selected: 0, fields: 0, changedAt: Date.now() };
+  page.__panel = panel;
   page.on("console", (m) => {
     const t = m.text();
+    const beat = /refreshMainView selected=\s*(\d+)\s+of fields=\s*(\d+)/.exec(t);
+    if (beat) {
+      const selected = Number(beat[1]);
+      const fields = Number(beat[2]);
+      if (selected !== panel.selected || fields !== panel.fields) {
+        panel.selected = selected;
+        panel.fields = fields;
+        panel.changedAt = Date.now();
+      }
+    }
     if (/\[Tailrd|\[adapter|\[combobox/i.test(t) && !/refreshMainView/.test(t)) consoleLines.push(t.slice(0, 300));
     else if (m.type() === "error" && /chrome-extension:|contentScript|Tailrd|applypilot/i.test(`${t} ${m.location()?.url ?? ""}`)) {
       consoleLines.push(`ERROR ${t.slice(0, 400)}`);

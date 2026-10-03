@@ -47,7 +47,9 @@ export default [
       "#last_name": "Tremblay",
       "#preferred_name": { oneOf: ["Maya", ""] },
       "#email": P.email,
-      "#country": { re: "canada" },
+      // The phone dial-code picker (inside fieldset.phone-input): "Canada"
+      // selects "Canada +1", and the widget then displays only "+1".
+      "#country": { re: "canada|^\+1$" },
       "#phone": PHONE,
       "label:University of": { re: "^no" },
       "label:Miami HQ": null,
@@ -70,7 +72,9 @@ export default [
       "#last_name": "Tremblay",
       "#preferred_name": { oneOf: ["Maya", ""] },
       "#email": P.email,
-      "#country": { re: "canada" },
+      // The phone dial-code picker (inside fieldset.phone-input): "Canada"
+      // selects "Canada +1", and the widget then displays only "+1".
+      "#country": { re: "canada|^\+1$" },
       "#phone": PHONE,
       "#candidate-location": TORONTO,
       "#school--0": { re: "waterloo" },
@@ -99,7 +103,9 @@ export default [
       "#first_name": "Maya",
       "#last_name": "Tremblay",
       "#email": P.email,
-      "#country": { re: "canada" },
+      // The phone dial-code picker (inside fieldset.phone-input): "Canada"
+      // selects "Canada +1", and the widget then displays only "+1".
+      "#country": { re: "canada|^\+1$" },
       "#phone": PHONE,
       "#candidate-location": TORONTO,
       "label:LinkedIn Profile": LINKEDIN,
@@ -237,6 +243,7 @@ export default [
       "radio=QA_12563778": null,
       "radio=QA_12457572": null,
       "radio=QA_12457573": "NO",
+      "label:Do you live in the United States": "NO",
       "radio=QA_12457574": null,
       "label:referred to this job": null,
       "label:Where did you see this job": null,
@@ -259,6 +266,7 @@ export default [
       "label:salary expectations": null,
       "radio=QA_12558420": null,
       "radio=QA_12558421": "YES",
+      "ariaradio=Are you eligible to work in Canada without sponsorship?": "YES",
     },
   }),
   // ----------------------------------------------------------- SmartRecruiters

@@ -69,6 +69,20 @@ const ROW_CATEGORIES: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "experienceCurrent", "school", "degree", "fieldOfStudy", "graduationYear",
 ]);
 
+/** Categories whose answer is a single short fact. */
+const SINGLE_LINE_FACTS: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
+  "firstName", "lastName", "fullName", "email", "phone", "location", "addressStreet", "addressCity",
+  "addressState", "postalCode", "country", "linkedin", "github", "portfolio", "currentCompany", "currentTitle",
+  "school", "degree", "fieldOfStudy", "graduationYear", "salary", "yearsOfExperience", "startDate", "noticePeriod",
+]);
+
+/** A label that is a prompt for prose rather than the name of a fact. */
+function isProsePrompt(label: string): boolean {
+  const words = (label || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 5) return false;
+  return !/\b(name of|what is your|what's your|your current|please (enter|provide|list|state) (your|the name))\b/i.test(label);
+}
+
 /** Controls whose options are fully known at scan time. */
 const CONSTRAINED: ReadonlySet<ControlType> = new Set<ControlType>(["select", "radioGroup", "ariaRadioGroup", "checkboxGroup"]);
 
@@ -159,6 +173,16 @@ export function resolveField(input: FieldResolveInput): FieldResolution {
     source = "category";
   }
   if (value === null || !value.trim()) return none();
+
+  // A one-line fact (a company, a title, a city) never answers a PROSE prompt
+  // in a long-text box: "Let the company know about your interest working
+  // there" classified as currentCompany on the word "company", and the
+  // employer's name was written into it (SmartRecruiters, live 2026-10-03).
+  // A label that actually asks for the name ("What is the name of…") is
+  // answered by the question resolver above, before this point.
+  if (source === "category" && kind === "longText" && SINGLE_LINE_FACTS.has(category) && isProsePrompt(label)) {
+    return none(false, "wrong-kind:prose-prompt");
+  }
 
   // 4. Gate. Single checkboxes keep their own intent logic (checkboxIntent),
   //    which reads the label; everything else must fit its kind.

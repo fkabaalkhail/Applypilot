@@ -77,7 +77,7 @@ function isMultiSelect(trigger: HTMLElement): boolean {
   if (trigger.getAttribute("aria-multiselectable") === "true") return true;
   const ids = `${trigger.getAttribute("aria-controls") ?? ""} ${trigger.getAttribute("aria-owns") ?? ""}`.trim();
   for (const id of ids.split(/\s+/).filter(Boolean)) {
-    if (trigger.ownerDocument.getElementById(id)?.getAttribute("aria-multiselectable") === "true") return true;
+    if (byIdNear(trigger, id)?.getAttribute("aria-multiselectable") === "true") return true;
   }
   // NB Workday's `data-uxi-multiselect-id` on the input is NOT a multi signal and
   // must not be added here: it sits on single-value prompts too (Country Phone
@@ -425,6 +425,31 @@ function typeInto(input: HTMLInputElement, value: string): void {
 // Listbox + option lookup
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve an IDREF (aria-controls / aria-owns / aria-activedescendant) the way
+ * the accessibility tree does for web components: in the trigger's own root
+ * first, then each enclosing shadow root, then the document.
+ * document.getElementById cannot see into a shadow root, and SmartRecruiters'
+ * City autocomplete keeps its menu in the PARENT component's shadow root, so
+ * the menu was never found and City stayed empty (live, 2026-10-03).
+ */
+function byIdNear(el: HTMLElement, id: string): HTMLElement | null {
+  let node: Node | null = el;
+  const seen = new Set<Node>();
+  while (node) {
+    const root = node.getRootNode() as Document | ShadowRoot;
+    if (seen.has(root)) break;
+    seen.add(root);
+    const hit =
+      root instanceof ShadowRoot
+        ? (root.getElementById?.(id) ?? Array.from(root.querySelectorAll("[id]")).find((e) => e.id === id) ?? null)
+        : (root as Document).getElementById(id);
+    if (hit) return hit as HTMLElement;
+    node = root instanceof ShadowRoot ? root.host : null;
+  }
+  return null;
+}
+
 /** Locate the open listbox: prefer the one the combobox points at (it may be
  *  portaled far away in the DOM), else a visible listbox that isn't part of a
  *  DIFFERENT widget. */
@@ -435,7 +460,7 @@ function getListbox(trigger: HTMLElement): HTMLElement | null {
     .split(/\s+/)
     .filter(Boolean);
   for (const id of declared) {
-    const el = doc.getElementById(id);
+    const el = byIdNear(trigger, id);
     if (!el) continue;
     const lb = (el.getAttribute("role") === "listbox" ? el : el.querySelector('[role="listbox"]')) as HTMLElement | null;
     if (lb && isVisible(lb) && hasOptions(lb)) return lb;
@@ -561,10 +586,9 @@ function optionLabels(listbox: HTMLElement): string[] | undefined {
 
 /** The combobox's listbox if it is already in the DOM (no opening, any visibility). */
 function findMountedListbox(trigger: HTMLElement): HTMLElement | null {
-  const doc = trigger.ownerDocument;
   const ids = `${trigger.getAttribute("aria-controls") ?? ""} ${trigger.getAttribute("aria-owns") ?? ""}`.trim();
   for (const id of ids.split(/\s+/).filter(Boolean)) {
-    const el = doc.getElementById(id);
+    const el = byIdNear(trigger, id);
     if (!el) continue;
     const lb = (el.getAttribute("role") === "listbox" ? el : el.querySelector('[role="listbox"]')) as HTMLElement | null;
     if (lb && hasOptions(lb)) return lb;
@@ -622,7 +646,7 @@ function isButtonLikeTrigger(trigger: HTMLElement): boolean {
 function activeDescendantText(trigger: HTMLElement): string {
   const active = trigger.getAttribute("aria-activedescendant");
   if (!active) return "";
-  const opt = trigger.ownerDocument.getElementById(active);
+  const opt = byIdNear(trigger, active);
   return opt ? optionText(opt) : "";
 }
 

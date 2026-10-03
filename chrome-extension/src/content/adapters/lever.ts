@@ -35,20 +35,87 @@ function setInput(el: HTMLInputElement, value: string): void {
   setNativeValue(el, value);
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const norm = (s: string): string => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** Type like a user: key events around a native-setter write + input event,
+ *  which is what Lever's typeahead listens to before it searches. */
+function typeLikeUser(input: HTMLInputElement, text: string): void {
+  const key = text ? text[text.length - 1] : "Backspace";
+  const init: KeyboardEventInit = { key, bubbles: true, cancelable: true, composed: true };
+  input.dispatchEvent(new KeyboardEvent("keydown", init));
+  setInput(input, text);
+  input.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, data: text, inputType: "insertText" }));
+  input.dispatchEvent(new KeyboardEvent("keyup", init));
+}
+
 /**
- * Fill Lever's location typeahead by writing both the visible input and the
- * hidden `selectedLocation` field it actually submits. Resolves filled:true
- * when the hidden field exists (the value will stick); filled:false with a
- * manual hint when the markup is unexpectedly missing it.
+ * The suggestion to pick for `value` ("Toronto, ON, Canada"): one whose first
+ * part is the same city and whose remaining words agree with the rest of the
+ * value. Exactly one such suggestion, or none: picking "Toronto, Ohio" for a
+ * Toronto, Ontario applicant would be a confident wrong answer.
+ */
+export function pickLocationSuggestion(suggestions: string[], value: string): number {
+  const parts = value.split(",").map((p) => norm(p)).filter(Boolean);
+  const city = parts[0];
+  if (!city) return -1;
+  const rest = parts.slice(1).join(" ").split(" ").filter(Boolean);
+  const candidates = suggestions
+    .map((s, i) => ({ i, first: norm(s.split(",")[0]), all: norm(s) }))
+    .filter((c) => c.first === city);
+  if (candidates.length === 1) return candidates[0].i;
+  // Several cities of that name: keep the ones that mention the region/country.
+  const REGION_EXPAND: Record<string, string> = { on: "ontario", bc: "british columbia", qc: "quebec", ab: "alberta", ns: "nova scotia" };
+  const agreeing = candidates.filter((c) =>
+    rest.every((w) => ` ${c.all} `.includes(` ${w} `) || (REGION_EXPAND[w] && c.all.includes(REGION_EXPAND[w])))
+  );
+  return agreeing.length === 1 ? agreeing[0].i : -1;
+}
+
+/**
+ * Fill Lever's "Current location" typeahead the way a user does: type the city,
+ * wait for Lever's own suggestion list, click the suggestion that is the
+ * applicant's city. Lever then writes BOTH the visible input and the hidden
+ * `selectedLocation` it validates on.
+ *
+ * Writing the text (and a hand-built selectedLocation JSON) without picking a
+ * suggestion did not stick on live pages (2026-10-03, three Lever forms): the
+ * typeahead clears an unpicked entry. That path remains only as the fallback
+ * when no suggestion list appears.
  */
 async function fillLeverLocation(input: HTMLInputElement, value: string): Promise<AdapterFillResult> {
-  input.focus({ preventScroll: true });
-  setInput(input, value);
-  // The hidden field is a sibling in the same question container. Search the
-  // parent first (matches Jobright), widening to the enclosing question/form.
   const scope =
     input.closest(".application-question, .application-field, form") ?? input.parentElement ?? document;
   const hidden = scope.querySelector<HTMLInputElement>('input[name="selectedLocation"]');
+  const results = scope.querySelector<HTMLElement>(".dropdown-results");
+  input.focus({ preventScroll: true });
+  if (results) {
+    const query = value.split(",")[0].trim();
+    typeLikeUser(input, query);
+    for (let waited = 0; waited < 4000; waited += 100) {
+      await sleep(100);
+      const items = Array.from(results.children).filter((c) => (c.textContent || "").trim()) as HTMLElement[];
+      if (items.length === 0) continue;
+      const idx = pickLocationSuggestion(items.map((c) => (c.textContent || "").trim()), value);
+      if (idx < 0) break; // a list with no confident match: leave it to the user
+      const item = items[idx];
+      item.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+      item.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+      item.click();
+      await sleep(150);
+      input.blur();
+      const picked = !hidden || Boolean(hidden.value);
+      return picked && input.value.trim()
+        ? { filled: true }
+        : { filled: false, reason: "Lever did not accept the location suggestion. Pick it manually." };
+    }
+    // No (confident) suggestion: undo our query text, the user picks.
+    typeLikeUser(input, "");
+    input.blur();
+    return { filled: false, reason: "Pick your location from Lever's suggestion list." };
+  }
+  // Older markup without a suggestion list: the visible + hidden write.
+  setInput(input, value);
   if (!hidden) {
     input.blur();
     return { filled: false, reason: "Pick your location from Lever's suggestion list." };
