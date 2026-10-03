@@ -58,6 +58,21 @@ export default function SetupWizard() {
     } catch {
       /* non-fatal: user can re-save in Settings */
     }
+    // 1b) The screening answers the extension fills employer questions from,
+    //     through the same endpoint the Profile page and the extension use. Only
+    //     what was answered: a blank stays "not answered", never "No".
+    const screening: Record<string, string> = {};
+    if (answers.authorized_canada) screening.authorizedCanada = answers.authorized_canada === "yes" ? "Yes" : "No";
+    if (answers.authorized_us) screening.authorizedUS = answers.authorized_us === "yes" ? "Yes" : "No";
+    if (answers.expected_graduation) screening.expectedGraduation = answers.expected_graduation;
+    if (answers.work_authorization.includes("needs_sponsorship")) screening.requiresSponsorship = "Yes";
+    if (Object.keys(screening).length > 0) {
+      try {
+        await api.put("/api/user/application-profile", screening);
+      } catch {
+        /* non-fatal: editable on the Profile page */
+      }
+    }
     // 2) Resume already uploaded inline via the real /resumes/upload pipeline
     //    on the resume step (required, finish is gated on it), so nothing to do.
     // 3) Seed dashboard filters so first load is personalized.

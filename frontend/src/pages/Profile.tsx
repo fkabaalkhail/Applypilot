@@ -281,6 +281,11 @@ export default function Profile() {
           securityClearance: d.securityClearance ?? "",
           driversLicense: d.driversLicense ?? "",
           languages: d.languages ?? "",
+          authorizedUS: d.authorizedUS ?? "",
+          authorizedCanada: d.authorizedCanada ?? "",
+          howDidYouHear: d.howDidYouHear ?? "",
+          expectedGraduation: d.expectedGraduation ?? "",
+          gpa: d.gpa ?? "",
           eeo: {
             gender: d.eeo?.gender ?? "",
             race: d.eeo?.race ?? "",
@@ -654,6 +659,18 @@ export default function Profile() {
               onChange={(v) => setExtras({ ...extras, workAuthorization: v })}
               full
             />
+            <SelectField
+              label="Authorized to Work in the US"
+              options={SCREENING_OPTIONS.authorizedUS}
+              value={extras.authorizedUS}
+              onChange={(v) => setExtras({ ...extras, authorizedUS: v })}
+            />
+            <SelectField
+              label="Authorized to Work in Canada"
+              options={SCREENING_OPTIONS.authorizedCanada}
+              value={extras.authorizedCanada}
+              onChange={(v) => setExtras({ ...extras, authorizedCanada: v })}
+            />
             <Field
               label="Requires Sponsorship"
               value={extras.requiresSponsorship}
@@ -714,12 +731,32 @@ export default function Profile() {
               onChange={(v) => setExtras({ ...extras, languages: v })}
               full
             />
+            <Field
+              label="Expected Graduation"
+              type="month"
+              value={extras.expectedGraduation}
+              onChange={(v) => setExtras({ ...extras, expectedGraduation: v })}
+            />
+            <Field
+              label="GPA"
+              placeholder="3.7/4.0"
+              value={extras.gpa}
+              onChange={(v) => setExtras({ ...extras, gpa: v })}
+            />
+            <SelectField
+              label="How Did You Hear About Us"
+              options={SCREENING_OPTIONS.howDidYouHear}
+              value={extras.howDidYouHear}
+              onChange={(v) => setExtras({ ...extras, howDidYouHear: v })}
+            />
           </div>
         ) : (
           <div className="profile-info-grid">
             <InfoRow label="Current / Target Job Title" value={extras.currentTitle} />
             <InfoRow label="Date of Birth" value={extras.dateOfBirth} />
             <InfoRow label="Work Authorization" value={extras.workAuthorization} />
+            <InfoRow label="Authorized to Work in the US" value={extras.authorizedUS} />
+            <InfoRow label="Authorized to Work in Canada" value={extras.authorizedCanada} />
             <InfoRow label="Requires Sponsorship" value={extras.requiresSponsorship} />
             <InfoRow label="Salary Expectation" value={extras.salaryExpectation} />
             <InfoRow label="Years of Experience" value={extras.yearsOfExperience} />
@@ -730,6 +767,9 @@ export default function Profile() {
             <InfoRow label="Security Clearance" value={extras.securityClearance} />
             <InfoRow label="Driver's Licence" value={extras.driversLicense} />
             <InfoRow label="Languages" value={extras.languages} />
+            <InfoRow label="Expected Graduation" value={extras.expectedGraduation} />
+            <InfoRow label="GPA" value={extras.gpa} />
+            <InfoRow label="How Did You Hear About Us" value={extras.howDidYouHear} />
           </div>
         )}
       </Section>

@@ -102,6 +102,16 @@ class ApplicationProfileOut(BaseModel):
     securityClearance: str = ""
     driversLicense: str = ""
     languages: str = ""
+    # Added 2026-10-03, so the extension answers without an LLM the questions
+    # no mapping can settle: per-country work authorization (US / Canada,
+    # "Yes" | "No"), the "How did you hear about us" channel, the expected
+    # graduation MONTH ("YYYY-MM", for season / month-range options) and GPA.
+    # Same storage contract as the eight above.
+    authorizedUS: str = ""
+    authorizedCanada: str = ""
+    howDidYouHear: str = ""
+    expectedGraduation: str = ""
+    gpa: str = ""
     education: list[EducationEntry] = []
     experience: list[ExperienceEntry] = []
     skills: list[str] = []
@@ -164,6 +174,11 @@ class ApplicationProfileIn(BaseModel):
     securityClearance: str | None = None
     driversLicense: str | None = None
     languages: str | None = None
+    authorizedUS: str | None = None
+    authorizedCanada: str | None = None
+    howDidYouHear: str | None = None
+    expectedGraduation: str | None = None
+    gpa: str | None = None
     eeo: EeoIn | None = None
 
 
@@ -217,6 +232,14 @@ _SCREENING_KEYS: dict[str, str] = {
     "securityClearance": "Security clearance",
     "driversLicense": "Driver's licence",
     "languages": "Languages",
+    # 2026-10-03. "Authorized to work in the US" contains "authoriz": it MUST
+    # stay in this exact-key set, or substring mining would serve it back as
+    # the general work-authorization answer.
+    "authorizedUS": "Authorized to work in the US",
+    "authorizedCanada": "Authorized to work in Canada",
+    "howDidYouHear": "How did you hear about us",
+    "expectedGraduation": "Expected graduation",
+    "gpa": "GPA",
 }
 
 # Keys read by EXACT MATCH ONLY, never mined by substring, for the reason
@@ -250,7 +273,7 @@ def _stored_dob(prefilled: dict | None) -> str:
 
 
 def _stored_screening(prefilled: dict | None) -> dict[str, str]:
-    """The eight screening answers, keyed by API field name.
+    """The screening answers (_SCREENING_KEYS), keyed by API field name.
 
     Exact-key only, for the same reason as :func:`_stored_dob`: every one of
     these has a fixed key that the PUT writes, so a fuzzy read could only ever
@@ -588,7 +611,7 @@ def update_application_profile(
         answers[_SALARY_KEY] = body.salaryExpectation
     if body.dateOfBirth is not None:
         answers[_DOB_KEY] = body.dateOfBirth.strip()
-    # The eight screening answers, each under its own exact key. _stored_screening
+    # The screening answers, each under its own exact key. _stored_screening
     # reads these back by exact match only, so nothing here can be mined into a
     # neighbouring answer and nothing here can shadow one.
     for in_field, key in _SCREENING_KEYS.items():

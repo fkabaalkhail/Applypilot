@@ -21,6 +21,11 @@ const SCREENING = {
   securityClearance: "None",
   driversLicense: "No",
   languages: "English (Native), French (Professional)",
+  authorizedUS: "No",
+  authorizedCanada: "Yes",
+  howDidYouHear: "Job board",
+  expectedGraduation: "2027-04",
+  gpa: "3.7/4.0",
 } as const;
 
 describe("normalizeProfile", () => {

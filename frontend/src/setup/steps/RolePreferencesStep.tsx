@@ -5,6 +5,13 @@ function toggle(list: string[], v: string): string[] {
   return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 }
 
+// Asked here because almost every application asks them, per country, and no
+// profile text can answer them reliably (the extension fills them from these).
+const AUTH_QUESTIONS = [
+  ["authorized_canada", "Are you authorized to work in Canada?"],
+  ["authorized_us", "Are you authorized to work in the US?"],
+] as const;
+
 export function RolePreferencesStep({ answers, update }: StepProps) {
   return (
     <>
@@ -41,6 +48,20 @@ export function RolePreferencesStep({ answers, update }: StepProps) {
 
       <div className="setup-field">
         <label className="setup-label">Work Authorization</label>
+        {AUTH_QUESTIONS.map(([key, text]) => (
+          <div key={key} className="setup-yesno">
+            <span className="setup-yesno-q">{text}</span>
+            <div className="setup-checkgrid">
+              {(["yes", "no"] as const).map((v) => (
+                <label key={v} className={`setup-check${answers[key] === v ? " checked" : ""}`}>
+                  <input type="radio" name={key} checked={answers[key] === v}
+                    onChange={() => update({ [key]: v })} />
+                  {v === "yes" ? "Yes" : "No"}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
         <label className={`setup-check${answers.work_authorization.includes("needs_sponsorship") ? " checked" : ""}`}>
           <input type="checkbox" checked={answers.work_authorization.includes("needs_sponsorship")}
             onChange={() => update({ work_authorization: toggle(answers.work_authorization, "needs_sponsorship") })} />

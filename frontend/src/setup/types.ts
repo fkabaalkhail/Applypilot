@@ -10,6 +10,11 @@ export interface SetupAnswers {
   open_to_remote: boolean;
   work_authorization: string[]; // e.g. ["needs_sponsorship"] (captured only)
   experience_level: string;     // one EXPERIENCE_OPTIONS value: "internship" | "new_grad"
+  // Screening answers the extension fills employer questions from, saved to the
+  // application profile on finish (2026-10-03). "" = not answered.
+  authorized_canada: "" | "yes" | "no";
+  authorized_us: "" | "yes" | "no";
+  expected_graduation: string;  // "YYYY-MM"
 }
 
 export interface StepProps {
@@ -34,4 +39,7 @@ export const emptyAnswers: SetupAnswers = {
   open_to_remote: false,
   work_authorization: [],
   experience_level: "",
+  authorized_canada: "",
+  authorized_us: "",
+  expected_graduation: "",
 };

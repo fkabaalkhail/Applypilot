@@ -100,9 +100,11 @@ describe("contract §C, Personal tab labels", () => {
 });
 
 describe("contract §C, Preference tab labels", () => {
-  it("renders the three existing plus all eight screening answers", () => {
+  it("renders the three existing plus every screening answer (contract §C; 2026-10-03 additions)", () => {
     expect(labels(section("preference"))).toEqual([
       "Work Authorization",
+      "Authorized to Work in the US",
+      "Authorized to Work in Canada",
       "Requires Sponsorship",
       "Salary Expectation",
       "Willing to Relocate",
@@ -113,6 +115,9 @@ describe("contract §C, Preference tab labels", () => {
       "Security Clearance",
       "Driver's Licence",
       "Languages",
+      "Expected Graduation",
+      "GPA",
+      "How Did You Hear About Us",
     ]);
   });
 
@@ -185,6 +190,9 @@ describe("contract §D, option vocabularies", () => {
       workPreference: ["Remote", "Hybrid", "On-site", "No preference"],
       securityClearance: ["None", "Active clearance", "Eligible / previously held"],
       driversLicense: ["Yes", "No"],
+      authorizedUS: ["Yes", "No"],
+      authorizedCanada: ["Yes", "No"],
+      howDidYouHear: ["LinkedIn", "Job board", "Company website", "Referral", "Career fair", "Social media", "Other"],
     });
   });
 

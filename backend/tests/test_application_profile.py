@@ -324,6 +324,11 @@ _SCREENING_PAYLOAD = {
     "securityClearance": "None",
     "driversLicense": "Yes",
     "languages": "English (Native), French (Professional)",
+    "authorizedUS": "No",
+    "authorizedCanada": "Yes",
+    "howDidYouHear": "LinkedIn",
+    "expectedGraduation": "2027-04",
+    "gpa": "3.7/4.0",
 }
 
 
@@ -355,6 +360,11 @@ def test_screening_answers_use_the_exact_contract_keys(client, db_session, user)
         "Security clearance": "None",
         "Driver's licence": "Yes",
         "Languages": "English (Native), French (Professional)",
+        "Authorized to work in the US": "No",
+        "Authorized to work in Canada": "Yes",
+        "How did you hear about us": "LinkedIn",
+        "Expected graduation": "2027-04",
+        "GPA": "3.7/4.0",
     }
 
 
@@ -365,6 +375,18 @@ def test_screening_answers_default_empty(client, db_session, user):
     body = client.get("/api/user/application-profile").json()
     for field in _SCREENING_PAYLOAD:
         assert body[field] == "", field
+
+
+def test_per_country_authorization_is_never_mined_as_the_general_answer(client, db_session, user):
+    """"Authorized to work in the US" contains "authoriz": were it not an exact
+    key, substring mining would serve "No" back as the user's GENERAL
+    work-authorization answer, and the extension would write it to every
+    employer's "are you authorized to work?" question."""
+    client.put("/api/user/application-profile", json={"authorizedUS": "No", "authorizedCanada": "Yes"})
+    body = client.get("/api/user/application-profile").json()
+    assert body["authorizedUS"] == "No"
+    assert body["authorizedCanada"] == "Yes"
+    assert body["workAuthorization"] == ""
 
 
 def test_screening_answers_are_never_substring_mined(client, db_session, user):

@@ -30,6 +30,12 @@ export function ExperienceStep({ answers, update }: StepProps) {
       </div>
 
       <div className="setup-field">
+        <label className="setup-label" htmlFor="setup-expected-graduation">Expected graduation (optional)</label>
+        <input id="setup-expected-graduation" type="month" className="setup-input" value={answers.expected_graduation}
+          onChange={(e) => update({ expected_graduation: e.target.value })} />
+      </div>
+
+      <div className="setup-field">
         <label className="setup-label">Job Type</label>
         <div className="setup-checkgrid">
           {JOB_TYPES.map((t) => (

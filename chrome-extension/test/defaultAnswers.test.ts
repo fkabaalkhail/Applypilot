@@ -122,3 +122,34 @@ describe("how did you hear about us", () => {
     expect(value(ask("If you heard about us through a referral, please state the Brex employee's name", { controlType: "text", kind: "text" }))).toBe("abstain");
   });
 });
+
+describe("profile answers added 2026-10-03 (no mapping can supply these)", () => {
+  it("explicit per-country work authorization answers that country's question", () => {
+    const p = { ...SPARSE_CANADIAN, authorizedUS: "No", authorizedCanada: "Yes" };
+    expect(value(ask("Are you legally authorized to work in the United States?", { options: YES_NO }, p))).toBe("No");
+    expect(value(ask("Will you now or in the future require sponsorship to work in the United States?", { options: YES_NO }, p))).toBe("Yes");
+    expect(value(ask("Are you legally authorized to work in Canada?", { options: YES_NO }, p))).toBe("Yes");
+    // Without it, a Canadian citizen's US answer stays the applicant's to give.
+    expect(value(ask("Are you legally authorized to work in the United States?", { options: YES_NO }))).toBe("abstain");
+  });
+
+  it("the expected graduation MONTH picks month-range and season options a year alone cannot", () => {
+    const p = { ...SPARSE_CANADIAN, expectedGraduation: "2027-04" };
+    const superhuman = ["2026", "January - June 2027", "December 2027", "May/June 2028", "December 2028", "2029"];
+    expect(value(ask("When is your expected graduation date?", { options: superhuman }, p))).toBe("January - June 2027");
+    const zip = ["I have already graduated", "December 2026 - November 2027", "December 2027 - November 2028"];
+    expect(value(ask("When is your anticipated graduation date?", { options: zip }, p))).toBe("December 2026 - November 2027");
+    const hermeus = ["Fall 2026", "Spring 2027", "Summer 2027", "Fall 2027", "Spring 2028"];
+    expect(value(ask("When do you expect to graduate?", { options: hermeus }, p))).toBe("Spring 2027");
+    // A year alone still fits several: refused.
+    expect(value(ask("When is your expected graduation date?", { options: superhuman }))).toBe("abstain");
+  });
+
+  it("GPA from the profile, bucketed by number; graduate GPA is N/A without a graduate degree", () => {
+    const p = { ...SPARSE_CANADIAN, gpa: "3.7/4.0" };
+    expect(value(ask("If you are currently enrolled in or have graduated from a university, what is your GPA?", { options: ["4.0", "3.5 - 3.9", "3.0 - 3.4", "Below 3.0"] }, p))).toBe("3.5 - 3.9");
+    expect(value(ask("Cumulative GPA", { controlType: "text", kind: "text" }, p))).toBe("3.7/4.0");
+    expect(value(ask("GPA (Graduate)*", { options: ["N/A", "3.5+", "3.0-3.49", "Below 3.0"] }, p))).toBe("N/A");
+    expect(value(ask("Cumulative GPA", { controlType: "text", kind: "text" }))).toBe("abstain");
+  });
+});

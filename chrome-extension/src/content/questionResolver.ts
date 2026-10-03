@@ -615,6 +615,14 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     if (g.precision !== "year") {
       const hit = pickOption(q.options, `${monthName} ${year}`);
       if (hit) return answer(hit, "graduation:month-year");
+      // "January - June 2027", "December 2026 - November 2027", "Spring 2027":
+      // the one option whose months contain the graduation month.
+      const at = g.earliest.getUTCFullYear() * 12 + g.earliest.getUTCMonth();
+      const containing = q.options.filter((o) => {
+        const span = optionMonthSpan(o);
+        return span !== null && span[0] <= at && at <= span[1];
+      });
+      if (containing.length === 1) return answer(containing[0], "graduation:month-range");
     }
     const withYear = q.options.filter((o) => o.includes(year));
     if (withYear.length === 1) return answer(withYear[0], "graduation:only-option-in-year");
@@ -624,6 +632,63 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     return g.precision === "year" ? answer(year, "graduation:year-as-date", "high") : answer(formatDateFor(g.earliest, q), "graduation:date");
   }
   return answer(year, "graduation:year");
+}
+
+const MONTH_WORDS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+/** Academic seasons as months (0-11): graduation in April / May is Spring. */
+const SEASON_MONTHS: Record<string, [number, number]> = { spring: [2, 4], summer: [5, 7], fall: [8, 11], autumn: [8, 11] };
+
+/**
+ * The absolute months [from, to] (year * 12 + month) an option covers, or null:
+ * "December 2027", "May/June 2028", "January - June 2027",
+ * "December 2026 - November 2027", "Spring 2027". Winter is left out: it means
+ * Dec-Feb in one convention and Jan-Apr in another (Canadian co-op terms).
+ */
+export function optionMonthSpan(option: string): [number, number] | null {
+  const t = qnorm(option);
+  const years = (t.match(/\b(19|20)\d{2}\b/g) ?? []).map(Number);
+  if (years.length === 0 || years.length > 2) return null;
+  const season = /\b(spring|summer|fall|autumn)\b/.exec(t);
+  if (season && years.length === 1) {
+    const [a, b] = SEASON_MONTHS[season[1]];
+    return [years[0] * 12 + a, years[0] * 12 + b];
+  }
+  const months: number[] = [];
+  for (const w of t.split(" ")) {
+    const i = MONTH_WORDS.indexOf(w.slice(0, 3));
+    if (i >= 0 && /^[a-z]+$/.test(w) && (w.length === 3 || w.startsWith(MONTH_WORDS[i]))) months.push(i);
+  }
+  if (months.length === 0 || months.length > 2) return null;
+  if (years.length === 2) {
+    if (months.length !== 2) return null;
+    return [years[0] * 12 + months[0], years[1] * 12 + months[1]];
+  }
+  const y = years[0];
+  return [y * 12 + months[0], y * 12 + months[months.length - 1]];
+}
+
+// ----- GPA --------------------------------------------------------------------------
+
+/** "GPA", "Cumulative GPA", "Grade point average": the applicant's stated GPA;
+ *  a graduate / doctorate GPA they cannot have is that list's "N/A". */
+function resolveGpa(q: QuestionInput, n: string, profile: UserApplicationProfile, facts: ProfileFacts): QuestionResult {
+  if (!/\b(gpa|cgpa|grade point average|cumulative average)\b/.test(n)) return null;
+  if (/\b(scale|out of|maximum|max)\b/.test(n) && !/\byour\b/.test(n)) return null;
+  const higher = /\b(graduate|masters?|doctorate|doctoral|phd|mba)\b/.test(n) && !/\bundergraduate\b/.test(n);
+  const rank = facts.education.highestRank?.value ?? null;
+  if (higher && rank !== null && rank < 5) {
+    const na = (q.options ?? []).filter((o) => /^(n a|na|not applicable|none|i do not have|no graduate)/.test(qnorm(o)));
+    return na.length === 1 ? answer(na[0], "gpa:not-applicable") : abstain("gpa:no-graduate-degree");
+  }
+  const stated = (profile.gpa ?? "").trim();
+  if (!stated) return abstain("gpa:unknown");
+  const num = /\d+(\.\d+)?/.exec(stated)?.[0] ?? null;
+  if (q.options && q.options.length) {
+    const hit = (num && pickOption(q.options, num)) || pickOption(q.options, stated);
+    return hit ? answer(hit, "gpa:option") : abstain("gpa:no-matching-option");
+  }
+  if (q.kind === "number") return num ? answer(num, "gpa:number") : abstain("gpa:not-numeric");
+  return answer(stated, "gpa:stated");
 }
 
 /** "What school do you attend?", "Where did you complete your undergraduate degree?" */
@@ -851,6 +916,10 @@ function resolvePhoneCode(q: QuestionInput, n: string, facts: ProfileFacts, prof
 const UNANSWERABLE =
   /\bwho referred\b|\breferred by (whom|who)\b|\b(name|names) of (the |your )?(referr\w*|employee)\b|\bdo you think\b|\bin your opinion\b|\bwhat do you think\b|\bwhy (do|are|did|would) you\b|\bdescribe (a|an)\b|\btell us about (a|an|yourself)\b|\bwhat interests you\b|\bcriminal\b|\bconvicted\b|\bfelony\b/;
 
+/** A follow-up conditioned on an earlier ANSWER. */
+const FOLLOW_UP =
+  /^if (yes|no|so|other|applicable|not|not applicable|you (answered|selected|chose|checked|said|indicated|replied|ticked|heard)|your answer|the answer|any of the above|none of the above|referred|referral)\b/;
+
 /** Abstentions that only mean "the profile is silent": the default answer, if
  *  one applies, takes over (a profile fact always runs first). */
 const DEFAULTABLE = /^(relocation:unknown|former-employee:no-history|former-employee:no-company|age-gate:no-dob)/;
@@ -870,8 +939,10 @@ export function resolveQuestion(
   if (!raw) return null;
   const n = qnorm(raw);
   // Conditional follow-ups ("If 'Other' selected…", "If yes, please explain"):
-  // what they ask depends on an answer we did not give.
-  if (/^if\b/.test(n)) return abstain("conditional-follow-up");
+  // what they ask depends on an answer we did not give. A condition on the
+  // APPLICANT ("If you are currently enrolled…, what is your GPA?") is an
+  // ordinary question (Shield AI on Lever, live 2026-10-03).
+  if (FOLLOW_UP.test(n) || /^if\s*['"“‘]/i.test(raw)) return abstain("conditional-follow-up");
   if (UNANSWERABLE.test(n)) return abstain("unanswerable-from-profile");
   // The profile's education rows are post-secondary: their school and year
   // answer the university question, never "High School Name" / "Year of High
@@ -895,6 +966,7 @@ export function resolveQuestion(
     resolveEducationLevel(q, n, facts) ??
     resolveEnrollment(q, n, facts) ??
     resolveGraduation(q, n, facts) ??
+    resolveGpa(q, n, profile, facts) ??
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??
     resolveStatedFacts(q, n, profile) ??

@@ -62,6 +62,8 @@
 }
 .setup-check input { flex-shrink: 0; }
 .setup-check.checked { border-color: var(--accent, #533afd); background: var(--accent-light, #eef0ff); }
+.setup-yesno { margin-bottom: 12px; }
+.setup-yesno-q { display: block; font-size: 13px; color: var(--text, #1a1a1a); margin-bottom: 6px; }
 .setup-error { color: #d1435b; font-size: 13px; margin-top: -12px; margin-bottom: 16px; }
 .setup-btn {
   font: inherit; font-size: 14px; font-weight: 650; cursor: pointer; border: none; border-radius: 9999px;

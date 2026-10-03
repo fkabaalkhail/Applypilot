@@ -258,7 +258,7 @@ export function locationFacts(profile: UserApplicationProfile): LocationFacts {
 // Work authorization
 // ---------------------------------------------------------------------------
 
-export type AuthBasis = "citizen" | "permanent_resident" | "work_permit" | "student" | "statement" | "denied";
+export type AuthBasis = "citizen" | "permanent_resident" | "work_permit" | "student" | "statement" | "denied" | "stated";
 
 export interface CountryAuth {
   /** Authorized to work there: true/false, or null when the profile does not say. */
@@ -359,6 +359,7 @@ export function workAuthFacts(profile: UserApplicationProfile): WorkAuthFacts {
   if (countries.length === 0) {
     if (denied || bareYes === false) unscopedAuthorized = false;
     else if (affirmative || bareYes === true || citizen || pr) unscopedAuthorized = true;
+    applyExplicitCountries(profile, byCountry);
     return { byCountry, statedSponsorship, unscopedAuthorized };
   }
 
@@ -371,7 +372,28 @@ export function workAuthFacts(profile: UserApplicationProfile): WorkAuthFacts {
     else if (permit) set(c.code, { authorized: true, needsSponsorship: null, basis: "work_permit" });
     else if (affirmative || bareYes === true) set(c.code, { authorized: true, needsSponsorship: null, basis: "statement" });
   }
+  applyExplicitCountries(profile, byCountry);
   return { byCountry, statedSponsorship, unscopedAuthorized };
+}
+
+/**
+ * The applicant's explicit Yes/No per country (profile "Authorized to work in
+ * the US / in Canada", 2026-10-03). It answers exactly the question an
+ * employer asks, so it wins over the free-text reading for that country. Not
+ * authorized there means sponsorship is needed to work there; authorized keeps
+ * what the text said about the future (OPT: authorized now, sponsored later).
+ */
+function applyExplicitCountries(profile: UserApplicationProfile, byCountry: Map<string, CountryAuth>): void {
+  const explicit: Array<[string, string | undefined]> = [
+    ["US", profile.authorizedUS],
+    ["CA", profile.authorizedCanada],
+  ];
+  for (const [code, stated] of explicit) {
+    const p = polarityOf(stated ?? "");
+    if (p === null) continue;
+    const prev = byCountry.get(code);
+    byCountry.set(code, { authorized: p, needsSponsorship: p ? (prev?.needsSponsorship ?? false) : true, basis: "stated" });
+  }
 }
 
 /**
@@ -574,10 +596,18 @@ export interface EducationFacts {
 
 export function educationFacts(profile: UserApplicationProfile, today: Date): EducationFacts {
   const now = startOfDay(today);
-  const entries: EducationEntryFacts[] = (profile.education ?? [])
-    .filter((e) => e && (e.school?.trim() || e.degree?.trim()))
+  const rows = (profile.education ?? []).filter((e) => e && (e.school?.trim() || e.degree?.trim()));
+  // The stated expected graduation MONTH ("2027-04") refines the row it belongs
+  // to: the one graduating that year (or the only row, when it has no date).
+  const expected = parseDateSpan((profile.expectedGraduation ?? "").trim());
+  const refine = (g: DateSpan | null): DateSpan | null => {
+    if (!expected || expected.precision === "year") return g;
+    if (!g) return rows.length === 1 ? expected : g;
+    return g.precision === "year" && g.earliest.getUTCFullYear() === expected.earliest.getUTCFullYear() ? expected : g;
+  };
+  const entries: EducationEntryFacts[] = rows
     .map((e) => {
-      const graduation = parseDateSpan(String(e.graduationYear ?? "").trim());
+      const graduation = refine(parseDateSpan(String(e.graduationYear ?? "").trim()));
       let completed: boolean | null = null;
       if (graduation) {
         if (graduation.latest < now) completed = true;

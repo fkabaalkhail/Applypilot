@@ -85,6 +85,16 @@ export interface UserApplicationProfile {
    *  media | Other). Blank means "Job board", the truthful default for a
    *  Tailrd user (see content/defaultAnswers.ts). */
   howDidYouHear?: string;
+  /** Explicit "Authorized to work in the US / in Canada": "Yes" | "No". Each
+   *  answers exactly the employer's question for that country and wins over
+   *  the free-text workAuthorization reading (profileFacts). */
+  authorizedUS?: string;
+  authorizedCanada?: string;
+  /** Expected graduation MONTH, "YYYY-MM": answers season / term / month-range
+   *  graduation options that a year alone fits several of. */
+  expectedGraduation?: string;
+  /** "3.7/4.0", "3.7", "85%". */
+  gpa?: string;
   education: EducationEntry[];
   experience: ExperienceEntry[];
   skills: string[];

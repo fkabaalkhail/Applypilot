@@ -75,6 +75,13 @@ export function normalizeProfile(raw: Partial<UserApplicationProfile>): UserAppl
     securityClearance: opt(raw.securityClearance),
     driversLicense: opt(raw.driversLicense),
     languages: opt(raw.languages),
+    // Added 2026-10-03: the answers no mapping can supply. Listed here or the
+    // extension never sees them, whatever the API returns.
+    howDidYouHear: opt(raw.howDidYouHear),
+    authorizedUS: opt(raw.authorizedUS),
+    authorizedCanada: opt(raw.authorizedCanada),
+    expectedGraduation: opt(raw.expectedGraduation),
+    gpa: opt(raw.gpa),
     education: Array.isArray(raw.education) ? raw.education : [],
     experience: Array.isArray(raw.experience) ? raw.experience : [],
     skills: Array.isArray(raw.skills) ? raw.skills.filter((s): s is string => typeof s === "string") : [],

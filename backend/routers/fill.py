@@ -94,6 +94,11 @@ class ApplicantProfile(BaseModel):
     securityClearance: str = ""
     driversLicense: str = ""
     languages: str = ""
+    authorizedUS: str = ""
+    authorizedCanada: str = ""
+    howDidYouHear: str = ""
+    expectedGraduation: str = ""
+    gpa: str = ""
     skills: list[str] = []
     experience: list[str] = []   # pre-flattened "Title at Company (dates)" lines
     education: list[str] = []     # pre-flattened "Degree, School (year)" lines
@@ -334,6 +339,11 @@ def _profile_context(p: ApplicantProfile) -> str:
         ("Security clearance", p.securityClearance),
         ("Driver's licence", p.driversLicense),
         ("Languages", p.languages),
+        ("Authorized to work in the US", p.authorizedUS),
+        ("Authorized to work in Canada", p.authorizedCanada),
+        ("How did you hear about us", p.howDidYouHear),
+        ("Expected graduation", p.expectedGraduation),
+        ("GPA", p.gpa),
     ):
         if value:
             lines.append(f"{label}: {value}")

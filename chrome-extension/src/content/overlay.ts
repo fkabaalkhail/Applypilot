@@ -2706,6 +2706,11 @@ export interface EditableProfileDraft {
   securityClearance: string;
   driversLicense: string;
   languages: string;
+  authorizedUS: string;
+  authorizedCanada: string;
+  howDidYouHear: string;
+  expectedGraduation: string;
+  gpa: string;
   eeo: {
     gender: string;
     race: string;
@@ -2757,6 +2762,10 @@ export const SCREENING_CHOICES = {
   workPreference: ["Remote", "Hybrid", "On-site", "No preference"],
   securityClearance: ["None", "Active clearance", "Eligible / previously held"],
   driversLicense: ["Yes", "No"],
+  // Added 2026-10-03 (TWIN of SCREENING_OPTIONS in frontend/src/lib/profileExtras.ts).
+  authorizedUS: ["Yes", "No"],
+  authorizedCanada: ["Yes", "No"],
+  howDidYouHear: ["LinkedIn", "Job board", "Company website", "Referral", "Career fair", "Social media", "Other"],
 } satisfies Partial<Record<keyof EditableProfileDraft, string[]>>;
 
 /** The profile the scanner + AI actually fill from: the synced profile with the
@@ -2797,6 +2806,11 @@ export function draftFromProfile(p: UserApplicationProfile): EditableProfileDraf
     securityClearance: p.securityClearance ?? "",
     driversLicense: p.driversLicense ?? "",
     languages: p.languages ?? "",
+    authorizedUS: p.authorizedUS ?? "",
+    authorizedCanada: p.authorizedCanada ?? "",
+    howDidYouHear: p.howDidYouHear ?? "",
+    expectedGraduation: p.expectedGraduation ?? "",
+    gpa: p.gpa ?? "",
     eeo: {
       gender: p.eeo?.gender ?? "",
       race: p.eeo?.race ?? "",
@@ -3000,6 +3014,8 @@ export function infoSectionHTML(
       // resolves from a stated fact instead of asking the model to infer it.
       return `
         ${apField("workAuthorization", "Work Authorization", d.workAuthorization)}
+        ${apSelect("authorizedUS", "Authorized to Work in the US", d.authorizedUS)}
+        ${apSelect("authorizedCanada", "Authorized to Work in Canada", d.authorizedCanada)}
         ${apField("requiresSponsorship", "Requires Sponsorship", d.requiresSponsorship)}
         ${apField("salaryExpectation", "Salary Expectation", d.salaryExpectation)}
         ${apSelect("willingToRelocate", "Willing to Relocate", d.willingToRelocate)}
@@ -3010,6 +3026,9 @@ export function infoSectionHTML(
         ${apSelect("securityClearance", "Security Clearance", d.securityClearance)}
         ${apSelect("driversLicense", "Driver's Licence", d.driversLicense)}
         ${apField("languages", "Languages", d.languages, { placeholder: "English (Native), French (Professional)" })}
+        ${apField("expectedGraduation", "Expected Graduation", d.expectedGraduation, { type: "month" })}
+        ${apField("gpa", "GPA", d.gpa, { placeholder: "3.7/4.0" })}
+        ${apSelect("howDidYouHear", "How Did You Hear About Us", d.howDidYouHear)}
         ${renderSectionCustom("preference", ed)}
       `;
     case "eeo":

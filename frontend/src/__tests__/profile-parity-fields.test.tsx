@@ -49,6 +49,10 @@ const CONTRACT_OPTIONS = {
   workPreference: ["Remote", "Hybrid", "On-site", "No preference"],
   securityClearance: ["None", "Active clearance", "Eligible / previously held"],
   driversLicense: ["Yes", "No"],
+  // 2026-10-03 additions (twin: chrome-extension overlay.ts SCREENING_CHOICES).
+  authorizedUS: ["Yes", "No"],
+  authorizedCanada: ["Yes", "No"],
+  howDidYouHear: ["LinkedIn", "Job board", "Company website", "Referral", "Career fair", "Social media", "Other"],
   genderIdentity: ["Cisgender", "Transgender", "Non-binary", "Prefer not to say"],
   pronouns: ["He/Him", "She/Her", "They/Them", "Prefer not to say"],
   sexualOrientation: ["Heterosexual", "Gay or Lesbian", "Bisexual", "Prefer not to say"],
@@ -379,11 +383,17 @@ describe("Profile: parity-contract fields", () => {
     expect(SCREENING_OPTIONS.workPreference).toEqual(CONTRACT_OPTIONS.workPreference);
     expect(SCREENING_OPTIONS.securityClearance).toEqual(CONTRACT_OPTIONS.securityClearance);
     expect(SCREENING_OPTIONS.driversLicense).toEqual(CONTRACT_OPTIONS.driversLicense);
+    expect(SCREENING_OPTIONS.authorizedUS).toEqual(CONTRACT_OPTIONS.authorizedUS);
+    expect(SCREENING_OPTIONS.authorizedCanada).toEqual(CONTRACT_OPTIONS.authorizedCanada);
+    expect(SCREENING_OPTIONS.howDidYouHear).toEqual(CONTRACT_OPTIONS.howDidYouHear);
     expect(Object.keys(SCREENING_OPTIONS)).toEqual([
       "willingToRelocate",
       "workPreference",
       "securityClearance",
       "driversLicense",
+      "authorizedUS",
+      "authorizedCanada",
+      "howDidYouHear",
     ]);
 
     expect(EEO_OPTIONS.gender).toEqual(CONTRACT_EEO_UNCHANGED.gender);

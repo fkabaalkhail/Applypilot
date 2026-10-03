@@ -38,6 +38,11 @@ export const MOCK_PROFILE: UserApplicationProfile = {
   securityClearance: "None",
   driversLicense: "Yes",
   languages: "English (Native), French (Professional)",
+  authorizedUS: "No",
+  authorizedCanada: "Yes",
+  howDidYouHear: "LinkedIn",
+  expectedGraduation: "2026-04",
+  gpa: "3.6/4.0",
   education: [
     {
       school: "University of Ottawa",

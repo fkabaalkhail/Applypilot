@@ -70,6 +70,17 @@ export interface ProfileExtras {
   securityClearance: string;
   driversLicense: string;
   languages: string;
+  /**
+   * Added 2026-10-03: the answers no mapping can supply, so the extension
+   * answers these questions without AI. authorizedUS / authorizedCanada
+   * ("Yes" | "No") answer exactly the per-country question an employer asks;
+   * expectedGraduation is a MONTH ("YYYY-MM"); gpa as the user states it.
+   */
+  authorizedUS: string;
+  authorizedCanada: string;
+  howDidYouHear: string;
+  expectedGraduation: string;
+  gpa: string;
   eeo: EeoData;
 }
 
@@ -109,6 +120,11 @@ export interface ProfileUpdatePayload {
   securityClearance?: string;
   driversLicense?: string;
   languages?: string;
+  authorizedUS?: string;
+  authorizedCanada?: string;
+  howDidYouHear?: string;
+  expectedGraduation?: string;
+  gpa?: string;
   eeo?: Partial<EeoData>;
 }
 
@@ -142,6 +158,11 @@ export const EMPTY_PROFILE_EXTRAS: ProfileExtras = {
   securityClearance: "",
   driversLicense: "",
   languages: "",
+  authorizedUS: "",
+  authorizedCanada: "",
+  howDidYouHear: "",
+  expectedGraduation: "",
+  gpa: "",
   eeo: { ...EMPTY_EEO },
 };
 
@@ -205,6 +226,10 @@ export const SCREENING_OPTIONS = {
   workPreference: ["Remote", "Hybrid", "On-site", "No preference"],
   securityClearance: ["None", "Active clearance", "Eligible / previously held"],
   driversLicense: ["Yes", "No"],
+  // Added 2026-10-03 (TWIN of SCREENING_CHOICES in chrome-extension/src/content/overlay.ts).
+  authorizedUS: ["Yes", "No"],
+  authorizedCanada: ["Yes", "No"],
+  howDidYouHear: ["LinkedIn", "Job board", "Company website", "Referral", "Career fair", "Social media", "Other"],
 } as const;
 
 /**
@@ -236,6 +261,11 @@ export function computeProfileDiff(
     "securityClearance",
     "driversLicense",
     "languages",
+    "authorizedUS",
+    "authorizedCanada",
+    "howDidYouHear",
+    "expectedGraduation",
+    "gpa",
   ];
   for (const key of flatKeys) {
     if (current[key] !== original[key]) {

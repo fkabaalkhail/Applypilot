@@ -121,6 +121,42 @@ describe("SetupWizard", () => {
     expect(navigateMock).toHaveBeenCalledWith("/app");
   });
 
+  it("saves the work-authorization and graduation answers to the application profile the extension fills from", async () => {
+    renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: /next/i })); // welcome -> role
+    fireEvent.click(screen.getByText("Software Engineering"));
+    const countrySelect = screen.getByText("Select country").closest("select") as HTMLSelectElement;
+    fireEvent.change(countrySelect, { target: { value: "CA" } });
+    const yesCanada = document.querySelector('input[name="authorized_canada"]') as HTMLInputElement; // first = Yes
+    fireEvent.click(yesCanada);
+    const noUs = document.querySelectorAll('input[name="authorized_us"]')[1] as HTMLInputElement; // second = No
+    fireEvent.click(noUs);
+    fireEvent.click(screen.getByText("I will need visa sponsorship"));
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    fireEvent.click(screen.getByText("Internship / Co-op"));
+    fireEvent.change(screen.getByLabelText(/expected graduation/i), { target: { value: "2027-04" } });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await uploadResumeOnFinalStep();
+    fireEvent.click(screen.getByRole("button", { name: /start matching/i }));
+    await waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith("/api/user/application-profile", {
+        authorizedCanada: "Yes",
+        authorizedUS: "No",
+        expectedGraduation: "2027-04",
+        requiresSponsorship: "Yes",
+      })
+    );
+  });
+
+  it("writes no application-profile answers the user did not give", async () => {
+    renderWizard();
+    advanceToFinalStep();
+    await uploadResumeOnFinalStep();
+    fireEvent.click(screen.getByRole("button", { name: /start matching/i }));
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/app"));
+    expect(putMock).not.toHaveBeenCalledWith("/api/user/application-profile", expect.anything());
+  });
+
   it("offers only levels the job catalogue actually has, in student language", () => {
     renderWizard();
     fireEvent.click(screen.getByRole("button", { name: /next/i })); // welcome -> role
