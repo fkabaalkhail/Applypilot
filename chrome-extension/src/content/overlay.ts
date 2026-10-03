@@ -2741,6 +2741,7 @@ export const EEO_CHOICES: Record<keyof EditableProfileDraft["eeo"], string[]> = 
   ],
   hispanicLatino: ["Yes", "No", "Prefer not to say"],
   veteranStatus: [
+    "I have never served in the military",
     "I am not a protected veteran",
     "I identify as one or more of the classifications of a protected veteran",
     "Prefer not to say",

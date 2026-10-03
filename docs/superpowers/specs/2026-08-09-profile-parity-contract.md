@@ -111,6 +111,10 @@ pronouns:           He/Him | She/Her | They/Them | Prefer not to say
 sexualOrientation:  Heterosexual | Gay or Lesbian | Bisexual | Prefer not to say
 ```
 
+2026-10-03: `veteranStatus` gained "I have never served in the military" (first). "I am not a
+protected veteran\" says nothing about having served, so forms that ask \"never
+served\" / \"not a veteran\" had no profile answer to fill them from.
+
 The existing five EEO lists are unchanged and stay byte-identical between
 `frontend/src/lib/profileExtras.ts` (`EEO_OPTIONS`) and
 `chrome-extension/src/content/overlay.ts` (`EEO_CHOICES`). Both files must carry a comment

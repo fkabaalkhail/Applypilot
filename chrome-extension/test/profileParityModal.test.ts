@@ -169,6 +169,7 @@ describe("contract §D, option vocabularies", () => {
       ],
       hispanicLatino: ["Yes", "No", "Prefer not to say"],
       veteranStatus: [
+        "I have never served in the military",
         "I am not a protected veteran",
         "I identify as one or more of the classifications of a protected veteran",
         "Prefer not to say",

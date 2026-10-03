@@ -292,14 +292,18 @@ export function planOnDeviceReask(
 export function planSensitiveReask(
   fields: DetectedField[],
   candidates: ReaskCandidate[],
-  reresolve: (field: DetectedField, options: string[]) => string | null
+  reresolve: (field: DetectedField, options: string[]) => string | null | undefined
 ): { fieldId: string; value: string }[] {
   const byId = new Map(fields.map((f) => [f.id, f]));
   const targets: { fieldId: string; value: string }[] = [];
   for (const c of candidates) {
     const f = byId.get(c.fieldId);
     if (!f?.sensitive || c.options.length === 0) continue;
-    const choice = reresolve(f, c.options) ?? closestDemographicOption(f.category, f.proposedValue ?? "", c.options);
+    // null is the rules' answer: blank (a veteran status the profile does not
+    // settle must not become the bare matcher's decline). Only a re-resolution
+    // that could not run at all (undefined) falls back to the bare matcher.
+    const resolved = reresolve(f, c.options);
+    const choice = resolved === undefined ? closestDemographicOption(f.category, f.proposedValue ?? "", c.options) : resolved;
     if (choice) targets.push({ fieldId: c.fieldId, value: choice });
   }
   return targets;

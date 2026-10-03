@@ -96,6 +96,73 @@ function tableFor(category: FieldCategory): Record<string, string[]> | null {
   }
 }
 
+/** What a veteran-status answer (the profile's, or an option) claims. */
+type VeteranClaim =
+  | "decline"
+  | "protected" // a protected veteran
+  | "not-protected" // not a protected veteran: may or may not have served
+  | "never-served" // not a veteran at all
+  | "veteran" // served (protection unstated)
+  | "veteran-unprotected" // served, not protected
+  | "serving" // active duty, reserve, national guard
+  | null;
+
+function veteranClaim(text: string): VeteranClaim {
+  const t = norm(text);
+  if (!t) return null;
+  if (DECLINE_PATTERNS.some((d) => t.includes(d)) || /\bdecline\b/.test(t)) return "decline";
+  if (/\b(non|un) ?protected veterans?\b/.test(t)) return "veteran-unprotected";
+  if (/\bnot (a )?protected veterans?\b|\bnot protected\b/.test(t)) return "not-protected";
+  if (/\bprotected veterans?\b/.test(t)) return "protected";
+  if (/\bnever served\b|\bno military (service|experience)\b|\bnot (a |an )?veterans?\b|\bnon ?veterans?\b/.test(t)) return "never-served";
+  if (/\bactive duty\b|\bnational guard\b|\breserves?\b|\bcurrently serving\b/.test(t)) return "serving";
+  if (/\bveterans?\b|\bserved\b/.test(t) && !/\b(not|no|never)\b/.test(t)) return "veteran";
+  return null;
+}
+
+/**
+ * The veteran-status option the profile's answer settles, or null when it
+ * settles none (left for the user), or undefined when the options are not a
+ * veteran vocabulary at all. "I am not a protected veteran" says nothing
+ * about having served: it fills only an option saying exactly that, never
+ * "I have never served" or "I am not a veteran" (decided with the user,
+ * 2026-10-03, on Robinhood's seven military statuses). A protected veteran is
+ * a veteran, but which protected category (ActioNet lists four) is theirs.
+ */
+export function veteranOption(value: string, label: string, options: string[]): string | null | undefined {
+  const claim = veteranClaim(value);
+  if (!claim) return undefined;
+  const real = options.filter((o) => o.trim() && !/^(select|choose)\b/i.test(o.trim()));
+  const claims = real.map((o) => ({ raw: o, claim: veteranClaim(o) }));
+  const decline = claims.filter((c) => c.claim === "decline");
+  if (claim === "decline") return decline.length === 1 ? decline[0].raw : null;
+  // A yes/no question: the label says what Yes means.
+  const yes = real.filter((o) => /^(yes|y)\b/i.test(o.trim()));
+  const no = real.filter((o) => /^(no|n)\b/i.test(o.trim()));
+  if (yes.length === 1 && no.length === 1 && claims.every((c) => c.claim === null || c.claim === "decline" || c.raw === yes[0] || c.raw === no[0])) {
+    const asksProtected = /\bprotected\b/i.test(label);
+    if (claim === "protected") return yes[0];
+    if (claim === "never-served") return no[0];
+    if (claim === "not-protected") return asksProtected ? no[0] : null;
+    return null;
+  }
+  if (claims.every((c) => c.claim === null)) return undefined;
+  const pick = (accepted: VeteranClaim[]): string | null => {
+    const hits = claims.filter((c) => accepted.includes(c.claim));
+    return hits.length === 1 ? hits[0].raw : null;
+  };
+  switch (claim) {
+    case "protected":
+      return pick(["protected", "veteran"]);
+    case "never-served":
+      return pick(["never-served"]) ?? pick(["not-protected"]);
+    case "not-protected":
+      return pick(["not-protected"]);
+    default:
+      return null;
+  }
+}
+
 /** The option that declines to answer ("I don't wish to answer", "Decline To
  *  Self Identify"), when the list has exactly one. */
 export function declineOption(options: string[]): string | null {

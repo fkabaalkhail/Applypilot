@@ -1074,8 +1074,10 @@ function initialize(): void {
           const f = lastFields.find((x) => x.id === c.fieldId);
           if (f) f.options = c.options; // panel shows the real choices
         }
+        // undefined when there is nothing to re-resolve against (no live
+        // control or profile): only then does the bare matcher answer.
         const demoTargets = planSensitiveReask(lastFields, sensitiveReask, (field, options) =>
-          resolveWithOptions(field, registry, lastProfile, lastAdapter, lastFillEEO, options)
+          registry.has(field.id) && lastProfile ? resolveWithOptions(field, registry, lastProfile, lastAdapter, lastFillEEO, options) : undefined
         );
         // Tier 3, on-device: these values never leave the machine, and the
         // telemetry record says only that the device answered, never what.
@@ -1160,7 +1162,7 @@ function initialize(): void {
           // A revealed demographic dropdown whose value missed: its closest
           // option, on device (the same rule as the re-ask round above).
           const demo = planSensitiveReask(lastFields, revealFill.reask, (field, options) =>
-            resolveWithOptions(field, registry, lastProfile, lastAdapter, lastFillEEO, options)
+            registry.has(field.id) && lastProfile ? resolveWithOptions(field, registry, lastProfile, lastAdapter, lastFillEEO, options) : undefined
           );
           if (demo.length > 0) {
             const again = await fillItems(noteIntent(demo, { tier: "device" }), true, signal);

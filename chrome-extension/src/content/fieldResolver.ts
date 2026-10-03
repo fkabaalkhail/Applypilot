@@ -23,7 +23,7 @@ import type { FieldSignals } from "./domUtils";
 import { isHigh, profileFacts } from "./profileFacts";
 import { resolveQuestion, type QuestionContext, type QuestionInput, type QuestionResult } from "./questionResolver";
 import { countryFromName } from "./geo";
-import { closestDemographicOption, declineOption } from "./demographicMatch";
+import { closestDemographicOption, declineOption, veteranOption } from "./demographicMatch";
 import { matchOption } from "./writeEngine";
 
 export interface FieldResolveInput {
@@ -328,6 +328,13 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   if (input.sensitive) {
     const refined = refineGenderIdentity(category, label, options, profile);
     if (refined !== undefined) value = refined;
+  }
+  // Veteran status: an answer settles only the options it actually claims
+  // ("not a protected veteran" is not "never served"); else left for the user.
+  if (input.sensitive && category === "eeoVeteran" && value?.trim() && options?.length) {
+    const veteran = veteranOption(value, label, options);
+    if (veteran === null) return none(false, "eeo:veteran-not-settled");
+    if (veteran !== undefined) value = veteran;
   }
   // A demographic question the profile holds no answer for: decline (default).
   if ((value === null || !value.trim()) && input.sensitive) {
