@@ -7,12 +7,25 @@ measured with the backend's AI pass returning nothing.
 > Status: DONE for the night. Everything below was run and observed unless it
 > is listed under "Needs manual verification" (section 5).
 
+**TL;DR.** With the AI returning nothing, the extension now answers from the
+profile alone and leaves the rest blank. On 52 real-extension cases (30 of
+them live application pages) it passes **649/649 checks with zero wrong
+writes**. Twelve of those live pages were drawn fresh after the main fixes and
+reviewed blind: that pass found 14 wrong values on 6 pages (bugs #30-#35), all
+fixed and pinned since, so expect a few more on pages nobody has looked at.
+The `main` build, re-scored on the 40 of those cases that predate the
+held-out round, scored 387/478 and wrote 13 invented answers ("authorized to
+work in the US? Yes" for a Canadian citizen, among others) plus 14 wrong
+values; the branch passes all 40. Nothing was pushed or deployed. Section 5
+lists what needs you.
+
 **How to run it yourself** (from `chrome-extension/`):
 - Unit suite: `node node_modules/vitest/vitest.mjs run` (`npm test` exits 1 with no
   output in some shells; run vitest directly).
-- Real-extension e2e: `node build.mjs && node test/e2e/run.mjs` (all 42 cases,
-  about 10 min, opens a Chromium window). `--filter live` / `framework` / `synthetic` /
-  `inputs` / an ATS name / a case id narrows it; `--report-only` exits 0 for
+- Real-extension e2e: `node build.mjs && node test/e2e/run.mjs` (all 54 cases,
+  about 15 min, opens a Chromium window; the two live SmartRecruiters cases
+  time out while DataDome blocks this machine). `--filter live` / `framework` /
+  `synthetic` / `inputs` / an ATS name / a case id narrows it; `--report-only` exits 0 for
   measurement runs. `E2E_DEBUG=1` prints the extension's console per case.
 - Older harness and probes: `npm run test:browser`, `npm run test:flow`,
   `npm run test:workday-account`, `npm run test:workday-gate`,
@@ -56,6 +69,11 @@ Test corpora:
 - **Same live pages, other applicants** (`cases/real-live-profiles.mjs`): a US
   F-1 student with a structured Cambridge, MA address (Workable, Jobvite), and a
   profile whose whole address is one street line (BambooHR).
+- **Held-out live pages** (`cases/real-live-heldout.mjs`): 12 postings drawn at
+  random from prod `scraped_jobs` AFTER the fixes above, from companies not in
+  the corpus (Ashby 4, Greenhouse 4, Lever 3, Workable 1). The first pass was
+  blind: no expectations, every write reviewed by hand. It found the wrong
+  writes listed as bugs #30-#35, now pinned.
 - **Inputs** (`cases/inputs.mjs`): date inputs (native `date`, split M/D/Y,
   masked text) and a real résumé file upload, checked in the page.
 - **Captured real pages** (`test/fixtures/real/`): rendered DOM of those pages, for
@@ -108,6 +126,12 @@ then fixed. "Live" = observed with the real extension on a real ATS page tonight
 | 27 | **Rows the fill pass adds itself were never filled**: the pass clicks "Add education / experience" for the profile's entries, but only the ids picked at click time were written. | Live: Workable | `fillSelection.test.ts` |
 | 28 | **A form the site still holds hidden was scanned as empty.** BambooHR keeps its form mounted inside a `display:none` box for 2.5-5 s after "Apply for This Job" (measured with a page-side probe). No node is added at the reveal, so the DOM-quiet wait passed at once, every control looked hidden, and the flow parked on an empty page: live-bamboo-nexthop failed about half of combined runs. Now waits (bounded, 10 s) while most of the page's typeable controls are mounted-but-hidden, and rescans as they render. | Live: BambooHR | `hiddenForm.test.ts` (7), `flowController.test.ts` "apply entry", live `live-bamboo-*`: 24/24 over 6 runs, then 20/20 over 5 on the final build |
 | 29 | **Autofill silently did nothing** when no field was picked and no "Apply" button was visible, although the button is deliberately always live. Hit by anyone who opens a BambooHR form and presses Autofill within those 5 s. | Live: BambooHR | `overlayAutofillClick.test.ts` (fails on the old code), live `live-bamboo-nexthop-user-opened` |
+| 30 | **A date picker re-parsed a partial date into a wrong day.** "What is your graduation date?" is a react-datepicker; the profile's graduation YEAR "2027" was typed in and the picker showed **12/31/2026** (`new Date("2027")` is UTC midnight, the evening before in Toronto). Date controls (native type, a format placeholder, or a known picker library) now take only a whole date, re-emitted in the control's format; otherwise blank. Backend answers too. | Held-out live: Ashby (Ramp) | `dateControl.test.ts` (7), `fieldResolverKinds.test.ts` date controls, `aiFillPlanner.test.ts` |
+| 31 | **A bare year inside several options was a coin flip**: "2027" picked "December 2027" over "January - June 2027" for having fewer words. A bare number in several options is refused. | Held-out live: Ashby (Superhuman) | `optionMatchStrict.test.ts` "bare year" |
+| 32 | **Greenhouse education rows got the first JOB's dates**: the education block has its own start/end month and year (`.education--date-container`), which classified as employment dates. End date = graduation (a bare year fills only the year); start date (unknown) stays blank. Older Greenhouse markup wraps EMPLOYMENT in `.education-experience-block`, so a wrapper naming both is ignored. | Held-out live: Greenhouse (Twitch, Astranis) | `educationRowDates.test.ts` (4; 3 fail without the fix) |
+| 33 | **"Mechanical Engineering" for a Mechatronics student**: the matcher counted any shared 5-letter stem as the same word. A variant now differs only by an ending of at most 3 letters (Canada/Canadian/Canadien still match). | Held-out live: Greenhouse (Astranis) | `optionMatchStrict.test.ts` "sharing a stem" |
+| 34 | **"High School Name" got "University of Waterloo"**, and "Year of High School Graduation" the university's 2027. High-school detail questions abstain (a yes/no about a diploma is left to the education-level rules). | Held-out live: Lever (Palantir) | `questionResolver.test.ts`, `fieldResolverKinds.test.ts` high school |
+| 35 | **The react-select / Workday driver had its own looser matcher**: substring containment, first containing option wins. A graduation year committed "December 2026 - November 2027" though "December 2027 - November 2028" fits too, and "male" sits inside "female". `matchOption` moved to `optionMatch.ts` (pure) and the page-world driver now uses it. | Held-out live: Greenhouse (ZipRecruiter) | `mainWorldDriver.test.ts` (fails on the old matcher) |
 
 Old in-page harness (`test/browser/run.mjs`): its résumé-upload scenario failed only
 because the harness did not `await` the now-async `injectResumeFile` (harness bug,
@@ -118,10 +142,11 @@ probes, `react-select-driver`, `click-shadow-probe`, `load-extension`) all pass.
 New test files: `optionMatchStrict`, `profileFacts`, `questionResolver`,
 `realPages` (32 assertions on captured real pages), `namelessRadios`,
 `longSelects`, `comboboxShadowControls`, `jobLocation`, `fieldResolverKinds`,
-`fillSelection`, `hiddenForm`, `overlayAutofillClick`, plus additions to
-`leverAdapter`, `observePage`, `fieldMatcher`, `aiFillPlanner`,
-`workdayFieldOfStudy`, `workday`, `flowController`. Unit suite: **1280 passing
-in 125 files** (was 1101).
+`fillSelection`, `hiddenForm`, `overlayAutofillClick`, `dateControl`,
+`educationRowDates`, plus additions to `leverAdapter`, `observePage`,
+`fieldMatcher`, `aiFillPlanner`, `workdayFieldOfStudy`, `workday`,
+`flowController`, `mainWorldDriver`. Unit suite: **1303 passing in 127 files**
+(was 1101).
 
 Harness bugs found and fixed along the way (not product bugs): clicking Autofill
 before an SPA form rendered, waiting out the full timeout when a fill errored,
@@ -190,6 +215,15 @@ toggled the form shut.
 16. **The panel covering BambooHR's Apply button (section 5) was NOT changed.**
     Moving or shrinking the panel is a layout decision with knock-on effects on
     every site; recorded for you instead.
+17. **Date controls get whole dates only.** A picker that does not state its
+    format is assumed MM/DD/YYYY (react-datepicker's default, and what Ashby
+    shows). A graduation year never goes into a day-precise picker: the
+    profile does not know the day.
+18. **A broader parent option is acceptable, a sibling is not.** With no
+    "Mechatronics" option, "Engineering" may be picked (it is true);
+    "Mechanical Engineering" may not (it is a different discipline).
+19. **High-school questions stay blank.** Profiles hold post-secondary
+    education only.
 
 ## 4. Per-ATS pass rates
 
@@ -199,17 +233,17 @@ expected-value checks (a value where one is expected, a BLANK where the right
 answer is to abstain) plus one failure per unexpected write. All read back from
 the page DOM (and the framework's own state on the framework pages).
 
-### Final: branch HEAD `c7fca08`, all 42 cases
+### Final: branch HEAD `f6c32fd`, 52 cases
 
 | ATS | cases ok | checks | rate | fills ok | correct abstentions | wrong writes |
 |---|---|---|---|---|---|---|
-| ashby | 3/3 | 19/19 | 100% | 10/10 | 9/9 | 0 |
+| ashby | 7/7 | 61/61 | 100% | 36/36 | 25/25 | 0 |
 | bamboohr | 5/5 | 60/60 | 100% | 38/38 | 22/22 | 0 |
-| greenhouse | 5/5 | 77/77 | 100% | 45/45 | 32/32 | 0 |
+| greenhouse | 9/9 | 153/153 | 100% | 91/91 | 62/62 | 0 |
 | jobvite | 3/3 | 66/66 | 100% | 24/24 | 42/42 | 0 |
-| lever | 4/4 | 59/59 | 100% | 28/28 | 31/31 | 0 |
-| smartrecruiters | 1/3 | 3/25 | 12% | 3/3 | 0/0 | 0 |
-| workable | 4/4 | 59/59 | 100% | 37/37 | 22/22 | 0 |
+| lever | 7/7 | 102/102 | 100% | 55/55 | 47/47 | 0 |
+| workable | 5/5 | 70/70 | 100% | 47/47 | 23/23 | 0 |
+| smartrecruiters (synthetic) | 1/1 | 3/3 | 100% | 3/3 | 0/0 | 0 |
 | workday | 2/2 | 21/21 | 100% | 18/18 | 3/3 | 0 |
 | icims | 1/1 | 9/9 | 100% | 9/9 | 0/0 | 0 |
 | taleo | 1/1 | 9/9 | 100% | 9/9 | 0/0 | 0 |
@@ -221,25 +255,49 @@ the page DOM (and the framework's own state on the framework pages).
 | framework (React 18 / Vue 3 / AngularJS) | 3/3 | 49/49 | 100% | 46/46 | 3/3 | 0 |
 | inputs (dates, résumé upload) | 2/2 | 9/9 | 100% | 9/9 | 0/0 | 0 |
 | smoke | 1/1 | 6/6 | 100% | 6/6 | 0/0 | 0 |
-| **total** | **40/42** | **477/499** | **96%** | | | **0** |
+| **total** | **52/52** | **649/649** | **100%** | | | **0** |
 
-- The two failures are both LIVE SmartRecruiters pages, which answered this
-  machine with HTTP 403 + a DataDome captcha page by the final run (checked
-  with a plain `curl` GET for each; section 5). Their forms never rendered.
-  Earlier the same night both passed 100%. **Excluding them: 40/40 cases,
-  477/477 checks.**
-- Live real pages: Greenhouse 4 (incl. the cross-origin embed), Lever 3, Ashby 2,
-  Workable 3, BambooHR 4, Jobvite 2, SmartRecruiters 2. Workday, iCIMS, Taleo,
-  SuccessFactors, ADP, Breezy, Bullhorn and Rippling are synthetic fixtures
-  served on each ATS's real host (section 5 says why).
-- Stability: BambooHR, the one race-prone site, passed 20/20 case runs on this
-  build (5 combined runs) and 24/24 on the commit before it.
+Failure kinds on this run: 0 left blank where a value was expected, 0 wrong
+values, 0 invented answers, 0 stray writes.
+
+- Live real pages: 30 cases, 481/481 checks. Greenhouse 8 (incl. the
+  cross-origin embed), Lever 6, Ashby 6, Workable 4, BambooHR 4, Jobvite 2.
+  Workday, iCIMS, Taleo, SuccessFactors, ADP, Breezy, Bullhorn and Rippling
+  are synthetic fixtures served on each ATS's real host (section 5 says why).
+- **Live SmartRecruiters is not in this run**: both postings answer this
+  machine with HTTP 403 + a DataDome captcha (re-checked with `curl` right
+  before the run). Earlier the same night both passed 100%; in the run on
+  `c7fca08` they were the only failures (477/499 with them, 477/477 without).
+- Stability: BambooHR, the one race-prone site, passed 20/20 case runs on
+  `c7fca08` (5 combined runs) and 24/24 on the commit before it. ZipRecruiter's
+  School react-select failed to open in 1 of 5 runs (a blank, never wrong).
+
+### Held-out pages: blind first pass, then fixed
+
+Twelve postings drawn at random from prod `scraped_jobs` after the fixes,
+from companies not in the corpus, run with NO expectations and every write
+reviewed by hand (`cases/real-live-heldout.mjs` now pins them):
+
+- **Wrong values written: 14, on 6 of 12 pages.** Ramp's graduation date
+  picker 12/31/2026; Superhuman's and ZipRecruiter's graduation option chosen
+  from a bare year that fits two; Twitch's and Astranis's education start/end
+  dates set to the first job's (8 values); Astranis's Discipline "Mechanical
+  Engineering"; Palantir's "High School Name" and its graduation year.
+  Bugs #30-#35.
+- Everything else written on those pages was right, including the cases the
+  night's work targeted: US work authorization and sponsorship left blank for a
+  Canadian on every US posting, dial code "+1", citizenship "Canada", "previously
+  employed by Amazon?" No, legal-name / preferred-name cards on Lever, current
+  company "Kinaxis", Lever and Ashby location pickers "Toronto".
+- After the fixes: **12/12 cases, 172/172 checks.**
 
 ### Before/after on identical cases and expectations
 
 The baseline build (`b9aebcc`, `main` when the night started) re-scored with
-`E2E_EXT_DIR` against the SAME final cases and expectations. Live
-SmartRecruiters is left out of both columns (DataDome).
+`E2E_EXT_DIR` against the SAME cases and expectations, the 40 cases that
+existed before the held-out round (the branch column is `c7fca08`; `f6c32fd`
+passes the same 40). Live SmartRecruiters is left out of both columns
+(DataDome).
 
 | ATS | baseline cases | baseline checks | branch cases | branch checks |
 |---|---|---|---|---|
@@ -326,7 +384,7 @@ see section 2):
 ## 5. Needs you / needs manual verification
 
 **Your decisions / actions**
-1. **Review and merge** `night/deterministic-autofill` (20 commits on top of
+1. **Review and merge** `night/deterministic-autofill` (24 commits on top of
    `b9aebcc`, the last one adding this file; local only, not pushed). Then
    `cd chrome-extension && node build.mjs` and **reload the unpacked
    extension** at chrome://extensions (Chrome caches it).
@@ -374,6 +432,14 @@ see section 2):
   abstains (blank), which is safe but may leave fields empty.
 - The panel's gap list still shows abstained fields as unanswered, which is
   intended, but I did not review the panel UX visually.
+- **Misses the held-out pages showed (blank, never wrong; not fixed):** Ashby's
+  education Start/End month-year selects and "Still Student?"; Gecko's Ashby
+  location combobox (filled on the other Ashby pages); Workable TSA's
+  city/postcode/country sub-fields; "Based in Austin, TX?" (should be NO for a
+  Toronto applicant); graduation-range options ("January - June 2027") could be
+  matched when the profile has a month (it usually has only the year).
+- **Known intermittent:** ZipRecruiter's Greenhouse School react-select failed
+  to open in 1 of 5 runs ("Couldn't open the dropdown"): the field stays blank.
 
 **Housekeeping**
 - Live e2e cases use real postings that will expire. Re-capture with
@@ -381,8 +447,9 @@ see section 2):
 - HAR recordings of every captured page (203 MB, full-fidelity offline replay)
   are in `chrome-extension/test/e2e/results/har/` (gitignored, local only).
 - The result JSON/text of every run quoted in section 4 is in
-  `chrome-extension/test/e2e/results/` (gitignored): `final3-all` (final),
-  `baseline-rescored` (b9aebcc on the final cases), `baseline-live` (first
-  measurement), `round3-live`, `round4-live`.
+  `chrome-extension/test/e2e/results/` (gitignored): `final4-all` (final, 52
+  cases), `final3-all` (with live SmartRecruiters), `heldout-1` (the blind
+  held-out pass), `baseline-rescored` (b9aebcc on the same cases),
+  `baseline-live` (first measurement), `round3-live`, `round4-live`.
 - Nothing was pushed, deployed, or sent anywhere. The only network writes were
   to the local fake backend.
