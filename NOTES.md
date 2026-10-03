@@ -8,11 +8,13 @@ measured with the backend's AI pass returning nothing.
 > is listed under "Needs manual verification" (section 5).
 
 **TL;DR.** With the AI returning nothing, the extension now answers from the
-profile alone and leaves the rest blank. On 52 real-extension cases (30 of
-them live application pages) it passes **649/649 checks with zero wrong
-writes**. Twelve of those live pages were drawn fresh after the main fixes and
-reviewed blind: that pass found 14 wrong values on 6 pages (bugs #30-#35), all
-fixed and pinned since, so expect a few more on pages nobody has looked at.
+profile alone and leaves the rest blank. On 64 real-extension cases (42 of
+them live application pages) it passes **774/774 checks with zero wrong
+writes** (four of those checks accept a blank; see section 4). Twenty-four of
+the live pages were drawn fresh after the main fixes and reviewed blind: the
+first twelve showed 14 wrong values on 6 pages, the next twelve (after fixing
+those) 1 wrong write on 1 page. All fixed and pinned, but expect a few more on
+pages nobody has looked at.
 The `main` build, re-scored on the 40 of those cases that predate the
 held-out round, scored 387/478 and wrote 13 invented answers ("authorized to
 work in the US? Yes" for a Canadian citizen, among others) plus 14 wrong
@@ -22,8 +24,8 @@ lists what needs you.
 **How to run it yourself** (from `chrome-extension/`):
 - Unit suite: `node node_modules/vitest/vitest.mjs run` (`npm test` exits 1 with no
   output in some shells; run vitest directly).
-- Real-extension e2e: `node build.mjs && node test/e2e/run.mjs` (all 54 cases,
-  about 15 min, opens a Chromium window; the two live SmartRecruiters cases
+- Real-extension e2e: `node build.mjs && node test/e2e/run.mjs` (all 66 cases,
+  about 20 min, opens a Chromium window; the two live SmartRecruiters cases
   time out while DataDome blocks this machine). `--filter live` / `framework` /
   `synthetic` / `inputs` / an ATS name / a case id narrows it; `--report-only` exits 0 for
   measurement runs. `E2E_DEBUG=1` prints the extension's console per case.
@@ -69,11 +71,12 @@ Test corpora:
 - **Same live pages, other applicants** (`cases/real-live-profiles.mjs`): a US
   F-1 student with a structured Cambridge, MA address (Workable, Jobvite), and a
   profile whose whole address is one street line (BambooHR).
-- **Held-out live pages** (`cases/real-live-heldout.mjs`): 12 postings drawn at
-  random from prod `scraped_jobs` AFTER the fixes above, from companies not in
-  the corpus (Ashby 4, Greenhouse 4, Lever 3, Workable 1). The first pass was
-  blind: no expectations, every write reviewed by hand. It found the wrong
-  writes listed as bugs #30-#35, now pinned.
+- **Held-out live pages** (`cases/real-live-heldout.mjs`): two rounds of 12
+  postings drawn at random from prod `scraped_jobs` AFTER the fixes above,
+  from companies not in the corpus (round 1: Ashby 4, Greenhouse 4, Lever 3,
+  Workable 1; round 2: Ashby 4, Greenhouse 4, Lever 4). Each first pass was
+  blind: no expectations, every write reviewed by hand. Round 1 found bugs
+  #30-#35; round 2 (after those were fixed) found one, #36. All pinned.
 - **Inputs** (`cases/inputs.mjs`): date inputs (native `date`, split M/D/Y,
   masked text) and a real résumé file upload, checked in the page.
 - **Captured real pages** (`test/fixtures/real/`): rendered DOM of those pages, for
@@ -132,6 +135,7 @@ then fixed. "Live" = observed with the real extension on a real ATS page tonight
 | 33 | **"Mechanical Engineering" for a Mechatronics student**: the matcher counted any shared 5-letter stem as the same word. A variant now differs only by an ending of at most 3 letters (Canada/Canadian/Canadien still match). | Held-out live: Greenhouse (Astranis) | `optionMatchStrict.test.ts` "sharing a stem" |
 | 34 | **"High School Name" got "University of Waterloo"**, and "Year of High School Graduation" the university's 2027. High-school detail questions abstain (a yes/no about a diploma is left to the education-level rules). | Held-out live: Lever (Palantir) | `questionResolver.test.ts`, `fieldResolverKinds.test.ts` high school |
 | 35 | **The react-select / Workday driver had its own looser matcher**: substring containment, first containing option wins. A graduation year committed "December 2026 - November 2027" though "December 2027 - November 2028" fits too, and "male" sits inside "female". `matchOption` moved to `optionMatch.ts` (pure) and the page-world driver now uses it. | Held-out live: Greenhouse (ZipRecruiter) | `mainWorldDriver.test.ts` (fails on the old matcher) |
+| 36 | **A demographic-data consent checkbox was ticked for the user**: "By checking this box, I consent to Robinhood collecting, storing, and processing my responses to the demographic data surveys above", for an applicant who answered none of them. It classifies as a demographic field at high confidence, so the consent "yes" passed the selection gate. A sensitive box now carries only the user's own answer. | Held-out round 2 live: Greenhouse (Robinhood) | `checkboxIntent.test.ts`, `fieldResolverKinds.test.ts` (fails without the fix) |
 
 Old in-page harness (`test/browser/run.mjs`): its résumé-upload scenario failed only
 because the harness did not `await` the now-async `injectResumeFile` (harness bug,
@@ -180,11 +184,18 @@ toggled the form shut.
    high only when every row has dates. Domain-qualified questions ("software
    development experience") answer only when every job title is in that domain;
    skill-qualified ("experience with Kubernetes") never.
-7. **Consent / attestation checkboxes are not ticked** ("I certify the
-   information is accurate"). The code's comments intend to tick clear consent,
-   but the selection gate has always blocked it; I kept that, because a tick there
-   is a legal attestation. Flip it in `shared/selection.ts` if you want Jobright's
-   behavior.
+7. **Consent / attestation checkboxes: CORRECTED, and the policy needs you.**
+   An earlier version of this note said consent boxes are never ticked because
+   the selection gate blocks them. That was wrong. `checkboxIntent.ts`
+   (commit d5d087f, Jobright parity) proposes "yes" for clear consent wording,
+   and whether the box is then ticked depends on how confidently its label
+   happens to classify: most consent boxes classify as unknown and stay
+   unticked, but one that also matches a confident category gets ticked.
+   Robinhood's demographic-data consent was ticked that way (bug #36). Tonight
+   I fixed only the sensitive case: a demographic (EEO) box is never ticked for
+   its wording. For every other consent box the behavior is unchanged and
+   inconsistent; pick one policy (tick all clear application consent like
+   Jobright, or none) and make the gate enforce it.
 8. **Pre-filled fields are never overwritten**, even when the site guessed them
    (Workable fills Address from IP geolocation). Unchanged behavior.
 9. Real-page fixtures are committed with CSS/SVG stripped (1.9 MB); the HAR
@@ -233,15 +244,15 @@ expected-value checks (a value where one is expected, a BLANK where the right
 answer is to abstain) plus one failure per unexpected write. All read back from
 the page DOM (and the framework's own state on the framework pages).
 
-### Final: branch HEAD `f6c32fd`, 52 cases
+### Final: branch HEAD `c0b43f3`, 64 cases
 
 | ATS | cases ok | checks | rate | fills ok | correct abstentions | wrong writes |
 |---|---|---|---|---|---|---|
-| ashby | 7/7 | 61/61 | 100% | 36/36 | 25/25 | 0 |
+| ashby | 11/11 | 83/83 | 100% | 51/51 | 32/32 | 0 |
 | bamboohr | 5/5 | 60/60 | 100% | 38/38 | 22/22 | 0 |
-| greenhouse | 9/9 | 153/153 | 100% | 91/91 | 62/62 | 0 |
+| greenhouse | 13/13 | 211/211 | 100% | 128/128 | 83/83 | 0 |
 | jobvite | 3/3 | 66/66 | 100% | 24/24 | 42/42 | 0 |
-| lever | 7/7 | 102/102 | 100% | 55/55 | 47/47 | 0 |
+| lever | 11/11 | 147/147 | 100% | 81/81 | 66/66 | 0 |
 | workable | 5/5 | 70/70 | 100% | 47/47 | 23/23 | 0 |
 | smartrecruiters (synthetic) | 1/1 | 3/3 | 100% | 3/3 | 0/0 | 0 |
 | workday | 2/2 | 21/21 | 100% | 18/18 | 3/3 | 0 |
@@ -255,47 +266,57 @@ the page DOM (and the framework's own state on the framework pages).
 | framework (React 18 / Vue 3 / AngularJS) | 3/3 | 49/49 | 100% | 46/46 | 3/3 | 0 |
 | inputs (dates, résumé upload) | 2/2 | 9/9 | 100% | 9/9 | 0/0 | 0 |
 | smoke | 1/1 | 6/6 | 100% | 6/6 | 0/0 | 0 |
-| **total** | **52/52** | **649/649** | **100%** | | | **0** |
+| **total** | **64/64** | **774/774** | **100%** | | | **0** |
 
 Failure kinds on this run: 0 left blank where a value was expected, 0 wrong
 values, 0 invented answers, 0 stray writes.
 
-- Live real pages: 30 cases, 481/481 checks. Greenhouse 8 (incl. the
-  cross-origin embed), Lever 6, Ashby 6, Workable 4, BambooHR 4, Jobvite 2.
+- **Read the 100% with this caveat.** Four checks accept "the right answer OR
+  blank" (a blank there is a miss, never a wrong write), and all four came out
+  blank in this run: Greenhouse School on ZipRecruiter and on Robinhood (the
+  intermittent in section 5), "Are you currently a Twitch employee?" (No would
+  be right), and Workable's "Based in Austin, TX?" (NO would be right).
+- Live real pages: 42 cases, 606/606 checks. Greenhouse 12 (incl. the
+  cross-origin embed), Lever 10, Ashby 10, Workable 4, BambooHR 4, Jobvite 2.
   Workday, iCIMS, Taleo, SuccessFactors, ADP, Breezy, Bullhorn and Rippling
   are synthetic fixtures served on each ATS's real host (section 5 says why).
 - **Live SmartRecruiters is not in this run**: both postings answer this
-  machine with HTTP 403 + a DataDome captcha (re-checked with `curl` right
-  before the run). Earlier the same night both passed 100%; in the run on
-  `c7fca08` they were the only failures (477/499 with them, 477/477 without).
+  machine with HTTP 403 + a DataDome captcha (re-checked with `curl` before the
+  run). Earlier the same night both passed 100%; in the run on `c7fca08` they
+  were the only failures (477/499 with them, 477/477 without).
 - Stability: BambooHR, the one race-prone site, passed 20/20 case runs on
-  `c7fca08` (5 combined runs) and 24/24 on the commit before it. ZipRecruiter's
-  School react-select failed to open in 1 of 5 runs (a blank, never wrong).
+  `c7fca08` (5 combined runs) and 24/24 on the commit before it.
 
-### Held-out pages: blind first pass, then fixed
+### Held-out pages: blind first passes, then fixed
 
-Twelve postings drawn at random from prod `scraped_jobs` after the fixes,
-from companies not in the corpus, run with NO expectations and every write
-reviewed by hand (`cases/real-live-heldout.mjs` now pins them):
+Two rounds of twelve postings drawn at random from prod `scraped_jobs` after
+the main fixes, from companies not in the corpus, each first run with NO
+expectations and every write reviewed by hand (`cases/real-live-heldout.mjs`
+now pins them):
 
-- **Wrong values written: 14, on 6 of 12 pages.** Ramp's graduation date
-  picker 12/31/2026; Superhuman's and ZipRecruiter's graduation option chosen
-  from a bare year that fits two; Twitch's and Astranis's education start/end
-  dates set to the first job's (8 values); Astranis's Discipline "Mechanical
-  Engineering"; Palantir's "High School Name" and its graduation year.
-  Bugs #30-#35.
-- Everything else written on those pages was right, including the cases the
-  night's work targeted: US work authorization and sponsorship left blank for a
-  Canadian on every US posting, dial code "+1", citizenship "Canada", "previously
-  employed by Amazon?" No, legal-name / preferred-name cards on Lever, current
-  company "Kinaxis", Lever and Ashby location pickers "Toronto".
-- After the fixes: **12/12 cases, 172/172 checks.**
+- **Round 1 (Ashby 4, Greenhouse 4, Lever 3, Workable 1): 14 wrong values on 6
+  of 12 pages.** Ramp's graduation date picker 12/31/2026; Superhuman's and
+  ZipRecruiter's graduation option chosen from a bare year that fits two;
+  Twitch's and Astranis's education start/end dates set to the first job's (8
+  values); Astranis's Discipline "Mechanical Engineering"; Palantir's "High
+  School Name" and its graduation year. Bugs #30-#35.
+- **Round 2 (Ashby 4, Greenhouse 4, Lever 4), after those fixes: 1 wrong write
+  on 1 of 12 pages**: Robinhood's demographic-data consent checkbox ticked.
+  Bug #36.
+- Everything else written on those pages was right, including what the night's
+  work targeted: US work authorization and sponsorship left blank for a
+  Canadian on every US posting, dial code "+1", citizenship "Canada",
+  "previously employed by Amazon / Figma / Robinhood?" answered No from the
+  work history, legal-name / preferred-name cards on Lever, current company
+  "Kinaxis", Lever and Ashby location pickers "Toronto", arbitration
+  agreements and SMS consents left alone.
+- After the fixes: round 1 12/12 cases, 172/172 checks; round 2 12/12, 125/125.
 
 ### Before/after on identical cases and expectations
 
 The baseline build (`b9aebcc`, `main` when the night started) re-scored with
 `E2E_EXT_DIR` against the SAME cases and expectations, the 40 cases that
-existed before the held-out round (the branch column is `c7fca08`; `f6c32fd`
+existed before the held-out round (the branch column is `c7fca08`; `c0b43f3`
 passes the same 40). Live SmartRecruiters is left out of both columns
 (DataDome).
 
@@ -384,7 +405,7 @@ see section 2):
 ## 5. Needs you / needs manual verification
 
 **Your decisions / actions**
-1. **Review and merge** `night/deterministic-autofill` (24 commits on top of
+1. **Review and merge** `night/deterministic-autofill` (26 commits on top of
    `b9aebcc`, the last one adding this file; local only, not pushed). Then
    `cd chrome-extension && node build.mjs` and **reload the unpacked
    extension** at chrome://extensions (Chrome caches it).
@@ -397,8 +418,10 @@ see section 2):
    those questions away from the backend when it has abstained on them, but any
    other client of `/api/fill` still gets the guess. Recommend deleting those
    three rules (derived_facts already computes age from the DOB).
-3. Decision #7 (attestation checkboxes not ticked) is the one most likely to
-   want your call.
+3. **Decision #7 needs your call**: consent checkboxes are ticked or not
+   depending on incidental classification today (only the demographic case is
+   fixed). Choose "tick clear application consent" or "never tick", and I would
+   enforce it in `shared/selection.ts`.
 4. **The panel covers the site's own Apply button on BambooHR** at 1366×900 (a
    very common laptop size). The auto-mounted panel is a 380 px overlay on the
    right, and BambooHR's "Apply for This Job" sits in the right column
@@ -438,8 +461,16 @@ see section 2):
   city/postcode/country sub-fields; "Based in Austin, TX?" (should be NO for a
   Toronto applicant); graduation-range options ("January - June 2027") could be
   matched when the profile has a month (it usually has only the year).
-- **Known intermittent:** ZipRecruiter's Greenhouse School react-select failed
-  to open in 1 of 5 runs ("Couldn't open the dropdown"): the field stays blank.
+- **Known intermittent (not fixed):** Greenhouse's async School react-select
+  (ZipRecruiter, Robinhood) sometimes ignores the extension's interaction in
+  combined runs, about 1 in 5 ("Couldn't open the dropdown"): the field stays
+  blank, never wrong. Run alone it filled 8/8. A probe WITHOUT the extension
+  hit the same thing once in 13 tries (the widget sent no search request at
+  all), so it looks like page readiness, not matching. No reliable repro, so no
+  fix I could verify.
+- **Partial answers (right but incomplete):** "Where do you live? (City and
+  State/Province)" gets "Toronto" (no province); a graduation asked as "(Term &
+  Year)" gets "2027".
 
 **Housekeeping**
 - Live e2e cases use real postings that will expire. Re-capture with
@@ -447,9 +478,9 @@ see section 2):
 - HAR recordings of every captured page (203 MB, full-fidelity offline replay)
   are in `chrome-extension/test/e2e/results/har/` (gitignored, local only).
 - The result JSON/text of every run quoted in section 4 is in
-  `chrome-extension/test/e2e/results/` (gitignored): `final4-all` (final, 52
-  cases), `final3-all` (with live SmartRecruiters), `heldout-1` (the blind
-  held-out pass), `baseline-rescored` (b9aebcc on the same cases),
+  `chrome-extension/test/e2e/results/` (gitignored): `final5-all` (final, 64
+  cases), `final3-all` (with live SmartRecruiters), `heldout-1` and
+  `heldout2-1` (the two blind held-out passes), `baseline-rescored` (b9aebcc on the same cases),
   `baseline-live` (first measurement), `round3-live`, `round4-live`.
 - Nothing was pushed, deployed, or sent anywhere. The only network writes were
   to the local fake backend.
