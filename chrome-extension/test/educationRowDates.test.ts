@@ -122,9 +122,18 @@ describe("Ashby's education dates and 'Still Student?' (Ramp / Superhuman, live 
     expect(selects.map((f) => f?.label.replace(/\*$/, ""))).toEqual(["Start Date", "Start Date", "End Date", "End Date"]);
   });
 
-  it("End Date takes the graduation month and year; Start Date stays blank", () => {
+  it("a student in progress: End Date is left to the page, which disables it once 'Still Student?' is ticked", () => {
+    // Writing it first left "October 2027" disabled on Ramp (live 2026-10-03):
+    // the page picked the month itself after the box was ticked.
     const { selects } = scanAshby();
-    expect(selects.map((f) => f?.proposedValue ?? null)).toEqual([null, null, "April", "2027"]);
+    expect(selects.map((f) => f?.proposedValue ?? null)).toEqual([null, null, null, null]);
+    expect(selects[2]?.deviceAbstained).toBe(true); // and kept from the AI
+  });
+
+  it("a graduate: End Date takes the graduation year; Start Date stays blank", () => {
+    const grad = { ...SPARSE_CANADIAN, education: [{ school: "University of Toronto", degree: "BSc", graduationYear: "2022-05" }] };
+    const { selects } = scanAshby(grad);
+    expect(selects.map((f) => f?.proposedValue ?? null)).toEqual([null, null, "May", "2022"]);
   });
 
   it("'Still Student?' is ticked while the degree is in progress", () => {

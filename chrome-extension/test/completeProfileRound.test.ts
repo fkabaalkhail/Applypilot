@@ -300,3 +300,9 @@ describe("fresh postings, blind round: scan-level (2026-10-03)", () => {
     expect(formCountryHint(["Where are you located?", "Are you willing to relocate to Canada?"])).toBeNull();
   });
 });
+
+describe("the education summary answers only compound questions (2026-10-03)", () => {
+  it("'What school … / did you graduate from?' is the school alone (ZipRecruiter got school + graduation)", () => {
+    expect(value(ask("What school are you currently attending / did you graduate from?", { kind: "text" }))).toBe("University of Waterloo");
+  });
+});

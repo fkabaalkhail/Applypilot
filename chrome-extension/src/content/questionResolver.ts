@@ -876,7 +876,10 @@ function resolveEducationSummary(q: QuestionInput, n: string, facts: ProfileFact
   if (q.kind !== "text" && q.kind !== "longText") return null;
   const asksSchool = /\b(school|university|college|institution)\b/.test(n);
   const asksProgram = /\b(program|programme|faculty|degree|major|field of study|discipline)\b/.test(n);
-  const asksGrad = /\bgraduat\w*\b|\bcompletion\b/.test(n);
+  // The graduation DATE, not the verb: "What school are you currently attending
+  // / did you graduate from?" (ZipRecruiter) asks for the school alone.
+  const asksGrad =
+    /\b(graduation|completion) (date|year|month|term)\b|\b(month|year|date|term)s?( \w+)? of (graduation|completion)\b|\bexpected (month|year|date|term)\b|\bwhen (will|do|would) you graduate\b/.test(n);
   if ([asksSchool, asksProgram, asksGrad].filter(Boolean).length < 2) return null;
   const e = facts.education.primary;
   if (!e?.school) return abstain("education-summary:unknown");

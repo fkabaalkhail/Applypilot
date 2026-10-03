@@ -635,6 +635,14 @@ function reclassifyEducationRowDates(
     f.category = isEnd ? "graduationYear" : "unknown";
     f.proposedValue = null;
     if (!isEnd || !profile) continue;
+    // A row still in progress with its own "Still Student?" box: the box is
+    // ticked and the page DISABLES the end date (Ashby; a year written first
+    // was left disabled beside a month the page picked: "October 2027", live
+    // 2026-10-03). The end date stays the page's, and away from the AI.
+    if (profileFacts(profile).education.entries[f.groupIndex ?? 0]?.completed === false && hasStillStudentBox(el)) {
+      f.deviceAbstained = true;
+      continue;
+    }
     const grad = splitGreenhouseDate(graduationOfRow(profile, f.groupIndex ?? 0));
     if (!grad) continue;
     const key = `${el.id} ${el.getAttribute("name") ?? ""} ${f.label}`.toLowerCase();
@@ -647,6 +655,17 @@ function reclassifyEducationRowDates(
 
 /** "Still Student?", "Currently attending": the education row is in progress. */
 const STILL_STUDENT = /\bstill (a )?student\b|\bcurrent(ly)? (a )?student\b|\bcurrently (attending|enrolled|studying)\b|\bin progress\b/i;
+
+/** The education row around `el` has a "Still Student?" checkbox of its own. */
+function hasStillStudentBox(el: HTMLElement): boolean {
+  for (let a = el.parentElement, i = 0; a && i < 6; a = a.parentElement, i++) {
+    for (const box of Array.from(a.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))) {
+      const label = box.closest("label")?.textContent ?? (box.labels?.[0]?.textContent ?? "");
+      if (STILL_STUDENT.test(label)) return true;
+    }
+  }
+  return false;
+}
 
 const MONTH_OPTION = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?$/i;
 /** A select that names no part: twelve months, or a run of years. */
