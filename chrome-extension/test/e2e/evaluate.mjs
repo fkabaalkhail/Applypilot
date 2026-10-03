@@ -1,0 +1,124 @@
+/**
+ * Scores one case: the page's final field values (dumpFields) against the
+ * case's expectations, plus a check the expectations cannot express on their
+ * own: ANY field that changed and was not expected to is a failure. That is the
+ * check that catches a wrong-kind write ("Quebec" typed into a yes/no question),
+ * the worst outcome a filler can have, because it looks like success.
+ *
+ * Expectation values:
+ *   "text"             normalized equality (case/whitespace/trailing-* insensitive)
+ *   null               must be left blank (empty after the fill)
+ *   { re: "..." }      case-insensitive regex
+ *   { any: true }      any non-empty value
+ *   { oneOf: [...] }   normalized equality with one of these
+ *   { unchanged: true} must hold exactly what it held before the fill
+ *
+ * Keys: the dump's own key ("#id", "name=x", "radio=x", "auto=x"), or
+ * "label:<text>" to match the first field whose label contains <text>.
+ */
+export function norm(v) {
+  return String(v ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/[\s*✱]+$/, "")
+    .trim()
+    .toLowerCase();
+}
+
+function findRecord(records, key) {
+  if (key.startsWith("label:")) {
+    const want = norm(key.slice(6));
+    return records.find((r) => norm(r.label).includes(want)) ?? null;
+  }
+  return records.find((r) => r.key === key) ?? null;
+}
+
+function matches(expected, actual, beforeValue) {
+  if (expected === null) return norm(actual) === "";
+  if (typeof expected === "string") return norm(actual) === norm(expected);
+  if (expected.re) return new RegExp(expected.re, "i").test(String(actual ?? ""));
+  if (expected.any) return norm(actual) !== "";
+  if (expected.oneOf) return expected.oneOf.some((o) => norm(o) === norm(actual));
+  if (expected.unchanged) return String(actual ?? "") === String(beforeValue ?? "");
+  return false;
+}
+
+function describe(expected) {
+  if (expected === null) return "(blank)";
+  if (typeof expected === "string") return JSON.stringify(expected);
+  if (expected.re) return `/${expected.re}/`;
+  if (expected.any) return "(any value)";
+  if (expected.oneOf) return `oneOf ${JSON.stringify(expected.oneOf)}`;
+  if (expected.unchanged) return "(unchanged)";
+  return JSON.stringify(expected);
+}
+
+export function evaluateCase(testCase, result) {
+  const rows = [];
+  const usedKeys = new Set();
+  const beforeByKey = new Map(result.before.map((r) => [`${r.frame}|${r.key}`, r]));
+  const expectations = testCase.expect ?? {};
+  for (const [key, expected] of Object.entries(expectations)) {
+    const rec = findRecord(result.after, key);
+    if (!rec) {
+      rows.push({ key, status: "MISSING", expected: describe(expected), actual: "", label: "" });
+      continue;
+    }
+    usedKeys.add(`${rec.frame}|${rec.key}`);
+    const before = beforeByKey.get(`${rec.frame}|${rec.key}`)?.value ?? "";
+    const ok = matches(expected, rec.value, before);
+    rows.push({
+      key,
+      status: ok ? "PASS" : "FAIL",
+      kind: expected === null ? "abstain" : "fill",
+      expected: describe(expected),
+      actual: rec.value,
+      label: rec.label,
+      type: rec.type,
+    });
+  }
+  // Unexpected writes: changed, and nobody said this field should change.
+  const unexpected = [];
+  for (const rec of result.after) {
+    const id = `${rec.frame}|${rec.key}`;
+    if (usedKeys.has(id)) continue;
+    const before = beforeByKey.get(id)?.value ?? "";
+    if (String(rec.value ?? "") !== String(before)) {
+      unexpected.push({ key: rec.key, label: rec.label, type: rec.type, before, actual: rec.value });
+    }
+  }
+  const pass = rows.filter((r) => r.status === "PASS").length;
+  const total = rows.length + unexpected.length;
+  return {
+    id: testCase.id,
+    ats: testCase.ats,
+    rows,
+    unexpected,
+    pass,
+    total,
+    fills: rows.filter((r) => r.kind === "fill").length,
+    fillsPassed: rows.filter((r) => r.kind === "fill" && r.status === "PASS").length,
+    abstains: rows.filter((r) => r.kind === "abstain").length,
+    abstainsPassed: rows.filter((r) => r.kind === "abstain" && r.status === "PASS").length,
+    ok: pass === rows.length && unexpected.length === 0,
+  };
+}
+
+export function formatCase(ev, trace) {
+  const lines = [];
+  const head = `${ev.ok ? "PASS" : "FAIL"}  ${ev.id}  [${ev.ats}]  ${ev.pass}/${ev.total}` +
+    (trace?.error ? `  (trigger: ${trace.error})` : "") +
+    (trace?.ms ? `  ${Math.round(trace.ms / 100) / 10}s` : "");
+  lines.push(head);
+  for (const r of ev.rows) {
+    if (r.status === "PASS" && process.env.E2E_VERBOSE !== "1") continue;
+    lines.push(
+      `   ${r.status.padEnd(7)} ${r.key.padEnd(34).slice(0, 34)} exp=${r.expected.slice(0, 50)} got=${JSON.stringify(String(r.actual ?? "")).slice(0, 60)}${r.label ? `  «${r.label.slice(0, 50)}»` : ""}`
+    );
+  }
+  for (const u of ev.unexpected) {
+    lines.push(
+      `   UNEXPECTED ${u.key.padEnd(31).slice(0, 31)} (${u.type}) ${JSON.stringify(String(u.before)).slice(0, 20)} -> ${JSON.stringify(String(u.actual)).slice(0, 60)}  «${(u.label || "").slice(0, 50)}»`
+    );
+  }
+  return lines.join("\n");
+}
