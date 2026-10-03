@@ -1,0 +1,138 @@
+{
+  "greenhouse": {
+    "#gh-firstname": "John",
+    "#gh-lastname": "Doe",
+    "#gh-email": "john@example.com",
+    "#gh-phone": "+1 555 555 5555",
+    "#gh-country": "Canada",
+    "#gh-linkedin": "https://linkedin.com/in/johndoe",
+    "#gh-cover": "Please generate or insert the saved cover letter here.",
+    "radio=gh-sponsor": "No",
+    "#gh-gender": "Male"
+  },
+  "lever": {
+    "#lever-firstname": "John",
+    "#lever-lastname": "Doe",
+    "#lever-email": "john@example.com",
+    "#lever-phone": "+1 555 555 5555",
+    "#lever-country": "Canada",
+    "#lever-cover": "Please generate or insert the saved cover letter here."
+  },
+  "bamboohr": {
+    "#bamboo-firstname": "John",
+    "#bamboo-lastname": "Doe",
+    "#bamboo-email": "john@example.com",
+    "#bamboo-phone": "+1 555 555 5555"
+  },
+  "breezy": {
+    "#breezy-firstname": "John",
+    "#breezy-lastname": "Doe",
+    "#breezy-email": "john@example.com",
+    "#breezy-phone": "+1 555 555 5555",
+    "#breezy-country": "Canada"
+  },
+  "ashby": {
+    "#ashby-firstname": "John",
+    "#ashby-email": "john@example.com",
+    "label=Country": "Canada",
+    "#ashby-gender": "Male"
+  },
+  "workable": {
+    "#workable-firstname": "John",
+    "#workable-email": "john@example.com",
+    "#workable-phone": "+1 555 555 5555",
+    "label=Country": "Canada"
+  },
+  "smartrecruiters": {
+    "#sr-firstname": "John",
+    "#sr-lastname": "Doe",
+    "#sr-email": "john@example.com"
+  },
+  "jobvite": {
+    "#jobvite-firstname": "John",
+    "#jobvite-email": "john@example.com",
+    "ariaradio=Will you now or in the future require sponsorship for employ": "No",
+    "#jobvite-gender": "Male"
+  },
+  "rippling": {
+    "#rippling-firstname": "John",
+    "#rippling-lastname": "Doe",
+    "#rippling-email": "john@example.com",
+    "#rippling-phone": "+1 555 555 5555"
+  },
+  "bullhorn": {
+    "#bullhorn-firstname": "John",
+    "#bullhorn-lastname": "Doe",
+    "#bullhorn-email": "john@example.com",
+    "#bullhorn-phone": "+1 555 555 5555"
+  },
+  "workday": {
+    "#wd-first": "John",
+    "#wd-last": "Doe",
+    "#wd-email": "john@example.com",
+    "#wd-phone": "+1 555 555 5555",
+    "#wd-country": "Canada",
+    "#wd-city": "Ottawa",
+    "#wd-linkedin": "https://linkedin.com/in/johndoe",
+    "radio=sponsorship": "No",
+    "#wd-gender": "Male",
+    "#wd-veteran": "I am not a veteran",
+    "#wd-workauth": null,
+    "#wd-source": null
+  },
+  "icims": {
+    "#icims-firstname": "John",
+    "#icims-lastname": "Doe",
+    "#icims-email": "john@example.com",
+    "#icims-phone": "+1 555 555 5555",
+    "#icims-city": "Ottawa",
+    "#icims-country": "Canada",
+    "#icims-gender": "Male",
+    "#icims-ethnicity": "White",
+    "#icims-veteran": "I am not a veteran"
+  },
+  "taleo": {
+    "#taleo-firstname": "John",
+    "#taleo-lastname": "Doe",
+    "#taleo-email": "john@example.com",
+    "#taleo-phone": "+1 555 555 5555",
+    "#taleo-city": "Ottawa",
+    "#taleo-country": "Canada",
+    "#taleo-gender": "Male",
+    "#taleo-ethnicity": "White",
+    "#taleo-veteran": "I am not a veteran"
+  },
+  "adp": {
+    "#adp-firstname": "John",
+    "#adp-lastname": "Doe",
+    "#adp-email": "john@example.com",
+    "#adp-phone": "+1 555 555 5555",
+    "#adp-city": "Ottawa",
+    "#adp-country": "Canada",
+    "#adp-gender": "Male",
+    "#adp-ethnicity": "White",
+    "#adp-veteran": "I am not a veteran"
+  },
+  "successfactors": {
+    "label=First Name": "John",
+    "label=Last Name": "Doe",
+    "label=Email": "john@example.com",
+    "label=Phone": "+1 555 555 5555",
+    "label=City": "Ottawa",
+    "label=Country": "Canada",
+    "label=Gender": "Male",
+    "label=Race/Ethnicity": "White",
+    "label=Veteran Status": "I am not a veteran"
+  },
+  "workday-shadow": {
+    "#wds-first": "John",
+    "#wds-last": "Doe",
+    "#wds-email": "john@example.com",
+    "#wds-phone": "+1 555 555 5555",
+    "#wds-city": "Ottawa",
+    "#wds-linkedin": "https://linkedin.com/in/johndoe",
+    "#wds-country": "Canada",
+    "radio=wds-sponsorship": "No",
+    "#wds-workauth": null
+  }
+}

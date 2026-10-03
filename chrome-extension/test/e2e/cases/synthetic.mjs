@@ -15,6 +15,7 @@
 import { buildSync } from "esbuild";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { MOCK } from "../profiles.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -49,7 +50,14 @@ const page = (name) =>
   `<!doctype html><html><head><meta charset="utf-8"><title>Software Engineer - Apply</title></head>
 <body><script src="/__fixtures.js"></script><script>__mount[${JSON.stringify(name)}](document);</script></body></html>`;
 
-export const SYNTHETIC_EXPECT = {};
+/**
+ * Reviewed expectations (2026-10-03): every value the extension wrote on these
+ * fixtures was checked by hand against the MOCK profile and frozen here, plus
+ * the abstentions that must hold (Workday's "authorized to work in THIS
+ * country?" with no job country on the page, "How did you hear about us?").
+ * Any NEW write on these pages fails as UNEXPECTED until reviewed.
+ */
+export const SYNTHETIC_EXPECT = JSON.parse(readFileSync(path.join(here, "synthetic-expect.json"), "utf8"));
 
 export default Object.entries(HOSTS).map(([name, url]) => {
   const origin = new URL(url).origin;
