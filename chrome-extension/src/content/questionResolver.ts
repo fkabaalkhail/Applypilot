@@ -153,12 +153,22 @@ const residenceOf = (facts: ProfileFacts): string | null =>
 // ---------------------------------------------------------------------------
 
 const WORK_RIGHT =
-  /\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able|able|legal right|right|permission|clearance) to (legally )?work\b|\bwork authori[sz]ation\b|\bwork permit\b|\blegally (work|be employed|employed)\b|\bauthori[sz]ation to work\b|\bwork legally\b/;
+  /\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able|legal right|right|permission) to (legally )?work\b|\bwork authori[sz]ation\b|\bwork permit\b|\blegally (work|be employed|employed)\b|\bauthori[sz]ation to work\b|\bwork legally\b/;
+
+/** "Are you able to work…" is a work RIGHT question only when it names a
+ *  country and no arrangement: "able to work from our Kepler office" (Lever,
+ *  live 2026-10-03) is about the office, and was answered as authorization. */
+function isAbleToWorkInCountry(n: string, raw: string): boolean {
+  if (!/\bable to work\b/.test(n)) return false;
+  if (/\b(office|onsite|on site|in person|remote|remotely|hybrid|weekends?|nights?|shifts?|overtime|hours|travel|commute|schedule|full time|part time|days a week)\b/.test(n)) return false;
+  const c = countryNamedIn(raw);
+  return c !== null;
+}
 const SPONSOR = /\bsponsor(ship|ed|ing)?\b|\b(visa|immigration) (status|support|assistance|transfer)\b|\bh ?1 ?b\b/;
 const WITHOUT_SPONSOR = /\bwithout (the )?(need (for|of) |needing |requiring |requirement (for|of) )?(any )?(current or future )?(visa |employer |employment |immigration |company )?sponsor/;
 
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
-  const hasRight = WORK_RIGHT.test(n);
+  const hasRight = WORK_RIGHT.test(n) || isAbleToWorkInCountry(n, q.label);
   const hasSponsor = SPONSOR.test(n);
   if (!hasRight && !hasSponsor) return null;
   const country = targetCountry(q, ctx);

@@ -212,11 +212,11 @@ function controlTypeOf(el: HTMLElement): ControlType | null {
 
 /** Options for a <select>, trimmed for transport. Exported for the Phase-2
  *  re-ask pass, which re-reads options after dependent-dropdown repopulation. */
-export function selectOptions(el: HTMLSelectElement): string[] {
+export function selectOptions(el: HTMLSelectElement, limit = 60): string[] {
   return Array.from(el.options)
     .map((o) => cleanText(o.textContent))
     .filter((t) => t.length > 0)
-    .slice(0, 60);
+    .slice(0, limit);
 }
 
 /** Option labels of an ARIA radio group (its role=radio children). */
@@ -322,6 +322,28 @@ function groupSignals(members: HTMLInputElement[], container: Element | null): F
     placeholder: "",
     typeHint: "",
   };
+}
+
+/**
+ * A native <select> enhanced by select2 / chosen: hidden (and often
+ * aria-hidden), mirrored by a styled proxy. Lever's university picker is one
+ * (live 2026-10-03): the scanner skipped the hidden select and fought the proxy,
+ * so "What Post-Secondary institution do you attend?" stayed blank.
+ */
+function isEnhancedSelect(el: HTMLElement): boolean {
+  if (!(el instanceof HTMLSelectElement)) return false;
+  if (el.classList.contains("select2-hidden-accessible")) return true;
+  const next = el.nextElementSibling;
+  return Boolean(next && /\b(select2-container|chosen-container)\b/.test(next.getAttribute("class") ?? ""));
+}
+
+/** The styled proxy of an enhanced select, or its open dropdown/search box. */
+function isEnhancedSelectProxy(el: HTMLElement): boolean {
+  if (el.closest(".select2-dropdown, .chosen-drop")) return true;
+  const container = el.closest(".select2-container, .chosen-container");
+  if (!container) return false;
+  const prev = container.previousElementSibling;
+  return prev instanceof HTMLSelectElement && isEnhancedSelect(prev);
 }
 
 /**
@@ -505,17 +527,19 @@ function remapRepeatingRows(
       f.groupIndex = pos;
       const control = registry.get(f.id);
       if (!control?.el) continue;
+      // Every option, not the panel's capped copy (see scanPage).
+      const allOptions = control.el instanceof HTMLSelectElement ? selectOptions(control.el, Infinity) : f.options;
       f.proposedValue = guardConstrainedOption(
         resolveAnswerWithAdapter(
           adapter,
           f.category,
           profile,
-          { controlType: f.controlType, options: f.options, groupIndex: pos },
+          { controlType: f.controlType, options: allOptions, groupIndex: pos },
           fillEEO,
           control.el
         ),
         f.controlType,
-        f.options
+        allOptions
       );
     }
   }
@@ -587,6 +611,11 @@ export function scanPage(
     if (isInPageChrome(el)) continue;
     if ((el as HTMLInputElement).disabled) continue;
     if (el instanceof HTMLInputElement && el.readOnly) continue;
+    // select2 / chosen: the visible widget is a proxy of a hidden native
+    // <select> that holds the real options and value. Fill the select (the
+    // library follows its change event) and never the proxy or its dropdown.
+    if (isEnhancedSelectProxy(el)) continue;
+    const enhancedSelect = isEnhancedSelect(el);
 
     // Visibility: checkbox/radio/file are often visually hidden behind styled
     // replacements but still operable, allow them when labeled. Comboboxes get
@@ -597,12 +626,12 @@ export function scanPage(
       controlType === "checkbox" ||
       controlType === "radioGroup" ||
       controlType === "file";
-    if (!isVisible(el) && !(relaxed && (isHiddenButLabeled(el) || isUploadAffordance(el)))) continue;
+    if (!isVisible(el) && !enhancedSelect && !(relaxed && (isHiddenButLabeled(el) || isUploadAffordance(el)))) continue;
     // A control inside aria-hidden markup is by definition not part of the form
     // the user sees (react-select's `<input required>` validation twin, screen-
     // reader-excluded duplicates). Styled-replacement natives (checkbox/radio/
     // file) legitimately carry aria-hidden, so only strict types are skipped.
-    if (!relaxed && el.closest('[aria-hidden="true"]')) continue;
+    if (!relaxed && !enhancedSelect && el.closest('[aria-hidden="true"]')) continue;
 
     if (el instanceof HTMLInputElement && el.type === "radio") {
       // A name ties a radio group together in the browser; a framework
@@ -682,12 +711,16 @@ export function scanPage(
 
     const label = bestDisplayLabel(signals);
     // Kind → question shapes → category value → kind/option gate (fieldResolver).
+    // Resolution sees EVERY option: `options` is capped at 60 for the panel,
+    // and a value past the cap ("United States" in a country list) was dropped
+    // as "not offered" when the gate used the capped copy.
+    const allOptions = el instanceof HTMLSelectElement ? selectOptions(el, Infinity) : options;
     const resolved = resolveField({
       adapter,
       category,
       sensitive,
       profile,
-      control: { controlType, options, groupIndex, multi },
+      control: { controlType, options: allOptions, groupIndex, multi },
       fillEEO,
       el,
       label,

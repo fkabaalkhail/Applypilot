@@ -260,3 +260,13 @@ describe("SmartRecruiters (jobs.smartrecruiters.com oneclick-ui, real markup)", 
     expect(byLabel(fields, "Confirm your email").proposedValue).toBe(SPARSE_CANADIAN.email);
   });
 });
+
+describe("select2-enhanced selects (Lever university picker, real markup)", () => {
+  it("fills the hidden native select, labelled by its question, and skips the proxy", () => {
+    const fields = load("lever", "lever-kepler-intern");
+    const uni = fields.find((f) => f.controlType === "select" && f.label.includes("Post-Secondary institution"));
+    expect(uni).toBeDefined();
+    expect(uni!.proposedValue).toBe("University of Waterloo");
+    expect(fields.some((f) => f.controlType === "combobox" && /select a university/i.test(f.label))).toBe(false);
+  });
+});

@@ -277,3 +277,19 @@ describe("residence: the applicant must be the subject", () => {
     expect(value(ask("Are you currently based in Toronto?", { options: YES_NO }))).toBe("Yes");
   });
 });
+
+describe("'able to work' is a work-right question only with a country and no arrangement", () => {
+  // Lever (Kepler), live 2026-10-03, verbatim.
+  it("an office-attendance question is not work authorization", () => {
+    const label =
+      "This position requires you to work from the Toronto Office located at 24 Ward Street, Toronto ON M6H 4A6. Are you able to work from our Kepler office as required?";
+    const r = ask(label, { options: YES_NO }, SPARSE_CANADIAN, { jobCountry: "CA", company: "Kepler" });
+    expect(value(r)).not.toBe("Yes");
+  });
+  it("'Are you able to work in Canada?' is", () => {
+    expect(value(ask("Are you able to work in Canada?", { options: YES_NO }))).toBe("Yes");
+  });
+  it("'Are you legally able to work in Canada according to the laws…?' is", () => {
+    expect(value(ask("Are you legally able to work in Canada according to the laws and regulations of the country?", { options: YES_NO }))).toBe("Yes");
+  });
+});
