@@ -811,17 +811,17 @@ function initialize(): void {
       await waitForDomSettle(signal);
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       runScan();
-      // A form opened by an entry click can still sit hidden while the site
-      // loads (hiddenForm.ts). Wait for it to show (bounded; free when the
-      // page's form isn't hidden) when this pass has nothing to fill yet, or
-      // when the flow just clicked "Apply" and next to nothing is rendered: a
-      // stray field outside the hidden form must not end the wait (BambooHR).
-      // A user's own click waits only when it picked nothing: they pressed
-      // Autofill right after opening the form themselves, and the flow would
-      // otherwise click "Apply" again and toggle the form shut.
-      if (ids === null || ids.length === 0) {
+      // A form an "Apply" click opens can still sit hidden while the site loads
+      // (hiddenForm.ts). On the page the flow's entry click just opened, or on a
+      // user's click that picked nothing (they pressed Autofill right after
+      // opening the form themselves; the flow would otherwise click "Apply"
+      // again and toggle the form shut), wait for it to show (bounded; free when
+      // the page's form isn't hidden) if there is nothing to fill yet, or next
+      // to nothing is rendered: a stray field outside the hidden form must not
+      // end the wait (BambooHR). Ordinary wizard steps never wait.
+      if (afterEntry || (ids !== null && ids.length === 0)) {
         const nothingYet = defaultSelectedIds(lastFields).size === 0;
-        if (nothingYet || (afterEntry && controlVisibility(document).shown <= 2)) {
+        if (nothingYet || controlVisibility(document).shown <= 2) {
           const found = await waitForFormReveal(
             {
               measure: () => controlVisibility(document),

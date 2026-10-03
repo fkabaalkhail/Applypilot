@@ -30,7 +30,11 @@ import { fakeJwt } from "./fakeApi.mjs";
 import { dumpAllFrames } from "./dumpFields.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-export const EXT_DIR = path.resolve(here, "..", "..", "dist");
+// E2E_EXT_DIR scores another build (e.g. a baseline commit's dist) against the
+// current cases and expectations.
+export const EXT_DIR = process.env.E2E_EXT_DIR
+  ? path.resolve(process.env.E2E_EXT_DIR)
+  : path.resolve(here, "..", "..", "dist");
 
 export async function launchExtension({ headless = process.env.HEADLESS === "1" } = {}) {
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), "tailrd-e2e-"));
