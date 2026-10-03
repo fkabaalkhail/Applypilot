@@ -13,7 +13,7 @@
  * answered for THIS country, so a wrong guess here would be a wrong legal
  * answer there: null (and an abstention) is the safe failure.
  */
-import { countryByCode, countryFromName } from "./geo";
+import { countryByCode, countryFromName, regionFromText } from "./geo";
 import { parseAddress } from "./profileFacts";
 
 const LOCATION_SELECTORS = [
@@ -84,8 +84,48 @@ function jsonLdCountries(doc: Document): string[] {
   return out;
 }
 
+/**
+ * Workday puts the job's location in its URL: `/job/<Location>/<Title>_<Req>`
+ * ("Cambridge-MA", "Dayton-Minnesota-USA-French-Lake", "Texas---Houston-
+ * Corporate-Office", "Toronto-ON"), and keeps it on every application step,
+ * which otherwise shows no location at all. Only unambiguous evidence counts:
+ * a country name, a full state/province name, or an UPPERCASE two-letter code
+ * ("MA", "ON"; a lowercase "in"/"or" is a word, not Indiana/Oregon).
+ */
+export function countryFromWorkdayUrl(href: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  if (!/myworkday(jobs|site)\.com$/i.test(url.hostname)) return null;
+  const m = /\/job\/([^/]+)\//.exec(url.pathname);
+  if (!m) return null;
+  const tokens = decodeURIComponent(m[1]).split(/[-_,\s]+/).filter(Boolean);
+  const found = new Set<string>();
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const pair = i + 1 < tokens.length ? `${t} ${tokens[i + 1]}` : "";
+    const triple = i + 2 < tokens.length ? `${t} ${tokens[i + 1]} ${tokens[i + 2]}` : "";
+    for (const phrase of [triple, pair, t]) {
+      if (!phrase) continue;
+      const c = phrase.length === 2 ? null : countryFromName(phrase);
+      if (c) found.add(c.code);
+      const isCode = /^[A-Z]{2}$/.test(phrase);
+      if (isCode || phrase.length > 3) {
+        const r = regionFromText(phrase);
+        if (r && (isCode || r.name.toLowerCase() === phrase.toLowerCase())) found.add(r.country);
+      }
+    }
+  }
+  return found.size === 1 ? [...found][0] : null;
+}
+
 export function detectJobCountry(doc: Document = document): string | null {
   try {
+    const fromUrl = countryFromWorkdayUrl(doc.location?.href ?? "");
+    if (fromUrl) return fromUrl;
     const found = jsonLdCountries(doc);
     if (found.length === 0) {
       for (const sel of LOCATION_SELECTORS) {
