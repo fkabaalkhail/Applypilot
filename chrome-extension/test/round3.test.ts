@@ -163,3 +163,141 @@ describe("an education row's city is the school's, not the applicant's (Paylocit
     expect(cities.map((x) => x.proposedValue ?? null)).toEqual(["Gatineau", null]);
   });
 });
+
+describe("a decline the PAGE pre-selects is no answer (JazzHR's EEO selects)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  // Verbatim markup: the decline option ships `selected`.
+  const JAZZ = `<form>
+    <div class="form-group"><div class="resumator-input" id="resumator-eeo_gender-field"><label for="resumator-eeo_gender-value">Gender<select id="resumator-eeo_gender-value" name="resumator-eeo_gender-value" class="form-control"><option value="0" selected="">Decline to answer</option><option value="1">Female</option><option value="2">Male</option></select></label></div></div>
+    <div class="form-group"><label for="country">Country<select id="country" name="country"><option value="CA" selected="">Canada</option><option value="US">United States</option></select></label></div>
+  </form>`;
+  it("the applicant's stated answer replaces the page's default decline", () => {
+    document.body.innerHTML = JAZZ;
+    const f = scanPage({ ...SPARSE_CANADIAN, eeo: { gender: "Male" } }, true, null).fields;
+    const gender = f.find((x) => x.category === "eeoGender")!;
+    expect(gender.currentValue).toBeUndefined();
+    expect(gender.proposedValue).toBe("Male");
+  });
+  it("any other pre-selected option still counts as filled (never overwritten)", () => {
+    document.body.innerHTML = JAZZ;
+    const f = scanPage({ ...SPARSE_CANADIAN, country: "United States" }, true, null).fields;
+    expect(f.find((x) => x.category === "country")?.currentValue).toBe("Canada");
+  });
+});
+
+describe("start availability asked as 'how soon are you able to start?' (Kaizen on JazzHR)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  it("is the earliest start date", () => {
+    document.body.innerHTML = `<form><label for="s">If chosen for the role, how soon are you able to start?*</label><input id="s" type="text"></form>`;
+    const f = scanPage({ ...SPARSE_CANADIAN, earliestStartDate: "2027-05-24" }, false, null).fields;
+    expect(f[0].category).toBe("startDate");
+    expect(f[0].proposedValue).toMatch(/2027/);
+  });
+});
+
+describe("a long option list is read whole (Kenect on Breezy: 50 states as radios)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  const STATES = ["Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming"];
+  it("'What state do you live in?' finds Texas, the 43rd option", () => {
+    document.body.innerHTML = `<form><fieldset><legend>What state do you live in?* A response is required</legend>${STATES.map((s, i) => `<label><input type="radio" name="st" value="${i}">${s}</label>`).join("")}</fieldset></form>`;
+    const f = scanPage({ ...SPARSE_CANADIAN, location: "Austin, TX", addressCity: "Austin", addressState: "TX", country: "United States" }, false, null).fields;
+    expect(f[0].options).toHaveLength(50);
+    expect(f[0].proposedValue).toBe("Texas");
+  });
+});
+
+describe("Kenect on Breezy: questions a stated fact answers", () => {
+  const AUSTIN: UserApplicationProfile = {
+    ...SPARSE_CANADIAN,
+    location: "Austin, TX",
+    addressCity: "Austin",
+    addressState: "TX",
+    country: "United States",
+    willingToRelocate: "No",
+    howDidYouHear: "Company website",
+    earliestStartDate: "2026-10-26",
+  };
+  it("'How did you hear about this position? If referred, by who?' is the channel question", () => {
+    expect(value(ask("How did you hear about this position? If referred, by who?*A response is required", {}, AUSTIN))).toBe("Company website");
+  });
+  it("a follow-up that STARTS with 'if' is still not the channel question", () => {
+    expect(value(ask("If you heard about us through a referral, please state the employee's name", {}, AUSTIN))).not.toBe("Company website");
+  });
+  it("'When are you available for employment?' is the start date", () => {
+    expect(value(ask("When are you available for employment?*A response is required", {}, AUSTIN))).toMatch(/2026/);
+  });
+  it("'able to work a Hybrid schedule out of Pleasant Grove, Utah?': No for an Austin applicant who will not relocate", () => {
+    const q = "Are you able to work a Hybrid schedule out of Pleasant Grove, Utah?* A response is required";
+    expect(value(ask(q, { options: YES_NO }, AUSTIN, { jobCountry: "US", company: "", jobCity: "Pleasant Grove" }))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, { ...AUSTIN, willingToRelocate: "Yes" }, { jobCountry: "US", company: "", jobCity: "Pleasant Grove" }))).toBe("Yes");
+    const local = { ...AUSTIN, location: "Pleasant Grove, UT", addressCity: "Pleasant Grove", addressState: "UT" };
+    expect(value(ask(q, { options: YES_NO }, local, { jobCountry: "US", company: "", jobCity: "Pleasant Grove" }))).toBe("Yes");
+  });
+});
+
+describe("'Are you a current MongoDB employee?' (MongoDB's embedded Greenhouse form)", () => {
+  it("names the company after a qualifier: No for an applicant employed elsewhere", () => {
+    const p = { ...SPARSE_CANADIAN, currentCompany: "Dell Technologies", experience: [{ company: "Dell Technologies", title: "Software Engineer II", startDate: "Jan 2023", endDate: "Present", description: "" }] };
+    expect(value(ask("Are you a current MongoDB employee?", { options: YES_NO }, p))).toBe("No");
+    expect(value(ask("Are you a current Dell Technologies employee?", { options: YES_NO }, p))).toBe("Yes");
+  });
+});
+
+describe("a city typeahead filled by the page-world driver picks the PLACE (Zipline's embedded Greenhouse form)", () => {
+  it("'San Jose' in California is never 'San José, Costa Rica'", async () => {
+    const { pickOption } = await import("../src/content/mainWorldDriver");
+    const suggestions = ["San José, Costa Rica", "San Jose, California, United States", "San Jose, Batangas, Philippines"];
+    expect(pickOption(suggestions, "San Jose", "San Jose, CA, United States")).toBe(1);
+    // A place hint that matches no suggestion picks none (never the nearest name).
+    expect(pickOption(["San José, Costa Rica"], "San Jose", "San Jose, CA, United States")).toBe(-1);
+    // Options that are not places keep the ordinary matcher.
+    expect(pickOption(["Yes", "No"], "Yes", "San Jose, CA, United States")).toBe(0);
+  });
+});
+
+describe("batch B: availability over a stated period, a lone-Yes consent, no history", () => {
+  const MEI = { ...SPARSE_CANADIAN, earliestStartDate: "2027-05-24", willingToRelocate: "Yes" };
+  it("'available for … next Spring (January 2027 - April/May 2027)?' is No when the earliest start is late May (Zipline)", () => {
+    const q = "Are you available for a full-time onsite internship next Spring (January 2027 - April/May 2027)?*";
+    expect(value(ask(q, { options: YES_NO }, MEI))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, { ...MEI, earliestStartDate: "2026-12-14" }))).toBe("Yes");
+  });
+  it("'Have you read and agree to the below Disclaimer and Consent?' with a lone 'Yes' is Yes (D2L)", () => {
+    expect(value(ask("Have you read and agree to the below Disclaimer and Consent?*", { options: ["Yes"] }))).toBe("Yes");
+  });
+  it("'previously worked for D2L?' is No for an applicant with no work history at all (D2L)", () => {
+    const fresh = { ...SPARSE_CANADIAN, experience: [] };
+    const q = "Have you previously worked for D2L in any capacity? If yes, please select the most recent type that applies.*";
+    expect(value(ask(q, { options: ["No", "Yes - Full time", "Yes - Co-op/Intern"] }, fresh))).toBe("No");
+  });
+});
+
+describe("a phone widget that keeps the country code apart (Workable, live 2026-10-03)", () => {
+  it("'+44 20 7946 0958' shown as '20 7946 0958' was written, not 'did not stick'", async () => {
+    const { verifyControl } = await import("../src/content/writeEngine");
+    const el = document.createElement("input");
+    el.type = "tel";
+    document.body.append(el);
+    const control = { id: "p", controlType: "text" as const, el };
+    el.value = "20 7946 0958";
+    expect(verifyControl(control, "+44 20 7946 0958")).toBe(true);
+    el.value = "408-555-0172";
+    expect(verifyControl(control, "+1 408-555-0172")).toBe(true);
+    // A fragment is not the number.
+    el.value = "555-0172";
+    expect(verifyControl(control, "+1 408-555-0172")).toBe(false);
+    el.remove();
+  });
+});

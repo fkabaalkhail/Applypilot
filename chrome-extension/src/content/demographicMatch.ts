@@ -178,6 +178,12 @@ export function hispanicRaceOption(hispanic: string, options: string[]): string 
   return hits.length === 1 ? hits[0] : null;
 }
 
+/** An option that declines to answer ("Decline to answer", "Prefer not to say"). */
+export function isDeclineText(text: string): boolean {
+  const t = norm(text);
+  return Boolean(t) && (DECLINE_PATTERNS.some((d) => t.includes(d)) || /^decline\b/.test(t));
+}
+
 /** The option that declines to answer ("I don't wish to answer", "Decline To
  *  Self Identify"), when the list has exactly one. */
 export function declineOption(options: string[]): string | null {

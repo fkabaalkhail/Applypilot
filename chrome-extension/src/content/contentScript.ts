@@ -621,7 +621,7 @@ function initialize(): void {
         if (!res.filled && res.options) reask.push({ fieldId: t.fieldId, options: res.options });
         continue;
       }
-      const res = await driveField(t.fieldId, t.value, control.driver);
+      const res = await driveField(t.fieldId, t.value, control.driver, { placeHint: placeHintFor(t.fieldId) });
       if (res.ok || !control.el) {
         outcomes.push({ fieldId: t.fieldId, ok: res.ok, reason: res.ok ? undefined : res.reason });
         continue;

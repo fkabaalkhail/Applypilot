@@ -40,6 +40,7 @@ import type { SiteAdapter } from "./adapters/types";
 import { detectFillDriver } from "./driverDetect";
 import { DATE_PART_ID_SELECTOR } from "./adapters/workdaySelectors";
 import type { FillDriver } from "./mainWorldBridge";
+import { isDeclineText } from "./demographicMatch";
 
 /** Live handle for a detected field, never leaves the content script. */
 export interface RuntimeControl {
@@ -225,11 +226,16 @@ export function selectOptions(el: HTMLSelectElement, limit = 60): string[] {
 }
 
 /** Option labels of an ARIA radio group (its role=radio children). */
+/** Every option of a choice group is read: 50 states as radios lost Texas
+ *  (the 43rd) to a 30-option cap (Kenect on Breezy, live 2026-10-03). The
+ *  bound is only a guard against runaway markup. */
+const MAX_GROUP_OPTIONS = 300;
+
 function ariaRadioOptions(group: HTMLElement): string[] {
   return Array.from(group.querySelectorAll('[role="radio"]'))
     .map((r) => cleanText(r.getAttribute("aria-label")) || cleanText(r.textContent))
     .filter((t) => t.length > 0)
-    .slice(0, 30);
+    .slice(0, MAX_GROUP_OPTIONS);
 }
 
 /**
@@ -955,7 +961,7 @@ export function scanPage(
     const id = ensureFieldId(first);
     const signals = groupSignals(radios, first.closest('fieldset, [role="radiogroup"]'));
     const groupIndex = detectGroupIndex(signals);
-    const options = radios.map(radioOptionLabel).filter(Boolean).slice(0, 30);
+    const options = radios.map(radioOptionLabel).filter(Boolean).slice(0, MAX_GROUP_OPTIONS);
     let { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "radioGroup" });
     if (category === "unknown") {
       const named = categoryOfOptions(options);
@@ -1006,7 +1012,7 @@ export function scanPage(
     const signals = groupSignals(checkboxes, container);
     const groupIndex = detectGroupIndex(signals);
     const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "checkboxGroup" });
-    const options = checkboxes.map(radioOptionLabel).filter(Boolean).slice(0, 30);
+    const options = checkboxes.map(radioOptionLabel).filter(Boolean).slice(0, MAX_GROUP_OPTIONS);
 
     registry.set(id, { id, controlType: "checkboxGroup", checkboxes });
 
@@ -1105,6 +1111,10 @@ function currentValueOf(el: HTMLElement, controlType: ControlType): string | und
     const opt = sel.selectedOptions[0];
     // Treat a selected placeholder ("Select…", empty value) as empty.
     if (!opt || !opt.value) return undefined;
+    // A decline the PAGE ships selected ("Decline to answer" with `selected`,
+    // JazzHR's EEO selects, live 2026-10-03) is its default, not an answer:
+    // the applicant's stated one may replace it. Any other default stays.
+    if (opt.defaultSelected && isDeclineText(opt.textContent ?? "")) return undefined;
     return cleanText(opt.textContent) || undefined;
   }
   if (controlType === "checkbox") {

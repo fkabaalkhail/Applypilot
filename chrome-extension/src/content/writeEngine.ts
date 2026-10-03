@@ -245,7 +245,12 @@ function valueReflects(written: string, current: string): boolean {
   if (!c) return false;
   const core = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   const cw = core(w);
-  return cw !== "" && cw === core(c);
+  const cc = core(c);
+  if (cw !== "" && cw === cc) return true;
+  // An international number whose widget keeps the country code in its own
+  // picker: "+44 20 7946 0958" shows as "20 7946 0958" (Workable, live
+  // 2026-10-03, reported "did not stick"). The rest of the number, whole.
+  return /^\+/.test(w) && /^\d+$/.test(cw) && /^\d{7,}$/.test(cc) && cw.endsWith(cc) && cw.length - cc.length <= 3;
 }
 
 // ---------------------------------------------------------------------------

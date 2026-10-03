@@ -921,6 +921,33 @@ function resolveTimezone(q: QuestionInput, n: string, facts: ProfileFacts): Ques
   return hits.length === 1 ? answer(hits[0], "timezone") : abstain("timezone:no-matching-option");
 }
 
+const MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+/** Academic terms by the month they start ("next Spring (January 2027 …)"). */
+const TERM_START: Record<string, number> = { winter: 0, spring: 0, summer: 4, fall: 8, autumn: 8 };
+
+/**
+ * Availability for a period the question dates: "Are you available for a
+ * full-time onsite internship next Spring (January 2027 - April/May 2027)?"
+ * got Yes from the requirement default for an applicant who cannot start
+ * before late May (Zipline's embedded Greenhouse form, live 2026-10-03). An
+ * earliest start more than a month after the period begins is No; otherwise
+ * the other rules (on-site, relocation) decide.
+ */
+function resolvePeriodAvailability(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\bavailab(le|ility)\b/.test(n) || !isBooleanQuestion(q)) return null;
+  const month = new RegExp(`\\b(${MONTH_NAMES.join("|")})\\s+(\\d{4})\\b`).exec(n);
+  const term = month ? null : /\b(winter|spring|summer|fall|autumn)\s+(?:term\s+|semester\s+)?(\d{4})\b/.exec(n);
+  const start = month
+    ? Date.UTC(Number(month[2]), MONTH_NAMES.indexOf(month[1]), 1)
+    : term
+      ? Date.UTC(Number(term[2]), TERM_START[term[1]], 1)
+      : null;
+  if (start === null) return null;
+  const earliest = facts.availability.earliestStart;
+  if (!isHigh(earliest)) return null;
+  return earliest.value.getTime() > start + 31 * 86400000 ? booleanResult(false, q, "period-availability:starts-later") : null;
+}
+
 /** "Did you Graduate?" (Paylocity's education row, live 2026-10-03): whether
  *  the education the profile means (in progress first) is finished. */
 function resolveDidGraduate(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
@@ -1174,7 +1201,9 @@ function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: 
   // company we can check.
   const named =
     /\b(?:of|by|for|at)\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,3})/.exec(raw) ??
-    /\b(?:a|an)\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,2})\s+(?:employee|contractor|intern)\b/.exec(raw);
+    // "a current MongoDB employee" (MongoDB's embedded form, live 2026-10-03):
+    // a qualifier may sit between the article and the name.
+    /\b(?:a|an)\s+(?:(?:current|former|past|previous|prior|full[- ]time|part[- ]time)\s+)?([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,2})\s+(?:employee|contractor|intern)\b/.exec(raw);
   const pointsHere = /\b(for us|with us|here|this company|our company|the company|this organi[sz]ation|our organi[sz]ation)\b/.test(n);
   const company = named && !/^(us|our|the|this|any|a|an)$/i.test(named[1])
     ? named[1].replace(/[,.]+$/, "")
@@ -1245,8 +1274,10 @@ function resolveAvailability(q: QuestionInput, n: string, facts: ProfileFacts): 
   // must never answer with the applicant's availability.
   const startQ =
     (q.category === "startDate" ||
-      /\b(earliest|when (can|could|would) you (start|begin|join|commence)|when (are|would) you (be )?(able|available) to (start|begin|join|commence)|available to (start|begin|join)|availability|date available|available (from|on|starting)|start availability|joining date|(desired|preferred|potential|anticipated|expected|possible|proposed) (start|starting) date|how soon can you start)\b/.test(n)) &&
-    !/\b(end|finish|graduat|interview|employment|position held|worked)\b/.test(n);
+      /\b(earliest|when (can|could|would) you (start|begin|join|commence)|when (are|would) you (be )?(able|available) to (start|begin|join|commence)|available to (start|begin|join)|availability|date available|available (from|on|starting)|start availability|joining date|(desired|preferred|potential|anticipated|expected|possible|proposed) (start|starting) date|how soon can you start|when (are|would) you (be )?available|available for (employment|work|hire))\b/.test(n)) &&
+    // "…available for employment?" is availability (Kenect on Breezy, live
+    // 2026-10-03); an employment row's dates are not.
+    !/\b(end|finish|graduat|interview|employment (start|end|dates?|history|record)|position held|worked)\b/.test(n);
   if (startQ && (q.kind === "date" || q.kind === "text") && !(q.options && q.options.length)) {
     if (!isHigh(av.earliestStart)) return abstain("start-date:unknown");
     return answer(formatDateFor(av.earliestStart.value, q), "start-date");
@@ -1487,7 +1518,12 @@ export function resolveQuestion(
   if (FOLLOW_UP.test(n) || /^if\s*['"“‘]/i.test(raw)) return abstain("conditional-follow-up");
   const conditional = resolveConditional(q, raw, facts, profile, ctx);
   if (conditional !== undefined) return conditional;
-  if (UNANSWERABLE.test(n)) return abstain("unanswerable-from-profile");
+  // "How did you hear about this position? If referred, by who?" (Kenect on
+  // Breezy, live 2026-10-03): an add-on starting with "if" asks only when it
+  // applies, so the question is judged by its first sentence.
+  const sentences = raw.split(/(?<=\?)\s*/);
+  const asked = sentences.length > 1 && /^\s*if\b/i.test(sentences.slice(1).join(" ")) ? qnorm(sentences[0]) : n;
+  if (UNANSWERABLE.test(asked)) return abstain("unanswerable-from-profile");
   // The profile's education rows are post-secondary: their school and year
   // answer the university question, never "High School Name" / "Year of High
   // School Graduation" (Palantir on Lever, live 2026-10-03). A yes/no about a
@@ -1521,6 +1557,7 @@ export function resolveQuestion(
     resolveTimezone(q, n, facts) ??
     resolveZoneAvailability(q, n, facts) ??
     resolveDidGraduate(q, n, facts) ??
+    resolvePeriodAvailability(q, n, facts) ??
     resolveLocalTo(q, n, facts, profile) ??
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??
@@ -1532,6 +1569,15 @@ export function resolveQuestion(
   if (resolved && (resolved.status === "answer" || !DEFAULTABLE.test(resolved.rule))) return resolved;
   // An adult-applicant gate with no date of birth: 18 or older is the default;
   // a higher bar (21) stays the applicant's to answer.
+  // No work history at all: never this company's employee either ("Have you
+  // previously worked for D2L in any capacity?", a new graduate, live
+  // 2026-10-03). The "no", "never" or "neither" option, or No.
+  if (resolved?.rule === "former-employee:no-history") {
+    const opts = (q.options ?? []).filter((o) => o.trim());
+    if (opts.length === 0 || isBooleanOptionSet(opts)) return booleanResult(false, q, "default:no-history");
+    const never = opts.filter((o) => /^(no|never|neither|none|n a|not applicable)\b/.test(qnorm(o)) || /\b(have not|havent|never)\b/.test(qnorm(o)));
+    return never.length === 1 ? answer(never[0], "default:no-history") : resolved;
+  }
   if (resolved?.rule === "age-gate:no-dob") {
     const min = Number(AGE_MIN.exec(n)?.slice(1).find(Boolean) ?? NaN);
     return min <= 18 && !AGE_UNDER.test(n) ? booleanResult(true, q, "default:adult") : resolved;

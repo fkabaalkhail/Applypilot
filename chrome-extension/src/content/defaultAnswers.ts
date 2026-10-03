@@ -20,6 +20,7 @@
 import type { UserApplicationProfile } from "../shared/types";
 import { optionPolarity } from "./answerKind";
 import { isHigh, type ProfileFacts } from "./profileFacts";
+import { placeOf } from "./placeMatch";
 import type { QuestionContext, QuestionInput, QuestionResult } from "./questionResolver";
 
 const answer = (value: string, rule: string): QuestionResult => ({ status: "answer", value, confidence: "high", rule });
@@ -74,7 +75,7 @@ const FUTURE_ROLES = /\b(future (job |career |employment )?(opportunities|openin
 const CONSENT_VERB =
   /\b(consent|agree|accept|acknowledge|understand|confirm|certify|attest|declare|authori[sz]e)\b|\bi have read\b|\bby (checking|selecting|clicking|submitting)\b/;
 const CONSENT_OBJECT =
-  /\b(privacy|personal (data|information)|data (protection|processing|privacy)|gdpr|ccpa|processing|terms|conditions|polic(y|ies)|notice|statement|disclosure|accurate|true|truthful|complete|correct|falsif\w*|misrepresent\w*|omission|retain|retention|stor(e|ing)|collect(ion|ing)?|candidate (data|information)|applicant (data|information))\b/;
+  /\b(privacy|personal (data|information)|data (protection|processing|privacy)|gdpr|ccpa|processing|terms|conditions|polic(y|ies)|notice|statement|disclosure|disclaimers?|accurate|true|truthful|complete|correct|falsif\w*|misrepresent\w*|omission|retain|retention|stor(e|ing)|collect(ion|ing)?|candidate (data|information)|applicant (data|information))\b/;
 /** Demographic-data consent belongs to the EEO path (sensitive), never defaulted. */
 const DEMOGRAPHIC = /\b(demographic|self ?identif\w*|eeo|equal employment|voluntary (self|disclosure))\b/;
 /** Recording / AI notetaking consent: a preference, not a requirement. */
@@ -164,6 +165,17 @@ const SOURCE_PREFERENCE: RegExp[] = [
   /\b(indeed|glassdoor|zip ?recruiter|monster|simply ?hired|dice|built ?in|wellfound|angel ?list|handshake|job ?bank|workopolis|eluta|talent com|jobillico|levels fyi)\b/,
   /\bother\b/,
 ];
+
+/** Working in a place in person (an office, on site, a hybrid schedule). */
+const IN_PERSON = /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b/;
+
+/** The place a question names ("out of Pleasant Grove, Utah", "in Austin, TX"). */
+function placeInLabel(label: string): ReturnType<typeof placeOf> | null {
+  const m = /\b(?:out of|in|at|from|based in|located in)\s+([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,3},\s*[A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,2})/.exec(label);
+  if (!m) return null;
+  const place = placeOf(m[1]);
+  return place.city && (place.region || place.country) ? place : null;
+}
 
 /** A channel named for a brand ("LinkedIn Job Search", "Glassdoor Article"). */
 const NAMED_SOURCE =
@@ -289,7 +301,10 @@ export function resolveDefault(
     kind === "boolean" || kind === "choice" || q.controlType === "checkbox" || realOptions(q).length > 0 ||
     q.controlType === "combobox" || q.controlType === "customDropdown";
 
-  if (HOW_HEARD.test(n) && !/\bif\b.*\b(referr|other)\b/.test(n)) return chooseSource(q, profile);
+  // A follow-up STARTING with "if" ("If you heard about us through a referral,
+  // please state…") is not the channel question; an "If referred, by who?"
+  // add-on after it is (Kenect on Breezy, live 2026-10-03).
+  if (HOW_HEARD.test(n) && !/^\s*if\b/.test(n)) return chooseSource(q, profile);
   const opts = realOptions(q);
   if ((UNLABELED.test(n) || /\b(find|found|hear|heard|learn|learned|discover)\w* (us|about us|this (role|job|position))\b/.test(n)) && opts.filter((o) => CHANNEL.test(qn(o))).length >= 3) {
     return chooseSource(q, profile);
@@ -344,6 +359,22 @@ export function resolveDefault(
     return polar(true, q, "default:consent");
   }
   if (/\bessential (functions|duties)\b/.test(n)) return polar(true, q, "default:essential-functions");
+  // Working in person somewhere named, for an applicant who will not relocate:
+  // "Are you able to work a Hybrid schedule out of Pleasant Grove, Utah?" got
+  // Yes for an Austin applicant (Kenect on Breezy, live 2026-10-03). Their own
+  // city: Yes; another state or country: No; another city at home: theirs.
+  if (IN_PERSON.test(n) && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) {
+    const there = placeInLabel(q.label);
+    if (there) {
+      const home = facts.location;
+      const homeCity = isHigh(home.city) ? qn(home.city.value) : null;
+      if (homeCity && there.city === homeCity) return polar(true, q, "default:in-person-local");
+      const homeRegion = isHigh(home.region) ? `${home.region.value.country}:${home.region.value.code}` : null;
+      const homeCountry = isHigh(home.country) ? home.country.value.code : null;
+      const elsewhere = (there.country && homeCountry && there.country !== homeCountry) || (there.region && homeRegion && there.region !== homeRegion);
+      return elsewhere ? polar(false, q, "default:in-person-not-relocating") : null;
+    }
+  }
   if (REQUIREMENT.test(n) && !ASSISTANCE.test(n) && (ACK_VERB.test(n) || /^(do|are|will|can|would) you\b/.test(n))) {
     // "Do you have any impediments to traveling internationally?" (Veeva on
     // Lever, live 2026-10-03, answered Yes): an obstacle question's clean answer is No.

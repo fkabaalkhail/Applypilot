@@ -24,27 +24,49 @@ export interface Place {
   city: string;
   region: string | null;
   country: string | null;
+  /** A qualifier after the city that is neither a known region nor a known
+   *  country ("Costa Rica", "Batangas"): the place is SOMEWHERE, not silent. */
+  other?: boolean;
 }
 
 /** City, province/state and country of "Toronto, ON, CAN" / "Toronto, Ontario, Canada". */
 export function placeOf(text: string): Place {
   const parts = (text || "").split(",").map((p) => p.trim()).filter(Boolean);
-  let region: string | null = null;
+  // The country is the LAST part naming one in full ("…, Georgia, United
+  // States" is the state). A two-letter part is then read as a region first:
+  // "San Jose, CA, United States" is California, not Canada (it picked "San
+  // José, Costa Rica" on Zipline's embedded Greenhouse form, live 2026-10-03).
   let country: string | null = null;
-  for (const p of parts.slice(1)) {
-    const two = p.length === 2 && /^(us|ca|uk)$/i.test(p) ? countryByCode(p.toUpperCase() === "UK" ? "GB" : p) : null;
-    const c = countryFromName(p) ?? two;
-    if (c && !country) {
+  let countryAt = -1;
+  for (let i = parts.length - 1; i >= 1; i--) {
+    const c = parts[i].length > 2 ? countryFromName(parts[i]) : null;
+    if (c) {
       country = c.code;
-      continue;
+      countryAt = i;
+      break;
     }
-    const r = regionFromText(p);
+  }
+  let region: string | null = null;
+  let other = false;
+  for (let i = 1; i < parts.length; i++) {
+    if (i === countryAt) continue;
+    const p = parts[i];
+    const r = regionFromText(p, country === "US" || country === "CA" ? country : undefined);
     if (r && !region) {
       region = `${r.country}:${r.code}`;
       if (!country) country = r.country;
+      continue;
     }
+    if (!country && p.length === 2 && /^(us|ca|uk)$/i.test(p)) {
+      const two = countryByCode(p.toUpperCase() === "UK" ? "GB" : p);
+      if (two) {
+        country = two.code;
+        continue;
+      }
+    }
+    other = true;
   }
-  return { city: norm(parts[0] ?? ""), region, country };
+  return { city: norm(parts[0] ?? ""), region, country, ...(other ? { other } : {}) };
 }
 
 /** True when a list reads as place suggestions ("City, Region[, Country]"). */
@@ -63,7 +85,10 @@ export function pickPlaceOption(suggestions: string[], wanted: string): number {
       ({ place }) =>
         place.city === want.city &&
         (!want.region || !place.region || place.region === want.region) &&
-        (!want.country || !place.country || place.country === want.country)
+        (!want.country || !place.country || place.country === want.country) &&
+        // Naming a place we cannot read ("San José, Costa Rica") is not
+        // silence: it is no match for a place whose country we know.
+        !(place.other && !place.region && !place.country && (want.region || want.country))
     );
   if (hits.length === 1) return hits[0].i;
   // Still several: keep the ones that STATE the region/country the wanted

@@ -22,6 +22,9 @@ export interface MwFillDetail {
   fieldId: string;
   value: string;
   kind: FillDriver;
+  /** A city/location field's full place ("San Jose, CA, United States"):
+   *  place suggestions are chosen by it. */
+  placeHint?: string;
 }
 
 export interface MwResultDetail {
