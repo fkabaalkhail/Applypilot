@@ -424,8 +424,10 @@ export default [
       "label:conflicts of interest": "No",
       "label:non-competes": "No",
       "label:current or former government employee?": "No",
-      "label:are you currently": null,
-      "label:recused": null,
+      // "If you are a current or former government employee, …?": the condition
+      // is false for this applicant, and the form says so in an option.
+      "label:are you currently": "I am not a current or former government employee",
+      "label:recused": "I am not a current or former government employee",
       "label:procurement official": "No",
     },
   }),

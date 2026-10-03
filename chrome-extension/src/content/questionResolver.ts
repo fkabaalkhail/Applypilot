@@ -79,7 +79,7 @@ const answer = (value: string, rule: string, confidence: Confidence = "high"): Q
  * other abstention leaves the field to the backend's AI (essays, opinions,
  * a skill's years), which is the right tool once it has credits again.
  */
-const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate)/;
+const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply)/;
 const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule, blockBackend: BLOCK_BACKEND_RULES.test(rule) });
 
 /** Lowercase, accents stripped, apostrophes dropped, punctuation → space. */
@@ -177,6 +177,8 @@ function isAbleToWorkInCountry(n: string, raw: string): boolean {
   return c !== null;
 }
 const SPONSOR = /\bsponsor(ship|ed|ing)?\b|\b(visa|immigration) (status|support|assistance|transfer)\b|\bh ?1 ?b\b/;
+/** Asks WHICH sponsorship or visa, not whether: no profile answer states it. */
+const SPONSOR_TYPE = /\b(what|which) (type of |kind of |form of )?(visa )?(sponsorship|visa|work permit)\b|\b(type|kind|form) of (visa |work )?(sponsorship|visa|permit)\b/;
 const WITHOUT_SPONSOR = /\bwithout (the )?(need (for|of) |needing |requiring |requirement (for|of) )?(any )?(current or future )?(visa |employer |employment |immigration |company )?sponsor/;
 
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
@@ -186,6 +188,10 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   // "Will you require relocation assistance or visa sponsorship?" asks two
   // things; the sponsorship half alone cannot answer it.
   if (hasSponsor && /\brelocat/.test(n)) return abstain("sponsorship:compound-question");
+  // "If you're not authorized to work at the stated location, what sponsorship
+  // would you require for the role?" (Brex, live 2026-10-03) wants the TYPE,
+  // and got the work-authorization statement ("Canadian citizen").
+  if (hasSponsor && SPONSOR_TYPE.test(n) && !isBooleanQuestion(q)) return abstain("sponsorship:type-unknown");
   const country = targetCountry(q, ctx);
   const residence = residenceOf(facts);
 
@@ -582,6 +588,12 @@ function resolveEnrollment(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   // more than enrollment, leave it.
   if (/\b(institution|university|college|school) (in|of|located)\b|\bpost secondary institution\b|\bduring\b|\bafter\b|\bthrough\b|\buntil\b/.test(n)) return abstain("enrollment:qualified");
   const e = facts.education.currentlyEnrolled;
+  // "…currently enrolled in OR have graduated from a university?": either one.
+  if (/\bor (have |has )?(graduated|completed)\b|\bor (a )?(recent )?graduate\b/.test(n)) {
+    if (isHigh(e) && e.value) return booleanResult(true, q, "enrollment:or-graduated");
+    if (facts.education.entries.some((x) => x.completed === true)) return booleanResult(true, q, "enrollment:or-graduated");
+    return abstain("enrollment:unknown");
+  }
   if (isHigh(e)) return booleanResult(e.value, q, "enrollment");
   return abstain("enrollment:unknown");
 }
@@ -591,6 +603,8 @@ function resolveSchoolMembership(q: QuestionInput, n: string, facts: ProfileFact
   const m = /\b(?:attend(?:ing|ed)?|graduate(?:d)? (?:of|from)|student (?:at|of)|alum(?:nus|na|ni)? of|studying at)\s+(?:the\s+)?((?:university|college|institute|school|polytechnic)\b[^?,]*|[a-z .&-]+ (?:university|college|institute))/.exec(n);
   if (!m || !isBooleanQuestion(q)) return null;
   const named = qnorm(m[1]).replace(/^the /, "");
+  // "…or have graduated from a university?" names no school: an education question.
+  if (/^(a|an|any|some|one|your|accredited)\b/.test(named)) return null;
   const entries = facts.education.entries;
   if (entries.length === 0) return abstain("school-membership:no-education");
   const hit = entries.some((e) => {
@@ -920,6 +934,95 @@ const UNANSWERABLE =
 const FOLLOW_UP =
   /^if (yes|no|so|other|applicable|not|not applicable|you (answered|selected|chose|checked|said|indicated|replied|ticked|heard)|your answer|the answer|any of the above|none of the above|referred|referral)\b/;
 
+// ---------------------------------------------------------------------------
+// Conditional questions: "If you <condition>, <question>"
+// ---------------------------------------------------------------------------
+
+/** Words that open the question after its condition ("…, please provide…"). */
+const MAIN_CLAUSE =
+  /^(please|kindly|what|which|how|when|where|who|whom|whose|why|are|is|was|were|have|has|had|do|does|did|will|would|can|could|should|list|provide|enter|state|describe|explain|indicate|specify|tell|share|include|select|choose|name|give|identify|confirm)\b/i;
+/** A hypothetical the applicant answers as if it held ("If you are offered the
+ *  position, will you require sponsorship?"). */
+const HYPOTHETICAL = /\b(hired|selected|offered|successful|chosen|an offer|invited|moved? forward|join(ing)? (us|our|the team))\b/;
+/** The auxiliary a condition opens with, and whether it negates. */
+const CONDITION_AUX: Record<string, [string, boolean]> = {
+  are: ["Are", false], were: ["Were", false], have: ["Have", false], had: ["Had", false],
+  do: ["Do", false], did: ["Did", false], will: ["Will", false], would: ["Would", false],
+  can: ["Can", false], could: ["Could", false],
+  arent: ["Are", true], werent: ["Were", true], havent: ["Have", true], hadnt: ["Had", true],
+  dont: ["Do", true], didnt: ["Did", true], wont: ["Will", true], cant: ["Can", true], cannot: ["Can", true],
+};
+/** An option saying the question does not apply ("I am not a current or former
+ *  government employee", "N/A"). */
+const NOT_APPLICABLE =
+  /\b(not applicable|n ?a|does not apply|doesnt apply|i am not|im not|i have not|i havent|i was not|i do not|i dont|i did not|i didnt|never been|none of the above)\b/;
+
+/** "you are a current or former government employee" → "Are you a current or
+ *  former government employee?" (and whether the condition was negated). */
+function conditionQuestion(condition: string): { question: string; negated: boolean } | null {
+  const t = condition.trim().replace(/[’‘]/g, "'").split(/\s+/);
+  const first = (t[0] ?? "").toLowerCase();
+  let aux: string;
+  let negated = false;
+  let i = 1;
+  if (first === "you're" || first === "youre") aux = "Are";
+  else if (first === "you've" || first === "youve") aux = "Have";
+  else if (first === "you") {
+    const known = CONDITION_AUX[(t[1] ?? "").toLowerCase().replace(/'/g, "")];
+    if (known) {
+      [aux, negated] = known;
+      i = 2;
+    } else aux = "Do"; // "you currently work, or have previously worked, at X"
+  } else return null; // a condition on something else ("If the role is remote, …")
+  if ((t[i] ?? "").toLowerCase() === "not") {
+    negated = !negated;
+    i++;
+  }
+  const rest = t.slice(i).join(" ");
+  return rest ? { question: [aux, "you", rest].join(" ") + "?", negated } : null;
+}
+
+/**
+ * A question that applies only when a condition on the applicant holds. The
+ * condition is answered as its own yes/no question first: false → the option
+ * saying it does not apply, or blank; true (or a hypothetical "if hired") →
+ * the question itself; unknown → blank. ActioNet on Jobvite (live 2026-10-03):
+ * "If you are a current or former government employee, have you recused
+ * yourself…?" was answered "No" for an applicant who is neither.
+ * undefined = not a condition on the applicant: resolve the label as usual.
+ */
+function resolveConditional(q: QuestionInput, raw: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult | undefined {
+  const m = /^\s*if\s+([\s\S]+)$/i.exec(raw);
+  if (!m) return undefined;
+  const body = m[1];
+  let condition = "";
+  let rest = "";
+  const sep = /[,;]\s*|\s[-–—]\s*/g;
+  for (let s = sep.exec(body); s; s = sep.exec(body)) {
+    const after = body.slice(s.index + s[0].length);
+    if (MAIN_CLAUSE.test(after)) {
+      condition = body.slice(0, s.index);
+      rest = after.trim();
+      break;
+    }
+  }
+  if (!condition) return /^you\b|^youre\b|^you'/i.test(body.trim()) ? abstain("conditional:unparsed") : undefined;
+  const restQ: QuestionInput = { ...q, label: rest };
+  if (HYPOTHETICAL.test(qnorm(condition))) return resolveQuestion(restQ, facts, profile, ctx);
+  const asked = conditionQuestion(condition);
+  if (!asked) return undefined;
+  const held = resolveQuestion(
+    { label: asked.question, controlType: "radioGroup", options: ["Yes", "No"], category: "unknown", kind: "boolean" },
+    facts,
+    profile,
+    ctx
+  );
+  if (!held || held.status !== "answer") return abstain("conditional:unknown");
+  if ((held.value === "Yes") !== asked.negated) return resolveQuestion(restQ, facts, profile, ctx);
+  const na = (q.options ?? []).filter((o) => o.trim() && !/^(yes|no)$/i.test(o.trim()) && NOT_APPLICABLE.test(qnorm(o)));
+  return na.length === 1 ? answer(na[0], "conditional:does-not-apply") : abstain("conditional:does-not-apply");
+}
+
 /** Abstentions that only mean "the profile is silent": the default answer, if
  *  one applies, takes over (a profile fact always runs first). */
 const DEFAULTABLE = /^(relocation:unknown|former-employee:no-history|former-employee:no-company|age-gate:no-dob)/;
@@ -943,6 +1046,8 @@ export function resolveQuestion(
   // APPLICANT ("If you are currently enrolled…, what is your GPA?") is an
   // ordinary question (Shield AI on Lever, live 2026-10-03).
   if (FOLLOW_UP.test(n) || /^if\s*['"“‘]/i.test(raw)) return abstain("conditional-follow-up");
+  const conditional = resolveConditional(q, raw, facts, profile, ctx);
+  if (conditional !== undefined) return conditional;
   if (UNANSWERABLE.test(n)) return abstain("unanswerable-from-profile");
   // The profile's education rows are post-secondary: their school and year
   // answer the university question, never "High School Name" / "Year of High

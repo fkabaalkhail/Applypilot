@@ -71,6 +71,46 @@ describe("work authorization, country-aware", () => {
     expect(value(ask("Please describe your work authorization status in Canada", { kind: "text" }))).toBe("Canadian citizen");
     expect(value(ask("Please describe your work authorization status in the United States", { kind: "text" }))).toBe("abstain");
   });
+
+  it("WHICH sponsorship is needed is no profile answer, never the authorization statement (Brex, live 2026-10-03)", () => {
+    const label = "If you're not authorized to work at the stated location, what sponsorship would you require for the role?";
+    // With the US answer on file the statement "covers" the US: that is how it got written.
+    const p = { ...SPARSE_CANADIAN, authorizedUS: "No", authorizedCanada: "Yes" };
+    const r = ask(label, { kind: "text" }, p, { jobCountry: "US", company: "Brex" });
+    expect(value(r)).toBe("abstain");
+    expect(r && r.status === "abstain" && r.blockBackend).toBe(true);
+    expect(value(ask("What type of visa sponsorship will you require?", { kind: "text" }, p))).toBe("abstain");
+  });
+});
+
+describe("conditional questions: the condition first", () => {
+  const ACTIONET = ["Select an option...", "Yes", "No", "I am not a current or former government employee"];
+  it("a false condition picks the option saying so (ActioNet on Jobvite, live 2026-10-03)", () => {
+    expect(value(ask("If you are a current or former government employee, have you recused yourself in writing to the appropriate government official from working on all contracts or programs involving ActioNet?*", { options: ACTIONET, kind: "choice" }))).toBe("I am not a current or former government employee");
+    expect(value(ask("If you are a current or former government employee, are you currently or were you ever previously involved in any ActioNet contracts or programs?*", { options: ACTIONET, kind: "choice" }))).toBe("I am not a current or former government employee");
+  });
+  it("…or stays blank, and away from the backend, when no option says so", () => {
+    const r = ask("If you were referred, who referred you?", { kind: "text" });
+    expect(value(r)).toBe("abstain");
+    const yn = ask("If you are a current or former government employee, have you recused yourself?", { options: YES_NO });
+    expect(value(yn)).toBe("abstain");
+    expect(yn && yn.status === "abstain" && yn.blockBackend).toBe(true);
+    // Brex (live 2026-10-03): never worked at Capital One, so no Employee ID.
+    expect(value(ask("If you currently work, or have previously worked, at Capital One or a company acquired by Capital One, please provide your Employee ID (EID). This information is required for former/current employees.", { kind: "text" }))).toBe("abstain");
+  });
+  it("a condition that holds answers the question itself", () => {
+    const p = { ...SPARSE_CANADIAN, gpa: "3.7/4.0" };
+    expect(value(ask("If you are currently enrolled in or have graduated from a university, what is your GPA?", { kind: "text" }, p))).toBe("3.7/4.0");
+  });
+  it("a hypothetical holds; an unknown condition stays blank", () => {
+    expect(value(ask("If you are offered this position, will you require visa sponsorship?", { options: YES_NO }, SPARSE_CANADIAN, { jobCountry: "CA", company: "" }))).toBe("No");
+    expect(value(ask("If you hold an active security clearance, what level is it?", { kind: "text" }))).toBe("abstain");
+  });
+  it("'currently enrolled OR graduated' is true for either", () => {
+    const grad = { ...SPARSE_CANADIAN, education: [{ school: "University of Toronto", degree: "BSc Computer Science", graduationYear: "2022" }] };
+    expect(value(ask("Are you currently enrolled in or have graduated from a university?", { options: YES_NO }, grad))).toBe("Yes");
+    expect(value(ask("Are you currently enrolled in or have graduated from a university?", { options: YES_NO }))).toBe("Yes");
+  });
 });
 
 describe("citizenship", () => {

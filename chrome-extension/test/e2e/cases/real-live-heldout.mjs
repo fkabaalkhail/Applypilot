@@ -131,6 +131,8 @@ export default [
       "label:LinkedIn Profile": LINKEDIN,
       "label:How did you hear about this job?": "Careers site",
       "label:GPA (Undergraduate)": null,
+      // No doctorate, so its GPA question does not apply.
+      "label:GPA (Doctorate)": "Not applicable/Do not recall",
       "label:SAT Score": null,
       "label:Active Security Clearance": null,
       "label:Are you legally authorized to work in the United States?": null,
