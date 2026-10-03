@@ -956,6 +956,27 @@ function resolveLocalTo(q: QuestionInput, n: string, facts: ProfileFacts, profil
 }
 
 /**
+ * "What is the address from which you plan on working? If you would need to
+ * relocate, please type "relocating"." (Anthropic on Greenhouse, a real
+ * profile, 2026-10-03: the home address was typed for an in-office role in
+ * another country). The page's word for an applicant who must move and will;
+ * the address (category answer) only when the job is in their own city.
+ * Another city at home may be a commute: the applicant's call.
+ */
+function resolveRelocationInstruction(q: QuestionInput, raw: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
+  if (q.kind !== "text" && q.kind !== "longText") return null;
+  const m = /\bif you (?:would |will )?(?:need|plan|intend|have) to (?:relocate|move)\b[^"“'‘]{0,40}["“'‘]([^"”'’]{2,30})["”'’]/i.exec(raw);
+  if (!m) return null;
+  const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+  if (!ctx.jobCountry || !home) return abstain("relocate-instruction:unknown");
+  if (ctx.jobCountry === home) {
+    const city = isHigh(facts.location.city) ? qnorm(facts.location.city.value) : null;
+    return city && ctx.jobCity && qnorm(ctx.jobCity) === city ? null : abstain("relocate-instruction:unknown");
+  }
+  return polarityOf(profile.willingToRelocate || "") === true ? answer(m[1].trim(), "relocate-instruction:moving") : abstain("relocate-instruction:unknown");
+}
+
+/**
  * "Please indicate your school, program/faculty, and expected month/year of
  * graduation" in a text box (Arc'teryx on Lever, live 2026-10-03): it got
  * "2027". The three facts together, from the education row in progress (or
@@ -1459,6 +1480,7 @@ export function resolveQuestion(
   }
 
   const resolved =
+    resolveRelocationInstruction(q, raw, facts, profile, ctx) ??
     resolveWorkAuthorization(q, n, facts, profile, ctx) ??
     resolveUsPersonStatus(q, facts) ??
     resolveCitizenship(q, n, facts, ctx) ??

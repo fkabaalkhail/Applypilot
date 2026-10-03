@@ -585,3 +585,23 @@ describe("a question named only by its options (Agiloft on Lever, 2026-10-03)", 
     expect(f[0].proposedValue).toBe("I don't have a disability or have a history/record of having a disability");
   });
 });
+
+describe("an instruction for applicants who would relocate (Anthropic on Greenhouse, 2026-10-03)", () => {
+  // Verbatim. A real profile in Gatineau, open to relocation, got its home
+  // address, though the role is in-office in San Francisco / New York /
+  // Washington and the page asks movers to type "relocating".
+  const Q = 'What is the address from which you plan on working? If you would need to relocate, please type "relocating".';
+  const GATINEAU: UserApplicationProfile = { ...SPARSE_CANADIAN, location: "Gatineau", addressCity: "Gatineau", addressState: "Quebec", country: "Canada", willingToRelocate: "Yes" };
+  const text = { controlType: "text" as const, kind: "text" as const };
+  it("a job in another country, for an applicant who will relocate: the page's word", () => {
+    expect(value(ask(Q, text, GATINEAU, { jobCountry: "US", company: "" }))).toBe("relocating");
+  });
+  it("a job in the applicant's own city: no move, so not 'relocating'", () => {
+    expect(value(ask(Q, text, GATINEAU, { jobCountry: "CA", company: "", jobCity: "Gatineau" }))).not.toBe("relocating");
+  });
+  it("unknown willingness, unknown job place, or another city at home: left to the applicant", () => {
+    expect(value(ask(Q, text, { ...GATINEAU, willingToRelocate: "" }, { jobCountry: "US", company: "" }))).toBe("abstain");
+    expect(value(ask(Q, text, GATINEAU, { jobCountry: null, company: "" }))).toBe("abstain");
+    expect(value(ask(Q, text, GATINEAU, { jobCountry: "CA", company: "", jobCity: "Ottawa" }))).toBe("abstain");
+  });
+});
