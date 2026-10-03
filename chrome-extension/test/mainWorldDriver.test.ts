@@ -40,6 +40,18 @@ describe("pickOption", () => {
       pickOption(["University of Oklahoma", "University of Ottawa"], "University of Ottawa")
     ).toBe(1);
   });
+
+  it("is the content script's strict matcher, not a looser copy (Greenhouse, live 2026-10-03)", () => {
+    // Graduation year "2027" fits two of ZipRecruiter's buckets; the old
+    // first-containing-option rule committed the first one.
+    const grad = ["I have already graduated", "December 2026 - November 2027", "December 2027 - November 2028", "December 2028 - November 2029"];
+    expect(pickOption(grad, "2027")).toBe(-1);
+    expect(pickOption(grad, "December 2027 - November 2028")).toBe(2);
+    // Substring containment: "male" is inside "female".
+    expect(pickOption(["Female", "Male (he/him)"], "Male")).toBe(1);
+    // A negated answer never lands on the affirmative option.
+    expect(pickOption(["I am a protected veteran", "I am not a protected veteran"], "I am not a veteran")).toBe(1);
+  });
 });
 
 describe("installDriver", () => {

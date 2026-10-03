@@ -16,34 +16,26 @@ import {
   PROMPT_BUTTON_SELECTOR as WD_PROMPT_BUTTON_SELECTOR,
   PROMPT_OPTION_SELECTOR as WD_PROMPT_OPTION_SELECTOR,
 } from "./adapters/workdaySelectors";
+import { matchOption } from "./optionMatch";
 
 const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").trim();
 
-/** Index of the best option label for `target`, or −1. Exact → contains → token overlap. */
+/**
+ * Index of the option label `target` selects, or −1: the SAME strict matcher
+ * the content script uses (optionMatch.ts). This used to be a looser copy:
+ * substring containment where the first containing option won, so "2027"
+ * selected "December 2026 - November 2027" although "December 2027 - November
+ * 2028" fits too (Greenhouse, live 2026-10-03), and "male" sits inside
+ * "female".
+ */
 export function pickOption(labels: string[], target: string): number {
-  const t = norm(target);
-  if (!t) return -1;
-  for (let i = 0; i < labels.length; i++) if (norm(labels[i]) === t) return i;
-  for (let i = 0; i < labels.length; i++) {
-    const l = norm(labels[i]);
-    if (l && (l.includes(t) || t.includes(l))) return i;
-  }
-  const tt = new Set(t.split(" ").filter((w) => w.length > 2));
-  let best = -1;
-  let bestScore = 0;
-  for (let i = 0; i < labels.length; i++) {
-    const toks = norm(labels[i]).split(" ").filter((w) => w.length > 2);
-    if (!toks.length) continue;
-    const overlap = toks.filter((w) => tt.has(w)).length;
-    const score = overlap / toks.length;
-    // One shared token is noise, not a match: every school option shares
-    // "university" with "University of Ottawa", and selecting on that is how
-    // a WRONG university gets filled. Require at least two shared tokens, or
-    // a fully-covered short option ("Canada", "Yes").
-    if (score < 0.5 || (overlap < 2 && score !== 1)) continue;
-    if (score > bestScore) { bestScore = score; best = i; }
-  }
-  return bestScore > 0 ? best : -1;
+  const hit = matchOption(
+    labels.map((_, i) => i),
+    (i) => labels[i],
+    (i) => labels[i],
+    target
+  );
+  return hit ?? -1;
 }
 
 /** React attaches its Fiber under a per-render key on each host node. */

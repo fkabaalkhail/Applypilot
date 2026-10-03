@@ -17,24 +17,12 @@
 import { MIN_CATEGORY_CONFIDENCE } from "../shared/constants";
 import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile } from "../shared/types";
 import type { FieldSignals } from "./domUtils";
+import { normalize } from "./optionMatch";
 import { isHigh, profileFacts } from "./profileFacts";
 
-// ---------------------------------------------------------------------------
-// Text normalization
-// ---------------------------------------------------------------------------
-
-/**
- * Normalize attribute/label text for matching:
- * "candidate-firstName" → "candidate first name"
- */
-export function normalize(text: string): string {
-  return text
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2") // split camelCase
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ") // punctuation/separators → space
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// Text normalization ("candidate-firstName" → "candidate first name") lives in
+// optionMatch.ts, which the MAIN-world driver shares; re-exported for importers.
+export { normalize };
 
 // ---------------------------------------------------------------------------
 // Pattern table
