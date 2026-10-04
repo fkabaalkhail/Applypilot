@@ -302,6 +302,8 @@ export default [
     ats: "lever",
     url: "https://jobs.lever.co/hermeus/78008094-ca81-4a0c-9a18-93b30f932acd/apply",
     expect: {
+      // Round 3: a finished internship in the history, named.
+      "name=cards[ebaebe01-2bfb-4932-9a01-0582fdb9b10e][field0]": "Yes, Software Developer Intern at Shopify (2025-01 to 2025-04)",
       "label:Full name": NAME,
       "label:Email": P.email,
       "label:Phone": PHONE,
@@ -495,7 +497,10 @@ export default [
       "label:GenderSelect ...MaleFemaleDecline to self-identify": "Decline to self-identify",
       "label:RaceSelect ...Hispanic or LatinoWhite (Not Hispanic or Latin": "Decline to self-identify",
       "label:Veteran statusSelect ...I am a veteranI am not a veteranDecl": "Decline to self-identify",
-      "name=cards[18631c8a-d2a4-41d9-ba8a-8fccf4193494][field1]": "checked",
+      // Round 3: the checkbox question "currently enrolled…?" has its label now (Yes);
+      // "a school schedule that allows part-time work…?" is the student's to say.
+      "name=cards[18631c8a-d2a4-41d9-ba8a-8fccf4193494][field0]": "checked",
+      "name=cards[18631c8a-d2a4-41d9-ba8a-8fccf4193494][field1]": null,
     },
   }),
   live({
