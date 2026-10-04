@@ -176,6 +176,15 @@ const SOURCE_PREFERENCE: RegExp[] = [
 const IN_PERSON =
   /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|commute|report)\b[^?]{0,60}\b(from|at|in|to)\b[^?]{0,40}\boffices?\b/;
 
+/** Being there now and then rather than working there: team gatherings, an
+ *  offsite, a few trips a year. Someone who will not relocate can still go. */
+const OCCASIONAL_PRESENCE =
+  /\b(occasional(ly)?|periodic(ally)?|from time to time|as needed|((a few|several|\d+|one|two|three|four) times|once|twice) (a|per|each) (year|quarter)|quarterly|annual(ly)?|yearly|off ?sites?|retreats?|gatherings?|summits?|meetups?|team (events?|weeks?)|company (events?|meetings?)|visits?|trips?)\b/;
+/** A schedule that makes it regular work after all ("hybrid, three days a
+ *  week, with quarterly offsites"; "25% of the time"). */
+const REGULAR_PRESENCE =
+  /\b(hybrid|full ?time|daily|every (day|week)|weekly|regular(ly)?|(\d|one|two|three|four|five) days? (a|per|each|every) week|days (a|per|each) week)\b|\d+ ?% of (the|your) time/;
+
 /** Research or outside funding that could claim the work (Zoox on Lever). */
 const RESEARCH_OR_FUNDING =
   /^(are|do) you (currently )?(conducting|doing|performing|engaged in) (any )?research\b|^do you (currently )?(receive|have|hold) (any )?(active )?(funding|grants?|sponsorships?)\b/;
@@ -390,7 +399,10 @@ export function resolveDefault(
   // Rochester office") means the posting's own places: Anthropic's San
   // Francisco | New York City | Washington, DC got Yes for an Austin applicant,
   // and so did Mindex's Rochester, New York (live 2026-10-03).
-  if (IN_PERSON.test(n) && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) {
+  // Occasional presence is not in-person work: "attend team gatherings a few
+  // times a year" is travel, which someone who will not move can still do.
+  const occasional = OCCASIONAL_PRESENCE.test(n) && !REGULAR_PRESENCE.test(n);
+  if (IN_PERSON.test(n) && !occasional && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) {
     const named = placeInLabel(q.label);
     const posted = (ctx.jobPlaces ?? []).map((p) => placeOf(p)).filter((p) => p.city && (p.region || p.country));
     const places = named ? [named] : posted;

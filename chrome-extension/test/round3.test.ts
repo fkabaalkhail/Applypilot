@@ -254,6 +254,17 @@ describe("Kenect on Breezy: questions a stated fact answers", () => {
   });
 });
 
+describe("a phone extension is the applicant's alone (the Workday replica, 2026-10-03)", () => {
+  const AUSTIN_PHONE = { ...SPARSE_CANADIAN, phone: "512-555-0143" };
+  it("is never answered, and never sent to the AI to guess", () => {
+    for (const label of ["Phone Extension", "Extension", "Ext.", "Phone Extension Number"]) {
+      const r = ask(label, {}, AUSTIN_PHONE);
+      expect(r?.status, label).toBe("abstain");
+      expect(r && r.status === "abstain" ? r.blockBackend : false, label).toBe(true);
+    }
+  });
+});
+
 describe("'Are you a current MongoDB employee?' (MongoDB's embedded Greenhouse form)", () => {
   it("names the company after a qualifier: No for an applicant employed elsewhere", () => {
     const p = { ...SPARSE_CANADIAN, currentCompany: "Dell Technologies", experience: [{ company: "Dell Technologies", title: "Software Engineer II", startDate: "Jan 2023", endDate: "Present", description: "" }] };
@@ -530,6 +541,19 @@ describe("'in-person in one of our offices', the offices being the posting's pla
   it("an office elsewhere in their own state: theirs to judge", () => {
     expect(value(ask(Q, { options: YES_NO, controlType: "combobox" }, notMoving("San Jose, CA"), OFFICES))).not.toBe("No");
     expect(value(ask(Q, { options: YES_NO, controlType: "combobox" }, notMoving("San Jose, CA"), OFFICES))).not.toBe("Yes");
+  });
+  it("occasional visits are not in-person work: someone who will not move can still travel for them", () => {
+    for (const q of [
+      "Are you able to attend in-person team gatherings at one of our offices a few times a year?*",
+      "This role is remote with occasional in-person offsites. Are you able to travel for them?*",
+      "Can you visit our San Francisco office in person once per quarter?*",
+    ]) {
+      expect(value(ask(q, { options: YES_NO, controlType: "combobox" }, notMoving("Austin, TX"), OFFICES)), q).not.toBe("No");
+    }
+  });
+  it("a regular schedule with occasional offsites is still in-person work: No", () => {
+    const q = "Are you able to work a hybrid schedule in one of our offices three days a week, with quarterly offsites?*";
+    expect(value(ask(q, { options: YES_NO, controlType: "combobox" }, notMoving("Austin, TX"), OFFICES))).toBe("No");
   });
 });
 
