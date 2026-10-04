@@ -14,6 +14,8 @@
  *
  * What it reproduces on purpose:
  *  - the posting's "Apply" opens a chooser; "Apply Manually" is a real navigation;
+ *  - Create Account behind Workday's click_filter overlay (the handler is on
+ *    the overlay, the button itself is inert);
  *  - one document for every application step (an SPA), one footer button
  *    REUSED by every step, its text "Save and Continue" until Review's "Submit";
  *  - a loading skeleton between steps, then a re-render that REPLACES the
@@ -318,7 +320,14 @@ const APP_SCRIPT = String.raw`
             h('span', { class: 'hidden-input', 'data-automation-id': 'createAccountCheckbox' }, [consent]),
             h('label', { for: consentId, text: 'Yes, I have read and consent to the terms and conditions' }),
             // In the card, not the footer (the footer is hidden on this step).
-            h('button', { type: 'button', 'data-automation-id': 'createAccountSubmitButton', text: 'Create Account', on: { click: advance } }),
+            // Workday's NoCaptchaButtonClickFilter: an overlay div holds the
+            // click handler and sits just before the real button, which does
+            // nothing when clicked itself.
+            h('div', { style: 'position:relative;display:inline-block' }, [
+              h('div', { role: 'button', tabindex: '0', 'aria-label': 'Create Account', 'data-automation-id': 'click_filter',
+                style: 'position:absolute;inset:0;cursor:pointer', on: { click: function (e) { e.stopPropagation(); advance(); } } }),
+              h('button', { type: 'button', tabindex: '-1', 'data-automation-id': 'createAccountSubmitButton', text: 'Create Account' })
+            ]),
             h('p', {}, [h('a', { href: '#', 'data-automation-id': 'signInLink', text: 'Already have an account? Sign In' })])
           ])
         ];

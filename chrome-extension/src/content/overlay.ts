@@ -272,6 +272,11 @@ export function showsAdvanceGate(p: FlowProgress): boolean {
 /** Ticks the bottom button's countdown label; the flow owns the real timer. */
 let flowCountdown: ReturnType<typeof setInterval> | null = null;
 
+function stopCountdownTicker(): void {
+  if (flowCountdown !== null) clearInterval(flowCountdown);
+  flowCountdown = null;
+}
+
 /** Render a flow beat: the bottom Next page gate. */
 export function updateFlowProgress(p: FlowProgress): void {
   if (!refs) return;
@@ -285,10 +290,7 @@ export function updateFlowProgress(p: FlowProgress): void {
   // holds the page. A page with a required field still empty, or one the user
   // held, waits for the press. Its label mirrors the real button the flow will
   // click (Create Account / Sign In), or the plain "Continue".
-  if (flowCountdown !== null) {
-    clearInterval(flowCountdown);
-    flowCountdown = null;
-  }
+  stopCountdownTicker();
   const gate = refs;
   const counting = showsPauseControl(p);
   gate.flowNextBtn.classList.toggle("counting", counting);
@@ -314,6 +316,7 @@ export function updateFlowProgress(p: FlowProgress): void {
 }
 
 export function removeOverlay(): void {
+  stopCountdownTicker();
   document.getElementById(HOST_ID)?.remove();
   shadow = null;
   refs = null;
@@ -2715,6 +2718,7 @@ export function showReloadRequired(): void {
   if (!refs) return;
   refs.btnAutofill.disabled = true;
   refs.flowNext.style.display = "none";
+  stopCountdownTicker();
   // Nothing is running any more, so waves left mid-fill would be a lie.
   overlayState.autofilling = false;
   renderFillWave(false);
