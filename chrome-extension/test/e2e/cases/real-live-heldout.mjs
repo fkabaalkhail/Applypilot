@@ -256,6 +256,11 @@ export default [
     ats: "lever",
     url: "https://jobs.lever.co/palantir/d5486403-c050-4920-b2e0-91b69b61ebb2/apply",
     expect: {
+      // No disability answer stated: the form's decline ("I do not want to answer"
+      // was not recognized as one until 2026-10-04), signed like any answer.
+      "#disabilitySelectElement": "I do not want to answer",
+      "name=eeo[disabilitySignature]": "Maya Tremblay",
+      "name=eeo[disabilitySignatureDate]": { re: String.raw`^\d{2}/\d{2}/\d{4}$` },
       "label:Full name": NAME,
       "label:Email": P.email,
       "label:Phone": PHONE,
@@ -280,6 +285,11 @@ export default [
     ats: "lever",
     url: "https://jobs.lever.co/shieldai/87d982f2-8b2b-4c73-9a19-71e461c7b724/apply",
     expect: {
+      // No disability answer stated: the form's decline ("I do not want to answer"
+      // was not recognized as one until 2026-10-04), signed like any answer.
+      "#disabilitySelectElement": "I do not want to answer",
+      "name=eeo[disabilitySignature]": "Maya Tremblay",
+      "name=eeo[disabilitySignatureDate]": { re: String.raw`^\d{2}/\d{2}/\d{4}$` },
       "label:Which location are you applying for?": null,
       "label:Full name": NAME,
       "label:Email": P.email,
@@ -302,6 +312,11 @@ export default [
     ats: "lever",
     url: "https://jobs.lever.co/hermeus/78008094-ca81-4a0c-9a18-93b30f932acd/apply",
     expect: {
+      // No disability answer stated: the form's decline ("I do not want to answer"
+      // was not recognized as one until 2026-10-04), signed like any answer.
+      "#disabilitySelectElement": "I do not want to answer",
+      "name=eeo[disabilitySignature]": "Maya Tremblay",
+      "name=eeo[disabilitySignatureDate]": { re: String.raw`^\d{2}/\d{2}/\d{4}$` },
       // Round 3: a finished internship in the history, named.
       "name=cards[ebaebe01-2bfb-4932-9a01-0582fdb9b10e][field0]": "Yes, Software Developer Intern at Shopify (2025-01 to 2025-04)",
       "label:Full name": NAME,
