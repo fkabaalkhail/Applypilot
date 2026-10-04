@@ -1,3 +1,187 @@
+# Round 3: new forms, new people (2026-10-03, night)
+
+You asked to keep going and to vary the data, the cases and the forms. Same
+branch, still local only: NOT pushed, NOT deployed. Nothing was submitted
+(every non-GET request blocked except GraphQL queries and, on Paylocity only,
+its read-only email lookup).
+
+**What ran.** Five new synthetic people (in `test/e2e/profiles.mjs`, no real
+data) on 33 live postings from prod `scraped_jobs`, chosen so the job and the
+applicant disagree in useful ways:
+
+| person | what makes them different |
+| --- | --- |
+| US veteran, Austin | Army service, an active clearance with no level, will not relocate, prefers remote |
+| London senior engineer | UK only, MSc 2016 and BA 2015, transgender woman, bisexual, a stated disability |
+| Montreal career changer | French degree names, teacher then developer, non-binary, Hispanic, education listed oldest first |
+| Calgary new grad | no work history, declines every EEO question, starts next week |
+| US green-card student | permanent resident, December 2027 graduation, a TA job and a past internship |
+
+Forms: JazzHR, Breezy, Recruitee, Pinpoint, Paylocity, Oracle (families the
+suite had never seen), Greenhouse forms embedded on company sites (MongoDB,
+D2L, Zipline, Brex), Workable, BambooHR, Greenhouse, Ashby, Lever, Jobvite.
+
+**TL;DR.** Reading every write found 20 kinds of wrong answer written on
+live pages (several on more than one page), 3 more the code would have given
+had the page let it, and about 30 blanks a stated fact settles. All are
+fixed, each with a test that fails on the old code, and each fix was
+re-checked on its live page. Commits `fbbe0bf` to `3975b2c`; the 33 pages
+are now pinned (541 checks).
+
+### Wrong answers found (fixed)
+
+| page | question | wrote | now |
+| --- | --- | --- | --- |
+| Pinpoint | Address lines, Town, Postcode | the LinkedIn URL (a section's legend labelled every field) | the address parts |
+| Pinpoint, Paylocity | Address Line 2 | a copy of line 1 | blank (or the unit, "app. 3") |
+| Breezy (Vagaro) | years developing with C# / ASP.NET Core | "3+ years" (six years of teaching) | blank (no such experience stated) |
+| Breezy (Vagaro) | race, on an EEO-1 combined list | "Two or more races (not Hispanic or Latino)" for a Hispanic applicant | the Hispanic option |
+| Breezy (NinjaHoldings) | expected month and year of graduation | "2027" | "December 2027" |
+| Breezy (NinjaHoldings) | "What is your major? Please describe why…" | the major alone, in an essay box | left to the essay path |
+| Paylocity | how did you hear | "Online Job Board" for a stated "Career fair" | "Other", with "Career fair" in its box |
+| Paylocity | an education row's City | the applicant's city | blank (it is the school's) |
+| Zipline (embedded Greenhouse) | Location (City) | "San Jose, Costa Rica" for San Jose, CA | San Jose, California |
+| Zipline | available next Spring (Jan to Apr/May 2027)? | Yes, for someone who cannot start before late May | No |
+| Kenect (Breezy) | hybrid schedule out of Pleasant Grove, Utah? | Yes, for an Austin applicant who will not move | No |
+| JazzHR | gender, race | the page's own pre-selected "Decline to answer" kept | the stated answers |
+| Robinhood and others | veteran / military status | "never served" guessed from "not a protected veteran" | only what the answer says (decided with you) |
+| Superhuman (Ashby) | education rows | both rows the latest school, the first row's year | each row its own |
+| Superhuman (Ashby) | End Date | "October 2017": the page picks today's month when only a year is chosen | blank |
+| Superhuman | sexual orientation | "Lesbian" for "Gay or Lesbian" | left for you |
+| Brex, Zoox, Vagaro | gender | a decline for a stated "Non-binary" the list lacks | left for you |
+| Zoox (Lever) | currently enrolled in a CS program? | Yes, for a graduate | No |
+| Zoox | school schedule allowing part-time at the Foster City office? | Yes, for a developer out of school | No |
+| Palantir (Lever) | major | "Other" for an MSc in Computing | Computer Science |
+| Anthropic, Mindex | in person at our offices / at the Rochester office? | (code) Yes, from the accept-the-requirement default; live they reached the AI | No, for someone who will not move |
+| Twitch | permanent resident after your latest citizenship? | (code) "United States" for a yes/no; the page refused it | No |
+| Paylocity | School Type | (code) the school's name; no option took it | "College / University" |
+
+### Blanks a stated fact now answers
+
+- **SpaceX:** work authorization offered as five statements ("authorized ... for any employer"), "Citizenship Status" ((b) lawful permanent resident), a major the list lacks ("Other (Technical)").
+- **School search lists** that found nothing: "San José State University" (Greenhouse, Ashby), "The University of Texas at Austin" (Greenhouse lists "University of Texas - Austin").
+- **Palantir:** the university "last attended", a graduation or high-school year the list does not offer ("Other").
+- **Hermeus:** a past internship with its details, a country list for "What is your location?", "If no, will you require sponsorship in the future?".
+- **Mindex:** a co-op for a graduate (No), "I currently work here", the Rochester office (No; the page draws its location after the first scan).
+- **Zoox:** research and grants for someone out of school (No), a checkbox question that had no label.
+- **Paylocity:** per education row, "Did you Graduate?", "Degree Obtained", "Area of Study"; its react-widgets dropdowns now verify (a pick that stuck was reported as failed), and Address Line 1 keeps the street when its autocomplete suggests nothing.
+- **Pinpoint:** able to obtain a U.S. clearance (No for a permanent resident).
+- **Superhuman:** LinkedIn without "https://" in a URL box, the French degree's field ("Psychologie").
+- **Batch B list:** a current MongoDB employee, availability, how soon, "If referred, by who?", 50 states as radios, a lone-Yes consent.
+
+### Decisions (each one rule, easy to reverse)
+
+1. **Education rows are told apart by position** when a form repeats the same
+   ids in every row (Ashby). One row on the page is still your main education.
+2. **Ashby End Date stays blank for a year-only graduation.** Checked live:
+   choosing only the year makes the page set the month to the current one,
+   and only the month sets the current year.
+3. **Every program finished = not a student**, firmly (it was a "maybe", and
+   those questions went to the AI).
+4. **A student's questions asked of a graduate:** a co-op, a school schedule,
+   research or grants are No; "which degree are you pursuing" and "expected
+   graduation" are left blank.
+5. **In-person questions that name no full place use the posting's places.**
+   An office in your city: Yes. Every office in another state or country, and
+   you will not relocate: No. Another city in your own state: yours.
+6. **Kept from the AI** (left for you; the AI has the same profile and could
+   only guess): government history when a government employer is in it (is
+   the Army one?), a clearance level the profile does not name, a high
+   school's name, consent to AI notetakers, "If yes, please describe"
+   follow-ups, a student's school schedule, a date the profile knows only to
+   the month in a day picker, Address Line 2 without a unit.
+7. **A U.S. clearance needs U.S. citizenship:** "able to obtain one?" is No
+   for a permanent resident or visa holder. A citizen's answer stays yours.
+8. **Lists:** a year or school the list does not offer is its own "Other" /
+   "not listed" option (native selects only: a search box's loaded options
+   are not the whole list). Accents are folded when options are matched.
+
+### Not cases (measured, not testable here)
+
+ADP Workforce Now and iCIMS open their forms only behind a sign-in (no
+accounts may be created). A CareerPuck board links out to Greenhouse.
+Coinbase opens its form in a new tab, Samsara lazy-loads its iframe only when
+scrolled to, Fivetran keeps the form behind an "Application" tab, and both
+Rippling postings were taken down.
+
+### Test results
+
+- **Unit:** 1579/1579 (132 files).
+- **Round 3, pinned (33 live pages):** 33/33 pages, 541/541 checks on
+  `0d08d2f`. The three fixes after it touch none of these pages; Brex-MTL,
+  the one candidate, re-ran on `6dfef72`: 20/20.
+- **Older pinned suite (86 live pages + 3 framework fixtures):** the first
+  run on `0d08d2f` found three regressions (below), all fixed and re-run
+  live. Every other difference was read and was an intended round-3 change,
+  re-pinned (`8360f68`, `6dfef72`, `079df2b`, `3975b2c`). Final: 88/89. The
+  89th is SmartRecruiters' Bosch page, behind its DataDome block on this
+  machine, as before this round.
+- **Network:** one batch hit DNS failures (`ERR_NAME_NOT_RESOLVED`); its
+  pages were re-run and passed. Nothing here is from that batch.
+
+**Harness changes:** a case may let through exact read-only endpoints
+(Paylocity's email lookup: blocked, the page broke). The page dump reads a
+div combobox's shown value (react-widgets showed as empty before) and numbers
+repeated label keys, so a second education row can be pinned. Ashby radios
+are pinned by label (their ids change every load), dates by their shape.
+
+**Found by the regression run (fixed, each with a test):**
+- Brex's "Do you currently live in, or plan to relocate to…?" stayed blank:
+  its options ("Yes, I live here", "Yes, I plan to relocate") have commas, and
+  a comma was all it took to read a list as places (`7b6657b` had passed the
+  applicant's place to the react-select driver). A place now names a known
+  state, province or country, or a name ("Costa Rica"), never a phrase.
+- FSSI's "Bachelor's Degree in Computer Science… strongly preferred" got NO
+  from the rule meant for Paylocity's "Did you Graduate?", which answered
+  outside an education row. It answers in a row only now.
+- Paylocity's dropdowns: my first fix read the widget's kept option list as
+  its value, so the fill believed a choice was already made. Caught on the
+  re-run, fixed before the pins (`0d08d2f`).
+- Older than this round: "today" was the UTC day, a day ahead every evening
+  in the Americas ("2 weeks from today" at 9 p.m. in Ottawa started a day
+  late). It is your own calendar day now.
+
+### Needs you / manual verification
+
+**Decisions you may want to reverse** (each is one rule)
+- "Currently enrolled?" is now a firm No once every listed program has
+  finished. If a profile lags behind (a new program not added yet), that No
+  is wrong until the profile is updated.
+- "Able to obtain a U.S. security clearance?" is No for a permanent resident
+  or visa holder. U.S. rules grant clearances to citizens (a rare limited
+  access for others exists); a citizen's answer is left to them.
+- In-person questions get No when every office the posting lists is in
+  another state or country and the applicant will not relocate. A remote-
+  first company asking about occasional office visits gets the same No.
+
+**Not verified**
+- **The AI path.** These runs use a dead AI (the harness's fake API), so what
+  the AI writes for the fields still sent to it (essays, "Why X?", the
+  questions left to it) was not seen. Fewer fields go to it now: the "kept
+  from the AI" list above leaves them for you instead.
+- **Paylocity's address autocomplete with a US address.** Verified only that
+  a UK street stays when nothing is suggested. If it suggests US addresses,
+  the pick path is untested here.
+- **Page prefills from the machine's location.** Pinpoint pre-selects
+  "Canada" as the address country and Workable (Syntiant) "Gatineau, Canada"
+  as the address, from this machine's IP. The extension never overwrites a
+  value already in a field, so an applicant abroad keeps the page's guess.
+- **Later steps** behind a captcha or the resume wall, as before.
+- **Address Line 1 without its unit** when a Line 2 takes it: unit tests
+  only; no round-3 page has both for the Montreal persona.
+
+**Known limits**
+- Ashby with a year-only graduation leaves End Date blank (month and year to
+  fill by hand). Completed degrees store only a year; storing the month
+  would let it fill.
+- Telemetry still logs Greenhouse's phone country picker as changed ("+1"
+  read back for "United States"): no dial-code table.
+- Not testable here: ADP and iCIMS (sign-in walls), CareerPuck (link-out),
+  Coinbase (new tab), Samsara (lazy iframe), Fivetran (Application tab),
+  two taken-down Rippling postings.
+
+---
+
 # Run with your real profile (2026-10-03, evening)
 
 You asked: "run for real with my profile". The extension ran on 40 live
@@ -118,16 +302,14 @@ the backend and web app are deployed together.
 
 ### Needs you / manual verification
 
-**Your decisions**
-- **Military status is still inferred.** "What is your military status?" gets
-  "I have never served in the military" from a profile answer of "I am not a
-  protected veteran". Usually true, but the profile cannot say "never served"
-  (a veteran outside the protected classes answers the same). Unchanged since
-  this morning; say if you want it left to the user.
-- **Planet's "How did you find this position?"** now gets "Other - Job Site",
-  not "Planet Careers Page": job sites come first in the default order (a
-  posting found through Tailrd was found on a job site), and the new tie-break
-  lets it reach them.
+**Your decisions** (both settled later the same evening)
+- **Military status:** no longer inferred. "I am not a protected veteran"
+  fills only an option saying exactly that; the profile gained "I have never
+  served in the military", which fills every never-served wording (`fbbe0bf`,
+  see Round 3 above).
+- **Planet's "How did you find this position?"** keeps "Other - Job Site", as
+  you confirmed: job sites come first in the default order (a posting found
+  through Tailrd was found on a job site).
 
 **Not verified**
 - **Resume attach:** not exercised (uploads are blocked in these runs). Your
