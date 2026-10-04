@@ -69,10 +69,27 @@ export function placeOf(text: string): Place {
   return { city: norm(parts[0] ?? ""), region, country, ...(other ? { other } : {}) };
 }
 
-/** True when a list reads as place suggestions ("City, Region[, Country]"). */
+/** True when a list reads as place suggestions ("City, Region[, Country]"):
+ *  a known state, province or country after the city. A comma alone is no
+ *  place: "Yes, I live here" / "Yes, I plan to relocate" were chosen from as
+ *  places for a "location" question, and neither was picked (Brex, 2026-10-03). */
 export function looksLikePlaces(options: string[]): boolean {
-  const withComma = options.filter((o) => /^[^,]{2,60},\s*\S/.test(o.trim()));
-  return withComma.length >= Math.max(1, Math.ceil(options.length / 2));
+  const real = options.filter((o) => o.trim());
+  const places = real.filter((o) => {
+    if (!/^[^,]{2,60},\s*\S/.test(o.trim())) return false;
+    const p = placeOf(o);
+    // A qualifier we cannot read is still a NAME ("Costa Rica", "Batangas"),
+    // where an answer is a phrase ("I live here").
+    return Boolean(p.region || p.country) || o.split(",").slice(1).every((part) => isPlaceName(part));
+  });
+  return places.length >= Math.max(1, Math.ceil(real.length / 2));
+}
+
+/** Words that each start with a capital, bar a few joining ones: "Costa Rica",
+ *  "New South Wales", "Isle of Man". */
+function isPlaceName(text: string): boolean {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.length <= 5 && words.every((w) => /^\p{Lu}[\p{L}.'’-]*$/u.test(w) || /^(of|and|de|del|la|le|da|do|du|des|the)$/.test(w));
 }
 
 /** Index of the one suggestion that is `wanted`, or -1. */

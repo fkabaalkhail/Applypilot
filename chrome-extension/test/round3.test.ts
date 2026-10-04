@@ -11,6 +11,8 @@ import type { FieldSignals } from "../src/content/domUtils";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
 import { scanPage } from "../src/content/formScanner";
 import { matchOption } from "../src/content/writeEngine";
+import { looksLikePlaces } from "../src/content/placeMatch";
+import { pickOption } from "../src/content/mainWorldDriver";
 import { fillAriaCombobox, readComboboxValue } from "../src/content/comboboxEngine";
 import { snapToOption } from "../src/content/fieldResolver";
 import type { AnswerKind } from "../src/content/answerKind";
@@ -968,5 +970,17 @@ describe("a street address box with suggestions that never come keeps the street
     const res = await fillAriaCombobox(el, "12 Bermondsey Street", fast);
     expect(res.filled).toBe(false);
     expect(el.value).toBe("");
+  });
+});
+
+describe("a comma is no place: 'Yes, I live here' is answered as an answer (Brex, regression run 2026-10-03)", () => {
+  const BREX = ["Yes, I live here", "Yes, I plan to relocate", "No"];
+  it("options naming no state or country are not place suggestions", () => {
+    expect(looksLikePlaces(BREX)).toBe(false);
+    expect(looksLikePlaces(["Toronto, ON, CAN", "Toronto, OH, US", "Toronto, New South Wales, Australia"])).toBe(true);
+    expect(looksLikePlaces(["San Jose, CA, United States", "San José, Costa Rica"])).toBe(true);
+  });
+  it("the page-world driver picks the answer though the field is a location with a place hint", () => {
+    expect(pickOption(BREX, "Yes, I plan to relocate", "Toronto, ON, Canada")).toBe(1);
   });
 });
