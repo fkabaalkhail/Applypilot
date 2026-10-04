@@ -293,7 +293,10 @@ export function resolveField(input: FieldResolveInput): FieldResolution {
   if (r.value === null) return { ...r, dateFormat };
   const value = fitDate(r.value, dateFormat);
   if (value === null) {
-    return { value: null, kind: r.kind, source: "none", deviceAbstained: false, rule: "wrong-kind:partial-date", dateFormat };
+    // The profile knows the date to the month or year only: the missing day
+    // is no more the AI's to invent than ours (Ramp's "Pick date...", live
+    // 2026-10-03, was sent to it).
+    return { value: null, kind: r.kind, source: "none", deviceAbstained: true, rule: "wrong-kind:partial-date", dateFormat };
   }
   return { ...r, value, dateFormat };
 }
