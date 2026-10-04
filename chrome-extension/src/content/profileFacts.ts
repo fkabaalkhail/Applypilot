@@ -109,8 +109,11 @@ export function parseDateSpan(text: string): DateSpan | null {
 
 const DAY_MS = 86400000;
 
+/** The applicant's own calendar day, as the UTC midnight every parsed date
+ *  uses. The UTC day was a day ahead every evening in the Americas: "2 weeks
+ *  from today" at 9 p.m. in Ottawa started a day late (2026-10-03). */
 function startOfDay(d: Date): Date {
-  return utc(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return utc(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
 // ---------------------------------------------------------------------------

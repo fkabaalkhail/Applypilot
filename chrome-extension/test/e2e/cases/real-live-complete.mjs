@@ -87,6 +87,9 @@ export default [
     ats: "greenhouse",
     url: "https://job-boards.greenhouse.io/twitch/jobs/8700578002",
     expect: {
+      // Round 3: "permanent resident after your latest citizenship?" is No for a
+      // citizen living in her own country.
+      "#question_37744079002": "No",
       "#first_name": "Maya",
       "#last_name": "Tremblay",
       "#email": "maya.tremblay@example.com",
@@ -290,6 +293,10 @@ export default [
     ats: "lever",
     url: "https://jobs.lever.co/hermeus/78008094-ca81-4a0c-9a18-93b30f932acd/apply",
     expect: {
+      // Round 3: a finished internship in the history, named; the follow-up is a
+      // question of its own (a Canadian needs US sponsorship).
+      "name=cards[ebaebe01-2bfb-4932-9a01-0582fdb9b10e][field0]": "Yes, Software Developer Intern at Shopify (2025-01 to 2025-04)",
+      "radio=cards[b1c8e597-6390-46ce-a3fc-2df1529fec9e][field1]": "Yes, I will require sponsorship in the future",
       "name=name": "Maya Tremblay",
       "name=email": "maya.tremblay@example.com",
       "name=phone": "(416) 555-0142",
@@ -332,7 +339,10 @@ export default [
       "name=org": "Kinaxis",
       "name=urls[LinkedIn]": "https://www.linkedin.com/in/maya-tremblay",
       "name=urls[Other]": "https://mayatremblay.dev",
-      "name=cards[18631c8a-d2a4-41d9-ba8a-8fccf4193494][field1]": "checked",
+      // Round 3: the checkbox question "currently enrolled…?" has its label now (Yes);
+      // "a school schedule that allows part-time work…?" is the student's to say.
+      "name=cards[18631c8a-d2a4-41d9-ba8a-8fccf4193494][field0]": "checked",
+      "name=cards[18631c8a-d2a4-41d9-ba8a-8fccf4193494][field1]": null,
       "name=cards[18631c8a-d2a4-41d9-ba8a-8fccf4193494][field2]": "Yes",
       "name=eeo[gender]": "Female",
       "name=eeo[race]": "White (Not Hispanic or Latino)",
@@ -425,6 +435,11 @@ export default [
     ats: "workable",
     url: "https://apply.workable.com/mindex/j/84B10DB922/apply/",
     expect: {
+      // Round 3: the row holds her running co-op (Kinaxis), so "I currently work
+      // here"; a co-op from January does not fit a start in May 2027.
+      "name=current": "checked",
+      "ariaradio=Are you available to participate in a full double-block co-o": "NO",
+      "radio=QA_12563770": "NO",
       "#firstname": "Maya",
       "#lastname": "Tremblay",
       "#email": "maya.tremblay@example.com",

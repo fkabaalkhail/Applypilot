@@ -17,7 +17,7 @@ import {
 } from "../src/content/profileFacts";
 import type { UserApplicationProfile } from "../src/shared/types";
 
-const TODAY = new Date(Date.UTC(2026, 9, 3)); // 2026-10-03
+const TODAY = new Date(Date.UTC(2026, 9, 3, 12)); // 2026-10-03, noon UTC: that day in every timezone
 
 function profile(over: Partial<UserApplicationProfile> = {}): UserApplicationProfile {
   return {

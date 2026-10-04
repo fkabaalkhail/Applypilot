@@ -84,9 +84,11 @@ export default [
       "label:Desired Salary": null,
       "label:authorized to work in the United States": null,
       "label:require sponsorship": null,
-      "#gender": "Decline To Self Identify",
-      "#hispanic_ethnicity": "Decline To Self Identify",
-      "#veteran_status": "I don't wish to answer",
+      // The page renamed its declines on 2026-10-03 ("Decline to self-identify",
+      // veteran status included): either wording is the decline.
+      "#gender": { oneOf: ["Decline To Self Identify", "Decline to self-identify"] },
+      "#hispanic_ethnicity": { oneOf: ["Decline To Self Identify", "Decline to self-identify"] },
+      "#veteran_status": { oneOf: ["I don't wish to answer", "Decline to self-identify"] },
     },
   }),
   live({
