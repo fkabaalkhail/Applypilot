@@ -64,8 +64,22 @@ function parseDate(v: string): { month: string; day: string; year: string } | nu
   }
   const bare = s.match(/^(\d{4})$/);
   if (bare) return { year: bare[1], month: "", day: "" };
+  // A month by name ("Jun 2012", "June 2012", "Sept. 2019") or number
+  // ("06/2012"), how a résumé writes a job's dates. Unparsed, the whole
+  // text was typed into each spinbutton: the Month box read "2012".
+  const named = s.match(/^([A-Za-z]{3,9})\.?,?\s+(\d{4})$/);
+  if (named) {
+    const word = named[1].toLowerCase();
+    const month = MONTH_NAMES.findIndex((m) => m.startsWith(word.slice(0, 3)) && m.startsWith(word.replace(/^sept$/, "sep")));
+    if (month >= 0) return { year: named[2], month: String(month + 1), day: "" };
+    return null;
+  }
+  const slashed = s.match(/^(\d{1,2})\/(\d{4})$/);
+  if (slashed && inRange(Number(slashed[1]), 12)) return { year: slashed[2], month: String(Number(slashed[1])), day: "" };
   return null;
 }
+
+const MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 function setInput(el: HTMLInputElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -151,7 +165,8 @@ export const workdayAdapter: SiteAdapter = {
     // The dialing-code prompt takes the same answer: its options read
     // "Canada (+1)", which the option matcher resolves from "Canada".
     if (ctx.category === "country" || ctx.category === "phoneCountryCode") {
-      if (ctx.category === "country" && !/country|region/.test(automationId(ctx.el))) return undefined;
+      // Never the state's widget ("countryRegion"), whatever classified it.
+      if (ctx.category === "country" && !/country(?!.?region)/.test(automationId(ctx.el))) return undefined;
       const derived = (ctx.profile.location || "").split(",").map((s) => s.trim()).filter(Boolean).pop();
       return ctx.profile.country || derived || undefined;
     }
@@ -164,7 +179,10 @@ export const workdayAdapter: SiteAdapter = {
     const container = dateContainerOf(ctx.el);
     if (!container) return undefined;
     const parts = parseDate(ctx.value);
-    if (!parts) return undefined;
+    // A date widget that cannot take this value is a failed fill, never a hand-
+    // off: the generic writer would type the text ("Present", a free-form
+    // date) into one spinbutton.
+    if (!parts) return Promise.resolve({ filled: false, reason: "not a date this widget takes" });
     const inputs = datePartsIn(container);
     if (!inputs || !DATE_FRAGMENTS.some((f) => inputs[f])) return undefined;
     return (async () => {

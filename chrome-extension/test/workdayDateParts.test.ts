@@ -280,11 +280,13 @@ describe("Workday split-date container", () => {
     expect((document.getElementById("d") as HTMLInputElement).value).toBe("0");
   });
 
-  it("declines values that only look like a date", () => {
+  it("refuses values that only look like a date, writing nothing", async () => {
+    // A refusal, not a hand-off: handed to the generic writer, the text went
+    // into the spinbutton it was asked about.
     mountWorkdayDate();
     const year = document.getElementById("workExperience-10--startDate-dateSectionYear-input") as HTMLInputElement;
     for (const junk of ["2020-2024", "1234-5 King St", "2025-13-45", "2025-05-32", "not a date"]) {
-      expect(workdayAdapter.fillOperation!(fillCtx(year, junk)), junk).toBeUndefined();
+      expect((await workdayAdapter.fillOperation!(fillCtx(year, junk))!).filled, junk).toBe(false);
     }
     expect(year.value).toBe("0");
   });

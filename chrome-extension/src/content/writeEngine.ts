@@ -209,9 +209,7 @@ export function verifyControl(control: RuntimeControl, value: string): boolean {
     case "checkboxGroup": {
       const live = (control.checkboxes ?? []).filter((c) => c.isConnected);
       if (live.length === 0) return false;
-      const matched = answerParts(value)
-        .map((p) => matchCheckbox(live, p))
-        .filter((c): c is HTMLInputElement => c !== null);
+      const matched = boxesFor(live, value);
       return matched.length > 0 && matched.every((c) => c.checked);
     }
     case "contenteditable": {
@@ -333,18 +331,29 @@ function matchCheckbox(boxes: HTMLInputElement[], value: string): HTMLInputEleme
   return matchOption(boxes, labelOf, (c) => c.value, value);
 }
 
+/**
+ * The boxes an answer names. An answer that IS one box's label is that box:
+ * its commas are the label's own ("No, I do not have a disability and have
+ * not had one in the past"). Only an answer no label carries whole is a list.
+ */
+function boxesFor(live: HTMLInputElement[], value: string): HTMLInputElement[] {
+  const key = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const whole = live.find((c) => key(cleanText(c.labels?.[0]?.textContent) || c.value) === key(value));
+  if (whole) return [whole];
+  const out: HTMLInputElement[] = [];
+  for (const part of answerParts(value)) {
+    const match = matchCheckbox(live, part);
+    if (match && !out.includes(match)) out.push(match);
+  }
+  return out;
+}
+
 function writeCheckboxGroup(checkboxes: HTMLInputElement[], value: string): WriteResult {
   const live = checkboxes.filter((c) => c.isConnected);
   if (live.length === 0) return { written: false, reason: STALE };
-  let any = false;
-  for (const part of answerParts(value)) {
-    const match = matchCheckbox(live, part);
-    if (match) {
-      if (!match.checked) match.click();
-      any = true;
-    }
-  }
-  if (!any) return { written: false, reason: `No option matches "${truncate(value)}"` };
+  const boxes = boxesFor(live, value);
+  if (boxes.length === 0) return { written: false, reason: `No option matches "${truncate(value)}"` };
+  for (const box of boxes) if (!box.checked) box.click();
   return { written: true };
 }
 

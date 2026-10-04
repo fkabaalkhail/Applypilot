@@ -439,12 +439,12 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
     if (control.controlType === "checkboxGroup" || control.multi) {
       const parts = value.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
       const hits = parts.map((p) => snapToOption(options, p, category) ?? (input.sensitive ? closestDemographicOption(category, p, options) : null));
-      if (hits.some((h) => h === null)) {
-        const ok = hits.filter((h): h is string => h !== null);
-        if (ok.length === 0) return none(false, "no-confident-option");
-        return { value: ok.join(", "), kind, source, rule, deviceAbstained: false };
-      }
-      return { value: (hits as string[]).join(", "), kind, source, rule, deviceAbstained: false };
+      // One option, once: "No, I do not have a disability" splits on its own
+      // comma, and both halves land on the same box ("No, I do not have a
+      // disability and have not had one in the past" twice over).
+      const ok = [...new Set(hits.filter((h): h is string => h !== null))];
+      if (ok.length === 0) return none(false, "no-confident-option");
+      return { value: ok.join(", "), kind, source, rule, deviceAbstained: false };
     }
     // A demographic answer in other words ("Female" among Man / Woman, Ashby):
     // the on-device demographic matcher knows the synonyms.

@@ -81,7 +81,7 @@ const answer = (value: string, rule: string, confidence: Confidence = "high"): Q
  * other abstention leaves the field to the backend's AI (essays, opinions,
  * a skill's years), which is the right tool once it has credits again.
  */
-const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled|clearance:level-unknown|high-school:not-in-profile|school-schedule:unknown|conditional-follow-up)/;
+const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled|clearance:level-unknown|high-school:not-in-profile|school-schedule:unknown|conditional-follow-up|phone-extension:not-in-profile)/;
 const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule, blockBackend: BLOCK_BACKEND_RULES.test(rule) });
 
 /** Lowercase, accents stripped, apostrophes dropped, punctuation → space. */
@@ -1770,6 +1770,9 @@ export function resolveQuestion(
   const sentences = raw.split(/(?<=\?)\s*/);
   const asked = sentences.length > 1 && /^\s*if\b/i.test(sentences.slice(1).join(" ")) ? qnorm(sentences[0]) : n;
   if (UNANSWERABLE.test(asked)) return abstain("unanswerable-from-profile");
+  // A phone extension: no profile holds one, and a guess (the AI's, or the
+  // phone number again, as Workday's "phone-extension" once got) dials wrong.
+  if (/^(phone |telephone )?ext(ension)?( number)?$/.test(asked)) return abstain("phone-extension:not-in-profile");
   // The profile's education rows are post-secondary: their school and year
   // answer the university question, never "High School Name" / "Year of High
   // School Graduation" (Palantir on Lever, live 2026-10-03). A yes/no about a

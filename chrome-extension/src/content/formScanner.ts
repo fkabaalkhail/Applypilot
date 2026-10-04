@@ -244,6 +244,24 @@ function ariaRadioOptions(group: HTMLElement): string[] {
  * carry no label, legend or question text, so the group was "unknown" and
  * stayed blank for every profile (2026-10-03).
  */
+/**
+ * A group's options can name the question its label does not ("Please check
+ * one of the boxes below:" over three disability boxes). They decide an
+ * unknown question, and they LIFT a weak reading that agrees with them: the
+ * Workday disability form's own heading nearby read "disability" at 0.66,
+ * under the fill threshold, so the boxes were never chosen to fill.
+ */
+function withOptionsEvidence(
+  current: { category: FieldCategory; confidence: number; sensitive: boolean },
+  options: string[]
+): { category: FieldCategory; confidence: number; sensitive: boolean } {
+  const named = categoryOfOptions(options);
+  if (!named) return current;
+  if (current.category === "unknown") return named;
+  if (current.category === named.category && current.confidence < named.confidence) return named;
+  return current;
+}
+
 function categoryOfOptions(options: string[]): { category: FieldCategory; confidence: number; sensitive: boolean } | null {
   const count = (re: RegExp): number => options.filter((o) => re.test(o.toLowerCase())).length;
   if (count(/\bdisabilit(y|ies)\b/) >= 2) return { category: "eeoDisability", confidence: 0.9, sensitive: true };
@@ -1101,10 +1119,7 @@ export function scanPage(
     const groupIndex = detectGroupIndex(signals);
     const options = radios.map(radioOptionLabel).filter(Boolean).slice(0, MAX_GROUP_OPTIONS);
     let { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "radioGroup" });
-    if (category === "unknown") {
-      const named = categoryOfOptions(options);
-      if (named) ({ category, confidence, sensitive } = named);
-    }
+    ({ category, confidence, sensitive } = withOptionsEvidence({ category, confidence, sensitive }, options));
 
     registry.set(id, { id, controlType: "radioGroup", radios });
 
@@ -1149,8 +1164,11 @@ export function scanPage(
     const id = ensureFieldId(first);
     const signals = groupSignals(checkboxes, container);
     const groupIndex = detectGroupIndex(signals);
-    const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "checkboxGroup" });
     const options = checkboxes.map(radioOptionLabel).filter(Boolean).slice(0, MAX_GROUP_OPTIONS);
+    let { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "checkboxGroup" });
+    // As for radios: Workday's disability form asks only "Please check one of
+    // the boxes below:" over three disability boxes, and stayed unanswered.
+    ({ category, confidence, sensitive } = withOptionsEvidence({ category, confidence, sensitive }, options));
 
     registry.set(id, { id, controlType: "checkboxGroup", checkboxes });
 

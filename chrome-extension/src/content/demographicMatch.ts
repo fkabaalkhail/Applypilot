@@ -16,6 +16,10 @@ const DECLINE_PATTERNS = [
   "not disclosed",
   "choose not",
   "rather not",
+  // "I do not want to answer" (the federal disability form, CC-305), "I don't
+  // want to answer": a stated "Prefer not to say" found no decline among them.
+  "not want to",
+  "don t want to",
 ];
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();

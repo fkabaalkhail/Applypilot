@@ -33,8 +33,31 @@ describe("workdayAdapter.classify (by data-automation-id)", () => {
     expect(workdayAdapter.classify!(ctxWithAutomationId("legalNameSection_lastName"), generic)?.category).toBe("lastName");
     expect(workdayAdapter.classify!(ctxWithAutomationId("email"), generic)?.category).toBe("email");
     expect(workdayAdapter.classify!(ctxWithAutomationId("phone-number"), generic)?.category).toBe("phone");
-    expect(workdayAdapter.classify!(ctxWithAutomationId("addressSection_countryRegion"), generic)?.category).toBe("country");
+    expect(workdayAdapter.classify!(ctxWithAutomationId("countryDropdown"), generic)?.category).toBe("country");
     expect(workdayAdapter.classify!(ctxWithAutomationId("addressSection_city"), generic)?.category).toBe("addressCity");
+  });
+  /**
+   * Found by the Workday replica (one click to Review, 2026-10-03): the State
+   * dropdown read as the COUNTRY, Phone Device Type and Phone Extension as
+   * the phone NUMBER, so the state and device type stayed empty (a required
+   * pair that parked the flow) and the number was typed into the Extension.
+   * Workday's own bundle names these countryRegion (filled from an address's
+   * state, options from countries/{id}/regions), phoneType and extension.
+   */
+  it("reads countryRegion as the state, in either markup", () => {
+    expect(workdayAdapter.classify!(ctxWithAutomationId("addressSection_countryRegion"), generic)?.category).toBe("addressState");
+    expect(workdayAdapter.classify!(ctxWithAutomationId("formField-countryRegion"), generic)?.category).toBe("addressState");
+  });
+  it("reads the phone widgets by what they are, hyphenated or not", () => {
+    expect(workdayAdapter.classify!(ctxWithAutomationId("phone-device-type"), generic)?.category).toBe("phoneDeviceType");
+    expect(workdayAdapter.classify!(ctxWithAutomationId("formField-phoneType"), generic)?.category).toBe("phoneDeviceType");
+    expect(workdayAdapter.classify!(ctxWithAutomationId("country-phone-code"), generic)?.category).toBe("phoneCountryCode");
+    expect(workdayAdapter.classify!(ctxWithAutomationId("formField-phoneNumber"), generic)?.category).toBe("phone");
+  });
+  it("never reads an extension or an SMS opt-in as the phone number", () => {
+    for (const aid of ["phone-extension", "formField-extension", "phone-sms-opt-in", "phone-whatsapp-opt-in"]) {
+      expect(workdayAdapter.classify!(ctxWithAutomationId(aid), generic)?.category, aid).not.toBe("phone");
+    }
   });
   it("declines for an unknown automation id", () => {
     expect(workdayAdapter.classify!(ctxWithAutomationId("someRandomWidget"), generic)).toBeUndefined();
@@ -43,12 +66,17 @@ describe("workdayAdapter.classify (by data-automation-id)", () => {
 
 describe("workdayAdapter.resolveAnswer", () => {
   it("resolves the country from profile.country for a Workday country field", () => {
-    const ctx = ctxWithAutomationId("addressSection_countryRegion");
+    const ctx = ctxWithAutomationId("countryDropdown");
     const profile = { country: "Canada", location: "Ottawa, ON, Canada" } as unknown as UserApplicationProfile;
     expect(workdayAdapter.resolveAnswer!({ category: "country", profile, control: { controlType: "combobox" }, fillEEO: false, el: ctx.el })).toBe("Canada");
   });
-  it("falls back to the country parsed from location when profile.country is empty", () => {
+  it("never answers the state's countryRegion widget with the country, whatever classified it", () => {
     const ctx = ctxWithAutomationId("addressSection_countryRegion");
+    const profile = { country: "Canada", location: "Ottawa, ON, Canada" } as unknown as UserApplicationProfile;
+    expect(workdayAdapter.resolveAnswer!({ category: "country", profile, control: { controlType: "combobox" }, fillEEO: false, el: ctx.el })).toBeUndefined();
+  });
+  it("falls back to the country parsed from location when profile.country is empty", () => {
+    const ctx = ctxWithAutomationId("countryDropdown");
     const profile = { location: "Ottawa, ON, Canada" } as unknown as UserApplicationProfile;
     expect(workdayAdapter.resolveAnswer!({ category: "country", profile, control: { controlType: "combobox" }, fillEEO: false, el: ctx.el })).toBe("Canada");
   });
@@ -93,8 +121,52 @@ describe("workdayAdapter.fillOperation (split date)", () => {
     expect(workdayAdapter.fillOperation!(fillCtx(el, "someone@example.com"))).toBeUndefined();
   });
 
-  it("declines when the value is not a parseable date", () => {
+  it("refuses a value that is not a date, and types nothing into the parts", async () => {
+    // Handed off, the generic writer typed the text into one spinbutton.
     const w = dateWidget();
-    expect(workdayAdapter.fillOperation!(fillCtx(w.el, "not a date"))).toBeUndefined();
+    for (const v of ["not a date", "Present"]) {
+      const op = workdayAdapter.fillOperation!(fillCtx(w.el, v));
+      expect(op, v).toBeInstanceOf(Promise);
+      expect((await op!).filled, v).toBe(false);
+    }
+    expect([w.month.value, w.day.value, w.year.value]).toEqual(["", "", ""]);
+  });
+
+  /**
+   * Found by the Workday replica (2026-10-03): a résumé's "Jun 2012" was not a
+   * date to this adapter, so every work-history date went in as text and the
+   * Month box read "2012".
+   */
+  it("takes a month by name or number, as a résumé writes a job's dates", async () => {
+    const cases: [string, string, string][] = [
+      ["Jun 2012", "6", "2012"],
+      ["June 2012", "6", "2012"],
+      ["Sept. 2019", "9", "2019"],
+      ["Dec 2022", "12", "2022"],
+      ["06/2012", "6", "2012"],
+    ];
+    for (const [v, month, year] of cases) {
+      document.body.innerHTML = "";
+      const w = dateWidget();
+      expect(await workdayAdapter.fillOperation!(fillCtx(w.el, v))!, v).toEqual({ filled: true });
+      expect([w.month.value, w.year.value, w.day.value], v).toEqual([month, year, ""]);
+    }
+  });
+});
+
+describe("workdayAdapter.classify, ids that only LOOK like another field", () => {
+  it("the ethnicity dropdown is never the city", () => {
+    for (const aid of ["ethnicityDropdown", "formField-ethnicityMulti"]) {
+      expect(workdayAdapter.classify!(ctxWithAutomationId(aid), generic)?.category, aid).not.toBe("addressCity");
+    }
+    expect(workdayAdapter.classify!(ctxWithAutomationId("formField-city"), generic)?.category).toBe("addressCity");
+  });
+  it("an education row's lastYearAttended is its graduation year", () => {
+    const el = document.createElement("input");
+    el.id = "education-31--lastYearAttended-dateSectionYear-input";
+    el.setAttribute("data-automation-id", "dateSectionYear-input");
+    document.body.append(el);
+    const ctx = { el, signals: {} as FieldContext["signals"], controlType: "text" as const };
+    expect(workdayAdapter.classify!(ctx, generic)?.category).toBe("graduationYear");
   });
 });

@@ -30,15 +30,28 @@ export const WD_HOST = /(^|\.)(myworkdayjobs|myworkday|myworkdayjobs-impl|mywork
  */
 export const FIELD_RULES: ReadonlyArray<readonly [RegExp, FieldCategory]> = [
   // -- narrow phone widgets (must stay above `country` / `phone`) ------------
-  [/countryphonecode|phonecode|dialcode/i, "phoneCountryCode"],
-  [/phonetype|phonedevicetype|devicetype/i, "phoneDeviceType"],
+  // Separator-tolerant: older tenants hyphenate ("country-phone-code",
+  // "phone-device-type"), newer ones camel-case inside "formField-phoneType".
+  [/country.?phone.?code|phone.?code|dial.?code/i, "phoneCountryCode"],
+  [/phone.?(device.?)?type|device.?type/i, "phoneDeviceType"],
+  // -- the address's STATE: Workday calls it countryRegion, a region of the
+  //    country (its options load from countries/{id}/regions, and Workday's
+  //    own code fills it from an address's state). Above `country`, which it
+  //    contains, or the state is read as the country and gets none of its options.
+  [/country.?region/i, "addressState"],
   // -- identity --------------------------------------------------------------
   [/firstname|givenname/i, "firstName"],
   [/lastname|familyname/i, "lastName"],
   [/email/i, "email"],
-  [/phone.*number|^phone/i, "phone"],
-  [/country|region/i, "country"],
-  [/(address)?.*city/i, "addressCity"],
+  // The number itself only: "phone-extension", "phone-sms-opt-in" and
+  // "phone-whatsapp-opt-in" all START with "phone", and `^phone` typed the
+  // phone number into the Extension box.
+  [/phone.?number|^phone$/i, "phone"],
+  [/country/i, "country"],
+  // "city" as a word of the id, never inside one: "ethnicityDropdown" (and
+  // "ethnicityMulti") read as the CITY, so the ethnicity question got the
+  // applicant's city, matched no option, and stayed empty.
+  [/(^|[^a-z])city|addresscity/i, "addressCity"],
   // -- work-experience rows (`formField-jobTitle` / `formField-companyName`) --
   // Plain "Company"/"Job Title" aren't caught by the generic matcher, so the
   // whole repeating section went unfilled on Workday without these.
@@ -58,6 +71,13 @@ export const SECTION_DATE_RULES: ReadonlyArray<readonly [RegExp, FieldCategory]>
   [/workexperience.*startdate/i, "experienceStartDate"],
   [/workexperience.*enddate/i, "experienceEndDate"],
   [/education.*(graduation|enddate|completiondate)/i, "graduationYear"],
+  // Workday's own name for the education row's "To (Actual or Expected)" year
+  // (its bundle: firstYearAttended / lastYearAttended). Unmatched, the year a
+  // degree was finished never filled.
+  [/education.*lastyearattended/i, "graduationYear"],
+  // The disability form's date (selfIdentifiedDisabilityData.dateSignedOn):
+  // today's date. Its parts are labelled only Month / Day / Year.
+  [/datesignedon|signature.?date|date.?signed/i, "signatureDate"],
 ];
 
 /** Section automation-ids (on an ANCESTOR, not the input) marking file uploads. */

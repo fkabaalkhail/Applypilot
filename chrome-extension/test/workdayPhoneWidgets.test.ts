@@ -57,7 +57,11 @@ describe("Workday phone satellites are classified apart from the number", () => 
     expect(classify("phone-number")?.category).toBe("phone");
   });
   it("the address country field still classifies as country", () => {
-    expect(classify("addressSection_countryRegion")?.category).toBe("country");
+    expect(classify("formField-country")?.category).toBe("country");
+    expect(classify("countryDropdown")?.category).toBe("country");
+  });
+  it("countryRegion is the address's STATE (Workday loads it from countries/{id}/regions)", () => {
+    expect(classify("addressSection_countryRegion")?.category).toBe("addressState");
   });
 });
 
