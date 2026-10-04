@@ -1,7 +1,7 @@
 /**
  * Real-extension e2e runner.
  *
- *   node build.mjs && node test/e2e/run.mjs [--filter <id|ats>] [--report-only]
+ *   node build.mjs && node test/e2e/run.mjs [--filter <id|=exact-id|ats>,...] [--report-only] [--save <name>]
  *
  * Loads every case module under test/e2e/cases/, runs each through the REAL
  * packaged extension (harness.mjs) against the fake backend with the AI dead,
@@ -43,8 +43,10 @@ async function main() {
   const filter = valueOf("--filter");
   let cases = await loadCases();
   if (filter) {
+    // "=<id>" matches that id only; anything else is a substring of the id,
+    // or an ATS name ("lever").
     const parts = filter.split(",");
-    cases = cases.filter((c) => parts.some((p) => c.id.includes(p) || c.ats === p));
+    cases = cases.filter((c) => parts.some((p) => (p.startsWith("=") ? c.id === p.slice(1) : c.id.includes(p) || c.ats === p)));
   }
   if (cases.length === 0) {
     console.log("no cases matched");
