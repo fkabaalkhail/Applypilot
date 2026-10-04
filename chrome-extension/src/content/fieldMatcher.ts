@@ -991,8 +991,11 @@ export function resolveProfileValue(
     }
     case "degree": {
       // "Did you Graduate?" in an education row (Paylocity): that row's own
-      // status, from its graduation date.
-      if (hasYesNoOptions(control.options)) {
+      // status, from its graduation date. Only in a row: outside one, a yes/no
+      // on a degree is a requirement ("Bachelor's in Computer Science …
+      // strongly preferred", FSSI on Workable), which a finished degree in
+      // another field does not meet.
+      if (gi !== null && hasYesNoOptions(control.options)) {
         const row = edu ? facts.education.entries.find((e) => e.school === (edu.school || "").trim() && e.degree === (edu.degree || "").trim()) : undefined;
         return row?.completed === true ? "Yes" : row?.completed === false ? "No" : null;
       }

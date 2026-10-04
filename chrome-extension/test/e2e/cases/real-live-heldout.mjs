@@ -154,6 +154,9 @@ export default [
     ats: "greenhouse",
     url: "https://job-boards.greenhouse.io/twitch/jobs/8700578002",
     expect: {
+      // Round 3: "permanent resident after your latest citizenship?" is No for a
+      // citizen living in her own country.
+      "#question_37744079002": "No",
       "label:First Name": "Maya",
       "label:Last Name": "Tremblay",
       "label:Email": P.email,

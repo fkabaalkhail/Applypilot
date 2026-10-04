@@ -984,3 +984,15 @@ describe("a comma is no place: 'Yes, I live here' is answered as an answer (Brex
     expect(pickOption(BREX, "Yes, I plan to relocate", "Toronto, ON, Canada")).toBe(1);
   });
 });
+
+describe("a degree yes/no outside an education row is not 'did you graduate' (FSSI on Workable, regression run 2026-10-03)", () => {
+  it("'Bachelor's Degree in Computer Science … strongly preferred.' (YES/NO) is not answered from whether a degree is finished", () => {
+    const psych = { ...SPARSE_CANADIAN, expectedGraduation: undefined, education: [{ school: "Université de Montréal", degree: "Baccalauréat en psychologie", graduationYear: "2017" }] };
+    const v = resolveProfileValue("degree", psych, { controlType: "radioGroup", options: ["YES", "NO"], groupIndex: null }, false);
+    expect(v === "YES" || v === "Yes").toBe(false);
+  });
+  it("inside an education row it still is (Paylocity)", () => {
+    const grad = { ...SPARSE_CANADIAN, expectedGraduation: undefined, education: [{ school: "Imperial College London", degree: "Master of Science in Computing", graduationYear: "2016" }] };
+    expect(resolveProfileValue("degree", grad, { controlType: "combobox", options: ["--", "Yes", "No"], groupIndex: 0 }, false)).toBe("Yes");
+  });
+});
