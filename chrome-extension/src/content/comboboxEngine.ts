@@ -393,7 +393,7 @@ function optionsKey(listbox: HTMLElement | null): string {
   if (!listbox) return "";
   return optionsIn(listbox)
     .map((o) => optionText(o))
-    .join(" ");
+    .join("\u0000");
 }
 
 /**
