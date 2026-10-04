@@ -13,6 +13,10 @@ import { isBooleanOptionSet, optionPolarity } from "./answerKind";
 export function normalize(text: string): string {
   return text
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2") // split camelCase
+    // Accents folded, never a word break: "José" was "jos" against an option's
+    // "Jose" (Ramp's school list on Ashby, live 2026-10-03).
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ") // punctuation/separators → space
     .replace(/\s+/g, " ")

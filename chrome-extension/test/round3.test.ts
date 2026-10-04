@@ -9,6 +9,7 @@ import { degreeRank, profileFacts } from "../src/content/profileFacts";
 import { deriveFieldOfStudy } from "../src/content/fieldMatcher";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
 import { scanPage } from "../src/content/formScanner";
+import { matchOption } from "../src/content/writeEngine";
 import { snapToOption } from "../src/content/fieldResolver";
 import type { AnswerKind } from "../src/content/answerKind";
 import type { ControlType, UserApplicationProfile } from "../src/shared/types";
@@ -768,5 +769,35 @@ describe("Hermeus on Lever, answered by a green-card student (batch C)", () => {
   it("'What is your location?' over a country list is the country", () => {
     const COUNTRIES = ["Select...", "Afghanistan", "Albania", "Algeria", "Canada", "Mexico", "United Kingdom", "United States", "Vietnam", "Zambia", "Zimbabwe"];
     expect(snapToOption(COUNTRIES, "San Jose, CA", "location")).toBe("United States");
+  });
+});
+
+describe("a country list asked as 'What is your location?' on a Lever form (Hermeus, batch C)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  it("takes the country the applicant lives in", () => {
+    // The live list also names the US inside two territories' names.
+    const countries = ["Afghanistan", "Albania", "Canada", "Mexico", "United Kingdom", "United States", "United States Minor Outlying Islands", "Vietnam", "Virgin Islands, U.S."];
+    // Verbatim from the live page (2026-10-03), the option list trimmed.
+    const codes: Record<string, string> = {
+      Afghanistan: "AF", Albania: "AL", Canada: "CA", Mexico: "MX", "United Kingdom": "GB", "United States": "US",
+      "United States Minor Outlying Islands": "UM", Vietnam: "VN", "Virgin Islands, U.S.": "VI",
+    };
+    document.body.innerHTML = `<form><label><div class="application-label">What is your location?</div><div class="application-field"><div class="application-dropdown"><select class="candidate-location" data-qa="candidate-location-select"><option value="">Select...</option>${countries.map((c) => `<option value="${codes[c]}">${c}</option>`).join("")}</select></div></div></label></form>`;
+    const f = scanPage({ ...SPARSE_CANADIAN, location: "San Jose, CA", country: "USA" }, false).fields[0];
+    expect(f.proposedValue).toBe("United States");
+  });
+});
+
+describe("an accent never splits a word in option matching (Ramp on Ashby, batch C)", () => {
+  it("'San José State University' is Ashby's 'San Jose State University' (option text glued to its country and domain)", () => {
+    const SJ = ["San Jose State UniversityUnited Statessjsu.edu", "San Diego State UniversityUnited Statessdsu.edu", "Salem State UniversityUnited Statessalemstate.edu"];
+    expect(matchOption(SJ, (o) => o, (o) => o, "San José State University")).toBe(SJ[0]);
+  });
+  it("'Université de Montréal' is 'Universite de Montreal'", () => {
+    expect(matchOption(["Universite de Montreal", "Universite Laval"], (o) => o, (o) => o, "Université de Montréal")).toBe("Universite de Montreal");
   });
 });

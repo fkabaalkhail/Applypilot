@@ -121,3 +121,11 @@ describe("every place a posting lists (Anthropic on Greenhouse, live 2026-10-03)
     expect(detectJobPlace(document).places).toEqual(["New York, NY, United States", "San Francisco, CA, United States"]);
   });
 });
+
+describe("a location element with no place in it does not hide the job's", () => {
+  it("reads on to the element that names one", () => {
+    document.head.innerHTML = "";
+    document.body.innerHTML = `<div class="location"><span>Location</span></div><div data-ui="job-location">Rochester, New York, United States</div>`;
+    expect(detectJobPlace(document).places).toEqual(["Rochester, NY, United States"]);
+  });
+});

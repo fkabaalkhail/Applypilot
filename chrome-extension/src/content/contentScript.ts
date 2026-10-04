@@ -449,8 +449,25 @@ function initialize(): void {
   // resolver answers "authorized to work in THIS country?" for the job's
   // country, and "located here, or would you relocate?" for its city.
   let resolveContextUrl = "";
+  let pagePlaceFound = false;
   function refreshResolveContext(): void {
-    if (resolveContextUrl === location.href) return;
+    if (resolveContextUrl === location.href) {
+      // Workable renders the posting's header after the first scan (Mindex,
+      // live 2026-10-03: "onsite at our Rochester office?" never saw
+      // Rochester, New York). Read again until the page names a place; a place
+      // adopted from outside stays unless the page itself names one.
+      if (pagePlaceFound) return;
+      try {
+        const late = detectJobPlace(document);
+        if (late.country || late.places?.length) {
+          pagePlaceFound = true;
+          setResolveContext({ jobCountry: late.country ?? getResolveContext().jobCountry, jobCity: late.city, jobPlaces: late.places ?? null });
+        }
+      } catch {
+        // The page's own place stays unknown; nothing to change.
+      }
+      return;
+    }
     resolveContextUrl = location.href;
     let place: JobPlace = { country: null, city: null };
     try {
@@ -459,6 +476,7 @@ function initialize(): void {
     } catch {
       setResolveContext({ jobCountry: null, jobCity: null, jobPlaces: null, company: "" });
     }
+    pagePlaceFound = Boolean(place.country || place.places?.length);
     if (!place.country) void adoptOutsidePlace(resolveContextUrl);
   }
 

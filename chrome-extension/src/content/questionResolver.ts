@@ -563,6 +563,11 @@ function resolveLocatedChoice(q: QuestionInput, n: string, facts: ProfileFacts):
     return c && c !== "this-country" && c.code === country.code;
   });
   if (byCountry.length === 1) return answer(byCountry[0], "located-choice:country");
+  // "United States" beside "United States Minor Outlying Islands" and "Virgin
+  // Islands, U.S." (Hermeus on Lever, live 2026-10-03): the option that IS the
+  // country, not one that names it.
+  const itself = byCountry.filter((o) => countryFromName(o.trim())?.code === country.code);
+  if (itself.length === 1) return answer(itself[0], "located-choice:country");
   const continent = geoNorm(country.continent);
   const byContinent = q.options.filter((o) => geoNorm(o) === continent || geoNorm(o).includes(continent));
   if (byContinent.length === 1) return answer(byContinent[0], "located-choice:continent");

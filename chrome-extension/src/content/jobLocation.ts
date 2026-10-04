@@ -183,19 +183,23 @@ function listedPlaces(doc: Document): string[] {
       }
     }
   }
-  if (texts.length === 0 && direct.length === 0) {
-    for (const sel of LOCATION_SELECTORS) {
-      for (const el of Array.from(doc.querySelectorAll(sel)).slice(0, 4)) {
-        if (!el.closest("form")) texts.push(el.textContent || "");
-      }
-      if (texts.length) break;
-    }
-  }
   const out: string[] = [...new Set(direct)];
-  for (const text of texts) {
+  const add = (text: string): void => {
     for (const part of text.split(/\s*[|;•·]\s*|\s+or\s+/i)) {
       const place = canonicalPlace(part);
       if (place && !out.includes(place)) out.push(place);
+    }
+  };
+  texts.forEach(add);
+  // The first selector that NAMES a place: an element matching an earlier one
+  // with none in it (a bare "Location" heading) must not hide a later one
+  // that does (Workable's data-ui="job-location").
+  if (out.length === 0) {
+    for (const sel of LOCATION_SELECTORS) {
+      for (const el of Array.from(doc.querySelectorAll(sel)).slice(0, 4)) {
+        if (!el.closest("form")) add(el.textContent || "");
+      }
+      if (out.length) break;
     }
   }
   return out;
