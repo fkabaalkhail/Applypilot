@@ -58,6 +58,8 @@ export interface QuestionContext {
   company: string;
   /** The job's city, when the page says ("San Francisco"). */
   jobCity?: string | null;
+  /** Every place the posting lists, when it lists several ("San Francisco, CA"). */
+  jobPlaces?: string[] | null;
 }
 
 export type QuestionResult =
@@ -79,7 +81,7 @@ const answer = (value: string, rule: string, confidence: Confidence = "high"): Q
  * other abstention leaves the field to the backend's AI (essays, opinions,
  * a skill's years), which is the right tool once it has credits again.
  */
-const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled)/;
+const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled|clearance:level-unknown|high-school:not-in-profile|school-schedule:unknown|conditional-follow-up)/;
 const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule, blockBackend: BLOCK_BACKEND_RULES.test(rule) });
 
 /** Lowercase, accents stripped, apostrophes dropped, punctuation → space. */
@@ -293,7 +295,7 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   }
   // A status choice ("What is your work authorization status?"), or free text.
   if (q.options && q.options.length > 0) {
-    return resolveStatusChoice(q, facts, country) ?? abstain("work-auth-status:unknown");
+    return resolveStatusChoice(q, facts, country) ?? resolveAuthorizationStatement(q, facts, country, residence) ?? abstain("work-auth-status:unknown");
   }
   if (q.kind === "text" || q.kind === "longText") {
     const stated = profile.workAuthorization?.trim();
@@ -303,6 +305,40 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
     }
   }
   return abstain("work-auth:unknown");
+}
+
+/**
+ * Options that are STATEMENTS about the right to work: "I am authorized to work
+ * in the United States for any employer", "…for my present employer only", "I
+ * require sponsorship…", "I am not authorized…" (SpaceX on Greenhouse, live
+ * 2026-10-03: two options read as a yes, so a green-card holder went to the
+ * AI). The one the profile's authorization and sponsorship make true.
+ */
+function resolveAuthorizationStatement(q: QuestionInput, facts: ProfileFacts, country: string | null, residence: string | null): QuestionResult {
+  const opts = (q.options ?? []).map((o) => ({ raw: o, n: qnorm(o) }));
+  const one = (keep: (n: string) => boolean): string | null => {
+    const hits = opts.filter((o) => keep(o.n));
+    return hits.length === 1 ? hits[0].raw : null;
+  };
+  const requires = (n: string) => /\b(require|requires|need|needs) (visa )?sponsorship\b/.test(n) && !/\b(not|no|without)\b/.test(n);
+  const notAuthorized = (n: string) => /\b(am|is|are) not (legally )?(authorized|eligible|permitted)\b/.test(n);
+  const a = authorizedIn(facts.workAuth, country, residence);
+  const s = needsSponsorshipIn(facts.workAuth, country, residence);
+  // A need the applicant STATED decides, whatever the work right (a student
+  // visa's is unclear); one only inferred from "not authorized" does not, and
+  // the literal answer is then "not authorized".
+  if (facts.workAuth.statedSponsorship === true && isHigh(s) && s.value === true) {
+    const pick = one(requires);
+    return pick ? answer(pick, "work-auth-statement:needs-sponsorship") : null;
+  }
+  if (!isHigh(a)) return null;
+  if (a.value === false) {
+    const pick = one(notAuthorized);
+    return pick ? answer(pick, "work-auth-statement:not-authorized") : null;
+  }
+  if (!isHigh(s) || s.value !== false) return null;
+  const pick = one((n) => /\b(authorized|eligible|permitted)\b/.test(n) && /\bany employer\b/.test(n) && !/\bnot\b/.test(n));
+  return pick ? answer(pick, "work-auth-statement:any-employer") : null;
 }
 
 /** A citizenship / status option for a status choice question. */
@@ -328,6 +364,25 @@ function resolveStatusChoice(q: QuestionInput, facts: ProfileFacts, country: str
 
 const CITIZEN_Q = /\b(are you|is the applicant) (a |an )?((u ?s|us|united states|canadian|american|british|uk) )?citizen\b|\bcitizen of\b|\bcitizenship\b/;
 
+/**
+ * "Since obtaining your most recent citizenship, did you afterwards become a
+ * permanent resident in any other country/region?" (Amazon's export questions,
+ * on Twitch's Greenhouse form, live 2026-10-03: answered "United States").
+ * A stated permanent residency is one taken in a country not theirs: Yes. A
+ * citizen living in a country of their citizenship, with no residency stated
+ * anywhere: No. Temporary statuses do not count, by the question's own terms.
+ */
+function resolveLaterResidency(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\b(since|after) (obtaining|acquiring|receiving|gaining|becoming)\b.*\bcitizen(ship)?\b.*\bpermanent resident\b/.test(n)) return null;
+  if (!isBooleanQuestion(q) && q.options?.length) return null;
+  const known = [...facts.workAuth.byCountry.entries()];
+  if (known.some(([, a]) => a.basis === "permanent_resident")) return booleanResult(true, q, "later-residency:pr");
+  const citizenOf = new Set(known.filter(([, a]) => a.basis === "citizen").map(([cc]) => cc));
+  const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+  if (home && citizenOf.has(home)) return booleanResult(false, q, "later-residency:none");
+  return abstain("later-residency:unknown");
+}
+
 function resolveCitizenship(q: QuestionInput, n: string, facts: ProfileFacts, ctx: QuestionContext): QuestionResult {
   if (!CITIZEN_Q.test(n)) return null;
   const country = countryNamedIn(q.label);
@@ -348,6 +403,14 @@ function resolveCitizenship(q: QuestionInput, n: string, facts: ProfileFacts, ct
     if (c.basis === "permanent_resident") return booleanResult(orPr, q, "citizenship:pr");
     if (c.basis === "work_permit" || c.basis === "student") return booleanResult(false, q, "citizenship:visa");
     return abstain("citizenship:unknown");
+  }
+  // "Citizenship Status" asks a STATUS ("(b) U.S. lawful permanent resident"),
+  // not a country: answered from its options once they load, never settled
+  // before. Read as a country, a green-card holder's was blocked for good
+  // (SpaceX on Greenhouse, live 2026-10-03).
+  if (/\bcitizenship status\b|\bstatus of (your )?citizenship\b/.test(n)) {
+    if (!q.options?.length) return null;
+    return resolveStatusChoice(q, facts, code) ?? abstain("citizenship:status-unknown");
   }
   // "Country of citizenship" choice/text.
   const citizenOf = [...known.entries()].filter(([, a]) => a.basis === "citizen").map(([cc]) => countryByCode(cc)!);
@@ -688,6 +751,49 @@ function resolveEnrollment(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   return abstain("enrollment:unknown");
 }
 
+/**
+ * "Have you completed at least one previous internship? Please provide
+ * details." (Hermeus on Lever, live 2026-10-03): the history's finished
+ * internships and co-ops, named, or No.
+ */
+function resolvePreviousInternship(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
+  if (!/\b(have|did) you\b.*\b(completed|done|had|held|finished)\b.*\b(internships?|co ?ops?)\b/.test(n)) return null;
+  const done = (profile.experience ?? []).filter(
+    (e) => /\bintern(ship)?\b|\bco ?-?op\b/i.test(e.title ?? "") && Boolean(e.endDate?.trim()) && !/\b(present|current|now|ongoing)\b/i.test(e.endDate ?? "")
+  );
+  if (isBooleanQuestion(q)) return booleanResult(done.length > 0, q, "internship:history");
+  if (q.kind !== "text" && q.kind !== "longText") return null;
+  if (done.length === 0) return answer("No", "internship:none");
+  const named = done.map((e) => `${e.title} at ${e.company}` + (e.startDate && e.endDate ? ` (${e.startDate} to ${e.endDate})` : ""));
+  return answer(`Yes, ${named.join("; ")}`, "internship:history");
+}
+
+/**
+ * "Do you have a school schedule that allows you to work part-time from our
+ * Foster City office…?" (Zoox on Lever, live 2026-10-03: "Yes" for a developer
+ * out of school). No school, no schedule: No. A student's timetable is theirs
+ * to know; the AI could only guess it.
+ */
+function resolveSchoolSchedule(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\b(school|class|academic|course|university|college) (schedule|timetable)\b/.test(n) || !isBooleanQuestion(q)) return null;
+  const entries = facts.education.entries;
+  if (entries.length > 0 && entries.every((e) => e.completed === true)) return booleanResult(false, q, "school-schedule:not-enrolled");
+  return abstain("school-schedule:unknown");
+}
+
+/**
+ * "Are you available to participate in a full double-block co-op from January
+ * 2027 through August 2027?" (Mindex on Workable, live 2026-10-03): a co-op is
+ * a placement for enrolled students, so a graduate is not available for one.
+ * A student's availability is the term's (resolvePeriodAvailability).
+ */
+function resolveCoop(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\bco ?op\b/.test(n) || !/\b(available|able|eligible) to (participate|complete|do|take part|join)\b|\bparticipate in\b/.test(n)) return null;
+  if (!isBooleanQuestion(q)) return null;
+  const entries = facts.education.entries;
+  return entries.length > 0 && entries.every((e) => e.completed === true) ? booleanResult(false, q, "co-op:not-enrolled") : null;
+}
+
 /** The degree level a question names ("PhD program", "master's student"), as a rank. */
 function degreeLevelAsked(n: string): number | null {
   if (/\b(phd|ph d|doctoral|doctorate)\b/.test(n)) return 6;
@@ -781,6 +887,10 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     }
     const withYear = q.options.filter((o) => o.includes(year));
     if (withYear.length === 1) return answer(withYear[0], "graduation:only-option-in-year");
+    // A year list without theirs, beside its "Other" (Palantir's 2022-2030
+    // for a 2016 graduate, live 2026-10-03): "Other" is the true one.
+    const other = q.options.filter((o) => /^\s*other\b/i.test(o));
+    if (other.length === 1 && q.options.filter((o) => /^\s*(19|20)\d{2}\s*$/.test(o)).length >= 2) return answer(other[0], "graduation:other-year");
     // An EXPECTED graduation asked of a graduate: there is none to give, and
     // the AI could only invent one (Superhuman on Ashby, live 2026-10-03).
     if (primary.completed === true && /\b(expected|anticipated|projected)\b|\bwhen (will|do) you graduate\b/.test(n)) {
@@ -1095,6 +1205,9 @@ function resolveRelocationInstruction(q: QuestionInput, raw: string, facts: Prof
   if (q.kind !== "text" && q.kind !== "longText") return null;
   const m = /\bif you (?:would |will )?(?:need|plan|intend|have) to (?:relocate|move)\b[^"“'‘]{0,40}["“'‘]([^"”'’]{2,30})["”'’]/i.exec(raw);
   if (!m) return null;
+  // Not moving: they work from where they live, wherever the job is (a
+  // veteran in Austin who will not relocate, Anthropic, live 2026-10-03).
+  if (polarityOf(profile.willingToRelocate || "") === false) return null;
   const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
   if (!ctx.jobCountry || !home) return abstain("relocate-instruction:unknown");
   if (ctx.jobCountry === home) {
@@ -1223,7 +1336,11 @@ function resolveSchoolName(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   if (!asks || q.kind === "boolean") return null;
   const entries = facts.education.entries;
   let entry = null as (typeof entries)[number] | null;
-  if (/\bcurrently attending|currently enrolled|you attend\b|\bdo you attend\b|\bare you attending\b/.test(n)) {
+  // "…currently attending OR did you last attend?" (Palantir on Lever, live
+  // 2026-10-03) is the main school either way: in progress, else the latest.
+  if (/\bor (did you |have you )?(last |most recently |previously )?(attend(ed)?|graduated?|studied)\b/.test(n)) {
+    entry = facts.education.primary;
+  } else if (/\bcurrently attending|currently enrolled|you attend\b|\bdo you attend\b|\bare you attending\b/.test(n)) {
     entry = entries.find((e) => e.completed === false) ?? null;
     if (!entry) return abstain("school-name:not-enrolled");
   } else if (/\bundergrad/.test(n)) {
@@ -1238,7 +1355,14 @@ function resolveSchoolName(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   if (!entry?.school) return abstain("school-name:unknown");
   if (q.options && q.options.length) {
     const hit = pickOption(q.options, entry.school);
-    return hit ? answer(hit, "school-name") : abstain("school-name:no-matching-option");
+    if (hit) return answer(hit, "school-name");
+    // A full list (a native select) without the school: its own "not listed"
+    // option. A search box's loaded options are only what matched the search.
+    if (q.controlType === "select") {
+      const unlisted = q.options.filter((o) => /\bnot (listed|in (the|this) list|found)\b|\bunlisted\b/i.test(o));
+      if (unlisted.length === 1) return answer(unlisted[0], "school-name:not-listed");
+    }
+    return abstain("school-name:no-matching-option");
   }
   return answer(entry.school, "school-name");
 }
@@ -1400,6 +1524,18 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
     if (/\bclearance\b/.test(n) && q.options?.length && /^none$/i.test((profile.securityClearance || "").trim())) {
       const none = q.options.filter((o) => /^none\b/i.test(o.trim()));
       if (none.length === 1) return answer(none[0], "clearance:none");
+    }
+    // The level the profile names, as an option exactly ("Secret" is "Secret
+    // Clearance", never "Interim Secret" or "Top Secret"). A clearance stated
+    // with no level ("Active clearance") cannot pick one, and the AI could only
+    // guess it (ActioNet's eleven types, a veteran, live 2026-10-03).
+    const stated = (profile.securityClearance || "").trim();
+    if (/\bclearance (type|level)\b|\b(type|level) of (security )?clearance\b/.test(n) && q.options?.length && stated && !/^none$/i.test(stated)) {
+      const level = (s: string): string => qnorm(s).replace(/\b(active|current|currently|held|clearance|security)\b/g, " ").replace(/\s+/g, " ").trim();
+      const want = level(stated);
+      if (!want) return abstain("clearance:level-unknown");
+      const hits = q.options.filter((o) => level(o) === want);
+      return hits.length === 1 ? answer(hits[0], "clearance:level") : abstain("clearance:level-unknown");
     }
     return null;
   }
@@ -1571,7 +1707,10 @@ function resolveConditional(q: QuestionInput, raw: string, facts: ProfileFacts, 
     profile,
     ctx
   );
-  if (!held || held.status !== "answer") return abstain("conditional:unknown");
+  // A condition kept from the AI keeps its follow-up from it too.
+  if (!held || held.status !== "answer") {
+    return { status: "abstain", rule: "conditional:unknown", blockBackend: held?.status === "abstain" && held.blockBackend === true };
+  }
   if ((held.value === "Yes") !== asked.negated) return resolveQuestion(restQ, facts, profile, ctx);
   const na = (q.options ?? []).filter((o) => o.trim() && !/^(yes|no)$/i.test(o.trim()) && NOT_APPLICABLE.test(qnorm(o)));
   return na.length === 1 ? answer(na[0], "conditional:does-not-apply") : abstain("conditional:does-not-apply");
@@ -1599,7 +1738,17 @@ export function resolveQuestion(
   // what they ask depends on an answer we did not give. A condition on the
   // APPLICANT ("If you are currently enrolled…, what is your GPA?") is an
   // ordinary question (Shield AI on Lever, live 2026-10-03).
-  if (FOLLOW_UP.test(n) || /^if\s*['"“‘]/i.test(raw)) return abstain("conditional-follow-up");
+  if (FOLLOW_UP.test(n) || /^if\s*['"“‘]/i.test(raw) || /^(other|if other|other please (specify|explain|describe)|please specify)$/.test(n)) {
+    // "If no, will you require sponsorship in the future?" (Hermeus on Lever,
+    // live 2026-10-03) is a question of its own after the condition: answered
+    // when the profile settles it, whatever was answered before it.
+    const m = /^\s*if (?:yes|no|so)\s*[,:;-]?\s+(.+)$/i.exec(raw);
+    if (m && /\?\W*$/.test(m[1]) && /^(will|would|do|does|are|is|can|could|have|has|did)\b/i.test(m[1].trim())) {
+      const inner = resolveQuestion({ ...q, label: m[1] }, facts, profile, ctx);
+      if (inner?.status === "answer") return inner;
+    }
+    return abstain("conditional-follow-up");
+  }
   const conditional = resolveConditional(q, raw, facts, profile, ctx);
   if (conditional !== undefined) return conditional;
   // "How did you hear about this position? If referred, by who?" (Kenect on
@@ -1613,6 +1762,17 @@ export function resolveQuestion(
   // School Graduation" (Palantir on Lever, live 2026-10-03). A yes/no about a
   // diploma is left to the education-level shapes below.
   if (HIGH_SCHOOL.test(n) && HIGH_SCHOOL_DETAIL.test(n) && !isBooleanQuestion(q)) {
+    // Its year, from a list that starts after the applicant's first finished
+    // degree: high school ended before that, so the list's "Other" (Palantir's
+    // 2020-2030, a 2015 graduate, live 2026-10-03).
+    if (/\b(year|graduat\w*|date)\b/.test(n) && q.options?.length) {
+      const years = q.options.map((o) => /^\s*((?:19|20)\d{2})\s*$/.exec(o)?.[1]).filter((y): y is string => Boolean(y)).map(Number);
+      const other = q.options.filter((o) => /^\s*other\b/i.test(o));
+      const done = facts.education.entries.filter((e) => e.completed === true && e.graduation).map((e) => e.graduation!.earliest.getUTCFullYear());
+      if (years.length >= 2 && other.length === 1 && done.length && Math.min(...done) < Math.min(...years)) {
+        return answer(other[0], "high-school:before-listed-years");
+      }
+    }
     return abstain("high-school:not-in-profile");
   }
 
@@ -1620,6 +1780,7 @@ export function resolveQuestion(
     resolveRelocationInstruction(q, raw, facts, profile, ctx) ??
     resolveWorkAuthorization(q, n, facts, profile, ctx) ??
     resolveUsPersonStatus(q, facts) ??
+    resolveLaterResidency(q, n, facts) ??
     resolveCitizenship(q, n, facts, ctx) ??
     resolveAge(q, n, facts) ??
     resolveSchoolMembership(q, n, facts) ??
@@ -1633,6 +1794,9 @@ export function resolveQuestion(
     resolveEducationLevel(q, n, facts) ??
     resolveDegreeCandidate(q, n, facts) ??
     resolveEnrollment(q, n, facts) ??
+    resolveCoop(q, n, facts) ??
+    resolvePreviousInternship(q, n, profile) ??
+    resolveSchoolSchedule(q, n, facts) ??
     resolveEducationSummary(q, n, facts) ??
     resolveGraduation(q, n, facts) ??
     resolveGpa(q, n, profile, facts) ??

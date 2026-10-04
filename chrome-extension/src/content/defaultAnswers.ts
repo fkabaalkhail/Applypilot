@@ -24,6 +24,12 @@ import { placeOf } from "./placeMatch";
 import type { QuestionContext, QuestionInput, QuestionResult } from "./questionResolver";
 
 const answer = (value: string, rule: string): QuestionResult => ({ status: "answer", value, confidence: "high", rule });
+/** A government body in the history: "a current or former government
+ *  employee?" is the applicant's to judge (is the Army one? the employer test
+ *  is broad on purpose), and the AI, with the same history, could only guess
+ *  (a veteran on ActioNet's Jobvite form, live 2026-10-03). */
+const GOVERNMENT_HISTORY: QuestionResult = { status: "abstain", rule: "default:government-history", blockBackend: true };
+const RECORDING_CONSENT: QuestionResult = { status: "abstain", rule: "default:recording-consent", blockBackend: true };
 
 /** Lowercase words (mirrors questionResolver.qnorm, kept local to avoid an import cycle). */
 const qn = (text: string): string =>
@@ -167,7 +173,12 @@ const SOURCE_PREFERENCE: RegExp[] = [
 ];
 
 /** Working in a place in person (an office, on site, a hybrid schedule). */
-const IN_PERSON = /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b/;
+const IN_PERSON =
+  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|commute|report)\b[^?]{0,60}\b(from|at|in|to)\b[^?]{0,40}\boffices?\b/;
+
+/** Research or outside funding that could claim the work (Zoox on Lever). */
+const RESEARCH_OR_FUNDING =
+  /^(are|do) you (currently )?(conducting|doing|performing|engaged in) (any )?research\b|^do you (currently )?(receive|have|hold) (any )?(active )?(funding|grants?|sponsorships?)\b/;
 
 /** The place a question names ("out of Pleasant Grove, Utah", "in Austin, TX"). */
 function placeInLabel(label: string): ReturnType<typeof placeOf> | null {
@@ -206,7 +217,7 @@ function unencumberedText(q: QuestionInput, n: string, profile: UserApplicationP
   if (CONFLICTS.test(n)) return answer("No", "default:no-conflict");
   if (NON_COMPETE.test(n)) return answer("No", "default:no-non-compete");
   const notGov = notGovernment(n, profile);
-  if (notGov !== null) return notGov ? answer("No", "default:not-government-official") : null;
+  if (notGov !== null) return notGov ? answer("No", "default:not-government-official") : GOVERNMENT_HISTORY;
   return null;
 }
 
@@ -348,9 +359,21 @@ export function resolveDefault(
   if (CONFLICTS.test(n)) return polar(false, q, "default:no-conflict");
   if (NON_COMPETE.test(n)) return polar(false, q, "default:no-non-compete");
   const notGov = notGovernment(n, profile);
-  if (notGov !== null) return notGov ? polar(false, q, "default:not-government-official") : null;
+  if (notGov !== null) return notGov ? polar(false, q, "default:not-government-official") : GOVERNMENT_HISTORY;
+  // "Are you currently conducting research related to…", "Do you currently
+  // receive any active funding (grants, sponsorships)?" (Zoox on Lever, live
+  // 2026-10-03): No for someone out of school; a student's lab or grant is theirs.
+  if (RESEARCH_OR_FUNDING.test(n)) {
+    const entries = facts.education.entries;
+    return entries.length > 0 && entries.every((e) => e.completed === true) ? polar(false, q, "default:no-research-or-funding") : null;
+  }
 
   if (DEMOGRAPHIC.test(n)) return null;
+  // Being recorded or transcribed (AI notetakers, Palantir on Lever, live
+  // 2026-10-03) is the applicant's own choice: never defaulted, nor the AI's.
+  if (RECORDING.test(n) && (/\b(consent|opt (in|out)|agree)\b/.test(n) || opts.some((o) => /\bconsent\b/i.test(o)))) {
+    return RECORDING_CONSENT;
+  }
   if (CONSENT_VERB.test(n) && CONSENT_OBJECT.test(n) && !RECORDING.test(n)) {
     return polar(true, q, "default:consent");
   }
@@ -363,16 +386,23 @@ export function resolveDefault(
   // "Are you able to work a Hybrid schedule out of Pleasant Grove, Utah?" got
   // Yes for an Austin applicant (Kenect on Breezy, live 2026-10-03). Their own
   // city: Yes; another state or country: No; another city at home: theirs.
+  // A question naming no full place ("in one of our offices", "at Mindex's
+  // Rochester office") means the posting's own places: Anthropic's San
+  // Francisco | New York City | Washington, DC got Yes for an Austin applicant,
+  // and so did Mindex's Rochester, New York (live 2026-10-03).
   if (IN_PERSON.test(n) && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) {
-    const there = placeInLabel(q.label);
-    if (there) {
+    const named = placeInLabel(q.label);
+    const posted = (ctx.jobPlaces ?? []).map((p) => placeOf(p)).filter((p) => p.city && (p.region || p.country));
+    const places = named ? [named] : posted;
+    if (places.length > 0) {
       const home = facts.location;
       const homeCity = isHigh(home.city) ? qn(home.city.value) : null;
-      if (homeCity && there.city === homeCity) return polar(true, q, "default:in-person-local");
+      if (homeCity && places.some((p) => p.city === homeCity)) return polar(true, q, "default:in-person-local");
       const homeRegion = isHigh(home.region) ? `${home.region.value.country}:${home.region.value.code}` : null;
       const homeCountry = isHigh(home.country) ? home.country.value.code : null;
-      const elsewhere = (there.country && homeCountry && there.country !== homeCountry) || (there.region && homeRegion && there.region !== homeRegion);
-      return elsewhere ? polar(false, q, "default:in-person-not-relocating") : null;
+      const elsewhere = (p: ReturnType<typeof placeOf>) =>
+        Boolean((p.country && homeCountry && p.country !== homeCountry) || (p.region && homeRegion && p.region !== homeRegion));
+      return places.every(elsewhere) ? polar(false, q, "default:in-person-not-relocating") : null;
     }
   }
   if (REQUIREMENT.test(n) && !ASSISTANCE.test(n) && (ACK_VERB.test(n) || /^(do|are|will|can|would) you\b/.test(n))) {

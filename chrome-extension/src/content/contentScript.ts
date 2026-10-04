@@ -455,9 +455,9 @@ function initialize(): void {
     let place: JobPlace = { country: null, city: null };
     try {
       place = detectJobPlace(document);
-      setResolveContext({ jobCountry: place.country, jobCity: place.city, company: sanitizeCompany(extractJobIdentity().company) });
+      setResolveContext({ jobCountry: place.country, jobCity: place.city, jobPlaces: place.places ?? null, company: sanitizeCompany(extractJobIdentity().company) });
     } catch {
-      setResolveContext({ jobCountry: null, jobCity: null, company: "" });
+      setResolveContext({ jobCountry: null, jobCity: null, jobPlaces: null, company: "" });
     }
     if (!place.country) void adoptOutsidePlace(resolveContextUrl);
   }

@@ -214,6 +214,20 @@ describe("revertedFields", () => {
     expect(revertedFields([{ fieldId: "a", value: "yes" }], [{ fieldId: "a", value: "", checkbox: true }], new Set(["a"]))).toEqual([{ fieldId: "a", cleared: true }]);
   });
 
+  it("a box ticked as asked reads 'checked': no revert (Ramp's 'Still Student?', live 2026-10-03)", () => {
+    const box = (value: string, now: string) => revertedFields([{ fieldId: "a", value }], [{ fieldId: "a", value: now, checkbox: true }], new Set(["a"]));
+    expect(box("yes", "checked")).toEqual([]);
+    expect(box("no", "checked")).toEqual([{ fieldId: "a", cleared: false }]);
+  });
+
+  it("an option worded differently but saying the same yes or no is no revert (Brex, SpaceX)", () => {
+    // Live 2026-10-03: "Yes" picked "Consent"; "None" picked "Never held a clearance".
+    const same = (value: string, now: string) => revertedFields([{ fieldId: "a", value }], [{ fieldId: "a", value: now }], new Set(["a"]));
+    expect(same("Yes", "Consent")).toEqual([]);
+    expect(same("None", "Never held a clearance")).toEqual([]);
+    expect(same("Yes", "No")).toEqual([{ fieldId: "a", cleared: false }]);
+  });
+
   it("another place of the same name is still a revert", () => {
     const out = revertedFields(
       [{ fieldId: "a", value: "London, ON, Canada" }],

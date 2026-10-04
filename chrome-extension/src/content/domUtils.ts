@@ -6,8 +6,13 @@ import { UNLABELED_FIELD, isMachineId } from "../shared/questionText";
 
 /** Collapse whitespace and trim. */
 export function cleanText(text: string | null | undefined): string {
-  return (text ?? "").replace(/\s+/g, " ").trim();
+  return (text ?? "").replace(SVG_FALLBACK, " ").replace(/\s+/g, " ").trim();
 }
+
+/** The text a page puts inside its icons for browsers without SVG: never part
+ *  of a label ("SVGs not supported by this browser." three times before "I
+ *  currently work here", Workable, live 2026-10-03). */
+const SVG_FALLBACK = /\bSVGs? (are )?not supported by this browser\.?/gi;
 
 /**
  * Keep a node attached: if the page (a SPA re-render or client-side navigation)

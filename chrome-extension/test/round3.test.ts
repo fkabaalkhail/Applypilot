@@ -9,6 +9,7 @@ import { degreeRank, profileFacts } from "../src/content/profileFacts";
 import { deriveFieldOfStudy } from "../src/content/fieldMatcher";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
 import { scanPage } from "../src/content/formScanner";
+import { snapToOption } from "../src/content/fieldResolver";
 import type { AnswerKind } from "../src/content/answerKind";
 import type { ControlType, UserApplicationProfile } from "../src/shared/types";
 import { SPARSE_CANADIAN, TEST_TODAY } from "./fixtures/profiles";
@@ -400,5 +401,372 @@ describe("French degree names (a Montreal applicant; Superhuman on Ashby, batch 
     expect(deriveFieldOfStudy("Baccalauréat en psychologie")).toBe("Psychologie");
     expect(deriveFieldOfStudy("Maîtrise ès sciences en génie logiciel")).toBe("Génie logiciel");
     expect(deriveFieldOfStudy("Certificat en administration des affaires")).toBe("Administration des affaires");
+  });
+});
+
+describe("permanent residency taken after the latest citizenship (Amazon's export questions; Twitch, batch C)", () => {
+  const Q =
+    "Since obtaining your most recent citizenship, did you afterwards become a permanent resident in any other country/region? This does not include temporary statuses such as student visas or time-limited work permits.*";
+  const US_CITIZEN: UserApplicationProfile = { ...SPARSE_CANADIAN, location: "Austin, TX", country: "United States", workAuthorization: "U.S. citizen" };
+  const GREEN_CARD: UserApplicationProfile = { ...SPARSE_CANADIAN, location: "San Jose, CA", country: "USA", workAuthorization: "U.S. permanent resident (green card)" };
+
+  it("a citizen living in their own country: No, before and after the options load (it was answered 'United States')", () => {
+    expect(value(ask(Q, { controlType: "combobox", kind: "choice" }, US_CITIZEN))).toBe("No");
+    expect(value(ask(Q, { options: YES_NO, controlType: "combobox" }, US_CITIZEN))).toBe("No");
+  });
+  it("a green-card holder became a permanent resident of a country not theirs: Yes", () => {
+    expect(value(ask(Q, { options: YES_NO, controlType: "combobox" }, GREEN_CARD))).toBe("Yes");
+  });
+  it("no stated status: left to the applicant", () => {
+    const unknown = { ...US_CITIZEN, workAuthorization: "" };
+    expect(ask(Q, { options: YES_NO, controlType: "combobox" }, unknown)?.status).toBe("abstain");
+  });
+});
+
+describe("work authorization offered as statements (SpaceX on Greenhouse, batch C)", () => {
+  const Q = "Are you legally authorized to work in the United States?*";
+  const SPACEX = [
+    "I am authorized to work in the United States for any employer",
+    "I am authorized to work in the United States for my present employer only",
+    "I require sponsorship to work in the United States",
+    "I am not authorized to work in the United States",
+    "My status to work in the United States is unknown",
+  ];
+  const at = (profile: UserApplicationProfile) => value(ask(Q, { options: SPACEX, controlType: "combobox", kind: "choice" }, profile, { jobCountry: "US", company: "SpaceX" }));
+  const base = { ...SPARSE_CANADIAN, location: "San Jose, CA", country: "USA" };
+
+  it("a green-card holder who needs no sponsorship: authorized for any employer (it went to the AI)", () => {
+    expect(at({ ...base, workAuthorization: "U.S. permanent resident (green card)", requiresSponsorship: "No" })).toBe(SPACEX[0]);
+  });
+  it("a citizen: authorized for any employer", () => {
+    expect(at({ ...base, workAuthorization: "U.S. citizen" })).toBe(SPACEX[0]);
+  });
+  it("a student who will need sponsorship: requires sponsorship", () => {
+    expect(at({ ...base, workAuthorization: "F-1 student visa", requiresSponsorship: "Yes" })).toBe(SPACEX[2]);
+  });
+  it("a Canadian in Toronto, not authorized in the US: not authorized", () => {
+    expect(at({ ...SPARSE_CANADIAN, authorizedUS: "No" })).toBe(SPACEX[3]);
+  });
+});
+
+describe("a major the list lacks, among technical and non-technical 'Other's (SpaceX on Greenhouse, batch C)", () => {
+  // SpaceX's Discipline list, verbatim (live 2026-10-03).
+  const SPACEX = [
+    "Aerospace and Mechanical Engineering", "Aerospace Engineering", "Astronautical Engineering", "Business Administration", "Chemical Engineering",
+    "Chemistry", "Civil Engineering", "Communications", "Computer Engineering", "Computer Information Systems", "Computer Science",
+    "Electrical and Computer Engineering", "Electrical Engineering", "Engineering (General)", "Environmental Science / Engineering", "Finance",
+    "Industrial Engineering", "Information Technology", "International Affairs", "Management", "Manufacturing Engineering", "Marketing",
+    "Materials Science / Engineering", "Mathematics", "Mechanical Engineering", "Mechatronics Engineering", "Metallurgical Engineering",
+    "Not Applicable", "Other", "Other (Non-Technical)", "Other (Technical)", "Physics", "Political Science",
+    "Supply Chain / Logistics / Operations", "Welding Engineering",
+  ];
+  it("Software Engineering is Other (Technical), not a sibling engineering", () => {
+    expect(snapToOption(SPACEX, "Software Engineering", "fieldOfStudy")).toBe("Other (Technical)");
+  });
+  it("Psychology is Other (Non-Technical)", () => {
+    expect(snapToOption(SPACEX, "Psychologie", "fieldOfStudy")).toBe("Other (Non-Technical)");
+    expect(snapToOption(SPACEX, "Psychology", "fieldOfStudy")).toBe("Other (Non-Technical)");
+  });
+  it("a major the list has is itself", () => {
+    expect(snapToOption(SPACEX, "Computer Science", "fieldOfStudy")).toBe("Computer Science");
+    expect(snapToOption(SPACEX, "Mechatronics Engineering", "fieldOfStudy")).toBe("Mechatronics Engineering");
+  });
+});
+
+describe("'Citizenship Status' is a status, answered once its options load (SpaceX on Greenhouse, batch C)", () => {
+  const STATUS = [
+    "(a) U.S. citizen or national of the United States",
+    "(b) U.S. lawful permanent resident",
+    "(c) Refugee under 8 U.S.C. 1157",
+    "(d) Asylee under 8 U.S.C. 1158",
+    "(e) Authorized to work in the United States under the Deferred Action for Childhood Arrivals (DACA) program",
+    "(f) Other (please explain)",
+  ];
+  const base = { ...SPARSE_CANADIAN, location: "San Jose, CA", country: "USA" };
+  const GREEN_CARD = { ...base, workAuthorization: "U.S. permanent resident (green card)", requiresSponsorship: "No" };
+  const ctx = { jobCountry: "US", company: "SpaceX" };
+
+  it("before the options load it is not settled (it was blocked for good as an unknown country)", () => {
+    const r = ask("Citizenship Status*", { controlType: "combobox", kind: "choice" }, GREEN_CARD, ctx);
+    expect(r === null || r.status !== "abstain" || r.blockBackend !== true).toBe(true);
+  });
+  it("a green-card holder: (b) lawful permanent resident", () => {
+    expect(value(ask("Citizenship Status*", { options: STATUS, controlType: "combobox" }, GREEN_CARD, ctx))).toBe(STATUS[1]);
+  });
+  it("a citizen: (a)", () => {
+    expect(value(ask("Citizenship Status*", { options: STATUS, controlType: "combobox" }, { ...base, workAuthorization: "U.S. citizen" }, ctx))).toBe(STATUS[0]);
+  });
+});
+
+describe("the 'type relocating' instruction, for an applicant who will not move (Anthropic on Greenhouse, batch C)", () => {
+  const Q = 'What is the address from which you plan on working? If you would need to relocate, please type "relocating".';
+  const AUSTIN: UserApplicationProfile = {
+    ...SPARSE_CANADIAN, location: "Austin, TX", addressStreet: "4120 Duval St", addressCity: "Austin", addressState: "TX", postalCode: "78751",
+    country: "United States", willingToRelocate: "No",
+  };
+  it("not moving: they work from where they live, so their address, never 'relocating' and never blank", () => {
+    const r = ask(Q, { controlType: "text", kind: "text" }, AUSTIN, { jobCountry: "US", company: "Anthropic", jobCity: "San Francisco" });
+    expect(r?.status === "abstain").toBe(false);
+    expect(value(r)).not.toBe("relocating");
+  });
+});
+
+describe("'in-person in one of our offices', the offices being the posting's places (Anthropic on Greenhouse, batch C)", () => {
+  const Q = "Are you open to working in-person in one of our offices 25% of the time?*";
+  const OFFICES = { jobCountry: "US", company: "Anthropic", jobPlaces: ["San Francisco, CA", "New York City, NY", "Washington, DC"] };
+  const notMoving = (location: string): UserApplicationProfile => ({ ...SPARSE_CANADIAN, location, country: "United States", willingToRelocate: "No" });
+
+  it("every office in another state, for an applicant who will not move: No (it went to the AI)", () => {
+    expect(value(ask(Q, { options: YES_NO, controlType: "combobox" }, notMoving("Austin, TX"), OFFICES))).toBe("No");
+  });
+  it("an office in their own city: Yes", () => {
+    expect(value(ask(Q, { options: YES_NO, controlType: "combobox" }, notMoving("New York City, NY"), OFFICES))).toBe("Yes");
+  });
+  it("an office elsewhere in their own state: theirs to judge", () => {
+    expect(value(ask(Q, { options: YES_NO, controlType: "combobox" }, notMoving("San Jose, CA"), OFFICES))).not.toBe("No");
+    expect(value(ask(Q, { options: YES_NO, controlType: "combobox" }, notMoving("San Jose, CA"), OFFICES))).not.toBe("Yes");
+  });
+});
+
+describe("a government employer in the history leaves government questions to the applicant, not the AI (ActioNet on Jobvite, batch C)", () => {
+  const ARMY: UserApplicationProfile = {
+    ...CHANGER,
+    experience: [
+      { company: "U.S. Army", title: "Signal Support Systems Specialist", startDate: "Jun 2012", endDate: "May 2016", description: "" },
+      { company: "Dell Technologies", title: "Software Engineer II", startDate: "Jan 2023", endDate: "Present", description: "" },
+    ],
+  };
+  const MAIN = "Are you a current or former government employee?*";
+  const FOLLOW = "If you are a current or former government employee, are you currently or were you ever previously involved in any ActioNet contracts or programs?*";
+  const FOLLOW_OPTS = ["Select an option...", "Yes", "No", "I am not a current or former government employee"];
+  const blocked = (r: ReturnType<typeof ask>) => r?.status === "abstain" && r.blockBackend === true;
+
+  it("served in the Army: whether that is a 'government employee' is theirs to say (it went to the AI)", () => {
+    expect(blocked(ask(MAIN, { options: ["Select an option...", "Yes", "No"], controlType: "select", kind: "boolean" }, ARMY))).toBe(true);
+  });
+  it("its follow-up waits on it, also kept from the AI", () => {
+    expect(blocked(ask(FOLLOW, { options: FOLLOW_OPTS, controlType: "select", kind: "choice" }, ARMY))).toBe(true);
+  });
+  it("no government in the history: No, and the follow-up does not apply", () => {
+    expect(value(ask(MAIN, { options: ["Select an option...", "Yes", "No"], controlType: "select", kind: "boolean" }, CHANGER))).toBe("No");
+    expect(value(ask(FOLLOW, { options: FOLLOW_OPTS, controlType: "select", kind: "choice" }, CHANGER))).toBe(FOLLOW_OPTS[3]);
+  });
+});
+
+describe("'Clearance Type' from a stated clearance (ActioNet on Jobvite, batch C)", () => {
+  const TYPES = [
+    "Select an option...", "None", "Public Trust", "Interim Secret Clearance", "Secret Clearance", "Interim Top Secret Clearance", "Top Secret Clearance",
+    "Top Secret Full Scope Polygraph Clearance", "Top Secret/ SCI Clearance", "DOE Badge Access Only", "DOE L Clearance", "DOE Q Clearance",
+  ];
+  const US = { ...CHANGER, location: "Austin, TX", country: "United States" };
+  const type = (securityClearance: string) => ask("Clearance Type", { options: TYPES, controlType: "select", kind: "choice" }, { ...US, securityClearance });
+  it("a level the profile names is that option, exactly", () => {
+    expect(value(type("Active Secret clearance"))).toBe("Secret Clearance");
+    expect(value(type("Top Secret"))).toBe("Top Secret Clearance");
+    expect(value(type("None"))).toBe("None");
+  });
+  it("'Active clearance' names no level: the applicant's, kept from the AI (it went to the AI)", () => {
+    const r = type("Active clearance");
+    expect(r?.status).toBe("abstain");
+    expect(r && r.status === "abstain" && r.blockBackend).toBe(true);
+  });
+});
+
+describe("Palantir on Lever, answered by a London senior engineer (batch C)", () => {
+  const LONDON: UserApplicationProfile = {
+    ...SPARSE_CANADIAN,
+    location: "London, United Kingdom",
+    country: "United Kingdom",
+    expectedGraduation: undefined,
+    education: [
+      { school: "Imperial College London", degree: "Master of Science in Computing", graduationYear: "2016" },
+      { school: "Trinity College Dublin", degree: "Bachelor of Arts in Computer Science", graduationYear: "2015" },
+    ],
+  };
+  const YEARS = ["Select...", "2020", "2021", "2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030", "Other"];
+  const blocked = (r: ReturnType<typeof ask>) => r?.status === "abstain" && r.blockBackend === true;
+
+  it("a graduation year the list does not offer is its 'Other' (it went to the AI)", () => {
+    const q = "Please include your intended graduation year for the degree or relevant learning program that you are currently pursuing or have completed.✱";
+    expect(value(ask(q, { options: YEARS.filter((y) => !/^202[01]$/.test(y)), controlType: "select", kind: "choice" }, LONDON))).toBe("Other");
+  });
+  it("high school ended before a 2015 bachelor's: not 2020 or later, so 'Other'", () => {
+    expect(value(ask("Year of High School Graduation✱", { options: YEARS, controlType: "select", kind: "choice" }, LONDON))).toBe("Other");
+  });
+  it("a student's high-school year is unknown: theirs, kept from the AI", () => {
+    expect(blocked(ask("Year of High School Graduation✱", { options: YEARS, controlType: "select", kind: "choice" }))).toBe(true);
+  });
+  it("a high school's name is not in the profile: kept from the AI", () => {
+    expect(blocked(ask("High School Name✱", { controlType: "textarea", kind: "longText" }, LONDON))).toBe(true);
+  });
+  it("consent to AI notetakers is the applicant's own choice, not the AI's", () => {
+    const q =
+      "As part of our interview process, we may use AI notetakers to transcribe conversations for accuracy and efficiency. Please see our candidate privacy policy for more information on how we process your data. Your decision to opt in or out of this tooling will not impact your candidacy.✱";
+    expect(blocked(ask(q, { options: ["Yes, I consent", "No, I do not consent"], controlType: "radioGroup", kind: "boolean" }, LONDON))).toBe(true);
+  });
+  it("a major in Computing is Computer Science, not 'Other'", () => {
+    const MAJORS = ["Computer Science", "Computer Engineering", "Applied Mathematics", "Physics", "Electrical Engineering", "Mathematics", "Statistics", "Data Science", "Data Engineering", "Other"];
+    expect(snapToOption(MAJORS, "Computing", "fieldOfStudy")).toBe("Computer Science");
+  });
+});
+
+describe("'currently attending or did you last attend' (Palantir on Lever, batch C)", () => {
+  const LONDON: UserApplicationProfile = {
+    ...SPARSE_CANADIAN, location: "London, United Kingdom", country: "United Kingdom", expectedGraduation: undefined,
+    education: [
+      { school: "Imperial College London", degree: "Master of Science in Computing", graduationYear: "2016" },
+      { school: "Trinity College Dublin", degree: "Bachelor of Arts in Computer Science", graduationYear: "2015" },
+    ],
+  };
+  const Q = 'Which university are you currently attending or did you last attend? Please select "Other (School Not Listed)" if your school is not listed.✱';
+  const LIST = ["Click Here (If you encounter an issue, make sure your browser is updated and try clearing cache & cookies)", "Aalborg University", "Imperial College London", "Trinity College Dublin", "Other (School Not Listed)"];
+  it("a graduate last attended their most recent school (it was left blank)", () => {
+    expect(value(ask(Q, { options: LIST, controlType: "select", kind: "choice" }, LONDON))).toBe("Imperial College London");
+  });
+  it("a school the full list lacks is its 'not listed' option", () => {
+    const without = LIST.filter((o) => !/Imperial|Trinity/.test(o));
+    expect(value(ask(Q, { options: without, controlType: "select", kind: "choice" }, LONDON))).toBe("Other (School Not Listed)");
+  });
+  it("a search box's loaded options are no full list: no 'not listed' from them", () => {
+    const without = LIST.filter((o) => !/Imperial|Trinity/.test(o));
+    expect(value(ask(Q, { options: without, controlType: "combobox", kind: "choice" }, LONDON))).not.toBe("Other (School Not Listed)");
+  });
+});
+
+describe("Mindex on Workable, answered by a veteran in Austin (batch C)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  const AUSTIN: UserApplicationProfile = {
+    ...CHANGER,
+    location: "Austin, TX",
+    country: "United States",
+    willingToRelocate: "No",
+    expectedGraduation: undefined,
+    education: [{ school: "The University of Texas at Austin", degree: "Bachelor of Science in Computer Science", graduationYear: "2019" }],
+    experience: [
+      { company: "Indeed", title: "Software Engineer", startDate: "Jul 2019", endDate: "Dec 2022", description: "" },
+      { company: "Dell Technologies", title: "Software Engineer II", startDate: "Jan 2023", endDate: "Present", description: "" },
+    ],
+  };
+  const ROCHESTER = { jobCountry: "US", company: "Mindex", jobCity: "Rochester", jobPlaces: ["Rochester, New York, United States"] };
+  const YN = ["YES", "NO"];
+
+  it("onsite at the Rochester office, for an Austin applicant who will not move: NO (it went to the AI)", () => {
+    const q = "Are you able to work onsite at Mindex’s Rochester office at least three days per week throughout the co-op?";
+    expect(value(ask(q, { options: YN, controlType: "radioGroup", kind: "boolean" }, AUSTIN, ROCHESTER))).toBe("NO");
+  });
+  it("a co-op takes enrolled students: a graduate is not available for one", () => {
+    const q = "Are you available to participate in a full double-block co-op from January 2027 through August 2027?";
+    expect(value(ask(q, { options: YN, controlType: "radioGroup", kind: "boolean" }, AUSTIN, ROCHESTER))).toBe("NO");
+  });
+  it("'I currently work here' beside an unnumbered row holding the current job is ticked; its label loses the SVG fallback text", () => {
+    document.body.innerHTML = `<form>
+      <label><span>Title</span><input id="title" name="title" type="text"></label>
+      <label><span>Company</span><input id="company" name="company" type="text"></label>
+      <label><input type="checkbox" name="current"><span><svg><desc>SVGs not supported by this browser.</desc></svg>SVGs not supported by this browser.</span>I currently work here</label>
+    </form>`;
+    const fields = scanPage(AUSTIN, false).fields;
+    const box = fields.find((f) => f.controlType === "checkbox");
+    expect(box?.label).not.toMatch(/SVGs/);
+    expect(box?.proposedValue).toBe("yes");
+    expect(fields.find((f) => f.category === "currentCompany")?.proposedValue).toBe("Dell Technologies");
+  });
+});
+
+describe("Zoox on Lever, answered by a Montreal developer who is not a student (batch C)", () => {
+  const MTL: UserApplicationProfile = {
+    ...CHANGER,
+    country: "Canada",
+    willingToRelocate: "No",
+    expectedGraduation: undefined,
+    education: [
+      { school: "Université de Montréal", degree: "Baccalauréat en psychologie", graduationYear: "2017" },
+      { school: "Concordia University", degree: "Certificate in Computer Science", graduationYear: "2023" },
+    ],
+  };
+  const ZOOX = { jobCountry: "US", company: "Zoox", jobCity: "Foster City", jobPlaces: ["Foster City, CA, United States"] };
+  const blocked = (r: ReturnType<typeof ask>) => r?.status === "abstain" && r.blockBackend === true;
+  const SCHEDULE = "Do you have a school schedule that allows you to work part-time from our Foster City office during normal business hours?✱";
+
+  it("a school schedule, asked of someone not in school: No (it was 'Yes')", () => {
+    expect(value(ask(SCHEDULE, { options: YES_NO, controlType: "radioGroup", kind: "boolean" }, MTL, ZOOX))).toBe("No");
+  });
+  it("a student's schedule is theirs to know, not the AI's", () => {
+    expect(blocked(ask(SCHEDULE, { options: YES_NO, controlType: "radioGroup", kind: "boolean" }, SPARSE_CANADIAN, ZOOX))).toBe(true);
+  });
+  it("working 'from our Foster City office' is in person: No for a Montrealer who will not move", () => {
+    const q = "Are you able to work from our Foster City office three days a week?";
+    expect(value(ask(q, { options: YES_NO, controlType: "radioGroup", kind: "boolean" }, MTL, ZOOX))).toBe("No");
+  });
+  it("research and outside funding, for someone not in school: No", () => {
+    const YNU = ["Yes", "No", "Unsure"];
+    expect(value(ask("Are you currently conducting research related to the subject matter of this role?", { options: YNU, controlType: "radioGroup", kind: "choice" }, MTL, ZOOX))).toBe("No");
+    expect(value(ask("Do you currently receive any active funding (e.g., grants, sponsorships)?✱", { options: YNU, controlType: "radioGroup", kind: "choice" }, MTL, ZOOX))).toBe("No");
+  });
+  it("'If yes or unsure, please describe.' depends on another answer: kept from the AI", () => {
+    expect(blocked(ask("If yes or unsure, please describe.", { controlType: "textarea", kind: "longText" }, MTL, ZOOX))).toBe(true);
+  });
+});
+
+describe("a Lever Yes/No asked with checkboxes is labelled by its question (Zoox, batch C)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  // Verbatim from the live page (2026-10-03).
+  const CARD = `<form><div class="application-question custom-question"><div><div class="application-label full-width multiple-select"><div class="text">Are you currently enrolled in a 2-year or 4-year college or university program pursuing a degree or certificate in Software Engineering, Computer Science, Systems Engineering, Mechanical Engineering, Electrical Engineering, or a related field?<span class="required">✱</span></div></div><div class="application-field full-width required-field"><ul data-qa="checkboxes"><li><label><input type="checkbox" name="cards[18631c8a-d2a4-41d9-ba8a-8fccf4193494][field0]" value="Yes" required=""><span class="application-answer-alternative">Yes</span></label></li><li><label><input type="checkbox" name="cards[18631c8a-d2a4-41d9-ba8a-8fccf4193494][field0]" value="No" required=""><span class="application-answer-alternative">No</span></label></li></ul></div></div></div></form>`;
+  it("its label is the question, not the field's name, and a graduate answers No", () => {
+    document.body.innerHTML = CARD;
+    const grad: UserApplicationProfile = {
+      ...CHANGER,
+      expectedGraduation: undefined,
+      education: [{ school: "Concordia University", degree: "Certificate in Computer Science", graduationYear: "2023" }],
+    };
+    const f = scanPage(grad, false).fields[0];
+    expect(f.label).toMatch(/^Are you currently enrolled/);
+    expect(f.proposedValue).toBe("No");
+  });
+});
+
+describe("Hermeus on Lever, answered by a green-card student (batch C)", () => {
+  const MEI: UserApplicationProfile = {
+    ...SPARSE_CANADIAN,
+    location: "San Jose, CA",
+    country: "USA",
+    workAuthorization: "U.S. permanent resident (green card)",
+    requiresSponsorship: "No",
+    authorizedUS: "Yes",
+    expectedGraduation: "2027-12",
+    education: [{ school: "San José State University", degree: "Bachelor of Science in Software Engineering", graduationYear: "2027" }],
+    experience: [
+      { company: "San José State University", title: "Teaching Assistant", startDate: "Aug 2025", endDate: "Present", description: "" },
+      { company: "Cisco", title: "Software Engineering Intern", startDate: "May 2025", endDate: "Aug 2025", description: "" },
+    ],
+  };
+  const blocked = (r: ReturnType<typeof ask>) => r?.status === "abstain" && r.blockBackend === true;
+  const INTERNSHIP = "Have you completed at least one previous internship? Please provide details.✱";
+
+  it("a finished internship in the history: Yes, with the details (it went to the AI)", () => {
+    expect(value(ask(INTERNSHIP, { controlType: "text", kind: "text" }, MEI))).toBe("Yes, Software Engineering Intern at Cisco (May 2025 to Aug 2025)");
+    expect(value(ask("Have you completed at least one previous internship?", { options: YES_NO, controlType: "radioGroup", kind: "boolean" }, MEI))).toBe("Yes");
+  });
+  it("no internship in the history: No", () => {
+    const none = { ...MEI, experience: MEI.experience!.filter((e) => !/intern/i.test(e.title)) };
+    expect(value(ask(INTERNSHIP, { controlType: "text", kind: "text" }, none))).toBe("No");
+  });
+  it("'If no, will you require sponsorship in the future?' is a question of its own: answered", () => {
+    const opts = ["Yes, I will require sponsorship in the future", "No, I will not require sponsorship in the future"];
+    expect(value(ask("If no, will you require sponsorship in the future?✱", { options: opts, controlType: "radioGroup", kind: "choice" }, MEI))).toBe(opts[1]);
+  });
+  it("a bare 'Other' box beside a choice is a follow-up: kept from the AI", () => {
+    expect(blocked(ask("Other", { controlType: "text", kind: "text" }, MEI))).toBe(true);
+  });
+  it("'What is your location?' over a country list is the country", () => {
+    const COUNTRIES = ["Select...", "Afghanistan", "Albania", "Algeria", "Canada", "Mexico", "United Kingdom", "United States", "Vietnam", "Zambia", "Zimbabwe"];
+    expect(snapToOption(COUNTRIES, "San Jose, CA", "location")).toBe("United States");
   });
 });

@@ -180,16 +180,28 @@ async function selectOne(
   }
   let option = listbox ? findOption(listbox, value, opts.placeHint) : null;
   if (isTypeahead(trigger) && !option) {
-    // Progressively broader filter texts: the full answer, its first word (a
+    // Progressively broader filter texts: the full answer; the answer as a
+    // search list spells it, without accents or a leading "The"; its leading
+    // words, which find the list's own wording; its first word (a
     // literal-substring search finds "TypeScript" but not "TypeScript /
-    // JavaScript"), then no filter at all (a long answer can over-filter a
+    // JavaScript"); then no filter at all (a long answer can over-filter a
     // substring-matching widget down to zero options, "I am not a protected
-    // veteran" never substring-matches "No, I am not a veteran").
-    const firstWord = value.split(/[\s/,;]+/).filter(Boolean)[0] ?? "";
-    const attempts = [value];
-    if (firstWord.length >= 3 && firstWord.toLowerCase() !== value.trim().toLowerCase()) {
-      attempts.push(firstWord);
-    }
+    // veteran" never substring-matches "No, I am not a veteran"). Greenhouse's
+    // school search found nothing for "San José State University" or "The
+    // University of Texas at Austin": its list says "San Jose State University"
+    // and "University of Texas - Austin", which "University of Texas" finds
+    // (Twitch, SpaceX, live 2026-10-03).
+    const plain = value.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/^\s*the\s+/i, "").trim();
+    const words = plain.split(/[\s/,;]+/).filter(Boolean);
+    const firstWord = words[0] ?? "";
+    const attempts: string[] = [];
+    const add = (text: string): void => {
+      if (!attempts.some((a) => a.toLowerCase() === text.trim().toLowerCase())) attempts.push(text.trim());
+    };
+    add(value);
+    add(plain);
+    if (words.length >= 4) add(leadingWords(words));
+    if (firstWord.length >= 3) add(firstWord);
     attempts.push("");
     for (const text of attempts) {
       const preTypeKey = optionsKey(getListbox(trigger));
@@ -349,6 +361,20 @@ function isTypeahead(trigger: HTMLElement): boolean {
   if (testId.toLowerCase().includes(WD_SEARCH_BOX_FRAGMENT.toLowerCase())) return true;
   const ac = (trigger.getAttribute("aria-autocomplete") || "").toLowerCase();
   return ac === "list" || ac === "both" || ac === "inline" || trigger.type === "text";
+}
+
+const MINOR_WORDS = /^(of|the|at|and|&|for|in|on|de|du|des|la|le|-)$/i;
+
+/** The words up to and including the second that names something:
+ *  "University of Texas" of "University of Texas at Austin". */
+function leadingWords(words: string[]): string {
+  let named = 0;
+  const out: string[] = [];
+  for (const w of words) {
+    out.push(w);
+    if (!MINOR_WORDS.test(w) && ++named === 2) break;
+  }
+  return out.join(" ");
 }
 
 /** Cheap identity of a listbox's current options, change/settle detection. */

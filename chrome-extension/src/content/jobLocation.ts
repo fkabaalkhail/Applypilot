@@ -41,6 +41,9 @@ export interface JobPlace {
   country: string | null;
   /** City name as the page wrote it ("Salt Lake City"), or null. */
   city: string | null;
+  /** Every place the posting lists, one per city ("San Francisco, CA"), with
+   *  its state or country: "one of our offices" is one of these. */
+  places?: string[];
 }
 
 /** Several places in one line ("New York, NY; San Francisco, CA", "Toronto or
@@ -63,6 +66,18 @@ function placeOfText(text: string): JobPlace | null {
   const city = parsed.city?.trim() ?? "";
   const cityOk = Boolean(city && (parsed.region || parsed.country) && !MANY_PLACES.test(t) && !NOT_A_CITY.test(city));
   return { country, city: cityOk ? city : null };
+}
+
+/** One listed place as "City, Region, Country" ("Toronto, ON, Canada" from
+ *  "Canada - Toronto"), or null when it names no city with its surroundings. */
+function canonicalPlace(text: string): string | null {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 120 || MANY_PLACES.test(t)) return null;
+  const parsed = parseAddress(t.replace(/^remote\s*[-–:(]?\s*/i, "").replace(/\)$/, "").replace(/\s+[-–]\s+/g, ", "));
+  const city = parsed.city?.trim() ?? "";
+  const code = parsed.country?.code ?? parsed.region?.country ?? null;
+  if (!city || NOT_A_CITY.test(city) || !code) return null;
+  return [city, parsed.region?.code ?? "", countryByCode(code)?.name ?? code].filter(Boolean).join(", ");
 }
 
 function countryOfText(text: string): string | null {
@@ -123,6 +138,64 @@ function jsonLdPlaces(doc: Document): JobPlace[] {
           }
         }
       }
+    }
+  }
+  return out;
+}
+
+/**
+ * Every city a posting lists: its JSON-LD offices, else its location line split
+ * into places ("San Francisco, CA | New York City, NY | Washington, DC",
+ * Anthropic on Greenhouse, live 2026-10-03). Only places naming a city with
+ * its state or country.
+ */
+function listedPlaces(doc: Document): string[] {
+  const texts: string[] = [];
+  const direct: string[] = [];
+  for (const s of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
+    let data: unknown;
+    try {
+      data = JSON.parse(s.textContent || "");
+    } catch {
+      continue;
+    }
+    for (const node of Array.isArray(data) ? data : [data]) {
+      const n = node as Record<string, unknown>;
+      for (const g of Array.isArray(n?.["@graph"]) ? (n["@graph"] as unknown[]) : [n]) {
+        const posting = g as Record<string, unknown>;
+        if (!posting || !/JobPosting/i.test(String(posting["@type"] ?? ""))) continue;
+        for (const loc of Array.isArray(posting.jobLocation) ? posting.jobLocation : [posting.jobLocation]) {
+          const a = (loc as Record<string, unknown> | undefined)?.address as Record<string, unknown> | string | undefined;
+          if (typeof a === "string") texts.push(a);
+          else if (a) {
+            // Built from the fields, never re-parsed: "Toronto, ON, CA" reads
+            // CA as California.
+            const rawCountry = typeof a.addressCountry === "string" ? a.addressCountry : placeText(a.addressCountry);
+            const country = rawCountry.length === 2 ? countryByCode(rawCountry) : countryFromName(rawCountry);
+            const city = typeof a.addressLocality === "string" ? a.addressLocality.trim() : "";
+            const rawRegion = typeof a.addressRegion === "string" ? a.addressRegion.trim() : "";
+            const region = rawRegion ? regionFromText(rawRegion, country?.code === "US" || country?.code === "CA" ? country.code : undefined) : null;
+            if (city && country && !MANY_PLACES.test(city) && !NOT_A_CITY.test(city)) {
+              direct.push([city, region?.code ?? "", country.name].filter(Boolean).join(", "));
+            }
+          }
+        }
+      }
+    }
+  }
+  if (texts.length === 0 && direct.length === 0) {
+    for (const sel of LOCATION_SELECTORS) {
+      for (const el of Array.from(doc.querySelectorAll(sel)).slice(0, 4)) {
+        if (!el.closest("form")) texts.push(el.textContent || "");
+      }
+      if (texts.length) break;
+    }
+  }
+  const out: string[] = [...new Set(direct)];
+  for (const text of texts) {
+    for (const part of text.split(/\s*[|;•·]\s*|\s+or\s+/i)) {
+      const place = canonicalPlace(part);
+      if (place && !out.includes(place)) out.push(place);
     }
   }
   return out;
@@ -197,7 +270,8 @@ export function detectJobPlace(doc: Document = document): JobPlace {
       country && places.length > 0 && keys.size === 1 && !keys.has("") && places.every((p) => p.country === country)
         ? places[0].city
         : null;
-    return { country, city };
+    const listed = listedPlaces(doc);
+    return { country, city, ...(listed.length > 0 ? { places: listed } : {}) };
   } catch {
     return { country: null, city: null };
   }

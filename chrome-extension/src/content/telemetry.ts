@@ -35,6 +35,7 @@
  */
 import { redactCaptureValue } from "./domCapture";
 import { placeOf } from "./placeMatch";
+import { optionPolarity } from "./answerKind";
 import type {
   AutofillTelemetry, DetectedField, FieldCaptureRecord, FieldOutcomeRecord, FillDurations,
 } from "../shared/types";
@@ -127,6 +128,10 @@ function sameValue(written: string, observed: string): boolean {
   if (!w) return !o;
   if (!o) return false;
   if (w === o || o.includes(w) || w.includes(o)) return true;
+  // An option saying the same yes or no in other words: "Yes" picked "Consent",
+  // "None" picked "Never held a clearance" (Brex, SpaceX, live 2026-10-03).
+  const polarity = optionPolarity(written);
+  if (polarity !== null && polarity === optionPolarity(observed)) return true;
   // A place typeahead keeps its own spelling of the place typed: "Montréal,
   // QC" became "Montreal, Quebec, Canada" (Superhuman on Ashby, live 2026-10-03).
   if (written.includes(",") && observed.includes(",")) {
@@ -172,10 +177,16 @@ export function revertedFields(
     const seen = byId.get(fieldId);
     if (!seen) continue;
     const now = seen.value.trim();
+    // A box is ticked or not: it reads "checked" or "" whatever was written
+    // ("yes" read back as "checked" was logged as changed on Ramp, and an
+    // unticked "no" as cleared on Superhuman, live 2026-10-03).
+    const want = /^(yes|checked|true|on|1)$/i.test(value.trim()) ? true : /^(no|unchecked|false|off|0)$/i.test(value.trim()) ? false : null;
+    if (seen.checkbox && want !== null) {
+      const ticked = now !== "" && !/^(unchecked|false|off|no)$/i.test(now);
+      if (want !== ticked) out.push({ fieldId, cleared: !ticked });
+      continue;
+    }
     if (sameValue(value, now)) continue;
-    // A box left unticked holds no value: the "no" written to it is "" on the
-    // page, not a clear to write again (Superhuman's "Still Student?").
-    if (seen.checkbox && now === "" && /^(no|unchecked|false)$/i.test(value.trim())) continue;
     out.push({ fieldId, cleared: now === "" });
   }
   return out;

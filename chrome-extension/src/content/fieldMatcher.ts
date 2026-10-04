@@ -785,7 +785,10 @@ export function deriveFieldOfStudy(degree: string): string | null {
  * the row is unknown, so a standalone checkbox never gets a guessed answer.
  */
 function currentRoleFlag(profile: UserApplicationProfile, gi: number | null): string | null {
-  if (gi === null) return null;
+  // An unnumbered row is filled with the CURRENT job (its Company and Title
+  // resolve to it), so its "I currently work here" box is ticked when there is
+  // one (Workable, live 2026-10-03: it went to the AI).
+  if (gi === null) return isHigh(profileFacts(profile).employment.currentCompany) ? "yes" : null;
   const end = profile.experience?.[gi]?.endDate;
   if (end === undefined) return null;
   return !end.trim() || /\b(present|current|now|ongoing|to date)\b/i.test(end) ? "yes" : "no";

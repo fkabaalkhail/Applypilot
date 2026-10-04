@@ -374,7 +374,10 @@ function groupSignals(members: HTMLInputElement[], container: Element | null): F
     // No semantic label: a plain-<div> group's question is usually the heading
     // text right before the option list (the container itself, not the first
     // option, since the first option has no useful "previous sibling" text).
-    if (!label) label = nearbyText(container as HTMLElement);
+    // Lever wraps the list in its own field box, beside the question's: the
+    // question above the options, as for a radio group (Zoox, live 2026-10-03:
+    // labelled "cards[…][field0]").
+    if (!label) label = nearbyText(container as HTMLElement) || questionAboveOptions(members);
   } else {
     label = questionAboveOptions(members);
   }

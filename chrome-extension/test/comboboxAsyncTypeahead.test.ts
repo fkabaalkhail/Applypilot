@@ -41,7 +41,9 @@ const SCHOOLS = ["University of Ottawa", "University of Toronto", "McGill Univer
 function remoteTypeahead(
   options: string[],
   latencyPolls: number,
-  openWith: string[] = []
+  openWith: string[] = [],
+  // Greenhouse's school search lists nothing until something is typed.
+  searchOnly = false
 ) {
   const control = document.createElement("div");
   control.className = "select__control";
@@ -111,7 +113,7 @@ function remoteTypeahead(
     if (--ticksLeft > 0) return;
     const q = pending;
     pending = null;
-    renderOptions(q ? options.filter((o) => o.toLowerCase().includes(q)) : options);
+    renderOptions(q ? options.filter((o) => o.toLowerCase().includes(q)) : searchOnly ? [] : options);
   };
 
   return { input, single, sleep };
@@ -161,5 +163,41 @@ describe("remote typeahead: options arrive after a round trip", () => {
     const { input, sleep } = remoteTypeahead(["McGill University"], 2);
     const res = await fillAriaCombobox(input, "University of Ottawa", opts(sleep));
     expect(res.options).toContain("McGill University");
+  });
+});
+
+/**
+ * Greenhouse's school search matches what is typed as a substring of its own
+ * names (Twitch, SpaceX, live 2026-10-03): "University of Texas at Austin"
+ * finds nothing, because the list says "University of Texas - Austin"; "San
+ * José State University" finds nothing, because the list has no accent. The
+ * names below are the live search results.
+ */
+describe("a school searched the way the list spells it (Greenhouse, live 2026-10-03)", () => {
+  const LIST = [
+    "University of Texas - Arlington", "University of Texas - Austin", "University of Texas - Brownsville", "University of Texas - Dallas",
+    "University of Texas - El Paso", "University of Texas Health Science Center - Houston", "University of Texas - San Antonio",
+    "University of Texas - Tyler", "San Jose State University", "San Jose City College",
+  ];
+
+  it("'The University of Texas at Austin' finds 'University of Texas - Austin' by its leading words", async () => {
+    const { input, single, sleep } = remoteTypeahead(LIST, 3, [], true);
+    const res = await fillAriaCombobox(input, "The University of Texas at Austin", opts(sleep));
+    expect(res.filled).toBe(true);
+    expect(single.textContent).toBe("University of Texas - Austin");
+  });
+
+  it("'San José State University' is searched without the accent", async () => {
+    const { input, single, sleep } = remoteTypeahead(LIST, 3, [], true);
+    const res = await fillAriaCombobox(input, "San José State University", opts(sleep));
+    expect(res.filled).toBe(true);
+    expect(single.textContent).toBe("San Jose State University");
+  });
+
+  it("a campus the list does not have is still no match", async () => {
+    const { input, single, sleep } = remoteTypeahead(LIST, 3, [], true);
+    const res = await fillAriaCombobox(input, "University of Texas at Midland", opts(sleep));
+    expect(res.filled).toBe(false);
+    expect(single.textContent).toBe("");
   });
 });

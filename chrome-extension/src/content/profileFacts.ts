@@ -686,7 +686,11 @@ export function educationFacts(profile: UserApplicationProfile, today: Date): Ed
 
   let currentlyEnrolled: Fact<boolean> | null = null;
   if (enrolled.length) currentlyEnrolled = fact(true, "high", "education:graduation-in-future");
-  else if (entries.length && entries.every((e) => e.completed === true)) currentlyEnrolled = fact(false, "medium", "education:all-graduated");
+  // Every listed program finished: not a student. The profile is the
+  // applicant's own account of their schooling; read as only "medium", a
+  // graduate's "currently enrolled in a CS program?" went to the AI (Zoox on
+  // Lever, live 2026-10-03).
+  else if (entries.length && entries.every((e) => e.completed === true)) currentlyEnrolled = fact(false, "high", "education:all-graduated");
 
   return { entries, highestRank, highestCompletedRank, primary, currentlyEnrolled };
 }

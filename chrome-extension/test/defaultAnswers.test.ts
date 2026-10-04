@@ -53,8 +53,10 @@ describe("consent the application needs", () => {
   it("being kept on file for future roles is Yes", () => {
     expect(value(ask("Would you like to be considered for future opportunities at Twitch when a role matches your profile?", { options: YES_NO }))).toBe("Yes");
   });
-  it("recording / AI-notetaker consent is a preference, never defaulted", () => {
-    expect(ask("As part of our interview process, we may use AI notetakers to transcribe interviews. Do you consent?", { options: ["Yes, I consent", "No, I do not consent"] })).toBeNull();
+  it("recording / AI-notetaker consent is a preference, never defaulted, nor the AI's to give", () => {
+    const r = ask("As part of our interview process, we may use AI notetakers to transcribe interviews. Do you consent?", { options: ["Yes, I consent", "No, I do not consent"] });
+    expect(r?.status).toBe("abstain");
+    expect(r && r.status === "abstain" && r.blockBackend).toBe(true);
   });
 });
 

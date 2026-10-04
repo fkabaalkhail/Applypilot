@@ -23,6 +23,7 @@ import type { FieldSignals } from "./domUtils";
 import { isHigh, profileFacts } from "./profileFacts";
 import { resolveQuestion, type QuestionContext, type QuestionInput, type QuestionResult } from "./questionResolver";
 import { countryFromName } from "./geo";
+import { placeOf } from "./placeMatch";
 import { closestDemographicOption, declineOption, hispanicRaceOption, veteranOption } from "./demographicMatch";
 import { matchOption } from "./writeEngine";
 
@@ -224,15 +225,41 @@ export function snapToOption(options: string[], value: string, category: FieldCa
       if (hits.length === 1) return hits[0];
     }
   }
+  // "What is your location?" over a list of countries (Hermeus on Lever, live
+  // 2026-10-03): the country the place is in.
+  if (category === "location") {
+    const code = placeOf(value).country;
+    if (code) {
+      const hits = options.filter((o) => countryFromName(o.replace(/\s*\(.*\)\s*$/, ""))?.code === code);
+      if (hits.length === 1) return hits[0];
+    }
+  }
   // A major the list does not carry ("Mechatronics Engineering" among Computer
   // Science / Computer Engineering / … / Other, Palantir on Lever): "Other" is
   // true, a sibling discipline is not.
   if (category === "fieldOfStudy") {
+    // "Computing" is Computer Science (Imperial's MSc in Computing got "Other"
+    // on Palantir's major list, live 2026-10-03).
+    if (/^(computing|informatics|informatique)$/i.test(value.trim())) {
+      const cs = options.filter((o) => /^computer science$/i.test(o.trim()));
+      if (cs.length === 1) return cs[0];
+    }
     const other = options.filter((o) => /^other(\s*\(.*\))?\W*$/i.test(o.trim()));
     if (other.length === 1) return other[0];
+    // "Other (Technical)" and "Other (Non-Technical)" (SpaceX's Discipline,
+    // live 2026-10-03: "Software Engineering" went to the AI): by the major.
+    if (other.length > 1) {
+      const wanted = TECHNICAL_FIELD.test(value) ? /\(\s*technical\s*\)/i : /\(\s*non[\s-]?technical\s*\)/i;
+      const qualified = other.filter((o) => wanted.test(o));
+      if (qualified.length === 1) return qualified[0];
+    }
   }
   return null;
 }
+
+/** A major in engineering, the sciences or computing. */
+const TECHNICAL_FIELD =
+  /\b(engineering|computer|computing|software|mathematics|math|physics|chemistry|biochemistry|biology|statistics|data|informatics|information (technology|systems)|robotics|mechatronics|electronics|astronomy|geology)\b|\b(applied|natural|physical|computer|data|materials|earth|environmental) sciences?\b/i;
 
 function coerceToKind(value: string, kind: AnswerKind): string | null {
   const v = value.trim();

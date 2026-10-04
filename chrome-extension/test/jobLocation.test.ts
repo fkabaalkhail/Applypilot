@@ -57,7 +57,7 @@ describe("detectJobPlace (country + city)", () => {
 
   it("jobLocation's locality is the city", () => {
     ld({ jobLocation: { "@type": "Place", address: { "@type": "PostalAddress", addressLocality: "Toronto", addressRegion: "ON", addressCountry: "CA" } } });
-    expect(detectJobPlace(document)).toEqual({ country: "CA", city: "Toronto" });
+    expect(detectJobPlace(document)).toEqual({ country: "CA", city: "Toronto", places: ["Toronto, ON, Canada"] });
   });
 
   it("several offices: the country when they agree, never a city", () => {
@@ -67,15 +67,15 @@ describe("detectJobPlace (country + city)", () => {
         { address: { addressLocality: "San Francisco", addressRegion: "CA", addressCountry: "US" } },
       ],
     });
-    expect(detectJobPlace(document)).toEqual({ country: "US", city: null });
+    expect(detectJobPlace(document)).toEqual({ country: "US", city: null, places: ["New York, NY, United States", "San Francisco, CA, United States"] });
   });
 
   it("the posting's location line, one anchored place only", () => {
     document.head.innerHTML = "";
     document.body.innerHTML = `<div class="job__location">San Francisco, CA</div>`;
-    expect(detectJobPlace(document)).toEqual({ country: "US", city: "San Francisco" });
+    expect(detectJobPlace(document)).toEqual({ country: "US", city: "San Francisco", places: ["San Francisco, CA, United States"] });
     document.body.innerHTML = `<div class="job__location">New York, NY; San Francisco, CA</div>`;
-    expect(detectJobPlace(document)).toEqual({ country: "US", city: null });
+    expect(detectJobPlace(document)).toEqual({ country: "US", city: null, places: ["New York, NY, United States", "San Francisco, CA, United States"] });
     document.body.innerHTML = `<div class="job__location">Remote - US</div>`;
     expect(detectJobPlace(document)).toEqual({ country: "US", city: null });
     document.body.innerHTML = `<div class="job__location">Calgary</div>`;
@@ -93,8 +93,31 @@ describe("location lines written 'Country - City' (Veeva on Lever, live 2026-10-
   it("read like 'City, Country'; an office name is never the city", () => {
     document.head.innerHTML = "";
     document.body.innerHTML = `<div class="posting-categories"><div class="location">Canada - Toronto</div></div>`;
-    expect(detectJobPlace(document)).toEqual({ country: "CA", city: "Toronto" });
+    expect(detectJobPlace(document)).toEqual({ country: "CA", city: "Toronto", places: ["Toronto, Canada"] });
     document.body.innerHTML = `<div class="posting-categories"><div class="location">North Vancouver, Canada - Head Office</div></div>`;
     expect(detectJobPlace(document)).toEqual({ country: "CA", city: null });
+  });
+});
+
+describe("every place a posting lists (Anthropic on Greenhouse, live 2026-10-03)", () => {
+  it("a line of offices is one place per city, beside no single city", () => {
+    document.head.innerHTML = "";
+    document.body.innerHTML = `<div class="job__location">San Francisco, CA | New York City, NY | Washington, DC</div>`;
+    expect(detectJobPlace(document)).toEqual({
+      country: "US",
+      city: null,
+      places: ["San Francisco, CA, United States", "New York City, NY, United States", "Washington, DC, United States"],
+    });
+  });
+  it("JSON-LD offices too", () => {
+    document.head.innerHTML = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "JobPosting",
+      jobLocation: [
+        { address: { addressLocality: "New York", addressRegion: "NY", addressCountry: "US" } },
+        { address: { addressLocality: "San Francisco", addressRegion: "CA", addressCountry: "US" } },
+      ],
+    })}</script>`;
+    document.body.innerHTML = "";
+    expect(detectJobPlace(document).places).toEqual(["New York, NY, United States", "San Francisco, CA, United States"]);
   });
 });
