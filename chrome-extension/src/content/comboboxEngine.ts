@@ -790,6 +790,14 @@ function comboboxShowsValue(trigger: HTMLElement, value: string, selfTyped?: str
   // A web-component button shows its selection through a <slot>, outside
   // its own textContent (SmartRecruiters' phone "Country code").
   if (trigger.tagName === "BUTTON") candidates.push(cleanText(trigger.textContent) || cleanText(flatText(trigger)));
+  // A div combobox that IS the display: react-widgets' DropdownList shows the
+  // choice as its own text (Paylocity's "Did you Graduate?" read "didn't
+  // stick" while it showed "Yes", live 2026-10-03). Its open list is inside
+  // it, so only a closed widget's text counts.
+  else if (!(trigger instanceof HTMLInputElement) && trigger.getAttribute("aria-expanded") !== "true") {
+    const own = cleanText(trigger.textContent);
+    if (own && !/^(-+|select\b.*|choose\b.*)$/i.test(own)) candidates.push(own);
+  }
   // SAP SuccessFactors' rcmpaginatedselect commits the choice into the input's
   // `title` while leaving `value` empty and the placeholder ("No Selection")
   // in place, so a successful selection read as "didn't stick" without this.

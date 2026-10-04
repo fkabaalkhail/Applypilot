@@ -11,6 +11,7 @@ import type { FieldSignals } from "../src/content/domUtils";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
 import { scanPage } from "../src/content/formScanner";
 import { matchOption } from "../src/content/writeEngine";
+import { fillAriaCombobox } from "../src/content/comboboxEngine";
 import { snapToOption } from "../src/content/fieldResolver";
 import type { AnswerKind } from "../src/content/answerKind";
 import type { ControlType, UserApplicationProfile } from "../src/shared/types";
@@ -874,5 +875,56 @@ describe("able to obtain a U.S. security clearance, for someone who is not a U.S
   });
   it("'willing to obtain' is willingness, not eligibility: not answered from citizenship", () => {
     expect(value(ask("Are you willing to obtain a U.S. security clearance?", { options: YES_NO }, { ...base, workAuthorization: "U.S. permanent resident (green card)" }))).not.toBe("No");
+  });
+});
+
+describe("Paylocity's react-widgets dropdowns and education labels (final run, 2026-10-03)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  /** react-widgets' DropdownList as Paylocity renders it: a div combobox whose
+   *  own text is the selection, owning a listbox inside it. */
+  const dropdownList = (options: string[]) => {
+    document.body.innerHTML = `<form><label>Did you Graduate?</label><div id="dd" role="combobox" aria-owns="dd__listbox" aria-expanded="false" aria-haspopup="true" tabindex="0" class="rw-dropdownlist rw-widget"><span class="rw-select" aria-hidden="true"></span><div class="rw-input">--</div></div></form>`;
+    const box = document.getElementById("dd")!;
+    box.addEventListener("click", () => {
+      if (box.getAttribute("aria-expanded") === "true") return;
+      box.setAttribute("aria-expanded", "true");
+      const lb = document.createElement("ul");
+      lb.id = "dd__listbox";
+      lb.setAttribute("role", "listbox");
+      for (const o of options) {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.textContent = o;
+        li.addEventListener("click", (e) => {
+          e.stopPropagation(); // the list is inside the widget: a pick never reopens it (live)
+          box.querySelector(".rw-input")!.textContent = o;
+          box.setAttribute("aria-expanded", "false");
+          lb.remove();
+        });
+        lb.append(li);
+      }
+      box.append(lb);
+    });
+    return box;
+  };
+  it("a selection shown as the widget's own text is a selection (it read 'didn't stick')", async () => {
+    const box = dropdownList(["--", "Yes", "No"]);
+    const res = await fillAriaCombobox(box, "Yes", { sleep: async () => {}, openWaitMs: 50, commitWaitMs: 50, pollMs: 5 });
+    expect(box.querySelector(".rw-input")?.textContent).toBe("Yes");
+    expect(res.reason ?? "").toBe("");
+    expect(res.filled).toBe(true);
+  });
+  it("'Area of Study' is the field of study", () => {
+    const sig = { label: "Area of Study", ariaLabel: "", placeholder: "", nameAttr: "", testId: "", idAttr: "educationHistory.areaOfStudy.0", nearby: "", autocomplete: "", typeHint: "" } as FieldSignals;
+    expect(classifyField(sig).category).toBe("fieldOfStudy");
+  });
+  it("Paylocity's full School Type list (with 'Graduate School', 'Specialized', 'Other') is still a list of kinds", () => {
+    const TYPES = ["--", "Unspecified", "High School", "Community College", "Vocational College", "College / University", "Graduate School", "Specialized", "Other"];
+    const p = { ...SPARSE_CANADIAN, education: [{ school: "Imperial College London", degree: "Master of Science in Computing", graduationYear: "2016" }] };
+    expect(resolveProfileValue("school", p, { controlType: "combobox", options: TYPES, groupIndex: 0 }, false)).toBe("College / University");
   });
 });

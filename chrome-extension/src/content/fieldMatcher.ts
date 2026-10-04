@@ -465,7 +465,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
   {
     category: "fieldOfStudy",
     patterns: [
-      { re: /\bfield of study\b|\bmajor\b/ },
+      { re: /\bfield of study\b|\bmajor\b|\b(area|program|programme) of study\b/ },
       { re: /\bdiscipline\b|\bconcentration\b|\bcourse of study\b/, weight: 0.85 },
     ],
   },
@@ -699,7 +699,8 @@ function isYesNoChoice(control: ResolveControl): boolean {
 }
 
 /** The kinds of school a "School Type" list offers (never a school's name). */
-const SCHOOL_KIND = /^(high school|secondary school|community college|vocational( college| school)?|technical( college| school)?|trade school|college|university|college ?\/ ?university|graduate school|other)$/i;
+const SCHOOL_KIND =
+  /^(high school|secondary school|community college|vocational( college| school)?|technical( college| school| institute)?|trade school|college|university|college ?\/ ?university|graduate school|specialized|specialty school|online|military|other)$/i;
 
 /**
  * The option naming the KIND of school an education row is, or undefined when

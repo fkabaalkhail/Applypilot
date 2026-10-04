@@ -141,6 +141,12 @@ export function dumpFieldsInPage() {
       const t = clean(el.textContent) || clean(flat(el));
       if (t && !/^(select( one)?|choose|please select|select\.\.\.|select…)$/i.test(t)) return t;
     }
+    // A div combobox that is its own display (react-widgets' DropdownList on
+    // Paylocity): its text, when closed, is the choice ("--" is none).
+    if (!(el instanceof HTMLInputElement) && el.getAttribute("role") === "combobox" && el.getAttribute("aria-expanded") !== "true") {
+      const own = clean(el.textContent);
+      if (own && !/^(-+|select\b.*|choose\b.*)$/i.test(own)) return own;
+    }
     if (ad) {
       const o = document.getElementById(ad);
       if (o) return "";
