@@ -143,8 +143,19 @@ export function dumpFieldsInPage() {
     }
     // A div combobox that is its own display (react-widgets' DropdownList on
     // Paylocity): its text, when closed, is the choice ("--" is none).
+    // Without the option list it keeps mounted inside it once opened ("--"
+    // + "--", "Yes", "No" read whole looked chosen).
     if (!(el instanceof HTMLInputElement) && el.getAttribute("role") === "combobox" && el.getAttribute("aria-expanded") !== "true") {
-      const own = clean(el.textContent);
+      const owned = new Set([el.getAttribute("aria-owns"), el.getAttribute("aria-controls")].flatMap((ids) => (ids ? ids.split(/\s+/) : [])));
+      const parts = [];
+      const walk = (node) => {
+        if (node.nodeType === 3) return void parts.push(node.textContent || "");
+        if (!(node instanceof Element)) return;
+        if (node.matches('[role="listbox"], [role="option"], [aria-hidden="true"], [class*="popup" i]') || (node.id && owned.has(node.id))) return;
+        node.childNodes.forEach(walk);
+      };
+      el.childNodes.forEach(walk);
+      const own = clean(parts.join(" "));
       if (own && !/^(-+|select\b.*|choose\b.*)$/i.test(own)) return own;
     }
     if (ad) {

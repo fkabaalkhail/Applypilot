@@ -51,6 +51,10 @@ export interface FillComboboxOptions {
    *  Canada"). When the options read as places, the one that IS that place is
    *  chosen (placeMatch.ts), never one that merely shares the city name. */
   placeHint?: string;
+  /** An input whose own text is an answer (a street address): when no
+   *  suggestion is the value, the typed value stays and counts. Paylocity's
+   *  "Address Line 1" suggests nothing for a UK street (live 2026-10-03). */
+  freeText?: boolean;
 }
 
 const DEFAULTS = { openWaitMs: 1500, commitWaitMs: 2500, pollMs: 50 };
@@ -215,6 +219,13 @@ async function selectOne(
       }
       listbox = getListbox(trigger) ?? listbox;
     }
+  }
+  // A street address is an answer as typed: no suggestion that is it (none
+  // at all, or other places) leaves the street in the box.
+  if (!option && opts.freeText && input) {
+    close(trigger);
+    if (input.value !== value) typeInto(input, value);
+    return input.value === value ? { filled: true } : { filled: false, reason: "The address box did not keep the street. Type it manually" };
   }
   if (!listbox) {
     restoreTyped();
@@ -711,7 +722,11 @@ function findMountedListbox(trigger: HTMLElement): HTMLElement | null {
  * suppressing the fill of a field nobody has answered.
  */
 export function readComboboxValue(trigger: HTMLElement): string | undefined {
-  const ownText = isButtonLikeTrigger(trigger) ? cleanText(trigger.textContent) || cleanText(flatText(trigger)) : "";
+  const ownText = isButtonLikeTrigger(trigger)
+    ? cleanText(trigger.textContent) || cleanText(flatText(trigger))
+    : !(trigger instanceof HTMLInputElement) && trigger.getAttribute("role") === "combobox" && trigger.getAttribute("aria-expanded") !== "true"
+      ? ownDisplayText(trigger)
+      : "";
   const candidates = [
     trigger instanceof HTMLInputElement ? trigger.value : "",
     activeDescendantText(trigger),
@@ -723,6 +738,31 @@ export function readComboboxValue(trigger: HTMLElement): string | undefined {
     if (v) return v;
   }
   return undefined;
+}
+
+/**
+ * The value a div combobox displays as its own text, without the option list
+ * it keeps mounted inside it once opened: react-widgets' DropdownList on
+ * Paylocity reads "--" + "--", "Yes", "No" whole, which "contains" Yes while
+ * nothing is chosen. "" for a placeholder ("--", "Select…").
+ */
+function ownDisplayText(trigger: HTMLElement): string {
+  const owned = new Set(
+    [trigger.getAttribute("aria-owns"), trigger.getAttribute("aria-controls")].flatMap((ids) => (ids ? ids.split(/\s+/) : []))
+  );
+  const parts: string[] = [];
+  const walk = (node: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parts.push(node.textContent ?? "");
+      return;
+    }
+    if (!(node instanceof Element)) return;
+    if (node.matches('[role="listbox"], [role="option"], [aria-hidden="true"], [class*="popup" i]') || (node.id && owned.has(node.id))) return;
+    node.childNodes.forEach(walk);
+  };
+  trigger.childNodes.forEach(walk);
+  const text = cleanText(parts.join(" "));
+  return !text || /^-+$/.test(text) || isPlaceholderFiller(text) ? "" : text;
 }
 
 /** A trigger whose own text is its displayed value rather than a caption. */
@@ -795,8 +835,8 @@ function comboboxShowsValue(trigger: HTMLElement, value: string, selfTyped?: str
   // stick" while it showed "Yes", live 2026-10-03). Its open list is inside
   // it, so only a closed widget's text counts.
   else if (!(trigger instanceof HTMLInputElement) && trigger.getAttribute("aria-expanded") !== "true") {
-    const own = cleanText(trigger.textContent);
-    if (own && !/^(-+|select\b.*|choose\b.*)$/i.test(own)) candidates.push(own);
+    const own = ownDisplayText(trigger);
+    if (own) candidates.push(own);
   }
   // SAP SuccessFactors' rcmpaginatedselect commits the choice into the input's
   // `title` while leaving `value` empty and the placeholder ("No Selection")

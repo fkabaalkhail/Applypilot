@@ -605,7 +605,10 @@ function initialize(): void {
         outcomes.push({ fieldId: t.fieldId, ok: false, reason: "Field no longer found. Rescan the page" });
         continue;
       }
-      const res = await fillAriaCombobox(el, t.value, { multi: control?.multi, placeHint: placeHintFor(t.fieldId) });
+      // A street address box with suggestions takes the street as typed when
+      // none of them is it (Paylocity's "Address Line 1", live 2026-10-03).
+      const freeText = lastFields.find((f) => f.id === t.fieldId)?.category === "addressStreet";
+      const res = await fillAriaCombobox(el, t.value, { multi: control?.multi, placeHint: placeHintFor(t.fieldId), freeText });
       // Carry the specific reason (couldn't-open / no-match / didn't-commit) into
       // telemetry, otherwise a dropdown failure is logged with an empty reason.
       outcomes.push({ fieldId: t.fieldId, ok: res.filled, reason: res.reason });

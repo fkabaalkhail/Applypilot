@@ -11,7 +11,7 @@ import type { FieldSignals } from "../src/content/domUtils";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
 import { scanPage } from "../src/content/formScanner";
 import { matchOption } from "../src/content/writeEngine";
-import { fillAriaCombobox } from "../src/content/comboboxEngine";
+import { fillAriaCombobox, readComboboxValue } from "../src/content/comboboxEngine";
 import { snapToOption } from "../src/content/fieldResolver";
 import type { AnswerKind } from "../src/content/answerKind";
 import type { ControlType, UserApplicationProfile } from "../src/shared/types";
@@ -886,12 +886,18 @@ describe("Paylocity's react-widgets dropdowns and education labels (final run, 2
   afterAll(() => restore());
   /** react-widgets' DropdownList as Paylocity renders it: a div combobox whose
    *  own text is the selection, owning a listbox inside it. */
-  const dropdownList = (options: string[]) => {
+  const dropdownList = (options: string[], sticks = true) => {
     document.body.innerHTML = `<form><label>Did you Graduate?</label><div id="dd" role="combobox" aria-owns="dd__listbox" aria-expanded="false" aria-haspopup="true" tabindex="0" class="rw-dropdownlist rw-widget"><span class="rw-select" aria-hidden="true"></span><div class="rw-input">--</div></div></form>`;
     const box = document.getElementById("dd")!;
     box.addEventListener("click", () => {
       if (box.getAttribute("aria-expanded") === "true") return;
       box.setAttribute("aria-expanded", "true");
+      // Mounted on first open and kept, hidden, once closed (live).
+      const kept = document.getElementById("dd__listbox");
+      if (kept) {
+        kept.style.display = "";
+        return;
+      }
       const lb = document.createElement("ul");
       lb.id = "dd__listbox";
       lb.setAttribute("role", "listbox");
@@ -901,9 +907,9 @@ describe("Paylocity's react-widgets dropdowns and education labels (final run, 2
         li.textContent = o;
         li.addEventListener("click", (e) => {
           e.stopPropagation(); // the list is inside the widget: a pick never reopens it (live)
-          box.querySelector(".rw-input")!.textContent = o;
+          if (sticks) box.querySelector(".rw-input")!.textContent = o;
           box.setAttribute("aria-expanded", "false");
-          lb.remove();
+          lb.style.display = "none";
         });
         lb.append(li);
       }
@@ -918,6 +924,17 @@ describe("Paylocity's react-widgets dropdowns and education labels (final run, 2
     expect(res.reason ?? "").toBe("");
     expect(res.filled).toBe(true);
   });
+  it("a pick that did not stick is no fill, though the kept list still holds the option", async () => {
+    const box = dropdownList(["--", "Yes", "No"], false);
+    const res = await fillAriaCombobox(box, "Yes", { sleep: async () => {}, openWaitMs: 50, commitWaitMs: 50, pollMs: 5 });
+    expect(box.querySelector(".rw-input")?.textContent).toBe("--");
+    expect(res.filled).toBe(false);
+  });
+  it("the scanner reads the shown choice, not the kept list", async () => {
+    const box = dropdownList(["--", "Yes", "No"]);
+    await fillAriaCombobox(box, "No", { sleep: async () => {}, openWaitMs: 50, commitWaitMs: 50, pollMs: 5 });
+    expect(readComboboxValue(box)).toBe("No");
+  });
   it("'Area of Study' is the field of study", () => {
     const sig = { label: "Area of Study", ariaLabel: "", placeholder: "", nameAttr: "", testId: "", idAttr: "educationHistory.areaOfStudy.0", nearby: "", autocomplete: "", typeHint: "" } as FieldSignals;
     expect(classifyField(sig).category).toBe("fieldOfStudy");
@@ -926,5 +943,30 @@ describe("Paylocity's react-widgets dropdowns and education labels (final run, 2
     const TYPES = ["--", "Unspecified", "High School", "Community College", "Vocational College", "College / University", "Graduate School", "Specialized", "Other"];
     const p = { ...SPARSE_CANADIAN, education: [{ school: "Imperial College London", degree: "Master of Science in Computing", graduationYear: "2016" }] };
     expect(resolveProfileValue("school", p, { controlType: "combobox", options: TYPES, groupIndex: 0 }, false)).toBe("College / University");
+  });
+});
+
+describe("a street address box with suggestions that never come keeps the street (Paylocity, final run 2026-10-03)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  const fast = { sleep: async () => {}, openWaitMs: 30, commitWaitMs: 30, pollMs: 5 };
+  const box = () => {
+    document.body.innerHTML = `<form><label for="a1">Address Line 1</label><input id="a1" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="a1-autocomplete-list"></form>`;
+    return document.getElementById("a1") as HTMLInputElement;
+  };
+  it("free text: the typed street stays and counts", async () => {
+    const el = box();
+    const res = await fillAriaCombobox(el, "12 Bermondsey Street", { ...fast, freeText: true });
+    expect(res.filled).toBe(true);
+    expect(el.value).toBe("12 Bermondsey Street");
+  });
+  it("a pick-only box still never keeps a filter string", async () => {
+    const el = box();
+    const res = await fillAriaCombobox(el, "12 Bermondsey Street", fast);
+    expect(res.filled).toBe(false);
+    expect(el.value).toBe("");
   });
 });
