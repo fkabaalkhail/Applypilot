@@ -56,7 +56,7 @@ import { deepQueryAll, isVisible, cleanText } from "./domUtils";
 import { controlVisibility, formLooksHidden, waitForFormReveal } from "./hiddenForm";
 import { base64ToFile, downloadBase64File, injectResumeFile, type UploadResult } from "./fileUpload";
 import { openAiModal } from "./aiModalBridge";
-import { getLastJobContext, saveLastJobContext } from "../shared/storage";
+import { getConfig, getLastJobContext, saveLastJobContext } from "../shared/storage";
 
 const MIN_CACHEABLE_DESC = 200;
 import { FRAME_TOKEN, observePage, resolveWithOptions, scanPage, selectOptions, type RuntimeControl } from "./formScanner";
@@ -99,6 +99,7 @@ import {
   resumeFieldForAttach,
   resumeFieldNeedingFile,
   validationMessages,
+  holdsNoAnswer,
 } from "./flowChecks";
 import { detectWall, findSignupToggle, runAccountWall } from "./accountFlow";
 import { getCredential } from "./credentialStore";
@@ -319,6 +320,8 @@ function initialize(): void {
   let flowGeneration = 0;
   /** The panel's picked upload résumé for this flow (auto-attach preference). */
   let flowResumeId: number | null = null;
+  /** Settings' "turn filled pages by themselves", read when a flow starts. */
+  let flowAutoContinue = true;
   // A login wall we have no credentials for, pauses the flow until it clears.
   let accountBlocked = false;
   // Submit tracking: bound to the terminal (submit) button once the flow reaches
@@ -740,26 +743,7 @@ function initialize(): void {
    */
   /** True when the control for `id` currently holds no user-visible value. */
   function controlIsEmpty(id: string): boolean {
-    const control = registry.get(id);
-    const el = control?.el;
-    if (!el) return true;
-    // A committed combobox keeps its INPUT empty, the selection lives in the
-    // widget's value display (react-select single-value div, trigger text), so
-    // judge by the widget's displayed value, not the input.
-    if (control.controlType === "combobox" || control.controlType === "customDropdown") {
-      return !readComboboxValue(el);
-    }
-    if (control.controlType === "select") {
-      const opt = (el as HTMLSelectElement).selectedOptions[0];
-      return !opt || !opt.value;
-    }
-    if (control.controlType === "radioGroup") {
-      return !control.radios?.some((r) => r.checked);
-    }
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-      return !el.value.trim();
-    }
-    return !(el.textContent ?? "").trim();
+    return holdsNoAnswer(registry.get(id), readComboboxValue);
   }
 
   /**
@@ -1513,6 +1497,12 @@ function initialize(): void {
         engine?.updateRegistry(registry);
       },
       findAdvance: (scope, extraAdvance) => findAdvanceButton(scope, lastAdapter, { extraAdvance }),
+      findPageTerminal: () => {
+        const footer = lastAdapter?.advanceButton?.(document.body);
+        if (!footer) return null;
+        const adv = findAdvanceButton(document.body, lastAdapter);
+        return adv && adv.el === footer && adv.kind === "terminal" ? footer : null;
+      },
       clickAdvance,
       onTerminal: (button) => bindSubmitOnce(button),
       accountStep: async (snap) => {
@@ -1585,10 +1575,16 @@ function initialize(): void {
       // ATTACHING is not: the drop zone carries no `required` marker, so this
       // is what makes the flow attach the résumé without the user clicking.
       needsResume: (snap) => resumeFieldForAttach(snap.fields, (id) => registry.get(id)) !== null,
-      hasUnfilledRequired: (snap) =>
-        snap.fields.some(
+      hasUnfilledRequired: (snap) => {
+        const empty = snap.fields.filter(
           (f) => f.required && f.fillable && f.controlType !== "file" && controlIsEmpty(f.id)
-        ),
+        );
+        // Name them: "a required field is empty" is not something anyone can act on.
+        if (empty.length > 0) {
+          console.log(`[Tailrd flow] required but empty: ${empty.map((f) => `«${f.label.slice(0, 60)}» (${f.controlType})`).join(", ")}`);
+        }
+        return empty.length > 0;
+      },
       attachResume: attachPickedResume,
       setState: async (state: FlowState | null) => {
         try {
@@ -1600,10 +1596,34 @@ function initialize(): void {
       onProgress: emitFlowProgress,
       diagnoseStuck: logStuckDiagnostics,
       auditPageState,
+      autoContinue: () => flowAutoContinue,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       now: () => Date.now(),
     };
   }
+
+  /** Read the flow's settings from the extension config; a failed read keeps
+   *  the default (filled pages turn by themselves). */
+  async function readFlowSettings(): Promise<void> {
+    try {
+      flowAutoContinue = (await getConfig()).flowAutoContinue !== false;
+    } catch {
+      flowAutoContinue = true;
+    }
+  }
+
+  // A person who types or clicks in the page while it counts down wants to stay
+  // on it: hold the countdown, the gate then waits for Continue. Only trusted
+  // events (our own fill dispatches synthetic ones) and never the panel's own
+  // buttons (the panel lives in this document, in its shadow host).
+  const holdOnUserInput = (e: Event): void => {
+    if (!e.isTrusted || !flowController) return;
+    const host = document.getElementById("applypilot-overlay-host");
+    if (host && e.composedPath().includes(host)) return;
+    flowController.holdAutoAdvance();
+  };
+  document.addEventListener("pointerdown", holdOnUserInput, true);
+  document.addEventListener("keydown", holdOnUserInput, true);
 
   /** Resume a persisted flow after a real navigation (form-owning frame only,
    *  or the top frame of an entry page, job posting / apply-method chooser). */
@@ -1624,6 +1644,7 @@ function initialize(): void {
         void sendToBackground<SimpleResponse>({ type: "FLOW_STATE_SET", state: null }).catch(() => {});
         return;
       }
+      await readFlowSettings();
       if (flowController) return; // an autofill click set it while we awaited FLOW_STATE_GET
       flowAbort = new AbortController(); // a resumed flow is cancellable too
       void setDialogSuppression(true); // a resumed flow may auto-advance (beforeunload)
@@ -1653,7 +1674,7 @@ function initialize(): void {
       // What the panel showed when Autofill was clicked: fields that appear
       // after this (rows the fill itself adds) are filled by default.
       const knownAtClick = new Set(lastFields.map((f) => f.id));
-      const tally = await fillOnce(ids, signal, knownAtClick);
+      const [tally] = await Promise.all([fillOnce(ids, signal, knownAtClick), readFlowSettings()]);
       if (gen === flowGeneration && !signal.aborted) {
         flowController?.stop(); // a maybeResumeFlow may have set one mid-fill; this click wins
         flowController = new FlowController(makeFlowDeps());
@@ -1745,6 +1766,10 @@ function initialize(): void {
       // User pressed "Next page": release the flow's ready gate so it advances
       // and auto-fills the next page (Task B). No-op when no flow is parked.
       flowController?.notifyAdvanceRequested();
+    },
+    onFlowPause: () => {
+      // The countdown's Pause: stay on this page until the user presses Continue.
+      flowController?.holdAutoAdvance();
     },
     onRescan: () => {
       runScan();

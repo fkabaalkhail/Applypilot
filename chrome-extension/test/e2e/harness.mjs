@@ -74,7 +74,9 @@ export async function seedExtension(sw, apiUrl, { fillEEO = true } = {}) {
     async ({ apiUrl, token, exp, fillEEO }) => {
       await chrome.storage.local.clear();
       await chrome.storage.local.set({
-        ap_config: { apiBaseUrl: apiUrl, dashboardUrl: apiUrl, useMockData: false, fillEEO },
+        // Pages wait for a press: the harness reads each filled page, and a page
+        // that turned by itself mid-read would score the wrong one.
+        ap_config: { apiBaseUrl: apiUrl, dashboardUrl: apiUrl, useMockData: false, fillEEO, flowAutoContinue: false },
         ap_auth: { refreshToken: "harness-refresh", email: "harness@example.com" },
       });
       await chrome.storage.session.set({ ap_auth_access: token, ap_auth_access_exp: exp });

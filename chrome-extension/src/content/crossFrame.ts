@@ -15,6 +15,7 @@ const VOID_OPS: ReadonlySet<FormOpName> = new Set<FormOpName>([
   "onProfileResolved",
   "onFlowStop",
   "onFlowAdvance",
+  "onFlowPause",
 ]);
 
 /** All OverlayCallbacks method names, in one place for the proxy factory. */
@@ -33,6 +34,9 @@ const ALL_OPS: FormOpName[] = [
   "onProfileResolved",
   "onFlowStop",
   "onFlowAdvance",
+  // The countdown's Pause: the flow runs in the form's frame, the button is
+  // in the panel's, so without it here Pause would do nothing on an embedded form.
+  "onFlowPause",
   // The unanswered-questions modal. onAnswerGaps was missing here, so in a
   // cross-origin form frame `callbacks.onAnswerGaps` was undefined and Save &
   // fill threw before it wrote anything, the modal simply did not work off the

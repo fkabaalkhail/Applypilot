@@ -3,6 +3,8 @@
  * extension: job posting → Apply → chooser → Apply Manually → create-account
  * wall (user-set credentials + consent + Create Account click) → application
  * form (fill + Next) → final page (Submit detected as terminal, NEVER clicked).
+ * ONE Autofill click and nothing else: each filled page counts down on the
+ * panel's bottom button and turns by itself.
  *
  * Every transition is a REAL navigation, so this also proves the flow state
  * persists in the background and resumes in a fresh content script each page,
@@ -195,24 +197,12 @@ async function main() {
   await pg.waitForURL(`${origin}/account`, { timeout: 20000 });
   check("flow resumed on the field-less chooser and picked Apply Manually", true);
 
-  // 5. The account wall fills the saved credentials and ticks consent, then
-  //    parks at the panel's advance gate: the flow never creates an account on
-  //    its own, the USER turns every page, the wall included. Press the gate
-  //    exactly as step 6 does for the form page. The press clicks Create Account
-  //    (a real GET submit, the server sees exactly what the site would).
-  await pg.waitForFunction(
-    () => {
-      const sr = document.getElementById("applypilot-overlay-host")?.shadowRoot;
-      const btn = sr?.querySelector("#ap-flow-next");
-      const wrap = btn?.closest(".ap-flow-next-wrap");
-      return Boolean(wrap && wrap.style.display !== "none");
-    },
-    null,
-    { timeout: 45000 }
-  );
-  check("account wall parked at the user's advance gate", true);
-  await pg.locator("#ap-flow-next").click({ timeout: 10000 });
-  await pg.waitForURL((u) => u.pathname === "/form", { timeout: 30000 });
+  // 5. Hands off from here: the one Autofill click carries the rest. The
+  //    account wall fills the saved credentials, ticks consent, counts down on
+  //    the panel's bottom button and clicks Create Account by itself (a real
+  //    GET submit, the server sees exactly what the site would).
+  await pg.waitForURL((u) => u.pathname === "/form", { timeout: 60000 });
+  check("account wall passed by itself (no press)", true);
   const acct = new URL(pg.url()).searchParams;
   check("create-account used the saved registration email", acct.get("reg_email") === REG_EMAIL, acct.get("reg_email") ?? "(none)");
   check("both password fields got the saved password", acct.get("reg_pw") === REG_PASSWORD && acct.get("reg_pw2") === REG_PASSWORD);
@@ -222,25 +212,12 @@ async function main() {
   const pair = saved?.[origin];
   check("per-site pair recorded under Saved sign-ins", pair?.email === REG_EMAIL && pair?.password === REG_PASSWORD);
 
-  // 6. The application form fills from the profile, then parks at the user's
-  //    Next-page gate: one Autofill click fills every page; the USER turns
-  //    each page. Press the panel gate as the user would.
-  await pg.waitForFunction(
-    () => {
-      const sr = document.getElementById("applypilot-overlay-host")?.shadowRoot;
-      const btn = sr?.querySelector("#ap-flow-next");
-      const wrap = btn?.closest(".ap-flow-next-wrap");
-      return Boolean(wrap && wrap.style.display !== "none");
-    },
-    null,
-    { timeout: 45000 }
-  );
-  check("form page parked at the user's Next-page gate", true);
-  await pg.locator("#ap-flow-next").click({ timeout: 10000 });
-  await pg.waitForURL((u) => u.pathname === "/form2", { timeout: 45000 });
+  // 6. The application form fills from the profile and turns by itself after
+  //    its countdown, again with no press.
+  await pg.waitForURL((u) => u.pathname === "/form2", { timeout: 60000 });
   const form = new URL(pg.url()).searchParams;
   check(
-    "form page filled from the profile before advancing",
+    "form page filled from the profile, then turned by itself",
     form.get("first") === "John" && form.get("last") === "Doe" && form.get("email") === "john@example.com",
     `first=${form.get("first")} last=${form.get("last")} email=${form.get("email")} phone=${form.get("phone")}`
   );
@@ -253,7 +230,7 @@ async function main() {
   await ctx.close();
   server.close();
   const ok = results.every(Boolean);
-  console.log(`\n${ok ? "✅ PASS" : "❌ FAIL"}  Multi-page apply flow: entry clicks, account creation, fill, advance, terminal stop.`);
+  console.log(`\n${ok ? "✅ PASS" : "❌ FAIL"}  Multi-page apply flow, one Autofill click: entry clicks, account creation, fill, auto-advance, terminal stop.`);
   process.exit(ok ? 0 : 1);
 }
 

@@ -87,6 +87,8 @@ export interface OverlayCallbacks {
   onFlowStop: () => void;
   /** Advance the running multi-page flow to the next page (panel Next page button). */
   onFlowAdvance: () => void;
+  /** Hold the current page: its countdown stops and the gate waits for a press. */
+  onFlowPause: () => void;
   onRescan: () => void;
   /** List the user's resumes for the picker / auto-upload. */
   onListResumes: () => Promise<ResumeSummary[]>;
@@ -199,6 +201,7 @@ export function formatFlowProgress(p: FlowProgress): string {
     case "paused":
       return `${step} · paused: ${PAUSE_TEXT[p.pauseReason ?? "validation"]}`;
     case "ready":
+      if (p.autoAdvanceMs) return `${step} filled. Next page in ${Math.ceil(p.autoAdvanceMs / 1000)}s`;
       return `${step} filled. Review this page, then Next page`;
     case "done": {
       const steps = p.step + 1;
@@ -222,10 +225,25 @@ export function formatFlowProgress(p: FlowProgress): string {
 const GENERIC_NEXT = "Continue To The Next Page";
 const NAMED_ADVANCE_RE = /create (an? )?account|sign ?up|register|sign ?in|log ?in/i;
 
-export function formatNextLabel(p: FlowProgress): string {
+/**
+ * While the page counts down (`remainingMs`, on a "ready" beat that carries
+ * autoAdvanceMs) the label says when it turns: "Next page in 2s ▶", or
+ * "Create Account in 2s ▶" on a wall. Whole seconds, rounded up, never below 1:
+ * "in 0s" while the click is still on its way reads as stuck.
+ */
+export function formatNextLabel(p: FlowProgress, remainingMs?: number): string {
   const label = (p.nextLabel ?? "").trim();
-  if (label && NAMED_ADVANCE_RE.test(label)) return `${label} ▶`;
-  return `${GENERIC_NEXT} ▶`;
+  const named = label && NAMED_ADVANCE_RE.test(label) ? label : null;
+  if (p.phase === "ready" && p.autoAdvanceMs && remainingMs !== undefined) {
+    const secs = Math.max(1, Math.ceil(remainingMs / 1000));
+    return `${named ?? "Next page"} in ${secs}s ▶`;
+  }
+  return `${named ?? GENERIC_NEXT} ▶`;
+}
+
+/** The countdown's Pause is offered only while a page is counting down. Pure. */
+export function showsPauseControl(p: FlowProgress): boolean {
+  return p.phase === "ready" && Boolean(p.autoAdvanceMs);
 }
 
 /** Beats where the bottom gate is offered to the user. Pure, unit-tested.
@@ -251,6 +269,9 @@ export function showsAdvanceGate(p: FlowProgress): boolean {
   );
 }
 
+/** Ticks the bottom button's countdown label; the flow owns the real timer. */
+let flowCountdown: ReturnType<typeof setInterval> | null = null;
+
 /** Render a flow beat: the bottom Next page gate. */
 export function updateFlowProgress(p: FlowProgress): void {
   if (!refs) return;
@@ -259,12 +280,35 @@ export function updateFlowProgress(p: FlowProgress): void {
   // bottom gate says what to do on a parked page. Every beat, pause reasons
   // included, still goes to the console via formatFlowProgress.
   console.info(`[Tailrd] ${formatFlowProgress(p)}`);
-  // The advance gate is pinned at the panel bottom. The flow parks on every
-  // filled page, at a "ready" beat, or a "paused" beat when a required field is
-  // still empty, and turns the page only when the user presses this button. Its
-  // label mirrors the real button the flow will click (Next / Continue).
-  refs.flowNextBtn.textContent = formatNextLabel(p);
-  refs.flowNext.style.display = showsAdvanceGate(p) ? "flex" : "none";
+  // The advance gate is pinned at the panel bottom. A cleanly filled page
+  // counts down on it and turns by itself; pressing it goes at once, Pause
+  // holds the page. A page with a required field still empty, or one the user
+  // held, waits for the press. Its label mirrors the real button the flow will
+  // click (Create Account / Sign In), or the plain "Continue".
+  if (flowCountdown !== null) {
+    clearInterval(flowCountdown);
+    flowCountdown = null;
+  }
+  const gate = refs;
+  const counting = showsPauseControl(p);
+  gate.flowNextBtn.classList.toggle("counting", counting);
+  gate.flowPauseBtn.style.display = counting ? "" : "none";
+  if (counting) {
+    const endsAt = Date.now() + (p.autoAdvanceMs ?? 0);
+    const tick = (): void => {
+      gate.flowNextLabel.textContent = formatNextLabel(p, Math.max(0, endsAt - Date.now()));
+    };
+    tick();
+    flowCountdown = setInterval(tick, 200);
+    // Restart the fill bar's animation for this page's countdown.
+    gate.flowNextBar.style.animation = "none";
+    void gate.flowNextBar.offsetWidth;
+    gate.flowNextBar.style.animation = `ap-flow-count ${p.autoAdvanceMs}ms linear forwards`;
+  } else {
+    gate.flowNextLabel.textContent = formatNextLabel(p);
+    gate.flowNextBar.style.animation = "none";
+  }
+  gate.flowNext.style.display = showsAdvanceGate(p) ? "flex" : "none";
   // A terminal beat clears any earlier banner so nothing outlives the run.
   if (p.phase === "done" || p.phase === "stopped") showBanner("", "ok", true);
 }
@@ -972,15 +1016,17 @@ export const STYLES = `
   vertical-align: -2px; margin-right: 6px;
 }
 @keyframes ap-spin { to { transform: rotate(360deg); } }
-/* Next-page gate: pinned at the panel bottom, shown once a page is filled and
-   waiting on the user. The one control they touch after the first Autofill. */
+/* Next-page gate: pinned at the panel bottom, shown once a page is filled. A
+   clean page counts down on it (the bar fills) and turns by itself; Pause
+   beside it holds the page. The one control touched after the first Autofill. */
 .ap-flow-next-wrap {
-  display: flex; padding: 12px 14px; flex-shrink: 0;
+  display: flex; gap: 8px; padding: 12px 14px; flex-shrink: 0;
   border-top: 1px solid var(--stripe-hairline-soft);
   background: var(--stripe-canvas);
 }
 .ap-flow-next {
-  width: 100%; padding: 13px 14px; border: none; border-radius: 8px;
+  position: relative; overflow: hidden; flex: 1 1 auto; min-width: 0;
+  padding: 13px 14px; border: none; border-radius: 8px;
   background: linear-gradient(135deg, var(--stripe-primary) 0%, var(--stripe-primary-deep) 100%);
   color: #fff;
   font-family: inherit; font-size: 14px; font-weight: 700; letter-spacing: 0.01em;
@@ -989,6 +1035,19 @@ export const STYLES = `
 }
 .ap-flow-next:hover { box-shadow: 0 6px 16px rgba(var(--stripe-primary-rgb), 0.35); }
 .ap-flow-next:active { background: var(--stripe-primary-press); box-shadow: none; }
+.ap-flow-next-label { position: relative; }
+.ap-flow-next-bar {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: rgba(255, 255, 255, 0.18); pointer-events: none;
+}
+@keyframes ap-flow-count { from { width: 0%; } to { width: 100%; } }
+.ap-flow-pause {
+  flex: 0 0 auto; padding: 0 16px; border-radius: 8px;
+  border: 1px solid var(--stripe-hairline); background: var(--stripe-canvas);
+  color: var(--stripe-ink); font-family: inherit; font-size: 14px; font-weight: 600;
+  cursor: pointer;
+}
+.ap-flow-pause:hover { background: var(--stripe-canvas-soft); }
 /* ---- Unanswered questions (modal only) ----
    The panel card that used to open this is gone; the modal keeps its markup,
    styles and handlers, it simply has no entry point in the panel today. */
@@ -1217,6 +1276,9 @@ interface Refs {
   banner: HTMLDivElement;
   flowNext: HTMLDivElement;
   flowNextBtn: HTMLButtonElement;
+  flowNextLabel: HTMLSpanElement;
+  flowNextBar: HTMLSpanElement;
+  flowPauseBtn: HTMLButtonElement;
   signinsModal: HTMLDivElement;
   signinsBody: HTMLDivElement;
   signinsCount: HTMLSpanElement;
@@ -1506,10 +1568,11 @@ export function buildHTML(): string {
         </div>
       </div>
 
-      <!-- Next-page gate: pinned at the panel bottom, shown only while a
-           multi-page flow is parked at "ready" (see updateFlowProgress). -->
+      <!-- Next-page gate: pinned at the panel bottom, shown while a filled
+           page counts down or waits for the user (see updateFlowProgress). -->
       <div class="ap-flow-next-wrap" style="display:none">
-        <button class="ap-flow-next" id="ap-flow-next" type="button">Continue To The Next Page ▶</button>
+        <button class="ap-flow-next" id="ap-flow-next" type="button"><span class="ap-flow-next-bar"></span><span class="ap-flow-next-label">Continue To The Next Page ▶</span></button>
+        <button class="ap-flow-pause" id="ap-flow-pause" type="button" style="display:none">Pause</button>
       </div>
     </div>
 
@@ -1631,6 +1694,9 @@ function collectRefs(root: HTMLDivElement): Refs {
     banner: q("#ap-banner"),
     flowNext: q(".ap-flow-next-wrap"),
     flowNextBtn: q("#ap-flow-next"),
+    flowNextLabel: q(".ap-flow-next-label"),
+    flowNextBar: q(".ap-flow-next-bar"),
+    flowPauseBtn: q("#ap-flow-pause"),
     signinsModal: q("#ap-signins-modal"),
     signinsBody: q("#ap-signins-body"),
     signinsCount: q("#ap-signins-count"),
@@ -1674,6 +1740,11 @@ function wireEvents(root: HTMLDivElement): void {
   root.querySelector("#ap-flow-next")!.addEventListener("click", () => {
     if (refs) refs.flowNext.style.display = "none";
     callbacks?.onFlowAdvance();
+  });
+  // Pause -> hold this page: the flow answers with a "ready" beat that has no
+  // countdown, which turns the gate into a plain Continue and hides Pause.
+  root.querySelector("#ap-flow-pause")!.addEventListener("click", () => {
+    callbacks?.onFlowPause();
   });
 
 

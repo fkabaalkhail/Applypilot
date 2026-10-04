@@ -77,6 +77,10 @@ export interface ExtensionConfig {
   useMockData: boolean;
   /** Explicit opt-in for filling EEO / demographic fields. Default false. */
   fillEEO: boolean;
+  /** A multi-page application turns each cleanly filled page by itself after
+   *  a short countdown (default). False waits for the panel's Continue on
+   *  every page; the e2e harness sets it to read each page before it turns. */
+  flowAutoContinue: boolean;
 }
 
 export const DEFAULT_CONFIG: ExtensionConfig = {
@@ -86,6 +90,7 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
   // an opt-in dev affordance, not the default experience.
   useMockData: false,
   fillEEO: false,
+  flowAutoContinue: true,
 };
 
 export async function getConfig(): Promise<ExtensionConfig> {

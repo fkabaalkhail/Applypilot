@@ -470,6 +470,10 @@ export interface FlowProgress {
   /** Text of the button the flow will click next ("Next", "Create Account"…),
    *  labels the panel's manual advance gate to match the real page. */
   nextLabel?: string;
+  /** On a "ready" beat: the flow turns the page by itself after this many ms
+   *  unless the user holds it, so the panel counts down on its bottom button.
+   *  Absent: the gate waits for a press. */
+  autoAdvanceMs?: number;
 }
 
 /** Flow-owning frame → top-frame panel (via RELAY_TO_TOP). */
@@ -653,6 +657,7 @@ export type FormOpName =
   | "onProfileResolved"
   | "onFlowStop"
   | "onFlowAdvance"
+  | "onFlowPause"
   | "onAnswerGaps"
   | "onHarvestGapOptions";
 

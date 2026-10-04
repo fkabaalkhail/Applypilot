@@ -6,10 +6,18 @@
  * the real deps (fillOnce, scanner snapshots, advance discovery, background
  * state persistence) and the overlay renders the progress beats.
  *
+ * One Autofill click carries the whole application: a page that fills
+ * cleanly counts down on the panel's bottom button (AUTO_ADVANCE_MS) and then
+ * turns itself, the account wall included. The user can press the button to
+ * go at once, or hold the page (Pause, or typing/clicking in it while the
+ * countdown runs). A page with a required field still empty waits for the user.
+ *
  * Invariants:
  *  - NEVER clicks a terminal (submit-like) button, finishes "done" instead.
  *  - Persists FlowState BEFORE clicking advance, so a real navigation (content
  *    script death) resumes on the next page via the session flag.
+ *  - Never clicks an advance found on a page that has since been replaced: a
+ *    page the user turned themselves is filled, not skipped.
  *  - Every pause auto-resumes when its condition clears (polled).
  *  - Runaway guards: MAX_STEPS, FLOW_TTL_MS, and a same-signature loop check.
  */
@@ -22,8 +30,20 @@ import type {
 } from "../shared/types";
 import type { AdvanceButton } from "./advance";
 
-export const MAX_STEPS = 12;
+/** A Workday application is about ten steps (posting, chooser, account, five
+ *  or six form pages, review); this is the runaway guard, not a budget. */
+export const MAX_STEPS = 16;
+/** Bounds UNATTENDED running. A press on the panel's button is fresh intent
+ *  and restarts it, so a user who reviews a held page for a while is not told
+ *  the flow timed out when they press Continue. */
 export const FLOW_TTL_MS = 10 * 60 * 1000;
+/** How long a cleanly filled page counts down on the panel's bottom button
+ *  before the flow turns it by itself: long enough to see the page and press
+ *  Pause, short enough that one Autofill click reaches the Review page. */
+export const AUTO_ADVANCE_MS = 2000;
+/** How often a parked gate looks for a press, the countdown's end, or the
+ *  page having been turned under it. */
+const GATE_POLL_MS = 250;
 const PAUSE_POLL_MS = 2000;
 const ADVANCE_POLL_MS = 500;
 const ADVANCE_WAIT_MS = 8000;
@@ -74,6 +94,10 @@ export interface FlowDeps {
   /** The flow reached the terminal (submit) button, hand it over so the caller
    *  can bind submit tracking. NEVER clicked by the controller. */
   onTerminal?(el: HTMLElement): void;
+  /** On a page with no fields, the SITE ADAPTER's own footer button when it is
+   *  the submit (Workday's Review), else null. Never a generic search: a
+   *  field-less page's other buttons are not the application's. */
+  findPageTerminal?(): HTMLElement | null;
   /** Account-wall handling (Phase 4); {} when no wall. `wall` reports the kind
    *  so progress beats can say "creating account…" / "signing in…". */
   accountStep(snap: FlowSnapshot): Promise<{ extraAdvance?: RegExp; wall?: "signup" | "login" }>;
@@ -102,6 +126,10 @@ export interface FlowDeps {
    * flow finishes; failures are the caller's to swallow.
    */
   auditPageState?(): Promise<void>;
+  /** False parks every filled page at the manual gate instead of counting
+   *  down (a setting; the e2e harness turns it off to read each page).
+   *  Absent = true. */
+  autoContinue?(): boolean;
   sleep(ms: number): Promise<void>;
   now(): number;
 }
@@ -128,45 +156,75 @@ export function stepSignature(snap: FlowSnapshot): string {
   return `page:${snap.url}|${snap.entry?.label ?? ""}`;
 }
 
+/**
+ * The page under a parked gate is no longer the page that was filled: the user
+ * turned it with the site's own button. Most of the filled page's questions are
+ * gone and others stand in their place.
+ *
+ * A page that merely GREW is not a turn: a conditional question appearing, an
+ * "Add another" row, every field it had is still there. A page mid-render that
+ * shows no fields yet is not one either (Workday swaps in a skeleton first).
+ */
+export function pageTurned(filled: FlowSnapshot, now: FlowSnapshot): boolean {
+  if (filled.fields.length === 0 || now.fields.length === 0) return false;
+  const key = (f: DetectedField): string => `${f.label}|${f.controlType}`;
+  const present = new Set(now.fields.map(key));
+  const had = new Set(filled.fields.map(key));
+  let kept = 0;
+  for (const k of had) if (present.has(k)) kept++;
+  return kept / had.size < 0.5;
+}
+
 export class FlowController {
   private stopRequested = false;
   private step = 0;
   private startedAt = 0;
   private lastTally = { ok: 0, fail: 0 };
-  /** Resolver for the "ready" gate while the flow awaits the user's Next page. */
-  private advanceResolver: ((advance: boolean) => void) | null = null;
-  /** Set by notifyAdvanceRequested() when no gate is currently awaiting it,
-   *  polled by waitForWallCleared, which has no resolver to hand out. */
+  /** Set by notifyAdvanceRequested(), polled by every wait that a press can
+   *  end: the page gate, the account-wall park, a user-clearable pause. */
   private advanceRequested = false;
   /** The page about to be filled was opened by an apply-entry click. */
   private openedFromEntry = false;
+  /** A countdown is running on the current page's gate. */
+  private counting = false;
+  /** The user held the current page (Pause, or input in the page while it
+   *  counted down): its gate now waits for a press. Cleared per page. */
+  private held = false;
+  /** The current gate's label, re-sent when a hold turns it manual. */
+  private gateLabel: string | undefined;
 
   constructor(private deps: FlowDeps) {}
 
-  /** User pressed Stop (or a new flow replaces this one). Idempotent. */
+  /** User pressed Stop (or a new flow replaces this one). Idempotent. A
+   *  parked gate notices within one poll and run() unwinds as stopped. */
   stop(): void {
     if (this.stopRequested) return;
     this.stopRequested = true;
-    // Release a pending ready-gate so run() can unwind as stopped.
-    const resolve = this.advanceResolver;
-    this.advanceResolver = null;
-    resolve?.(false);
+    this.counting = false;
     void this.deps.setState(null);
   }
 
   /**
-   * User pressed "Next page": release the ready gate so the flow advances to
-   * the next page. No-op when the flow is not currently parked at a gate.
+   * User pressed the panel's bottom button: turn the page now (cutting a
+   * countdown short), or release a pause they own. A press that lands while
+   * no gate is open is dropped when the next page starts.
    */
   notifyAdvanceRequested(): void {
-    const resolve = this.advanceResolver;
-    this.advanceResolver = null;
-    if (resolve) {
-      resolve(true);
-      return;
-    }
-    // No gate awaiting a resolver, the account-wall park polls this flag.
     this.advanceRequested = true;
+  }
+
+  /**
+   * The user wants to stay on this page: stop the countdown and wait for a
+   * press instead (the panel's Pause, or the user typing or clicking in the
+   * page while it counts down). Only this page: the next page that fills
+   * cleanly counts down again. No-op when no countdown is running.
+   */
+  holdAutoAdvance(): void {
+    if (!this.counting || this.held || this.stopRequested) return;
+    this.held = true;
+    this.counting = false;
+    console.log("[Tailrd flow] countdown held by the user; waiting for Continue");
+    this.emit("ready", { nextLabel: this.gateLabel });
   }
 
   /**
@@ -222,6 +280,15 @@ export class FlowController {
           this.openedFromEntry = true;
           continue;
         }
+        // A field-less LAST page: Workday's Review lists the answers and offers
+        // only Submit, so there is no form scope to search. Its own footer, when
+        // that is the submit, ends the flow there: bound for submit tracking
+        // (the application reaches the dashboard), never clicked.
+        const terminal = recognized === 0 ? (this.deps.findPageTerminal?.() ?? null) : null;
+        if (terminal) {
+          this.deps.onTerminal?.(terminal);
+          return this.finish("done", "Ready to review and submit");
+        }
         if (!snap.scopeEl && recognized === 0) {
           return this.finish("stopped", "No application form found on this page");
         }
@@ -235,26 +302,51 @@ export class FlowController {
         return this.finish("done", "Ready to review and submit");
       }
 
-      // The page is filled: hand control back to the user. The flow never
-      // turns a page on its own: the panel shows a contextual bottom button
-      // (Continue / Create Account, mirroring advText) and the flow advances
-      // only when the user presses it. One Autofill click fills every page; the
-      // user decides every page turn, including the account wall, creating an
-      // account is irreversible enough that it should not happen while the user
-      // is still reading the form. A page with an unfilled required field
-      // surfaces the same gate as a "paused" beat so the panel can explain why
-      // (the site's own validation would reject an advance otherwise).
-      if (this.deps.hasUnfilledRequired(snap)) {
+      // The page is filled. One Autofill click carries the whole application,
+      // so a clean page counts down on the panel's bottom button (labelled
+      // like the real one: Continue / Create Account) and turns itself; the
+      // account wall too, with the credentials the user saved for exactly
+      // this. The user can press the button to go now, or hold the page. A
+      // page with a required field still empty waits for the user instead,
+      // as a "paused" beat so the panel can say why (the site's own
+      // validation would reject the turn anyway).
+      const label = advText || undefined;
+      // Only a press made at this gate counts: drop one left over from the
+      // fill, THEN announce, since onProgress runs synchronously and a press
+      // made the instant the gate appears must be kept.
+      this.advanceRequested = false;
+      const unfilled = this.deps.hasUnfilledRequired(snap);
+      const auto = !unfilled && this.deps.autoContinue?.() !== false;
+      if (unfilled) {
         console.log("[Tailrd flow] parked: required field(s) still empty; press the advance button to continue anyway");
-        this.emit("paused", { pauseReason: "unfilled-required", nextLabel: advText || undefined });
-      } else {
+        this.emit("paused", { pauseReason: "unfilled-required", nextLabel: label });
+      } else if (!auto) {
         console.log(`[Tailrd flow] parked at ready, press "${advText || "Next page"}" to advance`);
-        this.emit("ready", { nextLabel: advText || undefined });
+        this.emit("ready", { nextLabel: label });
+      } else {
+        console.log(`[Tailrd flow] page filled; "${advText || "Next page"}" in ${AUTO_ADVANCE_MS} ms unless held`);
+        this.held = false;
+        this.gateLabel = label;
+        this.counting = true;
+        this.emit("ready", { nextLabel: label, autoAdvanceMs: AUTO_ADVANCE_MS });
       }
-      if (!(await this.waitForAdvanceRequest())) return this.finishStopped();
+      const gate = await this.waitAtGate(snap, auto ? AUTO_ADVANCE_MS : null);
+      this.counting = false;
+      if (gate === "stop") return this.finishStopped();
+      if (gate === "moved") {
+        await this.followTurnedPage(snap);
+        continue;
+      }
       // A blocker (e.g. a captcha) may have re-appeared while the flow waited, so
       // re-check before clicking advance.
       if (!(await this.waitWhileBlocked())) return this.finishStopped();
+      // The button found above belongs to the page that was filled. If the user
+      // turned the page meanwhile, a site that reuses its footer button (Workday)
+      // would have it turn the NEW page, unfilled. Fill that page instead.
+      if (pageTurned(snap, this.deps.snapshot())) {
+        await this.followTurnedPage(snap);
+        continue;
+      }
 
       console.log(`[Tailrd flow] clicking advance "${advText}"…`);
       if (!(await this.advanceStep(snap, adv.el, wallDetail))) {
@@ -341,20 +433,45 @@ export class FlowController {
     return this.finish("stopped", "Autofill flow stopped");
   }
 
-  /** Park at the ready gate until notifyAdvanceRequested() (true) or stop() (false).
-   *
-   *  onProgress runs SYNCHRONOUSLY inside emit(), so a press that lands while
-   *  the gate beat is still being delivered arrives before this method installs
-   *  its resolver. Honour the flag first or that press is dropped and the flow
-   *  waits forever for a button the user already pushed. */
-  private waitForAdvanceRequest(): Promise<boolean> {
-    if (this.stopRequested) return Promise.resolve(false);
-    if (this.advanceRequested) {
-      this.advanceRequested = false;
-      return Promise.resolve(true);
+  /**
+   * Park at a filled page's gate until the page should turn:
+   *  - "advance": the user pressed the panel's button, or the countdown
+   *    (`autoMs`, null for a manual gate) ran out without a hold;
+   *  - "moved": the page was turned under the gate (the site's own button), so
+   *    nothing must be clicked: the new page is filled instead;
+   *  - "stop": stop().
+   * A turn is believed only when two polls in a row see it, so a re-render
+   * that briefly shows a different field set cannot fake one.
+   */
+  private async waitAtGate(filled: FlowSnapshot, autoMs: number | null): Promise<"advance" | "moved" | "stop"> {
+    const since = this.deps.now();
+    let turnedPolls = 0;
+    for (;;) {
+      if (this.stopRequested) return "stop";
+      if (this.advanceRequested) {
+        this.advanceRequested = false;
+        this.startedAt = this.deps.now(); // a press is fresh intent: restart the TTL
+        return "advance";
+      }
+      if (autoMs !== null && !this.held && this.deps.now() - since >= autoMs) return "advance";
+      turnedPolls = pageTurned(filled, this.deps.snapshot()) ? turnedPolls + 1 : 0;
+      if (turnedPolls >= 2) return "moved";
+      await this.deps.sleep(GATE_POLL_MS);
     }
-    return new Promise((resolve) => {
-      this.advanceResolver = resolve;
+  }
+
+  /** The user turned the page themselves while it waited at its gate: count
+   *  the step and persist it (a resume after a reload starts here), then let
+   *  the loop fill the new page. Nothing is clicked. */
+  private async followTurnedPage(filled: FlowSnapshot): Promise<void> {
+    console.log("[Tailrd flow] the page was turned under the gate; filling the new page");
+    this.step += 1;
+    this.startedAt = this.deps.now(); // the user acted: restart the TTL
+    await this.deps.setState({
+      active: true,
+      step: this.step,
+      startedAt: this.startedAt,
+      lastSignature: stepSignature(filled),
     });
   }
 

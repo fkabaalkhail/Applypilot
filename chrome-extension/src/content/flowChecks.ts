@@ -104,3 +104,34 @@ const VERIFICATION_RE =
 export function isVerificationWall(scope: HTMLElement): boolean {
   return VERIFICATION_RE.test(cleanText(scope.textContent).slice(0, 4000));
 }
+
+/**
+ * True when a detected control holds no answer yet: what decides whether a
+ * filled page may turn by itself, or must wait for a required answer.
+ *
+ * A GROUP has no single element, its members hold the answer. This was asked
+ * for the element first, so every radio group read as empty however it had
+ * been answered, and the flow waited on every page with a required one
+ * (Workday's "Have you previously worked for ...?", found by the replica).
+ *
+ * `readCombobox` is comboboxEngine's readComboboxValue, passed in to keep this
+ * module free of the engine: a committed combobox keeps its INPUT empty, the
+ * choice shows in the widget (a react-select value, a trigger's text, chips).
+ */
+export function holdsNoAnswer(
+  control: RuntimeControl | undefined,
+  readCombobox: (el: HTMLElement) => string | undefined
+): boolean {
+  if (!control) return true;
+  if (control.controlType === "radioGroup") return !control.radios?.some((r) => r.checked);
+  if (control.controlType === "checkboxGroup") return !control.checkboxes?.some((c) => c.checked);
+  const el = control.el;
+  if (!el) return true;
+  if (control.controlType === "combobox" || control.controlType === "customDropdown") return !readCombobox(el);
+  if (control.controlType === "select") {
+    const opt = (el as HTMLSelectElement).selectedOptions[0];
+    return !opt || !opt.value;
+  }
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return !el.value.trim();
+  return !(el.textContent ?? "").trim();
+}

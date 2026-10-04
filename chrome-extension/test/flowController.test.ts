@@ -3,7 +3,10 @@ import {
   FlowController,
   fieldSignature,
   stepSignature,
+  pageTurned,
   MAX_STEPS,
+  AUTO_ADVANCE_MS,
+  FLOW_TTL_MS,
   USER_CLEARABLE_PAUSES,
   type FlowDeps,
   type FlowSnapshot,
@@ -72,6 +75,25 @@ function makeDeps(
 
 const advanceBtn = (): AdvanceButton => ({ el: document.createElement("button"), kind: "advance" });
 const terminalBtn = (): AdvanceButton => ({ el: document.createElement("button"), kind: "terminal" });
+
+/** Make the deps' clock virtual: every sleep(ms) moves it by exactly ms, so
+ *  a countdown ends after the time it names, and `clickedAt` records when each
+ *  advance click happened. `onSleep` runs before each sleep resolves. */
+function virtualTime(deps: FlowDeps, onSleep?: (now: number) => void): { now: () => number; clickedAt: number[] } {
+  let t = 0;
+  const clickedAt: number[] = [];
+  deps.now = () => t;
+  deps.sleep = async (ms) => {
+    t += ms;
+    onSleep?.(t);
+  };
+  const click = deps.clickAdvance;
+  deps.clickAdvance = (el) => {
+    clickedAt.push(t);
+    click(el);
+  };
+  return { now: () => t, clickedAt };
+}
 
 /**
  * Run a controller to completion, answering every "ready" gate (Task B) as it
@@ -154,18 +176,16 @@ describe("FlowController", () => {
     expect(progress[progress.length - 1].phase).toBe("done");
   });
 
-  it("parks at 'ready' on a clean page and only advances after notifyAdvanceRequested", async () => {
+  it("turns a cleanly filled page by itself once its countdown ends, no press needed", async () => {
     const pages = [[field("1", "A")], [field("2", "B")]];
     const { deps, log, progress } = makeDeps(pages, [advanceBtn(), terminalBtn()]);
-    // Clean page (no unfilled required), the flow must NOT auto-advance; the
-    // user decides each page turn via the panel's contextual bottom button.
-    const controller = new FlowController(deps);
-    const run = controller.run(freshState(), null);
-    while (!progress.some((p) => p.phase === "ready")) await Promise.resolve();
-    expect(log).not.toContain("click:0"); // parked, waiting for the user
-    controller.notifyAdvanceRequested();
-    await run;
-    expect(log).toContain("click:0"); // advanced only after the user's click
+    const clock = virtualTime(deps);
+    // No drive(): nobody presses anything after the one Autofill click.
+    await new FlowController(deps).run(freshState(), null);
+    const gate = progress.find((p) => p.phase === "ready");
+    expect(gate?.autoAdvanceMs).toBe(AUTO_ADVANCE_MS);
+    expect(log).toContain("click:0");
+    expect(clock.clickedAt[0]).toBeGreaterThanOrEqual(AUTO_ADVANCE_MS); // after the countdown, not before
     expect(progress[progress.length - 1].phase).toBe("done");
   });
 
@@ -393,21 +413,19 @@ describe("FlowController", () => {
     expect(progress[progress.length - 1].phase).toBe("done"); // resumed, not stopped
   });
 
-  it("parks on an account wall too, the user turns every page, including signup", async () => {
+  it("counts down on an account wall too and creates the account by itself", async () => {
     const pages = [[field("1", "A")], [field("2", "B")]];
     const create = document.createElement("button");
     create.textContent = "Create Account";
     const { deps, log, progress } = makeDeps(pages, [{ el: create, kind: "advance" }, terminalBtn()]);
     deps.accountStep = async () => ({ wall: "signup" as const });
-    const controller = new FlowController(deps);
-    // drive() clears each gate the way the panel's Continue button does.
-    await drive(controller, progress);
-    // The wall is gated like any other page: creating an account is not
-    // something to do while the user is still reading the form.
+    virtualTime(deps);
+    // Nobody presses anything: the one Autofill click asked for the account,
+    // with the credentials the user saved for exactly this.
+    await new FlowController(deps).run(freshState(), null);
     const gate = progress.find((p) => p.phase === "ready");
-    expect(gate, "the wall parked at a ready gate").toBeTruthy();
-    expect(gate!.nextLabel).toBe("Create Account");
-    // Still narrated as an account step, and still clicked once released.
+    expect(gate?.nextLabel).toBe("Create Account");
+    expect(gate?.autoAdvanceMs).toBe(AUTO_ADVANCE_MS);
     expect(progress.some((p) => p.phase === "filling" && p.detail === "creating account…")).toBe(true);
     expect(log).toContain("click:0");
     expect(progress[progress.length - 1].phase).toBe("done");
@@ -450,6 +468,227 @@ describe("FlowController", () => {
     expect(releases).toBe(2);
     // Released → the flow re-attempted the step. Parked forever → only one.
     expect(progress.filter((p) => p.phase === "filling").length).toBeGreaterThan(1);
+  });
+});
+
+describe("one click to the end: the countdown", () => {
+  const twoPages = (): DetectedField[][] => [[field("1", "A")], [field("2", "B")]];
+
+  it("a press on the bottom button turns the page at once, before the countdown ends", async () => {
+    const { deps, progress } = makeDeps(twoPages(), [advanceBtn(), terminalBtn()]);
+    const clock = virtualTime(deps);
+    const controller = new FlowController(deps);
+    deps.onProgress = (p): void => {
+      progress.push(p);
+      if (p.phase === "ready") controller.notifyAdvanceRequested();
+    };
+    await controller.run(freshState(), null);
+    expect(clock.clickedAt).toHaveLength(1);
+    expect(clock.clickedAt[0]).toBeLessThan(AUTO_ADVANCE_MS);
+  });
+
+  it("Pause holds the page however long it waits, and Continue then turns it", async () => {
+    const { deps, log, progress } = makeDeps(twoPages(), [advanceBtn(), terminalBtn()]);
+    const controller = new FlowController(deps);
+    let heldAt = -1;
+    let clicksBeforePress = -1;
+    virtualTime(deps, (now) => {
+      // Long after the countdown would have ended: still on page 1. Press.
+      if (heldAt >= 0 && clicksBeforePress < 0 && now - heldAt > 20 * AUTO_ADVANCE_MS) {
+        clicksBeforePress = log.filter((l) => l.startsWith("click:")).length;
+        controller.notifyAdvanceRequested();
+      }
+    });
+    deps.onProgress = (p): void => {
+      progress.push(p);
+      if (p.phase === "ready" && p.autoAdvanceMs && heldAt < 0) {
+        heldAt = 0;
+        controller.holdAutoAdvance(); // the panel's Pause
+      }
+    };
+    await controller.run(freshState(), null);
+    expect(clicksBeforePress).toBe(0);
+    // The hold re-labels the gate: same page, no countdown.
+    const beats = progress.filter((p) => p.phase === "ready");
+    expect(beats[0].autoAdvanceMs).toBe(AUTO_ADVANCE_MS);
+    expect(beats[1].autoAdvanceMs).toBeUndefined();
+    expect(beats[1].step).toBe(beats[0].step);
+    expect(log).toContain("click:0");
+    expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
+  it("a hold lasts one page: the next filled page counts down again", async () => {
+    const pages = [[field("1", "A")], [field("2", "B")], [field("3", "C")]];
+    const { deps, log, progress } = makeDeps(pages, [advanceBtn(), advanceBtn(), terminalBtn()]);
+    const controller = new FlowController(deps);
+    virtualTime(deps);
+    let held = false;
+    deps.onProgress = (p): void => {
+      progress.push(p);
+      if (p.phase === "ready" && p.autoAdvanceMs && !held) {
+        held = true;
+        controller.holdAutoAdvance();
+        controller.notifyAdvanceRequested(); // ...then Continue
+      }
+    };
+    await controller.run(freshState(), null);
+    const page2 = progress.filter((p) => p.phase === "ready" && p.step === 1);
+    expect(page2[0]?.autoAdvanceMs).toBe(AUTO_ADVANCE_MS);
+    expect(log).toContain("click:1"); // page 2 turned by itself
+    expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
+  it("a page with a required field still empty never turns by itself", async () => {
+    const { deps, log, progress } = makeDeps(twoPages(), [advanceBtn(), terminalBtn()]);
+    deps.hasUnfilledRequired = (): boolean => true;
+    const controller = new FlowController(deps);
+    let pressedAfter = 0;
+    virtualTime(deps, (now) => {
+      if (!pressedAfter && now > 20 * AUTO_ADVANCE_MS) {
+        pressedAfter = log.filter((l) => l.startsWith("click:")).length + 1;
+        controller.notifyAdvanceRequested();
+      }
+    });
+    await controller.run(freshState(), null);
+    expect(pressedAfter).toBe(1); // no click before the press
+    const gate = progress.find((p) => p.pauseReason === "unfilled-required");
+    expect(gate?.autoAdvanceMs).toBeUndefined();
+    expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
+  it("Pause on a page that is not counting down changes nothing", async () => {
+    const { deps, progress } = makeDeps(twoPages(), [advanceBtn(), terminalBtn()]);
+    deps.hasUnfilledRequired = (): boolean => true;
+    const controller = new FlowController(deps);
+    deps.onProgress = (p): void => {
+      progress.push(p);
+      if (p.pauseReason === "unfilled-required") {
+        controller.holdAutoAdvance();
+        controller.notifyAdvanceRequested();
+      }
+    };
+    await controller.run(freshState(), null);
+    expect(progress.filter((p) => p.phase === "ready")).toHaveLength(0); // no gate re-sent
+    expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
+  it("with auto-continue off, every filled page waits for a press", async () => {
+    const { deps, log, progress } = makeDeps(twoPages(), [advanceBtn(), terminalBtn()]);
+    deps.autoContinue = (): boolean => false;
+    const controller = new FlowController(deps);
+    let clicksAtPress = -1;
+    virtualTime(deps, (now) => {
+      if (clicksAtPress < 0 && now > 20 * AUTO_ADVANCE_MS) {
+        clicksAtPress = log.filter((l) => l.startsWith("click:")).length;
+        controller.notifyAdvanceRequested();
+      }
+    });
+    await controller.run(freshState(), null);
+    expect(clicksAtPress).toBe(0);
+    expect(progress.find((p) => p.phase === "ready")?.autoAdvanceMs).toBeUndefined();
+    expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
+  it("follows a page the user turned with the site's own button: fills it, clicks nothing on it", async () => {
+    // Page 1 waits (held); the user presses the SITE's Next, so page 2 appears
+    // under the gate. The flow's button for page 1 must never be clicked: on a
+    // site that reuses its footer button it would turn page 2 unfilled.
+    let pageIx = 0;
+    const pages = [
+      [field("1", "First name"), field("2", "Last name")],
+      [field("3", "School"), field("4", "Degree")],
+    ];
+    const { deps, log, progress } = makeDeps(pages, [advanceBtn(), terminalBtn()]);
+    deps.snapshot = (): FlowSnapshot => ({
+      fields: pages[pageIx],
+      scopeEl: document.body,
+      url: "https://wd.example/apply",
+      entry: null,
+      accountWall: false,
+    });
+    deps.findAdvance = (): AdvanceButton => (pageIx === 0 ? advanceBtn() : terminalBtn());
+    deps.fillStep = async (): Promise<StepTally> => { log.push(`fill:${pageIx}`); return tally(); };
+    const controller = new FlowController(deps);
+    virtualTime(deps, (now) => {
+      if (pageIx === 0 && now > 5 * AUTO_ADVANCE_MS) pageIx = 1; // the site's own Next
+    });
+    deps.onProgress = (p): void => {
+      progress.push(p);
+      if (p.phase === "ready" && p.autoAdvanceMs) controller.holdAutoAdvance();
+    };
+    const states: (FlowState | null)[] = [];
+    deps.setState = async (s): Promise<void> => { states.push(s); };
+    await controller.run(freshState(), null);
+    expect(log.filter((l) => l.startsWith("click:"))).toEqual([]);
+    expect(log).toContain("fill:1"); // the new page was filled
+    expect(states.some((s) => s?.step === 1)).toBe(true); // and its step persisted
+    expect(progress[progress.length - 1].phase).toBe("done");
+  });
+
+  it("a press long after the flow started still turns the page (fresh intent)", async () => {
+    const { deps, log, progress } = makeDeps(twoPages(), [advanceBtn(), terminalBtn()]);
+    deps.autoContinue = (): boolean => false;
+    const controller = new FlowController(deps);
+    let pressed = false;
+    virtualTime(deps, (now) => {
+      if (!pressed && now > FLOW_TTL_MS + 60_000) {
+        pressed = true;
+        controller.notifyAdvanceRequested();
+      }
+    });
+    await controller.run(freshState(), null);
+    expect(log).toContain("click:0");
+    expect(progress[progress.length - 1].phase).toBe("done");
+    expect(progress.some((p) => /timed out/i.test(p.detail ?? ""))).toBe(false);
+  });
+});
+
+describe("a field-less last page (Workday's Review)", () => {
+  it("ends done at the site's own Submit, handed over for tracking and never clicked", async () => {
+    // Page 1 has fields; page 2 (Review) has none, so no form scope, and only
+    // the adapter's footer knows where Submit is.
+    const pages = [[field("1", "A")], []];
+    const { deps, log, progress } = makeDeps(pages, [advanceBtn(), null]);
+    virtualTime(deps);
+    const submit = document.createElement("button");
+    let bound: HTMLElement | null = null;
+    deps.findPageTerminal = (): HTMLElement | null => (log.includes("click:0") ? submit : null);
+    deps.onTerminal = (el): void => { bound = el; };
+    await new FlowController(deps).run(freshState(), null);
+    const last = progress[progress.length - 1];
+    expect(last.phase).toBe("done");
+    expect(bound).toBe(submit);
+    expect(log.filter((l) => l.startsWith("click:"))).toEqual(["click:0"]); // Submit never clicked
+  });
+
+  it("without one, a field-less page still stops as before", async () => {
+    const { deps, progress } = makeDeps([[]], [null]);
+    virtualTime(deps);
+    deps.findPageTerminal = (): HTMLElement | null => null;
+    await new FlowController(deps).run(freshState(), null);
+    expect(progress[progress.length - 1].phase).toBe("stopped");
+  });
+});
+
+describe("pageTurned", () => {
+  const snap = (labels: string[]): FlowSnapshot => ({
+    fields: labels.map((l, i) => field(String(i), l)),
+    scopeEl: document.body,
+    url: "https://wd.example/apply",
+    entry: null,
+    accountWall: false,
+  });
+
+  it("is a turn when most of the filled page's questions are gone", () => {
+    expect(pageTurned(snap(["First", "Last", "Email"]), snap(["School", "Degree"]))).toBe(true);
+  });
+
+  it("is not a turn when the page only grew (a conditional question, a new row)", () => {
+    expect(pageTurned(snap(["First", "Last"]), snap(["First", "Last", "Middle", "Suffix", "Nickname"]))).toBe(false);
+  });
+
+  it("is not a turn while the page shows no fields (a skeleton mid-render)", () => {
+    expect(pageTurned(snap(["First", "Last"]), snap([]))).toBe(false);
   });
 });
 

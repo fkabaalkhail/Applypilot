@@ -1,5 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { STYLES, formatFlowProgress, formatNextLabel, showsAdvanceGate } from "../src/content/overlay";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  STYLES,
+  buildHTML,
+  formatFlowProgress,
+  formatNextLabel,
+  installRefs,
+  showsAdvanceGate,
+  showsPauseControl,
+  updateFlowProgress,
+} from "../src/content/overlay";
 import type { FlowPhase, FlowProgress } from "../src/shared/types";
 
 describe("formatFlowProgress", () => {
@@ -12,6 +21,9 @@ describe("formatFlowProgress", () => {
     expect(
       formatFlowProgress({ phase: "ready", step: 1, filledOk: 3, filledFail: 0 })
     ).toBe("Step 2 filled. Review this page, then Next page");
+    expect(
+      formatFlowProgress({ phase: "ready", step: 1, filledOk: 3, filledFail: 0, autoAdvanceMs: 2000 })
+    ).toBe("Step 2 filled. Next page in 2s");
     expect(
       formatFlowProgress({ phase: "done", step: 3, filledOk: 9, filledFail: 1 })
     ).toBe("Done. 4 steps filled (9 ok, 1 need attention). Review and submit.");
@@ -64,6 +76,75 @@ describe("formatNextLabel", () => {
     // Pressing Continue here registers an account, say so.
     expect(formatNextLabel(beat({ nextLabel: "Create Account" }))).toBe("Create Account ▶");
     expect(formatNextLabel(beat({ nextLabel: "Sign In" }))).toBe("Sign In ▶");
+  });
+
+  it("counts down in whole seconds while the page turns by itself", () => {
+    const counting = beat({ autoAdvanceMs: 2000, nextLabel: "Save and Continue" });
+    expect(formatNextLabel(counting, 2000)).toBe("Next page in 2s ▶");
+    expect(formatNextLabel(counting, 1200)).toBe("Next page in 2s ▶");
+    expect(formatNextLabel(counting, 900)).toBe("Next page in 1s ▶");
+    // Never "in 0s" while the click is on its way: that reads as stuck.
+    expect(formatNextLabel(counting, 0)).toBe("Next page in 1s ▶");
+    expect(formatNextLabel(beat({ autoAdvanceMs: 2000, nextLabel: "Create Account" }), 1500)).toBe(
+      "Create Account in 2s ▶"
+    );
+  });
+
+  it("drops the countdown once the page is held (no autoAdvanceMs)", () => {
+    expect(formatNextLabel(beat({ nextLabel: "Next" }), 1500)).toBe("Continue To The Next Page ▶");
+  });
+});
+
+describe("the countdown in the panel", () => {
+  let root: HTMLDivElement;
+  const gate = () => ({
+    wrap: root.querySelector<HTMLDivElement>(".ap-flow-next-wrap")!,
+    next: root.querySelector<HTMLButtonElement>("#ap-flow-next")!,
+    pause: root.querySelector<HTMLButtonElement>("#ap-flow-pause")!,
+  });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "";
+    root = document.createElement("div");
+    root.className = "ap-root";
+    root.innerHTML = buildHTML();
+    document.body.append(root);
+    installRefs(root);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows the counting button with Pause beside it, and ticks down", () => {
+    updateFlowProgress({ phase: "ready", step: 2, filledOk: 5, filledFail: 0, autoAdvanceMs: 2000 });
+    expect(gate().wrap.style.display).toBe("flex");
+    expect(gate().pause.style.display).toBe("");
+    expect(gate().next.textContent).toBe("Next page in 2s ▶");
+    vi.advanceTimersByTime(1100);
+    expect(gate().next.textContent).toBe("Next page in 1s ▶");
+  });
+
+  it("a held page keeps the button as a plain Continue and hides Pause", () => {
+    updateFlowProgress({ phase: "ready", step: 2, filledOk: 5, filledFail: 0, autoAdvanceMs: 2000 });
+    updateFlowProgress({ phase: "ready", step: 2, filledOk: 5, filledFail: 0 });
+    expect(gate().wrap.style.display).toBe("flex");
+    expect(gate().pause.style.display).toBe("none");
+    vi.advanceTimersByTime(3000); // the old countdown's ticker must be gone
+    expect(gate().next.textContent).toBe("Continue To The Next Page ▶");
+  });
+
+  it("hides the whole gate while the next page loads", () => {
+    updateFlowProgress({ phase: "ready", step: 2, filledOk: 5, filledFail: 0, autoAdvanceMs: 2000 });
+    updateFlowProgress({ phase: "advancing", step: 3, filledOk: 5, filledFail: 0 });
+    expect(gate().wrap.style.display).toBe("none");
+  });
+
+  it("offers Pause only while a page counts down", () => {
+    expect(showsPauseControl({ phase: "ready", step: 0, filledOk: 0, filledFail: 0, autoAdvanceMs: 2000 })).toBe(true);
+    expect(showsPauseControl({ phase: "ready", step: 0, filledOk: 0, filledFail: 0 })).toBe(false);
+    expect(
+      showsPauseControl({ phase: "paused", step: 0, filledOk: 0, filledFail: 0, pauseReason: "unfilled-required" })
+    ).toBe(false);
   });
 });
 
