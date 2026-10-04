@@ -91,6 +91,7 @@ export function dumpFieldsInPage() {
   const idCounts = new Map();
   for (const r of roots) r.querySelectorAll("[id]").forEach((e) => idCounts.set(e.id, (idCounts.get(e.id) || 0) + 1));
   const nameCounts = new Map();
+  const labelCounts = new Map();
   const keyOf = (el, label) => {
     // A uuid id is regenerated on every load (Ashby): keyed by it, the same box
     // was "name=None of the above" on one run and "#a1d5ed5c-…" on the next.
@@ -103,7 +104,12 @@ export function dumpFieldsInPage() {
     }
     const auto = el.getAttribute("data-automation-id");
     if (auto) return `auto=${auto}`;
-    return `label=${label.slice(0, 60)}`;
+    // A repeated row repeats its labels (Ashby's second "Search schools…"):
+    // numbered like names, so the second row can be pinned at all.
+    const key = `label=${label.slice(0, 60)}`;
+    const n = (labelCounts.get(key) || 0) + 1;
+    labelCounts.set(key, n);
+    return n === 1 ? key : `${key}#${n}`;
   };
 
   const comboValue = (el) => {
