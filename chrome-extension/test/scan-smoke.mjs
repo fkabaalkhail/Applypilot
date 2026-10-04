@@ -88,12 +88,29 @@ for (const key of Object.getOwnPropertyNames(window)) {
   }
 }
 
-const { scanPage, AutofillReconciler, MOCK_PROFILE, AUTOFILL_CONFIDENCE_THRESHOLD } =
-  await import(pathToFileURL(bundlePath).href);
+const {
+  scanPage,
+  formCountryHint,
+  getResolveContext,
+  setResolveContext,
+  AutofillReconciler,
+  MOCK_PROFILE,
+  AUTOFILL_CONFIDENCE_THRESHOLD,
+} = await import(pathToFileURL(bundlePath).href);
 rmSync(bundlePath);
 
 // --- scan ---------------------------------------------------------------------
-const { fields, registry } = scanPage(MOCK_PROFILE, false);
+// As contentScript.runScan does: a page that names no job country may name one
+// in its own work-authorization questions ("authorized to work in Canada"),
+// and the answers that depend on the country (sponsorship) are read with it.
+let { fields, registry } = scanPage(MOCK_PROFILE, false);
+if (!getResolveContext().jobCountry) {
+  const hint = formCountryHint(fields.map((f) => f.label));
+  if (hint) {
+    setResolveContext({ jobCountry: hint });
+    ({ fields, registry } = scanPage(MOCK_PROFILE, false));
+  }
+}
 
 console.log(`\nDetected ${fields.length} fields:\n`);
 for (const f of fields) {
@@ -157,7 +174,9 @@ expect("first name", doc.getElementById("first_name").value, "John");
 expect("last name", doc.getElementById("last_name").value, "Doe");
 expect("email", doc.getElementById("email").value, "john@example.com");
 expect("phone", doc.getElementById("phone").value, "+1 555 555 5555");
-expect("city", doc.getElementById("city").value, "Ottawa, ON, Canada");
+// A City box gets the city. The whole "Ottawa, ON, Canada" here was wrong
+// write #5 of the 2026-10-03 overnight report.
+expect("city", doc.getElementById("city").value, "Ottawa");
 expect("country select resolves token", doc.getElementById("country").value, "Canada");
 expect("linkedin", doc.getElementById("linkedin").value, "https://linkedin.com/in/johndoe");
 expect("github", doc.getElementById("github").value, "https://github.com/johndoe");
@@ -168,7 +187,11 @@ expect(
   doc.querySelector('input[name="sponsorship"]:checked')?.value,
   "no"
 );
-expect("company", doc.getElementById("company").value, "Example Company");
+// "Current Company" means a job still running: the sample profile's only job,
+// at Example Company, ended in 2025-08, so the box is left for the applicant
+// (decision 3 of the 2026-10-03 real-profile run). Its stated title is not
+// that job's ("Software Engineer Intern"), so "Current Job Title" still fills.
+expect("company (the only job has ended)", doc.getElementById("company").value, "");
 expect("title", doc.getElementById("title").value, "Software Engineer");
 expect(
   "school (nearby-text label)",
