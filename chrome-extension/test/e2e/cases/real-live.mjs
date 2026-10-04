@@ -213,6 +213,9 @@ export default [
       "label:final year of study": null,
       // select2: the hidden native select is filled, labelled by its question.
       "select~Post-Secondary institution": "University of Waterloo",
+      // The picker's display box, which the dumper reads since round 3: present
+      // once a school is chosen, and showing that school.
+      "label=University of Waterloo": { ifPresent: "University of Waterloo" },
       "label:availability for a 4-month": null,
       "label:age range": null,
       "label:ethnicity": "Prefer not to answer",
@@ -259,6 +262,8 @@ export default [
     ats: "workable",
     url: "https://apply.workable.com/mindex/j/84B10DB922/apply/",
     expect: {
+      // Round 3: the row holds her running co-op (Kinaxis): "I currently work here".
+      "name=current": "checked",
       "#firstname": "Maya",
       "#lastname": "Tremblay",
       "#email": P.email,

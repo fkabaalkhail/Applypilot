@@ -30,7 +30,10 @@ export default [
       "#address": { unchanged: true },
       "#cover_letter": null,
       "label:Salary Range": null,
-      "radio=QA_12563770": null,
+      // Round 3: a co-op takes enrolled students, and her master's finished in
+      // 2026 (a year-only graduation is done after June).
+      "radio=QA_12563770": "NO",
+      "ariaradio=Are you available to participate in a full double-block co-o": "NO",
       "radio=QA_12563778": "YES",
       "radio=QA_12457572": null,
       "aria-radiogroup~authorized to work in the United States": null,
