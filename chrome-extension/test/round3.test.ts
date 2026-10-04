@@ -6,7 +6,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { degreeRank, profileFacts } from "../src/content/profileFacts";
-import { deriveFieldOfStudy } from "../src/content/fieldMatcher";
+import { classifyField, deriveFieldOfStudy, resolveProfileValue } from "../src/content/fieldMatcher";
+import type { FieldSignals } from "../src/content/domUtils";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
 import { scanPage } from "../src/content/formScanner";
 import { matchOption } from "../src/content/writeEngine";
@@ -799,5 +800,77 @@ describe("an accent never splits a word in option matching (Ramp on Ashby, batch
   });
   it("'Université de Montréal' is 'Universite de Montreal'", () => {
     expect(matchOption(["Universite de Montreal", "Universite Laval"], (o) => o, (o) => o, "Université de Montréal")).toBe("Universite de Montreal");
+  });
+});
+
+describe("French labels once accents are folded in matching (2026-10-03)", () => {
+  const sig = (label: string): FieldSignals =>
+    ({ label, ariaLabel: "", placeholder: "", nameAttr: "", testId: "", idAttr: "", nearby: "", autocomplete: "", typeHint: "" }) as FieldSignals;
+  it("'Adresse électronique' is the email, never the street", () => {
+    expect(classifyField(sig("Adresse électronique")).category).toBe("email");
+    expect(classifyField(sig("Adresse courriel")).category).toBe("email");
+  });
+  it("'Adresse' and 'Région' keep their address parts", () => {
+    expect(classifyField(sig("Adresse")).category).toBe("addressStreet");
+    expect(classifyField(sig("Région")).category).toBe("addressState");
+  });
+});
+
+describe("Address Line 2 is never a copy of line 1 (Pinpoint, live re-run 2026-10-03)", () => {
+  let restore: () => void;
+  beforeAll(() => {
+    restore = stubLayout();
+  });
+  afterAll(() => restore());
+  const lines = (addressStreet: string) => {
+    document.body.innerHTML = `<form><label for="address1">Address Line 1</label><input id="address1" type="text"><label for="address2">Address Line 2</label><input id="address2" type="text"><label for="town">Town</label><input id="town" type="text"></form>`;
+    const fields = scanPage({ ...SPARSE_CANADIAN, addressStreet, addressCity: "San Jose", location: "San Jose, CA" }, false).fields;
+    const at = (id: string) => fields.find((f) => document.getElementById(id)!.getAttribute("data-ap-field") === f.id);
+    return { one: at("address1"), two: at("address2") };
+  };
+  it("a street with no unit: line 2 stays blank, and away from the AI (it got '1 Washington Sq' twice)", () => {
+    const { one, two } = lines("1 Washington Sq");
+    expect(one?.proposedValue).toBe("1 Washington Sq");
+    expect(two?.proposedValue ?? null).toBeNull();
+    expect(two?.deviceAbstained).toBe(true);
+  });
+  it("a street with a unit: line 2 is the unit", () => {
+    expect(lines("4520 rue Saint-Denis, app. 3").two?.proposedValue).toBe("app. 3");
+  });
+});
+
+describe("Paylocity's education rows: school type and 'Did you Graduate?' (live re-run 2026-10-03)", () => {
+  const LONDON: UserApplicationProfile = {
+    ...SPARSE_CANADIAN,
+    expectedGraduation: undefined,
+    education: [
+      { school: "Imperial College London", degree: "Master of Science in Computing", graduationYear: "2016" },
+      { school: "Trinity College Dublin", degree: "Bachelor of Arts in Computer Science", graduationYear: "2015" },
+    ],
+  };
+  const TYPES = ["--", "Unspecified", "High School", "Community College", "Vocational College", "College / University"];
+  const row = (category: "school" | "degree", options: string[], groupIndex: number, profile = LONDON) =>
+    resolveProfileValue(category, profile, { controlType: "combobox", options, groupIndex }, false);
+  it("School Type is the kind of school, not its name (it got 'Imperial College London')", () => {
+    expect(row("school", TYPES, 0)).toBe("College / University");
+    expect(row("school", TYPES, 1)).toBe("College / University");
+  });
+  it("'Did you Graduate?' is that row's own: Yes for a finished degree, No for one in progress", () => {
+    expect(row("degree", ["--", "Yes", "No"], 0)).toBe("Yes");
+    expect(row("degree", ["--", "Yes", "No"], 0, SPARSE_CANADIAN)).toBe("No");
+  });
+});
+
+describe("able to obtain a U.S. security clearance, for someone who is not a U.S. citizen (Pinpoint, live re-run 2026-10-03)", () => {
+  const Q = "Are you able to obtain/maintain a U.S. security clearance?";
+  const base = { ...SPARSE_CANADIAN, location: "San Jose, CA", country: "USA", securityClearance: "None" };
+  it("a green-card holder: No (clearances go to U.S. citizens)", () => {
+    expect(value(ask(Q, { options: YES_NO }, { ...base, workAuthorization: "U.S. permanent resident (green card)" }))).toBe("No");
+  });
+  it("a citizen with none yet: theirs to say", () => {
+    expect(ask(Q, { options: YES_NO }, { ...base, workAuthorization: "U.S. citizen" })?.status).toBe("abstain");
+  });
+  it("'willing to obtain' is willingness, not eligibility: not answered from citizenship", () => {
+    expect(value(ask("Are you willing to obtain a U.S. security clearance?", { options: YES_NO }, { ...base, workAuthorization: "U.S. permanent resident (green card)" }))).not.toBe("No");
   });
 });

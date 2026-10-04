@@ -1564,6 +1564,14 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
     if (c !== "none" && home && asked && asked !== home) return abstain("clearance:other-country");
     const active = /\bactive\b/.test(c);
     const eligible = /\beligible|previously\b/.test(c);
+    // A U.S. clearance goes to U.S. citizens: a permanent resident or visa
+    // holder is not ABLE to obtain one (Pinpoint, a green-card student, live
+    // 2026-10-03). Willingness is another question.
+    const usBasis = facts.workAuth.byCountry.get("US");
+    const notCitizen = usBasis !== undefined && ["permanent_resident", "work_permit", "student", "denied"].includes(usBasis.basis);
+    if (asked === "US" && /\b(able|eligible) to (obtain|get|acquire|hold|maintain)\b/.test(n) && notCitizen) {
+      return booleanResult(false, q, "clearance:us-citizens-only");
+    }
     if (/\b(able|eligible|willing) to (obtain|get|acquire)\b/.test(n)) return eligible || active ? booleanResult(true, q, "clearance:obtainable") : abstain("clearance:obtainable-unknown");
     if (c === "none") return booleanResult(false, q, "clearance");
     if (active) return booleanResult(true, q, "clearance");

@@ -18,7 +18,7 @@ import { MIN_CATEGORY_CONFIDENCE } from "../shared/constants";
 import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile } from "../shared/types";
 import type { FieldSignals } from "./domUtils";
 import { normalize } from "./optionMatch";
-import { isHigh, profileFacts } from "./profileFacts";
+import { degreeRank, isHigh, profileFacts } from "./profileFacts";
 
 // Text normalization ("candidate-firstName" → "candidate first name") lives in
 // optionMatch.ts, which the MAIN-world driver shares; re-exported for importers.
@@ -175,8 +175,8 @@ const CATEGORY_SPECS: CategorySpec[] = [
     patterns: [
       { re: /\be ?mail\b/ },
       { re: /\bcourriel\b/ }, // FR
-      // FR "adresse électronique"; normalize() strips the accent → "adresse
-      // lectronique", so the leading e/é is optional.
+      // FR "adresse électronique" (normalize() folds the accent: "adresse
+      // electronique"; it once stripped it to a space, hence the optional e).
       { re: /adresse (e|é)?lectronique/ },
     ],
   },
@@ -204,9 +204,9 @@ const CATEGORY_SPECS: CategorySpec[] = [
   // --- Structured address, more specific than the generic `location`, so these
   //     are ordered BEFORE it: an explicit street/city/state/postal/country field
   //     wins the tie, while a bare "Address"/"Location" field still falls to
-  //     `location`. FR keywords included; normalize() strips accents to spaces,
-  //     so "région" → "r gion" (caught via \bgion\b), but "province"/"ville"/
-  //     "pays"/"adresse"/"code postal" survive intact.
+  //     `location`. FR keywords included; normalize() folds accents ("région"
+  //     → "region"; \bgion\b stays for text stripped the old way), and
+  //     "province"/"ville"/"pays"/"adresse"/"code postal" are unaccented.
   {
     category: "addressStreet",
     patterns: [
@@ -217,8 +217,8 @@ const CATEGORY_SPECS: CategorySpec[] = [
     ],
     // "address" alone is ambiguous with "email address", an email field must
     // never classify as a street address. FR: "adresse courriel" / "adresse
-    // électronique" (normalize() strips the accent → "lectronique").
-    negative: /\be ?mail\b|\bip address\b|\bcourriel\b|\blectronique\b/,
+    // électronique" (normalize() folds the accent → "electronique").
+    negative: /\be ?mail\b|\bip address\b|\bcourriel\b|\be?lectronique\b/,
   },
   {
     category: "addressCity",
@@ -698,6 +698,31 @@ function isYesNoChoice(control: ResolveControl): boolean {
   return hasYesNoOptions(control.options) || control.controlType === "combobox";
 }
 
+/** The kinds of school a "School Type" list offers (never a school's name). */
+const SCHOOL_KIND = /^(high school|secondary school|community college|vocational( college| school)?|technical( college| school)?|trade school|college|university|college ?\/ ?university|graduate school|other)$/i;
+
+/**
+ * The option naming the KIND of school an education row is, or undefined when
+ * the options are not a list of kinds (a list of schools, a free-text box).
+ */
+function schoolTypeOption(edu: { school?: string; degree?: string } | undefined, control: ResolveControl): string | null | undefined {
+  if (!CHOICE_CONTROLS.includes(control.controlType) || !control.options?.length) return undefined;
+  const real = control.options.filter((o) => o.trim() && !/^(-+|select\b|choose\b|unspecified$)/i.test(o.trim()));
+  if (real.length < 2 || !real.every((o) => SCHOOL_KIND.test(o.trim()))) return undefined;
+  if (!edu) return null;
+  const name = edu.school ?? "";
+  const pick = (re: RegExp): string | null => {
+    const hits = real.filter((o) => re.test(o));
+    return hits.length === 1 ? hits[0] : null;
+  };
+  if (/\b(high|secondary) school\b/i.test(name)) return pick(/high school|secondary/i);
+  if (/\bcommunity college\b/i.test(name)) return pick(/community college/i);
+  if ((degreeRank(edu.degree ?? "") ?? 0) >= 4 || /\b(universit|college|institute|polytechnic|ecole|école)/i.test(name)) {
+    return pick(/universit/i) ?? pick(/^college$/i);
+  }
+  return null;
+}
+
 /** "Authorized to work in Canada" → Yes; "Not authorized" / "No" → No. */
 function toYesNo(statement: string): string {
   return /^\s*(no\b|not\b|none\b)/i.test(statement) ? "No" : "Yes";
@@ -956,9 +981,20 @@ export function resolveProfileValue(
       // Joined for display / single-text fields; a multi-select combobox splits
       // this back into one chip per skill (see comboboxEngine).
       return orNull(profile.skills?.filter((s) => s.trim()).join(", "));
-    case "school":
-      return orNull(edu?.school);
+    case "school": {
+      // "School Type" over High School / Community College / College /
+      // University (Paylocity's education row, live 2026-10-03): the kind of
+      // school, never its name.
+      const kind = schoolTypeOption(edu, control);
+      return kind !== undefined ? kind : orNull(edu?.school);
+    }
     case "degree": {
+      // "Did you Graduate?" in an education row (Paylocity): that row's own
+      // status, from its graduation date.
+      if (hasYesNoOptions(control.options)) {
+        const row = edu ? facts.education.entries.find((e) => e.school === (edu.school || "").trim() && e.degree === (edu.degree || "").trim()) : undefined;
+        return row?.completed === true ? "Yes" : row?.completed === false ? "No" : null;
+      }
       const d = orNull(edu?.degree);
       if (!d) return null;
       // A Degree DROPDOWN offers levels ("Bachelor's Degree"); a full degree

@@ -188,6 +188,13 @@ const ROW_CATEGORIES: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "experienceCurrent", "school", "degree", "fieldOfStudy", "graduationYear",
 ]);
 
+/** A second street line: "Address Line 2", "Address 2", "Apt / Suite". */
+function isAddressLine2(label: string, signals: FieldSignals): boolean {
+  if (/address-line2/i.test(signals.autocomplete ?? "")) return true;
+  const text = `${label} ${signals.nameAttr} ${signals.idAttr}`;
+  return /\b(address ?(line ?)?2|line ?2|addr(ess)?_?2|apt|apartment|suite|unit number)\b/i.test(text) || /\baddress2\b/i.test(text);
+}
+
 /** Categories whose answer is a single short fact. */
 const SINGLE_LINE_FACTS: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
   "firstName", "lastName", "fullName", "email", "phone", "location", "addressStreet", "addressCity",
@@ -363,6 +370,14 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   // "educationHistory.city.0" got the applicant's city, live 2026-10-03).
   if (source === "category" && APPLICANT_ADDRESS.has(category) && HISTORY_ROW.test(`${signals.nameAttr} ${signals.idAttr}`)) {
     return none(true, "row:not-applicant-address");
+  }
+  // Address Line 2 is the unit ("app. 3" of "4520 rue Saint-Denis, app. 3"),
+  // never a copy of line 1 (Pinpoint got "1 Washington Sq" twice, live
+  // 2026-10-03). No unit: blank, and nothing for the AI to invent.
+  if (category === "addressStreet" && value && isAddressLine2(label, signals)) {
+    const unit = /,\s*((?:apt|app|appt|apartment|unit|suite|ste|bureau|#)\b.*)$/i.exec(value);
+    if (!unit) return none(true, "address-line2:none");
+    value = unit[1].trim();
   }
   if (
     (category === "currentCompany" || category === "currentTitle") &&

@@ -132,6 +132,10 @@ function sameValue(written: string, observed: string): boolean {
   // "None" picked "Never held a clearance" (Brex, SpaceX, live 2026-10-03).
   const polarity = optionPolarity(written);
   if (polarity !== null && polarity === optionPolarity(observed)) return true;
+  // A native date input reads back the day typed as "01/04/2027" in ISO,
+  // "2027-01-04" (Paylocity, live 2026-10-03).
+  const day = isoDay(written);
+  if (day && day === isoDay(observed)) return true;
   // A place typeahead keeps its own spelling of the place typed: "Montréal,
   // QC" became "Montreal, Quebec, Canada" (Superhuman on Ashby, live 2026-10-03).
   if (written.includes(",") && observed.includes(",")) {
@@ -145,6 +149,15 @@ function sameValue(written: string, observed: string): boolean {
     );
   }
   return false;
+}
+
+/** "2027-01-04" for "2027-01-04" or the US "01/04/2027"; null otherwise. */
+function isoDay(text: string): string | null {
+  const t = text.trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (iso) return t;
+  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+  return us ? `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}` : null;
 }
 
 /** One field whose committed value disagrees with what was written. */

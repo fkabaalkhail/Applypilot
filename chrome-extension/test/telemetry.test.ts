@@ -228,6 +228,12 @@ describe("revertedFields", () => {
     expect(same("Yes", "No")).toEqual([{ fieldId: "a", cleared: false }]);
   });
 
+  it("a native date input reads back the same day in ISO: no revert (Paylocity, live 2026-10-03)", () => {
+    const day = (value: string, now: string) => revertedFields([{ fieldId: "a", value }], [{ fieldId: "a", value: now }], new Set(["a"]));
+    expect(day("01/04/2027", "2027-01-04")).toEqual([]);
+    expect(day("01/04/2027", "2027-01-05")).toEqual([{ fieldId: "a", cleared: false }]);
+  });
+
   it("another place of the same name is still a revert", () => {
     const out = revertedFields(
       [{ fieldId: "a", value: "London, ON, Canada" }],
