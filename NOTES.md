@@ -1,3 +1,120 @@
+# One Autofill click to the end of a Workday application (2026-10-04, night)
+
+You asked to finish a full Workday application with a single Autofill click:
+the next page shows at the bottom of the panel and the flow carries on by
+itself, without another Autofill click, to the end. Same branch, still local
+only: NOT pushed, NOT deployed. Nothing was submitted anywhere.
+
+**What it does now.** Click Autofill once on the job posting. The flow opens
+the application (Apply, then Apply Manually), creates the account with the
+email and password saved under Autofill Information > Account creation, and
+fills each page. When a page is filled, the panel's bottom button counts down
+("Next page in 2s ▶", or "Create Account in 2s ▶" on the account page) and
+the page turns by itself. It stops on the Review page and never clicks Submit.
+
+- Press the button to go at once.
+- **Pause** (beside it) holds the page: the button becomes "Continue To The
+  Next Page ▶" and waits for you. Clicking or typing in the page while it
+  counts down holds it the same way. A hold lasts one page.
+- A page with a required question still empty waits for you, as before.
+- If you turn a page with the site's own button, the flow follows and fills
+  the new page.
+- Off switch: `flowAutoContinue` in the extension's settings (on by default,
+  no panel toggle yet; the e2e harness turns it off).
+
+**How it was tested.** A real Workday application needs an account and real
+submissions, both off limits here. So I built a replica of one
+(`test/browser/fixtures/workdayReplica.mjs`), served under a real Workday
+address so the extension's Workday code runs, with Workday's field names
+taken from Workday's own application code (the Capital One page capture in
+`test/e2e/results/har/`). It has the posting, the Apply Manually chooser,
+Create Account (hidden consent box, live password rules, and the click
+overlay Workday puts over that button, whose handler is on the overlay), My
+Information, My Experience (rows behind
+Add buttons, month/year boxes, search lists, the résumé drop zone),
+Application Questions, Voluntary Disclosures, Self Identify and Review, as one
+app with one reused footer button, loading skeletons and re-renders. What is
+checked is what each page itself registered when it was saved.
+
+`npm run test:workday-flow`, real Chromium, the packaged extension, a US
+applicant with three jobs, a degree, EEO answers and a résumé:
+
+| scenario | result |
+| --- | --- |
+| one click on the posting, then hands off | Review in about 47 s; all six steps saved in order, none rejected; 40 checks on what each page registered (55 answers); Submit never clicked (48/48) |
+| Pause on a counting page | held 5 s, Continue turned it, the rest by itself (9/9) |
+| clicking into the page during the countdown | held the same way (7/7) |
+| the site's own Save and Continue during the countdown | followed, next page filled, nothing skipped or saved twice (9/9) |
+
+**What the replica caught.** These would have stopped or corrupted a real
+Workday application. All fixed, each with a test that fails on the old code:
+
+| page | problem | now |
+| --- | --- | --- |
+| My Information | State (Workday's `countryRegion`) read as the country: no option matched, left empty | "Texas" |
+| My Information | Phone Device Type read as the phone number: left empty | "Mobile" |
+| My Information | Phone Extension read as the phone number: the number was typed into it | left blank, never guessed (nor asked of the AI) |
+| any page with a required radio question | the flow believed answered radio groups were empty and waited ("Have you previously worked for Acme?"); older than this work | fixed |
+| My Experience | dates written like "Jun 2012" were typed whole into each box: the Month box read "2012" | month 6, year 2012 |
+| My Experience | the education "To (Actual or Expected)" year (`lastYearAttended`) never filled | the graduation year |
+| Voluntary Disclosures | ethnicity read as the city ("ethni**city**Dropdown"): left empty | the stated race |
+| Self Identify | the date was recognized too weakly to be filled | today's date |
+| Self Identify | the disability boxes ("Please check one of the boxes below:") were not recognized as the disability question; "Prefer not to say" found no "I do not want to answer"; an answer with a comma came out twice | "I do not want to answer" |
+| Review | no fields on the page, so the flow ended with "No application form found" and never set up Submit tracking | ends at Review; your submit is recorded in the dashboard |
+
+Also fixed: `comboboxEngine.ts` had a literal NUL byte in a string since
+August, so git treated it as binary (its diffs read "Binary files differ").
+
+**Your three rules.** Kept, with one refinement to the in-person rule:
+occasional visits (team gatherings, offsites, a few trips a year, a quarterly
+visit) are not in-person work, so someone who will not relocate no longer
+gets No for them. A regular schedule with occasional offsites still counts as
+in-person. Enrollment and U.S. clearance rules unchanged.
+
+**Decisions** (each easy to change)
+1. The countdown is 2 seconds (`AUTO_ADVANCE_MS` in `flowController.ts`).
+2. The account page turns by itself again, with your saved credentials. An
+   August change had made it wait for a press; that was not something you
+   asked for.
+3. A hold (Pause, or touching the page) lasts one page, not the whole run.
+4. A press restarts the flow's 10-minute limit, so a page you held while
+   reading no longer times out when you press Continue.
+
+**Tests**
+- Unit: 1619/1619 (134 files). Type check clean.
+- Browser: Workday replica 73/73; the generic multi-page probe (now
+  hands-free), the Workday account and account-gate probes, the churn,
+  shadow-click and driver probes, extension load: all pass. Browser suite
+  19/19.
+- Live pinned pages touched by today's shared changes (decline wording,
+  disability/veteran groups, every page with a checkbox group): 37 pages and
+  the synthetic Workday forms. All pass. Four pins changed on purpose:
+  three held-out Lever pages now take the form's decline for an applicant who
+  stated no disability answer (as every other EEO question already did;
+  "I do not want to answer" was not recognized as a decline), and the
+  synthetic Workday form's ethnicity is now answered. Two pages (Workable
+  FSSI, Rippling 4AG) missed one field on the first run and passed on a rerun.
+
+**Needs you / manual verification**
+- **A real Workday application, end to end.** Not testable here. In
+  particular, unverified on real Workday:
+  - its live password-rule messages: if they stay on screen once the
+    password is valid, the flow reads them as errors and waits on the
+    account page for one press;
+  - tenants that send a verification email after Create Account: the flow
+    stops there; after verifying and signing in, click Autofill again;
+  - whether a tenant uses the older ids (`addressSection_countryRegion`,
+    `phone-device-type`) or the newer ones (`formField-countryRegion`,
+    `formField-phoneType`): both are handled, only the older ones were in the
+    replica.
+- **The AI path.** These runs use a dead AI, so what the AI writes for the
+  fields still sent to it (role descriptions, essays) was not seen.
+- **Known noise.** The extension's own report flags some correct Workday
+  answers as "reverted": a month box compared with the whole date, a
+  dropdown answer compared with the profile's wording ("6" vs "5-7 years").
+  The pages hold the right values; only the self-report is wrong. Telemetry
+  only, nothing on screen.
+
 # Round 3: new forms, new people (2026-10-03, night)
 
 You asked to keep going and to vary the data, the cases and the forms. Same
