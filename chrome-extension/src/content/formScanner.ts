@@ -708,6 +708,21 @@ function remapRepeatingRows(
 
 const BARE_ADDRESS = /^[\W\d]*(home |mailing |street |current |residential |permanent )?address( line)?( ?1)?[\W]*$/i;
 
+/** With an Address Line 2 holding the unit ("app. 3"), line 1 drops it:
+ *  "4520 rue Saint-Denis", not the unit twice. */
+function splitStreetUnit(fields: DetectedField[]): void {
+  const units = fields.filter(
+    (f) => f.category === "addressStreet" && f.proposedValue && /^(apt|app|appt|apartment|unit|suite|ste|bureau|#)\b/i.test(f.proposedValue)
+  );
+  if (units.length !== 1) return;
+  const suffix = `, ${units[0].proposedValue}`;
+  for (const f of fields) {
+    if (f !== units[0] && f.category === "addressStreet" && f.proposedValue?.endsWith(suffix)) {
+      f.proposedValue = f.proposedValue.slice(0, -suffix.length);
+    }
+  }
+}
+
 /**
  * "Address" alone classifies as the generic `location` (a one-line "where do
  * you live"), which is right on a form with no other location fields. On a form
@@ -1178,6 +1193,7 @@ export function scanPage(
 
   // A bare "Address" next to separate City / Postal fields is the street line.
   reclassifyBareAddress(fields, registry, profile, adapter, fillEEO);
+  splitStreetUnit(fields);
   // Rows repeated with the same ids (Ashby) → indices by position.
   assignRowsByPosition(fields, registry, profile, adapter, fillEEO);
   reclassifyEducationRowDates(fields, registry, profile);

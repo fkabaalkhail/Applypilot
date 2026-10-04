@@ -834,8 +834,10 @@ describe("Address Line 2 is never a copy of line 1 (Pinpoint, live re-run 2026-1
     expect(two?.proposedValue ?? null).toBeNull();
     expect(two?.deviceAbstained).toBe(true);
   });
-  it("a street with a unit: line 2 is the unit", () => {
-    expect(lines("4520 rue Saint-Denis, app. 3").two?.proposedValue).toBe("app. 3");
+  it("a street with a unit: line 2 is the unit, and line 1 the street without it", () => {
+    const { one, two } = lines("4520 rue Saint-Denis, app. 3");
+    expect(two?.proposedValue).toBe("app. 3");
+    expect(one?.proposedValue).toBe("4520 rue Saint-Denis");
   });
 });
 
