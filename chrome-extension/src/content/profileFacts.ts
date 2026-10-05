@@ -486,6 +486,9 @@ export function needsSponsorshipIn(auth: WorkAuthFacts, countryCode: string | nu
 export interface EmploymentFacts {
   /** Merged, fractional years across all dated rows (overlaps counted once). */
   totalYears: Fact<number> | null;
+  /** The same from the dated rows alone, whatever figure the profile states:
+   *  a stated "3" may count only a new career. */
+  datedYears: Fact<number> | null;
   currentCompany: Fact<string> | null;
   currentTitle: Fact<string> | null;
   /** The most recent row whether or not it is current ("previous employer"). */
@@ -530,10 +533,8 @@ export function employmentFacts(profile: UserApplicationProfile, today: Date): E
   // Years: merged intervals. Only high when EVERY row was datable; a row we
   // could not read might be years long, so the total would be a lower bound.
   let totalYears: Fact<number> | null = null;
-  const stated = parseFloat((profile.yearsOfExperience || "").replace(/[^0-9.]/g, ""));
-  if (profile.yearsOfExperience?.trim() && Number.isFinite(stated)) {
-    totalYears = fact(stated, "high", "profile:yearsOfExperience");
-  } else if (spans.length > 0) {
+  let datedYears: Fact<number> | null = null;
+  if (spans.length > 0) {
     const sorted = [...spans].sort((a, b) => a.start.getTime() - b.start.getTime());
     const merged: Array<[Date, Date]> = [];
     for (const { start, end } of sorted) {
@@ -544,9 +545,13 @@ export function employmentFacts(profile: UserApplicationProfile, today: Date): E
     }
     const days = merged.reduce((sum, [a, b]) => sum + (b.getTime() - a.getTime()) / DAY_MS + 1, 0);
     const years = Math.round((days / 365.25) * 100) / 100;
-    totalYears = fact(years, undatable === 0 ? "high" : "medium", "experience:merged-spans");
-  } else if (rows.length === 0) {
-    totalYears = null;
+    datedYears = fact(years, undatable === 0 ? "high" : "medium", "experience:merged-spans");
+  }
+  const stated = parseFloat((profile.yearsOfExperience || "").replace(/[^0-9.]/g, ""));
+  if (profile.yearsOfExperience?.trim() && Number.isFinite(stated)) {
+    totalYears = fact(stated, "high", "profile:yearsOfExperience");
+  } else {
+    totalYears = datedYears;
   }
 
   const currentRows = spans.filter((s) => s.current).sort((a, b) => b.start.getTime() - a.start.getTime());
@@ -584,6 +589,7 @@ export function employmentFacts(profile: UserApplicationProfile, today: Date): E
 
   return {
     totalYears,
+    datedYears,
     currentCompany,
     currentTitle,
     mostRecentCompany,

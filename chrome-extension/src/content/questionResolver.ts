@@ -43,6 +43,7 @@ import { dialCodeOf, phoneCountryName } from "./phoneNumber";
 import { deriveFieldOfStudy } from "./fieldMatcher";
 import { snapSchool } from "./schoolMatch";
 import { onsiteVerdict, resolveDefault } from "./defaultAnswers";
+import { STATEMENT_WORDS, askedOfStatement } from "./statementText";
 
 export interface QuestionInput {
   label: string;
@@ -85,7 +86,9 @@ const answer = (value: string, rule: string, confidence: Confidence = "high"): Q
  * other abstention leaves the field to the backend's AI (essays, opinions,
  * a skill's years), which is the right tool once it has credits again.
  */
-const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled|school-name:not-enrolled|discipline:no-degree-at-level|f1-status|clearance:level-unknown|high-school:not-in-profile|school-schedule:unknown|conditional-follow-up|phone-extension:not-in-profile)/;
+// "region-choice:outside-not-offered": another country's states, the
+// applicant's own not among them; any pick is a guess.
+const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled|school-name:not-enrolled|discipline:no-degree-at-level|f1-status|clearance:level-unknown|high-school:not-in-profile|school-schedule:unknown|conditional-follow-up|phone-extension:not-in-profile|region-choice:outside-not-offered)/;
 const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule, blockBackend: BLOCK_BACKEND_RULES.test(rule) });
 
 /** Lowercase, accents stripped, apostrophes dropped, punctuation → space. */
@@ -258,7 +261,16 @@ const NEEDS_RIGHT =
   /\b(do|does|will|would|shall) you\b.{0,20}\b(require|need)\b.{0,30}\b(work authori[sz]ation|authori[sz]ation to work|work permit|work visa|employment authori[sz]ation)\b/;
 /** Asks WHICH sponsorship or visa, not whether: no profile answer states it. */
 const SPONSOR_TYPE = /\b(what|which) (type of |kind of |form of )?(visa )?(sponsorship|visa|work permit)\b|\b(type|kind|form) of (visa |work )?(sponsorship|visa|permit)\b/;
-const WITHOUT_SPONSOR = /\bwithout (the )?(need (for|of) |needing |requiring |requirement (for|of) )?(any )?(current or future )?(visa |employer |employment |immigration |company )?sponsor/;
+// Up to two kinds before it: "without employment visa sponsorship" (OnLogic,
+// Workable bank 2026-10-05) read as a plain work-right question.
+const WITHOUT_SPONSOR = /\bwithout (the )?(need (for|of) |needing |requiring |requirement (for|of) )?(any )?(current or future )?((visa|employer|employment|immigration|company) ){0,2}sponsor/;
+/** The applicant's own sentence states the right ("I am legally authorized to
+ *  work in the United States and will not require visa sponsorship", DISA
+ *  Technologies on Workable, 2026-10-05): Yes affirms all of it. */
+const STATES_RIGHT = /^i am\b[^.?]{0,30}\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able)\b/;
+/** Asks about now only: "currently", nothing about later. */
+const NOW_ONLY = (n: string): boolean =>
+  /\b(now|currently|at this time|presently)\b/.test(n) && !/\b(future|later|eventually|ever|at any (point|time)|going forward|ongoing)\b/.test(n);
 
 /** A lasting right: "permanent work authorization", "without restriction(s)". */
 const PERMANENT_RIGHT =
@@ -358,6 +370,7 @@ function chooseSponsorshipOption(options: string[], need: boolean, stated: strin
 }
 
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
+  if (RIGHT_AS_CITIZEN(n)) return null;
   const h1b = resolveH1bHistory(q, n, profile);
   if (h1b) return h1b;
   const opt = resolveOptExtension(q, n, profile);
@@ -394,7 +407,7 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   // "Will you require sponsorship … to legally work in the U.S.?" (ZipRecruiter,
   // live 2026-10-03) asks about SPONSORSHIP; its work-right words are only the
   // purpose. A work-right phrase counts when it is asked ("are you authorized…").
-  const sponsorAsked = hasSponsor && REQUIRES_SPONSOR.test(n) && !ASKS_RIGHT.test(n);
+  const sponsorAsked = hasSponsor && REQUIRES_SPONSOR.test(n) && !ASKS_RIGHT.test(n) && !STATES_RIGHT.test(n);
   const hasRight = !sponsorAsked && (WORK_RIGHT.test(n) || isAbleToWorkInCountry(n, q.label));
   if (!hasRight && !hasSponsor) return null;
   // "Will you require relocation assistance or visa sponsorship?" asks two
@@ -434,12 +447,23 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   }
 
   // "Are you eligible to work in Canada without sponsorship?" = authorized AND no sponsorship.
-  if (hasRight && WITHOUT_SPONSOR.test(n)) {
+  // "I am authorized … and will not require visa sponsorship" affirms the same.
+  if (hasRight && (WITHOUT_SPONSOR.test(n) || (STATES_RIGHT.test(n) && hasSponsor && NEGATED_NEED.test(n)))) {
     if (!isBooleanQuestion(q)) return abstain("work-auth-without-sponsorship:not-boolean");
     const a = authorizedIn(facts.workAuth, country, residence);
     const s = needsSponsorshipIn(facts.workAuth, country, residence);
     if (isHigh(a) && a.value === false) return booleanResult(false, q, "work-auth-without-sponsorship:not-authorized");
-    if (isHigh(s) && s.value === true) return booleanResult(false, q, "work-auth-without-sponsorship:needs-sponsorship");
+    if (isHigh(s) && s.value === true) {
+      // "CURRENTLY able to work … without sponsorship?" (OnLogic): OPT needs
+      // none until it ends; an H-1B is sponsored now.
+      // The ASKED sentence's "currently": "This position is not currently
+      // available for H-1B visa sponsorship. Are you authorized … without need
+      // for sponsorship?" (RentVision) asks about any time.
+      if (NOW_ONLY(qnorm(askedSentenceOf(q.label))) && isHigh(a) && a.value === true && !sponsorshipNeededNow(n, facts, profile, country, residence)) {
+        return booleanResult(true, q, "work-auth-without-sponsorship:not-now");
+      }
+      return booleanResult(false, q, "work-auth-without-sponsorship:needs-sponsorship");
+    }
     if (isHigh(a) && a.value === true && isHigh(s) && s.value === false) {
       return booleanResult(true, q, "work-auth-without-sponsorship");
     }
@@ -469,7 +493,7 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
     // "Will you NOW require sponsorship…?" beside "…in the FUTURE…?" (DoorDash,
     // live 2026-10-05: both Yes for an OPT holder). "Do you now, or will you
     // ever, require…" (Toast, question bank 2026-10-05) asks about later too.
-    const nowOnly = /\b(now|currently|at this time|presently)\b/.test(n) && !/\b(future|later|eventually|ever|at any (point|time)|going forward)\b/.test(n);
+    const nowOnly = NOW_ONLY(n);
     if (nowOnly && now === false) return booleanResult(false, q, "sponsorship:not-now");
     // A question phrased as the inverse ("Can you work WITHOUT sponsorship?")
     // without a work-right phrase ("…work for us without sponsorship").
@@ -598,7 +622,14 @@ function resolveStatusChoice(q: QuestionInput, facts: ProfileFacts, country: str
   return pick ? answer(pick, `work-auth-status:${auth.basis}:${countryName}`) : null;
 }
 
-const CITIZEN_Q = /\b(are you|is the applicant) (a |an )?((u ?s|us|united states|canadian|american|british|uk) )?citizen\b|\bcitizen of\b|\bcitizenship\b/;
+// "Check every country of which you are a citizen" (Open Data Jobs on
+// Workable, 2026-10-05) got the country of RESIDENCE: US for an H-1B worker.
+// "…authorized to work in the U.S. as a U.S. citizen…" (Credence) asks
+// citizenship, not any work right.
+const CITIZEN_Q = /\b(are you|is the applicant) (a |an )?((u ?s|us|united states|canadian|american|british|uk) )?citizen\b|\bcitizen of\b|\bcitizenship\b|\bwhich you are an? citizen\b|\bas an? ((u ?s|us|united states|canadian|american|british|uk) )?citizen\b/;
+/** A work right asked only as a citizen's (no visa or other status beside it). */
+const RIGHT_AS_CITIZEN = (n: string): boolean =>
+  /\bas an? ((u ?s|us|united states|canadian|american|british|uk) )?citizen\b/.test(n) && !/\b(visa|permit|permanent resident|green card|other|status)\b/.test(n);
 
 /**
  * "Since obtaining your most recent citizenship, did you afterwards become a
@@ -779,7 +810,11 @@ function renderCountry(country: Country, q: QuestionInput, rule: string): Questi
   });
   if (hits.length === 1) return answer(hits[0], rule);
   const direct = pickOption(opts, country.name);
-  return direct ? answer(direct, rule) : abstain(`${rule}:no-matching-option`);
+  if (direct) return answer(direct, rule);
+  // Not listed: the list's own "Other" (a German citizen among "United States
+  // | Australia | Canada | New Zealand | United Kingdom | Other").
+  const other = opts.filter((o) => /^other\b/i.test(o.trim()));
+  return other.length === 1 && hits.length === 0 ? answer(other[0], `${rule}:other`) : abstain(`${rule}:no-matching-option`);
 }
 
 const OUTSIDE_OPTION = /\b(not applicable|n a|none|other|outside|international|non us|not in the|i do not (live|reside)|not a us|foreign|not listed)\b|^na$/;
@@ -872,7 +907,9 @@ function inWorldRegion(c: Country, option: string): boolean {
 
 /** "Which state do you reside in?" / a State or Province select. */
 function resolveRegionChoice(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
-  const asksRegion = q.category === "addressState" || /\b(which|what) (state|province)\b|\bstate (or province )?(of|you) (residence|reside|live)\b|\bprovince of residence\b|\bstate region (in which|where) you (currently )?(reside|live)\b/.test(n);
+  // "Please select the state where you will reside and work" (Calendly,
+  // question bank 3) too.
+  const asksRegion = q.category === "addressState" || /\b(which|what) (state|province)\b|\bstate (or province )?(of|you) (residence|reside|live)\b|\bprovince of residence\b|\bstate region (in which|where) you (currently )?(reside|live)\b|\b(state|province) (where|in which) you (will )?(currently )?(reside|live|work)\b/.test(n);
   if (!asksRegion || !q.options || q.options.length < 3) return null;
   const loc = facts.location;
   if (isHigh(loc.region)) {
@@ -1001,12 +1038,30 @@ function resolveYearsOfExperience(q: QuestionInput, n: string, facts: ProfileFac
   // 2026-10-03: answered "3+ years" from six years of teaching).
   const narrowed =
     /\bexperience\b(?:\s+(?:do|did|have|has|you|of|that|which|would|say|in total)){0,5}(?:\s+[a-z]+ing(?:\s+[a-z]+){0,3}?)?\s+(?:with|in|using|on|as|doing|working with|working in|leading|managing)\s+(?:a |an |the )?([a-z0-9 +#.-]{2,40})/.exec(n);
-  if (narrowed) {
-    const obj = narrowed[1].trim();
+  // An activity right after it narrows it too: "…experience performing system
+  // administration of Microsoft Windows Server…", "…experience do you have
+  // owning customer implementations…", "…your experience servicing industrial
+  // equipment" (Saalex, JeffreyM, Smartflower on Workable, 2026-10-05) all
+  // got the career total.
+  const activity = narrowed
+    ? null
+    : /\bexperience\b(?:\s+(?:do|did|have|has|you|of|that|which|would|say|in total)){0,5}\s+([a-z]+ing)\s+((?:[a-z0-9+#.-]+\s*){1,4})/.exec(n);
+  // A count no career reaches is No whatever it narrows to: the specific
+  // experience is part of the whole. The whole as dated rows, never a stated
+  // figure (a bootcamp graduate's "3" counts only the new career).
+  const short = (): QuestionResult => {
+    const total = facts.employment.datedYears;
+    const need = /\b(at least|minimum( of)?|more than|over|greater than)?\s*(\d+(?:\.\d+)?)\s*\+?\s*(or more\s+)?(years?|yrs)\b/.exec(n);
+    if (!isBooleanQuestion(q) || !need || !isHigh(total)) return null;
+    const strict = /more than|over|greater than/.test(need[1] ?? "");
+    return (strict ? total.value <= Number(need[3]) : total.value < Number(need[3])) ? booleanResult(false, q, "years-experience:total-below") : null;
+  };
+  if (narrowed || (activity && !/^(working|having|being)$/.test(activity[1]))) {
+    const obj = narrowed ? narrowed[1].trim() : `${activity![1]} ${activity![2]}`.trim();
     if (!/^(total|industry|the industry|professional (setting|capacity|environment)s?|similar roles?|this field|the field|related fields?|the workforce|a professional|full time|paid)\b/.test(obj)) {
       domainWords.push(...obj.split(/\s+/).slice(0, 3));
       const dom = DOMAINS.find((d) => d.q.test(obj));
-      if (!dom) return abstain("years-experience:narrowed");
+      if (!dom) return short() ?? abstain("years-experience:narrowed");
     }
   }
   // A stack in parentheses after the experience narrows it too: "…fullstack
@@ -1074,14 +1129,25 @@ function optionRank(o: string): number | null {
 
 function resolveEducationLevel(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   const ed = facts.education;
-  // "Do you have / have you completed a bachelor's degree?"
-  const asked = /\b(do you have|have you (completed|obtained|earned|received|attained)|do you hold|did you (complete|earn|obtain))\b/.test(n) ? degreeRank(n) ?? optionRank(n) : null;
+  // "Do you have / have you completed a bachelor's degree?". "Do you currently
+  // hold a minimum of a Bachelor's degree…" and "Do you meet the education
+  // requirements, a bachelor's degree minimum?" too (Avalore, Credence on
+  // Workable, 2026-10-05: blank, and Yes for a student and a bootcamp
+  // graduate as an accepted requirement).
+  const asked =
+    /\b(do you (currently |presently |already )?(have|hold|possess)|have you (completed|obtained|earned|received|attained)|did you (complete|earn|obtain))\b|\bdo you meet (the |our |this )?(e\w*cation(al)?|degree|academic) (requirements?|qualifications?|criteria)\b/.test(n)
+      ? /\b(hs|high school|secondary school|ged)\b/.test(n) ? 1 : degreeRank(n) ?? optionRank(n)
+      : null;
   if (asked && isBooleanQuestion(q)) {
     if (/\b(in|related|relevant) (to )?(a |the )?(computer|engineering|stem|related field|technical|science|business)\b|\bfield\b|\bmajor\b/.test(n)) {
       return abstain("degree-held:field-qualified");
     }
     const pursuing = /\b(or (are )?(you )?(currently )?(pursuing|enrolled|working towards|working toward|completing)|in progress|expected)\b/.test(n);
-    const rank = pursuing ? ed.highestRank : ed.highestCompletedRank;
+    // Anyone in or past a degree finished high school: "Do you have a HS
+    // Diploma or GED?" got No from a university student (Saalex on Workable).
+    const past = ed.entries.some((x) => x.rank !== null && x.rank >= 3) ? 1 : 0;
+    const held = pursuing ? ed.highestRank : ed.highestCompletedRank;
+    const rank = past && asked <= past && (!isHigh(held) || held.value < past) ? { value: past, confidence: "high" as const, source: "education:degree-implies-high-school" } : held;
     if (isHigh(rank)) return booleanResult(rank.value >= asked, q, "degree-held");
     if (!pursuing && isHigh(ed.highestRank) && ed.highestRank.value < asked) return booleanResult(false, q, "degree-held:below");
     return abstain("degree-held:unknown");
@@ -1896,7 +1962,11 @@ function resolveEducationSummary(q: QuestionInput, n: string, facts: ProfileFact
   const asksGrad =
     /\b(graduation|completion) (date|year|month|term)\b|\b(month|year|date|term)s?( \w+)? of (graduation|completion)\b|\bexpected (month|year|date|term)\b|\bwhen (will|do|would) you graduate\b/.test(n);
   if ([asksSchool, asksProgram, asksGrad].filter(Boolean).length < 2) return null;
-  const e = facts.education.primary;
+  // "Enter your undergraduate major … and the educational institution(s)
+  // attended" (Open Data Jobs on Workable, 2026-10-05) got the master's: the
+  // bachelor's alone answers it.
+  const bachelors = facts.education.entries.filter((x) => x.rank === 4);
+  const e = /\bundergrad/.test(n) ? (bachelors.length === 1 ? bachelors[0] : null) : facts.education.primary;
   if (!e?.school) return abstain("education-summary:unknown");
   const parts: string[] = [];
   if (asksSchool) parts.push(e.school);
@@ -1915,8 +1985,14 @@ function resolveEducationSummary(q: QuestionInput, n: string, facts: ProfileFact
  * test scores. When the list offers a "did not take / do not recall" option,
  * that is the answer that claims nothing; otherwise blank.
  */
+/** A test by name; "Act" after a law's words is the law ("Americans with
+ *  Disabilities Act" with "may result from" read as an ACT score, and SSCI's
+ *  certification went unaccepted; Workable bank, 2026-10-05). */
+const TEST_NAME =
+  /\b(sat|gre|gmat|lsat|mcat|toefl|ielts|psat)\b|(?<!\b(disabilit(y|ies)|rights|care|protection|privacy|reform|labor|standards|employment|security|accountability|portability|reinvestment|leave|discrimination|opportunity|credit reporting|reporting) )\bact\b/;
+
 function resolveTestScore(q: QuestionInput, n: string): QuestionResult {
-  if (!/\b(sat|act|gre|gmat|lsat|mcat|toefl|ielts|psat)\b/.test(n) || !/\b(score|scores|result|results|test)\b/.test(n)) return null;
+  if (!TEST_NAME.test(n) || !/\b(score|scores|test|tests|exam|exams)\b|\b(test|exam|score) results?\b/.test(n)) return null;
   if (!q.options?.length) return q.kind === "text" || q.kind === "number" ? abstain("test-score:unknown") : null;
   const na = q.options.filter((o) => /\b(did not take|have not taken|havent taken|not taken|do not recall|dont recall|not applicable|n a|none)\b/.test(qnorm(o)));
   // "Did not take/Do not recall" beside "Other - did not take" (SpaceX's GRE,
@@ -2024,6 +2100,18 @@ function resolveSchoolName(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   // ZipRecruiter; question bank 2026-10-05).
   if (/\bor (did you |have you )?(last |most recently |previously )?(attend(ed)?|graduated?|studied)\b|\b(did|have) you (last |most recently |previously )?(attend(ed)?|graduated?|studied)\b/.test(n)) {
     entry = facts.education.primary;
+  } else if (/\b(will you be|you will be) (enrolled|attending|studying)\b/.test(n)) {
+    // "At which university will you be enrolled for the Fall 2027 semester?"
+    // (RentVision on Workable, 2026-10-05) got every graduate's old school:
+    // the school of a degree still running then, else blank.
+    entry = entries.find((e) => e.completed === false) ?? null;
+    const term = /\b(spring|summer|fall|autumn|winter) (19|20)\d{2}\b/.exec(n);
+    if (entry && term) {
+      const span = optionMonthSpan(term[0]);
+      const g = entry.graduation;
+      if (!span || !g || g.latest.getUTCFullYear() * 12 + g.latest.getUTCMonth() < span[0]) entry = null;
+    }
+    if (!entry) return abstain("school-name:not-enrolled");
   } else if (/\bcurrently attend(ing)?\b|currently enrolled|\b(do|will) you attend\b|\b(school|university|college|institution) you attend\b|\bare you attending\b/.test(n)) {
     entry = entries.find((e) => e.completed === false) ?? null;
     if (!entry) return abstain("school-name:not-enrolled");
@@ -2373,7 +2461,7 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
 
 /** The sentence a label asks (its last question, else its last sentence), as written. */
 function askedSentenceOf(label: string): string {
-  const parts = (label || "").split(/(?<=[.?!])\s+/).map((s) => s.trim()).filter(Boolean);
+  const parts = (label || "").split(/(?<=[.?!]["”’)]?)\s+(?=["“‘(]?[A-Z0-9])/).map((s) => s.trim()).filter(Boolean);
   return [...parts].reverse().find((s) => /\?\W*$/.test(s)) ?? parts[parts.length - 1] ?? "";
 }
 
@@ -2534,7 +2622,9 @@ const DEFAULTABLE = /^(relocation:unknown|former-employee:no-history|former-empl
 
 /** A question about the applicant's HIGH school (its name, year, grades), which
  *  no profile education row describes. */
-const HIGH_SCHOOL = /\b(high school|secondary school)\b/;
+// "Highschool Name & Location:" (Saalex on Workable, 2026-10-05) got the
+// city the applicant lives in now.
+const HIGH_SCHOOL = /\b(high ?school|secondary school)\b/;
 const HIGH_SCHOOL_DETAIL = /\b(name|year|graduat\w*|date|attend\w*|where|which|gpa|grades?|location|city)\b/;
 
 const PLACEHOLDER_OPTION = /^(select|choose|please select|please choose|select an option|select one|--)(\W|$)/i;
@@ -2569,12 +2659,27 @@ export function resolveQuestion(
   }
   const conditional = resolveConditional(q, raw, facts, profile, ctx);
   if (conditional !== undefined) return conditional;
+  // "If necessary, are you willing to relocate? (Please check YES if you
+  // already live in the Lincoln, NE area.)" (RentVision on Workable,
+  // 2026-10-05): the note says how to answer, the question is the move. Read
+  // as "do you live in Lincoln?", everyone willing to move said No.
+  const yesIf = /\(?\s*(?:please )?(?:check|select|answer|choose|mark|click|tick|pick) ["“']?yes["”']? if you\b[^.)?]*[.)]?\)?/i.exec(raw);
+  if (yesIf && /\brelocat|\bmov(e|ing) to\b/i.test(raw.replace(yesIf[0], " "))) {
+    const local = resolveResidence({ ...q, label: yesIf[0] }, qnorm(yesIf[0]), facts, profile);
+    if (local?.status === "answer" && optionPolarity(local.value) === true) return local;
+    return resolveQuestion({ ...q, label: raw.replace(yesIf[0], " ").replace(/\s+/g, " ").trim() }, facts, profile, ctx);
+  }
   // "How did you hear about this position? If referred, by who?" (Kenect on
   // Breezy, live 2026-10-03): an add-on starting with "if" asks only when it
   // applies, so the question is judged by its first sentence.
   const sentences = raw.split(/(?<=\?)\s*/);
   const asked = sentences.length > 1 && /^\s*if\b/i.test(sentences.slice(1).join(" ")) ? qnorm(sentences[0]) : n;
-  if (UNANSWERABLE.test(asked)) return abstain("unanswerable-from-profile");
+  // A long statement is judged by what it asks: SSCI's certification ("…a
+  // consumer credit report or criminal records check may be necessary…",
+  // Workable bank, 2026-10-05) asks nothing about a record.
+  const words = n.split(" ").length;
+  const statement = words >= STATEMENT_WORDS;
+  if (UNANSWERABLE.test(statement ? qnorm(askedOfStatement(raw, words)) : asked)) return abstain("unanswerable-from-profile");
   // A phone extension: no profile holds one, and a guess (the AI's, or the
   // phone number again, as Workday's "phone-extension" once got) dials wrong.
   if (/^(phone |telephone )?ext(ension)?( number)?$/.test(asked)) return abstain("phone-extension:not-in-profile");
@@ -2597,10 +2702,23 @@ export function resolveQuestion(
     return abstain("high-school:not-in-profile");
   }
 
+  // A note on what follows a No ("Are you at least 18 years or older? (If no,
+  // you may be required to provide authorization to work)", Saalex on
+  // Workable, 2026-10-05) asks nothing: read as the question, three adults
+  // not authorized in the US said they were under 18.
+  // A long statement's work right is the one it asks about: "…before being
+  // permitted to commence work with Company… Initial to agree." (Credence's
+  // drug-test notice on Workable, 2026-10-05) got the work-authorization
+  // statement typed in.
+  // A lone option ("I Agree") acknowledges the whole statement, read whole.
+  const lone = (q.options ?? []).filter((o) => o.trim()).length === 1;
+  const unnoted = statement && !lone
+    ? askedOfStatement(raw, words)
+    : raw.replace(/\(\s*if (no|yes|not|so)\b[^)]*\)/gi, " ").trim();
   const resolved =
     resolveRelocationInstruction(q, raw, facts, profile, ctx) ??
     resolveSanctionedList(q, n, facts) ??
-    resolveWorkAuthorization(q, n, facts, profile, ctx) ??
+    (unnoted !== raw ? resolveWorkAuthorization({ ...q, label: unnoted }, qnorm(unnoted), facts, profile, ctx) : resolveWorkAuthorization(q, n, facts, profile, ctx)) ??
     resolveUsPersonStatus(q, facts, profile) ??
     resolveLaterResidency(q, n, facts) ??
     resolveCitizenship(q, n, facts, ctx) ??

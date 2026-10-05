@@ -225,7 +225,7 @@ function isProsePrompt(label: string): boolean {
 
 /** The sentence a label asks: its last question, else its last sentence. */
 function askedSentenceOf(label: string): string {
-  const parts = (label || "").split(/(?<=[.?!])\s+/).map((s) => s.trim()).filter(Boolean);
+  const parts = (label || "").split(/(?<=[.?!]["”’)]?)\s+(?=["“‘(]?[A-Z0-9])/).map((s) => s.trim()).filter(Boolean);
   return [...parts].reverse().find((s) => /\?\W*$/.test(s)) ?? parts[parts.length - 1] ?? "";
 }
 
@@ -333,7 +333,11 @@ function coerceToKind(value: string, kind: AnswerKind): string | null {
   if (kind === "number") {
     // "$120,000" → "120000"; "120k" → "120000"; "3 years" → "3"; two
     // different numbers (a range) → refuse rather than pick one.
-    const flat = v.replace(/,/g, "");
+    // A currency amount with periods between thousands ("€120.000", a Berlin
+    // salary) is one number: Mindex's Salary Range got 120 (Workable bank,
+    // 2026-10-05). Only beside a currency: "3.850" alone may be a GPA.
+    const european = /[€$£]|\b(eur|usd|cad|gbp|chf)\b/i.test(v) && /^\D*\d{1,3}(\.\d{3})+(,\d{1,2})?\D*$/.test(v);
+    const flat = european ? v.replace(/\./g, "").replace(/,(\d{1,2})\D*$/, ".$1") : v.replace(/,/g, "");
     const nums = flat.match(/\d+(?:\.\d+)?/g) ?? [];
     if (nums.length !== 1) return null;
     const k = /(\d+(?:\.\d+)?)\s*k\b/i.exec(flat);

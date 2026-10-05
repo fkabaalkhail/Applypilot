@@ -18,6 +18,7 @@ import { MIN_CATEGORY_CONFIDENCE } from "../shared/constants";
 import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile } from "../shared/types";
 import type { FieldSignals } from "./domUtils";
 import { normalize } from "./optionMatch";
+import { askedOfStatement } from "./statementText";
 import { degreeRank, isHigh, profileFacts } from "./profileFacts";
 import { countryFromName, regionFromText } from "./geo";
 
@@ -62,6 +63,12 @@ const YES_NO_QUESTION =
  * may classify, see classifyField.
  */
 const PROSE_WORDS = 25;
+
+/** A link to ONE piece of work, not the profile: "Please share a link to a
+ *  project you built with an LLM API (GitHub, demo, or write-up)" got the
+ *  GitHub profile (United Placement Group on Workable, 2026-10-05). */
+const ONE_PIECE_OF_WORK =
+  /\b(link|url) to (a|one|your|the) (specific )?(project|demo|write ?up|sample|repo(sitory)?|example|app|application you)\b|\b(project|app|demo|tool|feature)s? (that )?you (have )?(built|made|created|developed|shipped|designed)\b/;
 
 /** Someone else's name: "what is the employee's full name?" (Renaissance,
  *  question bank 2026-10-05) got the applicant's own. Labels are normalized
@@ -291,10 +298,12 @@ const CATEGORY_SPECS: CategorySpec[] = [
   {
     category: "linkedin",
     patterns: [{ re: /\blinked ?in\b/ }],
+    negative: ONE_PIECE_OF_WORK,
   },
   {
     category: "github",
     patterns: [{ re: /\bgit ?hub\b/ }],
+    negative: ONE_PIECE_OF_WORK,
   },
   {
     category: "portfolio",
@@ -305,7 +314,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\bother (url|link|web ?site)\b/, weight: 0.7 },
       { re: /\bblog\b/, weight: 0.6 },
     ],
-    negative: /\blinked ?in\b|\bgit ?hub\b|\bcompany (web ?site|url)\b|\btwitter\b|\bfacebook\b/,
+    negative: new RegExp(/\blinked ?in\b|\bgit ?hub\b|\bcompany (web ?site|url)\b|\btwitter\b|\bfacebook\b|/.source + ONE_PIECE_OF_WORK.source),
   },
 
   // --- Documents ---
@@ -526,7 +535,9 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /^current job$/ },
       { re: /\bposition\b/, weight: 0.6 },
     ],
-    negative: /\bsalutation\b|\bmr\b|\bmrs\b|\bdegree\b|\bapply(ing)?\b|\bapplied\b|\bdesired\b|\binterested\b|\bsong\b/,
+    // Another person's title: "Supervisor Name & Title:" got the applicant's
+    // own (Saalex on Workable, 2026-10-05).
+    negative: /\bsalutation\b|\bmr\b|\bmrs\b|\bdegree\b|\bapply(ing)?\b|\bapplied\b|\bdesired\b|\binterested\b|\bsong\b|\bsupervisor\b|\breferences?\b|\breferr\w*\b/,
   },
   {
     category: "experienceStartDate",
@@ -594,7 +605,10 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\b(technical|core|key) competenc(y|ies)\b/, weight: 0.9 },
       { re: /\btech(nologies)? (you|used)\b/, weight: 0.8 },
     ],
-    negative: /\bcover letter\b|\blanguage\b/,
+    // A rating of one skill is no list of skills: "How would you rate your
+    // closing skills?" got "Python, C++, ROS" (United Placement Group on
+    // Workable, 2026-10-05).
+    negative: /\bcover letter\b|\blanguage\b|\brat(e|ing)\b|\bscale of\b|\bhow (good|strong|proficient|comfortable)\b/,
   },
 ];
 
@@ -644,9 +658,12 @@ export function classifyField(signals: FieldSignals): Classification {
   for (const { key, weight } of SOURCE_WEIGHTS) {
     const raw = signals[key];
     if (raw) {
-      const text = normalize(raw);
+      const full = normalize(raw);
+      const words = full.split(" ").length;
+      // A statement stays prose, though only its asked part is read.
+      const text = key === "label" || key === "ariaLabel" ? normalize(askedOfStatement(raw, words)) : full;
       if (text) {
-        texts.push({ weight, text, prose: text.split(" ").length >= PROSE_WORDS });
+        texts.push({ weight, text, prose: words >= PROSE_WORDS });
       }
     }
   }

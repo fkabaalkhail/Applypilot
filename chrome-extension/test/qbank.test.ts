@@ -7,6 +7,9 @@
  *
  *   QBANK=test/e2e/results/qbank/greenhouse.json node node_modules/vitest/vitest.mjs run test/qbank.test.ts
  *
+ * QBANK_URL puts the page on another ATS host (a Workable bank runs on
+ * apply.workable.com, so the scanner picks that site's adapter, not Greenhouse's).
+ *
  * Writes <bank>-out.json beside the bank: per posting and persona, every
  * question with the category the scanner gave it, its proposed answer, and
  * whether the device kept it from the AI. Read it with
@@ -54,6 +57,8 @@ function render(p: BankPosting): string {
     const aria = q.description ? ` aria-describedby="${id}-d"` : "";
     if (q.type === "input_hidden") return "";
     if (q.type === "input_file") return `<div class="field"><label for="${id}">${label}</label><input type="file" id="${id}" name="${esc(q.name)}"></div>`;
+    if (q.type === "input_number") return `<div class="field"><label for="${id}">${label}</label>${desc}<input type="number" id="${id}" name="${esc(q.name)}"${aria}></div>`;
+    if (q.type === "input_date") return `<div class="field"><label for="${id}">${label}</label>${desc}<input type="date" id="${id}" name="${esc(q.name)}"${aria}></div>`;
     if (q.type === "textarea") return `<div class="field"><label for="${id}">${label}</label>${desc}<textarea id="${id}" name="${esc(q.name)}"${aria}></textarea></div>`;
     if (q.type === "multi_value_multi_select" && q.options.length) {
       const boxes = q.options.map((o, j) => `<label><input type="checkbox" name="${esc(q.name)}[]" value="${j}"> ${esc(o)}</label>`).join("");
@@ -70,7 +75,11 @@ function render(p: BankPosting): string {
 
 describe.skipIf(!BANK)("question bank", () => {
   let restore: () => void;
-  beforeAll(() => { restore = stubLayout(); });
+  beforeAll(() => {
+    restore = stubLayout();
+    const url = process.env.QBANK_URL;
+    if (url) (globalThis as unknown as { jsdom: { reconfigure(o: { url: string }): void } }).jsdom.reconfigure({ url });
+  });
   afterAll(() => restore());
 
   it("scans every posting for every persona", { timeout: 900_000 }, () => {

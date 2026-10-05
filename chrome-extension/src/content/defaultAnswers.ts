@@ -22,6 +22,7 @@ import { isConsentOption, optionPolarity } from "./answerKind";
 import { isHigh, type ProfileFacts } from "./profileFacts";
 import { placeOf } from "./placeMatch";
 import { REGION_CITIES, regionFromText, regionHintForCity } from "./geo";
+import { askedOfStatement } from "./statementText";
 import type { QuestionContext, QuestionInput, QuestionResult } from "./questionResolver";
 
 const answer = (value: string, rule: string): QuestionResult => ({ status: "answer", value, confidence: "high", rule });
@@ -115,6 +116,13 @@ const REFERRED = /\b(were|was) you referred\b|\bwere you referred by\b|\breferre
 const RELATIVES =
   /\b(relatives?|family members?|related to|spouse|domestic partner|immediate family|household members?|familial|personal relationships?)\b/;
 const CONFLICTS = /\bconflicts? of interest\b|\boutside (business|employment) (activit|interest)\w*/;
+/** A statement affirming the NONE ("Affirmation: I affirm that I have not
+ *  entered into any non-competition, non-solicitation, non-disclosure/
+ *  confidentiality … agreement with a former employer", Saalex on Workable,
+ *  2026-10-05): the default "No" would deny it, and a confidentiality
+ *  agreement is common. The applicant's own to affirm. */
+const AFFIRMS_NONE =
+  /\bi (hereby )?(affirm|certify|confirm|attest|declare|represent|warrant)\b[^.?]{0,20}\b(have not|have never|am not|do not|never|have no)\b/;
 // "…employment agreements and/or post-employment restrictions…" (GitLab, live 2026-10-05).
 const NON_COMPETE =
   /\bnon ?compet\w*|\bnon ?solicit\w*|\brestrictive covenants?\b|\b(agreements?|contracts?) that (would |may |might )?(restrict|prevent|limit|prohibit)\b|\bpost ?employment (restrictions?|obligations?|covenants?)\b/;
@@ -194,8 +202,10 @@ const SOURCE_PREFERENCE: RegExp[] = [
  *  2026-10-05: Yes from Austin for someone who will not move). */
 // "come into the Wakefield, MA office five days per week" too (Vestmark,
 // question bank 2026-10-05: Yes from Seattle for someone who will not move).
+// "Are you comfortable commuting to our office…" (Financeit on Workable,
+// 2026-10-05) was not read as commuting: Yes from Seattle.
 const IN_PERSON =
-  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|commute|report)\b[^?]{0,60}\b(from|at|in|to|out of)\b[^?]{0,40}\boffices?\b|\b(this|the|that|a daily) commute\b|\b(come|go|be) (in|into|to)\b[^?]{0,40}\boffices?\b/;
+  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|working|commute|commuting|report|reporting)\b[^?]{0,60}\b(from|at|in|to|out of)\b[^?]{0,40}\boffices?\b|\b(this|the|that|a daily) commute\b|\b(come|go|be) (in|into|to)\b[^?]{0,40}\boffices?\b/;
 
 /** Being there now and then rather than working there: team gatherings, an
  *  offsite, a few trips a year. Someone who will not relocate can still go. */
@@ -333,7 +343,7 @@ function unencumberedText(q: QuestionInput, n: string, profile: UserApplicationP
   }
   if (RELATIVES.test(n) && /\b(work|employ|empl|staff|board|director|officer|relationship)\w*/.test(n)) return answer("No", "default:no-relatives-inside");
   if (CONFLICTS.test(n)) return answer("No", "default:no-conflict");
-  if (NON_COMPETE.test(n)) return answer("No", "default:no-non-compete");
+  if (NON_COMPETE.test(n)) return AFFIRMS_NONE.test(n) ? null : answer("No", "default:no-non-compete");
   const notGov = notGovernment(n, profile);
   if (notGov !== null) return notGov ? answer("No", "default:not-government-official") : GOVERNMENT_HISTORY;
   return null;
@@ -464,7 +474,7 @@ function chooseLocated(q: QuestionInput, profile: UserApplicationProfile, facts:
  *  work (Monday–Friday). Which location can you reliably commute to?" asks
  *  "which location…", whatever the requirement before it. */
 function askedSentence(label: string): string {
-  const parts = (label || "").split(/(?<=[.?!])\s+/).map((s) => s.trim()).filter(Boolean);
+  const parts = (label || "").split(/(?<=[.?!]["”’)]?)\s+(?=["“‘(]?[A-Z0-9])/).map((s) => s.trim()).filter(Boolean);
   return qn([...parts].reverse().find((s) => /\?\W*$/.test(s)) ?? parts[parts.length - 1] ?? "");
 }
 
@@ -520,7 +530,11 @@ export function resolveDefault(
   // ("the name you would like to be referred to as" is no referral, Asana.)
   if (!choiceLike && /\breferred (by|you|for)\b|\breferral\b|\breferrer\b|\bwho referred\b|\brefer(red)? you\b/.test(n) && /\breferr|\bemployee\b|\bfriend\b/.test(qn(profile.howDidYouHear ?? ""))) return REFERRER_UNKNOWN;
   if (!choiceLike) return unencumberedText(q, n, profile);
-  if (CRIMINAL.test(n)) return null;
+  // A long statement is judged by what it asks: SSCI's certification mentions
+  // "a consumer credit report or criminal records check" and asks nothing
+  // about a record (Workable bank, 2026-10-05: left unaccepted).
+  const asked = qn(askedOfStatement(q.label || "", n.split(" ").length));
+  if (CRIMINAL.test(asked)) return null;
   // "Will you need an accommodation for your interview?" (Netlify, left blank
   // 2026-10-03): No for an applicant who stated no disability. Anyone else
   // answers it themselves. Read on the device; only the No leaves it.
@@ -598,7 +612,7 @@ export function resolveDefault(
     return polar(false, q, "default:no-relatives-inside");
   }
   if (CONFLICTS.test(n)) return polar(false, q, "default:no-conflict");
-  if (NON_COMPETE.test(n)) return polar(false, q, "default:no-non-compete");
+  if (NON_COMPETE.test(n)) return AFFIRMS_NONE.test(n) ? null : polar(false, q, "default:no-non-compete");
   const notGov = notGovernment(n, profile);
   if (notGov !== null) return notGov ? polar(false, q, "default:not-government-official") : GOVERNMENT_HISTORY;
   // "Are you currently conducting research related to…", "Do you currently
@@ -655,10 +669,23 @@ export function resolveDefault(
   // Pay is the applicant's anywhere in the question ("…aligned with the
   // compensation package above… Does this align with your pay
   // expectations?", Nuro).
+  // Meeting a location requirement NOW is where one lives, not a willingness
+  // to move: "Do you currently meet the worksite location requirements for
+  // being On-site or Hybrid…?" got Yes from Toronto for a job in Korea
+  // (Credence on Workable, 2026-10-05). Another country: No.
+  if (/\bcurrently (meet|satisfy|fulfil+)\b[^?]{0,40}\b(location|worksite|work site|on ?site|in ?office|commut\w*)\b/.test(n)) {
+    const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+    return home && ctx.jobCountry && home !== ctx.jobCountry ? polar(false, q, "default:not-there-now") : null;
+  }
+  // Experience is the applicant's history, no requirement to accept: "Do you
+  // have experience managing program risks… cost, schedule, and performance
+  // objectives?" was Yes for everyone by its "schedule" (Saalex on Workable,
+  // 2026-10-05).
   if (
     REQUIREMENT.test(n) &&
     !ASSISTANCE.test(askedSentence(q.label)) &&
     !PAY_TERMS.test(n) &&
+    !/\b(do|did) you have\b[^?]{0,20}\bexperience\b|\bhave you (ever )?(had|gained|managed|led|worked)\b|\bexperience (in|with|managing|leading|supporting|developing|working)\b/.test(n) &&
     (ACK_VERB.test(n) || /^(do|are|will|can|would) you\b/.test(n))
   ) {
     // "Do you have any impediments to traveling internationally?" (Veeva on
