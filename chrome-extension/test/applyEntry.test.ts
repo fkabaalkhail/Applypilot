@@ -95,6 +95,15 @@ describe("findApplyEntry", () => {
     expect(findApplyEntry(document, null)).toBeNull();
   });
 
+  it("takes Dayforce's guest path over signing in", () => {
+    document.body.innerHTML = `
+      <h2>Apply without an Account or Already Have an Account?</h2>
+      <button type="button" id="guest">Apply without an Account</button>
+      <button type="button">Sign In</button>
+      <a href="#">Create one now.</a>`;
+    expect(findApplyEntry(document, null)?.el.id).toBe("guest");
+  });
+
   it("knows the French Apply of a Jobvite posting, never Apply later", () => {
     document.body.innerHTML = `
       <a class="jv-button jv-button-apply-later" href="mailto:?subject=Postuler">Postuler plus tard</a>

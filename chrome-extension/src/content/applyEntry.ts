@@ -25,8 +25,10 @@ export interface EntryButton {
 
 const ENTRY_SELECTOR = 'a[href], button, [role="button"], input[type="submit"], input[type="button"]';
 
-/** Chooser option we always prefer (Workday's manual-application path). */
-const ENTRY_MANUAL_RE = /^(apply manually|postuler manuellement)$/i;
+/** Chooser option we always prefer (Workday's manual-application path; the
+ *  guest path beside a sign-in, Dayforce's "Apply without an Account"). */
+const ENTRY_MANUAL_RE =
+  /^(apply manually|postuler manuellement|apply without (an )?account|(apply|continue) as (a )?guest|guest (apply|application))$/i;
 /** The posting's own Apply button. Anchored, never a sentence containing "apply". */
 const ENTRY_APPLY_RE =
   /^(apply( now)?!?|apply (for|to) (this )?(job|position|role|opening)|easy apply|postuler( maintenant)?|poser (sa|ma|votre) candidature|candidater( maintenant)?)$/i;
