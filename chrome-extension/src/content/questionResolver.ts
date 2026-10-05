@@ -1556,6 +1556,9 @@ function resolveLocalTo(q: QuestionInput, n: string, facts: ProfileFacts, profil
     const region = regionFromText(named);
     const country = region ? null : countryFromName(named);
     const home = facts.location;
+    // Another country is not local to any of this one's states ("If you are
+    // not local to Colorado…" from Berlin; question bank 2, 2026-10-05).
+    if (region && isHigh(home.country) && home.country.value.code !== region.country) return booleanResult(false, q, "local:other-country");
     if (region && isHigh(home.region)) {
       return booleanResult(home.region.value.code === region.code && home.region.value.country === region.country, q, "local:region");
     }
@@ -1722,7 +1725,8 @@ function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: U
   if (/\b(h-?1 ?b|h-?4|l-?1|e-?3|o-?1|tn|f-?1|j-?1|m-?1|opt|cpt|visa)\b/.test(stated) && !/\b(citizen|national|permanent resident|green card|refugee|asylee|asylum|daca)\b/.test(stated)) {
     return pick(NONE);
   }
-  if (us?.basis === "citizen") return pick(/\bu ?s citizen\b|\bcitizen (or national )?of the united states\b|^u ?s person\b/);
+  // "A United States citizen or national" (Anduril; question bank 2, 2026-10-05).
+  if (us?.basis === "citizen") return pick(/\bu ?s citizen\b|\bunited states citizen\b|\bcitizen (or national )?of the united states\b|^u ?s person\b/);
   if (us?.basis === "permanent_resident") return pick(/\blawful permanent resident\b|\bgreen card\b/);
   return abstain("us-person-status:unknown");
 }
@@ -2231,6 +2235,8 @@ const DEFAULTABLE = /^(relocation:unknown|former-employee:no-history|former-empl
 const HIGH_SCHOOL = /\b(high school|secondary school)\b/;
 const HIGH_SCHOOL_DETAIL = /\b(name|year|graduat\w*|date|attend\w*|where|which|gpa|grades?|location|city)\b/;
 
+const PLACEHOLDER_OPTION = /^(select|choose|please select|please choose|select an option|select one|--)(\W|$)/i;
+
 export function resolveQuestion(
   q: QuestionInput,
   facts: ProfileFacts,
@@ -2240,6 +2246,10 @@ export function resolveQuestion(
   const raw = (q.label || "").trim();
   if (!raw) return null;
   const n = qnorm(raw);
+  // A "Select..." placeholder is no option: "Yes | No | Not Applicable" under
+  // one went unanswered (Baselayer; question bank 2, 2026-10-05). Every shape
+  // sees the real options.
+  if (q.options?.some((o) => PLACEHOLDER_OPTION.test(o.trim()))) q = { ...q, options: q.options.filter((o) => !PLACEHOLDER_OPTION.test(o.trim())) };
   // Conditional follow-ups ("If 'Other' selected…", "If yes, please explain"):
   // what they ask depends on an answer we did not give. A condition on the
   // APPLICANT ("If you are currently enrolled…, what is your GPA?") is an

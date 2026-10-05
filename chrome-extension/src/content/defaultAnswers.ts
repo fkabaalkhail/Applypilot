@@ -230,8 +230,14 @@ const SOURCE_SYNONYMS: Array<[RegExp, RegExp]> = [
   [/\blinked ?in\b/, /\blinked ?in\b/],
   [/\bjob (board|site)\b|\bindeed\b|\bglassdoor\b|\bonline\b/, /\bjob (board|site|search|posting)s?\b|\bonline\b|\bindeed\b|\bglassdoor\b|\binternet\b/],
   [/\b(company|careers?) (website|site|page)\b|\bwebsite\b/, /\b(company|corporate|careers?|our) (website|site|page)\b|\bwebsite\b/],
-  // "I know someone that works at Affirm" (question bank 2026-10-05).
-  [/\breferr\w*|\bemployee\b|\bfriend\b/, /\breferr\w*|\bemployee\b|\bfriend\b|\bknow someone\b|\bsomeone (who|that) works\b/],
+  // "I know someone that works at Affirm" (question bank 2026-10-05);
+  // "Connection in the Company". An option naming an employee alone ("Former
+  // Employee", Accenture Federal; "Current/Former Employee", Roku; "Current
+  // Fox Employee", Tubi) says who the APPLICANT is, never a referral.
+  [/\breferr\w*|\bemployee\b|\bfriend\b/, /\breferr\w*|\bfriend\b|\bknow someone\b|\bsomeone (who|that) works\b|\b(connection|contact)s? (in|at|within) the company\b/],
+  // Then an unqualified "Appian Employee" (heard from one); a current, former
+  // or ex- employee is the applicant, and a "LinkedIn Employee Post" a channel.
+  [/\breferr\w*|\bemployee\b|\bfriend\b/, /^(?!.*\b(former|current|ex|previous|past|alumni|alumnus|post|posting|linked ?in)\b).*\bemployees?\b/],
   [/\b(career|job) fair\b|\buniversity\b|\bcampus\b|\bschool\b|\bcollege\b/, /\b(career|job) fair\b|\buniversity\b|\bcampus\b|\bschool\b|\bcollege\b|\bco ?op\b/],
   // "Social media" is no particular platform: "Twitter" for it was a guess
   // (Twilio, Gusto's "Facebook"; question bank 2026-10-05). A platform
@@ -328,9 +334,10 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile, company
     // became "Google Search" (Commvault, regression 2026-10-05).
     // Nor the company's own channels ("Coveo Blog or Website Content").
     const ours = (o: string): boolean => Boolean(company.trim()) && ` ${qn(o)} `.includes(` ${qn(company)} `);
-    // "Internet / Online", "Online job ad", "Web search": not "Online
-    // community" (Workleap) or "Online Forum or Community" (Coveo).
-    const ONLINE = /^((the|an?|internet|online|web|search|engine)\s*)+$|\b(internet|online|web) (job|jobs|search|ad|ads|advert|advertisement|posting|listing)s?\b|\bsearch engine\b/;
+    // "Internet / Online", "Online job ad": not "Online community" (Workleap),
+    // "Online Forum or Community" (Coveo) or a "Search Engine" (Accenture
+    // Federal; question bank 2): a job board is none of those.
+    const ONLINE = /^((the|an?|internet|online|web)\s*)+$|\b(internet|online|web) (job|jobs|ad|ads|advert|advertisement|posting|listing)s?\b|\bthird party (website|site|job site|job board)s?\b/;
     for (const re of [SOURCE_PREFERENCE[0], ONLINE, SOURCE_PREFERENCE[4]]) {
       const hits = general.filter((o) => re.test(qn(o)) && !ours(o));
       if (hits.length === 1) return answer(hits[0], "source:stated-board");

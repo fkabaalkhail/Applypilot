@@ -392,3 +392,15 @@ describe("a stated 'Job board' among named channels (Commvault, regression 2026-
     expect(value(ask("How did you hear about us?", { options: ["Career Page", "Internet / Online", "Referral", "Other"] }, p, { jobCountry: "US", company: "Commvault" }))).toBe("Internet / Online");
   });
 });
+
+describe("question bank 2 (2026-10-05): Accenture Federal's channels", () => {
+  const AFS = ["Accenture Alumni Event", "Accenture Alumni Site", "Accenture Career Fair", "Ad on Website", "Campus Career Fair", "Connection in the Company", "Email", "Facebook", "Former Employee", "Glassdoor", "Indeed", "LinkedIn", "Naukri", "Search Engine", "Twitter", "Not Listed"];
+  it("a referral is never 'Former Employee' (that is the applicant's own history)", () => {
+    const p = { ...SPARSE_CANADIAN, howDidYouHear: "Referral" };
+    expect(value(ask("How did you hear about us?", { options: AFS }, p, { jobCountry: "US", company: "Accenture Federal Services" }))).toBe("Connection in the Company");
+  });
+  it("a job board is no search engine", () => {
+    const p = { ...SPARSE_CANADIAN, howDidYouHear: "Job board" };
+    expect(value(ask("How did you hear about us?", { options: AFS }, p, { jobCountry: "US", company: "Accenture Federal Services" }))).not.toBe("Search Engine");
+  });
+});

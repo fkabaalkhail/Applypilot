@@ -743,3 +743,24 @@ describe("U.S. person status worded with a 'not' (Hermeus on Lever, regression 2
     expect(value(ask("U.S. EXPORT COMPLIANCE", { options: opts, kind: "choice", controlType: "select" }, gc as never, { jobCountry: "US", company: "Hermeus" }))).toBe(opts[0]);
   });
 });
+
+describe("question bank 2 (2026-10-05): Anduril, Accenture Federal, Baselayer", () => {
+  const P = () => import("./e2e/profiles.mjs") as Promise<Record<string, UserApplicationProfile>>;
+  const US_JOB = { jobCountry: "US" as string | null, company: "Acme" };
+  it("export controls: 'A United States citizen or national' is a US citizen's (Anduril)", async () => {
+    const { BOOTCAMP_CAREER_GAP } = await P();
+    const opts = ["A United States citizen or national", "A person lawfully admitted for permanent residence of the United States (i.e., “Green Card” holder)", "A person admitted as a refugee to the United States under 8 U.S.C. 1157", "A person admitted as an asylee to the United States under 8 U.S.C. 1158", "None of the above"];
+    const q = "EXPORT CONTROLS - This position requires access to information and technology that is subject to U.S. export controls. Your responses to the questions below will be used to determine eligibility.";
+    expect(value(ask(q, { options: opts, kind: "choice", controlType: "select" }, BOOTCAMP_CAREER_GAP, US_JOB))).toBe(opts[0]);
+  });
+  it("'If you are not local to Colorado, are you willing to relocate?' is Yes from Berlin for someone who will move", async () => {
+    const { BERLIN_STAFF, INDIA_NEW_GRAD } = await P();
+    const q = "If you are not local to Colorado, are you willing to relocate?";
+    expect(value(ask(q, { options: YES_NO }, BERLIN_STAFF, US_JOB))).toBe("Yes");
+    expect(value(ask(q, { options: YES_NO }, INDIA_NEW_GRAD, US_JOB))).toBe("Yes");
+  });
+  it("a 'Select...' placeholder is no option: 'willing to relocate? Yes | No | Not Applicable' (Baselayer)", async () => {
+    const { BERLIN_STAFF } = await P();
+    expect(value(ask("Are you willing to relocate?", { options: ["Select...", "Yes", "No", "Not Applicable"], kind: "choice", controlType: "select" }, BERLIN_STAFF, US_JOB))).toBe("Yes");
+  });
+});
