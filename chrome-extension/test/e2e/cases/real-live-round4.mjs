@@ -20,6 +20,10 @@ const live = (c) => ({ mode: "live", trigger: { fillTimeoutMs: 180000 }, expect:
 // submits nothing, so the Paylocity case lets exactly it through.
 const PAYLOCITY_EMAIL_CHECK = [String.raw`^https://recruiting\.paylocity\.com/Recruiting/Jobs/GetEnhancedEmailValidation$`];
 
+// A consent widget's control: the page mounts it late with its own defaults,
+// or not at all, and the scanner never touches it (consent.ts).
+const PAGE_OWNED = { ifPresent: { re: "^" } };
+
 const DATE = String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$`;
 
 export default [
@@ -402,6 +406,11 @@ export default [
       "label:Gender": "Decline To Self Identify",
       "label:Are you Hispanic/Latino?": "Decline To Self Identify",
       "label:Veteran Status": "I don't wish to answer",
+      // OneTrust's cookie preferences (regression 2026-10-05: there on two runs).
+      "#ot-group-id-C0002": PAGE_OWNED,
+      "#ot-group-id-C0003": PAGE_OWNED,
+      "#ot-group-id-C0004": PAGE_OWNED,
+      "#ot-group-id-TOTHR": PAGE_OWNED,
     },
   }),
   live({

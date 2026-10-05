@@ -444,10 +444,11 @@ export default [
       "#field-20": "maya.tremblay@example.com",
       "#field-24": "She/her/hers",
       "#field-31": "Kinaxis",
-      // The page sets the dial code from the BROWSER LOCALE ("+44 GB" under en-GB),
-      // and a pre-filled value is never overwritten: any value is the page's.
-      "#field-38": { any: true },
-      "#field-35": "416 555 0142",
+      // The dial code follows the number's own country, not the page's guess
+      // from the BROWSER LOCALE ("+44 GB" under en-GB); choosing it mounts the
+      // picker again under a new id (round 4).
+      "#field-72": "+1 CA",
+      "#field-35": "416-555-0142",
       "#field-59": "No – I do not consent to receiving text messages",
       "radio=sms_opt_in": "false",
     },
@@ -462,10 +463,11 @@ export default [
       "#field-20": "maya.tremblay@example.com",
       "#field-24": "She/her/hers",
       "#field-31": "Kinaxis",
-      // The page sets the dial code from the BROWSER LOCALE ("+44 GB" under en-GB),
-      // and a pre-filled value is never overwritten: any value is the page's.
-      "#field-38": { any: true },
-      "#field-35": "416 555 0142",
+      // The dial code follows the number's own country, not the page's guess
+      // from the BROWSER LOCALE ("+44 GB" under en-GB); choosing it mounts the
+      // picker again under a new id (round 4).
+      "#field-113": "+1 CA",
+      "#field-35": "416-555-0142",
       "#field-46": "Toronto, ON, Canada",
       "name=customQuestions.6aac63371a4aff678633f468.66dbdb3f-e908-4c0c-b47b-ea16b1b07304": "checked",
       "#field-74": "05/03/2027",

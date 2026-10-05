@@ -135,6 +135,9 @@ export default [
       "name=section_1648044732427_question_1": "December 2027",
       "radio~Are you currently eligible to work in the United States or C": "Yes",
       "radio~Will you EVER require sponsorship to work in the United Stat": "No",
+      // Hybrid in Chicago, "local or able to relocate independently": she will
+      // move (round 4: the requirement is read, not left blank).
+      "radio=section_1648044732427_question_0": "Yes",
     },
   }),
   live({
@@ -164,6 +167,8 @@ export default [
     expect: {
       "label:Full name": "Alex Côté-Tremblay",
       "label:Email address": "alex.cote@example.ca",
+      // The page keeps "+1" in the box; that is the code, not a number (round 4).
+      "#input-candidate.phone-5": "+1 514 555 0186",
       "name=candidate.agreements.0.consent": "checked",
     },
   }),
@@ -229,6 +234,8 @@ export default [
       "label:Email Address (required)": "siobhan.oneill@example.co.uk",
       "label:Mobile Number (required)": "+44 20 7946 0958",
       "label:Have you applied for a job with us before?": "No",
+      // The company is now read from the page (round 4); not in her history.
+      "#info.haveYouWorkedWithUsBefore": "No",
       "label:We may use SMS during the hiring process. Do you give us per": "No",
       "label:Address Line 1": "12 Bermondsey Street",
       "label:City": "London",
