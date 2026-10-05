@@ -227,6 +227,30 @@ const CONSTRAINED: ReadonlySet<ControlType> = new Set<ControlType>(["select", "r
 
 const pick = (options: string[], value: string): string | null => matchOption(options, (o) => o, (o) => o, value);
 
+/** An address in the parts a one-line label asks for: "City, ST", "City, ST
+ *  ZIP", or the full street address. Null when it asks for no more than one
+ *  field gives, or a part is unknown. */
+function composedAddress(label: string, profile: UserApplicationProfile): string | null {
+  const loc = profileFacts(profile).location;
+  const city = isHigh(loc.city) ? loc.city.value : null;
+  const region = isHigh(loc.region) ? loc.region.value.code : null;
+  const postal = isHigh(loc.postalCode) ? loc.postalCode.value : null;
+  const street = isHigh(loc.street) ? loc.street.value : null;
+  const zip = /\b(zip|postal|post ?code)\b/i.test(label);
+  // One part of a split address ("Home Address Line 1", "Home Address City",
+  // SoFi) is that part; only a label asking for the WHOLE address gets it.
+  const part = /\b(line ?\d|apt|apartment|unit|suite|city|state|province|zip|postal|cep|country|street (1|2))\b/i.test(label);
+  if (!part && (/\b(full|complete) (home |mailing |street |residential )?address\b/i.test(label) || /^\s*what is your (current |home |mailing |permanent |residential )*address\b/i.test(label)) && !/\be-?mail\b/i.test(label)) {
+    if (!street || !city) return null;
+    return [street, city, [region, postal].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  }
+  if (/\bcity\b[^?]{0,20}\b(state|province|region)\b/i.test(label)) {
+    if (!city || !region || (zip && !postal)) return null;
+    return `${city}, ${region}${zip ? ` ${postal}` : ""}`;
+  }
+  return null;
+}
+
 /** Words every school name shares: never what tells two schools apart. */
 const SCHOOL_GENERIC = new Set(["university", "universities", "universite", "universitat", "universidad", "universita", "universiteit", "college", "school", "institute", "institution", "academy", "campus", "of", "the", "and", "at", "in", "for", "de", "del", "la", "le", "du", "des", "da", "di"]);
 
@@ -427,6 +451,14 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   // 2026-10-05): the profile has one name, so it is never different.
   if (source === "category" && (category === "fullName" || category === "firstName" || category === "lastName") && /\bif (it is |its )?different\b/i.test(label)) {
     return none(true, "name:if-different");
+  }
+  // "In what City, State and Zip are you currently residing?" (Box) and
+  // "…city and state… (e.g. San Jose, CA)" (Zscaler) got the city alone;
+  // "What is your current full address?" (Riot) got no street (question bank
+  // 2026-10-05). The parts the label asks for, in one line.
+  if (source === "category" && (kind === "text" || kind === "longText") && (category === "addressCity" || category === "location" || category === "addressStreet")) {
+    const composed = composedAddress(label, profile);
+    if (composed) value = composed;
   }
   // "What are your salary expectations (hourly)?" (StackAdapt, question bank
   // 2026-10-05) got "$185,000": a pay figure only in the unit it was asked in.

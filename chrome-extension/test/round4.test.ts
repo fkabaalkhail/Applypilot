@@ -452,3 +452,27 @@ describe("EEO answers in other words (question bank 2026-10-05: Chime, Braze)", 
     document.body.innerHTML = "";
   });
 });
+
+describe("an address in the parts asked for (question bank 2026-10-05: Box, Zscaler, Riot)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+
+  it("city and state (and zip) together; a full address with its street", async () => {
+    const { US_H1B_SENIOR } = await import("./e2e/profiles.mjs");
+    const box = (id: string, label: string) => `<div class="field"><label for="${id}">${label}</label><input type="text" id="${id}"></div>`;
+    document.body.innerHTML = `<form>
+      ${box("b", "In what City, State and Zip are you currently residing?")}
+      ${box("z", "In what city and state is your primary residence? (e.g. San Jose, CA)")}
+      ${box("r", "What is your current full address?")}
+      ${box("c", "City")}
+    </form>`;
+    const { fields } = scanPage(US_H1B_SENIOR as never, true);
+    const value = (id: string) => fields.find((f) => fieldEl(f.id)?.id === id)?.proposedValue ?? null;
+    expect(value("b")).toBe("Seattle, WA 98109");
+    expect(value("z")).toBe("Seattle, WA");
+    expect(value("r")).toBe("1200 Westlake Ave N, Unit 805, Seattle, WA 98109");
+    expect(value("c")).toBe("Seattle");
+    document.body.innerHTML = "";
+  });
+});
