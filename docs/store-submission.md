@@ -11,8 +11,8 @@ telemetry since then ran on it: the 2026-09-28 and 2026-10-03 reports carry no
 `extension_version`, which only builds older than 2026-08-12 omit. None of the
 August to October autofill work has reached a Store user yet.
 
-**What to upload:** `chrome-extension/tailrd-extension-0.5.0.zip` (221 KB,
-git-ignored, built from commit 585c0fd on `night/autofill-round4`). Dashboard > the Tailrd item > Package > Upload new package, then
+**What to upload:** `chrome-extension/tailrd-extension-0.5.0.zip` (231 KB,
+git-ignored, built from commit 31a4371 on `night/autofill-round4`). Dashboard > the Tailrd item > Package > Upload new package, then
 Submit for review. To rebuild it: from `chrome-extension/`,
 `node build.mjs && python scripts/make-store-zip.py`.
 
@@ -46,6 +46,12 @@ Tailrd 0.5.0
 - Company career sites fill more fully: older dropdown styles are now
   recognized, and the job's location is read from the page, so questions
   about working in that country are answered.
+- More forms are reached and filled: Apply buttons in French and guest
+  "apply without an account" paths, phone numbers under their own country
+  code, and dropdowns on Dayforce and other sites built the same way.
+- Screening questions are read more carefully: age, citizenship,
+  sponsorship now and later, and long policy statements you are asked to
+  acknowledge.
 - Questions your profile cannot answer stay blank, and the panel asks you
   about them in place.
 - Demographic answers still never leave your device.
@@ -71,8 +77,8 @@ Tailrd 0.5.0
    standard questions (accepting the posting's terms, consent boxes) get the
    usual answer, and anything else is left blank for you to complete."
 
-**Checked on this build** (2026-10-05, commit 585c0fd, branch `night/autofill-round4`):
-type check clean; unit tests 1713/1713; `node test/scan-smoke.mjs` passed;
+**Checked on this build** (2026-10-05, commit 31a4371, branch `night/autofill-round4`):
+type check clean; unit tests 1841/1841; `node test/scan-smoke.mjs` passed;
 zip holds 8 files (manifest, three scripts, four icons), no `key`, no
 `localhost`, description 129 chars.
 
@@ -239,7 +245,7 @@ creditworthiness.
 
 ## Pre-flight checklist
 
-- [x] Unit tests green; typecheck clean (0.5.0: 1713/1713, 2026-10-05)
+- [x] Unit tests green; typecheck clean (0.5.0: 1841/1841, 2026-10-05)
 - [x] e2e multi-page flow probe green (0.4.0: user-gated page turns; 0.5.0:
       one click to the review page, `npm run test:workday-flow` 73/73 on
       2026-10-05; the terminal Submit is never clicked)
