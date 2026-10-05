@@ -408,6 +408,23 @@ describe("readComboboxOptions", () => {
     el.ownerDocument.querySelectorAll('[role="option"]')[1].setAttribute("aria-disabled", "true");
     expect(readComboboxOptions(el)).toEqual(["A"]);
   });
+
+  // Rippling's dial-code list renders 7 of its 245 options (live 2026-10-05):
+  // read as the whole list, "Germany" was "not offered" and the answer dropped.
+  it("does not take a virtualized window of a longer list for the list", () => {
+    const el = staticCombobox(["+33 FR - France", "+241 GA - Gabon", "+44 GB - United Kingdom"]);
+    el.ownerDocument.querySelectorAll('[role="option"]').forEach((o, i) => {
+      o.setAttribute("aria-setsize", "245");
+      o.setAttribute("aria-posinset", String(74 + i));
+    });
+    expect(readComboboxOptions(el)).toBeUndefined();
+  });
+
+  it("reads a list whose set size it holds whole", () => {
+    const el = staticCombobox(["Yes", "No"]);
+    el.ownerDocument.querySelectorAll('[role="option"]').forEach((o) => o.setAttribute("aria-setsize", "2"));
+    expect(readComboboxOptions(el)).toEqual(["Yes", "No"]);
+  });
 });
 
 describe("readComboboxValue", () => {
@@ -1012,6 +1029,69 @@ describe("fillAriaCombobox, no dead-time on settled filters", () => {
     // Budget-burning behavior would be ~40+ polls (2 attempts × 20); settled
     // early-exits keep the whole failure fast.
     expect(sleeps).toBeLessThan(25);
+  });
+});
+
+describe("fillAriaCombobox, a debounced filter behind a re-windowed list", () => {
+  it("waits for the filter instead of settling on the list's own scroll", async () => {
+    // Rippling's dial-code picker (live 2026-10-05): typing first re-windows
+    // its virtual list onto the current selection (other options, none of
+    // them the typed text), and only half a second later applies the filter.
+    // That first change read as the filter's answer, and "Germany" was
+    // "not offered".
+    const all = ["+33 FR - France", "+44 GB - United Kingdom", "+49 DE - Germany", "+1 US - United States"];
+    const input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-expanded", "false");
+    input.value = "+44 GB";
+    const lbId = "dial-lb";
+    document.body.append(input);
+    const render = (labels: string[]): void => {
+      const lb = document.getElementById(lbId);
+      if (!lb) return;
+      lb.textContent = "";
+      for (const label of labels) {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.textContent = label;
+        li.addEventListener("click", () => {
+          input.value = label.split(" - ")[0];
+          input.setAttribute("aria-expanded", "false");
+          lb.remove();
+        });
+        lb.append(li);
+      }
+    };
+    input.addEventListener("click", () => {
+      if (input.getAttribute("aria-expanded") === "true") return;
+      input.setAttribute("aria-expanded", "true");
+      input.setAttribute("aria-controls", lbId);
+      const lb = document.createElement("ul");
+      lb.id = lbId;
+      lb.setAttribute("role", "listbox");
+      document.body.append(lb);
+      render(["+247 AC - Ascension Island", "+376 AD - Andorra"]);
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    input.addEventListener("input", () => {
+      render(["+298 FO - Faroe Islands", "+33 FR - France"]); // scrolled to the selection
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const q = input.value.trim().toLowerCase();
+        render(q ? all.filter((o) => o.toLowerCase().includes(q)) : ["+247 AC - Ascension Island", "+376 AD - Andorra"]);
+      }, 120);
+    });
+
+    const res = await fillAriaCombobox(input, "Germany", {
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      openWaitMs: 400,
+      commitWaitMs: 200,
+      pollMs: 10,
+    });
+    expect(res.filled).toBe(true);
+    expect(input.value).toBe("+49 DE");
   });
 });
 

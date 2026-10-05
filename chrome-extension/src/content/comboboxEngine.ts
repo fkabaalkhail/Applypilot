@@ -211,7 +211,7 @@ async function selectOne(
       const preTypeKey = optionsKey(getListbox(trigger));
       lastTyped = text;
       typeInto(trigger as HTMLInputElement, text);
-      const hit = await pollForMatch(trigger, value, preTypeKey, sleep, openWaitMs, pollMs, opts.placeHint);
+      const hit = await pollForMatch(trigger, value, text, preTypeKey, sleep, openWaitMs, pollMs, opts.placeHint);
       if (hit) {
         listbox = hit.lb;
         option = hit.opt;
@@ -408,6 +408,7 @@ function optionsKey(listbox: HTMLElement | null): string {
 async function pollForMatch(
   trigger: HTMLElement,
   target: string,
+  typed: string,
   preTypeKey: string,
   sleep: (ms: number) => Promise<void>,
   budgetMs: number,
@@ -443,13 +444,29 @@ async function pollForMatch(
       reacted = true;
       stablePolls = 0;
       lastKey = key;
-    } else if (reacted && hasOptions && ++stablePolls >= 3) {
+    } else if (reacted && hasOptions && answersTyped(lb, typed) && ++stablePolls >= 3) {
       return null; // the filter answered and settled, no match in its final list
     }
     if (!reacted && hasOptions && elapsed >= reactionWindowMs) return null;
     if (elapsed >= budgetMs) return null;
     await sleep(pollMs);
   }
+}
+
+/**
+ * Whether a changed list is the filter's answer to `typed`: an option carries
+ * one of its words (or nothing was typed). A list that changes for another
+ * reason is not, and settling on it gave up before the filter ran: Rippling's
+ * dial-code picker first scrolls its virtual list to the current selection and
+ * filters only after a half-second debounce (live 2026-10-05).
+ */
+function answersTyped(listbox: HTMLElement | null, typed: string): boolean {
+  const words = normalize(typed).split(" ").filter((w) => w.length >= 2);
+  if (words.length === 0 || !listbox) return true;
+  return optionsIn(listbox).some((o) => {
+    const text = normalize(optionText(o));
+    return words.some((w) => text.includes(w));
+  });
 }
 
 function typeInto(input: HTMLInputElement, value: string): void {
@@ -646,6 +663,13 @@ export function comboboxDisplaysValue(trigger: HTMLElement, value: string): bool
 export function readComboboxOptions(trigger: HTMLElement): string[] | undefined {
   const listbox = findMountedListbox(trigger);
   if (!listbox) return undefined;
+  // A virtualized list renders a window of its options, each telling the
+  // whole list's size: the window is not the list. Read as one, an answer
+  // outside it was "not offered" (Rippling's 245 dialing codes, 7 rendered,
+  // live 2026-10-05). Unknown options are typed to filter at fill time.
+  const rendered = optionsIn(listbox);
+  const setSize = Math.max(0, ...rendered.map((o) => Number(o.getAttribute("aria-setsize")) || 0));
+  if (setSize > rendered.length) return undefined;
   return optionLabels(listbox);
 }
 
