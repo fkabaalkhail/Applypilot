@@ -435,9 +435,12 @@ function dropdownWidgetHost(el: HTMLElement): HTMLElement {
 
 /**
  * react-select before v5 (see isLegacyReactSelect): its "css-…-container",
- * then every wrapper around it that adds no text and no other control. Epic
- * Games' form puts the question's <label> (whose `for` names no element) four
- * empty wrappers above the widget (live 2026-10-05).
+ * then every wrapper around it up to the field's block, the first ancestor
+ * holding a <label>/<legend> or another control. Epic Games' form puts the
+ * question's <label> (whose `for` names no element) four wrappers above the
+ * widget, and those wrappers gain text of their own along the way: "This
+ * section is required" once the field is left empty, a description link
+ * (live 2026-10-05).
  */
 function legacyReactSelectHost(el: HTMLElement): HTMLElement {
   let host: HTMLElement = el;
@@ -447,15 +450,27 @@ function legacyReactSelectHost(el: HTMLElement): HTMLElement {
       break;
     }
   }
-  const own = cleanText(host.textContent);
-  for (let hops = 0; hops < 6 && host.parentElement; hops++) {
+  for (let hops = 0; hops < 8 && host.parentElement; hops++) {
     const parent: HTMLElement = host.parentElement;
-    if (cleanText(parent.textContent) !== own) break;
+    if (parent.querySelector("label, legend")) break;
     const others = [...parent.querySelectorAll(CONTROL_SELECTOR)].filter((c) => !host.contains(c) && isRealControl(c));
     if (others.length > 0) break;
     host = parent;
   }
   return host;
+}
+
+/** The one <label>/<legend> in the block around a legacy react-select's host
+ *  (see legacyReactSelectHost), when the block holds no other control. */
+function legacyReactSelectLabel(host: HTMLElement): string {
+  const block = host.parentElement;
+  if (!block) return "";
+  const labels = [...block.querySelectorAll("label, legend")].filter((l) => !l.contains(host));
+  if (labels.length !== 1) return "";
+  const others = [...block.querySelectorAll(CONTROL_SELECTOR)].filter((c) => !host.contains(c) && isRealControl(c));
+  if (others.length > 0) return "";
+  const text = cleanText(labels[0].textContent);
+  return text && !isPlaceholderFiller(text) ? text : "";
 }
 
 /** All the text signals the field matcher scores against. */
@@ -539,7 +554,8 @@ export function collectSignals(el: HTMLElement): FieldSignals {
   // real label lives beside that wrapper, so resolve labels/nearby from it.
   const host = dropdownWidgetHost(el);
   const isDropdown = host !== el;
-  const hostLabel = isDropdown ? associatedLabelText(host) : "";
+  const legacy = isDropdown && el.getAttribute("aria-autocomplete") === "list" && !el.hasAttribute("role");
+  const hostLabel = isDropdown ? associatedLabelText(host) || (legacy ? legacyReactSelectLabel(host) : "") : "";
   const hostLabelledBy = isDropdown ? ariaLabelledByText(host) : "";
   // A hidden upload input's identity lives on its zone, so fold the zone's
   // describing text into `nearby` for classification (e.g. "…your resume…").

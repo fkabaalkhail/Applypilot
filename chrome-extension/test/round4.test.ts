@@ -335,4 +335,23 @@ describe("react-select before v5 labelled by a <label for> naming no element (Ep
     expect(field(13)?.proposedValue).toBe("Turing School of Software & Design");
     document.body.innerHTML = "";
   });
+
+  it("keeps the question once the page marks the dropdown required, and past a description link", async () => {
+    // Live, an empty required dropdown left by the fill grows "This section
+    // is required" in its block, and the label search stopped short of the
+    // question; a description link between question and dropdown was read
+    // as the question.
+    const { BOOTCAMP_CAREER_GAP } = await import("./e2e/profiles.mjs");
+    const c = "Do you have demonstrated experience using C++ in the form of school, work, and/or personal projects included on your resume?";
+    const notice = "I acknowledge that I have read and understand the Epic Games Candidate Privacy Notice.";
+    document.body.innerHTML = `<form>
+      <div class="field-group dropdown"><div class="InputLabel__Styled-sc-1ig3mnl-0 comeCg"><label for="${c}"><span>${c}⁠*⁠:</span></label></div><div><div class="CustomSelectstyles__Styled-sc-1f1rlew-0 iIwtmE custom-select"><div><div class="validate-error">${widget(8)}<div class="InputValidationErrorMsg__Styled-sc-r7ic4l-0 gohdUo validate-msg">This section is required</div></div></div></div></div><div class="ue-spacer eyebrow"></div></div>
+      <div class="field-group dropdown"><div class="InputLabel__Styled-sc-1ig3mnl-0 comeCg"><label for="${notice}"><span>${notice}⁠*⁠:</span></label></div><div class="field-description"><p><a href="https://example.com/privacy">Epic Games Candidate Privacy Notice</a></p></div><div><div class="CustomSelectstyles__Styled-sc-1f1rlew-0 iIwtmE custom-select"><div><div class="">${widget(11)}</div></div></div></div></div>
+    </form>`;
+    const { fields } = scanPage(BOOTCAMP_CAREER_GAP as never, true);
+    const label = (n: number) => fields.find((f) => fieldEl(f.id)?.id === `react-select-${n}-input`)?.label ?? "";
+    expect(label(8)).toMatch(/^Do you have demonstrated experience using C\+\+/);
+    expect(label(11)).toMatch(/^I acknowledge that I have read and understand/);
+    document.body.innerHTML = "";
+  });
 });

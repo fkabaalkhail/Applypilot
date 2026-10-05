@@ -33,4 +33,7 @@ export interface MwResultDetail {
   /** The widget's committed/displayed value after the fill, if readable. */
   committed?: string;
   reason?: string;
+  /** On a miss, the option labels the widget offered, for the caller to
+   *  choose among (the re-ask) rather than guess again. */
+  options?: string[];
 }

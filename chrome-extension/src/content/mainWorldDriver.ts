@@ -66,6 +66,9 @@ export interface FiberNode {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/** The option labels the last missed fill saw (fillField reports them). */
+let missOptions: string[] = [];
+
 /**
  * `CSS.escape` per spec, with a same-behavior fallback for environments
  * where the `CSS` global is unavailable (this project's jsdom test
@@ -85,12 +88,13 @@ async function fillField(doc: Document, detail: MwFillDetail): Promise<MwResultD
   try {
     const el = doc.querySelector<HTMLElement>(`[${FIELD_ID_ATTR}="${escapeAttrValue(detail.fieldId)}"]`);
     if (!el) return { id: detail.id, ok: false, reason: "field-not-found" };
+    missOptions = [];
     const committed =
       detail.kind === "react-select"
         ? await fillReactSelect(el, detail.value, detail.placeHint)
         : await fillWorkday(el, detail.value);
     return committed === null
-      ? { id: detail.id, ok: false, reason: "no-match" }
+      ? { id: detail.id, ok: false, reason: "no-match", ...(missOptions.length ? { options: missOptions.slice(0, 300) } : {}) }
       : { id: detail.id, ok: true, committed };
   } catch (err) {
     return { id: detail.id, ok: false, reason: err instanceof Error ? err.message : "driver-error" };
@@ -147,11 +151,13 @@ async function fillReactSelect(el: HTMLElement, value: string, placeHint?: strin
   })?.stateNode as RsInstance | undefined;
 
   if (inst && inst.props.options) {
+    const labels = (): string[] => rsFlatten(inst.props.options ?? []).map((o) => rsLabel(inst, o)).filter((l): l is string => typeof l === "string" && l.trim() !== "");
     const pick = (): { opt: unknown; label: string } | null => {
       const flat = rsFlatten(inst.props.options ?? []);
       const idx = pickOption(flat.map((o) => rsLabel(inst, o)), value, placeHint);
       return idx >= 0 ? { opt: flat[idx], label: rsLabel(inst, flat[idx]) } : null;
     };
+    missOptions = labels();
     let hit = pick();
     // No match yet: async selects (Places city lookup…) only load options after
     // the user types. Type the value through the real input and poll the
@@ -166,6 +172,9 @@ async function fillReactSelect(el: HTMLElement, value: string, placeHint?: strin
           hit = pick();
         }
         if (!hit) {
+          // What the search offered, or the whole list it filters.
+          const searched = labels();
+          if (searched.length > 0) missOptions = searched;
           // Clear our filter text before closing, leaving it in the box reads
           // as an entered answer sitting on top of (or instead of) the value.
           setNativeInputValue(input, "");
@@ -207,7 +216,11 @@ async function fillReactSelectByDom(container: HTMLElement, value: string, place
     }
   }
   const idx = pickOption(options.map((o) => norm(o.textContent ?? "")), value, placeHint);
-  if (idx < 0) { fireKey(opener, "Escape"); return null; }
+  if (idx < 0) {
+    missOptions = options.map((o) => norm(o.textContent ?? "")).filter(Boolean);
+    fireKey(opener, "Escape");
+    return null;
+  }
   fireMouse(options[idx], "mousedown");
   fireMouse(options[idx], "mouseup");
   options[idx].click();

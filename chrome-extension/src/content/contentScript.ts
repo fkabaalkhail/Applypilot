@@ -650,6 +650,14 @@ function initialize(): void {
         outcomes.push({ fieldId: t.fieldId, ok: res.ok, reason: res.ok ? undefined : res.reason });
         continue;
       }
+      // react-select before v5 has no ARIA the fallback below can open
+      // ("Couldn't open the dropdown" on Epic Games' School and Degree, live
+      // 2026-10-05): the options the driver saw go to the re-ask instead.
+      if (res.options?.length && !control.el.hasAttribute("role")) {
+        outcomes.push({ fieldId: t.fieldId, ok: false, reason: `No option matches "${t.value.length > 40 ? t.value.slice(0, 40) + "…" : t.value}"` });
+        reask.push({ fieldId: t.fieldId, options: res.options });
+        continue;
+      }
       // Driver miss: best-effort ARIA fallback: may fill, or harvest options.
       const fb = await fillAriaCombobox(control.el, t.value, { multi: control.multi, placeHint: placeHintFor(t.fieldId) });
       outcomes.push({ fieldId: t.fieldId, ok: fb.filled, reason: fb.reason });

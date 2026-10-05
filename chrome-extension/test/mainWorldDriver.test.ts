@@ -111,6 +111,17 @@ describe("fillReactSelect via Fiber", () => {
     expect(res.ok).toBe(false);
     expect(res.reason).toBe("no-match");
   });
+
+  it("hands back the options it saw on a miss, for the re-ask to choose from", async () => {
+    // Epic Games' Degree (react-select v3, live 2026-10-05): "Certificate" is
+    // not in the list, and the fallback that followed could not open the
+    // widget, so nothing was ever chosen from the real options.
+    installDriver(window);
+    reactSelectWithFiber("rs-3", ["High School", "Associate's Degree", "Bachelor's Degree", "Other"]);
+    const res = await drive("rs-3", "Certificate", "react-select");
+    expect(res.ok).toBe(false);
+    expect(res.options).toEqual(["High School", "Associate's Degree", "Bachelor's Degree", "Other"]);
+  }, 10_000);
 });
 
 /** Workday prompt: button + on-click list of [data-automation-id=promptOption]. */

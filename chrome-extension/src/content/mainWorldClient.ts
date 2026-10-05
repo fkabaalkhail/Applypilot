@@ -13,7 +13,7 @@ import {
   type MwSuppressDetail,
 } from "./mainWorldBridge";
 
-export interface DriverResult { ok: boolean; committed?: string; reason?: string; }
+export interface DriverResult { ok: boolean; committed?: string; reason?: string; options?: string[]; }
 
 // Must exceed the MAIN-world driver's worst case: async selects (Places city
 // lookup) poll options for up to ~3.5s after typing before reporting no-match.
@@ -75,7 +75,7 @@ export async function driveField(
     const onResult = (e: Event): void => {
       const d = (e as CustomEvent<MwResultDetail>).detail;
       if (!d || d.id !== id) return;
-      finish({ ok: d.ok, committed: d.committed, reason: d.reason });
+      finish({ ok: d.ok, committed: d.committed, reason: d.reason, options: d.options });
     };
     const timer = setTimeout(() => finish({ ok: false, reason: "driver-timeout" }), timeoutMs);
     window.addEventListener(MW_RESULT_EVENT, onResult);
