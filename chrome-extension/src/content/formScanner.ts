@@ -23,6 +23,7 @@ import {
   nearbyText,
   type FieldSignals,
 } from "./domUtils";
+import { isConsentOption } from "./answerKind";
 import { isCaptchaField } from "./captcha";
 import { isConsentField } from "./consent";
 import { isInPageChrome } from "./pageChrome";
@@ -31,7 +32,7 @@ import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./combob
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
 import { resolveField, snapToOption, type FieldResolution } from "./fieldResolver";
 import { splitGreenhouseDate } from "./adapters/greenhouse";
-import { graduationOfRow, PRESENT_RE, profileFacts, type EducationEntryFacts } from "./profileFacts";
+import { graduationOfRow, parseDateSpan, PRESENT_RE, profileFacts, type EducationEntryFacts } from "./profileFacts";
 import { isConsentText, resolveCheckboxIntent } from "./checkboxIntent";
 import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
@@ -255,6 +256,15 @@ function withOptionsEvidence(
   current: { category: FieldCategory; confidence: number; sensitive: boolean },
   options: string[]
 ): { category: FieldCategory; confidence: number; sensitive: boolean } {
+  // Options that only consent or refuse ("I consent" | "I do not Consent")
+  // make an acknowledgement, whatever its paragraph mentions: JazzHR's ended
+  // "…a qualified individual with a disability…ADA", was read as the
+  // disability question, and the profile's "No" ticked "I do not Consent"
+  // (Directors Investment Group, live 2026-10-05).
+  const real = options.filter((o) => o.trim());
+  if (current.sensitive && real.length > 0 && real.every(isConsentOption)) {
+    return { category: "unknown", confidence: current.confidence, sensitive: false };
+  }
   const named = categoryOfOptions(options);
   if (!named) return current;
   if (current.category === "unknown") return named;
@@ -644,6 +654,107 @@ function assignRowsByPosition(
       });
       break;
     }
+  }
+}
+
+/** A row's own place and pay: the school's or employer's, never the applicant's. */
+const ROW_OWN_DETAIL = new Set<FieldCategory>(["addressStreet", "addressCity", "addressState", "postalCode", "location", "country", "salary"]);
+
+/** Profile rows, most recent first: a running job or program, then by end
+ *  date, then by start date. Unparsable dates keep their listed order. */
+function rowsByRecency(rows: Array<{ start?: string; end?: string }>): number[] {
+  const when = (text: string | undefined): number => {
+    if (!text?.trim()) return -Infinity;
+    if (PRESENT_RE.test(text)) return Infinity;
+    const span = parseDateSpan(text.trim());
+    return span ? span.latest.getTime() : -Infinity;
+  };
+  return rows
+    .map((r, i) => ({ i, end: when(r.end), start: when(r.start) }))
+    .sort((a, b) => b.end - a.end || b.start - a.start || a.i - b.i)
+    .map((r) => r.i);
+}
+
+/**
+ * Rows in a FLAT questionnaire: JazzHR asks "Education: Institution Name?",
+ * "Location?", "Major/Minor?", then "Institution Name?" again, each a question
+ * of its own with its own id, no row container, no index. Both schools were
+ * the first school, both employers the current one, and an employer's
+ * "Address?" got the applicant's home street (Directors Investment Group,
+ * live 2026-10-05). When a row's anchor (School, Employer) is asked more than
+ * once, each anchor starts a row, most recent first; the questions up to the
+ * next anchor belong to it. A row's place and pay are left blank.
+ */
+function assignQuestionnaireRows(
+  fields: DetectedField[],
+  registry: Map<string, RuntimeControl>,
+  profile: UserApplicationProfile | null,
+  adapter: SiteAdapter | null,
+  fillEEO: boolean
+): void {
+  if (!profile) return;
+  const elOf = (f: DetectedField): HTMLElement | null => {
+    const c = registry.get(f.id);
+    return c?.el ?? c?.radios?.[0] ?? c?.checkboxes?.[0] ?? null;
+  };
+  const loose = fields
+    .filter((f) => f.groupIndex == null && elOf(f))
+    .sort((a, b) => ((elOf(a) as HTMLElement).compareDocumentPosition(elOf(b) as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  const kinds: Array<{ anchor: FieldCategory; members: ReadonlySet<FieldCategory>; order: number[] }> = [
+    {
+      anchor: "school",
+      members: REPEAT_CATEGORIES[1],
+      order: rowsByRecency((profile.education ?? []).map((e) => ({ end: e.graduationYear }))),
+    },
+    {
+      anchor: "currentCompany",
+      members: REPEAT_CATEGORIES[0],
+      order: rowsByRecency((profile.experience ?? []).map((e) => ({ start: e.startDate, end: e.endDate }))),
+    },
+  ];
+  const anchorOf = new Set<FieldCategory>(kinds.map((k) => k.anchor));
+  // The same question asked again: "Education: Institution Name?" and
+  // "Institution Name?". A university and a high school are two questions
+  // (Palantir's "University" / "High School Name"), never two rows.
+  const core = (label: string): string =>
+    label
+      .toLowerCase()
+      .replace(/[*✱?:.()#\d]/g, " ")
+      .replace(/\b(education|employment|employer history|work history|previous|prior|most recent|current|first|second|third|other|additional|another|next)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  for (const kind of kinds) {
+    const anchors = loose.filter((f) => f.category === kind.anchor);
+    if (anchors.length < 2) continue;
+    if (new Set(anchors.map((a) => core(a.label))).size !== 1 || anchors.some((a) => /\b(high|secondary) school\b/i.test(a.label))) continue;
+    anchors.forEach((anchor, k) => {
+      const row = kind.order[k];
+      const from = loose.indexOf(anchor);
+      const stop = k + 1 < anchors.length ? loose.indexOf(anchors[k + 1]) : loose.length;
+      const members: DetectedField[] = [anchor];
+      for (let i = from + 1; i < stop; i++) {
+        const f = loose[i];
+        if (anchorOf.has(f.category) && f.category !== kind.anchor) break; // the other block begins
+        if (kind.members.has(f.category) || ROW_OWN_DETAIL.has(f.category)) members.push(f);
+        else if (f.category !== "unknown") break; // a question past the block
+      }
+      for (const f of members) {
+        if (ROW_OWN_DETAIL.has(f.category)) {
+          f.proposedValue = null;
+          f.deviceAbstained = true;
+          delete f.deterministic;
+          continue;
+        }
+        if (row === undefined) {
+          // More rows asked than the profile has: blank, never another row's.
+          f.proposedValue = null;
+          delete f.deterministic;
+          continue;
+        }
+        f.groupIndex = row;
+        reresolveRowField(f, registry, profile, adapter, fillEEO);
+      }
+    });
   }
 }
 
@@ -1240,6 +1351,8 @@ export function scanPage(
   splitStreetUnit(fields);
   // Rows repeated with the same ids (Ashby) → indices by position.
   assignRowsByPosition(fields, registry, profile, adapter, fillEEO);
+  // Flat questionnaires asking for a school or employer more than once.
+  assignQuestionnaireRows(fields, registry, profile, adapter, fillEEO);
   reclassifyEducationRowDates(fields, registry, profile);
 
   // Repeating-section rows → positional indices (Workday's instance-numbered rows).
@@ -1291,12 +1404,19 @@ function readsEmptyAsZero(el: HTMLElement, raw: string): boolean {
   return Number.isFinite(min) && min > 0;
 }
 
+/** A select's "nothing chosen yet" entry that carries a value of its own. */
+const SELECT_PLACEHOLDER = /^[-–—\s]*(no (answer|selection|response)|none selected|not selected|nothing selected)[-–—\s]*$/i;
+
 function currentValueOf(el: HTMLElement, controlType: ControlType): string | undefined {
   if (controlType === "select") {
     const sel = el as HTMLSelectElement;
     const opt = sel.selectedOptions[0];
     // Treat a selected placeholder ("Select…", empty value) as empty.
     if (!opt || !opt.value) return undefined;
+    // …and one that carries a value: JazzHR's "No answer" (value "0") and
+    // "-- No answer --" ("resumator_no_selection") read as answers already
+    // given, and ten questions were never filled (live 2026-10-05).
+    if (SELECT_PLACEHOLDER.test(cleanText(opt.textContent)) || isPlaceholderFiller(cleanText(opt.textContent))) return undefined;
     // A decline the PAGE ships selected ("Decline to answer" with `selected`,
     // JazzHR's EEO selects, live 2026-10-03) is its default, not an answer:
     // the applicant's stated one may replace it. Any other default stays.

@@ -121,6 +121,50 @@ describe("explicit per-country authorization beats the general sponsorship answe
   });
 });
 
+describe("the question bank's work-authorization shapes (Greenhouse, 2026-10-05)", () => {
+  const US = { jobCountry: "US" as string | null, company: "" };
+  const citizen = { ...SPARSE_CANADIAN, location: "Denver, CO", workAuthorization: "US Citizen", authorizedUS: "Yes", requiresSponsorship: "No" };
+  const opt = { ...SPARSE_CANADIAN, location: "Boston, MA", workAuthorization: "F-1 STEM OPT (EAD valid through June 2028)", authorizedUS: "Yes", requiresSponsorship: "Yes" };
+  const berlin = { ...SPARSE_CANADIAN, location: "Berlin, Germany", workAuthorization: "German citizen (EU)", authorizedUS: "No", authorizedCanada: "No", requiresSponsorship: "Yes" };
+  const canadian = { ...SPARSE_CANADIAN, requiresSponsorship: "No", authorizedUS: "No", authorizedCanada: "Yes" };
+
+  it("authorized, authorized with a later need, or not: three statements (Datadog)", () => {
+    // "Yes, but I will need sponsorship in the future" was written for an
+    // applicant with no US work right at all.
+    const q = "Are you legally authorised to work full-time in the country where this job is based?";
+    const opts = ["Yes, no restriction.", "Yes, but I will need sponsorship in the future.", "No, I need sponsorship now."];
+    const ask3 = (p: UserApplicationProfile) => value(ask(q, { options: opts, kind: "choice", controlType: "select" }, p, US));
+    expect(ask3(berlin)).toBe("No, I need sponsorship now.");
+    expect(ask3(canadian)).toBe("No, I need sponsorship now.");
+    expect(ask3(opt)).toBe("Yes, but I will need sponsorship in the future.");
+    expect(ask3(citizen)).toBe("Yes, no restriction.");
+  });
+
+  it("a label that says what Yes means is answered by it (Peloton)", () => {
+    // Every applicant got the inverse: "Yes" confirmed no sponsorship needed.
+    const q = "This position is not eligible for Visa Sponsorship. Applicants must be authorized to work in the United States without the need for Visa Sponsorship by the start date of employment. By selecting \"Yes,\" you confirm that you do not require Visa Sponsorship.";
+    expect(value(ask(q, { options: YES_NO, kind: "boolean", controlType: "select" }, citizen, US))).toBe("Yes");
+    expect(value(ask(q, { options: YES_NO, kind: "boolean", controlType: "select" }, opt, US))).toBe("No");
+    expect(value(ask(q, { options: YES_NO, kind: "boolean", controlType: "select" }, berlin, US))).toBe("No");
+    expect(value(ask(q, { options: YES_NO, kind: "boolean", controlType: "select" }, canadian, US))).toBe("No");
+  });
+
+  it("'authorized to lawfully work' is the work right (Roku, SoFi)", () => {
+    // Unrecognized, it went to the AI, whose backend rule pass answers it Yes.
+    const q = "Are you authorized to lawfully work in the country where this role is located?";
+    expect(value(ask(q, { options: YES_NO }, berlin, US))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, citizen, US))).toBe("Yes");
+  });
+
+  it("the type of support asked for is no yes or no (Pinterest)", () => {
+    const q = "If you do require employee sponsorship or assistance for work authorization, please list the type of support you may require.";
+    for (const p of [canadian, opt, citizen]) {
+      const r = ask(q, { kind: "text" }, p, US);
+      expect(String(value(r))).not.toMatch(/^(Yes|No)$/);
+    }
+  });
+});
+
 describe("conditional questions: the condition first", () => {
   const ACTIONET = ["Select an option...", "Yes", "No", "I am not a current or former government employee"];
   it("a false condition picks the option saying so (ActioNet on Jobvite, live 2026-10-03)", () => {

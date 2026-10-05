@@ -196,7 +196,18 @@ const residenceOf = (facts: ProfileFacts): string | null =>
 // ---------------------------------------------------------------------------
 
 const WORK_RIGHT =
-  /\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able|legal right|right|permission) to (legally )?work\b|\bwork authori[sz]ation\b|\bwork permit\b|\blegally (work|be employed|employed)\b|\bauthori[sz]ation to work\b|\bwork legally\b|\b(eligible|authori[sz]ed|permitted|allowed) to (legally )?(begin|start|commence|accept|take up) (employment|work)\b|\beligible for employment\b/;
+  /\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able|legal right|right|permission) to (legally |lawfully )?work\b|\bwork authori[sz]ation\b|\bwork permit\b|\b(legally|lawfully) (work|be employed|employed)\b|\bauthori[sz]ation to work\b|\bwork (legally|lawfully)\b|\b(eligible|authori[sz]ed|permitted|allowed) to (legally |lawfully )?(begin|start|commence|accept|take up) (employment|work)\b|\beligible for employment\b/;
+
+/** A sponsorship need ruled out: "do not require…", "without the need for
+ *  sponsorship", "no sponsorship". "No, I need sponsorship now" is no such
+ *  thing: its "No" answers the work right. */
+const NEGATED_NEED =
+  /\b(do not|does not|dont|doesnt|will not|wont|not|never|without)( any| the need for| need for| needing| requiring)? (visa |immigration |employer |employment |company )?(require|requires|need|needs|sponsor\w*)\b|\bno (visa |immigration |employer |employment )?sponsor\w*/;
+
+/** "By selecting 'Yes,' you confirm that you do not require Visa Sponsorship"
+ *  (Peloton, question bank 2026-10-05): the label says what Yes means. */
+const YES_MEANS =
+  /\bby (selecting|choosing|clicking|checking|answering|marking|ticking) yes\b (you|i) (confirm|certify|acknowledge|attest|agree|declare|state|represent|affirm)s? (that )?(.+)$/;
 
 /** "Are you able to work…" is a work RIGHT question only when it names a
  *  country and no arrangement: "able to work from our Kepler office" (Lever,
@@ -241,6 +252,26 @@ function resolveH1bHistory(q: QuestionInput, n: string, profile: UserApplication
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
   const h1b = resolveH1bHistory(q, n, profile);
   if (h1b) return h1b;
+  // The label says what Yes means: "By selecting 'Yes,' you confirm that you
+  // do not require Visa Sponsorship" (Peloton, question bank 2026-10-05: every
+  // applicant got the inverse). That statement is what gets answered.
+  const means = YES_MEANS.exec(n);
+  if (means && (SPONSOR.test(means[5]) || WORK_RIGHT.test(means[5])) && (isBooleanQuestion(q) || isYesNoDropdown(q, n))) {
+    const said = means[5];
+    const where = targetCountry(q, ctx, facts);
+    const home = residenceOf(facts);
+    const a = authorizedIn(facts.workAuth, where, home);
+    const s = needsSponsorshipIn(facts.workAuth, where, home);
+    if (SPONSOR.test(said)) {
+      if (!isHigh(s)) return abstain("work-auth:yes-means-unknown");
+      const ruledOut = NEGATED_NEED.test(said);
+      // "…authorized to work … without sponsorship": the right as well.
+      if (ruledOut && WORK_RIGHT.test(said) && isHigh(a) && a.value === false) return booleanResult(false, q, "work-auth:yes-means");
+      return booleanResult(ruledOut ? !s.value : s.value, q, "work-auth:yes-means");
+    }
+    if (!isHigh(a)) return abstain("work-auth:yes-means-unknown");
+    return booleanResult(a.value, q, "work-auth:yes-means");
+  }
   const hasSponsor = SPONSOR.test(n);
   // "Will you require sponsorship … to legally work in the U.S.?" (ZipRecruiter,
   // live 2026-10-03) asks about SPONSORSHIP; its work-right words are only the
@@ -274,6 +305,11 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   if (hasSponsor && !hasRight) {
     // "Will you now or in the future require sponsorship…"
     if (!isBooleanQuestion(q)) {
+      // "…please list the type of support you may require" (Pinterest,
+      // question bank 2026-10-05) asks for a description: never a yes or no.
+      if (/\b(list|describe|specify|explain|provide|detail|elaborate)\b|\b(type|kind|form) of (support|assistance|sponsorship|visa|status)\b/.test(n)) {
+        return abstain("sponsorship:type-unknown");
+      }
       // Free text: the applicant's own stated answer, verbatim, when it covers this country.
       const s = needsSponsorshipIn(facts.workAuth, country, residence);
       if (isHigh(s) && profile.requiresSponsorship?.trim() && q.kind !== "number" && q.kind !== "date") {
@@ -331,29 +367,44 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
  * AI). The one the profile's authorization and sponsorship make true.
  */
 function resolveAuthorizationStatement(q: QuestionInput, facts: ProfileFacts, country: string | null, residence: string | null): QuestionResult {
-  const opts = (q.options ?? []).map((o) => ({ raw: o, n: qnorm(o) }));
-  const one = (keep: (n: string) => boolean): string | null => {
-    const hits = opts.filter((o) => keep(o.n));
+  const opts = (q.options ?? []).map((o) => ({ raw: o, n: qnorm(o), pol: optionPolarity(o) }));
+  type Opt = (typeof opts)[number];
+  const one = (keep: (o: Opt) => boolean): string | null => {
+    const hits = opts.filter(keep);
     return hits.length === 1 ? hits[0].raw : null;
   };
-  const requires = (n: string) => /\b(require|requires|need|needs) (visa )?sponsorship\b/.test(n) && !/\b(not|no|without)\b/.test(n);
-  const notAuthorized = (n: string) => /\b(am|is|are) not (legally )?(authorized|eligible|permitted)\b/.test(n);
+  // "I require sponsorship…", "Yes, but I will need sponsorship in the future",
+  // "No, I need sponsorship now"; never "I do not require sponsorship".
+  const requires = (o: Opt) => /\b(require|requires|need|needs)\b/.test(o.n) && /\bsponsor/.test(o.n) && !NEGATED_NEED.test(o.n);
+  const notAuthorized = (o: Opt) => /\b(am|is|are) not (legally |currently )?(authorized|eligible|permitted)\b/.test(o.n);
   const a = authorizedIn(facts.workAuth, country, residence);
   const s = needsSponsorshipIn(facts.workAuth, country, residence);
+  // An option's own Yes or No answers the work right: "Yes, but I will need
+  // sponsorship in the future" claims it (Datadog, question bank 2026-10-05:
+  // written for an applicant with no US work right at all).
+  const fitsRight = (o: Opt) => !isHigh(a) || o.pol === null || o.pol === a.value;
   // A need the applicant STATED decides, whatever the work right (a student
   // visa's is unclear); one only inferred from "not authorized" does not, and
   // the literal answer is then "not authorized".
   if (facts.workAuth.statedSponsorship === true && isHigh(s) && s.value === true) {
-    const pick = one(requires);
-    return pick ? answer(pick, "work-auth-statement:needs-sponsorship") : null;
+    const pick = one((o) => requires(o) && fitsRight(o));
+    if (pick) return answer(pick, "work-auth-statement:needs-sponsorship");
+    if (!isHigh(a) || a.value !== false) return null;
   }
   if (!isHigh(a)) return null;
   if (a.value === false) {
-    const pick = one(notAuthorized);
+    const pick = one(notAuthorized) ?? one((o) => o.pol === false && requires(o));
     return pick ? answer(pick, "work-auth-statement:not-authorized") : null;
   }
-  if (!isHigh(s) || s.value !== false) return null;
-  const pick = one((n) => /\b(authorized|eligible|permitted)\b/.test(n) && /\bany employer\b/.test(n) && !/\bnot\b/.test(n));
+  if (!isHigh(s)) return null;
+  if (s.value === true) {
+    const pick = one((o) => o.pol !== false && requires(o));
+    return pick ? answer(pick, "work-auth-statement:needs-sponsorship") : null;
+  }
+  const pick =
+    one((o) => /\b(authorized|eligible|permitted)\b/.test(o.n) && /\bany employer\b/.test(o.n) && !/\bnot\b/.test(o.n)) ??
+    // "Yes, no restriction." beside "Yes, but I will need sponsorship…" (Datadog).
+    one((o) => o.pol === true && !/\bsponsor/.test(o.n) && !/\b(present|current) employer only\b/.test(o.n));
   return pick ? answer(pick, "work-auth-statement:any-employer") : null;
 }
 
@@ -1767,7 +1818,18 @@ function resolveConditional(q: QuestionInput, raw: string, facts: ProfileFacts, 
   if (!held || held.status !== "answer") {
     return { status: "abstain", rule: "conditional:unknown", blockBackend: held?.status === "abstain" && held.blockBackend === true };
   }
-  if ((held.value === "Yes") !== asked.negated) return resolveQuestion(restQ, facts, profile, ctx);
+  if ((held.value === "Yes") !== asked.negated) {
+    const inner = resolveQuestion(restQ, facts, profile, ctx);
+    // The field's category came from the whole label, its condition included:
+    // "If you do require sponsorship…, please list the type of support you may
+    // require" (Pinterest, question bank 2026-10-05) is a sponsorship field
+    // whose category value, the profile's bare Yes/No, answers the condition,
+    // never the question. Legal status is not filled that way.
+    if (inner === null && (q.category === "sponsorship" || q.category === "workAuthorization")) {
+      return abstain(q.category === "sponsorship" ? "sponsorship:follow-up-open" : "work-auth:follow-up-open");
+    }
+    return inner;
+  }
   const na = (q.options ?? []).filter((o) => o.trim() && !/^(yes|no)$/i.test(o.trim()) && NOT_APPLICABLE.test(qnorm(o)));
   return na.length === 1 ? answer(na[0], "conditional:does-not-apply") : abstain("conditional:does-not-apply");
 }

@@ -50,6 +50,89 @@ describe("a job still running has no end date to write (Workday replica, 2026-10
   });
 });
 
+describe("a follow-up after a legal-status condition is never answered by the condition (Pinterest, question bank 2026-10-05)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+
+  it("'If you do require sponsorship…, please list the type of support' gets no bare Yes/No", async () => {
+    const { setResolveContext } = await import("../src/content/fieldResolver");
+    const label = "If you do require employee sponsorship or assistance for work authorization, please list the type of support you may require.";
+    // The profile's own sponsorship answer ("No", about Canada) was typed in.
+    const canadian = { ...MOCK_PROFILE, location: "Toronto, ON, Canada", workAuthorization: "Canadian citizen", requiresSponsorship: "No", authorizedUS: "No", authorizedCanada: "Yes" };
+    const opt = { ...MOCK_PROFILE, location: "Boston, MA", workAuthorization: "F-1 STEM OPT", requiresSponsorship: "Yes", authorizedUS: "Yes" };
+    for (const p of [canadian, opt]) {
+      document.body.innerHTML = `<div class="job__location">San Francisco, CA, US</div><form><div class="field"><label for="q0">${label}</label><input type="text" id="q0"></div></form>`;
+      setResolveContext({ jobCountry: "US", jobCity: "San Francisco", jobPlaces: null, company: "Pinterest" });
+      const { fields } = scanPage(p, true);
+      const f = fields.find((x) => fieldEl(x.id)?.id === "q0");
+      expect(f, "the question is scanned").toBeDefined();
+      expect(f!.proposedValue ?? null).toBeNull();
+    }
+    document.body.innerHTML = "";
+  });
+});
+
+describe("JazzHR's questionnaire (Directors Investment Group, live 2026-10-05)", () => {
+  let restore: () => void;
+  let fields: import("../src/shared/types").DetectedField[] = [];
+  beforeAll(async () => {
+    restore = stubLayout();
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const { setResolveContext } = await import("../src/content/fieldResolver");
+    const { detectJobPlace } = await import("../src/content/jobLocation");
+    const { US_H1B_SENIOR } = await import("./e2e/profiles.mjs");
+    const html = readFileSync(path.resolve(__dirname, "fixtures", "real", "jazzhr", "jazzhr-dig-analyst.html"), "utf8");
+    document.documentElement.innerHTML = html.replace(/^<!doctype html>\s*/i, "").replace(/^<html[^>]*>|<\/html>\s*$/gi, "");
+    const place = detectJobPlace(document);
+    setResolveContext({ jobCountry: place.country ?? "US", jobCity: place.city, jobPlaces: place.places ?? null, company: "Directors Investment Group" });
+    fields = scanPage(US_H1B_SENIOR as never, true).fields;
+  });
+  afterAll(() => {
+    restore();
+    document.body.innerHTML = "";
+  });
+  const byId = (id: string) => fields.find((f) => fieldEl(f.id)?.id === id || document.getElementById(id)?.closest("[data-ap-field]") === fieldEl(f.id));
+  const proposal = (id: string) => byId(id)?.proposedValue ?? null;
+
+  it("an acknowledgement offered as 'I consent' / 'I do not Consent' is consent, never the disability question", () => {
+    // Its paragraph ends "…a qualified individual with a disability…ADA": read
+    // as the disability question, the profile's "No" ticked "I do not Consent".
+    const group = fields.find((f) => f.controlType === "checkboxGroup" && /misrepresentation/.test(f.label));
+    expect(group, "the acknowledgement is scanned").toBeDefined();
+    expect(group!.category).not.toMatch(/^eeo/);
+    expect(group!.proposedValue).toBe("I consent");
+  });
+
+  it("a select showing its '-- No answer --' placeholder is empty, and answered", () => {
+    // JazzHR's placeholders carry values ("0", "resumator_no_selection"): read
+    // as answers already given, ten questions were never filled.
+    for (const id of ["resumator-relocate-value", "resumator-over18-value", "resumator-questionnaire-q1340209", "resumator-questionnaire-q1340211", "resumator-questionnaire-q1340212"]) {
+      expect(byId(id)?.currentValue, id).toBeUndefined();
+    }
+    expect(proposal("resumator-relocate-value")).toBe("No");
+    expect(proposal("resumator-over18-value")).toBe("Yes");
+    expect(proposal("resumator-questionnaire-q1340209")).toBe("Yes");
+    expect(proposal("resumator-questionnaire-q1340211")).toBe("Yes");
+    expect(proposal("resumator-questionnaire-q1340212")).toBe("No");
+  });
+
+  it("each repeated education and employment block is its own row; their addresses are not the applicant's", () => {
+    // Both schools were the first school, both employers the current one, and
+    // the employers' "Address?" got the applicant's home street.
+    expect(proposal("resumator-questionnaire-q1340185")).toBe("University of Washington");
+    expect(proposal("resumator-questionnaire-q1340189")).toBe("Hanoi University of Science and Technology");
+    expect(proposal("resumator-questionnaire-q1340192")).toBe("Computer Science");
+    expect(proposal("resumator-questionnaire-q1340187")).toBeNull();
+    expect(proposal("resumator-questionnaire-q1340190")).toBeNull();
+    expect(proposal("resumator-questionnaire-q1340193")).toBe("Expedia Group");
+    expect(proposal("resumator-questionnaire-q1340201")).toBe("Redfin");
+    expect(proposal("resumator-questionnaire-q1340196")).toBeNull();
+    expect(proposal("resumator-questionnaire-q1340204")).toBeNull();
+  });
+});
+
 /** The element a scanned field was registered on. */
 function fieldEl(id: string): HTMLElement | null {
   return document.querySelector(`[data-ap-field="${id}"]`);

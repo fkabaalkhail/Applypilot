@@ -18,7 +18,7 @@
  * Runs LAST in resolveQuestion: a profile fact always wins over a default.
  */
 import type { UserApplicationProfile } from "../shared/types";
-import { optionPolarity } from "./answerKind";
+import { isConsentOption, optionPolarity } from "./answerKind";
 import { isHigh, type ProfileFacts } from "./profileFacts";
 import { placeOf } from "./placeMatch";
 import type { QuestionContext, QuestionInput, QuestionResult } from "./questionResolver";
@@ -364,7 +364,11 @@ export function resolveDefault(
   // "Will you need an accommodation for your interview?" (Netlify, left blank
   // 2026-10-03): No for an applicant who stated no disability. Anyone else
   // answers it themselves. Read on the device; only the No leaves it.
-  if (/\baccommodations?\b/.test(n) && /\b(need|require|request)\w*\b/.test(n) && /\b(interview|hiring|application|recruit\w*)\b/.test(n)) {
+  // Options that only consent or refuse make an acknowledgement, not a
+  // question about the applicant (JazzHR's ended with an ADA sentence, and its
+  // "accommodation" read as this rule: "I do not Consent", live 2026-10-05).
+  const consentOnly = opts.length > 0 && opts.every(isConsentOption);
+  if (!consentOnly && /\baccommodations?\b/.test(n) && /\b(need|require|request)\w*\b/.test(n) && /\b(interview|hiring|application|recruit\w*)\b/.test(n)) {
     return /^no\b|\bdo not have\b|\bdont have\b/.test(qn(profile.eeo?.disabilityStatus ?? "")) ? polar(false, q, "default:no-accommodation") : null;
   }
   // A required list whose ONLY option is an acknowledgement ("I will read the
@@ -411,6 +415,9 @@ export function resolveDefault(
     return entries.length > 0 && entries.every((e) => e.completed === true) ? polar(false, q, "default:no-research-or-funding") : null;
   }
 
+  // Consent-only options, after the opt-outs above: the acknowledgement is
+  // given whatever its paragraph mentions (an EEO statement, the ADA).
+  if (consentOnly && !RECORDING.test(n)) return polar(true, q, "default:consent");
   if (DEMOGRAPHIC.test(n)) return null;
   // Being recorded or transcribed (AI notetakers, Palantir on Lever, live
   // 2026-10-03) is the applicant's own choice: never defaulted, nor the AI's.

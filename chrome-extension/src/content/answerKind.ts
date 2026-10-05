@@ -83,6 +83,13 @@ export function optionPolarity(text: string): boolean | null {
   return null;
 }
 
+/** An option that only gives or refuses consent: "I consent", "I do not
+ *  Consent", "Yes, I agree", "I acknowledge". A question offering nothing
+ *  else is an acknowledgement, whatever its paragraph mentions. */
+export function isConsentOption(text: string): boolean {
+  return /^(yes,? |no,? )?(i )?(do not |dont |will not |refuse to )?(consent|agree|acknowledge|accept|certify|authori[sz]e)\b/.test(norm(text));
+}
+
 /** An option set that is a Yes/No choice (possibly with a decline / maybe option). */
 export function isBooleanOptionSet(options: string[] | undefined): boolean {
   if (!options || options.length < 2) return false;
