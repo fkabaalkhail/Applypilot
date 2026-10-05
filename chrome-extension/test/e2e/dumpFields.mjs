@@ -117,7 +117,7 @@ export function dumpFieldsInPage() {
     const ad = el.getAttribute("aria-activedescendant");
     let node = el.parentElement;
     for (let h = 0; node && h < 6; h++, node = node.parentElement) {
-      if (node.querySelectorAll('[role="combobox"], [aria-haspopup="listbox"]').length > 1) break;
+      if (node.querySelectorAll('[role="combobox"], [aria-haspopup="listbox"], input[aria-autocomplete="list"]').length > 1) break;
       const v = node.querySelector(
         '[class*="single-value" i], [class*="singleValue" i], [class*="multi-value__label" i], [class*="multiValue" i] [class*="label" i], [data-automation-id="selectedItem"], [class*="chip" i], [class*="pill" i]'
       );
@@ -195,8 +195,12 @@ export function dumpFieldsInPage() {
       const tag = el.tagName.toLowerCase();
       if (tag === "input" && SKIP_TYPES.has(el.type)) continue;
       const role = (el.getAttribute("role") || "").toLowerCase();
+      // react-select before v5: an input with aria-autocomplete="list" and no
+      // role, its selection shown beside it (Epic Games, live 2026-10-05).
+      const legacySelect =
+        tag === "input" && (el.getAttribute("aria-autocomplete") || "") === "list" && !role && Boolean(el.closest(".dropdown-autocomplete, [class*=\"-container\"]")?.querySelector("[class*=\"-control\"]"));
       const isCombo =
-        role === "combobox" || (el.getAttribute("aria-haspopup") || "").toLowerCase() === "listbox";
+        role === "combobox" || (el.getAttribute("aria-haspopup") || "").toLowerCase() === "listbox" || legacySelect;
       if (tag === "input" && el.type === "radio") {
         // Name-less radios (Vue v-model) group by their question container.
         let container = null;
