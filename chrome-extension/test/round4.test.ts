@@ -313,6 +313,7 @@ describe("react-select before v5 labelled by a <label for> naming no element (Ep
     const { BOOTCAMP_CAREER_GAP } = await import("./e2e/profiles.mjs");
     document.body.innerHTML = `<form>
       ${question(4, "How did you hear about this job posting?")}
+      ${question(5, "Do you now, or will you in the future, require sponsorship for employment authorization in order to legally work in the location associated with this job posting?")}
       ${question(6, "Do you have legal authorization to work in the geographic region specified for the internship?")}
       ${question(12, "I confirm all answers provided by me within this application are true and correct.")}
       <div><div class="InputLabel__Styled-sc-1ig3mnl-0 comeCg"><label for="educations[0].school_name_id"><span>School⁠⁠⁠*⁠:</span></label></div><div class="">${widget(13)}</div></div>
@@ -321,10 +322,17 @@ describe("react-select before v5 labelled by a <label for> naming no element (Ep
     const field = (n: number) => fields.find((f) => fieldEl(f.id)?.id === `react-select-${n}-input`);
     const label = (n: number) => field(n)?.label ?? "";
     expect(label(4)).toMatch(/^How did you hear about this job posting\?/);
+    // Past 160 characters a <label> is still a label, not a description to
+    // skip on the way to the question before it.
+    expect(label(5)).toMatch(/^Do you now, or will you in the future, require sponsorship/);
     expect(label(6)).toMatch(/^Do you have legal authorization to work/);
     expect(label(12)).toMatch(/^I confirm all answers/);
     expect(label(13)).toMatch(/^School/);
     expect(field(13)?.category).toBe("school");
+    // "react-select-13-input" numbers the widget, not an education row: School
+    // read as row 1 and proposed the applicant's high school.
+    expect(field(13)?.groupIndex ?? 0).toBe(0);
+    expect(field(13)?.proposedValue).toBe("Turing School of Software & Design");
     document.body.innerHTML = "";
   });
 });

@@ -219,7 +219,9 @@ function isAbleToWorkInCountry(n: string, raw: string): boolean {
   const c = countryNamedIn(raw);
   return c !== null;
 }
-const SPONSOR = /\bsponsor(ship|ed|ing)?\b|\b(visa|immigration) (status|support|assistance|transfer)\b|\bh ?1 ?b\b/;
+/** "What Duolingo sponsored conferences have you attended?" (question bank
+ *  2026-10-05) is about conferences, not a visa. */
+const SPONSOR = /\bsponsor(ship|ing)?\b|\bsponsored\b(?! (conferences?|events?|programs?|programmes?|hackathons?|organi[sz]ations?|communit(y|ies)|groups?|clubs?|scholarships?|teams?|content|posts?)\b)|\b(visa|immigration) (status|support|assistance|transfer)\b|\bh ?1 ?b\b/;
 /** Asks whether sponsorship is NEEDED ("will you require / do you need … sponsorship"). */
 const REQUIRES_SPONSOR = /\b(require|requires|requiring|need|needs|needing)\b[^?]{0,60}\bsponsor/;
 /** Asks for the work RIGHT itself ("are you legally authorized…", "do you have the right to work…"). */
@@ -272,6 +274,23 @@ function resolveOptExtension(q: QuestionInput, n: string, profile: UserApplicati
   return booleanResult(false, q, "opt-extension:no-student-status");
 }
 
+/**
+ * Whether a sponsorship the applicant needs is needed NOW. Authorized today
+ * through a temporary EAD (OPT, a work permit), the need is later; an H-1B,
+ * TN or L-1 moves to a new employer only with a new petition, and someone not
+ * authorized at all needs it from the start. A label that counts the
+ * applicant's own status as sponsorship ("(e.g., H-1B, E-3, TN, O-1, STEM
+ * OPT…)", DoorDash, live 2026-10-05) makes it now: a STEM OPT holder needs the
+ * new employer's paperwork from day one.
+ */
+function sponsorshipNeededNow(n: string, facts: ProfileFacts, profile: UserApplicationProfile, country: string | null, residence: string | null): boolean {
+  const a = authorizedIn(facts.workAuth, country, residence);
+  const stated = (profile.workAuthorization || "").toLowerCase();
+  const own = /\bstem opt\b/.test(stated) ? /\bopt\b/ : /\bopt\b/.test(stated) ? /(?<!\bstem )\bopt\b/ : /\bcpt\b/.test(stated) ? /\bcpt\b/ : /\bead\b/.test(stated) ? /\bead\b/ : null;
+  const temporary = isHigh(a) && a.value === true && /\b(opt|ead|cpt|work permit|pgwp|open work permit)\b/.test(stated) && !/\b(h-?1 ?b|tn|l-?1|e-?3|o-?1)\b/.test(stated);
+  return !temporary || Boolean(own?.test(n));
+}
+
 /** Visa names: as the applicant states them, and as an option names them. */
 const VISA_NAMES: [RegExp, RegExp][] = [
   [/\bh-?1 ?b\b/, /\bh-?1 ?b\b/],
@@ -292,10 +311,15 @@ const VISA_NAMES: [RegExp, RegExp][] = [
  * side the need picks, then the Yes naming the applicant's own visa, then the
  * Yes saying it is not listed. A need with no visa stated picks none.
  */
-function chooseSponsorshipOption(options: string[], need: boolean, stated: string): string | null {
+function chooseSponsorshipOption(options: string[], need: boolean, stated: string, now: boolean | null): string | null {
   const side = options.filter((o) => o.trim() && optionPolarity(o) === need);
   if (side.length === 1) return side[0];
   if (!need || side.length === 0) return null;
+  // "Yes, … now" beside "Yes, … in the future" (Airbnb, question bank
+  // 2026-10-05): when the need starts.
+  const nowOpt = side.filter((o) => /\b(now|currently|immediately)\b/.test(qnorm(o)) && !/\b(future|later)\b/.test(qnorm(o)));
+  const laterOpt = side.filter((o) => /\b(future|later)\b/.test(qnorm(o)) && !/\b(now|currently|immediately)\b/.test(qnorm(o)));
+  if (nowOpt.length === 1 && laterOpt.length === 1) return now === null ? null : now ? nowOpt[0] : laterOpt[0];
   const mine = VISA_NAMES.filter(([own]) => own.test(stated.toLowerCase()));
   if (mine.length === 0) return null;
   const named = side.filter((o) => mine.some(([, named]) => named.test(o.toLowerCase())));
@@ -367,15 +391,16 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
 
   if (hasSponsor && !hasRight) {
     // "Will you now or in the future require sponsorship…"
+    const s = needsSponsorshipIn(facts.workAuth, country, residence);
+    const now = isHigh(s) && s.value === true ? sponsorshipNeededNow(n, facts, profile, country, residence) : null;
     if (!isBooleanQuestion(q)) {
       // "…please list the type of support you may require" (Pinterest,
       // question bank 2026-10-05) asks for a description: never a yes or no.
       if (/\b(list|describe|specify|explain|provide|detail|elaborate)\b|\b(type|kind|form) of (support|assistance|sponsorship|visa|status)\b/.test(n)) {
         return abstain("sponsorship:type-unknown");
       }
-      const s = needsSponsorshipIn(facts.workAuth, country, residence);
       if (q.options?.some((o) => o.trim())) {
-        const pick = isHigh(s) ? chooseSponsorshipOption(q.options, s.value, profile.workAuthorization || "") : null;
+        const pick = isHigh(s) ? chooseSponsorshipOption(q.options, s.value, profile.workAuthorization || "", now) : null;
         return pick ? answer(pick, "sponsorship:option") : abstain("sponsorship:option-unknown");
       }
       // Free text: the applicant's own stated answer, verbatim, when it covers this country.
@@ -384,23 +409,11 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
       }
       return abstain("sponsorship:unknown");
     }
-    const s = needsSponsorshipIn(facts.workAuth, country, residence);
     // "Will you NOW require sponsorship…?" beside "…in the FUTURE…?" (DoorDash,
-    // live 2026-10-05: both Yes for an OPT holder). Authorized today through a
-    // temporary EAD (OPT, a work permit), the need is later, not now. An H-1B,
-    // TN or L-1 moves to a new employer only with a new petition: now.
-    const nowOnly = /\b(now|currently|at this time|presently)\b/.test(n) && !/\b(future|later|eventually)\b/.test(n);
-    if (nowOnly && isHigh(s) && s.value === true) {
-      const a = authorizedIn(facts.workAuth, country, residence);
-      const stated = (profile.workAuthorization || "").toLowerCase();
-      // …unless the label counts that very status as sponsorship ("(e.g.,
-      // H-1B, E-3, TN, O-1, STEM OPT…)", DoorDash): a STEM OPT holder needs
-      // the new employer's paperwork from day one.
-      const own = /\bstem opt\b/.test(stated) ? /\bopt\b/ : /\bopt\b/.test(stated) ? /(?<!\bstem )\bopt\b/ : /\bcpt\b/.test(stated) ? /\bcpt\b/ : /\bead\b/.test(stated) ? /\bead\b/ : null;
-      if (!own?.test(n) && isHigh(a) && a.value === true && /\b(opt|ead|cpt|work permit|pgwp|open work permit)\b/.test(stated) && !/\b(h-?1 ?b|tn|l-?1|e-?3|o-?1)\b/.test(stated)) {
-        return booleanResult(false, q, "sponsorship:not-now");
-      }
-    }
+    // live 2026-10-05: both Yes for an OPT holder). "Do you now, or will you
+    // ever, require…" (Toast, question bank 2026-10-05) asks about later too.
+    const nowOnly = /\b(now|currently|at this time|presently)\b/.test(n) && !/\b(future|later|eventually|ever|at any (point|time)|going forward)\b/.test(n);
+    if (nowOnly && now === false) return booleanResult(false, q, "sponsorship:not-now");
     // A question phrased as the inverse ("Can you work WITHOUT sponsorship?")
     // without a work-right phrase ("…work for us without sponsorship").
     const inverted = /\bwithout\b/.test(n) && !/\b(require|need)\b/.test(n);
@@ -617,11 +630,23 @@ function placeIn(label: string): { kind: "country"; code: string } | { kind: "re
 /** The APPLICANT is the one who lives/is located somewhere. "This position
  *  requires you to work from the Toronto office located at …" is about the
  *  office; reading it as residence answered a commute question (Lever, live
- *  2026-10-03). */
+ *  2026-10-03), and so did "Are you able to commute … the New York HQ office
+ *  (located at …)" (Peloton, question bank 2026-10-05). */
 const APPLICANT_RESIDES =
-  /\b(do|are|have|did) you\b[^?]{0,60}?\b(live|living|reside|residing|located|based|resident|currently in(?! an? ))\b|\bare you (a |an )?(current )?resident\b|\byour (current )?(location|residence|city of residence|place of residence)\b|\bwhere (do|are) you\b/;
+  /\b(do|are|have|did) you\b(?:(?!\b(?:office|offices|headquarters|hq|campus|building|facility)\b)[^?]){0,60}?\b(live|living|reside|residing|located|based|resident|currently in(?! an? ))\b|\bare you (a |an )?(current )?resident\b|\byour (current )?(location|residence|city of residence|place of residence)\b|\bwhere (do|are) you\b/;
 
 function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
+  // "By selecting 'Yes,' you confirm that you currently reside in the New
+  // York, NY area or are prepared to commute or relocate at your own expense"
+  // (Peloton, question bank 2026-10-05): the statement is the question.
+  const means = YES_MEANS.exec(n);
+  if (means && RESIDE.test(means[5]) && isBooleanQuestion(q)) {
+    const said = /\b(?:confirm|certify|acknowledge|attest|agree|declare|state|represent|affirm)s?\s+(?:that\s+)?(?:you|I)\s+(.+)$/i.exec(q.label);
+    if (said) {
+      const label = `Do you ${said[1].trim()}`;
+      return resolveResidence({ ...q, label }, qnorm(label), facts, profile);
+    }
+  }
   if (!RESIDE.test(n) || !APPLICANT_RESIDES.test(n) || !isBooleanQuestion(q)) return null;
   if (/\b(willing|open|able|plan|planning) to (relocate|move)\b/.test(n) && !/\b(live|reside|located|based)\b/.test(n)) return null;
   const place = placeIn(q.label);
@@ -689,9 +714,43 @@ function renderCountry(country: Country, q: QuestionInput, rule: string): Questi
 
 const OUTSIDE_OPTION = /\b(not applicable|n a|none|other|outside|international|non us|not in the|i do not (live|reside)|not a us|foreign|not listed)\b|^na$/;
 
+/**
+ * "Do you plan to move out of the state/country in which you currently reside
+ * within the next 6-12 months?" over "I have no plans to move at this time"
+ * and a list of states (Squarespace, question bank 2026-10-05): a plan, and it
+ * was answered with the state the applicant lives in. Someone who will not
+ * relocate has none; anyone else's plans are their own to state.
+ */
+function resolveMovePlan(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
+  if (!/\b(plan|plans|planning|intend|intending|expect|expecting)( on)? (to )?(move|moving|relocate|relocating)\b/.test(n)) return null;
+  // A move in general, not one for this job (the relocation questions).
+  if (!/\b(out of|away from|leave|leaving)\b|\b(with)?in the next\b/.test(n) || /\bfor (this|the) (role|position|job|opportunity)\b/.test(n)) return null;
+  if (polarityOf(profile.willingToRelocate || "") !== false) return abstain("move-plan:unknown");
+  if (isBooleanQuestion(q)) return booleanResult(false, q, "move-plan:none");
+  const none = (q.options ?? []).filter((o) => /\bno plans?\b|\bnot (planning|intending)\b|^no\b/.test(qnorm(o)));
+  return none.length === 1 ? answer(none[0], "move-plan:none") : abstain("move-plan:unknown");
+}
+
+/** The Middle East, in EMEA though its countries are listed under Asia. */
+const MIDDLE_EAST = new Set(["TR", "IL", "AE", "SA", "QA", "KW", "BH", "OM", "JO", "LB", "EG"]);
+
+/** An option naming a business region the country is in: "EMEA", "APAC",
+ *  "LATAM", "Americas", "Europe", "Asia Pacific", "North America". */
+function inWorldRegion(c: Country, option: string): boolean {
+  const me = MIDDLE_EAST.has(c.code);
+  if (/^(emea|europe middle east (and|&)? ?africa)$/.test(option)) return c.continent === "Europe" || c.continent === "Africa" || me;
+  if (/^(apac|asia pacific|asia and pacific|asia)$/.test(option)) return (c.continent === "Asia" && !me) || c.continent === "Oceania";
+  if (/^(latam|latin america|south america|central (and|&) south america)$/.test(option)) return c.continent === "South America" || c.code === "MX";
+  if (/^(amer|americas|the americas|north america|na)$/.test(option)) return c.continent === "North America" || (option.includes("americas") && c.continent === "South America");
+  if (/^europe$/.test(option)) return c.continent === "Europe";
+  if (/^(africa)$/.test(option)) return c.continent === "Africa";
+  if (/^middle east$/.test(option)) return me;
+  return false;
+}
+
 /** "Which state do you reside in?" / a State or Province select. */
 function resolveRegionChoice(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
-  const asksRegion = q.category === "addressState" || /\b(which|what) (state|province)\b|\bstate (or province )?(of|you) (residence|reside|live)\b|\bprovince of residence\b/.test(n);
+  const asksRegion = q.category === "addressState" || /\b(which|what) (state|province)\b|\bstate (or province )?(of|you) (residence|reside|live)\b|\bprovince of residence\b|\bstate region (in which|where) you (currently )?(reside|live)\b/.test(n);
   if (!asksRegion || !q.options || q.options.length < 3) return null;
   const loc = facts.location;
   if (isHigh(loc.region)) {
@@ -701,6 +760,18 @@ function resolveRegionChoice(q: QuestionInput, n: string, facts: ProfileFacts): 
       return reg?.code === r.code && reg.country === r.country;
     });
     if (hit.length === 1) return answer(hit[0], "region-choice");
+  }
+  // Buckets beside the states ("New York | Illinois | Another State in the
+  // US | APAC | EMEA | Other", Waymo, question bank 2026-10-05): a US
+  // applicant's unlisted state, or the applicant's part of the world.
+  if (isHigh(loc.country)) {
+    const c = loc.country.value;
+    if (c.code === "US" && isHigh(loc.region)) {
+      const another = q.options.filter((o) => /\b(another|other|different)( us| u s)? states?\b/.test(qnorm(o)) && !/\b(outside|non|not in|international)\b/.test(qnorm(o)));
+      if (another.length === 1) return answer(another[0], "region-choice:another-state");
+    }
+    const bucket = q.options.filter((o) => inWorldRegion(c, qnorm(o)));
+    if (bucket.length === 1) return answer(bucket[0], "region-choice:world-region");
   }
   // The options are another country's regions: pick the explicit "not
   // applicable / outside" option, never a real state.
@@ -1771,6 +1842,13 @@ function clearanceCountry(n: string): string | null {
 
 function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicationProfile, facts: ProfileFacts, ctx: QuestionContext): QuestionResult {
   if (!isBooleanQuestion(q)) {
+    // "…are you willing to commute and/or relocate for this role? If not,
+    // please explain:" in a text box (Relativity, question bank 2026-10-05)
+    // got the applicant's city: Yes from someone who will move; the rest is
+    // theirs to explain.
+    if ((q.kind === "text" || q.kind === "longText") && !q.options?.length && /\b(willing|open|able|prepared) to (\w+ (and|or|and or) )?(relocate|move)\b/.test(n) && !/\b(assistance|package|expenses?|reimburse)\b/.test(n)) {
+      return polarityOf(profile.willingToRelocate || "") === true ? answer("Yes", "relocation:text") : abstain("relocation:text-unknown");
+    }
     // "Clearance type / level" select: "None" when the applicant holds none.
     if (/\bclearance\b/.test(n) && q.options?.length && /^none$/i.test((profile.securityClearance || "").trim())) {
       const none = q.options.filter((o) => /^none\b/i.test(o.trim()));
@@ -2059,6 +2137,7 @@ export function resolveQuestion(
     resolveCitizenship(q, n, facts, ctx) ??
     resolveAge(q, n, facts) ??
     resolveSchoolMembership(q, n, facts) ??
+    resolveMovePlan(q, n, profile) ??
     resolveResidence(q, n, facts, profile) ??
     resolveRegionChoice(q, n, facts) ??
     resolveLocatedChoice(q, n, facts) ??

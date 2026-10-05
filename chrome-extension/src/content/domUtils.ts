@@ -199,6 +199,13 @@ export function isPlaceholderFiller(text: string): boolean {
  * common ATS markup `<div><span>Label</span><input/></div>`. Dropdown
  * placeholder filler ("Select…") is skipped so it never masquerades as a label.
  */
+/** `node` is a <label>/<legend>, or only wraps one: all its `text` is the label's. */
+function isLabelElement(node: Element, text: string): boolean {
+  if (node.matches("label, legend")) return true;
+  const inner = node.querySelector("label, legend");
+  return inner !== null && cleanText(inner.textContent) === text;
+}
+
 export function nearbyText(el: HTMLElement): string {
   const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "INPUT", "SELECT", "TEXTAREA", "BUTTON", "OPTION"]);
   let node: HTMLElement | null = el;
@@ -213,8 +220,12 @@ export function nearbyText(el: HTMLElement): string {
         text = cleanText(sib.textContent);
       }
       // Long blobs are paragraphs/descriptions, not labels; placeholder filler
-      // ("Select…") is not a label either, skip both and keep scanning.
-      if (text && text.length <= 160 && !isPlaceholderFiller(text)) return text;
+      // ("Select…") is not a label either, skip both and keep scanning. A
+      // <label> is a label at any length: Epic Games' 180-character
+      // sponsorship question was skipped for the question before it (live
+      // 2026-10-05).
+      const max = sib.nodeType === Node.ELEMENT_NODE && isLabelElement(sib as Element, text) ? 400 : 160;
+      if (text && text.length <= max && !isPlaceholderFiller(text)) return text;
       sib = sib.previousSibling;
       hops++;
     }

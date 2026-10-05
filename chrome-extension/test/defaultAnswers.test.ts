@@ -215,3 +215,63 @@ describe("profile answers added 2026-10-03 (no mapping can supply these)", () =>
     expect(value(ask("Cumulative GPA", { controlType: "text", kind: "text" }))).toBe("abstain");
   });
 });
+
+describe("question bank 2026-10-05: offices, commutes and moves", () => {
+  const P = () => import("./e2e/profiles.mjs") as Promise<Record<string, UserApplicationProfile>>;
+  const US_JOB = { jobCountry: "US" as string | null, company: "Acme" };
+
+  it("'an average of 40 hours per week' is a schedule the applicant accepts (Epic Games)", () => {
+    expect(value(ask("Are you able to work an average of 40 hours per week, Monday through Friday?*", { options: YES_NO }))).toBe("Yes");
+  });
+
+  it("an office named after 'in our' settles in-person work for someone who will not move (Nuro)", async () => {
+    const { US_H1B_SENIOR, US_OPT_ANALYST } = await P();
+    const q = "This position is hybrid and requires 4 days a week in office, including Thursdays in our Mountain View, CA headquarters and the remaining 3 days in either Mountain View or our San Francisco, CA office. Are you able to meet this requirement?";
+    expect(value(ask(q, { options: YES_NO }, US_H1B_SENIOR, US_JOB))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, US_OPT_ANALYST, US_JOB))).toBe("Yes");
+    const local = { ...US_H1B_SENIOR, location: "Mountain View, CA", addressCity: "Mountain View", addressState: "CA" };
+    expect(value(ask(q, { options: YES_NO }, local, US_JOB))).toBe("Yes");
+  });
+
+  it("the office '(located at …, New York, NY)' is no answer about where the applicant lives (Peloton)", async () => {
+    const { US_H1B_SENIOR, US_OPT_ANALYST } = await P();
+    const q = "This is a hybrid role. Are you able to commute and work within the New York HQ office (located at 441 9th Avenue, New York, NY) on Tuesdays, Wednesdays and Thursdays?";
+    expect(rule(ask(q, { options: YES_NO }, US_OPT_ANALYST, US_JOB))).not.toMatch(/^residence/);
+    expect(value(ask(q, { options: YES_NO }, US_OPT_ANALYST, US_JOB))).toBe("Yes");
+    expect(value(ask(q, { options: YES_NO }, US_H1B_SENIOR, US_JOB))).toBe("No");
+  });
+
+  it("'By selecting Yes, you confirm that you currently reside in … or are prepared to relocate' is that statement (Peloton)", async () => {
+    const { US_H1B_SENIOR, US_OPT_ANALYST } = await P();
+    const q = "This position does not offer relocation assistance. By selecting 'Yes,' you confirm that you currently reside in the New York, NY area or are prepared to commute or relocate at your own expense.";
+    expect(value(ask(q, { options: YES_NO }, US_H1B_SENIOR, US_JOB))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, US_OPT_ANALYST, US_JOB))).toBe("Yes");
+    const local = { ...US_H1B_SENIOR, location: "New York, NY", addressCity: "New York", addressState: "NY" };
+    expect(value(ask(q, { options: YES_NO }, local, US_JOB))).toBe("Yes");
+  });
+
+  it("'willing to commute and/or relocate? If not, please explain' in a text box is never the applicant's city (Relativity)", async () => {
+    const { US_H1B_SENIOR, US_OPT_ANALYST } = await P();
+    const q = "If your location differs from the location posted on the job description, are you willing to commute and/or relocate for this role? If not, please explain:";
+    expect(value(ask(q, { controlType: "text", kind: "text" }, US_OPT_ANALYST, US_JOB))).toBe("Yes");
+    expect(value(ask(q, { controlType: "text", kind: "text" }, US_H1B_SENIOR, US_JOB))).toBe("abstain");
+  });
+
+  it("state/region buckets: another US state, EMEA, APAC (Waymo)", async () => {
+    const { US_H1B_SENIOR, BERLIN_STAFF, INDIA_NEW_GRAD, COMPLETE_CANADIAN } = await P();
+    const q = "Please provide the state/region in which you currently reside.";
+    const o = { options: ["New York", "Illinois", "Another State in the US", "APAC", "EMEA", "Other"] };
+    expect(value(ask(q, o, US_H1B_SENIOR, US_JOB))).toBe("Another State in the US");
+    expect(value(ask(q, o, BERLIN_STAFF, US_JOB))).toBe("EMEA");
+    expect(value(ask(q, o, INDIA_NEW_GRAD, US_JOB))).toBe("APAC");
+    expect(value(ask(q, o, COMPLETE_CANADIAN, US_JOB))).toBe("Other");
+  });
+
+  it("'Do you plan to move out of the state/country you reside in?' is a plan, not the current state (Squarespace)", async () => {
+    const { US_H1B_SENIOR, US_OPT_ANALYST } = await P();
+    const q = "Do you plan to move out of the state/country in which you currently reside within the next 6-12 months?";
+    const o = { options: ["I have no plans to move at this time", "Australia", "California", "Canada", "Colorado", "Massachusetts", "Washington", "Other - My state/country is not listed"] };
+    expect(value(ask(q, o, US_H1B_SENIOR, US_JOB))).toBe("I have no plans to move at this time");
+    expect(value(ask(q, o, US_OPT_ANALYST, US_JOB))).toBe("abstain");
+  });
+});

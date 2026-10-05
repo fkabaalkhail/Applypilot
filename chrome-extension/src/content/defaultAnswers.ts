@@ -92,7 +92,7 @@ const RECORDING = /\b(record(ed|ing)?|transcri\w*|notetak\w*|note tak\w*)\b/;
 const ACK_VERB =
   /\b(acknowledges?|agrees?|understands?|confirms?|accepts?|comfortable|okay|ok|willing|able|open|prepared|available|can you|will you be able|are you able|works? for you)\b/;
 const REQUIREMENT =
-  /\b(in ?office|on ?site|in ?person|hybrid|office|commut\w*|travel\w*|relocat\w*|shifts?|weekends?|overtime|nights?|evenings?|holidays?|background (check|screen\w*|investigation)s?|drug (test\w*|screen\w*)|essential (functions|duties)|lift\w*|schedule|days (per|a|each) week|requirement|requirements|move to the location|moving to the location)\b/;
+  /\b(in ?office|on ?site|in ?person|hybrid|office|commut\w*|travel\w*|relocat\w*|shifts?|weekends?|overtime|nights?|evenings?|holidays?|background (check|screen\w*|investigation)s?|drug (test\w*|screen\w*)|essential (functions|duties)|lift\w*|schedule|days (per|a|each) week|hours (per|a|each) week|requirement|requirements|move to the location|moving to the location)\b/;
 /** A request rather than a requirement ("Will you require relocation
  *  assistance?"): the applicant's to make, never defaulted. */
 const ASSISTANCE = /\b(assistance|package|support|expenses?|benefits?|allowance|reimburs\w*|stipend|bonus|housing)\b/;
@@ -195,15 +195,23 @@ const REGULAR_PRESENCE =
 const RESEARCH_OR_FUNDING =
   /^(are|do) you (currently )?(conducting|doing|performing|engaged in) (any )?research\b|^do you (currently )?(receive|have|hold) (any )?(active )?(funding|grants?|sponsorships?)\b/;
 
-/** The place a question names ("out of Pleasant Grove, Utah", "in Austin, TX"). */
-function placeInLabel(label: string): ReturnType<typeof placeOf> | null {
-  const m = /\b(?:out of|in|at|from|based in|located in)\s+([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,3},\s*[A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,2})/.exec(label);
-  if (!m) return null;
-  // The sentence ends at its full stop: "located in Manville, NJ. Does this
-  // commute…" read "Manville, NJ. Does" and found no state (Carvana,
-  // question bank 2026-10-05).
-  const place = placeOf(m[1].split(/\.\s/)[0].replace(/[.,;:]+$/, ""));
-  return place.city && (place.region || place.country) ? place : null;
+/** The places a question names ("out of Pleasant Grove, Utah", "in Austin, TX",
+ *  "in our Mountain View, CA headquarters", an address's "…, New York, NY"). */
+function placesInLabel(label: string): ReturnType<typeof placeOf>[] {
+  const out: ReturnType<typeof placeOf>[] = [];
+  const add = (text: string) => {
+    // The sentence ends at its full stop: "located in Manville, NJ. Does this
+    // commute…" read "Manville, NJ. Does" and found no state (Carvana,
+    // question bank 2026-10-05).
+    const place = placeOf(text.split(/\.\s/)[0].replace(/[.,;:]+$/, ""));
+    if (place.city && (place.region || place.country) && !out.some((p) => p.city === place.city && p.region === place.region)) out.push(place);
+  };
+  // "in our Mountain View, CA headquarters" (Nuro, question bank 2026-10-05).
+  for (const m of label.matchAll(/\b(?:out of|in|at|from|based in|located in)\s+(?:(?:our|the|either|its|their)\s+)?([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,3},\s*[A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,2})/g)) add(m[1]);
+  // A city and its state anywhere else: the office's address "(located at
+  // 441 9th Avenue, New York, NY)" (Peloton, question bank 2026-10-05).
+  for (const m of label.matchAll(/\b([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,3}),\s*([A-Z]{2})\b/g)) add(`${m[1]}, ${m[2]}`);
+  return out;
 }
 
 /** A channel named for a brand ("LinkedIn Job Search", "Glassdoor Article"). */
@@ -489,9 +497,9 @@ export function resolveDefault(
     return choosePlaceOption(q, profile, facts);
   }
   if (IN_PERSON.test(n) && !occasional && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) {
-    const named = placeInLabel(q.label);
+    const named = placesInLabel(q.label);
     const posted = (ctx.jobPlaces ?? []).map((p) => placeOf(p)).filter((p) => p.city && (p.region || p.country));
-    const places = named ? [named] : posted;
+    const places = named.length > 0 ? named : posted;
     if (places.length > 0) {
       const home = facts.location;
       const homeCity = isHigh(home.city) ? qn(home.city.value) : null;

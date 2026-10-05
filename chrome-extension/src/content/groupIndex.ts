@@ -43,6 +43,11 @@ function firstIndex(s: string): number | null {
   return Number.isInteger(n) && n < MAX_INDEX ? n : null;
 }
 
+/** react-select numbers its widgets ("react-select-13-input"): an instance,
+ *  not a row. Epic Games' School read as row 13, ranked to row 1, and got the
+ *  applicant's high school (live 2026-10-05). */
+const WIDGET_INSTANCE_ID = /^react-select-\d+-/;
+
 export function detectGroupIndex(signals: FieldSignals): number | null {
-  return firstIndex(signals.nameAttr) ?? firstIndex(signals.idAttr);
+  return firstIndex(signals.nameAttr) ?? (WIDGET_INSTANCE_ID.test(signals.idAttr) ? null : firstIndex(signals.idAttr));
 }

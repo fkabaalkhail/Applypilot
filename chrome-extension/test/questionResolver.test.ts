@@ -288,6 +288,29 @@ describe("Greenhouse batch 2, live 2026-10-05: Accenture Federal, Gemini, DoorDa
     expect(value(ask(now, { options: YES_NO }, h1b, US))).toBe("Yes");
   });
 
+  it("Toast: 'Do you now, or will you ever, require sponsorship' is the future too (an OPT holder said No)", () => {
+    const q = "Do you now, or will you ever, require employment sponsorship to work in the country where this job is located?";
+    expect(value(ask(q, { options: YES_NO }, opt, US))).toBe("Yes");
+    expect(value(ask("Will you at any point require sponsorship to work in the US?", { options: YES_NO }, opt, US))).toBe("Yes");
+  });
+
+  it("Airbnb: 'Yes … now' / 'Yes … in the future' / 'No': when the need starts", () => {
+    const q = "Will you now or in the future require company sponsorship to retain or extend your work authorization in the country where the job is located?";
+    const opts = ["Yes, I will require immigration sponsorship now to legally work in the country where the job is located.", "Yes, I will require immigration sponsorship in the future to legally work in the country where the job is located.", "No, I do not and will not require immigration sponsorship to legally work in the country where the job is located."];
+    const o = { options: opts, kind: "choice" as const, controlType: "select" as const };
+    const plain = { ...opt, workAuthorization: "F-1 OPT (EAD valid through June 2027)" };
+    expect(value(ask(q, o, h1b, US))).toBe(opts[0]);
+    expect(value(ask(q, o, plain, US))).toBe(opts[1]);
+    expect(value(ask(q, o, citizen as never, US))).toBe(opts[2]);
+  });
+
+  it("Duolingo: 'sponsored conferences' are no sponsorship question", () => {
+    const q = "What Duolingo sponsored conferences have you attended and/or organizations are you a part of?";
+    const r = ask(q, { options: ["Rewriting the Code", "ColorStack"], kind: "multiChoice" as never, controlType: "checkboxGroup" }, h1b, US);
+    expect(r && r.status === "abstain" ? r.blockBackend : false).toBe(false);
+    expect(r?.rule ?? "").not.toMatch(/^sponsorship/);
+  });
+
   it("GitLab: 'Yes, <visa>' options: the applicant's own visa, else the Yes saying it is not listed", () => {
     const q = "Will you now or in the future require sponsorship for a visa to remain in your current location?*";
     const opts = ["No", "Yes, Netherlands Highly Skilled Migrant Visa", "Yes, Ireland Highly Skilled Worker Visa", "Yes, EU Blue Card", "Yes, USMCA Professional (TN) Visa (USA)", "Yes, F-1 Visa OPT (USA)", "Yes, but not one of the visas listed here"];
