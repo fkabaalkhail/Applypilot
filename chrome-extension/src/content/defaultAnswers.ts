@@ -21,6 +21,7 @@ import type { UserApplicationProfile } from "../shared/types";
 import { isConsentOption, optionPolarity } from "./answerKind";
 import { isHigh, type ProfileFacts } from "./profileFacts";
 import { placeOf } from "./placeMatch";
+import { REGION_CITIES, regionFromText, regionHintForCity } from "./geo";
 import type { QuestionContext, QuestionInput, QuestionResult } from "./questionResolver";
 
 const answer = (value: string, rule: string): QuestionResult => ({ status: "answer", value, confidence: "high", rule });
@@ -218,8 +219,49 @@ function placesInLabel(label: string): ReturnType<typeof placeOf>[] {
   // A city and its state anywhere else: the office's address "(located at
   // 441 9th Avenue, New York, NY)" (Peloton, question bank 2026-10-05).
   for (const m of label.matchAll(/\b([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,3}),\s*([A-Z]{2})\b/g)) add(`${m[1]}, ${m[2]}`);
+  // Without the comma: "work onsite in Whippany NJ" (Giftogram, question bank
+  // 2026-10-05). Only a real state or province code after the city.
+  for (const m of label.matchAll(/\b(?:in|at|near|out of|from)\s+([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,2})\s+([A-Z]{2})\b/g)) {
+    if (regionFromText(m[2], "US") || regionFromText(m[2], "CA")) add(`${m[1]}, ${m[2]}`);
+  }
+  // A well-known office city named alone: "our Austin office" (Cloudflare,
+  // question bank 2026-10-05), "onsite in Austin".
+  for (const m of label.matchAll(OFFICE_CITY)) {
+    const region = regionHintForCity(m[1]);
+    if (region) add(`${m[1]}, ${region}`);
+  }
   return out;
 }
+
+/**
+ * Working in person somewhere, for an applicant who will not relocate: their
+ * own city ("local"), only other states or countries ("elsewhere"), places
+ * that are neither ("unclear"), or null when this does not apply (no
+ * in-person work asked, they would move, or no place is named or posted).
+ */
+export function onsiteVerdict(
+  label: string,
+  profile: UserApplicationProfile,
+  facts: ProfileFacts,
+  ctx: QuestionContext
+): "local" | "elsewhere" | "unclear" | null {
+  if (!IN_PERSON.test(qn(label)) || !/^no\b/i.test((profile.willingToRelocate ?? "").trim())) return null;
+  const named = placesInLabel(label);
+  const posted = (ctx.jobPlaces ?? []).map((p) => placeOf(p)).filter((p) => p.city && (p.region || p.country));
+  const places = named.length > 0 ? named : posted;
+  if (places.length === 0) return null;
+  const home = facts.location;
+  const homeCity = isHigh(home.city) ? qn(home.city.value) : null;
+  if (homeCity && places.some((p) => p.city === homeCity)) return "local";
+  const homeRegion = isHigh(home.region) ? `${home.region.value.country}:${home.region.value.code}` : null;
+  const homeCountry = isHigh(home.country) ? home.country.value.code : null;
+  const elsewhere = (p: ReturnType<typeof placeOf>) =>
+    Boolean((p.country && homeCountry && p.country !== homeCountry) || (p.region && homeRegion && p.region !== homeRegion));
+  return places.every(elsewhere) ? "elsewhere" : "unclear";
+}
+
+/** A well-known office city after "our" / "in" (the names are plain words). */
+const OFFICE_CITY = new RegExp(`\\b(?:our|the|their|its|in|at|near|out of)\\s+(${REGION_CITIES.join("|")})\\b(?!,)`, "gi");
 
 /** A channel named for a brand ("LinkedIn Job Search", "Glassdoor Article"). */
 const NAMED_SOURCE =
@@ -555,20 +597,11 @@ export function resolveDefault(
   if ((IN_PERSON.test(n) || REQUIREMENT.test(n)) && /^(which|what|where|when|how|who)\b/.test(askedSentence(q.label))) {
     return choosePlaceOption(q, profile, facts);
   }
-  if (IN_PERSON.test(n) && !occasional && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) {
-    const named = placesInLabel(q.label);
-    const posted = (ctx.jobPlaces ?? []).map((p) => placeOf(p)).filter((p) => p.city && (p.region || p.country));
-    const places = named.length > 0 ? named : posted;
-    if (places.length > 0) {
-      const home = facts.location;
-      const homeCity = isHigh(home.city) ? qn(home.city.value) : null;
-      if (homeCity && places.some((p) => p.city === homeCity)) return polar(true, q, "default:in-person-local");
-      const homeRegion = isHigh(home.region) ? `${home.region.value.country}:${home.region.value.code}` : null;
-      const homeCountry = isHigh(home.country) ? home.country.value.code : null;
-      const elsewhere = (p: ReturnType<typeof placeOf>) =>
-        Boolean((p.country && homeCountry && p.country !== homeCountry) || (p.region && homeRegion && p.region !== homeRegion));
-      return places.every(elsewhere) ? polar(false, q, "default:in-person-not-relocating") : null;
-    }
+  if (!occasional) {
+    const onsite = onsiteVerdict(q.label, profile, facts, ctx);
+    if (onsite === "local") return polar(true, q, "default:in-person-local");
+    if (onsite === "elsewhere") return polar(false, q, "default:in-person-not-relocating");
+    if (onsite === "unclear") return null;
   }
   if (REQUIREMENT.test(n) && !ASSISTANCE.test(n) && (ACK_VERB.test(n) || /^(do|are|will|can|would) you\b/.test(n))) {
     // "Do you have any impediments to traveling internationally?" (Veeva on

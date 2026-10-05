@@ -403,7 +403,14 @@ function applyExplicitCountries(profile: UserApplicationProfile, byCountry: Map<
     if (p === null) continue;
     const prev = byCountry.get(code);
     if (prev && prev.authorized === p) continue;
-    byCountry.set(code, { authorized: p, needsSponsorship: p ? (prev?.needsSponsorship ?? null) : true, basis: "stated" });
+    // A Yes keeps what the status was: F-1 OPT is authorized AND a student
+    // visa, and rewritten as "stated" it was no longer known not to be
+    // citizenship (Covar's "Are you a US citizen?", question bank 2026-10-05).
+    byCountry.set(code, {
+      authorized: p,
+      needsSponsorship: p ? (prev?.needsSponsorship ?? null) : true,
+      basis: p && prev ? prev.basis : "stated",
+    });
   }
 }
 

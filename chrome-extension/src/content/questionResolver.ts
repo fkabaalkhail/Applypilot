@@ -40,7 +40,9 @@ import {
 } from "./profileFacts";
 import { matchOption } from "./writeEngine";
 import { dialCodeOf, phoneCountryName } from "./phoneNumber";
-import { resolveDefault } from "./defaultAnswers";
+import { deriveFieldOfStudy } from "./fieldMatcher";
+import { snapSchool } from "./schoolMatch";
+import { onsiteVerdict, resolveDefault } from "./defaultAnswers";
 
 export interface QuestionInput {
   label: string;
@@ -83,7 +85,7 @@ const answer = (value: string, rule: string, confidence: Confidence = "high"): Q
  * other abstention leaves the field to the backend's AI (essays, opinions,
  * a skill's years), which is the right tool once it has credits again.
  */
-const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled|clearance:level-unknown|high-school:not-in-profile|school-schedule:unknown|conditional-follow-up|phone-extension:not-in-profile)/;
+const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled|school-name:not-enrolled|discipline:no-degree-at-level|f1-status|clearance:level-unknown|high-school:not-in-profile|school-schedule:unknown|conditional-follow-up|phone-extension:not-in-profile)/;
 const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule, blockBackend: BLOCK_BACKEND_RULES.test(rule) });
 
 /** Lowercase, accents stripped, apostrophes dropped, punctuation → space. */
@@ -162,8 +164,10 @@ export function countryNamedIn(raw: string): { code: string } | "this-country" |
 }
 
 /** "…in the country that you are located?" (Netlify): the applicant's own country. */
+// "the location you currently reside" too (Datacor, question bank 2026-10-05:
+// read as the job's country, a Canadian at home was "not authorized" there).
 const RESIDENCE_COUNTRY =
-  /\b(the )?country (that |where |in which )?you (are |currently )*(located|living|reside|live|based)\b|\byour (current )?country of residence\b|\b(remain|stay) in your current (location|country)\b|\bwhere you (currently )?(live|reside)\b/;
+  /\b(the )?(country|location|place) (that |where |in which )?you (are |currently )*(located|living|reside|live|based)\b|\byour (current )?country of residence\b|\b(remain|stay) in your current (location|country)\b|\bwhere you (currently )?(live|reside)\b/;
 
 function targetCountry(q: QuestionInput, ctx: QuestionContext, facts?: ProfileFacts): string | null {
   const named = countryNamedIn(q.label);
@@ -1078,11 +1082,43 @@ function resolveEnrollment(q: QuestionInput, n: string, facts: ProfileFacts): Qu
  * details." (Hermeus on Lever, live 2026-10-03): the history's finished
  * internships and co-ops, named, or No.
  */
+/**
+ * "Are you a student in F-1 status who plans to work pursuant to CPT or OPT?"
+ * (Cloudflare, question bank 2026-10-05): a visa question. Read as one about
+ * enrollment, a Canadian citizen in school said Yes. F-1, OPT or CPT stated:
+ * Yes (OPT is F-1 status); any other status stated: No.
+ */
+function resolveF1Status(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
+  if (!/\bf ?1\b/.test(n) || !/\b(are|were) you\b/.test(n) || !isBooleanQuestion(q)) return null;
+  const auth = qnorm(profile.workAuthorization ?? "");
+  if (!auth) return abstain("f1-status:unknown");
+  if (/\bf ?1\b|\b(opt|cpt)\b|\bstudent visa\b/.test(auth)) return booleanResult(true, q, "f1-status");
+  if (/\bcitizen|\bpermanent resident\b|\bgreen card\b|\bh ?1 ?b\b|\btn\b|\bl ?1\b|\be ?3\b|\bo ?1\b|\bh ?4\b|\bj ?1\b|\bpgwp\b|\bwork permit\b|\brefugee\b|\basylee\b/.test(auth)) {
+    return booleanResult(false, q, "f1-status");
+  }
+  return abstain("f1-status:unknown");
+}
+
+/** A job title in technical work: engineering, software, data, research. */
+const TECH_TITLE =
+  /\b(engineer(ing)?|developer|programmer|software|data|machine learning|ml|ai|devops|sre|architect|scientist|research(er)?|analyst|technical|technologist|it)\b/i;
+
 function resolvePreviousInternship(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
   if (!/\b(have|did) you\b.*\b(completed|done|had|held|finished)\b.*\b(internships?|co ?ops?)\b/.test(n)) return null;
   const done = (profile.experience ?? []).filter(
     (e) => /\bintern(ship)?\b|\bco ?-?op\b/i.test(e.title ?? "") && Boolean(e.endDate?.trim()) && !/\b(present|current|now|ongoing)\b/i.test(e.endDate ?? "")
   );
+  // "…at least 1 internship OR have relevant full-time experience?" (DoorDash,
+  // question bank 2026-10-05): a staff engineer answered No. A full-time role
+  // counts; "relevant" one only when it is technical work, which the profile
+  // can show; otherwise relevance is the applicant's to judge.
+  const orJob = /\bor (have |had )?(any )?(relevant )?(full ?time|professional|industry|work) (work |job )?experience\b/.exec(n);
+  if (orJob && isBooleanQuestion(q) && done.length === 0) {
+    const jobs = (profile.experience ?? []).filter((e) => (e.title ?? "").trim() && !/\bintern(ship)?\b|\bco ?-?op\b/i.test(e.title ?? ""));
+    if (jobs.length === 0) return booleanResult(false, q, "internship:history");
+    if (!/\brelevant\b/.test(orJob[0]) || jobs.some((e) => TECH_TITLE.test(e.title ?? ""))) return booleanResult(true, q, "internship:or-experience");
+    return abstain("internship:relevance-unknown");
+  }
   if (isBooleanQuestion(q)) return booleanResult(done.length > 0, q, "internship:history");
   if (q.kind !== "text" && q.kind !== "longText") return null;
   if (done.length === 0) return answer("No", "internship:none");
@@ -1145,9 +1181,18 @@ function programAtLevel(q: QuestionInput, level: number, facts: ProfileFacts, ru
 function resolvePursuedDegree(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   if (!/\b(which|what)\b.*\b(degree|program|level)\b.*\b(pursuing|working towards?|enrolled in|studying for)\b/.test(n)) return null;
   if (/\bor (have |has )?(completed|graduated|earned|obtained)\b|\bmost recent\b|\bhighest\b/.test(n)) return null;
-  if (isBooleanQuestion(q) || !q.options?.length) return null;
+  if (isBooleanQuestion(q)) return null;
   const entries = facts.education.entries;
   const inProgress = entries.filter((x) => x.completed === false);
+  // Typed in a box ("Please include what degree you are currently pursuing in
+  // addition to major(s)", Datacor, question bank 2026-10-05): the degree in
+  // progress as the profile names it, major included. A graduate's major was
+  // written there.
+  if (!q.options?.length) {
+    if (inProgress.length === 1 && inProgress[0].degree) return answer(inProgress[0].degree, "pursuing:text");
+    if (inProgress.length === 0 && entries.length > 0 && entries.every((x) => x.completed === true)) return abstain("pursuing:not-enrolled");
+    return abstain("pursuing:unknown");
+  }
   if (inProgress.length === 0) {
     if (entries.length === 0 || entries.some((x) => x.completed !== true)) return abstain("pursuing:unknown");
     const none = q.options.filter((o) => /\bnot (currently )?(pursuing|enrolled|a student)\b|^(none|n a|not applicable)\b/.test(qnorm(o)));
@@ -1215,9 +1260,17 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     // Year-only options take the year; month-bearing options need the month.
     const yearOnly = q.options.filter((o) => new RegExp(`^\\s*${year}\\s*$`).test(o));
     if (yearOnly.length === 1) return answer(yearOnly[0], "graduation:year");
+    // A degree finished is "already graduated" where the list says so, before
+    // any term: June 2026 went to "August 2026 - December 2026" (DV Trading,
+    // question bank 2026-10-05).
+    const graduatedFirst = q.options.filter((o) => /\b(already graduated|graduated already|have already graduated)\b/.test(qnorm(o)));
+    if (graduatedFirst.length === 1 && primary?.completed === true) return answer(graduatedFirst[0], "graduation:already-graduated");
     if (g.precision !== "year") {
-      const hit = pickOption(q.options, `${monthName} ${year}`);
-      if (hit) return answer(hit, "graduation:month-year");
+      // The month and year as words, never a number inside a range of years:
+      // the fuzzy matcher read "August 2026 - December 2026" as 2026 to 2026.
+      const said = qnorm(`${monthName} ${year}`);
+      const hits = q.options.filter((o) => ` ${qnorm(o)} `.includes(` ${said} `));
+      if (hits.length === 1) return answer(hits[0], "graduation:month-year");
       // "January - June 2027", "December 2026 - November 2027", "Spring 2027":
       // the one option whose months contain the graduation month.
       const at = g.earliest.getUTCFullYear() * 12 + g.earliest.getUTCMonth();
@@ -1308,6 +1361,50 @@ export function optionMonthSpan(option: string): [number, number] | null {
 
 /** "GPA", "Cumulative GPA", "Grade point average": the applicant's stated GPA;
  *  a graduate / doctorate GPA they cannot have is that list's "N/A". */
+/**
+ * "Undergrad Discipline(s)" (DV Trading, question bank 2026-10-05): the major
+ * of the degree at the level asked, never the main degree's. A master's in
+ * Information Systems was written for a Computer Science bachelor, and a
+ * bootcamp certificate's track answered for someone with no bachelor's.
+ */
+function resolveDisciplineAtLevel(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (!/\b(discipline|disciplines|major|majors|field of study|area of study|concentration)\b/.test(n) || isBooleanQuestion(q)) return null;
+  const level = /\b(undergrad|undergraduate|bachelor s|bachelors|bachelor)\b/.test(n)
+    ? 4
+    : /\b(master s|masters|graduate (degree|school|program|studies)|grad school)\b/.test(n)
+      ? 5
+      : null;
+  if (level === null) return null;
+  const entries = facts.education.entries.filter((e) => (level === 4 ? e.rank === 4 : (e.rank ?? 0) >= 5));
+  if (entries.length === 0) {
+    return facts.education.entries.length > 0 && facts.education.entries.every((e) => e.rank !== null)
+      ? abstain("discipline:no-degree-at-level")
+      : abstain("discipline:unknown");
+  }
+  if (entries.length > 1) return abstain("discipline:several");
+  const field = deriveFieldOfStudy(entries[0].degree);
+  return field ? answer(field, "discipline:level") : abstain("discipline:unknown");
+}
+
+/** The scale a stated GPA is on: written ("8.6/10", "3.7 out of 4.0"), or 4
+ *  for a bare number a 4.0 scale holds ("3.85"); null when unknown. */
+function gpaScale(stated: string): number | null {
+  const written = /\/\s*(\d+(?:\.\d+)?)|\bout of\s*(\d+(?:\.\d+)?)/i.exec(stated);
+  if (written) return Math.round(parseFloat(written[1] ?? written[2]));
+  if (/%/.test(stated)) return 100;
+  const n = parseFloat(/\d+(\.\d+)?/.exec(stated)?.[0] ?? "");
+  return Number.isFinite(n) && n <= 4.3 ? 4 : null;
+}
+
+/** The scale a list of GPA options is on, from its largest number (a "4+"
+ *  or "3.8 - 4.0" list is out of 4); null when the options carry none. */
+function optionsGpaScale(options: string[] | undefined): number | null {
+  const nums = (options ?? []).flatMap((o) => (o.match(/\d+(\.\d+)?/g) ?? []).map(Number)).filter((x) => Number.isFinite(x));
+  if (nums.length === 0) return null;
+  const top = Math.max(...nums);
+  return top <= 4.5 ? 4 : top <= 5.5 ? 5 : top <= 10 ? 10 : null;
+}
+
 function resolveGpa(q: QuestionInput, n: string, profile: UserApplicationProfile, facts: ProfileFacts): QuestionResult {
   // "What was your bachelor's university degree result…? Please include the
   // grading system" (Canonical, question bank 2026-10-05) is the GPA too.
@@ -1328,6 +1425,15 @@ function resolveGpa(q: QuestionInput, n: string, profile: UserApplicationProfile
   const stated = (profile.gpa ?? "").trim();
   if (!stated) return abstain("gpa:unknown");
   const num = /\d+(\.\d+)?/.exec(stated)?.[0] ?? null;
+  // A GPA on one scale is no number on another: 8.6 of 10 went into "3.75+"
+  // and "4+" of 4.0-scale lists (DoorDash, Klaviyo; question bank 2026-10-05).
+  const statedScale = gpaScale(stated);
+  const askedScale = /\b(4(\.0+)?|four)( point)? scale\b|\bout of 4(\.0+)?\b/.test(n)
+    ? 4
+    : /\b10(\.0+)?( point)? scale\b|\bout of 10\b/.test(n)
+      ? 10
+      : optionsGpaScale(q.options);
+  if (askedScale !== null && statedScale !== askedScale) return abstain("gpa:other-scale");
   if (q.options && q.options.length) {
     const hit = (num && pickOption(q.options, num)) || pickOption(q.options, stated);
     return hit ? answer(hit, "gpa:option") : abstain("gpa:no-matching-option");
@@ -1735,16 +1841,22 @@ function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: U
 
 /** "What school do you attend?", "Where did you complete your undergraduate degree?" */
 function resolveSchoolName(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  // "Please include the university you are currently enrolled in", "Please
+  // re-confirm the university you currently attend" (Datacor, DV Trading;
+  // question bank 2026-10-05): a graduate's old school was written in both.
   const asks =
-    /\b(name of (the |your )?(school|university|college|institution)|which (school|university|college|institution)|what (school|university|college|institution)|where (did|do) you (complete|study|go to school|attend|earn|get|obtain)|school (you are )?(currently )?attending)\b/.test(n);
+    /\b(name of (the |your )?(school|university|college|institution)|which (school|university|college|institution)|what (school|university|college|institution)|where (did|do) you (complete|study|go to school|attend|earn|get|obtain)|school (you are )?(currently )?attending)\b|\b(school|university|college|institution) (that |which )?you (are )?(currently )?(attend|attending|enrolled (in|at)|studying at)\b/.test(n);
   if (!asks || q.kind === "boolean") return null;
   const entries = facts.education.entries;
   let entry = null as (typeof entries)[number] | null;
   // "…currently attending OR did you last attend?" (Palantir on Lever, live
   // 2026-10-03) is the main school either way: in progress, else the latest.
-  if (/\bor (did you |have you )?(last |most recently |previously )?(attend(ed)?|graduated?|studied)\b/.test(n)) {
+  // So is the past tense, "Which college did you attend?", and a slash for
+  // the "or": "…currently attending / did you graduate from?" (SharkNinja,
+  // ZipRecruiter; question bank 2026-10-05).
+  if (/\bor (did you |have you )?(last |most recently |previously )?(attend(ed)?|graduated?|studied)\b|\b(did|have) you (last |most recently |previously )?(attend(ed)?|graduated?|studied)\b/.test(n)) {
     entry = facts.education.primary;
-  } else if (/\bcurrently attending|currently enrolled|you attend\b|\bdo you attend\b|\bare you attending\b/.test(n)) {
+  } else if (/\bcurrently attend(ing)?\b|currently enrolled|\b(do|will) you attend\b|\b(school|university|college|institution) you attend\b|\bare you attending\b/.test(n)) {
     entry = entries.find((e) => e.completed === false) ?? null;
     if (!entry) return abstain("school-name:not-enrolled");
   } else if (/\bundergrad/.test(n)) {
@@ -1758,7 +1870,10 @@ function resolveSchoolName(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   }
   if (!entry?.school) return abstain("school-name:unknown");
   if (q.options && q.options.length) {
-    const hit = pickOption(q.options, entry.school);
+    // By the school's own words: the loose matcher chose "Rhode Island School
+    // of Design" for Turing School of Software & Design (SharkNinja, question
+    // bank 2026-10-05).
+    const hit = snapSchool(q.options, entry.school);
     if (hit) return answer(hit, "school-name");
     // A full list (a native select) without the school: its own "not listed"
     // option. A search box's loaded options are only what matched the search.
@@ -2086,6 +2201,12 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
   return null;
 }
 
+/** The sentence a label asks (its last question, else its last sentence), as written. */
+function askedSentenceOf(label: string): string {
+  const parts = (label || "").split(/(?<=[.?!])\s+/).map((s) => s.trim()).filter(Boolean);
+  return [...parts].reverse().find((s) => /\?\W*$/.test(s)) ?? parts[parts.length - 1] ?? "";
+}
+
 // ----- Phone country code -----------------------------------------------------------
 
 function resolvePhoneCode(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
@@ -2321,6 +2442,7 @@ export function resolveQuestion(
     resolvePursuedDegree(q, n, facts) ??
     resolveEducationLevel(q, n, facts) ??
     resolveDegreeCandidate(q, n, facts) ??
+    resolveF1Status(q, n, profile) ??
     resolveEnrollment(q, n, facts) ??
     resolveCoop(q, n, facts) ??
     resolvePreviousInternship(q, n, profile) ??
@@ -2328,6 +2450,7 @@ export function resolveQuestion(
     resolveEducationSummary(q, n, facts) ??
     resolveGraduation(q, n, facts) ??
     resolveGpa(q, n, profile, facts) ??
+    resolveDisciplineAtLevel(q, n, facts) ??
     resolveTestScore(q, n) ??
     resolveStartDateChoice(q, n, facts) ??
     resolveStartBucket(q, n, facts) ??
@@ -2344,6 +2467,18 @@ export function resolveQuestion(
     resolveStatedFacts(q, n, profile, facts, ctx) ??
     resolvePhoneCode(q, n, facts, profile) ??
     null;
+  // A legal-status Yes in a question that also asks for in-person work
+  // somewhere ("Are you a US Citizen or Green Card Holder that can work onsite
+  // in Whippany NJ ~3 days per week", Giftogram, question bank 2026-10-05) is
+  // No for someone elsewhere who will not move: both halves must hold.
+  if (
+    resolved?.status === "answer" &&
+    /^(work-auth|citizenship|us-person)/.test(resolved.rule) &&
+    optionPolarity(resolved.value) === true &&
+    onsiteVerdict(askedSentenceOf(q.label), profile, facts, ctx) === "elsewhere"
+  ) {
+    return booleanResult(false, q, `${resolved.rule}+onsite-elsewhere`);
+  }
   if (resolved && (resolved.status === "answer" || !DEFAULTABLE.test(resolved.rule))) return resolved;
   // An adult-applicant gate with no date of birth: 18 or older is the default;
   // a higher bar (21) stays the applicant's to answer.

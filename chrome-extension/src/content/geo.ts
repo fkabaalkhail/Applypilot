@@ -217,5 +217,30 @@ export function countryHintForCity(city: string): string | null {
   return CITY_COUNTRY[geoNorm(city)] ?? null;
 }
 
+/**
+ * The state or province of well-known office cities a posting names alone
+ * ("our Austin office", Cloudflare, question bank 2026-10-05): the best-known
+ * city of the name. Used only to tell that an office is somewhere an applicant
+ * who will not move does not live.
+ */
+const CITY_REGION: Record<string, string> = {
+  "new york": "NY", "new york city": "NY", nyc: "NY", "san francisco": "CA", seattle: "WA", boston: "MA",
+  chicago: "IL", austin: "TX", "los angeles": "CA", "san jose": "CA", "palo alto": "CA", "mountain view": "CA",
+  "menlo park": "CA", sunnyvale: "CA", "san diego": "CA", denver: "CO", atlanta: "GA", miami: "FL",
+  dallas: "TX", houston: "TX", philadelphia: "PA", "washington dc": "DC", pittsburgh: "PA",
+  "salt lake city": "UT", phoenix: "AZ", minneapolis: "MN", nashville: "TN", raleigh: "NC", detroit: "MI",
+  redmond: "WA", bellevue: "WA",
+  toronto: "ON", montreal: "QC", vancouver: "BC", ottawa: "ON", calgary: "AB", edmonton: "AB",
+  mississauga: "ON", markham: "ON", "quebec city": "QC",
+};
+
+/** "TX" for "Austin": a well-known office city's state or province code. */
+export function regionHintForCity(city: string): string | null {
+  return CITY_REGION[geoNorm(city)] ?? null;
+}
+
+/** The cities above, longest first, for scanning question text. */
+export const REGION_CITIES: string[] = Object.keys(CITY_REGION).sort((a, b) => b.length - a.length);
+
 /** The cities above, longest first, for scanning question text. */
 export const KNOWN_CITIES: string[] = Object.keys(CITY_COUNTRY).sort((a, b) => b.length - a.length);
