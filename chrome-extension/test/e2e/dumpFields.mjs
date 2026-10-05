@@ -118,8 +118,10 @@ export function dumpFieldsInPage() {
     let node = el.parentElement;
     for (let h = 0; node && h < 6; h++, node = node.parentElement) {
       if (node.querySelectorAll('[role="combobox"], [aria-haspopup="listbox"], input[aria-autocomplete="list"]').length > 1) break;
+      // Ant Design's select shows the choice in .ant-select-selection-item,
+      // its search input empty (Dayforce, 2026-10-05).
       const v = node.querySelector(
-        '[class*="single-value" i], [class*="singleValue" i], [class*="multi-value__label" i], [class*="multiValue" i] [class*="label" i], [data-automation-id="selectedItem"], [class*="chip" i], [class*="pill" i]'
+        '[class*="single-value" i], [class*="singleValue" i], [class*="multi-value__label" i], [class*="multiValue" i] [class*="label" i], [data-automation-id="selectedItem"], [class*="chip" i], [class*="pill" i], [class*="select-selection-item" i]'
       );
       if (v && clean(v.textContent)) {
         const all = Array.from(

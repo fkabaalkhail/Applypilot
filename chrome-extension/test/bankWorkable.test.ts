@@ -222,3 +222,46 @@ describe("numbers", () => {
     expect(ask("BERLIN_STAFF", "Salary Range", undefined, US, "number")).toBe("120000");
   });
 });
+
+describe("blanks now answered", () => {
+  it("a LinkedIn link asked for at length, in a text area (Ammortal, Open Data Jobs)", () => {
+    const li = "https://www.linkedin.com/in/maya-tremblay";
+    expect(ask("COMPLETE_CANADIAN", "Please paste your LinkedIn profile link here. Please confirm the link is accurate and works before submitting your application.", undefined, US, "textarea")).toBe(li);
+    expect(ask("COMPLETE_CANADIAN", "Paste the full web address (URL) of your LinkedIn profile, beginning with https, for example, https://www.linkedin.com/in/yourname. If you do not have one, enter N/A.", undefined, US, "textarea")).toBe(li);
+  });
+
+  it("work rights in other words: eligibility, eligible to be employed, a petition on your behalf", () => {
+    expect(ask("US_H1B_SENIOR", "Do you currently have eligibility to work in the US?", YES_NO)).toBe("Yes");
+    expect(ask("COMPLETE_CANADIAN", "Are you legally eligible to be employed in the United States? (Proof of identity and eligibility will be required upon employment):", YES_NO)).toBe("No");
+    const petition = "Will you now or in the future require TWG Global to file a petition or application for employment - based status on your behalf to begin or continue employment with TWG Global?";
+    expect(ask("US_H1B_SENIOR", petition, YES_NO)).toBe("Yes");
+    expect(ask("BOOTCAMP_CAREER_GAP", petition, YES_NO)).toBe("No");
+  });
+
+  it("a U.S. person is a citizen or permanent resident, never a visa holder (Jeffrey M. Consulting)", () => {
+    const q = "This position involves access to export-controlled information. Are you a “U.S. person” as defined under applicable U.S. export-control regulations, including ITAR and EAR?";
+    expect(ask("BOOTCAMP_CAREER_GAP", q, YES_NO)).toBe("Yes");
+    expect(ask("US_OPT_ANALYST", q, YES_NO)).toBe("No");
+    expect(ask("US_H1B_SENIOR", q, YES_NO)).toBe("No");
+  });
+
+  it("an EU citizen may work in another EU country (Genetec's Austria)", () => {
+    expect(ask("BERLIN_STAFF", "Are you legally authorized to work in Austria?", YES_NO, { jobCountry: "AT", company: "Genetec" })).toBe("Yes");
+  });
+
+  it("French: living in, and allowed to work in, Canada (Mila)", () => {
+    const montreal: Ctx = { jobCountry: "CA", company: "Mila", jobCity: "Montreal" };
+    expect(ask("COMPLETE_CANADIAN", "Résidez-vous actuellement au Canada?", YES_NO, montreal)).toBe("Yes");
+    expect(ask("US_H1B_SENIOR", "Résidez-vous actuellement au Canada?", YES_NO, montreal)).toBe("No");
+    expect(ask("COMPLETE_CANADIAN", "Êtes-vous légalement autorisés à occuper un emploi au Canada?", YES_NO, montreal)).toBe("Yes");
+  });
+
+  it("currently employed is any job; an internal employee is of the company named (Saalex, Flourish)", () => {
+    expect(ask("US_H1B_SENIOR", "Are you currently employed?", YES_NO)).toBe("Yes");
+    expect(ask("COMPLETE_CANADIAN", "Are you an internal employee of Flourish Research or Valkyrie Clinical Trials?", YES_NO)).toBe("No");
+  });
+
+  it("an attention check is answered as it says (DISA Technologies)", () => {
+    expect(ask("COMPLETE_CANADIAN", "To be considered, please choose option C below.", ["A", "B", "C", "D"])).toBe("C");
+  });
+});

@@ -419,10 +419,22 @@ function applyExplicitCountries(profile: UserApplicationProfile, byCountry: Map<
  * names no country and none could be inferred)? High-confidence answers only
  * come from a statement that covers that country.
  */
+/** The EU, the rest of the EEA and Switzerland: a citizen of one may work in
+ *  any other (freedom of movement). */
+const FREE_MOVEMENT = new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "IS", "LI", "NO", "CH"]);
+
+/** A citizen of a free-movement country asked about another one: "Are you
+ *  legally authorized to work in Austria?" was blank for a German citizen
+ *  (Genetec on Workable, 2026-10-05). */
+function freeMovementCitizen(auth: WorkAuthFacts, countryCode: string): boolean {
+  return FREE_MOVEMENT.has(countryCode) && [...auth.byCountry.entries()].some(([cc, a]) => a.basis === "citizen" && a.authorized === true && FREE_MOVEMENT.has(cc));
+}
+
 export function authorizedIn(auth: WorkAuthFacts, countryCode: string | null, residence: string | null): Fact<boolean> | null {
   if (countryCode) {
     const c = auth.byCountry.get(countryCode);
     if (c && c.authorized !== null) return fact(c.authorized, "high", `work-auth:${c.basis}`);
+    if (!c && freeMovementCitizen(auth, countryCode)) return fact(true, "high", "work-auth:free-movement");
     // A statement that named no country, about a question that names the
     // applicant's own country of residence: the statement was made about the
     // place they live and apply.
@@ -453,6 +465,7 @@ export function needsSponsorshipIn(auth: WorkAuthFacts, countryCode: string | nu
     // America, and "a visa to remain in your current location" (Berlin) got
     // it (GitLab, question bank 2026-10-05).
     if (c && (c.basis === "citizen" || c.basis === "permanent_resident")) return fact(false, "high", `sponsorship:${c.basis}`);
+    if (!c && freeMovementCitizen(auth, countryCode)) return fact(false, "high", "sponsorship:free-movement");
     // The applicant's own answer wins for any country their status covers.
     if (stated !== null && (c || (auth.byCountry.size === 0 && (!residence || residence === countryCode)))) {
       return fact(stated, "high", "sponsorship:stated");

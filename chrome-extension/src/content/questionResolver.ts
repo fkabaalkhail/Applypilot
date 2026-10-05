@@ -15,7 +15,7 @@
  * Pure: no DOM. `today`, the job's country and company are injected.
  */
 import type { ControlType, FieldCategory, UserApplicationProfile } from "../shared/types";
-import { isBooleanOptionSet, optionPolarity, type AnswerKind } from "./answerKind";
+import { isBooleanOptionSet, isConsentOption, optionPolarity, type AnswerKind } from "./answerKind";
 import {
   CA_PROVINCES as CA_PROVINCES_LIST,
   COUNTRIES,
@@ -224,8 +224,11 @@ const residenceOf = (facts: ProfileFacts): string | null =>
 // Shapes
 // ---------------------------------------------------------------------------
 
+// "…have eligibility to work in the US?" (Enfos), "…legally eligible to be
+// employed in the United States?" (Saalex), "…autorisés à occuper un emploi
+// au Canada?" (Mila); Workable bank, 2026-10-05: all three blank.
 const WORK_RIGHT =
-  /\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able|legal right|right|permission) to (legally |lawfully )?work\b|\bwork authori[sz]ation\b|\bwork permit\b|\b(legally|lawfully) (work|be employed|employed)\b|\bauthori[sz]ation to work\b|\bwork (legally|lawfully)\b|\b(eligible|authori[sz]ed|permitted|allowed) to (legally |lawfully )?(begin|start|commence|accept|take up) (employment|work)\b|\beligible for employment\b/;
+  /\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able|legal right|right|permission) to (legally |lawfully )?work\b|\bwork authori[sz]ation\b|\bwork permit\b|\b(legally|lawfully) (work|be employed|employed)\b|\bauthori[sz]ation to work\b|\bwork (legally|lawfully)\b|\b(eligible|authori[sz]ed|permitted|allowed) to (legally |lawfully )?(begin|start|commence|accept|take up) (employment|work)\b|\beligible for employment\b|\beligibility to (legally |lawfully )?work\b|\b(eligible|authori[sz]ed|permitted) to be employed\b|\bautoris\w* a (travailler|occuper un emploi)\b|\bpermis de travail\b/;
 
 /** A sponsorship need ruled out: "do not require…", "without the need for
  *  sponsorship", "no sponsorship". "No, I need sponsorship now" is no such
@@ -249,9 +252,11 @@ function isAbleToWorkInCountry(n: string, raw: string): boolean {
 }
 /** "What Duolingo sponsored conferences have you attended?" (question bank
  *  2026-10-05) is about conferences, not a visa. */
-const SPONSOR = /\bsponsor(ship|ing)?\b|\bsponsored\b(?! (conferences?|events?|programs?|programmes?|hackathons?|organi[sz]ations?|communit(y|ies)|groups?|clubs?|scholarships?|teams?|content|posts?)\b)|\b(visa|immigration) (status|support|assistance|transfer)\b|\bh ?1 ?b\b/;
+// "…require TWG Global to file a petition or application for employment-based
+// status on your behalf…" (Workable bank, 2026-10-05) is sponsorship too.
+const SPONSOR = /\bsponsor(ship|ing)?\b|\bsponsored\b(?! (conferences?|events?|programs?|programmes?|hackathons?|organi[sz]ations?|communit(y|ies)|groups?|clubs?|scholarships?|teams?|content|posts?)\b)|\b(visa|immigration) (status|support|assistance|transfer)\b|\bh ?1 ?b\b|\bfile (a |an )?(visa |immigration )?petition\b|\bemployment ?based (immigration )?status\b/;
 /** Asks whether sponsorship is NEEDED ("will you require / do you need … sponsorship"). */
-const REQUIRES_SPONSOR = /\b(require|requires|requiring|need|needs|needing)\b[^?]{0,60}\bsponsor/;
+const REQUIRES_SPONSOR = /\b(require|requires|requiring|need|needs|needing)\b[^?]{0,60}\b(sponsor|petition)/;
 /** Asks for the work RIGHT itself ("are you legally authorized…", "do you have the right to work…"). */
 const ASKS_RIGHT =
   /\b(are|is) (you|the applicant)\b[^?]{0,25}\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able)\b|\bdo you (have|hold|possess)\b[^?]{0,25}\b(right|authori[sz]ation|permit)\b/;
@@ -383,6 +388,10 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   // as a work-right question, question bank 2026-10-05).
   const only = (q.options ?? []).filter((o) => o.trim() && !/^(select|choose|please select|select an option|select one|--)/i.test(o.trim()));
   if (only.length === 1 && /\b(i acknowledge|i have read|i understand|acknowledge that)\b/.test(n)) return null;
+  // Accept / Decline answer a statement, not a work right: SSCI's
+  // certification ends "…required to verify identity and eligibility to work
+  // in the United States…" (Workable bank, 2026-10-05).
+  if (only.length >= 2 && only.some(isConsentOption) && only.every((o) => isConsentOption(o) || /^(i )?(decline|disagree|reject|do not (accept|agree))\b/i.test(o.trim()))) return null;
   // The label says what Yes means: "By selecting 'Yes,' you confirm that you
   // do not require Visa Sponsorship" (Peloton, question bank 2026-10-05: every
   // applicant got the inverse). That statement is what gets answered.
@@ -695,7 +704,8 @@ function resolveCitizenship(q: QuestionInput, n: string, facts: ProfileFacts, ct
 // "…or are currently in a 24-month OPT extension based upon a degree from a
 // qualifying U.S. institution" is no residence (Duolingo, live 2026-10-05:
 // answered Yes as "are you in the US?"): never "in a/an" something.
-const RESIDE = /\b(live|living|reside|residing|resident|located|based|currently in(?! an? )|located within|within commuting distance)\b/;
+// French too: "Résidez-vous actuellement au Canada?" (Mila on Workable, 2026-10-05).
+const RESIDE = /\b(live|living|reside|residing|resident|located|based|currently in(?! an? )|located within|within commuting distance|residez|resider|habitez|habiter)\b/;
 
 const METRO_ALIASES: Record<string, string> = { nyc: "new york", gta: "toronto", "bay area": "san francisco", sf: "san francisco" };
 
@@ -734,7 +744,7 @@ function placeIn(label: string): { kind: "country"; code: string } | { kind: "re
  *  2026-10-03), and so did "Are you able to commute … the New York HQ office
  *  (located at …)" (Peloton, question bank 2026-10-05). */
 const APPLICANT_RESIDES =
-  /\b(do|are|have|did) you\b(?:(?!\b(?:office|offices|headquarters|hq|campus|building|facility)\b)[^?]){0,60}?\b(live|living|reside|residing|located|based|resident|currently in(?! an? ))\b|\bare you (a |an )?(current )?resident\b|\byour (current )?(location|residence|city of residence|place of residence)\b|\bwhere (do|are) you\b/;
+  /\b(do|are|have|did) you\b(?:(?!\b(?:office|offices|headquarters|hq|campus|building|facility)\b)[^?]){0,60}?\b(live|living|reside|residing|located|based|resident|currently in(?! an? ))\b|\bare you (a |an )?(current )?resident\b|\byour (current )?(location|residence|city of residence|place of residence)\b|\bwhere (do|are) you\b|\b(residez|habitez) vous\b/;
 
 function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
   // "By selecting 'Yes,' you confirm that you currently reside in the New
@@ -2057,6 +2067,16 @@ function resolveRelocationChoice(q: QuestionInput, n: string, profile: UserAppli
 const US_STATUS_OPTION = /\b(u ?s citizen|citizen of the united states|national of the united states|u ?s national|lawful permanent resident|permanent resident of the u|green card|refugee|asylee|daca|u ?s person|foreign person)\b/;
 const NONE = /^(\(?[a-z]\)?\s+)?other\b|\bnone of the above\b|\bforeign person\b|\bnot a u ?s (person|citizen)\b/;
 function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
+  // "Are you a “U.S. person” as defined under applicable U.S. export-control
+  // regulations…?" with Yes / No (Jeffrey M. Consulting on Workable,
+  // 2026-10-05): a citizen or permanent resident is; a visa is not.
+  if (/\b(are you|is the applicant) an? (u ?s|united states) person\b/.test(qnorm(q.label)) && isBooleanQuestion(q)) {
+    const us = facts.workAuth.byCountry.get("US");
+    if (us?.authorized === false) return booleanResult(false, q, "us-person:not-authorized");
+    if (us?.basis === "citizen" || us?.basis === "permanent_resident") return booleanResult(true, q, "us-person");
+    if (us?.basis === "work_permit" || us?.basis === "student") return booleanResult(false, q, "us-person:visa");
+    return abstain("us-person:unknown");
+  }
   const opts = (q.options ?? []).filter((o) => o.trim());
   if (opts.filter((o) => US_STATUS_OPTION.test(qnorm(o))).length < 2) return null;
   const us = facts.workAuth.byCountry.get("US");
@@ -2185,6 +2205,9 @@ function companiesNamedIn(raw: string): string[] {
 }
 
 function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: ProfileFacts, ctx: QuestionContext): QuestionResult {
+  // "Are you currently employed?" (Saalex on Workable, 2026-10-05) asks about
+  // any job: it was read as "a current employee of us?" and left blank.
+  if (/\b(are you|you are|is the applicant) (currently|presently) (employed|working)\b/.test(n) && !/\b(of|by|for|at|with)\b/.test(n)) return null;
   const history = resolveEmploymentHistoryChoice(q, n, raw, facts);
   if (history) return history;
   // "HISTORY WITH ANDURIL" [Yes | No] (Anduril on Greenhouse, live
@@ -2200,7 +2223,8 @@ function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: 
   const shape =
     // "Have you worked with us before?" (Paylocity, live 2026-10-05); "worked
     // with" anything else is usually a skill.
-    /\b(current|former|past|previous|prior)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\bworked with us\b|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b|\b(provided|done|performed|did) (any )?(contract |consulting |freelance )?(work|services) for\b/.test(n);
+    // "Are you an internal employee of Flourish Research…?" (Workable bank).
+    /\b(current|former|past|previous|prior|internal|existing)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\bworked with us\b|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b|\b(provided|done|performed|did) (any )?(contract |consulting |freelance )?(work|services) for\b/.test(n);
   if (!shape) return null;
   if (/\b(relative|family|friend|spouse|referr|government|federal|military|public sector)\b/.test(n)) return null;
   // The company: a capitalized name in the question ("…employee of ActioNet",
@@ -2659,6 +2683,14 @@ export function resolveQuestion(
   }
   const conditional = resolveConditional(q, raw, facts, profile, ctx);
   if (conditional !== undefined) return conditional;
+  // An attention check names its answer: "To be considered, please choose
+  // option C below." [A | B | C | D] (DISA Technologies on Workable,
+  // 2026-10-05) was left blank. Only an option that IS that letter or digit.
+  const told = /\b(?:choose|select|pick|mark|check|click)\s+(?:option|answer|the option|the answer|letter|choice)?\s*["“'‘]?([a-z0-9])["”'’]?(?:\s+below)?\W*$/i.exec(raw);
+  if (told && q.options?.length) {
+    const hit = q.options.filter((o) => o.trim().toLowerCase() === told[1].toLowerCase());
+    if (hit.length === 1) return answer(hit[0], "attention-check");
+  }
   // "If necessary, are you willing to relocate? (Please check YES if you
   // already live in the Lincoln, NE area.)" (RentVision on Workable,
   // 2026-10-05): the note says how to answer, the question is the move. Read

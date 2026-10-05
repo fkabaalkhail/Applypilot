@@ -220,6 +220,10 @@ function isProsePrompt(label: string): boolean {
   // describe why you feel it is applicable…" got the major alone
   // (NinjaHoldings on Breezy, live 2026-10-03).
   if (/\b(describe|explain|elaborate|tell us|why (do|did|would|are|is)|in your own words)\b/i.test(label)) return true;
+  // A link asked for at length is still a link: "Please paste your LinkedIn
+  // profile link here. Please confirm the link is accurate…" (Ammortal, Open
+  // Data Jobs on Workable, 2026-10-05) was left blank.
+  if (/\b(paste|enter|provide|share|add|include|insert|type)( in)? (the |a |your )?(full )?(web address|url|link|linked ?in|git ?hub|portfolio)\b|\b(url|link) (of|to|for) your\b/i.test(label)) return false;
   return !/\b(name of|what is your|what's your|your current|please (enter|provide|list|state) (your|the name))\b/i.test(label);
 }
 
