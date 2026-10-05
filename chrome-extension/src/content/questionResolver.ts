@@ -1706,9 +1706,12 @@ function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: U
   if (opts.filter((o) => US_STATUS_OPTION.test(qnorm(o))).length < 2) return null;
   const us = facts.workAuth.byCountry.get("US");
   // "Not a US citizen or permanent resident" names the statuses it denies
-  // (Accenture Federal, live 2026-10-05): never one of them.
+  // (Accenture Federal, live 2026-10-05): never one of them. Only a denial
+  // counts: "…refugees with such status granted, not pending" is the U.S.
+  // person (Hermeus, regression 2026-10-05).
+  const DENIES = /\bnot (a |an )?(u ?s |united states )?(citizens?|nationals?|persons?|permanent residents?|lawful|green card)\b/;
   const pick = (re: RegExp): QuestionResult => {
-    const hits = opts.filter((o) => re.test(qnorm(o)) && (re === NONE || !/\bnot\b/.test(qnorm(o))));
+    const hits = opts.filter((o) => re.test(qnorm(o)) && (re === NONE || !DENIES.test(qnorm(o))));
     return hits.length === 1 ? answer(hits[0], "us-person-status") : abstain("us-person-status:no-matching-option");
   };
   if (us?.authorized === false) return pick(NONE);

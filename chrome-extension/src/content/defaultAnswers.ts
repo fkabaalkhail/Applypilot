@@ -324,8 +324,15 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile, company
     // board" got "Affirm’s Career Site", question bank 2026-10-05). Several
     // named boards and no general one: the applicant picks which.
     const general = opts.filter((o) => !/\b(university|campus|school|college|internal)\b/.test(qn(o)));
-    for (const re of [SOURCE_PREFERENCE[0], SOURCE_PREFERENCE[2], SOURCE_PREFERENCE[4]]) {
-      const hits = general.filter((o) => re.test(qn(o)));
+    // A generic online option, never a search engine's brand: "Job board"
+    // became "Google Search" (Commvault, regression 2026-10-05).
+    // Nor the company's own channels ("Coveo Blog or Website Content").
+    const ours = (o: string): boolean => Boolean(company.trim()) && ` ${qn(o)} `.includes(` ${qn(company)} `);
+    // "Internet / Online", "Online job ad", "Web search": not "Online
+    // community" (Workleap) or "Online Forum or Community" (Coveo).
+    const ONLINE = /^((the|an?|internet|online|web|search|engine)\s*)+$|\b(internet|online|web) (job|jobs|search|ad|ads|advert|advertisement|posting|listing)s?\b|\bsearch engine\b/;
+    for (const re of [SOURCE_PREFERENCE[0], ONLINE, SOURCE_PREFERENCE[4]]) {
+      const hits = general.filter((o) => re.test(qn(o)) && !ours(o));
       if (hits.length === 1) return answer(hits[0], "source:stated-board");
       const unbranded = hits.filter((o) => !NAMED_SOURCE.test(qn(o)));
       if (hits.length > 1 && unbranded.length === 1) return answer(unbranded[0], "source:stated-board");

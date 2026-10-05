@@ -380,3 +380,15 @@ describe("regression run 2026-10-05: Shield AI, Sentinel and K1", () => {
     expect(value(ask(q, t, US_VETERAN, US_JOB))).toBe("2019");
   });
 });
+
+describe("a stated 'Job board' among named channels (Commvault, regression 2026-10-05)", () => {
+  it("never the company's career page, nor a search engine's brand", () => {
+    const p = { ...SPARSE_CANADIAN, howDidYouHear: "Job board" };
+    const opts = ["Career Page", "Employee Referral", "Glassdoor", "Google Search", "Indeed", "LinkedIn", "Other"];
+    const v = value(ask("How did you hear about us?", { options: opts }, p, { jobCountry: "US", company: "Commvault" }));
+    expect(v).not.toBe("Career Page");
+    expect(v).not.toBe("Google Search");
+    // A generic online option still takes it.
+    expect(value(ask("How did you hear about us?", { options: ["Career Page", "Internet / Online", "Referral", "Other"] }, p, { jobCountry: "US", company: "Commvault" }))).toBe("Internet / Online");
+  });
+});

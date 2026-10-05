@@ -735,3 +735,11 @@ describe("years of a narrower experience (question bank 2026-10-05: AlayaCare)",
     expect(value(ask("How many years of professional software engineering experience do you have?", o, BERLIN_STAFF))).toBe("5+ years");
   });
 });
+
+describe("U.S. person status worded with a 'not' (Hermeus on Lever, regression 2026-10-05)", () => {
+  it("'…refugees with such status granted, not pending' is still the U.S.-person option", () => {
+    const gc = { ...SPARSE_CANADIAN, location: "San Jose, CA", country: "USA", workAuthorization: "U.S. permanent resident (green card)", authorizedUS: "Yes", requiresSponsorship: "No" };
+    const opts = ["U.S. person. This status includes U.S. citizens, U.S. nationals, lawful permanent residents (green card holders), and asylums and refugees with such status granted, not pending.", "Foreign person. This ITAR/EAR status includes anyone who is not a U.S. person (see above)."];
+    expect(value(ask("U.S. EXPORT COMPLIANCE", { options: opts, kind: "choice", controlType: "select" }, gc as never, { jobCountry: "US", company: "Hermeus" }))).toBe(opts[0]);
+  });
+});
