@@ -213,6 +213,10 @@ const REQUIRES_SPONSOR = /\b(require|requires|requiring|need|needs|needing)\b[^?
 /** Asks for the work RIGHT itself ("are you legally authorized…", "do you have the right to work…"). */
 const ASKS_RIGHT =
   /\b(are|is) (you|the applicant)\b[^?]{0,25}\b(authori[sz]ed|eligible|entitled|permitted|allowed|legally able)\b|\bdo you (have|hold|possess)\b[^?]{0,25}\b(right|authori[sz]ation|permit)\b/;
+/** Asks whether the work right is NEEDED ("do you require work authorization?",
+ *  "will you need a work permit…"): the inverse of having it. */
+const NEEDS_RIGHT =
+  /\b(do|does|will|would|shall) you\b.{0,20}\b(require|need)\b.{0,30}\b(work authori[sz]ation|authori[sz]ation to work|work permit|work visa|employment authori[sz]ation)\b/;
 /** Asks WHICH sponsorship or visa, not whether: no profile answer states it. */
 const SPONSOR_TYPE = /\b(what|which) (type of |kind of |form of )?(visa )?(sponsorship|visa|work permit)\b|\b(type|kind|form) of (visa |work )?(sponsorship|visa|permit)\b/;
 const WITHOUT_SPONSOR = /\bwithout (the )?(need (for|of) |needing |requiring |requirement (for|of) )?(any )?(current or future )?(visa |employer |employment |immigration |company )?sponsor/;
@@ -283,6 +287,18 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
     const inverted = /\bwithout\b/.test(n) && !/\b(require|need)\b/.test(n);
     if (isHigh(s)) return booleanResult(inverted ? !s.value : s.value, q, "sponsorship");
     return abstain("sponsorship:unknown");
+  }
+
+  // "Do you require work authorization?" (Waymo on Greenhouse, live
+  // 2026-10-05) asks whether the right is NEEDED, the inverse of having it:
+  // read as "are you authorized?", a Canadian on a US job answered No (and a
+  // US citizen would have answered Yes).
+  if (!hasSponsor && NEEDS_RIGHT.test(n) && !ASKS_RIGHT.test(n)) {
+    const a = authorizedIn(facts.workAuth, country, residence);
+    if (!isHigh(a)) return abstain("work-auth-needed:unknown");
+    if (isBooleanQuestion(q) || isYesNoDropdown(q, n)) return booleanResult(!a.value, q, "work-auth-needed");
+    if ((q.kind === "text" || q.kind === "longText") && !q.options?.length) return answer(a.value ? "No" : "Yes", "work-auth-needed:text");
+    return abstain("work-auth-needed:not-yes-no");
   }
 
   // Work authorization proper. A dropdown whose options load only when opened
@@ -1401,6 +1417,19 @@ function resolveEmploymentHistoryChoice(q: QuestionInput, n: string, raw: string
   return worked ? abstain("former-employee:history-choice") : answer(never[0], "former-employee:never");
 }
 
+/** Capitalized words in an employer question that are not a company's name. */
+const NOT_A_COMPANY =
+  /^(are|were|have|has|had|do|did|you|your|current|currently|former|formerly|past|previous|previously|prior|employee|employees|employed|intern|interns|vendor|vendors|contractor|contractors|temp|temps|member|members|extended|workforce|team|including|include|and|or|other|its|their|subsidiaries|subsidiary|affiliates|affiliate|company|companies|please|if|yes|no|i|the|a|an|of|required|select|any|all|e\.?g\.?)$/i;
+
+/** Every company a question names ("…Alphabet employee … (including Google and
+ *  other Alphabet subsidiaries)"): a job at any of them is a job there. */
+function companiesNamedIn(raw: string): string[] {
+  const found = (raw.match(/[A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,2}/g) ?? [])
+    .map((s) => s.split(/\s+/).filter((w) => !NOT_A_COMPANY.test(w.replace(/[,.;:]+$/, ""))).join(" ").replace(/[,.;:]+$/, ""))
+    .filter((s) => s.length >= 2);
+  return [...new Set(found)];
+}
+
 function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: ProfileFacts, ctx: QuestionContext): QuestionResult {
   const history = resolveEmploymentHistoryChoice(q, n, raw, facts);
   if (history) return history;
@@ -1415,29 +1444,43 @@ function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: 
   const named =
     /\b(?:of|by|for|at)\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,3})/.exec(raw) ??
     // "a current MongoDB employee" (MongoDB's embedded form, live 2026-10-03):
-    // a qualifier may sit between the article and the name.
-    /\b(?:a|an)\s+(?:(?:current|former|past|previous|prior|full[- ]time|part[- ]time)\s+)?([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,2})\s+(?:employee|contractor|intern)\b/.exec(raw);
+    // a qualifier may sit between the article and the name, or two ("a
+    // current or former Alphabet employee", Waymo, live 2026-10-05).
+    /\b(?:a|an)\s+(?:(?:current|former|past|previous|prior|full[- ]time|part[- ]time)(?:\s*(?:or|and|\/)\s*(?:current|former|past|previous|prior))?\s+)?([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,2})\s+(?:employee|contractor|intern)\b/.exec(raw);
   const pointsHere = /\b(for us|with us|here|this company|our company|the company|this organi[sz]ation|our organi[sz]ation)\b/.test(n);
+  // "Are you a current or former employee?" (Carvana's embedded Greenhouse,
+  // live 2026-10-05) names no company and no other place: on the employer's
+  // own form it asks about the employer.
+  const bare =
+    /\b(are|were) you (a |an )?((current|former|past|previous|prior)( or | and | ))+(employee|team member|intern|contractor)s?\b/.test(n) &&
+    !/\b(of|at|with|for|by|from|government|agency)\b/.test(n);
   const company = named && !/^(us|our|the|this|any|a|an)$/i.test(named[1])
     ? named[1].replace(/[,.]+$/, "")
-    : pointsHere
+    : pointsHere || bare
       ? ctx.company
       : "";
   if (!company) return abstain("former-employee:no-company");
   if (facts.employment.employers.length === 0) return abstain("former-employee:no-history");
+  const companies = [company, ...(named ? companiesNamedIn(raw) : [])];
   const current = facts.employment.currentCompany;
-  const isCurrent = Boolean(isHigh(current) && sameCompany(current.value, company));
-  const isPast = !isCurrent && facts.employment.employers.some((e) => sameCompany(e, company));
+  const isCurrent = Boolean(isHigh(current) && companies.some((c) => sameCompany(current.value, c)));
+  const isPast = !isCurrent && facts.employment.employers.some((e) => companies.some((c) => sameCompany(e, c)));
   const opts = q.options ?? [];
   if (opts.length > 0 && !isBooleanOptionSet(opts)) {
     const pick = (re: RegExp): string | null => {
       const hits = opts.filter((o) => re.test(qnorm(o)));
       return hits.length === 1 ? hits[0] : null;
     };
+    // "Current or Former member of Alphabet extended workforce" (Waymo) says
+    // both: the option saying only the one that holds wins.
+    const only = (re: RegExp, other: RegExp): string | null => {
+      const hits = opts.filter((o) => re.test(qnorm(o)) && !other.test(qnorm(o)));
+      return hits.length === 1 ? hits[0] : pick(re);
+    };
     const v = isCurrent
-      ? pick(/\bcurrent\b/)
+      ? only(/\bcurrent\b/, /\b(past|former|previous|prior)\b/)
       : isPast
-        ? pick(/\b(past|former|previous|prior)\b/)
+        ? only(/\b(past|former|previous|prior)\b/, /\bcurrent\b/)
         : pick(/\b(neither|none|no|not|never)\b/);
     return v ? answer(v, "former-employee:choice") : abstain("former-employee:no-matching-option");
   }

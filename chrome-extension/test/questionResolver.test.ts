@@ -106,6 +106,19 @@ describe("explicit per-country authorization beats the general sponsorship answe
     expect(value(ask("Will you require sponsorship to work in Canada?", { options: YES_NO }, P))).toBe("No");
     expect(value(ask("In which country/region do you have citizenship?*", { options: ["Brazil", "Canada", "United States"], kind: "choice" }, P))).toBe("Canada");
   });
+  it("whether work authorization is NEEDED is the inverse of having it (Waymo on Greenhouse, live 2026-10-05)", () => {
+    // A Canadian on a Mountain View internship got "No": the question was read
+    // as "are you authorized?". A US citizen would have answered "Yes".
+    const WAYMO = ["", "Yes", "No", "Unknown"];
+    const label = "Do you require work authorization? (required) 9174883a";
+    expect(value(ask(label, { options: WAYMO, kind: "choice", controlType: "select" }, P, US))).toBe("Yes");
+    const citizen = { ...SPARSE_CANADIAN, location: "Austin, TX", workAuthorization: "U.S. citizen", authorizedUS: "Yes", requiresSponsorship: "No" };
+    expect(value(ask(label, { options: WAYMO, kind: "choice", controlType: "select" }, citizen, US))).toBe("No");
+    expect(value(ask("Will you need a work permit to work in Canada?", { options: YES_NO }, P))).toBe("No");
+    expect(value(ask("Would you require work authorization to work in the United States?", { options: YES_NO }, P))).toBe("Yes");
+    // A requirement stated, then the right itself asked: still the right.
+    expect(value(ask("This position requires work authorization in the U.S. Are you authorized to work in the U.S.?", { options: YES_NO }, P))).toBe("No");
+  });
 });
 
 describe("conditional questions: the condition first", () => {
@@ -270,6 +283,25 @@ describe("employment history", () => {
   });
   it("an employer the question does not name abstains", () => {
     expect(value(ask("Have you ever worked at a startup?", { options: YES_NO }))).toBe("abstain");
+  });
+  // Waymo's embedded Greenhouse form (live 2026-10-05; also in prod telemetry
+  // 2026-09-28): "current OR former" before the name hid the company, and the
+  // question went to the AI.
+  const ALPHABET = "Are you a current or former Alphabet employee, intern, vendor, contractor, or temp (including Google and other Alphabet subsidiaries)? (required) dda2c2bb";
+  const ALPHABET_OPTS = ["", "Current Alphabet Employee or Intern", "Former Alphabet Employee or Intern", "Current or Former member of Alphabet extended workforce", "Never worked at Alphabet"];
+  it("'a current or former <Company> employee' names the company", () => {
+    expect(value(ask(ALPHABET, { options: ALPHABET_OPTS, kind: "choice", controlType: "select" }))).toBe("Never worked at Alphabet");
+  });
+  it("every company the question names counts: a Google job is an Alphabet job here", () => {
+    const googler = { ...SPARSE_CANADIAN, experience: [{ company: "Google", title: "Software Engineering Intern", startDate: "2024-05", endDate: "2024-08", description: "" }] };
+    expect(value(ask(ALPHABET, { options: ALPHABET_OPTS, kind: "choice", controlType: "select" }, googler))).toBe("Former Alphabet Employee or Intern");
+  });
+  it("a bare 'current or former employee?' asks about the hiring company (Carvana, live 2026-10-05)", () => {
+    const q = "Are you a current or former employee?*";
+    expect(value(ask(q, { options: YES_NO }, SPARSE_CANADIAN, { jobCountry: null, company: "Carvana" }))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, SPARSE_CANADIAN, { jobCountry: null, company: "Shopify" }))).toBe("Yes");
+    // No hiring company known: the history cannot be checked.
+    expect(value(ask(q, { options: YES_NO }))).not.toBe("No");
   });
 });
 

@@ -281,6 +281,21 @@ describe("a revert is a failure, not a fill", () => {
     expect(t.failedFields[0].reason).toBe("value_changed_after_write");
   });
 
+  it("a phone picker showing the dial code of the country written is no revert (Greenhouse, live 2026-10-05)", () => {
+    // Prod telemetry 2026-09-28 and 2026-10-03 logged "Country: value_changed_after_write"
+    // for "+1" on pages that held the right country.
+    const run = (written: string, shown: string) =>
+      buildAutofillTelemetry(
+        [f("a", "Country", "country")],
+        { host: "h", url: "u", atsType: "" },
+        { reports: [rep("a", true)], outcomes: [], intended: [{ fieldId: "a", value: written }], observed: [{ fieldId: "a", value: shown }] }
+      ).fieldOutcomes?.[0].outcome;
+    expect(run("Canada", "+1")).toBe("filled");
+    expect(run("United States", "+1")).toBe("filled");
+    expect(run("United Kingdom", "+44")).toBe("filled");
+    expect(run("Canada", "+44")).toBe("reverted");
+  });
+
   it("leaves the counts alone when no re-scan was possible", () => {
     const t = buildAutofillTelemetry(
       [f("a", "First Name", "firstName")],

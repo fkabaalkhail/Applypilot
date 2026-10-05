@@ -248,7 +248,11 @@ function valueReflects(written: string, current: string): boolean {
   // An international number whose widget keeps the country code in its own
   // picker: "+44 20 7946 0958" shows as "20 7946 0958" (Workable, live
   // 2026-10-03, reported "did not stick"). The rest of the number, whole.
-  return /^\+/.test(w) && /^\d+$/.test(cw) && /^\d{7,}$/.test(cc) && cw.endsWith(cc) && cw.length - cc.length <= 3;
+  if (/^\+/.test(w) && /^\d+$/.test(cw) && /^\d{7,}$/.test(cc) && cw.endsWith(cc) && cw.length - cc.length <= 3) return true;
+  // The reverse: a widget that adds the country code to a number written
+  // without one, "(416) 555-0142" read back as "+14165550142" (Waymo's
+  // embedded Greenhouse, live 2026-10-05, reported "did not stick").
+  return /^\+/.test(c) && !/^\+/.test(w) && /^\d{7,}$/.test(cw) && /^\d+$/.test(cc) && cc.endsWith(cw) && cc.length - cw.length <= 3;
 }
 
 // ---------------------------------------------------------------------------

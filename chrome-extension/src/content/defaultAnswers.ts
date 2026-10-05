@@ -350,7 +350,11 @@ export function resolveDefault(
     return polar(false, q, "default:marketing-opt-out");
   }
 
-  if (MARKETING.test(n) && !FUTURE_ROLES.test(n)) return polar(false, q, "default:marketing-opt-out");
+  // "Join the talent community and sign up for job alerts" (Waymo, live
+  // 2026-10-05) is a subscription, whatever else it keeps on file.
+  if (MARKETING.test(n) && (!FUTURE_ROLES.test(n) || /\b(sign up|subscribe|job alerts?|newsletters?|mailing list)\b/.test(n))) {
+    return polar(false, q, "default:marketing-opt-out");
+  }
   if (FUTURE_ROLES.test(n) && /\b(consider|keep|retain|share|contact|notify|would you like|interested)\b/.test(n)) {
     return polar(true, q, "default:future-roles");
   }

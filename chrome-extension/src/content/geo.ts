@@ -78,6 +78,17 @@ export const COUNTRIES: Country[] = [
   { code: "GH", name: "Ghana", continent: "Africa", aliases: ["ghanaian"] },
 ];
 
+/** International dialing code (digits after "+") of each country above. A
+ *  phone picker reads back "+1" for the "Canada" it was given (Greenhouse). */
+export const DIAL_CODES: Record<string, string> = {
+  US: "1", CA: "1", MX: "52", GB: "44", IE: "353", FR: "33", DE: "49", NL: "31", BE: "32", ES: "34",
+  PT: "351", IT: "39", CH: "41", AT: "43", SE: "46", NO: "47", DK: "45", FI: "358", PL: "48", CZ: "420",
+  RO: "40", GR: "30", UA: "380", TR: "90", IL: "972", AE: "971", SA: "966", IN: "91", PK: "92", BD: "880",
+  LK: "94", CN: "86", HK: "852", TW: "886", JP: "81", KR: "82", SG: "65", MY: "60", PH: "63", VN: "84",
+  TH: "66", ID: "62", AU: "61", NZ: "64", BR: "55", AR: "54", CL: "56", CO: "57", PE: "51", NG: "234",
+  KE: "254", ZA: "27", EG: "20", MA: "212", GH: "233",
+};
+
 export interface Region {
   code: string;
   name: string;

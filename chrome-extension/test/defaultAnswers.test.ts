@@ -53,6 +53,12 @@ describe("consent the application needs", () => {
   it("being kept on file for future roles is Yes", () => {
     expect(value(ask("Would you like to be considered for future opportunities at Twitch when a role matches your profile?", { options: YES_NO }))).toBe("Yes");
   });
+  it("a talent community that also signs up for job alerts is a subscription: No (Waymo, live 2026-10-05)", () => {
+    // It went to the AI: "talent community" read as being kept on file.
+    const r = ask("Check this box to join the talent community and sign up for job alerts 64cb4583", { controlType: "checkbox", kind: "boolean" });
+    expect(value(r)).toBe("no");
+    expect(rule(r)).toBe("default:marketing-opt-out");
+  });
   it("recording / AI-notetaker consent is a preference, never defaulted, nor the AI's to give", () => {
     const r = ask("As part of our interview process, we may use AI notetakers to transcribe interviews. Do you consent?", { options: ["Yes, I consent", "No, I do not consent"] });
     expect(r?.status).toBe("abstain");

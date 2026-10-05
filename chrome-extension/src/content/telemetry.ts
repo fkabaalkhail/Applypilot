@@ -36,6 +36,7 @@
 import { redactCaptureValue } from "./domCapture";
 import { placeOf } from "./placeMatch";
 import { optionPolarity } from "./answerKind";
+import { countryFromName, DIAL_CODES } from "./geo";
 import type {
   AutofillTelemetry, DetectedField, FieldCaptureRecord, FieldOutcomeRecord, FillDurations,
 } from "../shared/types";
@@ -132,6 +133,14 @@ function sameValue(written: string, observed: string): boolean {
   // "None" picked "Never held a clearance" (Brex, SpaceX, live 2026-10-03).
   const polarity = optionPolarity(written);
   if (polarity !== null && polarity === optionPolarity(observed)) return true;
+  // A phone picker shows the dial code of the country picked: "Canada" read
+  // back as "+1" (Greenhouse, live 2026-10-05; prod telemetry logged it as
+  // changed on 2026-09-28 and 2026-10-03).
+  const dial = /^\+\s?(\d{1,4})$/.exec(observed.trim());
+  if (dial) {
+    const country = countryFromName(written);
+    if (country && DIAL_CODES[country.code] === dial[1]) return true;
+  }
   // A native date input reads back the day typed as "01/04/2027" in ISO,
   // "2027-01-04" (Paylocity, live 2026-10-03).
   const day = isoDay(written);
