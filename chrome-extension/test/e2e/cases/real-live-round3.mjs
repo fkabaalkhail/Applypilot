@@ -41,6 +41,9 @@ export default [
     profile: US_VETERAN,
     url: "https://sentinelgroup.applytojob.com/apply/0RWBNqCbAy/Junior-Data-Engineer",
     expect: {
+      // Answered since round 4 (re-pinned after reading each, 2026-10-05).
+      "#resumator-questionnaire-q2897076": "No",
+      "#resumator-questionnaire-q2897078": "Yes",
       "label:First Name": "Marcus",
       "label:Last Name": "Hill",
       "label:Email Address": "marcus.hill@example.com",
@@ -78,6 +81,11 @@ export default [
     profile: UK_SENIOR,
     url: "https://k1im.applytojob.com/apply/7yVsObIt1i/AI-Engineer",
     expect: {
+      // Answered since round 4 (re-pinned after reading each, 2026-10-05).
+      "#resumator-questionnaire-q906300": "2015",
+      "#resumator-questionnaire-q1914219": "LinkedIn",
+      "#resumator-questionnaire-q3049033": "Yes",
+      "#resumator-questionnaire-q3049726": "No",
       "label:First Name": "Siobhán",
       "label:Last Name": "O'Neill",
       "label:Email Address": "siobhan.oneill@example.co.uk",
@@ -285,6 +293,8 @@ export default [
     profile: NEW_GRAD_DECLINER,
     url: "https://www.d2l.com/careers/jobs/?job_id=6297078&gh_jid=6297078",
     expect: {
+      // Answered since round 4 (re-pinned after reading each, 2026-10-05).
+      "#question_50989138": "Yes",
       "#first_name": "Priya",
       "label:Last Name": "Nair",
       "label:Preferred First Name": "Priya",
@@ -770,7 +780,8 @@ export default [
       "label:Location (City)": "Calgary, Alberta, Canada",
       "#question_18809590008": "Canada",
       "label:Additional Skills": "MATLAB, Python, C",
-      "label:How did you hear about us?": "Career Page",
+      // A stated "Job board" is no company career page, nor "Google Search" (round 4).
+      "label:How did you hear about us?": null,
       "label:Willingness to relocate": "Yes",
       "label:Have you previously worked for this organization": "No",
       "label:Are you at least 18 years or older?": "Yes",

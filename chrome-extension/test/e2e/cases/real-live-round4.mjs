@@ -526,6 +526,8 @@ export default [
     profile: US_OPT_ANALYST,
     url: "https://job-boards.greenhouse.io/doordashusa/jobs/8204111",
     expect: {
+      // Answered since round 4 (re-pinned after reading each, 2026-10-05).
+      "#question_69230713": "Before December 2027",
       "label:First Name": "Ji-woo",
       "label:Last Name": "Park",
       "#email": "jiwoo.park@example.com",
