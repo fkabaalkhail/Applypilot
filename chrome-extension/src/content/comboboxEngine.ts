@@ -847,7 +847,11 @@ const VALUE_DISPLAY_SELECTOR =
   // show committed values outside any *-value class, without these a
   // successful chip add verifies as "didn't stick".
   `[data-automation-id*="${WD_SELECTED_ITEM_FRAGMENT}" i], ` +
-  '[class*="chip" i], [class*="pill" i], [class*="token" i]';
+  '[class*="chip" i], [class*="pill" i], [class*="token" i], ' +
+  // Ant Design's select (rc-select) shows the choice beside its search box,
+  // whose value stays empty (Dayforce, live 2026-10-05: Country and State
+  // read "didn't stick" while showing Canada and Ontario).
+  '[class*="select-selection-item" i]';
 
 /** Texts of react-select-style single/multi-value display elements near the trigger.
  *  The committed-value div is a COUSIN of the input (react-select: value-container
