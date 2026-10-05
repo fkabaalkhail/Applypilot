@@ -264,4 +264,17 @@ describe("blanks now answered", () => {
   it("an attention check is answered as it says (DISA Technologies)", () => {
     expect(ask("COMPLETE_CANADIAN", "To be considered, please choose option C below.", ["A", "B", "C", "D"])).toBe("C");
   });
+
+  it("a list of clearances has the no-clearance option for someone holding none (Credence)", () => {
+    const opts = ["Confidential", "Secret", "Top Secret", "I currently do not have an active security clearance", "Add answer of choice"];
+    expect(ask("COMPLETE_CANADIAN", "Please indicate which active clearances you have", opts, US, "checkboxes")).toBe("I currently do not have an active security clearance");
+  });
+
+  it("the current degree program counts a degree in progress (Enfos)", () => {
+    expect(ask("COMPLETE_CANADIAN", "What is your current degree program or highest level of education?", ["Bachelor's", "Master's", "PhD / Doctoral", "Other"])).toBe("Bachelor's");
+  });
+
+  it("the latest employer is the most recent job, ended or not (Saalex)", () => {
+    expect(ask("BOOTCAMP_CAREER_GAP", "Latest Employer Name:")).toBe("Ibotta");
+  });
 });

@@ -661,6 +661,10 @@ function resolveLaterResidency(q: QuestionInput, n: string, facts: ProfileFacts)
 
 function resolveCitizenship(q: QuestionInput, n: string, facts: ProfileFacts, ctx: QuestionContext): QuestionResult {
   if (!CITIZEN_Q.test(n)) return null;
+  // Consent to be ASKED about citizenship is consent ("Do you consent to
+  // Lodestar Space requesting information regarding citizenship, passports
+  // and visas…?", question bank 3): it was answered as citizenship itself.
+  if (/\b(do you|you) (consent|agree|authori[sz]e)\b/.test(n)) return null;
   // Citizenship of a sanctioned country is never US citizenship, though the
   // label names "U.S. export control laws": a US citizen said Yes to being a
   // citizen of Cuba, Iran, North Korea or Syria (Asana, Intercom; question
@@ -1164,7 +1168,10 @@ function resolveEducationLevel(q: QuestionInput, n: string, facts: ProfileFacts)
   }
   if (!LEVEL_Q.test(n)) return null;
   const completedAsked = /\b(completed|attained|obtained|achieved|earned)\b/.test(n);
-  const rank = ed.highestCompletedRank;
+  // "What is your current degree program or highest level of education?"
+  // (Enfos on Workable, 2026-10-05): a degree in progress answers it.
+  const programAsked = /\bcurrent (degree|program|degree program|studies|course of study)\b/.test(n);
+  const rank = programAsked && isHigh(ed.highestRank) ? ed.highestRank : ed.highestCompletedRank;
   // A degree in progress with none completed past high school: "Some College"
   // is the level held under either reading of "highest" (a bachelor's
   // student on ActioNet's Jobvite form, a real profile, 2026-10-03). Only
@@ -2402,9 +2409,24 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
       return polarityOf(profile.willingToRelocate || "") === true ? answer("Yes", "relocation:text") : abstain("relocation:text-unknown");
     }
     // "Clearance type / level" select: "None" when the applicant holds none.
-    if (/\bclearance\b/.test(n) && q.options?.length && /^none$/i.test((profile.securityClearance || "").trim())) {
-      const none = q.options.filter((o) => /^none\b/i.test(o.trim()));
+    // Or the option saying so: "I currently do not have an active security
+    // clearance" (Credence on Workable, 2026-10-05).
+    if (/\bclearances?\b/.test(n) && q.options?.length && /^none$/i.test((profile.securityClearance || "").trim())) {
+      // Only an option saying no more than that: "No clearance but clear
+      // background and able to obtain" claims more (Vialogic, bank 2).
+      const none = q.options.filter(
+        (o) =>
+          /^none\b/i.test(o.trim()) ||
+          (/\b(do not|dont|don t) (currently )?(have|hold)\b[^.]{0,30}\bclearance\b|^no (active |current )?(security )?clearance\b/i.test(qnorm(o)) &&
+            !/\b(but|able|obtain|eligib\w*|willing|interested)\b/i.test(qnorm(o)))
+      );
       if (none.length === 1) return answer(none[0], "clearance:none");
+    }
+    // "Latest Employer Name:" (Saalex on Workable, 2026-10-05): the most
+    // recent employer, current or not; a past job's applicant had it blank.
+    if ((q.kind === "text" || q.kind === "longText") && !q.options?.length && /^(name of )?(your )?(latest|most recent|last) (employer|company)( name)?\b/.test(n)) {
+      const recent = facts.employment.mostRecentCompany;
+      return isHigh(recent) ? answer(recent.value, "employer:most-recent") : null;
     }
     // The level the profile names, as an option exactly ("Secret" is "Secret
     // Clearance", never "Interim Secret" or "Top Secret"). A clearance stated
@@ -2747,51 +2769,57 @@ export function resolveQuestion(
   const unnoted = statement && !lone
     ? askedOfStatement(raw, words)
     : raw.replace(/\(\s*if (no|yes|not|so)\b[^)]*\)/gi, " ").trim();
+  // The rules read a long statement by what it asks: "…agreements I may have
+  // already signed with current and former employers… if employed…" in
+  // Credence's at-will notice (Workable, live 2026-10-05) was read as "have
+  // you worked for Company?" and No typed into its initials box.
+  const sq = statement && !lone ? { ...q, label: askedOfStatement(raw, words) } : q;
+  const sn = sq === q ? n : qnorm(sq.label);
   const resolved =
     resolveRelocationInstruction(q, raw, facts, profile, ctx) ??
     resolveSanctionedList(q, n, facts) ??
     (unnoted !== raw ? resolveWorkAuthorization({ ...q, label: unnoted }, qnorm(unnoted), facts, profile, ctx) : resolveWorkAuthorization(q, n, facts, profile, ctx)) ??
-    resolveUsPersonStatus(q, facts, profile) ??
-    resolveLaterResidency(q, n, facts) ??
-    resolveCitizenship(q, n, facts, ctx) ??
-    resolveAge(q, n, facts) ??
-    resolveSchoolMembership(q, n, facts) ??
-    resolveMovePlan(q, n, profile) ??
-    resolveResidence(q, n, facts, profile) ??
-    resolveRegionChoice(q, n, facts) ??
-    resolveLocatedChoice(q, n, facts) ??
-    resolveFormerEmployee(q, n, raw, facts, ctx) ??
-    resolveCurrentlyEmployed(q, n, facts) ??
-    resolveYearsOfExperience(q, n, facts) ??
-    resolvePursuedDegree(q, n, facts) ??
-    resolveEducationLevel(q, n, facts) ??
-    resolveDegreeCandidate(q, n, facts) ??
-    resolveF1Status(q, n, profile) ??
-    resolveEnrollment(q, n, facts) ??
-    resolveCoop(q, n, facts) ??
-    resolvePreviousInternship(q, n, profile) ??
-    resolveSchoolSchedule(q, n, facts) ??
-    resolveEducationSummary(q, n, facts) ??
-    resolveGraduatingInTerm(q, facts) ??
-    resolveGraduation(q, n, facts) ??
-    resolveGpa(q, n, profile, facts) ??
-    resolveDisciplineAtLevel(q, n, facts) ??
-    resolveTestScore(q, n) ??
-    resolveStartDateChoice(q, n, facts) ??
-    resolveStartBucket(q, n, facts) ??
-    resolveTimezone(q, n, facts) ??
-    resolveZoneAvailability(q, n, facts) ??
-    resolveDidGraduate(q, n, facts) ??
-    resolvePeriodAvailability(q, n, facts) ??
-    resolveSalaryUnit(q, n, facts, profile) ??
-    resolveSalaryCurrency(q, n, facts, profile, ctx) ??
-    resolveLocalTo(q, n, facts, profile) ??
-    resolveSchoolName(q, n, facts) ??
-    resolveAvailability(q, n, facts) ??
-    resolveRelocationChoice(q, n, profile, ctx) ??
-    resolveLanguageChoice(q, n, profile) ??
-    resolveStatedFacts(q, n, profile, facts, ctx) ??
-    resolvePhoneCode(q, n, facts, profile) ??
+    resolveUsPersonStatus(sq, facts, profile) ??
+    resolveLaterResidency(sq, sn, facts) ??
+    resolveCitizenship(sq, sn, facts, ctx) ??
+    resolveAge(sq, sn, facts) ??
+    resolveSchoolMembership(sq, sn, facts) ??
+    resolveMovePlan(sq, sn, profile) ??
+    resolveResidence(sq, sn, facts, profile) ??
+    resolveRegionChoice(sq, sn, facts) ??
+    resolveLocatedChoice(sq, sn, facts) ??
+    resolveFormerEmployee(sq, sn, sq.label, facts, ctx) ??
+    resolveCurrentlyEmployed(sq, sn, facts) ??
+    resolveYearsOfExperience(sq, sn, facts) ??
+    resolvePursuedDegree(sq, sn, facts) ??
+    resolveEducationLevel(sq, sn, facts) ??
+    resolveDegreeCandidate(sq, sn, facts) ??
+    resolveF1Status(sq, sn, profile) ??
+    resolveEnrollment(sq, sn, facts) ??
+    resolveCoop(sq, sn, facts) ??
+    resolvePreviousInternship(sq, sn, profile) ??
+    resolveSchoolSchedule(sq, sn, facts) ??
+    resolveEducationSummary(sq, sn, facts) ??
+    resolveGraduatingInTerm(sq, facts) ??
+    resolveGraduation(sq, sn, facts) ??
+    resolveGpa(sq, sn, profile, facts) ??
+    resolveDisciplineAtLevel(sq, sn, facts) ??
+    resolveTestScore(sq, sn) ??
+    resolveStartDateChoice(sq, sn, facts) ??
+    resolveStartBucket(sq, sn, facts) ??
+    resolveTimezone(sq, sn, facts) ??
+    resolveZoneAvailability(sq, sn, facts) ??
+    resolveDidGraduate(sq, sn, facts) ??
+    resolvePeriodAvailability(sq, sn, facts) ??
+    resolveSalaryUnit(sq, sn, facts, profile) ??
+    resolveSalaryCurrency(sq, sn, facts, profile, ctx) ??
+    resolveLocalTo(sq, sn, facts, profile) ??
+    resolveSchoolName(sq, sn, facts) ??
+    resolveAvailability(sq, sn, facts) ??
+    resolveRelocationChoice(sq, sn, profile, ctx) ??
+    resolveLanguageChoice(sq, sn, profile) ??
+    resolveStatedFacts(sq, sn, profile, facts, ctx) ??
+    resolvePhoneCode(sq, sn, facts, profile) ??
     null;
   // A legal-status Yes in a question that also asks for in-person work
   // somewhere ("Are you a US Citizen or Green Card Holder that can work onsite

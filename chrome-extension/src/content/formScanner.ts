@@ -1108,8 +1108,12 @@ export function scanPage(
     // such wrappers per question) is presentation: the native group is the
     // control. Scanned as an ARIA group it had no options and logged a failed
     // fill beside the native group that filled (BambooHR, live 2026-10-03).
-    if (controlType === "ariaRadioGroup" && el.querySelector('input[type="radio"]') && !el.querySelector('[role="radio"]')) {
-      continue;
+    // So is one whose every role=radio WRAPS a native radio (Workable's Yes /
+    // No, live 2026-10-05: the ARIA twin read no options and reported "No
+    // option matches" beside the native group it duplicated, which filled).
+    if (controlType === "ariaRadioGroup" && el.querySelector('input[type="radio"]')) {
+      const ariaRadios = Array.from(el.querySelectorAll('[role="radio"]'));
+      if (ariaRadios.length === 0 || ariaRadios.every((r) => r.querySelector('input[type="radio"]'))) continue;
     }
     // Never surface or fill a captcha widget's own controls, fill around it.
     if (isCaptchaField(el)) continue;
