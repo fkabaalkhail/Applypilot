@@ -11,8 +11,8 @@ telemetry since then ran on it: the 2026-09-28 and 2026-10-03 reports carry no
 `extension_version`, which only builds older than 2026-08-12 omit. None of the
 August to October autofill work has reached a Store user yet.
 
-**What to upload:** `chrome-extension/tailrd-extension-0.5.0.zip` (208 KB,
-git-ignored). Dashboard > the Tailrd item > Package > Upload new package, then
+**What to upload:** `chrome-extension/tailrd-extension-0.5.0.zip` (221 KB,
+git-ignored, built from commit 585c0fd on `night/autofill-round4`). Dashboard > the Tailrd item > Package > Upload new package, then
 Submit for review. To rebuild it: from `chrome-extension/`,
 `node build.mjs && python scripts/make-store-zip.py`.
 
@@ -43,6 +43,9 @@ Tailrd 0.5.0
   heard about jobs, expected graduation, GPA.
 - Dropdowns, dates, search lists and repeated education/work rows fill
   more reliably; answers are only ever chosen from the options a form offers.
+- Company career sites fill more fully: older dropdown styles are now
+  recognized, and the job's location is read from the page, so questions
+  about working in that country are answered.
 - Questions your profile cannot answer stay blank, and the panel asks you
   about them in place.
 - Demographic answers still never leave your device.
@@ -68,8 +71,8 @@ Tailrd 0.5.0
    standard questions (accepting the posting's terms, consent boxes) get the
    usual answer, and anything else is left blank for you to complete."
 
-**Checked on this build** (2026-10-05, branch `night/autofill-round4`):
-type check clean; unit tests 1619/1619; `node test/scan-smoke.mjs` passed;
+**Checked on this build** (2026-10-05, commit 585c0fd, branch `night/autofill-round4`):
+type check clean; unit tests 1713/1713; `node test/scan-smoke.mjs` passed;
 zip holds 8 files (manifest, three scripts, four icons), no `key`, no
 `localhost`, description 129 chars.
 
@@ -236,10 +239,10 @@ creditworthiness.
 
 ## Pre-flight checklist
 
-- [x] Unit tests green; typecheck clean (0.5.0: 1619/1619, 2026-10-05)
+- [x] Unit tests green; typecheck clean (0.5.0: 1713/1713, 2026-10-05)
 - [x] e2e multi-page flow probe green (0.4.0: user-gated page turns; 0.5.0:
       one click to the review page, `npm run test:workday-flow` 73/73 on
-      2026-10-04; the terminal Submit is never clicked)
+      2026-10-05; the terminal Submit is never clicked)
 - [x] dist contains no `localhost` / dev URLs; API base is `https://www.tailrd.ca`
 - [x] `externally_connectable` limited to tailrd.ca (localhost removed)
 - [x] Icons 16/32/48/128 present; screenshots 1280×800

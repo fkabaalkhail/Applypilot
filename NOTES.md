@@ -1,3 +1,204 @@
+# Round 4: real users first, then new ground (2026-10-04, night)
+
+Branch `night/autofill-round4`, from main at 775ff09. Local only: NOT pushed,
+NOT deployed. Nothing was submitted anywhere: every live run blocks non-GET
+requests (GraphQL queries aside), and no account was created on a real site.
+
+## 1. Can Web Store users connect? And a release to upload
+
+**Connecting.** I could not read the Vercel setting myself (the Vercel
+connector answers 403 for the team that owns the `resumate` project), so I
+checked what the setting does instead. Prod `security_events` shows completed
+extension handshakes from the **Store** id (`dadbhjlflnljgailcpgehdainjdmjeej`)
+on 2026-07-14, 08-07, 09-14 and 09-28, and no rejected redirect since
+2026-06-27. Store installs can connect today. Please still look at
+`EXTENSION_ALLOWED_IDS` on the dashboard (it should hold both ids,
+`apgogjfdpleeajnngkfkfekbddcpodkl,dadbhjlflnljgailcpgehdainjdmjeej`); I did
+not change any Vercel setting.
+
+**Release 0.5.0, ready to upload (I did not upload it).** The Store still
+serves 0.4.0 from July 15 (3 users), and every real fill in prod telemetry
+since then ran on it. `chrome-extension/tailrd-extension-0.5.0.zip`, built
+from commit 585c0fd (221 KB; checked: 8 files, no dev URLs, no key). What to do, the release notes and two listing lines that
+are now out of date are in `docs/store-submission.md` ("Release 0.5.0").
+
+**Real fills since 2026-10-04:** none in prod `autofill_reports`. The last
+real ones (2026-09-28, 10-03) ran the July build; what they got wrong was
+re-run on the current build first (batch R below).
+
+## 2. How it was measured
+
+Each batch was run blind on the build before its fixes, every write read with
+`tools/review.cjs`, then fixed, re-run live and pinned.
+
+| batch | pages | blind run: wrong values | after |
+| --- | --- | --- | --- |
+| R: the real users' pages (Greenhouse embeds) | 4 | 1, on 1 page (Waymo) | 0; pinned |
+| 1: SmartRecruiters, JazzHR, Breezy, Workable | 5 usable (SmartRecruiters' DataDome blocks every page after the first) | 8, all on the JazzHR page | 0; pinned |
+| 2: Greenhouse, 13 companies on their own career sites | 13 | 5, on 4 pages | 0; pinned |
+
+Then a **question bank**: the public Greenhouse API serves every posting's
+questions, so 80 postings (806 distinct questions) were rendered as forms and
+answered for six personas at once (`test/qbank.test.ts`, opt-in with `QBANK`).
+Reading 4,800 answers that way found far more than live pages could: about 40
+wrong answers, each fixed with a test. It is code-level (no live widget), so
+anything it found was also checked by a unit test and, where the page was in a
+batch, live.
+
+New personas (synthetic, `test/e2e/profiles.mjs`): a US worker on H-1B, one on
+STEM OPT, a bootcamp graduate with a career gap and a disability, a Berlin
+engineer (German Diplom, transgender, bisexual), and an Indian new graduate.
+
+## 3. Wrong answers fixed
+
+Live pages (the value written, and now):
+
+| page | question | wrote | now |
+| --- | --- | --- | --- |
+| Waymo (real-user page) | Do you require work authorization? (Canadian, US job) | No | Yes |
+| JazzHR, Directors Investment Group | misrepresentation statement (I consent / I do not Consent) | I do not Consent | I consent |
+| JazzHR | second Institution Name and Major | the first school's | the second school's |
+| JazzHR | second Employer Name | the current employer | the previous one |
+| JazzHR | each employer's Address (x2) | the applicant's street | blank |
+| JazzHR | each school's Location (x2) | the applicant's city | blank |
+| Duolingo | "After the OPT, eligible for a 24-month OPT extension?" (US citizen) | Yes | No |
+| Duolingo | Alternate Email | the same email | blank |
+| Coveo | member of the 2SLGBTQI+ community? (bisexual, transgender) | Prefer not to say | Yes / Oui |
+| Cloudflare | Legal Name (if different than above) | the same name | blank |
+| Accenture Federal | Degree, the high-school row | Technical Diploma | High School Diploma/GED |
+| Epic Games | Degree, the high-school row | (unseen) | High School / Secondary Education |
+
+Question bank (each also a unit test):
+
+| company | question | wrote | now |
+| --- | --- | --- | --- |
+| Sony Music, DoorDash | "…require sponsorship (e.g., H-1B, E-3, TN, O-1, STEM OPT…)?" for applicants needing it | No | Yes |
+| Toast | "Do you now, or will you ever, require sponsorship?" (OPT) | No | Yes |
+| Datadog | authorized to work here? (Berlin, India) | Yes, but I will need sponsorship | No, I need sponsorship now |
+| Peloton | "By selecting Yes you confirm you do not require sponsorship" | the inverse, for everyone | the statement |
+| Peloton | able to commute to the NYC HQ "(located at …)" | No for everyone (the office's address read as the applicant's) | Yes if moving, No if not |
+| Nuro | 4 days a week "in our Mountain View, CA headquarters" (Seattle, will not move) | Yes | No |
+| Sentinel (JazzHR) | "work out of our Wakefield, MA office 1 day per week" (Austin, will not move) | Yes | No |
+| Relativity | "willing to commute and/or relocate? If not, explain" (text) | the applicant's city | Yes / blank |
+| Squarespace | "Do you plan to move out of your state in 6-12 months?" | the current state | "I have no plans to move" / blank |
+| Squarespace | most recently attended school (Turing School) | Parsons School of Design | blank |
+| Waymo | state/region of residence (Berlin, India) | Other | EMEA, APAC |
+| Samsara | enrolled in a bachelor's or graduated in the past 2 years (June 2026 graduate) | No | Yes |
+| Stripe | "When do you expect to complete your degree?" | the degree's name | April 2027 / blank |
+| Canonical | bachelor's degree result, with its grading system | the school and degree | 3.7/4.0 / blank |
+| Duolingo | Undergraduate GPA (her GPA is the master's) | 3.85 | blank |
+| Jane Street | Secondary Major / University Email Address | the major / the personal email | blank |
+| K1 (JazzHR) | undergraduate graduation year | 2016 (the master's) | 2015 |
+| Glossier | days you cannot work | the start date | blank |
+| StackAdapt | salary expectations (hourly) | 185,000 | blank |
+| Nuro | U.S. driver's license held 3 consecutive years (Toronto, Berlin) | Yes | blank |
+| Bandwidth | how did you hear (stated "Company website") | NSBE's career site | Other |
+| Twilio, Gusto, Coinbase… | how did you hear (stated "Social media") | Twitter / Facebook | Other / blank |
+| Block | signature box (type your full name) | the last name | the full name |
+| Pinterest | "…please list the type of support you may require" | Yes / No | blank |
+| Affirm | how did you hear (stated "Job board") | Affirm's Career Site | the job board |
+| AlayaCare | years of fullstack experience (Python/React) | the career total | blank |
+| Sweetgreen | consent to the video recording itself | I consent | blank (yours) |
+| GitLab | sponsorship to remain in your location (Berlin citizen) | Yes | No |
+
+**False failures** (written right, reported wrong): Waymo's phone "did not
+stick" (read back as +14165550142), Greenhouse's "+1" reverted, Duolingo's
+13 "didn't stick" (its widgets read back), Workday's month/range/veteran
+"reverts", a running job's To date, Epic's Country.
+
+## 4. Blanks now answered
+
+- **Epic Games**: 16 dropdowns built on an older react-select (no combobox
+  role) were invisible, then unlabelled; work authorization, sponsorship, how
+  you heard, 40 hours a week, two acknowledgements, School/Degree/Discipline.
+  13 fields filled before, 23 now.
+- **Job's country on company career sites**: "Location" label/value pairs
+  (Epic), the line under the job title (Databricks). Without it, work-right
+  and sponsorship questions stayed blank.
+- Seattle's city on Greenhouse (the lookup lists it twice); GitLab's visa
+  list ("Yes, but not one of the visas listed here", "Yes, F-1 Visa OPT");
+  Airbnb's "Yes … now / Yes … in the future".
+- Export-control lists of embargoed places: "None of the above" when none of
+  the applicant's countries is listed (Databricks).
+- Graduates: "Earlier than Fall 2026", "Prior to December 2025", "Already
+  graduated", "N/A (I have graduated already)".
+- Start dates: onboarding date, start year, "available to begin before
+  September 2028".
+- Acknowledgements: Coinbase's AI notice, OneTrust/Samsara "Acknowledge/
+  Confirm", Riot's E-Verify notice for everyone (a "Select..." placeholder
+  had counted as an option).
+- EEO in other words: "Black / Of African descent", a cisgender woman among
+  transgender-only qualified options.
+
+## 5. Decisions (one rule each, each easy to reverse)
+
+1. A label that lists the applicant's own status as sponsorship ("e.g., …
+   STEM OPT") makes "now" Yes; otherwise an OPT/EAD holder needs it later,
+   not now.
+2. A visa list: the applicant's visa, else "not listed"; no visa stated, blank.
+3. A school is matched by its own words; no match leaves it blank (never
+   "My school is not listed").
+4. The profile's one GPA belongs to its main degree: blank for an
+   undergraduate GPA when the main degree is a master's.
+5. Plans to move: "no plans" only for someone who will not relocate.
+6. Pledges about your own words or no AI use (Canonical, Twilio) stay blank:
+   Tailrd may have written the words.
+7. Consent to being recorded stays yours even when it is the only option.
+8. Embargoed-place lists: answered only when every fact the question asks
+   about is known and none of your countries is listed.
+9. "Social media" is no particular platform; "Company website" is only the
+   company's own site.
+10. Old react-select widgets (aria-autocomplete="list", emotion class names)
+    are dropdowns.
+
+## 6. Regression
+
+All 157 pinned pages from rounds 1 to 4, headful, in 13 batches (build of
+bf9c7fc): 143 passed. The other 14 were re-run on the final build:
+
+- 8 passed: four fixed during the run (Figma's "Other", Shield AI's "local
+  to or willing to relocate", Hermeus' U.S.-person option, and hCaptcha's own
+  frame showing up in the page dump), four were page-load flakes (GitAI,
+  Figma, Mindex, Waymo).
+- 5 now answer questions they used to leave blank; each answer was read and
+  then pinned: Sentinel (No to the Wakefield office from Austin, Yes to the
+  US work right), K1 (undergraduate year 2015, LinkedIn, the commute, Southern
+  California), D2L (eligible in Canada), DoorDash ("Before December 2027").
+  Commvault's channel for a stated "Job board" is now blank (it was the
+  company's career page).
+- 1, Bosch on SmartRecruiters, now sits behind a Cloudflare challenge that
+  needs a POST; live runs block it.
+
+Also on the final build: unit tests 1713/1713, type check clean, scan smoke
+passed, and every multi-page probe: Workday one click to Review 73/73, the
+generic multi-page flow, Workday account creation and its gate, the
+react-select driver, Workday churn.
+
+## 7. Needs you / needs manual verification
+
+**Your decisions**
+1. **Upload 0.5.0** (`tailrd-extension-0.5.0.zip`) and consider the two
+   listing lines in `docs/store-submission.md`. I did not upload anything.
+2. **Look at `EXTENSION_ALLOWED_IDS` on Vercel** (both ids); the evidence
+   says it works, but I could not read it.
+3. **Legal waivers are inconsistent.** Anthropic's and Roblox's arbitration
+   agreements are accepted (round 3's decision 8: a lone acknowledgement is
+   answered); Block's (a lone "Accept" checkbox) and Sweetgreen's ("Have you
+   read and do you agree to the Arbitration Agreement?" with a lone Yes) stay
+   blank. Say which you want for all of them.
+4. **Does OpenAI work now?** Prod shows no AI output since 2026-08-25
+   (`job_match_scores`). If it does, I can find a safe way to run real
+   `/api/fill` answers in the lab; none of this round used the AI.
+
+**Not verified live**
+- School and Degree on Epic go to the AI with the real options (Turing
+  School and "Certificate" are not in Greenhouse's lists).
+- Breezy's work-history rows ("Start dateEnd dateDelete" label) need a page
+  capture.
+- Airbnb's career site (no form found) and AlayaCare (its Apply button times
+  out in the harness).
+- SmartRecruiters past the first page (DataDome, not allowed to bypass).
+
 # One Autofill click to the end of a Workday application (2026-10-04, night)
 
 You asked to finish a full Workday application with a single Autofill click:
