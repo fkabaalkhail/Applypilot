@@ -421,6 +421,15 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   if (source === "category" && (category === "fullName" || category === "firstName" || category === "lastName") && /\bif (it is |its )?different\b/i.test(label)) {
     return none(true, "name:if-different");
   }
+  // "What are your salary expectations (hourly)?" (StackAdapt, question bank
+  // 2026-10-05) got "$185,000": a pay figure only in the unit it was asked in.
+  if (source === "category" && category === "salary" && value && (kind === "text" || kind === "number" || kind === "longText")) {
+    const unitOf = (t: string): string | null =>
+      /\b(hourly|per hour|an hour|hour ?rate)\b|\/ ?(h|hr|hour)\b/i.test(t) ? "hour" : /\b(monthly|per month|a month)\b|\/ ?(mo|month)\b/i.test(t) ? "month" : /\b(annual|annually|yearly|per year|a year|per annum)\b|\/ ?(yr|year)\b/i.test(t) ? "year" : null;
+    const asked = unitOf(label);
+    const given = unitOf(value) ?? "year";
+    if (asked && asked !== given) return none(true, "salary:other-unit");
+  }
   // "Secondary Major" (Jane Street, question bank 2026-10-05) got the major:
   // the profile names one field of study.
   if (source === "category" && category === "fieldOfStudy" && (/\b(secondary|second|double|dual|additional) (major|field|concentration)\b/i.test(label) || (/\bminors?\b/i.test(label) && !/\bmajor\b/i.test(label)))) {

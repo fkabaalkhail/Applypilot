@@ -165,7 +165,9 @@ const CHANNEL = /\b(linked ?in|indeed|glassdoor|company (website|site)|careers? 
 const UNLABELED = /^(select|choose|pick)( one| an option| all that apply)?$|^$/;
 
 /** An acknowledgement option: the only thing a form lets you answer. */
-const ACK_OPTION = /^(i (will|understand|agree|acknowledge|confirm|accept|have read|consent)|acknowledged|agree|agreed|understood|confirmed)\b/;
+/** "Acknowledge/Confirm" (OneTrust's "Data Protection Notice", question bank
+ *  2026-10-05) too; a bare "Accept" stays out (Block's arbitration). */
+const ACK_OPTION = /^(i (will|understand|agree|acknowledge|confirm|accept|have read|consent)|acknowledged?|agree|agreed|understood|confirm(ed)?)\b/;
 /** A titled policy / agreement with a Yes/No ("AI Policy for Application", Anthropic). */
 const TITLED_TERMS = /\b(polic(y|ies)|agreement|terms|notice|acknowledg\w*|attestation|arbitration)\b/;
 
@@ -438,6 +440,10 @@ export function resolveDefault(
   }
 
   if (PRIOR_APPLICATION.test(n)) return polar(false, q, "default:no-prior-application");
+  // "…Are you aware this is not a permanent role, and are you still
+  // interested in being considered?" (Glossier, question bank 2026-10-05):
+  // applying says so.
+  if (/\bare you (still )?interested in (being considered|this (role|position|opportunity|job))\b/.test(n)) return polar(true, q, "default:still-interested");
   // "Will you be serving as enlisted personnel in either the Reserves or the
   // National Guard while working for AFS?" (live 2026-10-05): No for someone
   // who never served; anyone who did answers it.

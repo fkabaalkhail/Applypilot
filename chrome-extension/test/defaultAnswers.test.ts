@@ -297,3 +297,37 @@ describe("question bank 2026-10-05: a lone option behind a placeholder, and bein
     expect(value(ask(q, { options: ["I consent to the video interview process"] }))).toBe("abstain");
   });
 });
+
+describe("question bank 2026-10-05: availability, licences, notices", () => {
+  const P = () => import("./e2e/profiles.mjs") as Promise<Record<string, UserApplicationProfile>>;
+  const US_JOB = { jobCountry: "US" as string | null, company: "Acme" };
+  const text = { controlType: "text" as ControlType, kind: "text" as AnswerKind };
+
+  it("days the applicant cannot work are no start date (Glossier)", async () => {
+    const { COMPLETE_CANADIAN } = await P();
+    const q = "Are there any days you absolutely cannot work? Please highlight any partial availability (e.g., can work Mondays after 12pm).";
+    expect(value(ask(q, text, COMPLETE_CANADIAN, US_JOB))).toBe("abstain");
+  });
+
+  it("onboarding date, start year, and 'available to begin … before September 2028' from the earliest start (Geotab, Jane Street, Coinbase)", async () => {
+    const { COMPLETE_CANADIAN, US_H1B_SENIOR } = await P();
+    expect(value(ask("What date would you be available to onboard with Geotab?", text, US_H1B_SENIOR, US_JOB))).toBe("11/30/2026");
+    expect(value(ask("Year you expect to begin full time employment", text, COMPLETE_CANADIAN, US_JOB))).toBe("2027");
+    expect(value(ask("I am available to begin a potential full-time role before September 2028", { options: YES_NO }, COMPLETE_CANADIAN, US_JOB))).toBe("Yes");
+    expect(value(ask("I am available to begin a potential full-time role before March 2027", { options: YES_NO }, COMPLETE_CANADIAN, US_JOB))).toBe("No");
+  });
+
+  it("a U.S. licence held for three consecutive years is not a Torontonian's 'Yes' (Nuro)", async () => {
+    const { COMPLETE_CANADIAN, US_H1B_SENIOR } = await P();
+    const q = "To meet this role’s minimum requirements, you must have held a valid U.S. driver’s license for at least three (3) consecutive years immediately prior to your start date. Do you meet this requirement?";
+    expect(value(ask(q, { options: YES_NO }, COMPLETE_CANADIAN, US_JOB))).toBe("abstain");
+    expect(value(ask(q, { options: YES_NO }, US_H1B_SENIOR, US_JOB))).toBe("abstain");
+    // A plain licence question stays the profile's answer.
+    expect(value(ask("Do you have a valid driver's license?", { options: YES_NO }, US_H1B_SENIOR, US_JOB))).toBe("Yes");
+  });
+
+  it("a notice with its one 'Acknowledge/Confirm' (OneTrust); 'still interested in being considered?' (Glossier)", () => {
+    expect(value(ask("Data Protection Notice", { options: ["Acknowledge/Confirm"] }))).toBe("Acknowledge/Confirm");
+    expect(value(ask("This is a seasonal position with an expected duration of 90 days. Are you aware this is not a permanent role, and are you still interested in being considered?", { options: YES_NO }))).toBe("Yes");
+  });
+});

@@ -1888,6 +1888,34 @@ export function formatDateFor(d: Date, q: QuestionInput): string {
 
 function resolveAvailability(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   const av = facts.availability;
+  // "Are there any days you absolutely cannot work? Please highlight any
+  // partial availability" (Glossier, question bank 2026-10-05) got the start
+  // date: a weekly schedule, which no profile holds.
+  if (/\b(days|hours|shifts|times) (that )?you (absolutely )?(cannot|can not|can t|are unable to|are not able to) work\b|\bpartial availability\b|\bweekly (availability|schedule)\b|\bwhich days\b/.test(n)) {
+    return abstain("availability:schedule-unknown");
+  }
+  // "I am available to begin a potential full-time role before September
+  // 2028" (Coinbase, question bank 2026-10-05): the earliest start against it.
+  const bound = /\b(available|able) to (start|begin|join|commence)\b[^?]*\b(before|by|no later than)\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+((?:19|20)\d{2})\b/.exec(n);
+  if (bound && isBooleanQuestion(q)) {
+    if (!isHigh(av.earliestStart)) return abstain("start-before:unknown");
+    const month = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"].indexOf(bound[4]);
+    const year = Number(bound[5]);
+    // "before September" ends with August; "by September" includes it.
+    const limit = bound[3] === "before" ? Date.UTC(year, month, 1) : Date.UTC(year, month + 1, 1);
+    return booleanResult(av.earliestStart.value.getTime() < limit, q, "start-before");
+  }
+  // "Year you expect to begin full time employment" (Jane Street, question
+  // bank 2026-10-05): the earliest start's year.
+  if (/\byear\b/.test(n) && /\b(begin|start|commence)\w*\b[^?]*\b(full ?time|employment|work|working|career)\b/.test(n) && !/\b(graduat|end|finish)\w*\b/.test(n)) {
+    if (!isHigh(av.earliestStart)) return abstain("start-year:unknown");
+    const y = String(av.earliestStart.value.getUTCFullYear());
+    if (q.options?.length) {
+      const hit = q.options.filter((o) => new RegExp(`^\\s*${y}\\s*$`).test(o));
+      return hit.length === 1 ? answer(hit[0], "start-year") : abstain("start-year:no-matching-option");
+    }
+    return answer(y, "start-year");
+  }
   // "Are you available to start within 2 weeks / by January 5?"
   const within = /\b(start|begin|join|available)\b[^?]*\bwithin\s+(\d+)\s*(day|week|month)s?\b/.exec(n);
   if (within && isBooleanQuestion(q)) {
@@ -1901,7 +1929,7 @@ function resolveAvailability(q: QuestionInput, n: string, facts: ProfileFacts): 
   // must never answer with the applicant's availability.
   const startQ =
     (q.category === "startDate" ||
-      /\b(earliest|when (can|could|would) you (start|begin|join|commence)|when (are|would) you (be )?(able|available) to (start|begin|join|commence)|available to (start|begin|join)|availability|date available|available (from|on|starting)|start availability|joining date|(desired|preferred|potential|anticipated|expected|possible|proposed) (start|starting) date|how soon can you start|when (are|would) you (be )?available|available for (employment|work|hire))\b/.test(n)) &&
+      /\b(earliest|when (can|could|would) you (start|begin|join|commence)|when (are|would) you (be )?(able|available) to (start|begin|join|commence|onboard)|available to (start|begin|join|onboard)|availability|date available|available (from|on|starting)|start availability|joining date|(desired|preferred|potential|anticipated|expected|possible|proposed) (start|starting) date|how soon can you start|when (are|would) you (be )?available|available for (employment|work|hire))\b/.test(n)) &&
     // "…available for employment?" is availability (Kenect on Breezy, live
     // 2026-10-03); an employment row's dates are not.
     !/\b(end|finish|graduat|interview|employment (start|end|dates?|history|record)|position held|worked)\b/.test(n);
@@ -1972,6 +2000,13 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
     return statedBoolean(q, profile.willingToRelocate, "relocation");
   }
   if (/\bdrivers? (s )?licen[cs]e\b|\bdriving licen[cs]e\b/.test(n) && !/\bnumber\b/.test(n)) {
+    // "…a valid U.S. driver's license for at least three (3) consecutive
+    // years…" (Nuro, question bank 2026-10-05) got Yes from Toronto and
+    // Berlin: the profile says a licence is held, not where, nor for how long.
+    if (/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)( \d+)? (consecutive |full )?(years?|months?)\b/.test(n)) return abstain("drivers-license:duration-unknown");
+    const named = countryNamedIn(q.label);
+    const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+    if (named && named !== "this-country" && named.code !== home) return abstain("drivers-license:other-country");
     return statedBoolean(q, profile.driversLicense, "drivers-license");
   }
   if (/\bclearance\b/.test(n) && !/\b(customs|credit|medical)\b/.test(n)) {

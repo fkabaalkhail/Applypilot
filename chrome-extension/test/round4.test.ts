@@ -414,3 +414,20 @@ describe("education fields answered from the wrong fact (question bank 2026-10-0
     document.body.innerHTML = "";
   });
 });
+
+describe("a salary in the unit asked (StackAdapt, question bank 2026-10-05)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+
+  it("'salary expectations (hourly)' never gets a yearly figure", async () => {
+    const { US_H1B_SENIOR } = await import("./e2e/profiles.mjs");
+    const box = (id: string, label: string) => `<div class="field"><label for="${id}">${label}</label><input type="text" id="${id}"></div>`;
+    document.body.innerHTML = `<form>${box("h", "What are your salary expectations (hourly)?")}${box("y", "What are your salary expectations?")}</form>`;
+    const { fields } = scanPage(US_H1B_SENIOR as never, true);
+    const value = (id: string) => fields.find((f) => fieldEl(f.id)?.id === id)?.proposedValue ?? null;
+    expect(value("h")).toBeNull();
+    expect(value("y")).toBe("$185,000");
+    document.body.innerHTML = "";
+  });
+});
