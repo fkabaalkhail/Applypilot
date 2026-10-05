@@ -3,6 +3,7 @@
  * No Chrome APIs in here, pure DOM, easy to unit test later.
  */
 import { UNLABELED_FIELD, isMachineId } from "../shared/questionText";
+import { isLegacyReactSelect } from "./driverDetect";
 
 /** Collapse whitespace and trim. */
 export function cleanText(text: string | null | undefined): string {
@@ -399,7 +400,9 @@ function isChoiceWidget(el: HTMLElement): boolean {
 function dropdownWidgetHost(el: HTMLElement): HTMLElement {
   const role = (el.getAttribute("role") || "").toLowerCase();
   const haspopup = (el.getAttribute("aria-haspopup") || "").toLowerCase();
-  if (role !== "combobox" && haspopup !== "listbox") return el;
+  if (role !== "combobox" && haspopup !== "listbox") {
+    return el.getAttribute("aria-autocomplete") === "list" && isLegacyReactSelect(el) ? legacyReactSelectHost(el) : el;
+  }
 
   const WIDGET_CLASS = /select|combobox|dropdown|autocomplete/i;
   let host = el;
@@ -415,6 +418,31 @@ function dropdownWidgetHost(el: HTMLElement): HTMLElement {
     if (!isWidget) break; // reached the field container, its sibling is the label
     host = node;
     node = node.parentElement;
+  }
+  return host;
+}
+
+/**
+ * react-select before v5 (see isLegacyReactSelect): its "css-…-container",
+ * then every wrapper around it that adds no text and no other control. Epic
+ * Games' form puts the question's <label> (whose `for` names no element) four
+ * empty wrappers above the widget (live 2026-10-05).
+ */
+function legacyReactSelectHost(el: HTMLElement): HTMLElement {
+  let host: HTMLElement = el;
+  for (let node = el.parentElement, i = 0; node && i < 6; i++, node = node.parentElement) {
+    if (/(^|\s)css-[a-z0-9]+-container(\s|$)/.test(node.getAttribute("class") ?? "")) {
+      host = node;
+      break;
+    }
+  }
+  const own = cleanText(host.textContent);
+  for (let hops = 0; hops < 6 && host.parentElement; hops++) {
+    const parent: HTMLElement = host.parentElement;
+    if (cleanText(parent.textContent) !== own) break;
+    const others = [...parent.querySelectorAll(CONTROL_SELECTOR)].filter((c) => !host.contains(c) && isRealControl(c));
+    if (others.length > 0) break;
+    host = parent;
   }
   return host;
 }

@@ -295,3 +295,36 @@ describe("react-select before v5: no role=combobox on its input (Epic Games' Gre
     document.body.innerHTML = "";
   });
 });
+
+describe("react-select before v5 labelled by a <label for> naming no element (Epic Games' form, live 2026-10-05)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+
+  const widget = (n: number) =>
+    `<div class="dropdown-autocomplete css-2b097c-container"><div class=" css-l772dy-control"><div class=" css-w3rxe2"><div class=" css-xewewq-placeholder">Select</div><div class="css-iqsof5"><div class=""><input autocapitalize="none" autocomplete="off" autocorrect="off" id="react-select-${n}-input" spellcheck="false" tabindex="0" type="text" aria-autocomplete="list" value=""><div></div></div></div></div><div class=" css-1wy0on6"><span class=" css-43ykx9-indicatorSeparator"></span><div aria-hidden="true" class=" css-tlfecz-indicatorContainer"></div></div></div></div>`;
+  const question = (n: number, text: string) =>
+    `<div class="field-group dropdown"><div class="InputLabel__Styled-sc-1ig3mnl-0 comeCg"><label for="${text}"><span>${text}⁠*⁠:</span></label></div><div><div class="CustomSelectstyles__Styled-sc-1f1rlew-0 iIwtmE custom-select"><div><div class="">${widget(n)}</div></div></div></div><div class="ue-spacer eyebrow"></div></div>`;
+
+  it("each dropdown takes the question printed beside it, not its react-select id", async () => {
+    // Sixteen questions (how did you hear, work authorization, 40 hours a
+    // week, the truthfulness confirmation, School, Degree…) were invisible
+    // as text boxes, then surfaced unlabelled as "react-select-4-input".
+    const { BOOTCAMP_CAREER_GAP } = await import("./e2e/profiles.mjs");
+    document.body.innerHTML = `<form>
+      ${question(4, "How did you hear about this job posting?")}
+      ${question(6, "Do you have legal authorization to work in the geographic region specified for the internship?")}
+      ${question(12, "I confirm all answers provided by me within this application are true and correct.")}
+      <div><div class="InputLabel__Styled-sc-1ig3mnl-0 comeCg"><label for="educations[0].school_name_id"><span>School⁠⁠⁠*⁠:</span></label></div><div class="">${widget(13)}</div></div>
+    </form>`;
+    const { fields } = scanPage(BOOTCAMP_CAREER_GAP as never, true);
+    const field = (n: number) => fields.find((f) => fieldEl(f.id)?.id === `react-select-${n}-input`);
+    const label = (n: number) => field(n)?.label ?? "";
+    expect(label(4)).toMatch(/^How did you hear about this job posting\?/);
+    expect(label(6)).toMatch(/^Do you have legal authorization to work/);
+    expect(label(12)).toMatch(/^I confirm all answers/);
+    expect(label(13)).toMatch(/^School/);
+    expect(field(13)?.category).toBe("school");
+    document.body.innerHTML = "";
+  });
+});
