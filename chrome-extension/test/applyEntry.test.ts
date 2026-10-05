@@ -81,4 +81,28 @@ describe("findApplyEntry", () => {
     document.body.innerHTML = `<button id="go">Apply</button>`;
     expect(findApplyEntry(document, broken)?.el.id).toBe("go");
   });
+
+  it("reads the visible text when the aria-label names the job (Dayforce)", () => {
+    document.body.innerHTML = `
+      <button id="go" test-id="apply-button" aria-label="Apply for Software Designer&nbsp;" type="button"><span>Apply</span></button>`;
+    const entry = findApplyEntry(document, null);
+    expect(entry?.el.id).toBe("go");
+    expect(entry?.label).toBe("Apply");
+  });
+
+  it("still skips a bypass option named only in its aria-label", () => {
+    document.body.innerHTML = `<button aria-label="Apply with LinkedIn">Apply</button>`;
+    expect(findApplyEntry(document, null)).toBeNull();
+  });
+
+  it("knows the French Apply of a Jobvite posting, never Apply later", () => {
+    document.body.innerHTML = `
+      <a class="jv-button jv-button-apply-later" href="mailto:?subject=Postuler">Postuler plus tard</a>
+      <a class="jv-button jv-button-primary jv-button-apply" id="go" href="/acpm/job/x/apply">
+        Poser sa candidature
+      </a>`;
+    const entry = findApplyEntry(document, null);
+    expect(entry?.el.id).toBe("go");
+    expect(entry?.label).toBe("Poser sa candidature");
+  });
 });

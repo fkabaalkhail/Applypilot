@@ -29,7 +29,7 @@ const ENTRY_SELECTOR = 'a[href], button, [role="button"], input[type="submit"], 
 const ENTRY_MANUAL_RE = /^(apply manually|postuler manuellement)$/i;
 /** The posting's own Apply button. Anchored, never a sentence containing "apply". */
 const ENTRY_APPLY_RE =
-  /^(apply( now)?!?|apply (for|to) (this )?(job|position|role|opening)|easy apply|postuler( maintenant)?)$/i;
+  /^(apply( now)?!?|apply (for|to) (this )?(job|position|role|opening)|easy apply|postuler( maintenant)?|poser (sa|ma|votre) candidature|candidater( maintenant)?)$/i;
 /** Resume-an-application verbs (Workday shows these when a draft exists). */
 const ENTRY_CONTINUE_RE = /^(continue application|continue your application|start( your)? application)$/i;
 /** Chooser options that bypass the manual form, never click these. */
@@ -47,6 +47,21 @@ function entryText(el: HTMLElement): string {
     cleanText(el.textContent) ||
     cleanText((el as HTMLInputElement).value ?? "")
   );
+}
+
+/**
+ * Every name the control goes by: its aria-label AND what it shows. An
+ * aria-label often names the job too ("Apply for Software Designer" on a
+ * Dayforce button that reads "Apply"), so matching only the first name missed
+ * the button. A bypass option named in either one still excludes it.
+ */
+function entryTexts(el: HTMLElement): string[] {
+  const texts = [
+    cleanText(el.getAttribute("aria-label")),
+    cleanText(el.textContent),
+    cleanText((el as HTMLInputElement).value ?? ""),
+  ].filter((t) => t && t.length <= 40);
+  return [...new Set(texts)];
 }
 
 /**
@@ -68,13 +83,18 @@ function entryText(el: HTMLElement): string {
 export function findApplyEntry(doc: Document, adapter: SiteAdapter | null): EntryButton | null {
   let apply: HTMLElement | null = null;
   let cont: HTMLElement | null = null;
+  let applyLabel = "";
+  let contLabel = "";
   for (const el of deepQueryAll(doc, ENTRY_SELECTOR)) {
     if (!isClickable(el)) continue;
-    const text = entryText(el);
-    if (!text || text.length > 40 || ENTRY_EXCLUDE_RE.test(text)) continue;
-    if (ENTRY_MANUAL_RE.test(text)) return { el, label: text, fromAdapter: false }; // best, stop
-    if (!apply && ENTRY_APPLY_RE.test(text)) apply = el;
-    if (!cont && ENTRY_CONTINUE_RE.test(text)) cont = el;
+    const texts = entryTexts(el);
+    if (!texts.length || texts.some((t) => ENTRY_EXCLUDE_RE.test(t))) continue;
+    const manual = texts.find((t) => ENTRY_MANUAL_RE.test(t));
+    if (manual) return { el, label: manual, fromAdapter: false }; // best, stop
+    const applyText = texts.find((t) => ENTRY_APPLY_RE.test(t));
+    if (!apply && applyText) [apply, applyLabel] = [el, applyText];
+    const contText = texts.find((t) => ENTRY_CONTINUE_RE.test(t));
+    if (!cont && contText) [cont, contLabel] = [el, contText];
   }
   try {
     const fromAdapter = adapter?.entryButton?.(doc);
@@ -84,6 +104,6 @@ export function findApplyEntry(doc: Document, adapter: SiteAdapter | null): Entr
   } catch {
     // Adapter hooks refine, never break, fall through to the generic tiers.
   }
-  const el = apply ?? cont;
-  return el ? { el, label: entryText(el), fromAdapter: false } : null;
+  if (apply) return { el: apply, label: applyLabel, fromAdapter: false };
+  return cont ? { el: cont, label: contLabel, fromAdapter: false } : null;
 }

@@ -22,7 +22,7 @@ const FINAL_SUBMIT_RE =
   /\b(submit|send application|complete application|finish|soumettre|envoyer|terminer)\b/i;
 /** Entry verbs: the job posting's own "Apply". Terminal on their own, but they
  *  do not send an application, so they never disqualify a wall's advance. */
-const APPLY_ENTRY_RE = /\b(apply now|apply|postuler)\b/i;
+const APPLY_ENTRY_RE = /\b(apply now|apply|postuler|poser (sa|ma|votre) candidature|candidater)\b/i;
 // Composed, not re-listed: the wall carve-out below keys off FINAL_SUBMIT_RE, so
 // a terminal verb added to one flat list would silently escape it. Filing every
 // verb under exactly one of the two makes that impossible.

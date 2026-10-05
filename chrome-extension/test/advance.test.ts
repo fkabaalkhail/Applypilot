@@ -36,7 +36,7 @@ describe("findAdvanceButton", () => {
   });
 
   it("classifies submit-like buttons as terminal (EN + FR) and never as advance", () => {
-    for (const label of ["Submit", "Submit application", "Send application", "Apply now", "Soumettre", "Envoyer", "Postuler", "Terminer"]) {
+    for (const label of ["Submit", "Submit application", "Send application", "Apply now", "Soumettre", "Envoyer", "Postuler", "Terminer", "Poser sa candidature", "Candidater"]) {
       const scope = scopeWith(`<button>${label}</button>`);
       expect(findAdvanceButton(scope, null)?.kind, label).toBe("terminal");
     }
