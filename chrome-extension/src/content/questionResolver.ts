@@ -147,6 +147,22 @@ const THIS_COUNTRY = /\b(this country|the country (in which|where) (this|the) (j
  * count in capitals: lowercase "us" is the pronoun ("work for us").
  * `"this-country"` = the question points at the job's country.
  */
+/** Every country a label names, in no particular order ("the U.S. or Canada"
+ *  is both); empty when it names none. */
+export function countriesNamedIn(raw: string): string[] {
+  const text = raw || "";
+  const out = new Set<string>();
+  if (/\bU\.?\s?S\.?A?\b(?!\w)/.test(text) || /\bunited states\b/i.test(text) || /(?<!(north|south|latin|central)\s)\bamerica\b/i.test(text)) out.add("US");
+  if (/\bcanad(a|ian)\b/i.test(text)) out.add("CA");
+  if (/\b(united kingdom|great britain|britain)\b/i.test(text) || /\bUK\b/.test(text)) out.add("GB");
+  const n = ` ${qnorm(text)} `;
+  for (const c of COUNTRIES) {
+    if (c.code === "US" || c.code === "CA" || c.code === "GB") continue;
+    if (n.includes(` ${qnorm(c.name)} `)) out.add(c.code);
+  }
+  return [...out];
+}
+
 export function countryNamedIn(raw: string): { code: string } | "this-country" | null {
   const text = raw || "";
   if (/\bU\.?\s?S\.?A?\b(?!\w)/.test(text) || /\bunited states\b/i.test(text) || /(?<!(north|south|latin|central)\s)\bamerica\b/i.test(text)) {
@@ -170,7 +186,10 @@ const RESIDENCE_COUNTRY =
   /\b(the )?(country|location|place) (that |where |in which )?you (are |currently )*(located|living|reside|live|based)\b|\byour (current )?country of residence\b|\b(remain|stay) in your current (location|country)\b|\bwhere you (currently )?(live|reside)\b/;
 
 function targetCountry(q: QuestionInput, ctx: QuestionContext, facts?: ProfileFacts): string | null {
-  const named = countryNamedIn(q.label);
+  // Examples name no place: "(e.g. U.S. F-1, H-1B, TN…)" on a job in Tokyo
+  // (New Relic, question bank 2026-10-05) read as a US question, and a US
+  // citizen needed no sponsorship there.
+  const named = countryNamedIn(q.label.replace(/\((?:e\.?\s?g\.?|for example|i\.?\s?e\.?|such as)[^)]*\)/gi, " "));
   if (named === "this-country") return ctx.jobCountry;
   if (named) return named.code;
   if (facts && RESIDENCE_COUNTRY.test(qnorm(q.label))) return residenceOf(facts);
@@ -240,6 +259,10 @@ const NEEDS_RIGHT =
 /** Asks WHICH sponsorship or visa, not whether: no profile answer states it. */
 const SPONSOR_TYPE = /\b(what|which) (type of |kind of |form of )?(visa )?(sponsorship|visa|work permit)\b|\b(type|kind|form) of (visa |work )?(sponsorship|visa|permit)\b/;
 const WITHOUT_SPONSOR = /\bwithout (the )?(need (for|of) |needing |requiring |requirement (for|of) )?(any )?(current or future )?(visa |employer |employment |immigration |company )?sponsor/;
+
+/** A lasting right: "permanent work authorization", "without restriction(s)". */
+const PERMANENT_RIGHT =
+  /\bpermanent(ly)?\s+(work\s+)?(authori[sz]ation|authori[sz]ed|right|eligib\w*)\b|\bpermanent(ly)? (authori[sz]ed|eligible|allowed|permitted) to work\b|\bwithout (any )?restrictions?\b|\bunrestricted\b|\bwith no restrictions?\b/;
 
 /**
  * "Have you held H-1B status, or had an H-1B petition approved on your behalf
@@ -384,6 +407,32 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   const country = targetCountry(q, ctx, facts);
   const residence = residenceOf(facts);
 
+  // "Permanent work authorization", "without restriction(s)": a citizen's or
+  // permanent resident's right. A visa holder's (H-1B, OPT, a work permit) is
+  // neither, and was answered Yes (Airtable, Everlaw, MyFundedFutures, Warp;
+  // question bank 2026-10-05). Either of two countries named counts.
+  if (hasRight && PERMANENT_RIGHT.test(n)) {
+    // "In what countries do you have the unrestricted right to work?" (Elastic)
+    // asks for the countries: those of a citizen's or permanent resident's.
+    if (/\b(what|which) countr(y|ies)\b/.test(n) && !q.options?.length) {
+      const lasting = [...facts.workAuth.byCountry.entries()]
+        .filter(([, a]) => a.authorized === true && (a.basis === "citizen" || a.basis === "permanent_resident"))
+        .map(([cc]) => countryByCode(cc)?.name)
+        .filter((x): x is string => Boolean(x));
+      return lasting.length > 0 ? answer(lasting.join(", "), "work-auth-permanent:countries") : abstain("work-auth-permanent:countries-unknown");
+    }
+    const named = countriesNamedIn(q.label);
+    const where = named.length > 0 ? named : country ? [country] : [];
+    if (where.length === 0) return abstain("work-auth-permanent:no-country");
+    const auths = where.map((c) => facts.workAuth.byCountry.get(c));
+    const lasting = (a: (typeof auths)[number]): boolean => a?.authorized === true && (a.basis === "citizen" || a.basis === "permanent_resident");
+    const settled = auths.every((a) => a && (a.authorized === false || ["citizen", "permanent_resident", "work_permit", "student"].includes(a.basis)));
+    const permanent = auths.some(lasting);
+    if (!permanent && !settled) return abstain("work-auth-permanent:unknown");
+    if (isBooleanQuestion(q) || isYesNoDropdown(q, n)) return booleanResult(permanent, q, "work-auth-permanent");
+    if ((q.kind === "text" || q.kind === "longText") && !q.options?.length) return answer(permanent ? "Yes" : "No", "work-auth-permanent:text");
+  }
+
   // "Are you eligible to work in Canada without sponsorship?" = authorized AND no sponsorship.
   if (hasRight && WITHOUT_SPONSOR.test(n)) {
     if (!isBooleanQuestion(q)) return abstain("work-auth-without-sponsorship:not-boolean");
@@ -445,6 +494,14 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   // ("Are you legally authorized to work in the country that you are located?",
   // a Netlify react-select) is a yes/no by its words.
   if (isBooleanQuestion(q) || isYesNoDropdown(q, n)) {
+    // "…in the U.S. or Canada?": the right in either one.
+    const named = countriesNamedIn(q.label);
+    if (named.length >= 2 && /\bor\b/.test(n)) {
+      const each = named.map((c) => authorizedIn(facts.workAuth, c, residence));
+      if (each.some((a) => isHigh(a) && a.value === true)) return booleanResult(true, q, "work-auth:either");
+      if (each.every((a) => isHigh(a) && a.value === false)) return booleanResult(false, q, "work-auth:either");
+      return abstain("work-auth:unknown");
+    }
     const a = authorizedIn(facts.workAuth, country, residence);
     if (isHigh(a)) return booleanResult(a.value, q, "work-auth");
     return abstain("work-auth:unknown");
@@ -564,6 +621,11 @@ function resolveLaterResidency(q: QuestionInput, n: string, facts: ProfileFacts)
 
 function resolveCitizenship(q: QuestionInput, n: string, facts: ProfileFacts, ctx: QuestionContext): QuestionResult {
   if (!CITIZEN_Q.test(n)) return null;
+  // Citizenship of a sanctioned country is never US citizenship, though the
+  // label names "U.S. export control laws": a US citizen said Yes to being a
+  // citizen of Cuba, Iran, North Korea or Syria (Asana, Intercom; question
+  // bank 2026-10-05).
+  if (SANCTIONED.test(n)) return null;
   const country = countryNamedIn(q.label);
   const code = country === "this-country" ? ctx.jobCountry : country?.code ?? null;
   const known = facts.workAuth.byCountry;
@@ -738,7 +800,18 @@ function resolveSanctionedList(q: QuestionInput, n: string, facts: ProfileFacts)
   const listed = opts.filter((o) => SANCTIONED.test(qnorm(o)));
   const none = opts.filter((o) => /^none( of the above| of these| apply| applies)?\W*$/i.test(o.trim()));
   const checklist = listed.length > 0 && none.length === 1 && opts.every((o) => o === none[0] || SANCTIONED.test(qnorm(o)));
-  const yesNo = !checklist && SANCTIONED.test(n) && isBooleanQuestion(q) && /\b(any of the following|the following (countries|territories|regions))\b/.test(n);
+  // "Are you a citizen or legal permanent resident of Cuba, Iran, North Korea,
+  // Syria or Ukraine (Crimea region)?" lists them itself (Asana, Intercom;
+  // question bank 2026-10-05). A question about a country that is NOT one of
+  // them ("an ADDITIONAL citizenship of any other country that is NOT Iran…")
+  // is another question.
+  const listsThem = new Set(n.match(new RegExp(SANCTIONED.source, "g")) ?? []).size >= 2;
+  const yesNo =
+    !checklist &&
+    SANCTIONED.test(n) &&
+    isBooleanQuestion(q) &&
+    (/\b(any of the following|the following (countries|territories|regions))\b/.test(n) || listsThem) &&
+    !/\b(not|other than|except|besides)\s+(in\s+)?(the\s+)?(cuba|iran|north korea|syria|russia)\b/.test(n);
   if (!checklist && !yesNo) return null;
   const residence = isHigh(facts.location.country) ? facts.location.country.value : null;
   const held = [...facts.workAuth.byCountry.entries()];
@@ -757,7 +830,10 @@ function resolveSanctionedList(q: QuestionInput, n: string, facts: ProfileFacts)
     return mine.some((c) => names(c).some((w) => t.includes(` ${w} `)));
   };
   if (checklist) return listed.some(named) ? abstain("sanctions:named") : answer(none[0], "sanctions:none");
-  return named(q.label) ? abstain("sanctions:named") : booleanResult(false, q, "sanctions:none");
+  // The places asked about are in the sentence asked; "U.S. export control
+  // laws" before it names no place (a US citizen read as listed, Asana).
+  const asked2 = askedSentenceOf(q.label).replace(/\b(u\.?\s?s\.?|us|united states)\s+(export|government|laws?|regulations?|sanctions)\b/gi, " ");
+  return named(asked2) ? abstain("sanctions:named") : booleanResult(false, q, "sanctions:none");
 }
 
 /**
@@ -981,7 +1057,9 @@ function resolveYearsOfExperience(q: QuestionInput, n: string, facts: ProfileFac
 
 // ----- Education ---------------------------------------------------------------
 
-const LEVEL_Q = /\bhighest (completed )?(level of )?(education|degree|qualification|educational|schooling)\b|\b(level|type) of (education|degree)\b|\beducation(al)? level\b|\bdegree level\b|\bhighest education\b/;
+// "Your most recently completed form of education" too (NISC, question bank
+// 2026-10-05: the bachelor's still in progress was written).
+const LEVEL_Q = /\bhighest (completed )?(level of )?(education|degree|qualification|educational|schooling)\b|\b(level|type|form) of (education|degree)\b|\beducation(al)? level\b|\bdegree level\b|\bhighest education\b|\bmost recent(ly)? completed (education|degree|qualification)\b/;
 
 /** Rank an OPTION (labels like "Bachelors", "Associates", "GED", "PhD"). */
 function optionRank(o: string): number | null {
@@ -1180,7 +1258,9 @@ function programAtLevel(q: QuestionInput, level: number, facts: ProfileFacts, ru
  */
 function resolvePursuedDegree(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   if (!/\b(which|what)\b.*\b(degree|program|level)\b.*\b(pursuing|working towards?|enrolled in|studying for)\b/.test(n)) return null;
-  if (/\bor (have |has )?(completed|graduated|earned|obtained)\b|\bmost recent\b|\bhighest\b/.test(n)) return null;
+  // "The highest degree level you are currently pursuing" (CTC, question bank
+  // 2026-10-05) is still the one in progress: graduates got their old degree.
+  if (/\bor (have |has )?(completed|graduated|earned|obtained)\b|\bmost recent\b/.test(n) || (/\bhighest\b/.test(n) && !/\bcurrently pursuing\b/.test(n))) return null;
   if (isBooleanQuestion(q)) return null;
   const entries = facts.education.entries;
   const inProgress = entries.filter((x) => x.completed === false);
@@ -1567,6 +1647,62 @@ const CURRENCY_OPTION: Record<string, RegExp> = {
 };
 const DOLLAR_BY_COUNTRY: Record<string, string> = { US: "USD", CA: "CAD", AU: "AUD", NZ: "NZD", SG: "SGD", HK: "HKD" };
 
+/** A country's currency, for the countries salaries are asked in most. */
+const CURRENCY_BY_COUNTRY: Record<string, string> = {
+  ...DOLLAR_BY_COUNTRY, GB: "GBP", IN: "INR", JP: "JPY",
+  DE: "EUR", FR: "EUR", NL: "EUR", IE: "EUR", ES: "EUR", IT: "EUR", PT: "EUR", BE: "EUR", AT: "EUR", FI: "EUR",
+};
+
+/** The currency a salary is written in: its symbol or code, "$" by the
+ *  applicant's country; null for a bare number. */
+function statedCurrency(salary: string, home: string | null): string | null {
+  const s = salary.toLowerCase();
+  return /£|\bgbp\b|\bpounds?\b/.test(s) ? "GBP"
+    : /€|\beur\b|\beuros?\b/.test(s) ? "EUR"
+      : /₹|\binr\b|\brupees?\b/.test(s) ? "INR"
+        : /¥|￥|\bjpy\b|\byen\b/.test(s) ? "JPY"
+          : /\bcad\b|\bc\$|\bca\$/.test(s) ? "CAD"
+            : /\busd\b|\bus\$/.test(s) ? "USD"
+              : /\$/.test(s) && home ? DOLLAR_BY_COUNTRY[home] ?? null
+                : null;
+}
+
+/** The currency a question names ("desired salary (CAD$)"), or null. */
+function namedCurrency(text: string): string | null {
+  const t = text.toLowerCase();
+  return /\bcad\b|\bc\$|\bca\$|canadian dollars?/.test(t) ? "CAD"
+    : /\busd\b|\bus\$|\bus dollars?/.test(t) ? "USD"
+      : /€|\beur\b|\beuros?\b/.test(t) ? "EUR"
+        : /£|\bgbp\b|\bpounds?\b/.test(t) ? "GBP"
+          : /₹|\binr\b|\brupees?\b/.test(t) ? "INR"
+            : null;
+}
+
+/**
+ * A salary in another currency than the one asked is no answer: €120.000
+ * went into "$120,000" and "111-120k" of US lists (Clearway, NISC), US
+ * dollars into "desired salary (CAD$)" (A Thinking Ape); question bank
+ * 2026-10-05. A list's currency is its label's, its own symbols' or the job
+ * country's; a text box is guarded only when its label names one (a stated
+ * "€120.000" typed into a plain box still says what it is).
+ */
+function resolveSalaryCurrency(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
+  if (q.category !== "salary" && !/\b(salary|salaries|compensation|pay|wage|wages)\b/.test(n)) return null;
+  const salary = (profile.salaryExpectation || "").trim();
+  if (!salary) return null;
+  const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+  const stated = statedCurrency(salary, home);
+  if (!stated) return null;
+  const opts = (q.options ?? []).filter((o) => /\d/.test(o));
+  const asked = opts.length >= 2
+    ? namedCurrency(q.label) ??
+      namedCurrency(opts.join(" ")) ??
+      (opts.some((o) => o.includes("$")) ? DOLLAR_BY_COUNTRY[ctx.jobCountry ?? "US"] ?? "USD" : null) ??
+      (ctx.jobCountry ? CURRENCY_BY_COUNTRY[ctx.jobCountry] ?? null : null)
+    : namedCurrency(q.label);
+  return asked && asked !== stated ? abstain("salary:other-currency") : null;
+}
+
 /**
  * A salary's currency or pay period asked as its own select beside the amount
  * (Breezy: "US Dollar ($)" … and "Hourly | Weekly | Monthly | Yearly", left
@@ -1706,6 +1842,12 @@ function resolveLocalTo(q: QuestionInput, n: string, facts: ProfileFacts, profil
   const named = m[1].trim();
   const city = isHigh(facts.location.city) ? qnorm(facts.location.city.value) : null;
   if (city && named === city) return booleanResult(true, q, "local:lives-there");
+  // Countries named ("based in the U.S. or Canada", Warp; question bank
+  // 2026-10-05): living in one of them is being based there. A Seattle
+  // applicant who will not move was answered No.
+  const countries = countriesNamedIn(q.label);
+  const homeCountry = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+  if (countries.length > 0 && homeCountry && countries.includes(homeCountry)) return booleanResult(true, q, "local:country");
   const relocate = polarityOf(profile.willingToRelocate || "");
   if (relocate === true) return booleanResult(true, q, "local:will-relocate");
   if (relocate === false && city) return booleanResult(false, q, "local:lives-elsewhere");
@@ -2376,6 +2518,10 @@ function resolveConditional(q: QuestionInput, raw: string, facts: ProfileFacts, 
     if (inner === null && (q.category === "sponsorship" || q.category === "workAuthorization")) {
       return abstain(q.category === "sponsorship" ? "sponsorship:follow-up-open" : "work-auth:follow-up-open");
     }
+    // "If you were referred…, what is the employee's full name?": who referred
+    // them is theirs to write, never a guess (Renaissance; question bank
+    // 2026-10-05: the applicant's own name was typed).
+    if (inner?.status !== "answer" && /\breferr/.test(qnorm(condition))) return { status: "abstain", rule: "conditional:referrer-unknown", blockBackend: true };
     return inner;
   }
   const na = (q.options ?? []).filter((o) => o.trim() && !/^(yes|no)$/i.test(o.trim()) && NOT_APPLICABLE.test(qnorm(o)));
@@ -2488,6 +2634,7 @@ export function resolveQuestion(
     resolveDidGraduate(q, n, facts) ??
     resolvePeriodAvailability(q, n, facts) ??
     resolveSalaryUnit(q, n, facts, profile) ??
+    resolveSalaryCurrency(q, n, facts, profile, ctx) ??
     resolveLocalTo(q, n, facts, profile) ??
     resolveSchoolName(q, n, facts) ??
     resolveAvailability(q, n, facts) ??

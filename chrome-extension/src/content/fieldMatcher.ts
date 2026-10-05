@@ -63,6 +63,12 @@ const YES_NO_QUESTION =
  */
 const PROSE_WORDS = 25;
 
+/** Someone else's name: "what is the employee's full name?" (Renaissance,
+ *  question bank 2026-10-05) got the applicant's own. Labels are normalized
+ *  ("employee's" reads "employee s"). */
+const OTHER_PERSONS_NAME =
+  /\b(employee|employees|referr\w*|referee|manager|supervisor|reference|recruiter|spouse|guardian|relative)( s)? (full |legal |first |last )?name\b/;
+
 // Order matters only for tie-breaking: more specific categories come first.
 const CATEGORY_SPECS: CategorySpec[] = [
   {
@@ -138,6 +144,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
   // --- Identity ---
   {
     category: "firstName",
+    negative: OTHER_PERSONS_NAME,
     patterns: [
       { re: /\b(first|given) name\b/ },
       { re: /\bfirstname\b|\bfname\b|\bforename\b/ },
@@ -150,7 +157,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
     // 2026-10-03: it got the last name alone).
     // "…your Full Legal First, Middle Initial, and Last Name" too (Block's
     // signature box got the last name alone, question bank 2026-10-05).
-    negative: /\b(first|given)\b.{0,40}\b(and|&) (last|family) name\b/,
+    negative: new RegExp(`\\b(first|given)\\b.{0,40}\\b(and|&) (last|family) name\\b|${OTHER_PERSONS_NAME.source}`),
     patterns: [
       { re: /\b(last|family) name\b/ },
       { re: /\blastname\b|\blname\b|\bsurname\b/ },
@@ -177,7 +184,7 @@ const CATEGORY_SPECS: CategorySpec[] = [
     // Full Legal First, Middle Initial, and Last Name", Block, question bank
     // 2026-10-05: it got the last name alone).
     negative:
-      /^(?!.*\b(sign\w* by typing|typ(?:e|ing) your (?:full |legal |complete )*(?:first|name))\b).*(?:\b(first|given)\b(?! (and|&) (last|family) name)|(?<!\b(first|given) (and|&) )\b(last|family)\b|\bmiddle\b|\buser ?name\b|\bcompany\b|\bemployer\b|\bschool\b|\bfile\b|\bcontact name\b|\bsign in\b|\bsign up\b)/,
+      /^(?!.*\b(sign\w* by typing|typ(?:e|ing) your (?:full |legal |complete )*(?:first|name))\b).*(?:\b(first|given)\b(?! (and|&) (last|family) name)|(?<!\b(first|given) (and|&) )\b(last|family)\b|\bmiddle\b|\buser ?name\b|\bcompany\b|\bemployer\b|\bschool\b|\bfile\b|\bcontact name\b|\bsign in\b|\bsign up\b|\b(employee|employees|referr\w*|referee|manager|supervisor|reference|recruiter|spouse|guardian|relative)( s)? (full |legal |first |last )?name\b)/,
   },
   {
     category: "email",

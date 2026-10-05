@@ -31,6 +31,8 @@ const answer = (value: string, rule: string): QuestionResult => ({ status: "answ
  *  (a veteran on ActioNet's Jobvite form, live 2026-10-03). */
 const GOVERNMENT_HISTORY: QuestionResult = { status: "abstain", rule: "default:government-history", blockBackend: true };
 const RECORDING_CONSENT: QuestionResult = { status: "abstain", rule: "default:recording-consent", blockBackend: true };
+/** Who referred the applicant: theirs to write, never a guess. */
+const REFERRER_UNKNOWN: QuestionResult = { status: "abstain", rule: "default:referrer-unknown", blockBackend: true };
 
 /** Lowercase words (mirrors questionResolver.qnorm, kept local to avoid an import cycle). */
 const qn = (text: string): string =>
@@ -190,8 +192,10 @@ const SOURCE_PREFERENCE: RegExp[] = [
 /** Working in a place in person (an office, on site, a hybrid schedule). */
 /** "work out of our Wakefield, MA office" too (Sentinel on JazzHR, regression
  *  2026-10-05: Yes from Austin for someone who will not move). */
+// "come into the Wakefield, MA office five days per week" too (Vestmark,
+// question bank 2026-10-05: Yes from Seattle for someone who will not move).
 const IN_PERSON =
-  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|commute|report)\b[^?]{0,60}\b(from|at|in|to|out of)\b[^?]{0,40}\boffices?\b|\b(this|the|that|a daily) commute\b/;
+  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|commute|report)\b[^?]{0,60}\b(from|at|in|to|out of)\b[^?]{0,40}\boffices?\b|\b(this|the|that|a daily) commute\b|\b(come|go|be) (in|into|to)\b[^?]{0,40}\boffices?\b/;
 
 /** Being there now and then rather than working there: team gatherings, an
  *  offsite, a few trips a year. Someone who will not relocate can still go. */
@@ -265,7 +269,9 @@ export function onsiteVerdict(
 
 /** A well-known office city after "our" / "in" (the names are plain words). */
 const OFFICE_CITY = new RegExp(
-  `\\b(?:our|the|their|its|in|at|near|out of)\\s+(?:(?:downtown|midtown|uptown|central)\\s+)?(${REGION_CITIES.join("|")})\\b(?!,)`,
+  // Not before ", ST" (the comma pattern has those); "hybrid in NYC, 2 days per
+  // week" still names NYC (AssemblyAI, question bank 2026-10-05).
+  `\\b(?:our|the|their|its|in|at|near|out of)\\s+(?:(?:downtown|midtown|uptown|central)\\s+)?(${REGION_CITIES.join("|")})\\b(?!,\\s*[a-z]{2}\\b)`,
   "gi"
 );
 
@@ -321,7 +327,10 @@ function unencumberedText(q: QuestionInput, n: string, profile: UserApplicationP
   if (q.kind !== "text" && q.kind !== "longText") return null;
   if (!/^(are|were|was|have|has|had|do|did|is) you\b|^(are|were|have|do|did) (any|you)\b/.test(n)) return null;
   if (PRIOR_APPLICATION.test(n)) return answer("No", "default:no-prior-application");
-  if (REFERRED.test(n) || /^were you referred\b/.test(n)) return answer("No", "default:not-referred");
+  // A referral stated: by whom is the applicant's to write.
+  if (REFERRED.test(n) || /^were you referred\b/.test(n)) {
+    return /\breferr|\bemployee\b|\bfriend\b/.test(qn(profile.howDidYouHear ?? "")) ? null : answer("No", "default:not-referred");
+  }
   if (RELATIVES.test(n) && /\b(work|employ|empl|staff|board|director|officer|relationship)\w*/.test(n)) return answer("No", "default:no-relatives-inside");
   if (CONFLICTS.test(n)) return answer("No", "default:no-conflict");
   if (NON_COMPETE.test(n)) return answer("No", "default:no-non-compete");
@@ -349,9 +358,13 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile, company
   if (stated) {
     const exact = opts.find((o) => qn(o) === stated);
     if (exact) return answer(exact, "source:stated");
+    // A recruiter's outreach that mentions the channel ("A recruiter … contacted
+    // me directly, such as via LinkedIn message") is not finding the job there
+    // (Flipp, question bank 2026-10-05), unless a recruiter is what was said.
+    const outreach = (o: string): boolean => /\brecruiter|\breached out\b|\bcontacted me\b|\boutreach\b|\bsourced\b/.test(qn(o)) && !/\brecruit/.test(stated);
     for (const [said, offered] of SOURCE_SYNONYMS) {
       if (!said.test(stated)) continue;
-      const keep = /website/.test(said.source) ? (o: string) => ownSite(o, company) : () => true;
+      const keep = /website/.test(said.source) ? (o: string) => ownSite(o, company) && !outreach(o) : (o: string) => !outreach(o);
       const hit = unique(offered, keep);
       if (hit) return answer(hit, "source:stated");
       // Several of that kind ("Coveo Employee Referral" | "Friend or Former
@@ -386,8 +399,11 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile, company
     // "Online Forum or Community" (Coveo) or a "Search Engine" (Accenture
     // Federal; question bank 2): a job board is none of those.
     const ONLINE = /^((the|an?|internet|online|web)\s*)+$|\b(internet|online|web) (job|jobs|ad|ads|advert|advertisement|posting|listing)s?\b|\bthird party (website|site|job site|job board)s?\b/;
-    for (const re of [SOURCE_PREFERENCE[0], ONLINE, SOURCE_PREFERENCE[4]]) {
-      const hits = general.filter((o) => re.test(qn(o)) && !ours(o));
+    // A named platform stated is that platform: "LinkedIn" is never another
+    // brand's board ("Handshake", Geotab; question bank 2026-10-05).
+    const brands = NAMED_SOURCE.test(stated) ? [SOURCE_PREFERENCE[0], ONLINE] : [SOURCE_PREFERENCE[0], ONLINE, SOURCE_PREFERENCE[4]];
+    for (const re of brands) {
+      const hits = general.filter((o) => re.test(qn(o)) && !ours(o) && !outreach(o) && !(NAMED_SOURCE.test(stated) && NAMED_SOURCE.test(qn(o))));
       if (hits.length === 1) return answer(hits[0], "source:stated-board");
       const unbranded = hits.filter((o) => !NAMED_SOURCE.test(qn(o)));
       if (hits.length > 1 && unbranded.length === 1) return answer(unbranded[0], "source:stated-board");
@@ -491,6 +507,11 @@ export function resolveDefault(
   if ((UNLABELED.test(n) || /\b(find|found|hear|heard|learn|learned|discover)\w* (us|about us|this (role|job|position))\b/.test(n)) && opts.filter((o) => CHANNEL.test(qn(o))).length >= 3) {
     return chooseSource(q, profile, ctx.company);
   }
+  // Who referred a referred applicant is theirs to write: their own name was
+  // typed for "If you were referred by a current employee, what is the
+  // employee's full name?" (Renaissance; question bank 2026-10-05).
+  // ("the name you would like to be referred to as" is no referral, Asana.)
+  if (!choiceLike && /\breferred (by|you|for)\b|\breferral\b|\breferrer\b|\bwho referred\b|\brefer(red)? you\b/.test(n) && /\breferr|\bemployee\b|\bfriend\b/.test(qn(profile.howDidYouHear ?? ""))) return REFERRER_UNKNOWN;
   if (!choiceLike) return unencumberedText(q, n, profile);
   if (CRIMINAL.test(n)) return null;
   // "Will you need an accommodation for your interview?" (Netlify, left blank
@@ -552,7 +573,20 @@ export function resolveDefault(
   if (/\b(previously|ever|formerly|before) (worked|been employed) (for|at|with|by) (us|this (company|organi[sz]ation|employer|firm)|our (company|organi[sz]ation))\b/.test(n)) {
     return polar(false, q, "default:not-former-employee");
   }
-  if (REFERRED.test(n)) return polar(false, q, "default:not-referred");
+  if (REFERRED.test(n)) {
+    // Someone who said they were referred was ("Referral" chose "Employee
+    // Referral" in a list, then No here; question bank 2026-10-05). A friend
+    // need not be an employee: theirs to say.
+    const said = qn(profile.howDidYouHear ?? "");
+    const referred = /\breferr|\bemployee\b|\bfriend\b/.test(said);
+    // Who referred them is theirs to write: "If you were referred by a current
+    // employee, what is the employee's full name?" got the applicant's own
+    // name once the referral was known (Renaissance; question bank 2026-10-05).
+    if (referred && realOptions(q).length === 0 && q.controlType !== "checkbox" && q.kind !== "boolean") return REFERRER_UNKNOWN;
+    if (/\breferr|\bemployee\b/.test(said)) return polar(true, q, "default:referred-stated");
+    if (referred) return null;
+    return polar(false, q, "default:not-referred");
+  }
   if (RELATIVES.test(n) && /\b(work|employ|empl|staff|board|director|officer|relationship)\w*/.test(n)) {
     return polar(false, q, "default:no-relatives-inside");
   }

@@ -223,6 +223,31 @@ function isProsePrompt(label: string): boolean {
   return !/\b(name of|what is your|what's your|your current|please (enter|provide|list|state) (your|the name))\b/i.test(label);
 }
 
+/** The sentence a label asks: its last question, else its last sentence. */
+function askedSentenceOf(label: string): string {
+  const parts = (label || "").split(/(?<=[.?!])\s+/).map((s) => s.trim()).filter(Boolean);
+  return [...parts].reverse().find((s) => /\?\W*$/.test(s)) ?? parts[parts.length - 1] ?? "";
+}
+
+/** Facts a how/why or yes/no question may mention without asking for them. */
+const MENTIONED_FACTS: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
+  "currentTitle", "currentCompany", "location", "addressCity", "addressState", "country", "school", "degree",
+  "fieldOfStudy", "graduationYear", "salary",
+]);
+
+/** A how/why or yes/no question: its answer is not the fact its words name. */
+function asksAnotherThing(label: string, category: FieldCategory): boolean {
+  if (!MENTIONED_FACTS.has(category)) return false;
+  const asked = askedSentenceOf(label);
+  // "How much do you expect to earn?" asks the salary itself.
+  if (/^(how|why)\b/i.test(asked)) return !(category === "salary" && /^how much\b/i.test(asked));
+  return /^(are|is|do|does|did|have|has|can|could|will|would)\b/i.test(asked);
+}
+
+/** Experience asked in general: a work history, not one kind of it. */
+const GENERAL_EXPERIENCE =
+  /\b(work|employment|professional|relevant|previous|prior|career|job)\s+(experience|history)\b|^\s*experience\s*\*?\s*$|\b(describe|tell us about|summari[sz]e|list) your (relevant |work |professional )?experience\s*[.?:*]*\s*$/i;
+
 /** Controls whose options are fully known at scan time. */
 const CONSTRAINED: ReadonlySet<ControlType> = new Set<ControlType>(["select", "radioGroup", "ariaRadioGroup", "checkboxGroup"]);
 
@@ -493,6 +518,27 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   // answered by the question resolver above, before this point.
   if (source === "category" && kind === "longText" && SINGLE_LINE_FACTS.has(category) && isProsePrompt(label)) {
     return none(false, "wrong-kind:prose-prompt");
+  }
+  // A question of another shape whose words name a fact is not asking for it:
+  // "How are you using AI today in your current role?" got the title
+  // (Airtable), "Are you located in and willing to work in the location where
+  // the job is posted?" the city and "Are your salary expectations … within the
+  // posted band?" the salary (CircleCI); question bank 2026-10-05.
+  if (source === "category" && (kind === "text" || kind === "longText") && asksAnotherThing(label, category)) {
+    return none(false, "wrong-kind:other-question");
+  }
+  // "What is your preferred office location?" (Hudl, question bank
+  // 2026-10-05) asks which of the company's offices: the home city was typed.
+  // The office CLOSEST to them is a fact of where they live ("Which office hub
+  // are you closest to?", Tubi: Seattle).
+  if (source === "category" && (category === "location" || category === "addressCity") && /\bpreferred (office|work|working|job)? ?location\b|\bpreferred office\b|\bwhich (of our )?offices?\b/i.test(label) && !/\b(closest|nearest|close to|near)\b/i.test(label)) {
+    return none(false, "wrong-kind:office-preference");
+  }
+  // Experience of one kind is not the work history: "Do you have any SaaS or
+  // software sales experience?" (Hootsuite), "…any experience you have within
+  // sport?" (Hudl), "…your experience in product marketing" (Wikimedia).
+  if (source === "category" && category === "experience" && !GENERAL_EXPERIENCE.test(label)) {
+    return none(false, "wrong-kind:experience-of-a-kind");
   }
 
   // 4. Gate. Single checkboxes keep their own intent logic (checkboxIntent),

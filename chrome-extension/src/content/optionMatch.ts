@@ -8,6 +8,7 @@
  * fit (Greenhouse, live 2026-10-03).
  */
 import { isBooleanOptionSet, optionPolarity } from "./answerKind";
+import { countryFromName, regionFromText } from "./geo";
 
 /** Lowercase words: camelCase split, punctuation and separators to spaces. */
 export function normalize(text: string): string {
@@ -191,7 +192,20 @@ function sharedPrefixLen(a: string, b: string): number {
  *  on either side. Not two words sharing a stem ("mechanical" / "mechatronics"). */
 function isVariant(a: string, b: string): boolean {
   const shared = sharedPrefixLen(a, b);
-  return shared >= 5 && Math.max(a.length, b.length) - shared <= 3;
+  if (shared < 5 || Math.max(a.length, b.length) - shared > 3) return false;
+  // Two different places are no variants of each other: Bengaluru, India was
+  // placed in "Indiana" (Starburst, Doximity; question bank 2026-10-05).
+  const pa = placeKey(a);
+  const pb = placeKey(b);
+  return pa === null || pb === null || pa === pb;
+}
+
+/** The place a single word names (a country, a US state or Canadian province). */
+function placeKey(word: string): string | null {
+  const c = countryFromName(word);
+  if (c) return `country:${c.code}`;
+  const r = regionFromText(word);
+  return r ? `region:${r.country}:${r.code}` : null;
 }
 
 /** The first number (comma thousands-separators tolerated) mentioned in text, or null. */
