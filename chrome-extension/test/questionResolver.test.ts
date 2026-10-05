@@ -723,3 +723,15 @@ describe("graduation options with open ends (question bank 2026-10-05)", () => {
     expect(value(ask(q, riot, COMPLETE_CANADIAN, US_JOB))).toBe("2027");
   });
 });
+
+describe("years of a narrower experience (question bank 2026-10-05: AlayaCare)", () => {
+  const P = () => import("./e2e/profiles.mjs") as Promise<Record<string, UserApplicationProfile>>;
+  it("'professional fullstack … experience (Python/React or Vuejs)' is no career total", async () => {
+    const { BERLIN_STAFF } = await P();
+    const o = { options: ["1-2 years", "3 years", "3–4 years", "5+ years"], kind: "choice" as const, controlType: "select" as const };
+    expect(value(ask("How many years of professional fullstack software engineering experience do you have (Python/React or Vuejs)?", o, BERLIN_STAFF))).toBe("abstain");
+    expect(value(ask("How many years of professional fullstack software engineering experience do you have?", o, BERLIN_STAFF))).toBe("abstain");
+    // The plain software-engineering total still answers.
+    expect(value(ask("How many years of professional software engineering experience do you have?", o, BERLIN_STAFF))).toBe("5+ years");
+  });
+});

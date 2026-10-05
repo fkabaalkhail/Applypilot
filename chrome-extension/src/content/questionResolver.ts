@@ -927,6 +927,11 @@ function resolveYearsOfExperience(q: QuestionInput, n: string, facts: ProfileFac
       if (!dom) return abstain("years-experience:narrowed");
     }
   }
+  // A stack in parentheses after the experience narrows it too: "…fullstack
+  // software engineering experience do you have (Python/React or Vuejs)?"
+  // (AlayaCare, question bank 2026-10-05) got the career total.
+  const paren = /\bexperience\b[^?(]*\(([^)]{2,80})\)/i.exec(q.label);
+  if (paren && !/^\s*(in )?(years?|total|approx\w*|overall)\b/i.test(paren[1])) return abstain("years-experience:narrowed");
   const total = facts.employment.totalYears;
   if (!isHigh(total)) return abstain("years-experience:unknown");
   if (domainWords.length > 0) {
@@ -935,6 +940,12 @@ function resolveYearsOfExperience(q: QuestionInput, n: string, facts: ProfileFac
     const titles = facts.employment.titles;
     if (!dom || titles.length === 0 || !titles.every((t) => dom.title.test(t.toLowerCase()))) {
       return abstain("years-experience:domain-unproven");
+    }
+    // A specialty inside the field ("fullstack", "front end", "mobile") is
+    // proven only by titles that name it.
+    const specialty = /\b(full ?stack|front ?end|back ?end|mobile|ios|android|embedded|devops|machine learning|security|cloud|qa)\b/.exec(phrase);
+    if (specialty && !titles.every((t) => new RegExp(`\\b${specialty[1].replace(/ /g, " ?")}\\b`, "i").test(t.toLowerCase().replace(/-/g, " ")))) {
+      return abstain("years-experience:specialty-unproven");
     }
   }
   const years = total.value;
