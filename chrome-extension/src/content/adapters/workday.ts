@@ -8,6 +8,7 @@
  * Every automation-id lives in ./workdaySelectors. This file holds only logic.
  */
 import { isVisible } from "../domUtils";
+import { countryFromName } from "../geo";
 import { ADAPTERS } from "./registry";
 import type { AdapterFillResult, FillContext, SiteAdapter } from "./types";
 import {
@@ -168,7 +169,9 @@ export const workdayAdapter: SiteAdapter = {
       // Never the state's widget ("countryRegion"), whatever classified it.
       if (ctx.category === "country" && !/country(?!.?region)/.test(automationId(ctx.el))) return undefined;
       const derived = (ctx.profile.location || "").split(",").map((s) => s.trim()).filter(Boolean).pop();
-      return ctx.profile.country || derived || undefined;
+      const stated = ctx.profile.country || derived;
+      // "US" is "United States" in Workday's list too.
+      return stated ? countryFromName(stated)?.name ?? stated : undefined;
     }
     if (ctx.category === "phoneDeviceType") return DEFAULT_PHONE_DEVICE_TYPE;
     // A city field defers to the generic resolver (profile.addressCity || location).

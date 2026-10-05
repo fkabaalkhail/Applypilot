@@ -106,11 +106,16 @@ const REFERRED = /\b(were|was) you referred\b|\bwere you referred by\b|\breferre
 const RELATIVES =
   /\b(relatives?|family members?|related to|spouse|domestic partner|immediate family|household members?|familial|personal relationships?)\b/;
 const CONFLICTS = /\bconflicts? of interest\b|\boutside (business|employment) (activit|interest)\w*/;
+// "…employment agreements and/or post-employment restrictions…" (GitLab, live 2026-10-05).
 const NON_COMPETE =
-  /\bnon ?compet\w*|\bnon ?solicit\w*|\brestrictive covenants?\b|\b(agreements?|contracts?) that (would |may |might )?(restrict|prevent|limit|prohibit)\b/;
+  /\bnon ?compet\w*|\bnon ?solicit\w*|\brestrictive covenants?\b|\b(agreements?|contracts?) that (would |may |might )?(restrict|prevent|limit|prohibit)\b|\bpost ?employment (restrictions?|obligations?|covenants?)\b/;
 const GOV_OFFICIAL =
   /\b(government|public|foreign) officials?\b|\bprocurement officials?\b|\bpolitically exposed\b|\b(current|former|currently|formerly)\b[^?]{0,30}\b(government|federal|state|public sector) officials?\b/;
-const GOV_EMPLOYEE = /\b(current|former|currently|formerly)\b[^?]{0,30}\b(government|federal|state|public sector) employees?\b/;
+// "…a current employee of the U.S. Government (including U.S. Congress or
+// military) or any state or local government?" (Accenture Federal, live
+// 2026-10-05) as well as "a current or former government employee".
+const GOV_EMPLOYEE =
+  /\b(current|former|currently|formerly)\b[^?]{0,30}\b(government|federal|state|public sector) employees?\b|\b(an )?employee of (the )?(u ?s |united states |federal |state |local )?(government|congress|military)\b/;
 /** An employer that is a government body ("Public Services and Procurement
  *  Canada", "City of Ottawa", "U.S. Department of Energy"). Broad on purpose: a
  *  false hit only leaves the question to the applicant. */
@@ -416,6 +421,17 @@ export function resolveDefault(
   }
 
   if (PRIOR_APPLICATION.test(n)) return polar(false, q, "default:no-prior-application");
+  // "Will you be serving as enlisted personnel in either the Reserves or the
+  // National Guard while working for AFS?" (live 2026-10-05): No for someone
+  // who never served; anyone who did answers it.
+  if (/\b(reserves?|national guard|reservist|enlisted|active duty)\b/.test(n) && /\b(will|are|do) you\b/.test(n)) {
+    return /\bnever served\b/.test(qn(profile.eeo?.veteranStatus ?? "")) ? polar(false, q, "default:never-served") : null;
+  }
+  // "At your current employer, are you currently working on a project with
+  // Accenture…?" for an applicant with no job now: No.
+  if (/\bat your current (employer|company|job)\b/.test(n) && facts.employment.currentlyEmployed?.value === false) {
+    return polar(false, q, "default:no-current-employer");
+  }
   // "Have you previously worked for this organization" (Commvault): when the
   // company's name is not on the page to check against the profile.
   if (/\b(previously|ever|formerly|before) (worked|been employed) (for|at|with|by) (us|this (company|organi[sz]ation|employer|firm)|our (company|organi[sz]ation))\b/.test(n)) {

@@ -19,6 +19,7 @@ import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile
 import type { FieldSignals } from "./domUtils";
 import { normalize } from "./optionMatch";
 import { degreeRank, isHigh, profileFacts } from "./profileFacts";
+import { countryFromName } from "./geo";
 
 // Text normalization ("candidate-firstName" → "candidate first name") lives in
 // optionMatch.ts, which the MAIN-world driver shares; re-exported for importers.
@@ -953,8 +954,14 @@ export function resolveProfileValue(
       return orNull(profile.addressState) ?? (isHigh(loc.region) ? loc.region.value.name : null);
     case "postalCode":
       return isHigh(loc.postalCode) ? loc.postalCode.value : null;
-    case "country":
-      return orNull(profile.country) ?? (isHigh(loc.country) ? loc.country.value.name : null);
+    case "country": {
+      // A country written short ("US", "USA") is its full name: a phone
+      // picker's "United States +1" matched no "US" (Accenture Federal,
+      // Epic Games; live 2026-10-05). A name the country list lacks stays.
+      const stated = orNull(profile.country);
+      if (stated) return countryFromName(stated)?.name ?? stated;
+      return isHigh(loc.country) ? loc.country.value.name : null;
+    }
     case "linkedin":
       return orNull(profile.linkedin);
     case "github":

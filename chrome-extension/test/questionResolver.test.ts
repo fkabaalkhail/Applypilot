@@ -241,6 +241,41 @@ describe("Greenhouse batch 2, live 2026-10-05: blanks a stated fact settles", ()
   });
 });
 
+describe("Greenhouse batch 2, live 2026-10-05: Accenture Federal, Gemini, DoorDash, GitLab", () => {
+  const US = { jobCountry: "US" as string | null, company: "Accenture Federal Services" };
+  const citizen = { ...SPARSE_CANADIAN, location: "Denver, CO", workAuthorization: "US Citizen", authorizedUS: "Yes", requiresSponsorship: "No", willingToRelocate: "No", eeo: { veteranStatus: "I have never served in the military" }, experience: [{ company: "Ibotta", title: "Junior Software Engineer", startDate: "2022-08", endDate: "2026-06", description: "" }] };
+  const h1b = { ...SPARSE_CANADIAN, location: "Seattle, WA", workAuthorization: "H-1B visa (transfer required)", authorizedUS: "Yes", requiresSponsorship: "Yes", willingToRelocate: "No" };
+  const opt = { ...SPARSE_CANADIAN, location: "Boston, MA", workAuthorization: "F-1 STEM OPT (EAD valid through June 2028)", authorizedUS: "Yes", requiresSponsorship: "Yes" };
+
+  it("AFS: citizenship status beside 'Not a US citizen…', government employment, the Reserves, a project at a current employer", () => {
+    const status = ["US citizen", "Dual citizen (including US citizenship)", "Permanent resident / green card holder", "Refugee or Asylee", "Not a US citizen or permanent resident"];
+    const q = "Many AFS positions require US citizenship. Please indicate your citizenship status so we can determine eligibility for specific roles.";
+    expect(value(ask(q, { options: status, kind: "choice", controlType: "select" }, citizen as never, US))).toBe("US citizen");
+    expect(value(ask(q, { options: status, kind: "choice", controlType: "select" }, h1b, US))).toBe("Not a US citizen or permanent resident");
+    expect(value(ask("Are you a current employee of the U.S. Government (including U.S. Congress or military) or any state or local government?*", { options: YES_NO }, citizen as never, US))).toBe("No");
+    expect(value(ask("Were you an employee of the U.S. Government (including U.S. Congress or military) or any state or local government within the past 10 years?*", { options: YES_NO }, citizen as never, US))).toBe("No");
+    expect(value(ask("Will you be serving as enlisted personnel in either the Reserves or the National Guard while working for AFS?*", { options: YES_NO }, citizen as never, US))).toBe("No");
+    expect(value(ask("At your current employer, are you currently working on a project with Accenture or have you worked on a project with Accenture in the past 24 months?*", { options: YES_NO }, citizen as never, US))).toBe("No");
+  });
+
+  it("Gemini: 'Are you open to relocating if you're not currently based there?' for a Seattle applicant who will not move", () => {
+    const q = "This role is required to be based near our New York City, NY office. Are you open to relocating if you're not currently based there?*";
+    expect(value(ask(q, { options: YES_NO }, h1b, { jobCountry: "US", company: "Gemini" }))).toBe("No");
+  });
+
+  it("DoorDash: sponsorship NOW is No for an OPT holder, Yes later; an H-1B needs it now", () => {
+    const now = "Will you now require immigration sponsorship by our company to attain or maintain your employment authorization?*";
+    const later = "Will you in the future require immigration sponsorship by our company to attain or maintain your employment authorization?*";
+    expect(value(ask(now, { options: YES_NO }, opt, US))).toBe("No");
+    expect(value(ask(later, { options: YES_NO }, opt, US))).toBe("Yes");
+    expect(value(ask(now, { options: YES_NO }, h1b, US))).toBe("Yes");
+  });
+
+  it("GitLab: post-employment restrictions are the non-compete question", () => {
+    expect(value(ask("Are you subject to any employment agreements and/or post-employment restrictions that could affect your ability to work at GitLab?*", { options: YES_NO }, h1b, US))).toBe("No");
+  });
+});
+
 describe("conditional questions: the condition first", () => {
   const ACTIONET = ["Select an option...", "Yes", "No", "I am not a current or former government employee"];
   it("a false condition picks the option saying so (ActioNet on Jobvite, live 2026-10-03)", () => {

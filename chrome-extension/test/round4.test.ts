@@ -200,6 +200,20 @@ describe("Duolingo's careers site (live 2026-10-05)", () => {
   });
 });
 
+describe("a country written 'US' is the United States (Accenture Federal, Epic Games; live 2026-10-05)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+  it("a phone picker of 'United States +1' takes it", async () => {
+    // The picker matched no "US", and the field went to the AI.
+    const { BOOTCAMP_CAREER_GAP } = await import("./e2e/profiles.mjs");
+    document.body.innerHTML = `<form><div class="field"><label for="c">Country*</label><select id="c"><option value="">Select...</option><option>United States +1</option><option>Afghanistan +93</option><option>Canada +1</option></select></div></form>`;
+    const [f] = scanPage(BOOTCAMP_CAREER_GAP as never, true).fields;
+    expect(f.proposedValue).toBe("United States +1");
+    document.body.innerHTML = "";
+  });
+});
+
 describe("a second email the profile does not have stays blank (Duolingo, live 2026-10-05)", () => {
   let restore: () => void;
   beforeAll(() => { restore = stubLayout(); });

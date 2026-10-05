@@ -345,6 +345,18 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
       return abstain("sponsorship:unknown");
     }
     const s = needsSponsorshipIn(facts.workAuth, country, residence);
+    // "Will you NOW require sponsorship…?" beside "…in the FUTURE…?" (DoorDash,
+    // live 2026-10-05: both Yes for an OPT holder). Authorized today through a
+    // temporary EAD (OPT, a work permit), the need is later, not now. An H-1B,
+    // TN or L-1 moves to a new employer only with a new petition: now.
+    const nowOnly = /\b(now|currently|at this time|presently)\b/.test(n) && !/\b(future|later|eventually)\b/.test(n);
+    if (nowOnly && isHigh(s) && s.value === true) {
+      const a = authorizedIn(facts.workAuth, country, residence);
+      const stated = (profile.workAuthorization || "").toLowerCase();
+      if (isHigh(a) && a.value === true && /\b(opt|ead|cpt|work permit|pgwp|open work permit)\b/.test(stated) && !/\b(h-?1 ?b|tn|l-?1|e-?3|o-?1)\b/.test(stated)) {
+        return booleanResult(false, q, "sponsorship:not-now");
+      }
+    }
     // A question phrased as the inverse ("Can you work WITHOUT sponsorship?")
     // without a work-right phrase ("…work for us without sponsorship").
     const inverted = /\bwithout\b/.test(n) && !/\b(require|need)\b/.test(n);
@@ -572,7 +584,9 @@ function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, prof
   if (!place) return null;
   const loc = facts.location;
   const residenceCountry = isHigh(loc.country) ? loc.country.value : null;
-  const relocateClause = /\b(or|if not)\b[^?]*\b(relocat|move)/.test(n);
+  // "…or willing to relocate?", and the other way round: "Are you open to
+  // relocating if you're not currently based there?" (Gemini, live 2026-10-05).
+  const relocateClause = /\b(or|if not)\b[^?]*\b(relocat|move)/.test(n) || /\b(relocat\w*|move)\b[^?]*\bif (you re |you are |youre )?not\b/.test(n);
   const relocate = polarityOf(profile.willingToRelocate || "");
 
   const yesOrRelocate = (lives: boolean | null, rule: string): QuestionResult => {
@@ -602,6 +616,16 @@ function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, prof
   if (isHigh(loc.city) && geoNorm(loc.city.value) === geoNorm(place.name)) return yesOrRelocate(true, "residence-city");
   const hinted = countryHintForCity(place.name);
   if (hinted && residenceCountry && hinted !== residenceCountry.code) return yesOrRelocate(false, "residence-city:other-country");
+  // "…based near our New York City, NY office. Are you open to relocating if
+  // you're not currently based there?" (Gemini, live 2026-10-05): someone who
+  // will move says Yes either way, and the label's own state settles "near"
+  // for anyone in another one.
+  if (relocateClause && relocate === true) return booleanResult(true, q, "residence-city+relocation");
+  const labelled = /\b([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3}),\s*([A-Z]{2})\b/.exec(q.label);
+  const region = labelled ? regionFromText(labelled[2]) : null;
+  if (region && isHigh(loc.region) && (loc.region.value.code !== region.code || loc.region.value.country !== region.country)) {
+    return yesOrRelocate(false, "residence-city:other-region");
+  }
   return abstain("residence-city:unknown");
 }
 
@@ -1443,15 +1467,17 @@ function resolveRelocationChoice(q: QuestionInput, n: string, profile: UserAppli
  * permanent resident of the US picks theirs; anything else stays blank.
  */
 const US_STATUS_OPTION = /\b(u ?s citizen|citizen of the united states|national of the united states|u ?s national|lawful permanent resident|permanent resident of the u|green card|refugee|asylee|daca|u ?s person|foreign person)\b/;
+const NONE = /^(\(?[a-z]\)?\s+)?other\b|\bnone of the above\b|\bforeign person\b|\bnot a u ?s (person|citizen)\b/;
 function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
   const opts = (q.options ?? []).filter((o) => o.trim());
   if (opts.filter((o) => US_STATUS_OPTION.test(qnorm(o))).length < 2) return null;
   const us = facts.workAuth.byCountry.get("US");
+  // "Not a US citizen or permanent resident" names the statuses it denies
+  // (Accenture Federal, live 2026-10-05): never one of them.
   const pick = (re: RegExp): QuestionResult => {
-    const hits = opts.filter((o) => re.test(qnorm(o)));
+    const hits = opts.filter((o) => re.test(qnorm(o)) && (re === NONE || !/\bnot\b/.test(qnorm(o))));
     return hits.length === 1 ? answer(hits[0], "us-person-status") : abstain("us-person-status:no-matching-option");
   };
-  const NONE = /^(\(?[a-z]\)?\s+)?other\b|\bnone of the above\b|\bforeign person\b|\bnot a u ?s person\b/;
   if (us?.authorized === false) return pick(NONE);
   // A temporary visa (H-1B, F-1 and its OPT, TN…) makes no one a U.S. person:
   // the H-1B and OPT holders abstained (Astranis, SpaceX; question bank
