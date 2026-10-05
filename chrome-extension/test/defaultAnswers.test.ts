@@ -339,3 +339,22 @@ describe("a stated job site among channels that name none (Figma, regression 202
     expect(value(ask("How did you connect with us?*", { options: figma }, p))).toBe("Other");
   });
 });
+
+describe("channels in other words (question bank 2026-10-05: Bandwidth, Gusto, Twilio)", () => {
+  const BANDWIDTH = ["LinkedIn", "Referral", "Indeed", "Include.io", "NSBE Careers- National Society of Black Engineers Career Site", "Google Search", "Facebook", "Twitter", "Handshake", "Job Fair/Event", "Campus Recruiting", "Other"];
+  it("'Company website' is the company's own site, never another organization's career site", () => {
+    const p = { ...SPARSE_CANADIAN, howDidYouHear: "Company website" };
+    expect(value(ask("How did you hear about this position?", { options: BANDWIDTH }, p, { jobCountry: "US", company: "Bandwidth" }))).toBe("Other");
+    const gusto = ["LinkedIn", "Glassdoor", "Indeed", "Facebook", "Gusto Blog", "Gusto Employee", "Gusto Website", "Billboard/Outdoor Ads"];
+    expect(value(ask("How did you hear about this opportunity?", { options: gusto }, p, { jobCountry: "US", company: "Gusto" }))).toBe("Gusto Website");
+  });
+  it("'Social media' is no particular platform", () => {
+    const p = { ...SPARSE_CANADIAN, howDidYouHear: "Social media" };
+    const twilio = ["Careers Website", "LinkedIn", "Twitter", "Glassdoor", "Indeed", "Twilio Blog", "Conference or Event", "Other"];
+    expect(value(ask("How did you hear about Twilio?", { options: twilio }, p, { jobCountry: "US", company: "Twilio" }))).toBe("Other");
+    const gusto = ["LinkedIn", "Glassdoor", "Indeed", "Facebook", "Gusto Blog", "Gusto Employee", "Gusto Website"];
+    expect(value(ask("How did you hear about this opportunity?", { options: gusto }, p, { jobCountry: "US", company: "Gusto" }))).not.toBe("Facebook");
+    // A platform stated is that platform.
+    expect(value(ask("How did you hear about Twilio?", { options: twilio }, { ...p, howDidYouHear: "Twitter" }, { jobCountry: "US", company: "Twilio" }))).toBe("Twitter");
+  });
+});

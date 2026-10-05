@@ -231,9 +231,30 @@ const SOURCE_SYNONYMS: Array<[RegExp, RegExp]> = [
   // "I know someone that works at Affirm" (question bank 2026-10-05).
   [/\breferr\w*|\bemployee\b|\bfriend\b/, /\breferr\w*|\bemployee\b|\bfriend\b|\bknow someone\b|\bsomeone (who|that) works\b/],
   [/\b(career|job) fair\b|\buniversity\b|\bcampus\b|\bschool\b|\bcollege\b/, /\b(career|job) fair\b|\buniversity\b|\bcampus\b|\bschool\b|\bcollege\b|\bco ?op\b/],
-  [/\bsocial\b|\btwitter\b|\bx\b|\bfacebook\b|\binstagram\b|\btik ?tok\b/, /\bsocial\b|\btwitter\b|\bfacebook\b|\binstagram\b|\btik ?tok\b/],
+  // "Social media" is no particular platform: "Twitter" for it was a guess
+  // (Twilio, Gusto's "Facebook"; question bank 2026-10-05). A platform
+  // stated is that platform.
+  [/\bsocial\b/, /\bsocial\b/],
+  [/\btwitter\b|\bx\b/, /\btwitter\b|\bx\b/],
+  [/\bfacebook\b|\bmeta\b/, /\bfacebook\b|\bmeta\b/],
+  [/\binstagram\b/, /\binstagram\b/],
+  [/\btik ?tok\b/, /\btik ?tok\b/],
   [/\bother\b/, /\bother\b/],
 ];
+
+/** A company-website option that is the company's OWN site: its name, or a
+ *  generic "Careers Website", never "NSBE Careers- National Society of Black
+ *  Engineers Career Site" (Bandwidth, question bank 2026-10-05). */
+function ownSite(option: string, company: string): boolean {
+  // "Affirm’s Career Site", "Datadog's Careers Page": the possessive is the name.
+  const words = (s: string): string[] => qn(s.replace(/['’]s\b/gi, "")).split(" ").filter(Boolean);
+  const SITE = /^(company|corporate|careers?|carrieres?|our|the|official|website|web|site|page|jobs?|emplois?|portal|board|de|du|la|le|des)$/;
+  const rest = words(option).filter((w) => !SITE.test(w));
+  // Every remaining word is the company's ("Appian Careers Website" for
+  // "Appian Corporation", "Lucid Careers Page" for "Lucid Motors").
+  const own = new Set(words(company));
+  return rest.every((w) => own.has(w));
+}
 
 /**
  * The unencumbered applicant's "No" typed into a text box: "*Were you referred
@@ -253,7 +274,7 @@ function unencumberedText(q: QuestionInput, n: string, profile: UserApplicationP
   return null;
 }
 
-function chooseSource(q: QuestionInput, profile: UserApplicationProfile): QuestionResult {
+function chooseSource(q: QuestionInput, profile: UserApplicationProfile, company = ""): QuestionResult {
   const opts = realOptions(q);
   const stated = qn(profile.howDidYouHear ?? "");
   if (opts.length === 0) {
@@ -261,8 +282,8 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile): Questi
     if (stated) return answer(profile.howDidYouHear!.trim(), "source:stated");
     return answer(q.controlType === "text" || q.controlType === "textarea" ? "Online job board" : "Job board", "source:default");
   }
-  const unique = (re: RegExp): string | null => {
-    const hits = opts.filter((o) => re.test(qn(o)));
+  const unique = (re: RegExp, keep: (o: string) => boolean = () => true): string | null => {
+    const hits = opts.filter((o) => re.test(qn(o)) && keep(o));
     if (hits.length === 1) return hits[0];
     // "Job Board (Indeed, Monster, etc.)" over "University Job Board"
     // (Palantir on Lever): the general channel, when one is general.
@@ -274,17 +295,18 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile): Questi
     if (exact) return answer(exact, "source:stated");
     for (const [said, offered] of SOURCE_SYNONYMS) {
       if (!said.test(stated)) continue;
-      const hit = unique(offered);
+      const keep = /website/.test(said.source) ? (o: string) => ownSite(o, company) : () => true;
+      const hit = unique(offered, keep);
       if (hit) return answer(hit, "source:stated");
       // Several of that kind ("Coveo Employee Referral" | "Friend or Former
       // Colleague", Coveo, live 2026-10-05): the one naming the stated word.
       const stem = said.exec(stated)?.[0];
-      const own = stem ? opts.filter((o) => offered.test(qn(o)) && qn(o).includes(stem)) : [];
+      const own = stem ? opts.filter((o) => offered.test(qn(o)) && keep(o) && qn(o).includes(stem)) : [];
       if (own.length === 1) return answer(own[0], "source:stated");
       // Several of that channel ("LinkedIn Company Post" | "LinkedIn Employee
       // Post" | "LinkedIn Job Search", Planet on Greenhouse): a posting found
       // through Tailrd was found through a job search.
-      const viaSearch = opts.filter((o) => offered.test(qn(o)) && /\bjob (search|post|posting|board|listing|ad)s?\b/.test(qn(o)));
+      const viaSearch = opts.filter((o) => offered.test(qn(o)) && keep(o) && /\bjob (search|post|posting|board|listing|ad)s?\b/.test(qn(o)));
       if (viaSearch.length === 1) return answer(viaSearch[0], "source:stated");
     }
     // A stated channel the list does not offer. A job site is still a job
@@ -400,10 +422,10 @@ export function resolveDefault(
   // A follow-up STARTING with "if" ("If you heard about us through a referral,
   // please state…") is not the channel question; an "If referred, by who?"
   // add-on after it is (Kenect on Breezy, live 2026-10-03).
-  if (HOW_HEARD.test(n) && !/^\s*if\b/.test(n)) return chooseSource(q, profile);
+  if (HOW_HEARD.test(n) && !/^\s*if\b/.test(n)) return chooseSource(q, profile, ctx.company);
   const opts = realOptions(q);
   if ((UNLABELED.test(n) || /\b(find|found|hear|heard|learn|learned|discover)\w* (us|about us|this (role|job|position))\b/.test(n)) && opts.filter((o) => CHANNEL.test(qn(o))).length >= 3) {
-    return chooseSource(q, profile);
+    return chooseSource(q, profile, ctx.company);
   }
   if (!choiceLike) return unencumberedText(q, n, profile);
   if (CRIMINAL.test(n)) return null;
