@@ -129,3 +129,20 @@ describe("a location element with no place in it does not hide the job's", () =>
     expect(detectJobPlace(document).places).toEqual(["Rochester, NY, United States"]);
   });
 });
+
+describe("a career site's 'Location' label and its value (Epic Games, live 2026-10-05)", () => {
+  it("<strong>Location</strong><p>Cary, United States</p> is the job's place", () => {
+    // Unread, the job had no country, and "Do you have legal authorization to
+    // work in the geographic region specified?" and the sponsorship question
+    // stayed blank for a US citizen.
+    document.head.innerHTML = "";
+    document.body.innerHTML = `<h1>Engine Programmer Intern</h1><div><span><strong>Department</strong><p>Engineering</p><strong>Location</strong><p>Cary, United States</p><strong>Product</strong><p>Fortnite</p></span></div>`;
+    expect(detectJobPlace(document)).toMatchObject({ country: "US", city: "Cary" });
+    // dt/dd too, and never the applicant's own location box in a form.
+    document.body.innerHTML = `<dl><dt>Location:</dt><dd>Toronto, ON</dd></dl>`;
+    expect(detectJobCountry(document)).toBe("CA");
+    document.body.innerHTML = `<form><label>Location</label><input value="Toronto, ON"><p>Toronto, ON</p></form>`;
+    expect(detectJobCountry(document)).toBeNull();
+    document.body.innerHTML = "";
+  });
+});

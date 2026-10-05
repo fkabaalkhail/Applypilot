@@ -216,6 +216,24 @@ function elementPlaces(doc: Document): JobPlace[] {
     }
     if (out.length) break;
   }
+  return out.length > 0 ? out : labelledPlaces(doc);
+}
+
+const LOCATION_TERM = /^(job |work |office )?locations?\s*:?$/i;
+
+/** A "Location" label and the value after it, outside any form:
+ *  `<strong>Location</strong><p>Cary, United States</p>` (Epic Games' career
+ *  site, live 2026-10-05), `<dt>Location:</dt><dd>Toronto, ON</dd>`. */
+function labelledPlaces(doc: Document): JobPlace[] {
+  const out: JobPlace[] = [];
+  for (const term of Array.from(doc.querySelectorAll("strong, b, dt, th, h2, h3, h4, h5, h6, span, div, label"))) {
+    if (out.length >= 4) break;
+    if (term.children.length > 0 || !LOCATION_TERM.test((term.textContent || "").trim())) continue;
+    if (term.closest("form")) continue; // the applicant's own location box
+    const value = term.nextElementSibling;
+    const p = value && !value.closest("form") ? placeOfText(value.textContent || "") : null;
+    if (p) out.push(p);
+  }
   return out;
 }
 
