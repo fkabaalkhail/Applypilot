@@ -377,6 +377,13 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile, company
       // through Tailrd was found through a job search.
       const viaSearch = opts.filter((o) => offered.test(qn(o)) && keep(o) && /\bjob (search|post|posting|board|listing|ad)s?\b/.test(qn(o)));
       if (viaSearch.length === 1) return answer(viaSearch[0], "source:stated");
+      // "LinkedIn Jobs" among "LinkedIn Post", "LinkedIn InMail" and alumni
+      // groups "…Job Board or LinkedIn Group" (Samsara, question bank
+      // 2026-10-05): the channel's own jobs, never a group, post or message.
+      const theirJobs = opts.filter(
+        (o) => offered.test(qn(o)) && keep(o) && /\bjobs?\b/.test(qn(o)) && !/\b(alumni|group|groups|community|inmail|message|post|posts|reach out|fair|event)\b/.test(qn(o))
+      );
+      if (theirJobs.length === 1) return answer(theirJobs[0], "source:stated");
     }
     // A stated channel the list does not offer. A job site is still a job
     // board ("LinkedIn" -> "Online Job Board", below); anything else is

@@ -217,3 +217,10 @@ describe("a school that carries every word of the name beats a generic one (Pala
     expect(snapSchool(opts, "University of London")).toBe("University of London");
   });
 });
+
+describe("a stated LinkedIn takes LinkedIn's own jobs (Samsara)", () => {
+  it("not an alumni group, a post or a message", () => {
+    const OPTS = ["Samsara Careers Site", "LinkedIn Jobs", "LinkedIn Post", "LinkedIn InMail", "Message from a Recruiter or Hiring Manager", "Indeed", "Glassdoor", "School Alumni Job Board or LinkedIn Group", "Company Alumni Job Board or LinkedIn Group"];
+    expect(ask("COMPLETE_CANADIAN", "How did you hear about this opportunity?", OPTS)).toBe("LinkedIn Jobs");
+  });
+});
