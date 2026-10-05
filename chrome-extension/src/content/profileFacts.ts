@@ -313,6 +313,10 @@ export function countriesIn(text: string): Country[] {
     [/ (united kingdom|great britain|britain|british|england|uk|u k) /, "GB"],
   ];
   for (const [re, code] of NAME_PATTERNS) if (re.test(norm)) add(countryByCode(code));
+  // "US Citizen": "US" in capitals is the country (lowercase "us" stays a
+  // pronoun). Lowercased above, it was missed, and a citizen read as a bare
+  // "authorized" (question bank 2026-10-05).
+  if (/(^|[^A-Za-z])U\.?S\.?(?![A-Za-z])/.test(text || "")) add(countryByCode("US"));
   // US-only statuses imply the US even when the country is not named.
   if (/ (green card|h ?1 ?b|h ?4|l ?1|tn|e ?3|o ?1|f ?1|j ?1|m ?1|opt|cpt|ead|stem opt) /.test(norm)) add(countryByCode("US"));
   // Canada-only statuses.
@@ -437,6 +441,11 @@ export function needsSponsorshipIn(auth: WorkAuthFacts, countryCode: string | nu
     // 2026-10-03: "authorized in the US: No" plus "requires sponsorship: No"
     // answered "No, I do not require sponsorship" for a job in the USA.
     if (c && c.authorized === false) return fact(true, "high", `sponsorship:not-authorized-${c.basis}`);
+    // A citizen or permanent resident never needs sponsorship there, whatever
+    // the general answer says: a German citizen's "Yes" is about North
+    // America, and "a visa to remain in your current location" (Berlin) got
+    // it (GitLab, question bank 2026-10-05).
+    if (c && (c.basis === "citizen" || c.basis === "permanent_resident")) return fact(false, "high", `sponsorship:${c.basis}`);
     // The applicant's own answer wins for any country their status covers.
     if (stated !== null && (c || (auth.byCountry.size === 0 && (!residence || residence === countryCode)))) {
       return fact(stated, "high", "sponsorship:stated");

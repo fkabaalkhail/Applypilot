@@ -167,6 +167,18 @@ describe("how did you hear about us", () => {
     const enova = ["Agency", "Built in Chicago", "Campus Career Site", "Campus Event", "Campus Career Fair", "CareerBuilder", "Conference", "Facebook", "Glassdoor", "Indeed", "LinkedIn", "Meetup", "Grace Hopper", "Other", "Twitter"];
     expect(value(ask("How did you hear about this job?*", { options: enova }))).not.toMatch(/campus/i);
   });
+  // Affirm on Greenhouse, question bank 2026-10-05 (options verbatim).
+  const AFFIRM = ["Affirm blog", "Affirm Recruiting Team reached out", "Affirm’s Career Site", "AfroTech", "Alumni Forum", "Built In", "Facebook", "Glassdoor", "I have used Affirm as a product", "I know someone that works at Affirm", "Include.io", "Indeed", "Infoshare", "Instagram", "LinkedIn", "Nextplay", "POCIT", "SheTO", "The Muse", "Twitter", "Other"];
+  it("a stated channel is never swapped for another: a job board is not the company's career site", () => {
+    // "Job board" got "Affirm’s Career Site": with several boards named, the
+    // no-channel default order took over.
+    const board = { ...SPARSE_CANADIAN, howDidYouHear: "Job board" };
+    expect(value(ask(" How did you first learn about Affirm as an employer? ", { options: AFFIRM }, board))).not.toBe("Affirm’s Career Site");
+  });
+  it("'I know someone that works at X' is a referral", () => {
+    const referred = { ...SPARSE_CANADIAN, howDidYouHear: "Referral" };
+    expect(value(ask(" How did you first learn about Affirm as an employer? ", { options: AFFIRM }, referred))).toBe("I know someone that works at Affirm");
+  });
   it("among named job searches, the unnamed 'job site' is the default (Planet left it blank)", () => {
     const planet = ["BuiltIn Article", "BuiltIn Job Search", "Conference", "Event", "Glassdoor Article", "Glassdoor Job Search", "Indeed", "Instagram", "LinkedIn Company Post", "LinkedIn Employee Post", "LinkedIn Job Search", "News Article", "Other - Event", "Other - Job Site", "Other - Social Media", "Other - Webinar", "Otta", "Planet Event", "Planet Webinar"];
     expect(value(ask("How did you first hear about Planet before applying for this position?*", { options: planet }))).toBe("Other - Job Site");

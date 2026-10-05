@@ -165,6 +165,59 @@ describe("the question bank's work-authorization shapes (Greenhouse, 2026-10-05)
   });
 });
 
+describe("question bank, status choices and acknowledgements (Greenhouse, 2026-10-05)", () => {
+  const US = { jobCountry: "US" as string | null, company: "" };
+  const CA = { jobCountry: "CA" as string | null, company: "" };
+  const citizen = { ...SPARSE_CANADIAN, location: "Denver, CO", workAuthorization: "US Citizen", authorizedUS: "Yes", requiresSponsorship: "No" };
+  const h1b = { ...SPARSE_CANADIAN, location: "Seattle, WA", workAuthorization: "H-1B visa (transfer required)", authorizedUS: "Yes", authorizedCanada: "No", requiresSponsorship: "Yes", willingToRelocate: "No" };
+  const opt = { ...SPARSE_CANADIAN, location: "Boston, MA", workAuthorization: "F-1 STEM OPT (EAD valid through June 2028)", authorizedUS: "Yes", authorizedCanada: "No", requiresSponsorship: "Yes" };
+  const berlin = { ...SPARSE_CANADIAN, location: "Berlin, Germany", workAuthorization: "German citizen (EU)", authorizedUS: "No", authorizedCanada: "No", requiresSponsorship: "Yes" };
+  const canadian = { ...SPARSE_CANADIAN, requiresSponsorship: "No", authorizedUS: "No", authorizedCanada: "Yes", willingToRelocate: "Yes" };
+  const choose = (label: string, options: string[], p: UserApplicationProfile, ctx = US) => value(ask(label, { options, kind: "choice", controlType: "select" }, p, ctx));
+
+  it("export-control status: a citizen written 'US Citizen' is one; a visa holder is none of them (Astranis, SpaceX)", () => {
+    const astranis = "Astranis complies with U.S. Government space technology export regulations, therefore will you state which of the following applies to you:";
+    const opts = ["I am a U.S. Citizen.", "I am a lawful permanent resident of the U.S. and Green Card Holder.", "I am a refugee under 8 U.S.C. 1157.", "I am an asylee under 8 U.S.C. 1158.", "None of the above."];
+    expect(choose(astranis, opts, citizen)).toBe("I am a U.S. Citizen.");
+    expect(choose(astranis, opts, h1b)).toBe("None of the above.");
+    expect(choose(astranis, opts, opt)).toBe("None of the above.");
+    const spacex = ["(a) U.S. citizen or national of the United States", "(b) U.S. lawful permanent resident", "(c) Refugee under 8 U.S.C. 1157", "(d) Asylee under 8 U.S.C. 1158", "(e) Authorized to work in the United States under the Deferred Action for Childhood Arrivals (DACA) program", "(f) Other (please explain)"];
+    expect(choose("Citizenship Status", spacex, citizen)).toBe("(a) U.S. citizen or national of the United States");
+    expect(choose("Citizenship Status", spacex, h1b)).toBe("(f) Other (please explain)");
+  });
+
+  it("'I require … sponsorship' is a not-authorized statement, and a bare No answers too (Lyft, Coveo)", () => {
+    const lyft = ["I am authorized to work for any employer in the country in which this position is based.", "I require/will require Lyft's sponsorship to obtain work authorization in the country in which this position is based (e.g. H-1B, TN, etc.)", "My status to work in the country in which this position is based is unknown."];
+    expect(choose("Work Authorization", lyft, h1b, CA)).toBe(lyft[1]);
+    const coveo = ["Yes, I am a Canadian citizen / permanent resident", "Yes, I have a valid study/work permit", "No"];
+    expect(choose("Are you currently legally allowed to work in Canada for the duration of this internship?", coveo, h1b, CA)).toBe("No");
+    expect(choose("Are you currently legally allowed to work in Canada for the duration of this internship?", coveo, canadian, CA)).toBe("Yes, I am a Canadian citizen / permanent resident");
+  });
+
+  it("sponsorship to remain where you live is about your own country (GitLab)", () => {
+    const q = "Will you now or in the future require sponsorship for a visa to remain in your current location?";
+    const opts = ["No", "Yes, Netherlands Highly Skilled Migrant Visa", "Yes, Ireland Highly Skilled Worker Visa", "Yes, EU Blue Card", "Yes, USMCA Professional (TN) Visa (USA)", "Yes, F-1 Visa OPT (USA)", "Yes, but not one of the visas listed here"];
+    expect(choose(q, opts, canadian)).toBe("No");
+    expect(choose(q, opts, berlin)).toBe("No");
+  });
+
+  it("a notice to acknowledge, its only option Yes, is acknowledged (Riot's E-Verify)", () => {
+    const q = "Riot Games participates in E-Verify and will submit your information to the government for confirmation of your work authorization only after a conditional offer of employment has been made. By submitting an application, I acknowledge that I have read and understand the E-verify notice.";
+    expect(choose(q, ["Yes"], citizen)).toBe("Yes");
+  });
+
+  it("'Does this commute work for you?' follows where the applicant lives and moves (Carvana)", () => {
+    const q = "This position is located in Manville, NJ. Does this commute work for you?";
+    expect(value(ask(q, { options: YES_NO }, h1b, US))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, canadian, US))).toBe("Yes");
+  });
+
+  it("contract work for the company is employment history (Block)", () => {
+    const q = "Have you ever provided any contract work for Block, Inc. or any of its subsidiaries or affiliates (whether in the U.S. or internationally)?*";
+    expect(value(ask(q, { options: YES_NO }, canadian, CA))).toBe("No");
+  });
+});
+
 describe("conditional questions: the condition first", () => {
   const ACTIONET = ["Select an option...", "Yes", "No", "I am not a current or former government employee"];
   it("a false condition picks the option saying so (ActioNet on Jobvite, live 2026-10-03)", () => {

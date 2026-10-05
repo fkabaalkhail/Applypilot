@@ -89,7 +89,7 @@ const RECORDING = /\b(record(ed|ing)?|transcri\w*|notetak\w*|note tak\w*)\b/;
 
 /** A requirement of the posting the applicant accepts by applying. */
 const ACK_VERB =
-  /\b(acknowledge|agree|understand|confirm|accept|comfortable|okay|ok|willing|able|open|prepared|available|can you|will you be able|are you able)\b/;
+  /\b(acknowledge|agree|understand|confirm|accept|comfortable|okay|ok|willing|able|open|prepared|available|can you|will you be able|are you able|works? for you)\b/;
 const REQUIREMENT =
   /\b(in ?office|on ?site|in ?person|hybrid|office|commut\w*|travel\w*|relocat\w*|shifts?|weekends?|overtime|nights?|evenings?|holidays?|background (check|screen\w*|investigation)s?|drug (test\w*|screen\w*)|essential (functions|duties)|lift\w*|schedule|days (per|a|each) week|requirement|requirements)\b/;
 /** A request rather than a requirement ("Will you require relocation
@@ -174,7 +174,7 @@ const SOURCE_PREFERENCE: RegExp[] = [
 
 /** Working in a place in person (an office, on site, a hybrid schedule). */
 const IN_PERSON =
-  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|commute|report)\b[^?]{0,60}\b(from|at|in|to)\b[^?]{0,40}\boffices?\b/;
+  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|commute|report)\b[^?]{0,60}\b(from|at|in|to)\b[^?]{0,40}\boffices?\b|\b(this|the|that|a daily) commute\b/;
 
 /** Being there now and then rather than working there: team gatherings, an
  *  offsite, a few trips a year. Someone who will not relocate can still go. */
@@ -193,7 +193,10 @@ const RESEARCH_OR_FUNDING =
 function placeInLabel(label: string): ReturnType<typeof placeOf> | null {
   const m = /\b(?:out of|in|at|from|based in|located in)\s+([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,3},\s*[A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,2})/.exec(label);
   if (!m) return null;
-  const place = placeOf(m[1]);
+  // The sentence ends at its full stop: "located in Manville, NJ. Does this
+  // commute…" read "Manville, NJ. Does" and found no state (Carvana,
+  // question bank 2026-10-05).
+  const place = placeOf(m[1].split(/\.\s/)[0].replace(/[.,;:]+$/, ""));
   return place.city && (place.region || place.country) ? place : null;
 }
 
@@ -206,7 +209,8 @@ const SOURCE_SYNONYMS: Array<[RegExp, RegExp]> = [
   [/\blinked ?in\b/, /\blinked ?in\b/],
   [/\bjob (board|site)\b|\bindeed\b|\bglassdoor\b|\bonline\b/, /\bjob (board|site|search|posting)s?\b|\bonline\b|\bindeed\b|\bglassdoor\b|\binternet\b/],
   [/\b(company|careers?) (website|site|page)\b|\bwebsite\b/, /\b(company|corporate|careers?|our) (website|site|page)\b|\bwebsite\b/],
-  [/\breferr\w*|\bemployee\b|\bfriend\b/, /\breferr\w*|\bemployee\b|\bfriend\b/],
+  // "I know someone that works at Affirm" (question bank 2026-10-05).
+  [/\breferr\w*|\bemployee\b|\bfriend\b/, /\breferr\w*|\bemployee\b|\bfriend\b|\bknow someone\b|\bsomeone (who|that) works\b/],
   [/\b(career|job) fair\b|\buniversity\b|\bcampus\b|\bschool\b|\bcollege\b/, /\b(career|job) fair\b|\buniversity\b|\bcampus\b|\bschool\b|\bcollege\b|\bco ?op\b/],
   [/\bsocial\b|\btwitter\b|\bx\b|\bfacebook\b|\binstagram\b|\btik ?tok\b/, /\bsocial\b|\btwitter\b|\bfacebook\b|\binstagram\b|\btik ?tok\b/],
   [/\bother\b/, /\bother\b/],
@@ -267,6 +271,18 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile): Questi
       const other = opts.filter((o) => /^other\b/.test(qn(o)));
       return other.length === 1 ? answer(other[0], "source:stated-other") : null;
     }
+    // A job site stated and none of the list's matching ones unique: only a
+    // job-board option may take it, never the company's own site ("Job
+    // board" got "Affirm’s Career Site", question bank 2026-10-05). Several
+    // named boards and no general one: the applicant picks which.
+    const general = opts.filter((o) => !/\b(university|campus|school|college|internal)\b/.test(qn(o)));
+    for (const re of [SOURCE_PREFERENCE[0], SOURCE_PREFERENCE[2], SOURCE_PREFERENCE[4]]) {
+      const hits = general.filter((o) => re.test(qn(o)));
+      if (hits.length === 1) return answer(hits[0], "source:stated-board");
+      const unbranded = hits.filter((o) => !NAMED_SOURCE.test(qn(o)));
+      if (hits.length > 1 && unbranded.length === 1) return answer(unbranded[0], "source:stated-board");
+    }
+    return null;
   }
   // No stated channel: never a campus one, even as the only careers-site
   // option ("Campus Career Site", Enova on Greenhouse, a real profile

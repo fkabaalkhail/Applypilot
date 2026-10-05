@@ -160,7 +160,8 @@ export function countryNamedIn(raw: string): { code: string } | "this-country" |
 }
 
 /** "…in the country that you are located?" (Netlify): the applicant's own country. */
-const RESIDENCE_COUNTRY = /\b(the )?country (that |where |in which )?you (are |currently )*(located|living|reside|live|based)\b|\byour (current )?country of residence\b/;
+const RESIDENCE_COUNTRY =
+  /\b(the )?country (that |where |in which )?you (are |currently )*(located|living|reside|live|based)\b|\byour (current )?country of residence\b|\b(remain|stay) in your current (location|country)\b|\bwhere you (currently )?(live|reside)\b/;
 
 function targetCountry(q: QuestionInput, ctx: QuestionContext, facts?: ProfileFacts): string | null {
   const named = countryNamedIn(q.label);
@@ -252,6 +253,12 @@ function resolveH1bHistory(q: QuestionInput, n: string, profile: UserApplication
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
   const h1b = resolveH1bHistory(q, n, profile);
   if (h1b) return h1b;
+  // A notice to acknowledge, its only option "Yes" or "I acknowledge" ("…By
+  // submitting an application, I acknowledge that I have read and understand
+  // the E-verify notice", Riot Games; question bank 2026-10-05): no work
+  // right is asked. The acknowledgement defaults take it.
+  const only = (q.options ?? []).filter((o) => o.trim());
+  if (only.length === 1 && /\b(i acknowledge|i have read|i understand|acknowledge that)\b/.test(n)) return null;
   // The label says what Yes means: "By selecting 'Yes,' you confirm that you
   // do not require Visa Sponsorship" (Peloton, question bank 2026-10-05: every
   // applicant got the inverse). That statement is what gets answered.
@@ -381,8 +388,11 @@ function resolveAuthorizationStatement(q: QuestionInput, facts: ProfileFacts, co
   const s = needsSponsorshipIn(facts.workAuth, country, residence);
   // An option's own Yes or No answers the work right: "Yes, but I will need
   // sponsorship in the future" claims it (Datadog, question bank 2026-10-05:
-  // written for an applicant with no US work right at all).
-  const fitsRight = (o: Opt) => !isHigh(a) || o.pol === null || o.pol === a.value;
+  // written for an applicant with no US work right at all). Only a leading
+  // Yes or No: "I require … sponsorship" reads affirmative, and says the
+  // opposite of authorized (Lyft).
+  const yn = (o: Opt): boolean | null => (/^(yes|no)\b/.test(o.n) ? o.pol : null);
+  const fitsRight = (o: Opt) => !isHigh(a) || yn(o) === null || yn(o) === a.value;
   // A need the applicant STATED decides, whatever the work right (a student
   // visa's is unclear); one only inferred from "not authorized" does not, and
   // the literal answer is then "not authorized".
@@ -393,12 +403,17 @@ function resolveAuthorizationStatement(q: QuestionInput, facts: ProfileFacts, co
   }
   if (!isHigh(a)) return null;
   if (a.value === false) {
-    const pick = one(notAuthorized) ?? one((o) => o.pol === false && requires(o));
+    const pick =
+      one(notAuthorized) ??
+      one((o) => yn(o) !== true && requires(o)) ??
+      // A bare "No" beside statements of the right ("Yes, I am a Canadian
+      // citizen…", "Yes, I have a valid permit", Coveo).
+      one((o) => o.pol === false && !requires(o));
     return pick ? answer(pick, "work-auth-statement:not-authorized") : null;
   }
   if (!isHigh(s)) return null;
   if (s.value === true) {
-    const pick = one((o) => o.pol !== false && requires(o));
+    const pick = one((o) => yn(o) !== false && requires(o));
     return pick ? answer(pick, "work-auth-statement:needs-sponsorship") : null;
   }
   const pick =
@@ -1387,7 +1402,7 @@ function resolveRelocationChoice(q: QuestionInput, n: string, profile: UserAppli
  * permanent resident of the US picks theirs; anything else stays blank.
  */
 const US_STATUS_OPTION = /\b(u ?s citizen|citizen of the united states|national of the united states|u ?s national|lawful permanent resident|permanent resident of the u|green card|refugee|asylee|daca|u ?s person|foreign person)\b/;
-function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts): QuestionResult {
+function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
   const opts = (q.options ?? []).filter((o) => o.trim());
   if (opts.filter((o) => US_STATUS_OPTION.test(qnorm(o))).length < 2) return null;
   const us = facts.workAuth.byCountry.get("US");
@@ -1395,7 +1410,15 @@ function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts): QuestionR
     const hits = opts.filter((o) => re.test(qnorm(o)));
     return hits.length === 1 ? answer(hits[0], "us-person-status") : abstain("us-person-status:no-matching-option");
   };
-  if (us?.authorized === false) return pick(/^(\(?[a-z]\)?\s+)?other\b|\bnone of the above\b|\bforeign person\b|\bnot a u ?s person\b/);
+  const NONE = /^(\(?[a-z]\)?\s+)?other\b|\bnone of the above\b|\bforeign person\b|\bnot a u ?s person\b/;
+  if (us?.authorized === false) return pick(NONE);
+  // A temporary visa (H-1B, F-1 and its OPT, TN…) makes no one a U.S. person:
+  // the H-1B and OPT holders abstained (Astranis, SpaceX; question bank
+  // 2026-10-05). A statement naming any U.S.-person status keeps it theirs.
+  const stated = (profile.workAuthorization || "").toLowerCase();
+  if (/\b(h-?1 ?b|h-?4|l-?1|e-?3|o-?1|tn|f-?1|j-?1|m-?1|opt|cpt|visa)\b/.test(stated) && !/\b(citizen|national|permanent resident|green card|refugee|asylee|asylum|daca)\b/.test(stated)) {
+    return pick(NONE);
+  }
   if (us?.basis === "citizen") return pick(/\bu ?s citizen\b|\bcitizen (or national )?of the united states\b|^u ?s person\b/);
   if (us?.basis === "permanent_resident") return pick(/\blawful permanent resident\b|\bgreen card\b/);
   return abstain("us-person-status:unknown");
@@ -1485,7 +1508,7 @@ function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: 
   const history = resolveEmploymentHistoryChoice(q, n, raw, facts);
   if (history) return history;
   const shape =
-    /\b(current|former|past|previous|prior)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b/.test(n);
+    /\b(current|former|past|previous|prior)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b|\b(provided|done|performed|did) (any )?(contract |consulting |freelance )?(work|services) for\b/.test(n);
   if (!shape) return null;
   if (/\b(relative|family|friend|spouse|referr|government|federal|military|public sector)\b/.test(n)) return null;
   // The company: a capitalized name in the question ("…employee of ActioNet",
@@ -1595,7 +1618,9 @@ function resolveAvailability(q: QuestionInput, n: string, facts: ProfileFacts): 
     if (!isHigh(av.earliestStart)) return abstain("start-date:unknown");
     return answer(formatDateFor(av.earliestStart.value, q), "start-date");
   }
-  if (/\bnotice( period)?\b/.test(n) && !isBooleanQuestion(q)) {
+  // A notice PERIOD, not any notice: "…I have read and understand the
+  // E-verify notice" (Riot Games, question bank 2026-10-05) asked nothing.
+  if (/\bnotice period\b|\b(how much|what) notice\b|\bnotice (do|would|will) you\b|\bnotice (required|to give)\b|\b(your|current|required|giving) notice\b|^notice$/.test(n) && !isBooleanQuestion(q)) {
     if (!av.noticeText) return abstain("notice:unknown");
     if (q.options && q.options.length) {
       const hit = pickOption(q.options, av.noticeText);
@@ -1908,7 +1933,7 @@ export function resolveQuestion(
   const resolved =
     resolveRelocationInstruction(q, raw, facts, profile, ctx) ??
     resolveWorkAuthorization(q, n, facts, profile, ctx) ??
-    resolveUsPersonStatus(q, facts) ??
+    resolveUsPersonStatus(q, facts, profile) ??
     resolveLaterResidency(q, n, facts) ??
     resolveCitizenship(q, n, facts, ctx) ??
     resolveAge(q, n, facts) ??
