@@ -434,7 +434,7 @@ async function pollForMatch(
     //
     // A remote typeahead (Greenhouse's school search, Workday's skills search)
     // renders nothing until it has a response, and shows a "Loading…" notice
-    // that is not a [role="option"] — so `key` stays empty across the whole
+    // that is not a [role="option"], so `key` stays empty across the whole
     // round trip. Both of the exits below used to fire on that empty list: the
     // stability counter three polls after it emptied, and the reaction window
     // 800ms after typing when it had been empty all along. Either one ends the

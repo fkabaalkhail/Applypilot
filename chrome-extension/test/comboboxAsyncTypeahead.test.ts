@@ -35,7 +35,7 @@ const SCHOOLS = ["University of Ottawa", "University of Toronto", "McGill Univer
  * `openWith: []` is the faithful default for a server-side search: the menu
  * mounts EMPTY, because the widget has nothing to show until you type. Passing
  * options renders them on open, which models a widget that ships a default list
- * and then re-filters remotely — the two shapes exit the poll loop by different
+ * and then re-filters remotely: the two shapes exit the poll loop by different
  * routes (reaction window vs stability counter), so both are worth covering.
  */
 function remoteTypeahead(
@@ -121,7 +121,7 @@ function remoteTypeahead(
 
 // With an injected sleep these are poll COUNTS, not real time: 2000/10 = 200
 // polls of budget. The budget has to exceed the engine's reaction window, which
-// is capped at 800ms (80 polls here) — with a smaller budget the two coincide
+// is capped at 800ms (80 polls here); with a smaller budget the two coincide
 // and a premature exit is indistinguishable from the hard timeout.
 const opts = (sleep: () => Promise<void>) => ({
   sleep, openWaitMs: 2000, commitWaitMs: 400, pollMs: 10,

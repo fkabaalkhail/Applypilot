@@ -384,10 +384,20 @@ export default [
       "label:*Last name": "Lin",
       "label:*Email": "mei.lin@example.edu",
       "label:Phone": "408-555-0172",
-      "label:*School": "San José State University",
-      "label:Field of study (Optional)": "Software Engineering",
-      "label:Degree (Optional)": "Bachelor of Science in Software Engineering",
-      "label:End date (Optional)SVGs not supported by this browser.": null,
+      // The posting dropped its Education section after round 3 (2026-10-05).
+      "label:*School": { ifPresent: "San José State University" },
+      "label:Field of study (Optional)": { ifPresent: "Software Engineering" },
+      "label:Degree (Optional)": { ifPresent: "Bachelor of Science in Software Engineering" },
+      "label:End date (Optional)SVGs not supported by this browser.": { ifPresent: null },
+      // Its questions since: years of relevant experience, the attention check
+      // ("please choose option C"), open to relocation. The hidden inputs
+      // hold the chosen option's id.
+      "#input_CA_43442_input": "0-2 years",
+      "name=CA_43442": "441022",
+      "#input_CA_43445_input": "C",
+      "name=CA_43445": "441035",
+      "#input_CA_48127_input": "Yes",
+      "name=CA_48127": "494547",
     },
   }),
   live({
