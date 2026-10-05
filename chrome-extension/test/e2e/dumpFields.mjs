@@ -146,6 +146,18 @@ export function dumpFieldsInPage() {
       };
       const t = clean(el.textContent) || clean(flat(el));
       if (t && !/^(select( one)?|choose|please select|select\.\.\.|select…)$/i.test(t)) return t;
+      // An empty trigger beside the element showing the choice (Duolingo's
+      // careers site: <span>Yes</span><button aria-haspopup="listbox">).
+      const wrap = el.parentElement;
+      if (!t && wrap && wrap.querySelectorAll('[aria-haspopup="listbox"], [role="combobox"]').length === 1) {
+        const beside = clean(
+          Array.from(wrap.children)
+            .filter((c) => c !== el && !c.matches('[role="listbox"], [role="option"], svg, button, input, [aria-hidden="true"]'))
+            .map((c) => c.textContent || "")
+            .join(" ")
+        );
+        if (beside && !/^(select( one)?|choose|please select|select\.\.\.|select…|[-–—.…\s]+)$/i.test(beside)) return beside;
+      }
     }
     // A div combobox that is its own display (react-widgets' DropdownList on
     // Paylocity): its text, when closed, is the choice ("--" is none).

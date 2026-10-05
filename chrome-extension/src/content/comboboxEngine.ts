@@ -732,6 +732,7 @@ export function readComboboxValue(trigger: HTMLElement): string | undefined {
     activeDescendantText(trigger),
     ...valueContainerTexts(trigger),
     ownText && !isPlaceholderFiller(ownText) ? ownText : "",
+    siblingDisplayText(trigger),
   ];
   for (const c of candidates) {
     const v = cleanText(c);
@@ -801,6 +802,27 @@ const VALUE_DISPLAY_SELECTOR =
  *  > single-value + input-container > input), so `closest('[class*=select]')`,
  *  which stops at the innermost `select__input-container`: can never see it.
  *  Climb a few ancestors and query at each level until something shows. */
+/**
+ * A trigger button that shows nothing itself, beside the element showing the
+ * choice: Duolingo's careers site renders `<span>Yes</span><button
+ * aria-haspopup="listbox">` (live 2026-10-05). Read through the button alone,
+ * every pick there was reported "didn't stick", 13 of them on one page. The
+ * text of the button's own wrapper, without the button, a list or an icon;
+ * "" for a placeholder.
+ */
+function siblingDisplayText(trigger: HTMLElement): string {
+  if (trigger.tagName !== "BUTTON" || cleanText(trigger.textContent) || trigger.getAttribute("aria-haspopup") !== "listbox") return "";
+  const wrap = trigger.parentElement;
+  if (!wrap || wrap.querySelectorAll('[aria-haspopup="listbox"], [role="combobox"]').length > 1) return "";
+  const parts: string[] = [];
+  for (const child of Array.from(wrap.children)) {
+    if (child === trigger || child.matches('[role="listbox"], [role="option"], svg, button, input, [aria-hidden="true"]')) continue;
+    parts.push(cleanText(child.textContent));
+  }
+  const text = cleanText(parts.join(" "));
+  return text && !isPlaceholderFiller(text) && !/^[-–—.…\s]+$/.test(text) ? text : "";
+}
+
 function valueContainerTexts(trigger: HTMLElement): string[] {
   let node: HTMLElement | null = trigger.parentElement;
   for (let hops = 0; node && node !== node.ownerDocument.body && hops < 6; hops++, node = node.parentElement) {
@@ -846,6 +868,8 @@ function comboboxShowsValue(trigger: HTMLElement, value: string, selfTyped?: str
   const active = activeDescendantText(trigger);
   if (active) candidates.push(active);
   candidates.push(...valueContainerTexts(trigger));
+  const beside = siblingDisplayText(trigger);
+  if (beside) candidates.push(beside);
   return candidates.some((c) => textMatches(c, value));
 }
 

@@ -171,6 +171,51 @@ describe("Greenhouse batch 2 and the question bank: what a scan proposes (2026-1
   });
 });
 
+describe("Duolingo's careers site (live 2026-10-05)", () => {
+  /** Its select: the choice shown in a span beside an empty listbox button. */
+  const widget = (shown: string) =>
+    `<div role="group" id="g"><div><div class="FUCuR"><span class="GfJwj">${shown}</span><button aria-controls="web-ui11" aria-haspopup="listbox" type="button" id="b"></button></div></div></div>`;
+
+  it("reads the choice shown beside the trigger, so a pick that took is no 'didn't stick'", async () => {
+    // 13 fields on one page were reported "Selection didn't stick" while the
+    // page showed every answer.
+    const { readComboboxValue } = await import("../src/content/comboboxEngine");
+    document.body.innerHTML = widget("Yes");
+    expect(readComboboxValue(document.getElementById("b") as HTMLElement)).toBe("Yes");
+    document.body.innerHTML = widget("Select...");
+    expect(readComboboxValue(document.getElementById("b") as HTMLElement)).toBeUndefined();
+    document.body.innerHTML = "";
+  });
+
+  it("'After the OPT, are you eligible for a 24-month OPT extension…?' is no residence question", async () => {
+    // "…or are currently in a 24-month OPT extension based upon a degree from a
+    // qualifying U.S. institution" read as "are you in the US?": a US citizen got Yes.
+    const { resolveQuestion } = await import("../src/content/questionResolver");
+    const { profileFacts } = await import("../src/content/profileFacts");
+    const { BOOTCAMP_CAREER_GAP, US_OPT_ANALYST } = await import("./e2e/profiles.mjs");
+    const label = "After the OPT, are you eligible for a 24-month OPT extension or are currently in a 24-month OPT extension based upon a degree from a qualifying U.S. institution in Science, Technology, Engineering, or Mathematics after the Optional Practical Training (OPT)?*";
+    const ask = (p: object) => resolveQuestion({ label, controlType: "combobox", options: ["Yes", "No"], category: "school", kind: "boolean" }, profileFacts(p as never), p as never, { jobCountry: "US", company: "Duolingo" });
+    expect(ask(BOOTCAMP_CAREER_GAP)).toMatchObject({ status: "answer", value: "No" });
+    expect(ask(US_OPT_ANALYST)).toMatchObject({ status: "answer", value: "Yes" });
+  });
+});
+
+describe("a second email the profile does not have stays blank (Duolingo, live 2026-10-05)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+  it("'Alternate Email' is not the email again", async () => {
+    const { COMPLETE_CANADIAN } = await import("./e2e/profiles.mjs");
+    document.body.innerHTML = `<form><div class="field"><label for="e1">Email*</label><input type="email" id="e1"></div><div class="field"><label for="e2">Alternate Email</label><input type="email" id="e2"></div></form>`;
+    const fields = scanPage(COMPLETE_CANADIAN as never, true).fields;
+    const alt = fields.find((f) => fieldEl(f.id)?.id === "e2");
+    const main = fields.find((f) => fieldEl(f.id)?.id === "e1");
+    expect(main?.proposedValue).toBe("maya.tremblay@example.com");
+    expect(alt?.proposedValue ?? null).toBeNull();
+    document.body.innerHTML = "";
+  });
+});
+
 /** The element a scanned field was registered on. */
 function fieldEl(id: string): HTMLElement | null {
   return document.querySelector(`[data-ap-field="${id}"]`);

@@ -250,9 +250,29 @@ function resolveH1bHistory(q: QuestionInput, n: string, profile: UserApplication
   return booleanResult(false, q, "default:no-h1b-history");
 }
 
+/**
+ * "After the OPT, are you eligible for a 24-month OPT extension or are
+ * currently in a 24-month OPT extension based upon a degree … in Science,
+ * Technology, Engineering, or Mathematics?" (Duolingo, live 2026-10-05: a US
+ * citizen got Yes, read as "are you in the US?"). A stated STEM OPT: Yes. A
+ * statement naming no U.S. student status (a citizen, an H-1B): No. Plain
+ * OPT, or F-1: the applicant's to answer.
+ */
+function resolveOptExtension(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
+  if (!/\b(stem )?opt extension\b|\b24 month opt\b|\bstem opt\b/.test(n)) return null;
+  if (!isBooleanQuestion(q)) return abstain("opt-extension:not-yes-no");
+  const stated = (profile.workAuthorization || "").toLowerCase();
+  if (/\bstem opt\b/.test(stated)) return booleanResult(true, q, "opt-extension:stated");
+  if (/\b(f-?1|opt|cpt|student visa|j-?1)\b/.test(stated)) return abstain("opt-extension:unknown");
+  if (!stated.trim()) return abstain("opt-extension:unknown");
+  return booleanResult(false, q, "opt-extension:no-student-status");
+}
+
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
   const h1b = resolveH1bHistory(q, n, profile);
   if (h1b) return h1b;
+  const opt = resolveOptExtension(q, n, profile);
+  if (opt) return opt;
   // A notice to acknowledge, its only option "Yes" or "I acknowledge" ("…By
   // submitting an application, I acknowledge that I have read and understand
   // the E-verify notice", Riot Games; question bank 2026-10-05): no work
@@ -502,7 +522,10 @@ function resolveCitizenship(q: QuestionInput, n: string, facts: ProfileFacts, ct
 
 // ----- Residence ------------------------------------------------------------
 
-const RESIDE = /\b(live|living|reside|residing|resident|located|based|currently in|located within|within commuting distance)\b/;
+// "…or are currently in a 24-month OPT extension based upon a degree from a
+// qualifying U.S. institution" is no residence (Duolingo, live 2026-10-05:
+// answered Yes as "are you in the US?"): never "in a/an" something.
+const RESIDE = /\b(live|living|reside|residing|resident|located|based|currently in(?! an? )|located within|within commuting distance)\b/;
 
 const METRO_ALIASES: Record<string, string> = { nyc: "new york", gta: "toronto", "bay area": "san francisco", sf: "san francisco" };
 
@@ -540,7 +563,7 @@ function placeIn(label: string): { kind: "country"; code: string } | { kind: "re
  *  office; reading it as residence answered a commute question (Lever, live
  *  2026-10-03). */
 const APPLICANT_RESIDES =
-  /\b(do|are|have|did) you\b[^?]{0,60}?\b(live|living|reside|residing|located|based|resident|currently in)\b|\bare you (a |an )?(current )?resident\b|\byour (current )?(location|residence|city of residence|place of residence)\b|\bwhere (do|are) you\b/;
+  /\b(do|are|have|did) you\b[^?]{0,60}?\b(live|living|reside|residing|located|based|resident|currently in(?! an? ))\b|\bare you (a |an )?(current )?resident\b|\byour (current )?(location|residence|city of residence|place of residence)\b|\bwhere (do|are) you\b/;
 
 function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
   if (!RESIDE.test(n) || !APPLICANT_RESIDES.test(n) || !isBooleanQuestion(q)) return null;

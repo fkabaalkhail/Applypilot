@@ -378,6 +378,11 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   if (source === "category" && (category === "fullName" || category === "firstName" || category === "lastName") && /\bif (it is |its )?different\b/i.test(label)) {
     return none(true, "name:if-different");
   }
+  // "Alternate Email" (Duolingo, live 2026-10-05) got the email again: the
+  // profile holds one email and one phone.
+  if (source === "category" && (category === "email" || category === "phone") && /\b(alternate|alternative|secondary|additional|backup|second|other)\b/i.test(label)) {
+    return none(true, "contact:no-second");
+  }
   // Address Line 2 is the unit ("app. 3" of "4520 rue Saint-Denis, app. 3"),
   // never a copy of line 1 (Pinpoint got "1 Washington Sq" twice, live
   // 2026-10-03). No unit: blank, and nothing for the AI to invent.
