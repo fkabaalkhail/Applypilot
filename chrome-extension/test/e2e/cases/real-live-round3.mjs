@@ -170,6 +170,8 @@ export default [
       // The page keeps "+1" in the box; that is the code, not a number (round 4).
       "#input-candidate.phone-5": "+1 514 555 0186",
       "name=candidate.agreements.0.consent": "checked",
+      // The page's own language switcher, mounted late on some runs.
+      "#display-language": { ifPresent: { re: "^" } },
     },
   }),
   live({
@@ -194,6 +196,10 @@ export default [
       "radio=application_form[application][answers_attributes][11][boolean_answer]": "No",
       "radio=application_form[application][answers_attributes][18][boolean_answer]": "No",
       "label:(Required) Allow us to process your personal information.": "checked",
+      // The federal-employment disclosure, read by what it asks since round 4:
+      // no federal employer in her history (a select and its text twin).
+      "#application_form_application_answers_attributes_7_text_answer": "No, I have not been employed by the federal government.",
+      "#application_form_application_answers_attributes_7_mobile_select": "No, I have not been employed by the federal government.",
     },
   }),
   live({
@@ -398,6 +404,9 @@ export default [
       "name=CA_43445": "441035",
       "#input_CA_48127_input": "Yes",
       "name=CA_48127": "494547",
+      // Workable fills Address from the visitor's location: the page's guess,
+      // never ours, and never written down here.
+      "#address": { ifPresent: { re: "^" } },
     },
   }),
   live({

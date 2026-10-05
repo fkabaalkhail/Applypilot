@@ -19,7 +19,7 @@ not change any Vercel setting.
 **Release 0.5.0, ready to upload (I did not upload it).** The Store still
 serves 0.4.0 from July 15 (3 users), and every real fill in prod telemetry
 since then ran on it. `chrome-extension/tailrd-extension-0.5.0.zip`, built
-from commit 585c0fd (221 KB; checked: 8 files, no dev URLs, no key). What to do, the release notes and two listing lines that
+from commit 31a4371 after everything in section 8 (231 KB; checked: 8 files, no dev URLs, no key). What to do, the release notes and two listing lines that
 are now out of date are in `docs/store-submission.md` ("Release 0.5.0").
 
 **Real fills since 2026-10-04:** none in prod `autofill_reports`. The last
@@ -198,6 +198,270 @@ react-select driver, Workday churn.
 - Airbnb's career site (no form found) and AlayaCare (its Apply button times
   out in the harness).
 - SmartRecruiters past the first page (DataDome, not allowed to bypass).
+
+## 8. After the report: batches 3 and 4, four question banks (2026-10-05, early morning)
+
+**Batch 3, the families seen least** (13 postings from prod `scraped_jobs`,
+7 personas). Blind run first, then fixes, then two more live runs.
+
+| family | page | reached the form? | wrong values (blind) | now |
+| --- | --- | --- | --- | --- |
+| Rippling | 4AG Robotics (Berlin persona) | yes | phone: "493012345678" under the page's "+44" | "+49 DE" and "3012345678" |
+| Recruitee | Huawei Canada | no: the form is in a hidden "Apply" tab, and three of its answers were filled unseen | 0 | opens the tab; name, email, phone |
+| Paylocity | Choice Solutions | no: the email check is a POST | 0 | opens (the email check let through, nothing else); 21 fields right; State stays blank (below) |
+| Jobvite | ACPM (French page) | no: "Poser sa candidature" | 0 | opens; 6 fields, all right |
+| Dayforce | Eclipse | no: Apply's aria-label names the job; then a guest chooser | 0 | opens as a guest; 21 fields right after the fixes: Country, State and both dial codes were set but read as failed, How did you hear and Current Job were never seen |
+| BambooHR | NextHop | yes | 0 | 11 fields, all right |
+| CareerPuck (Greenhouse) | Domino | yes | 0 | 16 fields, all right |
+| Breezy | Ninja Holdings | yes | 0 | 6 fields; the Chicago hybrid question now answered |
+| Pinpoint | Franklin Electric | yes | 0 | 16 fields, all right |
+
+Not cases (each stops before any field): ADP (sign-in), Avature (account
+creation), Eightfold (only a job-alert signup on the posting), Acuity's
+SuccessFactors (a menu leading to an SAP sign-in).
+
+**Question banks 2 and 3**: 79 and then 74 more Greenhouse postings (bank 3
+from boards our users saw that no bank had yet), 6 personas, about 9,000
+answers more. Read the same way as bank 1; all banks re-run after every fix
+and every changed answer read.
+
+**Question bank 4: Workable.** Workable's public form endpoint serves every
+posting's custom questions, so 89 postings from the 31 Workable accounts in
+prod `scraped_jobs` (821 questions) were answered for the same six
+personas and every answer read. It found the worst answers of the night:
+three adults saying they were under 18, a first-person "I am authorized and
+will not need sponsorship" answered backwards for everyone, a gender
+identity typed into an EEO policy's name box, and a certification declined
+for anyone who declines to state a disability. About 30 wrong answers, each
+fixed with a failing test first (`test/bankWorkable.test.ts`).
+
+**Batch 4: the bank's pages, live.** 11 of those Workable postings, each with
+the persona that got a question wrong, run blind on the build with the
+fixes, every write read: each fix it touched held on the real widgets. One
+wrong value was written (No into Credence's at-will notice, "Initial to
+agree."), and the live runs found two bugs the bank could not: every
+Workable Yes/No question was reported "No option matches" beside the
+native twin that filled it, and Saalex's tab froze (below). All three
+fixed, then pinned: 11 pages, 279 checks.
+
+### Wrong answers fixed (after the report)
+
+| page | question | wrote | now |
+| --- | --- | --- | --- |
+| Rippling (live) | phone, beside a dial-code picker preset to +44 | 493012345678 under +44 | +49 DE, 3012345678 |
+| Paylocity (live) | how did you hear (stated "Company website") | Other, "Company website" typed in its box | the company's own "Choice Website" (the company name is read now) |
+| K2 Space | relocation to Los Angeles (no applicant lives there) | "I live in the greater Los Angeles area" | "Yes, I'm willing to relocate" / "No, I'm unable to relocate" |
+| Anduril | "If you are not local to Colorado…" (Berlin, Bengaluru) | local | not local |
+| Accenture Federal | how did you hear (stated "Referral") | Former Employee | Connection in the Company |
+| Datacor | authorized to work in "the location you currently reside" (Canadian, German, Indian at home) | No (and sponsorship Yes) | Yes (No) |
+| Datacor, DV Trading, RF Smart | the university you are currently enrolled in / attend (graduates) | their old school | blank |
+| Datacor | "what degree you are currently pursuing, with majors" | the major (graduates too) | the degree in progress; graduates blank |
+| DoorDash | "at least 1 internship or relevant full-time experience?" (staff engineers) | No | Yes |
+| DoorDash, Klaviyo | GPA 8.6/10 against a 4.0 list | 3.75+ / 4+ | blank |
+| DV Trading | Undergrad Discipline(s) (master's holders) | the master's field | the bachelor's field |
+| Cloudflare | "a student in F-1 status planning CPT/OPT?" (Canadian citizen) | Yes | No (and an OPT holder: Yes) |
+| Cloudflare, Together AI, DV Trading, Astranis | in-office at "our Austin office", "our San Francisco office", "our Chicago office", "San Francisco HQ" (Seattle, Denver; will not move) | Yes | No |
+| Giftogram | "US Citizen or Green Card Holder that can work onsite in Whippany NJ" (Denver citizen, will not move) | Yes | No |
+| Covar, GitAI, STR, Tenet3, Varda | US citizen? (F-1 OPT) | blank | No |
+| DV Trading | expected graduation (June 2026 graduate) | August 2026 - December 2026 | I've already graduated |
+| SharkNinja | Which college did you attend? (long list) | blank | the school, matched by its own words (Turing, IIT Madras, TU Munich stay blank: not listed) |
+| Asana, Intercom | citizen of Cuba, Iran, North Korea or Syria? ("U.S. export control laws" in the label; US citizen) | Yes | No |
+| Airtable, Everlaw, MyFundedFutures, Terraclear | permanent / unrestricted US work authorization (H-1B, OPT) | Yes | No |
+| Warp | permanent authorization "in the U.S. or Canada" (Canadian citizen) | No | Yes |
+| Warp | "will you be based in the U.S. or Canada?" (Seattle, Denver; will not move) | No | Yes |
+| Elastic | "In what countries do you have the unrestricted right to work?" | the status statement | the countries |
+| Airtable | "How are you using AI today in your current role?" | the job title | blank |
+| Sysk Hennessy | "Did anyone in refer you to this position?" (text) | the job title | blank |
+| Hootsuite, Hudl, Wikimedia, Recidiviz | SaaS sales experience, experience in sport, in product marketing | the whole work history | blank |
+| CircleCI | "Are you located in…?", "Are your salary expectations within the band?" (text) | the city, the salary | blank |
+| Starburst, Doximity | which US state you will work from (Bengaluru) | Indiana | blank |
+| AssemblyAI | "hybrid in NYC, 2 days per week" (Seattle, will not move) | Yes | No |
+| Vestmark | "come into the Wakefield, MA office five days" (Seattle, Denver; will not move) | Yes | No |
+| Flipp | how did you first hear (stated LinkedIn) | a recruiter reached out | Job board |
+| Geotab | how did you hear (stated LinkedIn) | Handshake | blank |
+| Samsara, Faire | how did you hear (stated LinkedIn) | an alumni group / an online ad | LinkedIn Jobs / Job posting on LinkedIn |
+| CTC | "highest degree level you are currently pursuing" (graduates) | their old degree | blank (the student: Bachelor's) |
+| NISC | "most recently completed form of education" (a student) | Bachelor's Degree | blank (graduates: Master's) |
+| Renaissance | "If you were referred…, what is the employee's full name?" (referred) | the applicant's own name | blank |
+| LaunchDarkly, Blue Moon, Coinbase | referred by an employee? (stated "Referral") | No | Yes |
+| Clearway, NISC | salary list in dollars (stated in euros) | $120,000 / 111-120k | blank |
+| A Thinking Ape | "desired salary (CAD$)" (stated in USD or EUR) | the other currency | blank |
+| Hudl | "What is your preferred office location?" | the home city | blank |
+| New Relic (Tokyo) | sponsorship "(e.g. U.S. F-1, H-1B…)" (US citizen) | No (read as a US question) | blank |
+| Palantir (regression) | university, Imperial College London | Other - School Not Listed | Imperial College London - ICL |
+| Anduril, Planet, MongoDB (regression) | how did you hear (stated "Company website") | Other / blank | the company's own careers site |
+| Dayforce (live) | Country, State/Province, both dial codes | set, then reported "Selection didn't stick" | read from what the select shows |
+| Workable: Saalex, Credence (bank 4, live) | "Are you at least 18…? (If no, you may be required to provide authorization to work)" (Canadian, German, Indian adults) | No | Yes |
+| Workable: DISA (bank 4, live) | "I am legally authorized to work in the United States and will not require visa sponsorship now or in the future." | Yes for everyone who needs sponsorship, No for the citizen | Yes for the citizen only |
+| Workable: OnLogic (bank 4, live) | able to work in the US without employment visa sponsorship, now / in the future (H-1B; OPT) | Yes / Yes | H-1B No / No; OPT Yes / No |
+| Workable: Credence (bank 4, live) | "authorized to work in the U.S. as a U.S. citizen…?" (H-1B, OPT) | Yes | No |
+| Workable: Open Data Jobs (bank 4) | "Check every country of which you are a citizen." (H-1B, OPT, living in the US) | United States of America | blank (a German, an Indian: Other) |
+| Workable: Flourish Research (bank 4, live) | EEO policy ending "To acknowledge, please enter your full name below." | Cisgender / Transgender | the name |
+| Workable: SSCI (bank 4, live) | certification, Accept or Decline (applicants who decline to state a disability) | Decline | Accept |
+| Workable: Credence (bank 4, live) | certification "…Initials to agree"; an at-will notice "…Initial to agree." | the current employer; No | blank |
+| Workable: Saalex (bank 4, live) | "I affirm that I have not entered into any non-competition, non-disclosure… agreement" | No | blank |
+| Workable: Credence, Avalore (bank 4) | a bachelor's degree minimum (a student, a bootcamp graduate) | Yes | No |
+| Workable: Saalex (bank 4, live) | "Do you have a HS Diploma or GED?" (a university student) | No | Yes |
+| Workable: RentVision (bank 4, live) | "At which university will you be enrolled for the Fall 2027 semester?" (graduates; a student finishing in April 2027) | their school | blank |
+| Workable: Open Data Jobs (bank 4, live) | undergraduate major and institution (master's holders) | the master's | the bachelor's |
+| Workable: Saalex (bank 4, live) | "Highschool Name & Location:", "Supervisor Name & Title:" | the city they live in; their own title | blank |
+| Workable: Saalex, JeffreyM, Smartflower (bank 4, live) | years doing one thing (Windows Server administration, owning customer implementations, servicing industrial equipment) | the career total (Yes, 15) | blank (No when the whole dated career is shorter) |
+| Workable: Saalex (bank 4) | "experience managing program risks… cost, schedule…" | Yes for everyone | blank |
+| Workable: Financeit (bank 4, live) | "comfortable commuting to our office 2-3x a week in Downtown Toronto?" (Seattle, Denver; will not move) | Yes | No |
+| Workable: RentVision (bank 4, live) | relocate to Lincoln "(Please check YES if you already live in the Lincoln, NE area.)" (willing to move) | No | Yes |
+| Workable: Credence (bank 4, live) | "currently meet the worksite location requirements" (a job in Korea, from Toronto) | Yes | No |
+| Workable: Mindex, Financeit, Enfos (bank 4) | salary in a number box (stated "€120.000") | 120 | 120000 |
+| Workable: United Placement Group (bank 4) | "How would you rate your closing skills?"; a link to "a project you built with an LLM API" | the skills list; the GitHub profile | blank |
+| Workable (live) | every Yes/No question | filled, and reported "No option matches" beside it | reported once, filled |
+| Workable: Saalex (live) | the whole page | the tab froze: choosing the State after the date boxes were typed sent Workable's form into an endless re-render (a US applicant on the previous build too) | date boxes typed last; the page finishes in about 23 s |
+| Gas South (Greenhouse bank 2) | ADA statement: "Please select Yes to confirm that you have read this statement" | the disability answer | blank |
+| Podium, UASI (Greenhouse bank 2) | years providing product support, analyzing data (a data engineer, a bootcamp graduate) | the career total | blank |
+| Lodestar Space (Greenhouse bank 3) | "Do you consent to Lodestar Space requesting information regarding citizenship…?" | No for non-citizens | blank |
+
+### Blanks now answered (after the report)
+
+- Apply buttons: by what they show (Dayforce's reads "Apply", its aria-label
+  names the job), in French ("Poser sa candidature", "Candidater"), and the
+  guest path beside a sign-in ("Apply without an Account").
+- Phones: a dial-code picker is set to the number's own country; a box the
+  page starts with "+1" is filled; a virtualized list (7 of 245 options
+  rendered) is no longer read as the whole list; a filter that answers after
+  a half-second debounce is waited for.
+- Paylocity: its company name (read from the page).
+- Rippling's Location (Google Places): a place search waits up to 4 s.
+- "Have you worked with us before?", "Are you graduating in Spring 2027?",
+  "Which college did you attend?", "…currently attending / did you graduate
+  from?".
+- Dayforce: its selects without a search box (How did you hear: LinkedIN),
+  and Current Job ticked for the job still running.
+- Workable bank: a LinkedIn or GitHub link asked for at length in a text
+  area; "eligibility to work", "eligible to be employed", "file a petition
+  … for employment-based status"; "Are you a U.S. person?"; French
+  "Résidez-vous…" and "autorisés à occuper un emploi"; "Are you currently
+  employed?"; "an internal employee of X"; "Latest/Most Recent Employer";
+  "current degree program or highest level"; a clearance list's "I currently
+  do not have an active security clearance"; an attention check ("please
+  choose option C"); the state you will live and work in (US residents).
+- An EU, EEA or Swiss citizen asked about another such country (Austria,
+  France, Norway, Denmark): Yes, no sponsorship.
+
+### Decisions (after the report)
+
+11. A phone's dial-code picker takes the country of the number's own code
+    (+44 is the United Kingdom wherever you live); the box beside it gets the
+    national number. A picker or box showing only a code is the page's
+    preset, so it is replaced.
+12. "A student in F-1 status planning CPT/OPT?" is a visa question: Yes for
+    F-1/OPT/CPT stated, No for any other status stated.
+13. "Relevant full-time experience" counts technical titles; non-technical
+    ones leave it to you.
+14. A GPA on another scale than the form's is left blank (no conversion).
+15. The guest path ("Apply without an Account") is always taken over signing
+    in; no account is ever created.
+16. A legal-status Yes in a question that also requires in-person work
+    somewhere you will not move to becomes No.
+17. A how/why or yes/no question in a text box never gets a fact its words
+    mention (title, city, school, salary); experience of one kind never gets
+    the whole work history.
+18. "Permanent" or "unrestricted" work authorization is a citizen's or
+    permanent resident's; a question naming two countries joined by "or"
+    counts either.
+19. A stated referral answers "referred by an employee?" Yes; who referred
+    you is always left to you (the AI is kept out of it too).
+20. A salary written in a currency is never put in a list, or a box, that
+    asks for another currency.
+21. A sanctioned-countries question is read for the countries it lists,
+    never for "U.S. export control laws" around them.
+22. An EU, EEA or Swiss citizen is authorized to work in every other such
+    country and needs no sponsorship there (freedom of movement). The UK is
+    not one of them.
+23. A long statement (40 words or more) is read by what it asks: its
+    questions, its requests ("Please indicate…"), its last sentence that is
+    not a note, and a short title before a dash. What it merely mentions
+    (gender identity, disability, a criminal check, an employer) never
+    decides the field. A lone "I Agree" still acknowledges the whole text.
+24. Experience narrowed by an activity ("performing X", "owning Y") is
+    never the career total; when the dated career is shorter than the
+    years asked, the answer is No.
+25. An attention check that names its option ("choose option C") is
+    answered as it says.
+26. Another country's list of states or provinces, without the applicant's
+    own, is left blank and kept from the AI.
+27. An affirmation of a negative ("I affirm that I have not entered into any
+    non-compete or NDA") is left to you, never defaulted: most people have
+    signed an NDA.
+28. A Dayforce work start date stays blank when the profile knows only the
+    month (unchanged since 2026-10-03: no invented day).
+
+### Regression (after the report)
+
+Every pinned page, three times, 13 per batch, headful:
+
+- **Regression 1** (build of 4bb117b, 166 pages): 154 passed as scored. Of
+  the 12 others, 5 passed when re-run on the next build (MongoDB, Palantir,
+  Planet and Anduril with bank 3's company and school fixes; one Workable
+  page); 5 answered more than their pins and were re-pinned after each
+  answer was read (Rippling's phone code on two pages, Recruitee's "+1"
+  box, Breezy's hybrid question, Paylocity's company question); Databricks'
+  OneTrust cookie boxes became page-owned (they mount late with the page's
+  own defaults; the scanner never touches them); Bosch sat behind a
+  Cloudflare challenge.
+- **Regression 2** (build of 4bc02f1, 166 pages): 161 passed. ServiceNow sat behind a
+  Cloudflare challenge (like Bosch); the other four (Ashby's second school
+  search, Databricks' school, CareerPuck's late form, Lever's location
+  typeahead) passed when re-run alone on the next build.
+- **Regression 3** (build of 31a4371, 177 pages with batch 4): 169 passed
+  as scored. Pinpoint IDT now answers its federal-employment disclosure
+  (No; read by what it asks) and two page-owned values appeared (Recruitee's
+  language switcher, DISA's address that Workable fills from the visitor's
+  location): read, then pinned. Astranis' Discipline and Rippling 4AG's
+  Google Places location passed re-run alone. Open: Bosch (Cloudflare),
+  BambooHR Armstrong (its form never loaded, twice), Ashby Superhuman's
+  second school (below).
+
+### Needs you / not verified (after the report)
+
+- **The harness browser takes this machine's locale**: Pinpoint presets
+  Country to Canada and Rippling its phone code to +44 for every persona.
+  With a US locale Pinpoint presets the US. Real users get their own; the
+  extension never overwrites a country already shown.
+- Recruitee and Breezy stop at the résumé upload, BambooHR, CareerPuck and
+  Jobvite at a captcha: the fields before them are verified, the steps after
+  are not.
+- **Workable's frozen tab (Saalex).** Paused in the debugger, the loop is
+  Workable's own date-format code, re-rendering after the State changed
+  with dates already typed. We now type dates last and the page finishes
+  (both personas, live). Not verified: whether a person who changes the
+  State themselves after the dates are filled freezes it too (a plain
+  browser test was blocked by the page's overlays). If a user reports a
+  frozen Workable tab, this is the first suspect.
+- **Paylocity's own State select stays "Select a state" live.** Its menu
+  never opens for us (the unit replica fills; the live widget does not). A
+  plain browser could not open it either: a page modal and the cookie
+  banner sit over it. It needs a session with the modal closed.
+- **Paylocity's "How did you hear" is chosen, and still reported "No option
+  matches".** The radios carry plain labels; the cause is not found. The
+  page is right; the panel's count of fields needing attention is one too
+  many there.
+- **Dayforce**: Preferred Contact Method goes to the AI; the required work
+  Start Dates stay blank (decision 28); Not Completed and Duties go to the
+  AI.
+- **Workable fills its Address from the visitor's location** (this
+  machine's own city, for every persona) and the extension never overwrites a value
+  already there: a real user gets their own city, someone applying from
+  elsewhere gets the page's guess. Flourish's Zip box shows the "10119" we
+  type as "10,119" (the page's formatting).
+- DISA's posting dropped its Education section since it was pinned; its
+  education pins now apply only when the section is there.
+- **Ashby Superhuman's second school row**: Ashby re-mounts the row while
+  the first school is chosen, and the second reports "Field no longer
+  found" (regressions 2 and 3, and alone on the final build; it filled on
+  the 07:13 build). Timing on Ashby's side; a rescan-and-retry of a stale
+  row would fix it. Not done tonight.
+- **BambooHR Armstrong** never showed its form in regression 3 or alone:
+  the posting may have closed. Check before re-pinning.
+- ServiceNow and Bosch on SmartRecruiters are behind Cloudflare challenges
+  that need a POST; live runs block them, so they are not verified.
 
 # One Autofill click to the end of a Workday application (2026-10-04, night)
 
