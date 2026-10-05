@@ -74,6 +74,12 @@ function extractCompany(doc: Document): string {
   if (og && og.trim()) return og.trim().slice(0, 120);
   const ld = jsonLdCompany(doc);
   if (ld) return ld.slice(0, 120);
+  // Greenhouse's board pages and embeds name the company only in the title,
+  // "Job Application for <role> at <Company>" (Anduril, Planet, MongoDB's
+  // embed; regression 2026-10-05: unknown, their own careers-site option was
+  // no longer theirs).
+  const titled = /^\s*job application for .+ at (.+?)\s*$/i.exec(doc.title || "");
+  if (titled) return titled[1].slice(0, 120);
   // A name the page keeps for its header, shown or not (Paylocity's
   // #LayoutLogoName, hidden beside its logo, live 2026-10-05).
   const kept = (doc.querySelector('[id*="companyname" i], [id*="logoname" i], [class*="company-name" i], [class*="companyname" i]')?.textContent ?? "")

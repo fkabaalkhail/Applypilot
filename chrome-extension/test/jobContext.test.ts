@@ -43,6 +43,15 @@ describe("extractJobContext", () => {
     expect(extractJobContext(document).company).toBe("Choice Solutions LLC");
   });
 
+  // Greenhouse's board pages and embeds name the company only in the title
+  // (regression 2026-10-05: unknown, "Anduril Website" was no longer the
+  // company's own site and "Other" was chosen).
+  it("reads Greenhouse's 'Job Application for <role> at <Company>' title", () => {
+    document.title = "Job Application for Software Engineer, Battlespace Awareness at Anduril Industries";
+    document.body.innerHTML = `<h1>Software Engineer, Battlespace Awareness</h1>`;
+    expect(extractJobContext(document).company).toBe("Anduril Industries");
+  });
+
   it("reads the posting's hiring organization from its JSON-LD", () => {
     document.head.innerHTML = `<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting","title":"DevOps Intern","hiringOrganization":{"@type":"Organization","name":"Choice Solutions"}}</script>`;
     document.body.innerHTML = `<h1>DevOps Intern</h1>`;
