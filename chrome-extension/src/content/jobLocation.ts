@@ -216,7 +216,32 @@ function elementPlaces(doc: Document): JobPlace[] {
     }
     if (out.length) break;
   }
-  return out.length > 0 ? out : labelledPlaces(doc);
+  if (out.length > 0) return out;
+  const labelled = labelledPlaces(doc);
+  return labelled.length > 0 ? labelled : titlePlaces(doc);
+}
+
+/** The line right after the job title, when every part of it is a place:
+ *  "Bellevue, Washington; Mountain View, California; San Francisco,
+ *  California" (Databricks' career site, live 2026-10-05). Its own text
+ *  only, not the Apply button inside it. */
+function titlePlaces(doc: Document): JobPlace[] {
+  const h1 = doc.querySelector("h1");
+  if (!h1 || h1.closest("form")) return [];
+  let line = h1.nextElementSibling;
+  for (let i = 0; i < 2 && line; i++, line = line.nextElementSibling) {
+    const own = Array.from(line.childNodes)
+      .filter((c) => c.nodeType === Node.TEXT_NODE)
+      .map((c) => c.textContent ?? "")
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim() || (line.children.length === 0 ? (line.textContent ?? "").trim() : "");
+    if (!own || own.length > 200) continue;
+    const parts = own.split(/\s*[;|•·]\s*/).filter(Boolean);
+    const places = parts.map(placeOfText);
+    if (places.length > 0 && places.every((p) => p !== null)) return places as JobPlace[];
+  }
+  return [];
 }
 
 const LOCATION_TERM = /^(job |work |office )?locations?\s*:?$/i;

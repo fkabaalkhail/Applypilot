@@ -146,3 +146,17 @@ describe("a career site's 'Location' label and its value (Epic Games, live 2026-
     document.body.innerHTML = "";
   });
 });
+
+describe("the places under the job title (Databricks' career site, live 2026-10-05)", () => {
+  it("'Bellevue, Washington; Mountain View, California; San Francisco, California' after the h1 is a US job", () => {
+    // Unread, an India-based applicant's work-right and sponsorship questions
+    // stayed blank.
+    document.head.innerHTML = "";
+    document.body.innerHTML = `<section data-cy="Hero"><div><h1><span>Product Management Intern (Summer 2027)</span></h1><div>Bellevue, Washington; Mountain View, California; San Francisco, California<p><button type="button">Apply now</button></p></div></div></section><main><p>P-982</p><p>At Databricks, we are passionate…</p></main>`;
+    expect(detectJobCountry(document)).toBe("US");
+    // A subtitle that is no place names nothing.
+    document.body.innerHTML = `<h1>Engineer</h1><div>Platform team, full time</div>`;
+    expect(detectJobCountry(document)).toBeNull();
+    document.body.innerHTML = "";
+  });
+});
