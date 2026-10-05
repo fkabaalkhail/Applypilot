@@ -604,6 +604,9 @@ export const DEGREE_TIERS: Array<{ rank: number; label: string; re: RegExp }> = 
 ];
 
 export function degreeRank(text: string): number | null {
+  // A "High School Diploma" is a high school, not a college diploma (Epic
+  // Games' Degree, live 2026-10-05).
+  if (/\b(high school|secondary school)\b/i.test(text || "") && !DEGREE_TIERS.some((t) => t.rank >= 3 && t.re.test(text))) return 1;
   for (const t of DEGREE_TIERS) if (t.re.test(text || "")) return t.rank;
   return null;
 }

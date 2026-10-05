@@ -220,11 +220,54 @@ const CONSTRAINED: ReadonlySet<ControlType> = new Set<ControlType>(["select", "r
 
 const pick = (options: string[], value: string): string | null => matchOption(options, (o) => o, (o) => o, value);
 
+/** Words every school name shares: never what tells two schools apart. */
+const SCHOOL_GENERIC = new Set(["university", "universities", "universite", "universitat", "universidad", "universita", "universiteit", "college", "school", "institute", "institution", "academy", "campus", "of", "the", "and", "at", "in", "for", "de", "del", "la", "le", "du", "des", "da", "di"]);
+
+const schoolWords = (s: string): Set<string> =>
+  new Set(
+    (s || "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, " ")
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w && !SCHOOL_GENERIC.has(w))
+  );
+
+/**
+ * A school chosen by its OWN words, the ones left once "School", "University",
+ * "of" are set aside: "Turing School of Software & Design" chose "Parsons
+ * School of Design" by the words every school shares (Squarespace, question
+ * bank 2026-10-05). One name's words must hold all of the other's; among
+ * several, the one with exactly the same words ("University of Washington",
+ * not "… - Bothell"). None: blank, never a neighbour.
+ */
+function snapSchool(options: string[], value: string): string | null {
+  // The same text twice is one school (Lever's list carries "University of
+  // Waterloo" under two values).
+  const exact = options.filter((o) => o.trim().toLowerCase() === value.trim().toLowerCase());
+  if (exact.length > 0) return exact[0];
+  const want = schoolWords(value);
+  if (want.size === 0) return null;
+  const fits = options.filter((o) => {
+    const has = schoolWords(o);
+    if (has.size === 0) return false;
+    return [...want].every((w) => has.has(w)) || [...has].every((w) => want.has(w));
+  });
+  if (fits.length === 1) return fits[0];
+  const same = fits.filter((o) => {
+    const has = schoolWords(o);
+    return has.size === want.size && [...want].every((w) => has.has(w));
+  });
+  return same.length > 0 && same.every((o) => o.trim() === same[0].trim()) ? same[0] : null;
+}
+
 /**
  * Snap `value` onto one of `options`, strictly. Country names get their
  * spelling variants first ("Canada" ↔ "CA", "USA" ↔ "United States of America").
  */
 export function snapToOption(options: string[], value: string, category: FieldCategory): string | null {
+  if (category === "school") return snapSchool(options, value);
   const direct = pick(options, value);
   if (direct) return direct;
   if (category === "country" || category === "phoneCountryCode") {
@@ -377,6 +420,16 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   // 2026-10-05): the profile has one name, so it is never different.
   if (source === "category" && (category === "fullName" || category === "firstName" || category === "lastName") && /\bif (it is |its )?different\b/i.test(label)) {
     return none(true, "name:if-different");
+  }
+  // "Secondary Major" (Jane Street, question bank 2026-10-05) got the major:
+  // the profile names one field of study.
+  if (source === "category" && category === "fieldOfStudy" && (/\b(secondary|second|double|dual|additional) (major|field|concentration)\b/i.test(label) || (/\bminors?\b/i.test(label) && !/\bmajor\b/i.test(label)))) {
+    return none(true, "major:no-second");
+  }
+  // "University Email Address" (Jane Street, question bank 2026-10-05) got
+  // the personal one: only an academic address is a university email.
+  if (source === "category" && category === "email" && /\b(university|school|student|college|academic|campus|\.edu)\b[^?]{0,20}\be-?mail\b/i.test(label) && !/@[^@\s]+\.(edu|ac\.[a-z]{2,3}|edu\.[a-z]{2})$/i.test((value ?? "").trim())) {
+    return none(true, "email:not-academic");
   }
   // "Alternate Email" (Duolingo, live 2026-10-05) got the email again: the
   // profile holds one email and one phone.

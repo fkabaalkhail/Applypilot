@@ -650,3 +650,32 @@ describe("high school questions are not the university's (Palantir on Lever, liv
     expect(rule(ask("Do you have a high school diploma or GED?", { options: YES_NO }))).not.toBe("high-school:not-in-profile");
   });
 });
+
+describe("question bank 2026-10-05: education", () => {
+  const P = () => import("./e2e/profiles.mjs") as Promise<Record<string, UserApplicationProfile>>;
+  const US_JOB = { jobCountry: "US" as string | null, company: "Acme" };
+
+  it("Samsara: 'enrolled in a 4-year Bachelor's program or have graduated within the past 2 years'", async () => {
+    const { INDIA_NEW_GRAD, COMPLETE_CANADIAN, US_OPT_ANALYST, US_H1B_SENIOR, BERLIN_STAFF } = await P();
+    const q = "Are you currently enrolled in an accredited 4-year Bachelor's degree program or have graduated within the past 2 years?";
+    // A June 2026 B.Tech graduate said No: the graduation half was never read.
+    expect(value(ask(q, { options: YES_NO }, INDIA_NEW_GRAD, US_JOB))).toBe("Yes");
+    expect(value(ask(q, { options: YES_NO }, COMPLETE_CANADIAN, US_JOB))).toBe("Yes");
+    expect(value(ask(q, { options: YES_NO }, US_OPT_ANALYST, US_JOB))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, US_H1B_SENIOR, US_JOB))).toBe("No");
+    // A German Diplom (no level we rank) finished long before the window.
+    expect(value(ask(q, { options: YES_NO }, BERLIN_STAFF, US_JOB))).toBe("No");
+  });
+
+  it("an undergraduate GPA or degree result is the profile's GPA only when its degree is the bachelor's (Duolingo, Canonical)", async () => {
+    const { COMPLETE_CANADIAN, US_OPT_ANALYST, INDIA_NEW_GRAD } = await P();
+    // The OPT holder's 3.85 is her master's: written as her undergraduate GPA.
+    expect(value(ask("Undergraduate GPA", { kind: "text" }, US_OPT_ANALYST, US_JOB))).toBe("abstain");
+    expect(value(ask("Undergraduate GPA", { kind: "text" }, COMPLETE_CANADIAN, US_JOB))).toBe("3.7/4.0");
+    expect(value(ask("Undergraduate GPA", { kind: "text" }, INDIA_NEW_GRAD, US_JOB))).toBe("8.6/10");
+    // "…degree result…include the grading system" got "University of Waterloo, Bachelor of…".
+    const result = "What was your bachelor's university degree result, or expected result if you have not yet graduated? Please include the grading system to help us understand your result.";
+    expect(value(ask(result, { kind: "longText" }, COMPLETE_CANADIAN, US_JOB))).toBe("3.7/4.0");
+    expect(value(ask(result, { kind: "longText" }, US_OPT_ANALYST, US_JOB))).toBe("abstain");
+  });
+});

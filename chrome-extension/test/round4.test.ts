@@ -368,3 +368,49 @@ describe("a high school diploma is a high school (Epic Games' Degree, live 2026-
     expect(snapToOption(epic, deriveDegreeLevel("High School Diploma")!, "degree")).toBe("High School / Secondary Education");
   });
 });
+
+describe("education fields answered from the wrong fact (question bank 2026-10-05)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+
+  const select = (id: string, label: string, options: string[]) =>
+    `<div class="field"><label for="${id}">${label}</label><select id="${id}"><option value="">Select...</option>${options.map((o, i) => `<option value="${i}">${o}</option>`).join("")}</select></div>`;
+  const text = (id: string, label: string) => `<div class="field"><label for="${id}">${label}</label><input type="text" id="${id}"></div>`;
+
+  it("Secondary Major, a university email, and when the degree ends are not the major, the email and the degree's name", async () => {
+    const { COMPLETE_CANADIAN, US_H1B_SENIOR } = await import("./e2e/profiles.mjs");
+    document.body.innerHTML = `<form>
+      ${select("sm", "Secondary Major", ["Computer Science", "Engineering", "Information Systems", "Mathematics"])}
+      ${text("ue", "University Email Address")}
+      ${text("wd", "When do you expect to complete your degree?")}
+    </form>`;
+    const value = (p: unknown, id: string) => {
+      const { fields } = scanPage(p as never, true);
+      return fields.find((f) => fieldEl(f.id)?.id === id)?.proposedValue ?? null;
+    };
+    // Jane Street: "Engineering" and "Information Systems" as the SECOND major.
+    expect(value(COMPLETE_CANADIAN, "sm")).toBeNull();
+    expect(value(US_H1B_SENIOR, "sm")).toBeNull();
+    // Jane Street: the personal email as the university one.
+    expect(value(COMPLETE_CANADIAN, "ue")).toBeNull();
+    // Stripe: "Bachelor of Applied Science in Mechatronics Engineering" as a date.
+    expect(value(COMPLETE_CANADIAN, "wd")).toBe("April 2027");
+    expect(value(US_H1B_SENIOR, "wd")).toBeNull();
+    document.body.innerHTML = "";
+  });
+
+  it("a school list picks the school by its own name, never another sharing its generic words (Squarespace)", async () => {
+    // "Turing School of Software & Design" chose "Parsons School of Design":
+    // "school", "of" and "design" are every school's words.
+    const { BOOTCAMP_CAREER_GAP, US_H1B_SENIOR } = await import("./e2e/profiles.mjs");
+    const label = "School - Please select your most recently attended school from this list or select the option “My School is not listed” or “I did not attend college.”";
+    const options = ["**My school is not listed", "**I did not attend college", "Parsons School of Design", "Rhode Island School of Design", "University of Washington", "University of Washington - Bothell", "Washington State University"];
+    document.body.innerHTML = `<form>${select("sc", label, options)}</form>`;
+    const value = (p: unknown) => scanPage(p as never, true).fields.find((f) => fieldEl(f.id)?.id === "sc")?.proposedValue ?? null;
+    // Whether it is listed under another name is not ours to say: blank.
+    expect(value(BOOTCAMP_CAREER_GAP)).toBeNull();
+    expect(value(US_H1B_SENIOR)).toBe("University of Washington");
+    document.body.innerHTML = "";
+  });
+});

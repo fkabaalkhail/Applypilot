@@ -986,6 +986,26 @@ function resolveEnrollment(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   // more than enrollment, leave it.
   if (/\b(institution|university|college|school) (in|of|located)\b|\bpost secondary institution\b|\bduring\b|\bafter\b|\bthrough\b|\buntil\b/.test(n)) return abstain("enrollment:qualified");
   const e = facts.education.currentlyEnrolled;
+  // "…enrolled in an accredited 4-year Bachelor's degree program or have
+  // graduated within the past 2 years?" (Samsara, question bank 2026-10-05:
+  // a June 2026 graduate said No): enrolled at that level, or finished it
+  // that recently.
+  const within = /\bor (have |has )?(graduated|completed)( \w+){0,3} (with)?in the (past|last) (\d+|one|two|three|four|five) (years?|months?)\b/.exec(n);
+  if (within) {
+    const count = /^\d+$/.test(within[6]) ? Number(within[6]) : ["one", "two", "three", "four", "five"].indexOf(within[6]) + 1;
+    const since = new Date(facts.today.getTime());
+    since.setUTCMonth(since.getUTCMonth() - (/month/.test(within[7]) ? count : count * 12));
+    const asked = degreeLevelAsked(n);
+    const fits = (x: { rank: number | null }) => asked === null || x.rank === asked;
+    const entries = facts.education.entries;
+    if (entries.some((x) => x.completed === false && fits(x))) return booleanResult(true, q, "enrollment:or-graduated-within");
+    if (entries.some((x) => x.completed === true && fits(x) && x.graduation && x.graduation.latest >= since)) return booleanResult(true, q, "enrollment:or-graduated-within");
+    // Every degree finished before the window, or at another level we can name.
+    if (entries.length > 0 && entries.every((x) => x.completed === true && x.graduation && (x.graduation.latest < since || (x.rank !== null && !fits(x))))) {
+      return booleanResult(false, q, "enrollment:or-graduated-within");
+    }
+    return abstain("enrollment:unknown");
+  }
   // "…enrolled in a PhD program…?" asks about THAT level (Neighbor on Lever,
   // live 2026-10-03: "Yes" for a bachelor's student).
   const level = degreeLevelAsked(n);
@@ -1111,8 +1131,22 @@ function resolveSchoolMembership(q: QuestionInput, n: string, facts: ProfileFact
 }
 
 function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
-  if (!/\bgraduat(e|ed|ion|ing)\b/.test(n) || !/\b(year|date|when|month|term|semester|expected|anticipated)\b/.test(n)) return null;
+  // "When do you expect to complete your degree?" (Stripe, question bank
+  // 2026-10-05) got the degree's name: it asks when it ends.
+  const completes = /\bwhen\b[^?]*\b(complete|completing|finish|finishing)\b[^?]*\b(degree|program|programme|studies|education)\b/.test(n);
+  if (!completes && (!/\bgraduat(e|ed|ion|ing)\b/.test(n) || !/\b(year|date|when|month|term|semester|expected|anticipated)\b/.test(n))) return null;
   if (q.kind === "boolean") return null;
+  if (completes && !q.options?.length && q.kind !== "date") {
+    const p = facts.education.primary;
+    if (!p?.graduation) return abstain("graduation:unknown");
+    if (p.completed === true && /\bexpect|\bwill\b/.test(n)) return abstain("graduation:not-enrolled");
+    const g = p.graduation;
+    const y = String(g.earliest.getUTCFullYear());
+    return answer(g.precision === "year" ? y : `${g.earliest.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${y}`, "graduation:completion");
+  }
+  // "…degree result, or expected result if you have not yet graduated?"
+  // (Canonical, question bank 2026-10-05) asks for a grade: resolveGpa's.
+  if (/\b(degree|university|academic|final|expected) (result|results|grade|grades|classification)\b/.test(n)) return null;
   const primary = facts.education.primary;
   const g = primary?.graduation;
   if (!g) return abstain("graduation:unknown");
@@ -1202,7 +1236,10 @@ export function optionMonthSpan(option: string): [number, number] | null {
 /** "GPA", "Cumulative GPA", "Grade point average": the applicant's stated GPA;
  *  a graduate / doctorate GPA they cannot have is that list's "N/A". */
 function resolveGpa(q: QuestionInput, n: string, profile: UserApplicationProfile, facts: ProfileFacts): QuestionResult {
-  if (!/\b(gpa|cgpa|grade point average|cumulative average)\b/.test(n)) return null;
+  // "What was your bachelor's university degree result…? Please include the
+  // grading system" (Canonical, question bank 2026-10-05) is the GPA too.
+  const result = /\b(degree|university|academic|final) (result|results|grade|grades|classification)\b|\bexpected result\b/.test(n);
+  if (!/\b(gpa|cgpa|grade point average|cumulative average)\b/.test(n) && !result) return null;
   if (/\b(scale|out of|maximum|max)\b/.test(n) && !/\byour\b/.test(n)) return null;
   const higher = /\b(graduate|masters?|doctorate|doctoral|phd|mba)\b/.test(n) && !/\bundergraduate\b/.test(n);
   const rank = facts.education.highestRank?.value ?? null;
@@ -1210,6 +1247,11 @@ function resolveGpa(q: QuestionInput, n: string, profile: UserApplicationProfile
     const na = (q.options ?? []).filter((o) => /^(n a|na|none|i do not have|no graduate)\b|\bnot applicable\b/.test(qnorm(o)));
     return na.length === 1 ? answer(na[0], "gpa:not-applicable") : abstain("gpa:no-graduate-degree");
   }
+  // The profile holds one GPA, the main degree's: an undergraduate GPA asked
+  // of someone whose main degree is a master's is not it (Duolingo, question
+  // bank 2026-10-05: an OPT holder's master's 3.85 as her undergraduate GPA).
+  const primaryRank = facts.education.primary ? degreeRank(facts.education.primary.degree) : null;
+  if (/\b(undergraduate|undergrad|bachelor s|bachelors|bachelor|first degree)\b/.test(n) && primaryRank !== null && primaryRank >= 5) return abstain("gpa:graduate-degree-gpa");
   const stated = (profile.gpa ?? "").trim();
   if (!stated) return abstain("gpa:unknown");
   const num = /\d+(\.\d+)?/.exec(stated)?.[0] ?? null;
@@ -1492,6 +1534,9 @@ function resolveRelocationInstruction(q: QuestionInput, raw: string, facts: Prof
  */
 function resolveEducationSummary(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   if (q.kind !== "text" && q.kind !== "longText") return null;
+  // A degree's RESULT is a grade, not the school and degree (Canonical,
+  // question bank 2026-10-05): resolveGpa's.
+  if (/\b(result|results|grade|grades|classification|gpa)\b/.test(n)) return null;
   const asksSchool = /\b(school|university|college|institution)\b/.test(n);
   const asksProgram = /\b(program|programme|faculty|degree|major|field of study|discipline)\b/.test(n);
   // The graduation DATE, not the verb: "What school are you currently attending
