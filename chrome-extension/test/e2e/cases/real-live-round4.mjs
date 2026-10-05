@@ -12,7 +12,7 @@
  * Waymo's own site renders each label with a hash that changes on every load
  * ("First Name (required) a2f147a2"): pinned by the label before it.
  */
-import { COMPLETE_CANADIAN } from "../profiles.mjs";
+import { BERLIN_STAFF, BOOTCAMP_CAREER_GAP, COMPLETE_CANADIAN, INDIA_NEW_GRAD, US_H1B_SENIOR, US_OPT_ANALYST } from "../profiles.mjs";
 
 const live = (c) => ({ mode: "live", trigger: { fillTimeoutMs: 180000 }, expect: {}, ...c });
 
@@ -137,4 +137,21 @@ export default [
       "label:Do you require Visa sponsorship?": "Select answerYes",
     },
   }),
+
+  // ---------------------------------- batch 1: SmartRecruiters, new people
+  // SmartRecruiters had 155 live postings in prod and two cases (one behind
+  // DataDome on this machine). Its one-click form, opened directly.
+  live({ id: "r4a-sr-citysf", ats: "smartrecruiters", profile: US_H1B_SENIOR, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/CityAndCountyOfSanFrancisco1/publication/561ac7c2-45ee-4963-b795-eff748c72891?dcr_ci=CityAndCountyOfSanFrancisco1" }),
+  live({ id: "r4a-sr-eversana", ats: "smartrecruiters", profile: BOOTCAMP_CAREER_GAP, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/EVERSANA1/publication/c72e43d8-e37d-4233-bb39-f2b394d6aea4?dcr_ci=EVERSANA1" }),
+  live({ id: "r4a-sr-gdms-devops", ats: "smartrecruiters", profile: INDIA_NEW_GRAD, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/GDMSI/publication/00a80e7e-8885-4d56-bcf5-850a9f1fe32c?dcr_ci=GDMSI" }),
+  live({ id: "r4a-sr-gdms-swe", ats: "smartrecruiters", profile: BERLIN_STAFF, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/GDMSI/publication/f1bc5065-8ef4-443c-99c0-f2b132115e4a?dcr_ci=GDMSI" }),
+  live({ id: "r4a-sr-rtx", ats: "smartrecruiters", profile: US_OPT_ANALYST, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/RaytheonTechnologies/publication/d3d7a785-5a8d-4f11-8cbb-8dbf43b60c69?dcr_ci=RaytheonTechnologies" }),
+  live({ id: "r4a-sr-resultant", ats: "smartrecruiters", profile: INDIA_NEW_GRAD, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/Resultant/publication/40d8f066-9f6f-436d-a458-223b09b77c4d?dcr_ci=Resultant" }),
+  live({ id: "r4a-sr-sbt", ats: "smartrecruiters", profile: US_OPT_ANALYST, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/SBTGlobalInc/publication/7e5a69d6-3dc3-41be-9f8f-c50fbe914dff?dcr_ci=SBTGlobalInc" }),
+  live({ id: "r4a-sr-sosi", ats: "smartrecruiters", profile: BOOTCAMP_CAREER_GAP, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/SOSi1/publication/20d59ff9-6d62-497c-99b3-5273596a0d8d?dcr_ci=SOSi1" }),
+  live({ id: "r4a-sr-veolia", ats: "smartrecruiters", profile: BERLIN_STAFF, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/VeoliaEnvironnementSA/publication/bc95e909-65ec-45af-91ca-54a99990664b?dcr_ci=VeoliaEnvironnementSA" }),
+  live({ id: "r4a-jazz-dig", ats: "jazzhr", profile: US_H1B_SENIOR, url: "https://funeraldirectorslifeinsurancecompany.applytojob.com/apply/tllnE4Dmtz/Data-Analyst-ABILENE-TX" }),
+  live({ id: "r4a-breezy-qblock", ats: "breezy", profile: INDIA_NEW_GRAD, url: "https://q-block-computing.breezy.hr/p/6d13d3d6cc7e-embedded-systems-developer-intern/apply" }),
+  live({ id: "r4a-wk-palona", ats: "workable", profile: US_H1B_SENIOR, url: "https://apply.workable.com/palona/j/7B3B722546/apply/" }),
+  live({ id: "r4a-wk-consumeraffairs", ats: "workable", profile: BOOTCAMP_CAREER_GAP, url: "https://apply.workable.com/consumeraffairs-1/j/0544C1F4F8/apply/" }),
 ];
