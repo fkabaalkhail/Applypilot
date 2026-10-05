@@ -271,6 +271,35 @@ describe("Greenhouse batch 2, live 2026-10-05: Accenture Federal, Gemini, DoorDa
     expect(value(ask(now, { options: YES_NO }, h1b, US))).toBe("Yes");
   });
 
+  it("DoorDash's whole label names STEM OPT as sponsorship: a STEM OPT holder needs it now, a plain OPT holder later", () => {
+    // Live 2026-10-05, the label past the 78 characters a review shows. "STEM
+    // OPT" here is an example of sponsorship, not a question about the OPT
+    // extension (that rule answered both, and left a plain OPT holder blank).
+    const eg = " to attain or maintain your employment eligibility (e.g., H-1B, E-3, TN, O-1, STEM OPT, or any immigration work authorization requiring a written submission from the company to a government agency)?*";
+    const now = "Will you now require immigration sponsorship by our company" + eg;
+    const later = "Will you in the future require immigration sponsorship by our company" + eg;
+    const plain = { ...opt, workAuthorization: "F-1 OPT (EAD valid through June 2027)" };
+    const stem = ask(now, { options: YES_NO }, opt, US);
+    expect(value(stem)).toBe("Yes");
+    expect(stem && stem.status === "answer" ? stem.rule : "").toMatch(/^sponsorship/);
+    expect(value(ask(later, { options: YES_NO }, opt, US))).toBe("Yes");
+    expect(value(ask(now, { options: YES_NO }, plain, US))).toBe("No");
+    expect(value(ask(later, { options: YES_NO }, plain, US))).toBe("Yes");
+    expect(value(ask(now, { options: YES_NO }, h1b, US))).toBe("Yes");
+  });
+
+  it("GitLab: 'Yes, <visa>' options: the applicant's own visa, else the Yes saying it is not listed", () => {
+    const q = "Will you now or in the future require sponsorship for a visa to remain in your current location?*";
+    const opts = ["No", "Yes, Netherlands Highly Skilled Migrant Visa", "Yes, Ireland Highly Skilled Worker Visa", "Yes, EU Blue Card", "Yes, USMCA Professional (TN) Visa (USA)", "Yes, F-1 Visa OPT (USA)", "Yes, but not one of the visas listed here"];
+    const o = { options: opts, kind: "choice" as const, controlType: "combobox" as const };
+    const ctx = { jobCountry: "US", company: "GitLab" };
+    expect(value(ask(q, o, h1b, ctx))).toBe("Yes, but not one of the visas listed here");
+    expect(value(ask(q, o, opt, ctx))).toBe("Yes, F-1 Visa OPT (USA)");
+    expect(value(ask(q, o, citizen as never, ctx))).toBe("No");
+    // A need with no visa stated: which Yes is unknown.
+    expect(value(ask(q, o, { ...h1b, workAuthorization: "" }, ctx))).toBe("abstain");
+  });
+
   it("GitLab: post-employment restrictions are the non-compete question", () => {
     expect(value(ask("Are you subject to any employment agreements and/or post-employment restrictions that could affect your ability to work at GitLab?*", { options: YES_NO }, h1b, US))).toBe("No");
   });

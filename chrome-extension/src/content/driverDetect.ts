@@ -36,6 +36,23 @@ function isReactSelect(el: HTMLElement): boolean {
   return false;
 }
 
+/**
+ * react-select before v5: given an inputId it stamps no generated ids, and its
+ * input carries no role=combobox, only aria-autocomplete="list" (Epic Games'
+ * Greenhouse form, live 2026-10-05: typed into as text, the phone country was
+ * wiped on blur). Its emotion class names carry the component names instead:
+ * a "css-<hash>-container" holding a "-control" and an "-indicatorContainer",
+ * all three together specific to the library.
+ */
+export function isLegacyReactSelect(el: HTMLElement): boolean {
+  let node: HTMLElement | null = el.parentElement;
+  for (let i = 0; i < 6 && node; i++, node = node.parentElement) {
+    if (!/(^|\s)css-[a-z0-9]+-container(\s|$)/.test(node.getAttribute("class") ?? "")) continue;
+    return node.querySelector('[class*="-control"]') !== null && node.querySelector('[class*="-indicatorContainer"]') !== null;
+  }
+  return false;
+}
+
 function isWorkdayWidget(el: HTMLElement): boolean {
   return Boolean(el.closest("[data-automation-id]"));
 }
@@ -45,6 +62,6 @@ export function detectFillDriver(
   hostname: string = location.hostname
 ): FillDriver | null {
   if (WORKDAY_HOST.test(hostname) && isWorkdayWidget(el)) return "workday";
-  if (isReactSelect(el)) return "react-select";
+  if (isReactSelect(el) || isLegacyReactSelect(el)) return "react-select";
   return null;
 }

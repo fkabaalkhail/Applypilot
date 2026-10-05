@@ -260,12 +260,48 @@ function resolveH1bHistory(q: QuestionInput, n: string, profile: UserApplication
  */
 function resolveOptExtension(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
   if (!/\b(stem )?opt extension\b|\b24 month opt\b|\bstem opt\b/.test(n)) return null;
+  // "Will you require sponsorship (e.g., H-1B, E-3, TN, O-1, STEM OPT…)?"
+  // (DoorDash, live 2026-10-05): STEM OPT is an example there, and the
+  // question is the sponsorship one.
+  if (REQUIRES_SPONSOR.test(n)) return null;
   if (!isBooleanQuestion(q)) return abstain("opt-extension:not-yes-no");
   const stated = (profile.workAuthorization || "").toLowerCase();
   if (/\bstem opt\b/.test(stated)) return booleanResult(true, q, "opt-extension:stated");
   if (/\b(f-?1|opt|cpt|student visa|j-?1)\b/.test(stated)) return abstain("opt-extension:unknown");
   if (!stated.trim()) return abstain("opt-extension:unknown");
   return booleanResult(false, q, "opt-extension:no-student-status");
+}
+
+/** Visa names: as the applicant states them, and as an option names them. */
+const VISA_NAMES: [RegExp, RegExp][] = [
+  [/\bh-?1 ?b\b/, /\bh-?1 ?b\b/],
+  [/\btn\b/, /\b(tn|usmca|nafta)\b/],
+  [/\b(stem )?opt\b|\bf-?1\b/, /\bopt\b|\bf-?1\b/],
+  [/\bcpt\b/, /\bcpt\b/],
+  [/\bl-?1\b/, /\bl-?1\b/],
+  [/\be-?3\b/, /\be-?3\b/],
+  [/\bo-?1\b/, /\bo-?1\b/],
+  [/\bj-?1\b/, /\bj-?1\b/],
+  [/\bblue card\b/, /\bblue card\b/],
+];
+
+/**
+ * "Yes, <visa>" options under a sponsorship question ("No | Yes, EU Blue Card
+ * | Yes, USMCA Professional (TN) Visa (USA) | Yes, F-1 Visa OPT (USA) | Yes,
+ * but not one of the visas listed here", GitLab, live 2026-10-05): the one
+ * side the need picks, then the Yes naming the applicant's own visa, then the
+ * Yes saying it is not listed. A need with no visa stated picks none.
+ */
+function chooseSponsorshipOption(options: string[], need: boolean, stated: string): string | null {
+  const side = options.filter((o) => o.trim() && optionPolarity(o) === need);
+  if (side.length === 1) return side[0];
+  if (!need || side.length === 0) return null;
+  const mine = VISA_NAMES.filter(([own]) => own.test(stated.toLowerCase()));
+  if (mine.length === 0) return null;
+  const named = side.filter((o) => mine.some(([, named]) => named.test(o.toLowerCase())));
+  if (named.length > 0) return named.length === 1 ? named[0] : null;
+  const unlisted = side.filter((o) => /\bnot (one of|listed|among)\b|\b(an|any )?other\b|\bnone of\b/.test(o.toLowerCase()));
+  return unlisted.length === 1 ? unlisted[0] : null;
 }
 
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
@@ -337,8 +373,12 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
       if (/\b(list|describe|specify|explain|provide|detail|elaborate)\b|\b(type|kind|form) of (support|assistance|sponsorship|visa|status)\b/.test(n)) {
         return abstain("sponsorship:type-unknown");
       }
-      // Free text: the applicant's own stated answer, verbatim, when it covers this country.
       const s = needsSponsorshipIn(facts.workAuth, country, residence);
+      if (q.options?.some((o) => o.trim())) {
+        const pick = isHigh(s) ? chooseSponsorshipOption(q.options, s.value, profile.workAuthorization || "") : null;
+        return pick ? answer(pick, "sponsorship:option") : abstain("sponsorship:option-unknown");
+      }
+      // Free text: the applicant's own stated answer, verbatim, when it covers this country.
       if (isHigh(s) && profile.requiresSponsorship?.trim() && q.kind !== "number" && q.kind !== "date") {
         return answer(s.value ? "Yes" : "No", "sponsorship:text");
       }
@@ -353,7 +393,11 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
     if (nowOnly && isHigh(s) && s.value === true) {
       const a = authorizedIn(facts.workAuth, country, residence);
       const stated = (profile.workAuthorization || "").toLowerCase();
-      if (isHigh(a) && a.value === true && /\b(opt|ead|cpt|work permit|pgwp|open work permit)\b/.test(stated) && !/\b(h-?1 ?b|tn|l-?1|e-?3|o-?1)\b/.test(stated)) {
+      // …unless the label counts that very status as sponsorship ("(e.g.,
+      // H-1B, E-3, TN, O-1, STEM OPT…)", DoorDash): a STEM OPT holder needs
+      // the new employer's paperwork from day one.
+      const own = /\bstem opt\b/.test(stated) ? /\bopt\b/ : /\bopt\b/.test(stated) ? /(?<!\bstem )\bopt\b/ : /\bcpt\b/.test(stated) ? /\bcpt\b/ : /\bead\b/.test(stated) ? /\bead\b/ : null;
+      if (!own?.test(n) && isHigh(a) && a.value === true && /\b(opt|ead|cpt|work permit|pgwp|open work permit)\b/.test(stated) && !/\b(h-?1 ?b|tn|l-?1|e-?3|o-?1)\b/.test(stated)) {
         return booleanResult(false, q, "sponsorship:not-now");
       }
     }

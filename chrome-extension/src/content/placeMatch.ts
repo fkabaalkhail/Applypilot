@@ -96,8 +96,12 @@ function isPlaceName(text: string): boolean {
 export function pickPlaceOption(suggestions: string[], wanted: string): number {
   const want = placeOf(wanted);
   if (!want.city) return -1;
+  // The same suggestion listed twice is one choice, the first: Greenhouse's
+  // location lookup returns "Seattle, Washington, United States" twice, and
+  // the tie left every Seattle applicant's city blank (live 2026-10-05).
   const hits = suggestions
     .map((s, i) => ({ i, place: placeOf(s) }))
+    .filter(({ i }) => suggestions.findIndex((s) => norm(s) === norm(suggestions[i])) === i)
     .filter(
       ({ place }) =>
         place.city === want.city &&

@@ -256,3 +256,42 @@ describe("a phone widget that adds the country code (Waymo's embedded Greenhouse
     el.remove();
   });
 });
+
+describe("a place listed twice (Greenhouse's location lookup, Gemini and GitLab, live 2026-10-05)", () => {
+  it("'Seattle, Washington, United States' twice is one place, not an ambiguity", async () => {
+    // Every Seattle applicant's Location (City) stayed blank: the lookup
+    // returns the city twice, and two identical suggestions read as a tie.
+    const { pickPlaceOption } = await import("../src/content/placeMatch");
+    const seattle = ["Seattle, Washington, United States", "Seattle, Washington, United States", "Seattle Bar, Oregon, United States", "Seattle Hill-Silver Firs, Washington, United States", "Seattle Heights, Washington, United States", "Seattle Hill, United States", "South Seattle, Washington, United States"];
+    expect(pickPlaceOption(seattle, "Seattle, WA, United States")).toBe(0);
+    // Two DIFFERENT places that both fit still choose none.
+    expect(pickPlaceOption(["Springfield, United States", "Springfield, Illinois, United States", "Springfield, Missouri, United States"], "Springfield, United States")).toBe(-1);
+  });
+});
+
+describe("react-select before v5: no role=combobox on its input (Epic Games' Greenhouse form, live 2026-10-05)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+
+  it("the phone country box is a dropdown driven by the react-select driver, never a text box", async () => {
+    const { BOOTCAMP_CAREER_GAP } = await import("./e2e/profiles.mjs");
+    // Typed into as text, "United States" was wiped on blur and reported as
+    // "Value did not stick. Fill manually" on a box that already showed +1.
+    document.body.innerHTML = `<form>
+      <label for="phoneCountry">Country<span>*</span>:</label>
+      <div class="dropdown-autocomplete css-2b097c-container"><div class=" css-l772dy-control"><div class=" css-w3rxe2"><div class=" css-1uccc91-singleValue"><span class="PhoneField__OptionLabel-sc-1u9iqd2-1 ZnQkP"><span class="phone-country-flag" aria-hidden="true"></span><span class="phone-country-code">+1</span></span></div><div class="css-iqsof5"><div class=""><input autocomplete="off" id="phoneCountry" tabindex="0" type="text" aria-autocomplete="list" aria-label="Country: United States +1" value=""><div></div></div></div></div><div class=" css-1wy0on6"><span class=" css-43ykx9-indicatorSeparator"></span><div aria-hidden="true" class=" css-tlfecz-indicatorContainer"></div></div></div></div>
+      <label for="city">City</label><input type="text" id="city" aria-autocomplete="list">
+    </form>`;
+    const { fields, registry } = scanPage(BOOTCAMP_CAREER_GAP as never, true);
+    const country = fields.find((f) => f.selector === "#phoneCountry" || /country/i.test(f.label));
+    expect(country).toBeTruthy();
+    const control = registry.get(country!.id)!;
+    expect(control.controlType).toBe("combobox");
+    expect(control.driver).toBe("react-select");
+    // A plain suggestion box (no react-select markup) stays a text box.
+    const city = fields.find((f) => /city/i.test(f.label));
+    expect(city && registry.get(city.id)!.controlType).toBe("text");
+    document.body.innerHTML = "";
+  });
+});

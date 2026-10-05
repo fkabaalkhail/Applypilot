@@ -38,7 +38,7 @@ import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
 import { detectGroupIndex } from "./groupIndex";
 import type { SiteAdapter } from "./adapters/types";
-import { detectFillDriver } from "./driverDetect";
+import { detectFillDriver, isLegacyReactSelect } from "./driverDetect";
 import { DATE_PART_ID_SELECTOR, DATE_PART_SELECTOR } from "./adapters/workdaySelectors";
 import type { FillDriver } from "./mainWorldBridge";
 import { isDeclineText } from "./demographicMatch";
@@ -208,6 +208,9 @@ function controlTypeOf(el: HTMLElement): ControlType | null {
     // in data-uxi-widget-type="selectinput". Drive it through the listbox engine
     // instead of typing the value into what is actually a search box.
     if (el.getAttribute("data-uxi-widget-type") === "selectinput") return "combobox";
+    // react-select before v5 has no role=combobox either, only
+    // aria-autocomplete="list" (see isLegacyReactSelect).
+    if (el.getAttribute("aria-autocomplete") === "list" && isLegacyReactSelect(el)) return "combobox";
     return "text"; // text, email, tel, url, number, date…
   }
   if (el instanceof HTMLTextAreaElement) return "textarea";

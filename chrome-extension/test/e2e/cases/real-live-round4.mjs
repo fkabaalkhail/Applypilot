@@ -173,3 +173,9 @@ export default [
   live({ id: "r4b-gh-doordash", ats: "greenhouse", profile: US_OPT_ANALYST, url: "https://job-boards.greenhouse.io/doordashusa/jobs/8204111" }),
   live({ id: "r4b-gh-gitlab", ats: "greenhouse", profile: US_H1B_SENIOR, url: "https://job-boards.greenhouse.io/gitlab/jobs/8821526002" }),
 ];
+
+/** The pages a fix touched, re-run after the fixes (ids are their batch's). */
+export const VERIFY = [
+  "r4a-jazz-dig", "r4a-wk-consumeraffairs", "r4b-gh-anduril", "r4b-gh-coveo", "r4b-gh-cloudflare", "r4b-gh-duolingo",
+  "r4b-gh-gemini", "r4b-gh-afs", "r4b-gh-doordash", "r4b-gh-gitlab", "r4b-gh-epic", "r4b-gh-c3",
+];
