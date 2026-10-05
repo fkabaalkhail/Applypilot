@@ -115,11 +115,20 @@ describe("phone numbers beside a dialing-code picker", () => {
     expect(fields.find((f) => f.category === "phone")!.proposedValue).toBe("(206) 555-0131");
   });
 
-  it("fills a phone box the page started with its dialing code (Recruitee's '+1')", () => {
+  it("fills a phone box the page started with its dialing code (Recruitee's '+1'), code included", () => {
+    // The box is in international format: typed without its code, "(416)
+    // 555-0142" became "+41 65 550 14 2" and the country Switzerland (live
+    // 2026-10-05).
     document.body.innerHTML = `<form><label for="ph">Phone number *</label><input id="ph" type="tel" name="candidate.phone" value="+1"></form>`;
     const phone = scanPage(person("(416) 555-0142", "Canada", "Toronto"), false, null).fields.find((f) => f.category === "phone")!;
-    expect(phone.proposedValue).toBe("(416) 555-0142");
+    expect(phone.proposedValue).toBe("+1 (416) 555-0142");
     expect(isDefaultSelected(phone)).toBe(true);
+  });
+
+  it("a number written with its own code goes into such a box whole", () => {
+    document.body.innerHTML = `<form><label for="ph">Phone number *</label><input id="ph" type="tel" value="+1"></form>`;
+    const phone = scanPage(person("+49 30 12345678", "Germany", "Berlin"), false, null).fields.find((f) => f.category === "phone")!;
+    expect(phone.proposedValue).toBe("+49 30 12345678");
   });
 
   it("keeps the whole number where there is no picker", () => {

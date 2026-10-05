@@ -21,6 +21,7 @@ import {
 import { normalize } from "./fieldMatcher";
 import { matchOption } from "./writeEngine";
 import { looksLikePlaces, pickPlaceOption } from "./placeMatch";
+import { regionFromText } from "./geo";
 import {
   MULTISELECT_CONTAINER_FRAGMENT as WD_MULTISELECT_CONTAINER_FRAGMENT,
   SEARCH_BOX_FRAGMENT as WD_SEARCH_BOX_FRAGMENT,
@@ -616,12 +617,22 @@ function findOption(listbox: HTMLElement, value: string, placeHint?: string): HT
       return i >= 0 ? options[i] : null;
     }
   }
-  return matchOption(
+  const hit = matchOption(
     options,
     (o) => optionText(o),
     (o) => o.getAttribute("data-value") ?? o.getAttribute("value") ?? "",
     value
   );
+  if (hit) return hit;
+  // A state or province by name or code: lists hold either ("TX" on
+  // Paylocity, "Texas" elsewhere), and the answer is one of the two.
+  const wanted = regionFromText(value);
+  if (!wanted) return null;
+  const same = options.filter((o) => {
+    const r = regionFromText(optionText(o), wanted.country);
+    return r !== null && r.code === wanted.code && r.country === wanted.country;
+  });
+  return same.length === 1 ? same[0] : null;
 }
 
 /** Visible label of an option, ignoring nested check/icon glyph text. */

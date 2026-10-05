@@ -1095,6 +1095,18 @@ describe("fillAriaCombobox, a debounced filter behind a re-windowed list", () =>
   });
 });
 
+describe("fillAriaCombobox, a state by name or code", () => {
+  it("'Texas' picks 'TX' from a list of codes, and 'TX' picks 'Texas'", async () => {
+    const codes = reactSelect(["AL", "AK", "TN", "TX", "UT"]);
+    expect((await fillAriaCombobox(codes, "Texas", fast)).filled).toBe(true);
+    expect(document.querySelector(".select__single-value")?.textContent).toBe("TX");
+    document.body.innerHTML = "";
+    const names = reactSelect(["Tennessee", "Texas", "Utah"]);
+    expect((await fillAriaCombobox(names, "TX", fast)).filled).toBe(true);
+    expect(document.querySelector(".select__single-value")?.textContent).toBe("Texas");
+  });
+});
+
 describe("fillAriaCombobox, a place search that answers slowly", () => {
   it("waits longer on an empty list for a place's suggestions", async () => {
     // Rippling's Location (live 2026-10-05) asks Google Places, whose script

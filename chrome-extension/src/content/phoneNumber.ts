@@ -6,7 +6,7 @@
  * one. The picker itself is set from the number's own code, which can differ
  * from the country the applicant lives in.
  */
-import { COUNTRIES, DIAL_CODES, type Country } from "./geo";
+import { COUNTRIES, DIAL_CODES, countryFromName, type Country } from "./geo";
 
 const KNOWN_CODES = new Set(Object.values(DIAL_CODES));
 
@@ -42,6 +42,21 @@ export function phoneCountryName(phone: string, home: Country | null): string | 
   if (home && DIAL_CODES[home.code] === code) return home.name;
   const owners = COUNTRIES.filter((c) => DIAL_CODES[c.code] === code);
   return owners.length === 1 ? owners[0].name : null;
+}
+
+/**
+ * The number for a box that shows its dialing code ("+1", Recruitee): such a
+ * box is in international form, and "(416) 555-0142" typed without its code
+ * was read as "+41 65 550 14 2", Switzerland (live 2026-10-05). A number
+ * written with its own code goes in whole; otherwise the home country's code
+ * comes first, else the one the box shows.
+ */
+export function internationalNumber(phone: string, homeCountry: string | null, shownCode: string | null): string {
+  const p = phone.trim();
+  if (/^\+/.test(p)) return p;
+  const home = homeCountry ? countryFromName(homeCountry) : null;
+  const code = (home && DIAL_CODES[home.code]) || shownCode;
+  return code ? `+${code} ${p}` : p;
 }
 
 /** A dialing code shown as a picker's value or option: "+44 GB", "+1",

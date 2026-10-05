@@ -42,7 +42,7 @@ import { detectFillDriver, isLegacyReactSelect } from "./driverDetect";
 import { DATE_PART_ID_SELECTOR, DATE_PART_SELECTOR } from "./adapters/workdaySelectors";
 import type { FillDriver } from "./mainWorldBridge";
 import { isDeclineText } from "./demographicMatch";
-import { looksLikeDialCodes, nationalNumber } from "./phoneNumber";
+import { internationalNumber, looksLikeDialCodes, nationalNumber } from "./phoneNumber";
 
 /** Live handle for a detected field, never leaves the content script. */
 export interface RuntimeControl {
@@ -1248,8 +1248,11 @@ export function scanPage(
     let proposedValue = resolved.value;
     // Beside its own dialing-code picker, the box takes the national number:
     // typed whole, "+49 30 12345678" kept its digits under the picker's "+44".
-    if (category === "phone" && proposedValue && blockPartner(el, isDialPicker)) {
-      proposedValue = nationalNumber(proposedValue);
+    if (category === "phone" && proposedValue) {
+      const shownCode = /^\s*\+\s?(\d{1,4})\s*$/.exec((el as HTMLInputElement).value ?? "")?.[1] ?? null;
+      if (blockPartner(el, isDialPicker)) proposedValue = nationalNumber(proposedValue);
+      // A box that shows its code is in international form (Recruitee's "+1").
+      else if (shownCode) proposedValue = internationalNumber(proposedValue, profile?.country ?? null, shownCode);
     }
     // A single checkbox is a boolean control: never write a text value into it.
     // Check clear application consent, skip marketing / ambiguous boxes (→ null,
