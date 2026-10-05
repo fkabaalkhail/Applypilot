@@ -358,3 +358,25 @@ describe("channels in other words (question bank 2026-10-05: Bandwidth, Gusto, T
     expect(value(ask("How did you hear about Twilio?", { options: twilio }, { ...p, howDidYouHear: "Twitter" }, { jobCountry: "US", company: "Twilio" }))).toBe("Twitter");
   });
 });
+
+describe("regression run 2026-10-05: Shield AI, Sentinel and K1", () => {
+  const P = () => import("./e2e/profiles.mjs") as Promise<Record<string, UserApplicationProfile>>;
+  const US_JOB = { jobCountry: "US" as string | null, company: "Acme" };
+  it("'Are you local to or willing to relocate?' is Yes from someone who will move (Shield AI)", async () => {
+    const { COMPLETE_CANADIAN } = await P();
+    expect(value(ask("Are you local to or willing to relocate?", { options: YES_NO }, COMPLETE_CANADIAN, US_JOB))).toBe("Yes");
+  });
+  it("'work out of our Wakefield, MA office 1 day per week' is No from Austin for someone who will not move (Sentinel on JazzHR)", async () => {
+    const { US_VETERAN, UK_SENIOR } = await P();
+    const q = "Are you able to work out of our Wakefield, MA office 1 day per week?*";
+    expect(value(ask(q, { options: YES_NO }, US_VETERAN, US_JOB))).toBe("No");
+    expect(value(ask(q, { options: YES_NO }, UK_SENIOR, US_JOB))).toBe("Yes");
+  });
+  it("the undergraduate year is the bachelor's, not a later master's (K1 on JazzHR)", async () => {
+    const { UK_SENIOR, US_VETERAN } = await P();
+    const q = "What year did you / will you graduate from university (undergrad)?*";
+    const t = { controlType: "text" as ControlType, kind: "text" as AnswerKind };
+    expect(value(ask(q, t, UK_SENIOR, US_JOB))).toBe("2015");
+    expect(value(ask(q, t, US_VETERAN, US_JOB))).toBe("2019");
+  });
+});

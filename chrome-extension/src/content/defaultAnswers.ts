@@ -184,8 +184,10 @@ const SOURCE_PREFERENCE: RegExp[] = [
 ];
 
 /** Working in a place in person (an office, on site, a hybrid schedule). */
+/** "work out of our Wakefield, MA office" too (Sentinel on JazzHR, regression
+ *  2026-10-05: Yes from Austin for someone who will not move). */
 const IN_PERSON =
-  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|commute|report)\b[^?]{0,60}\b(from|at|in|to)\b[^?]{0,40}\boffices?\b|\b(this|the|that|a daily) commute\b/;
+  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|commute|report)\b[^?]{0,60}\b(from|at|in|to|out of)\b[^?]{0,40}\boffices?\b|\b(this|the|that|a daily) commute\b/;
 
 /** Being there now and then rather than working there: team gatherings, an
  *  offsite, a few trips a year. Someone who will not relocate can still go. */

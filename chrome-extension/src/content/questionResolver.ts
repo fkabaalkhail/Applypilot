@@ -1187,7 +1187,13 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   // "…degree result, or expected result if you have not yet graduated?"
   // (Canonical, question bank 2026-10-05) asks for a grade: resolveGpa's.
   if (/\b(degree|university|academic|final|expected) (result|results|grade|grades|classification)\b/.test(n)) return null;
-  const primary = facts.education.primary;
+  // "What year did you / will you graduate from university (undergrad)?" (K1
+  // on JazzHR, regression 2026-10-05) got the master's year: the degree of
+  // the level asked, when the profile has exactly one.
+  const levelAsked = /\b(undergrad|undergraduate|bachelor s|bachelors|bachelor)\b/.test(n) ? 4 : /\b(master s|masters|master|graduate degree|graduate school|grad school)\b/.test(n) ? 5 : null;
+  const atLevel = levelAsked === null ? [] : facts.education.entries.filter((e) => e.rank === levelAsked);
+  if (levelAsked !== null && atLevel.length === 0 && facts.education.entries.length > 0 && facts.education.entries.every((e) => e.rank !== null)) return abstain("graduation:no-such-degree");
+  const primary = atLevel.length === 1 ? atLevel[0] : facts.education.primary;
   const g = primary?.graduation;
   if (!g) return abstain("graduation:unknown");
   const year = String(g.earliest.getUTCFullYear());
@@ -1532,7 +1538,9 @@ function resolveLocalTo(q: QuestionInput, n: string, facts: ProfileFacts, profil
   // Colorado, are you willing to relocate?" stayed blank for a Seattle
   // applicant who will not move (Anduril on Greenhouse, live 2026-10-05).
   const now = /^(?:are you|you are) (?:currently )?(?:local|located|based|living) (?:to|in|near) (?:the )?([a-z ]+?)(?: area| region)?$/.exec(n);
-  if (now && isBooleanQuestion(q)) {
+  // "Are you local to or willing to relocate?" (Shield AI on Lever) names no
+  // place: the relocation rule's.
+  if (now && isBooleanQuestion(q) && !/\b(or|relocat\w*|move|willing)\b/.test(now[1])) {
     const named = now[1].trim();
     const region = regionFromText(named);
     const country = region ? null : countryFromName(named);
