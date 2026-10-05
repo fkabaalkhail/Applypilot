@@ -174,6 +174,33 @@ describe("revertedFields", () => {
     expect(out).toEqual([]);
   });
 
+  it("a date's part holds its part of the date written (Workday replica, 2026-10-05)", () => {
+    // Each part was asked to hold the whole date; it reads back its own part.
+    const same = (want: string, got: string) => revertedFields([{ fieldId: "a", value: want }], [{ fieldId: "a", value: got }], new Set(["a"])).length === 0;
+    expect(same("Jun 2012", "6")).toBe(true);
+    expect(same("Jun 2012", "06")).toBe(true);
+    expect(same("Jun 2012", "2012")).toBe(true);
+    expect(same("2016-05", "5")).toBe(true);
+    expect(same("Dec 2022", "12")).toBe(true);
+    // Another month or year is still a change.
+    expect(same("Jun 2012", "7")).toBe(false);
+    expect(same("Jun 2012", "2013")).toBe(false);
+  });
+
+  it("an option the shared matcher picked for the answer holds it (Workday replica, 2026-10-05)", () => {
+    const same = (want: string, got: string, choice = true) =>
+      revertedFields([{ fieldId: "a", value: want }], [{ fieldId: "a", value: got, choice }], new Set(["a"])).length === 0;
+    // In a text box a near-match is a change: a street number edited.
+    expect(same("123 Main Street", "125 Main Street", false)).toBe(false);
+    // The profile's number, read back as the bucket it fell in.
+    expect(same("6", "5-7 years")).toBe(true);
+    // The profile's wording against the option's ("of a protected" / "of protected").
+    expect(same("I identify as one or more of the classifications of a protected veteran", "I identify as one or more of the classifications of protected veteran")).toBe(true);
+    // An answer of the other polarity is still a change.
+    expect(same("I am not a protected veteran", "I identify as one or more of the classifications of protected veteran")).toBe(false);
+    expect(same("6", "1-3 years")).toBe(false);
+  });
+
   it("does not report a field whose write already failed", () => {
     // That is a failure, not a revert, conflating them hides the interesting
     // case behind the ordinary one.

@@ -37,6 +37,8 @@ import { redactCaptureValue } from "./domCapture";
 import { placeOf } from "./placeMatch";
 import { optionPolarity } from "./answerKind";
 import { countryFromName, DIAL_CODES } from "./geo";
+import { matchOption } from "./optionMatch";
+import { parseDateSpan } from "./profileFacts";
 import type {
   AutofillTelemetry, DetectedField, FieldCaptureRecord, FieldOutcomeRecord, FillDurations,
 } from "../shared/types";
@@ -96,6 +98,8 @@ export interface ObservedField {
   value: string;
   /** A single checkbox: unticked reads as "". */
   checkbox?: boolean;
+  /** A control that only takes one of its options (select, dropdown, radios). */
+  choice?: boolean;
 }
 
 /** What one field was asked to hold. */
@@ -140,6 +144,17 @@ function sameValue(written: string, observed: string): boolean {
   if (dial) {
     const country = countryFromName(written);
     if (country && DIAL_CODES[country.code] === dial[1]) return true;
+  }
+  // A date's part holds its part of the date it was given: Workday's Month box
+  // reads "6" for "Jun 2012", its Year box "2012" (replica, 2026-10-05).
+  if (/^\d{1,4}$/.test(observed.trim())) {
+    const span = parseDateSpan(written);
+    if (span && span.precision !== "year") {
+      const n = Number(observed.trim());
+      const d = span.earliest;
+      const hit = observed.trim().length === 4 ? n === d.getUTCFullYear() : n === d.getUTCMonth() + 1 || (span.precision === "day" && n === d.getUTCDate());
+      if (hit) return true;
+    }
   }
   // A native date input reads back the day typed as "01/04/2027" in ISO,
   // "2027-01-04" (Paylocity, live 2026-10-03).
@@ -209,6 +224,11 @@ export function revertedFields(
       continue;
     }
     if (sameValue(value, now)) continue;
+    // An option the shared matcher picks for the answer is the answer, in the
+    // option's words: "6" in "5-7 years", "…classifications of a protected
+    // veteran" as the list's "…of protected veteran" (Workday replica,
+    // 2026-10-05). Options only: in a text box a near-match is a change.
+    if (seen.choice && now && matchOption([now], (o) => o, (o) => o, value) !== null) continue;
     out.push({ fieldId, cleared: now === "" });
   }
   return out;

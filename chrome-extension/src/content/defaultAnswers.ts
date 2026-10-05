@@ -305,6 +305,36 @@ function chooseLocated(q: QuestionInput, profile: UserApplicationProfile, facts:
   return answer(move[0], profile.willingToRelocate ? "located:relocate-stated" : "located:relocate-default");
 }
 
+/** The sentence a label ends by asking: "This role requires full-time, onsite
+ *  work (Monday–Friday). Which location can you reliably commute to?" asks
+ *  "which location…", whatever the requirement before it. */
+function askedSentence(label: string): string {
+  const parts = (label || "").split(/(?<=[.?!])\s+/).map((s) => s.trim()).filter(Boolean);
+  return qn([...parts].reverse().find((s) => /\?\W*$/.test(s)) ?? parts[parts.length - 1] ?? "");
+}
+
+/**
+ * "Which location can you reliably commute to?" with the posting's offices as
+ * options and a way to say none ("Lincoln, RI" | "Orlando, FL" | "Neither
+ * location", FSSI on Workable, live 2026-10-03): the applicant's own city, or
+ * the none option for someone far from every office who will not move. A
+ * mover chooses for themselves.
+ */
+function choosePlaceOption(q: QuestionInput, profile: UserApplicationProfile, facts: ProfileFacts): QuestionResult {
+  const opts = realOptions(q);
+  if (opts.length < 2) return null;
+  const none = opts.filter((o) => /^(neither|none|no)\b|\b(neither|none of|not able|unable|cannot|can ?t)\b/.test(qn(o)));
+  const places = opts.filter((o) => !none.includes(o)).map((o) => ({ o, p: placeOf(o) }));
+  if (places.length === 0 || places.some(({ p }) => !p.city || !(p.region || p.country))) return null;
+  const homeCity = isHigh(facts.location.city) ? qn(facts.location.city.value) : null;
+  const local = places.filter(({ p }) => homeCity && p.city === homeCity);
+  if (local.length === 1) return answer(local[0].o, "default:commute-local");
+  if (local.length === 0 && none.length === 1 && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) {
+    return answer(none[0], "default:commute-none");
+  }
+  return null;
+}
+
 /**
  * The default answer for `q`, or null when no family applies. `n` is the
  * normalized label (label + help text when the label is a bare stem).
@@ -406,6 +436,13 @@ export function resolveDefault(
   // Occasional presence is not in-person work: "attend team gatherings a few
   // times a year" is travel, which someone who will not move can still do.
   const occasional = OCCASIONAL_PRESENCE.test(n) && !REGULAR_PRESENCE.test(n);
+  // A requirement followed by a question asking WHICH ("…onsite work. Which
+  // location can you reliably commute to?", FSSI on Workable, live
+  // 2026-10-03) is never a yes or no: before its options loaded it was
+  // proposed "Yes". Only an option a stated fact picks.
+  if ((IN_PERSON.test(n) || REQUIREMENT.test(n)) && /^(which|what|where|when|how|who)\b/.test(askedSentence(q.label))) {
+    return choosePlaceOption(q, profile, facts);
+  }
   if (IN_PERSON.test(n) && !occasional && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) {
     const named = placeInLabel(q.label);
     const posted = (ctx.jobPlaces ?? []).map((p) => placeOf(p)).filter((p) => p.city && (p.region || p.country));

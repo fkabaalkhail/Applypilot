@@ -1343,7 +1343,13 @@ function initialize(): void {
     await waitForDomSettle(signal);
     if (signal?.aborted) return [];
     runScan();
-    return lastFields.map((f) => ({ fieldId: f.id, value: f.currentValue ?? "", ...(f.controlType === "checkbox" ? { checkbox: true } : {}) }));
+    const CHOICE = new Set(["select", "combobox", "customDropdown", "radioGroup", "ariaRadioGroup", "checkboxGroup"]);
+    return lastFields.map((f) => ({
+      fieldId: f.id,
+      value: f.currentValue ?? "",
+      ...(f.controlType === "checkbox" ? { checkbox: true } : {}),
+      ...(CHOICE.has(f.controlType) ? { choice: true } : {}),
+    }));
   }
 
   /**

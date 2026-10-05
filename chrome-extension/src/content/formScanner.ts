@@ -31,14 +31,14 @@ import { isAriaCombobox, readComboboxOptions, readComboboxValue } from "./combob
 import { classifyWithAdapter, resolveAnswerWithAdapter } from "./adapters/apply";
 import { resolveField, snapToOption, type FieldResolution } from "./fieldResolver";
 import { splitGreenhouseDate } from "./adapters/greenhouse";
-import { graduationOfRow, profileFacts, type EducationEntryFacts } from "./profileFacts";
+import { graduationOfRow, PRESENT_RE, profileFacts, type EducationEntryFacts } from "./profileFacts";
 import { isConsentText, resolveCheckboxIntent } from "./checkboxIntent";
 import { matchOption } from "./writeEngine";
 import { getAdapter } from "./adapters/registry";
 import { detectGroupIndex } from "./groupIndex";
 import type { SiteAdapter } from "./adapters/types";
 import { detectFillDriver } from "./driverDetect";
-import { DATE_PART_ID_SELECTOR } from "./adapters/workdaySelectors";
+import { DATE_PART_ID_SELECTOR, DATE_PART_SELECTOR } from "./adapters/workdaySelectors";
 import type { FillDriver } from "./mainWorldBridge";
 import { isDeclineText } from "./demographicMatch";
 
@@ -791,6 +791,32 @@ function inEducationBlock(el: HTMLElement): boolean {
 }
 
 /**
+ * A job still running has no end date. Its "I currently work here" box says
+ * so, and a date control's parts take no "Present": Workday removes its "To"
+ * date once the box is ticked, and the planned "Present" was reported as two
+ * failed fields on every application with a current job (Workday replica,
+ * 2026-10-05). A choice control that offers "Present" keeps it, and so does a
+ * free-text box.
+ */
+function dropRunningJobEndDates(fields: DetectedField[], registry: Map<string, RuntimeControl>): void {
+  for (const f of fields) {
+    if (f.category !== "experienceEndDate" || !f.proposedValue || !PRESENT_RE.test(f.proposedValue)) continue;
+    const el = registry.get(f.id)?.el ?? null;
+    if (!el) continue;
+    const offered = (f.options ?? []).some((o) => PRESENT_RE.test(o));
+    const datePart =
+      el.matches(DATE_PART_SELECTOR) ||
+      /^(date|month|number)$/i.test(el.getAttribute("type") ?? "") ||
+      /^(month|year|mm|yyyy|yy)\W*$/i.test((f.label || "").trim());
+    const choice = f.controlType === "select" || f.controlType === "combobox" || f.controlType === "customDropdown";
+    if ((datePart || choice) && !offered) {
+      f.proposedValue = null;
+      f.deviceAbstained = true;
+    }
+  }
+}
+
+/**
  * A row date inside an EDUCATION block is the school's date, not a job's.
  * Greenhouse's education block has its own "Start date month / year" and "End
  * date month / year" (`.education--date-container`, ids `start-month--0`): they
@@ -1218,6 +1244,7 @@ export function scanPage(
 
   // Repeating-section rows → positional indices (Workday's instance-numbered rows).
   remapRepeatingRows(fields, registry, profile, adapter, fillEEO);
+  dropRunningJobEndDates(fields, registry);
 
   // Scope to the application-form container; anything outside is noise even
   // when its category is known. No qualifying container → unscoped fallback.

@@ -258,7 +258,7 @@ async function full(env) {
     // Every field the extension itself did not count as filled, on any page.
     apiRef.state.telemetry.forEach((t, i) => {
       for (const c of t.body?.field_captures ?? []) {
-        if (c.outcome !== "filled") console.log(`   attention #${i}: ${c.outcome} ${c.category} «${String(c.label).slice(0, 60)}» ${JSON.stringify(String(c.observed_value ?? "").slice(0, 40))} (${c.reason ?? ""}) ${c.control_type ?? ""} ${String(c.dom ?? c.selector ?? "").slice(0, 160)}`);
+        if (c.outcome !== "filled") console.log(`   attention #${i}: ${c.outcome} ${c.category} «${String(c.label).slice(0, 60)}» ${JSON.stringify(String(c.observed_value ?? "").slice(0, 40))} (wanted ${JSON.stringify(String(c.proposed_value ?? "").slice(0, 40))}) (${c.reason ?? ""}) ${c.control_type ?? ""} ${c.field_id ?? ""} ${String(c.dom ?? c.selector ?? "").slice(0, 160)}`);
       }
     });
   }

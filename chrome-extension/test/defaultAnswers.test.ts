@@ -66,6 +66,29 @@ describe("consent the application needs", () => {
   });
 });
 
+describe("a requirement followed by WHICH place is no yes or no (FSSI on Workable, live 2026-10-03)", () => {
+  const FSSI = "This role requires full-time, onsite work (Monday–Friday). Which location can you reliably commute to?";
+  const OFFICES = ["Lincoln, RI", "Orlando, FL", "Neither location"];
+  it("is never answered Yes or No, options or not", () => {
+    // Its role=radiogroup wrapper (no options read) was proposed "Yes".
+    expect(String(value(ask(FSSI, { controlType: "ariaRadioGroup", kind: "choice" })))).not.toMatch(/^(Yes|No)$/);
+    const stays = { ...SPARSE_CANADIAN, willingToRelocate: "No" };
+    expect(String(value(ask(FSSI, { controlType: "ariaRadioGroup", kind: "choice" }, stays)))).not.toMatch(/^(Yes|No)$/);
+  });
+  it("picks the applicant's own city among the offices", () => {
+    const orlando = { ...SPARSE_CANADIAN, location: "Orlando, FL", addressCity: "Orlando", addressState: "FL", country: "United States" };
+    expect(value(ask(FSSI, { options: OFFICES, controlType: "radioGroup" }, orlando))).toBe("Orlando, FL");
+  });
+  it("…'Neither' for someone far from both who will not move, and leaves a mover to choose", () => {
+    const stays = { ...SPARSE_CANADIAN, willingToRelocate: "No" };
+    expect(value(ask(FSSI, { options: OFFICES, controlType: "radioGroup" }, stays))).toBe("Neither location");
+    const moves = { ...SPARSE_CANADIAN, willingToRelocate: "Yes" };
+    expect(value(ask(FSSI, { options: OFFICES, controlType: "radioGroup" }, moves))).not.toBe("Lincoln, RI");
+    expect(value(ask(FSSI, { options: OFFICES, controlType: "radioGroup" }, moves))).not.toBe("Orlando, FL");
+    expect(value(ask(FSSI, { options: OFFICES, controlType: "radioGroup" }, moves))).not.toBe("Neither location");
+  });
+});
+
 describe("the posting's requirements are accepted", () => {
   it("an in-office acknowledgement answered with location options: relocate unless local", () => {
     expect(value(ask(BREX_IN_OFFICE, { options: BREX_LOCATED }))).toBe("Yes, I’d relocate prior to the start of the role");
