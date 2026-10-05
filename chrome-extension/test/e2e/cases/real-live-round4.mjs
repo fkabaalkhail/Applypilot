@@ -154,4 +154,22 @@ export default [
   live({ id: "r4a-breezy-qblock", ats: "breezy", profile: INDIA_NEW_GRAD, url: "https://q-block-computing.breezy.hr/p/6d13d3d6cc7e-embedded-systems-developer-intern/apply" }),
   live({ id: "r4a-wk-palona", ats: "workable", profile: US_H1B_SENIOR, url: "https://apply.workable.com/palona/j/7B3B722546/apply/" }),
   live({ id: "r4a-wk-consumeraffairs", ats: "workable", profile: BOOTCAMP_CAREER_GAP, url: "https://apply.workable.com/consumeraffairs-1/j/0544C1F4F8/apply/" }),
+
+  // ------------------------------- batch 2: Greenhouse, the new people
+  // The real fills that went wrong were Greenhouse forms (Brex, Waymo,
+  // Astranis), most of them embedded on company sites: more of those, with
+  // applicants whose status and history the suite has not had.
+  live({ id: "r4b-gh-airbnb", ats: "greenhouse", profile: BERLIN_STAFF, url: "https://careers.airbnb.com/positions/8066835?gh_jid=8066835" }),
+  live({ id: "r4b-gh-alayacare", ats: "greenhouse", profile: US_OPT_ANALYST, url: "https://alayacare.com/open-positions?gh_jid=8858343002" }),
+  live({ id: "r4b-gh-anduril", ats: "greenhouse", profile: US_H1B_SENIOR, url: "https://boards.greenhouse.io/andurilindustries/jobs/5240165007?gh_jid=5240165007" }),
+  live({ id: "r4b-gh-cloudflare", ats: "greenhouse", profile: INDIA_NEW_GRAD, url: "https://boards.greenhouse.io/cloudflare/jobs/8199958?gh_jid=8199958" }),
+  live({ id: "r4b-gh-coveo", ats: "greenhouse", profile: BERLIN_STAFF, url: "https://www.coveo.com/en/company/careers/open-positions?gh_jid=8853969002" }),
+  live({ id: "r4b-gh-c3", ats: "greenhouse", profile: US_OPT_ANALYST, url: "https://c3.ai/job-description/8801434002?gh_jid=8801434002" }),
+  live({ id: "r4b-gh-databricks", ats: "greenhouse", profile: INDIA_NEW_GRAD, url: "https://databricks.com/company/careers/open-positions/job?gh_jid=6883068002" }),
+  live({ id: "r4b-gh-epic", ats: "greenhouse", profile: BOOTCAMP_CAREER_GAP, url: "https://epicgames.com/careers/jobs/6202659004?gh_jid=6202659004" }),
+  live({ id: "r4b-gh-duolingo", ats: "greenhouse", profile: BOOTCAMP_CAREER_GAP, url: "https://careers.duolingo.com/jobs/8806187002?gh_jid=8806187002" }),
+  live({ id: "r4b-gh-gemini", ats: "greenhouse", profile: US_H1B_SENIOR, url: "https://boards.greenhouse.io/embed/job_app?for=gemini&token=8214272&gh_jid=8214272" }),
+  live({ id: "r4b-gh-afs", ats: "greenhouse", profile: BOOTCAMP_CAREER_GAP, url: "https://boards.greenhouse.io/accenturefederalservices/jobs/4715587006?gh_jid=4715587006" }),
+  live({ id: "r4b-gh-doordash", ats: "greenhouse", profile: US_OPT_ANALYST, url: "https://job-boards.greenhouse.io/doordashusa/jobs/8204111" }),
+  live({ id: "r4b-gh-gitlab", ats: "greenhouse", profile: US_H1B_SENIOR, url: "https://job-boards.greenhouse.io/gitlab/jobs/8821526002" }),
 ];

@@ -262,6 +262,43 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
   return trace;
 }
 
+/**
+ * Press the panel's Next page gate, as an applicant reading each page would,
+ * and wait for the flow to park on the page it opens. Null when there is no
+ * gate to press. It risks nothing more than page 1 did: the flow never clicks
+ * Submit, and every non-GET request stays blocked, so a Next that would save
+ * to the server leaves the page where it was.
+ */
+export async function continueToNextPage(page, api, { timeoutMs = 120000 } = {}) {
+  const panel = page.__panel;
+  const gate = page.locator("#ap-flow-next");
+  if (!(await gate.isVisible().catch(() => false))) return null;
+  const beatsBefore = panel.beats.length;
+  const telemetryBefore = api.state.telemetry.length;
+  const urlBefore = page.url();
+  await gate.click({ timeout: 10000 });
+  const PARKED = /\b(paused|done\.|review and submit|review this page|then next page|waiting for|stopped)\b/i;
+  const deadline = Date.now() + timeoutMs;
+  let parked = false;
+  while (Date.now() < deadline) {
+    const newBeats = panel.beats.slice(beatsBefore);
+    const st = await overlayState(page);
+    if (PARKED.test(newBeats[newBeats.length - 1] ?? "") && !/working/i.test(st.text)) {
+      parked = true;
+      break;
+    }
+    await sleep(250);
+  }
+  await sleep(1500);
+  return {
+    beats: panel.beats.slice(beatsBefore),
+    telemetry: api.state.telemetry.length > telemetryBefore ? api.state.telemetry[api.state.telemetry.length - 1].body : null,
+    urlBefore,
+    url: page.url(),
+    parked,
+  };
+}
+
 /** Run one case end to end. */
 export async function runCase(env, testCase) {
   const { ctx, sw, api } = env;
@@ -342,7 +379,18 @@ export async function runCase(env, testCase) {
       await page.screenshot({ path: testCase.screenshotPath, fullPage: true }).catch(() => {});
       screenshot = testCase.screenshotPath;
     }
-    return { before, after, trace, blocked: [...blocked], console: consoleLines, screenshot, state };
+    // A multi-page form: press the panel's Next page gate up to `nextPages`
+    // times and keep what each page held after its fill. Pins (`expect`)
+    // still read page 1; review.cjs shows every page.
+    const nextPages = [];
+    for (let i = 0; i < (testCase.nextPages ?? 0); i++) {
+      const step = await continueToNextPage(page, api, { timeoutMs: testCase.trigger?.fillTimeoutMs ?? 120000 });
+      if (!step) break;
+      step.after = await dumpAllFrames(page);
+      nextPages.push(step);
+      if (/\b(done\.|review and submit|stopped)\b/i.test(step.beats[step.beats.length - 1] ?? "")) break;
+    }
+    return { before, after, trace, blocked: [...blocked], console: consoleLines, screenshot, state, nextPages };
   } finally {
     await page.close().catch(() => {});
   }

@@ -17,3 +17,11 @@ Results land in `test/e2e/results/` (git-ignored, kept on this machine).
 
 `run.mjs --filter` takes substrings of case ids, ATS names, or `=<id>` for one
 exact case.
+
+A case with `nextPages: N` goes on past page 1: after each fill the harness
+presses the panel's Next page gate, as an applicant reading each page would,
+up to N times, and keeps what every page held (`nextPages` in the saved run;
+`review.cjs` shows each page under its own heading). Nothing more is risked:
+the flow never clicks Submit and every non-GET request stays blocked, so a
+Next that saves to the server leaves the page where it was. Pins still read
+page 1.

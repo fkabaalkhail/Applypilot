@@ -74,7 +74,7 @@ async function main() {
       for (const l of result.console) console.log(`     console: ${l}`);
       if (result.blocked.length) console.log(`     blocked: ${result.blocked.slice(0, 10).join(" | ")}`);
     }
-    results.push({ case: { id: c.id, ats: c.ats, url: c.url, file: c.file }, ev, trace: result.trace, after: result.after, before: result.before, blocked: result.blocked });
+    results.push({ case: { id: c.id, ats: c.ats, url: c.url, file: c.file }, ev, trace: result.trace, after: result.after, before: result.before, blocked: result.blocked, ...(result.nextPages?.length ? { nextPages: result.nextPages } : {}) });
   }
 
   await ext.close();
