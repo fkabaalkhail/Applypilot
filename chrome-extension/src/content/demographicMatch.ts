@@ -42,6 +42,13 @@ const RACE: Record<string, string[]> = {
   "caucasian": ["white", "caucasian"],
   "black": ["black", "african american", "african"],
   "african american": ["black", "african american", "african"],
+  // The US categories' own names, which other lists word differently
+  // ("Black / Of African descent", Chime; question bank 2026-10-05).
+  "black or african american": ["black", "african american", "african"],
+  "hispanic or latino": ["hispanic", "latino", "latinx"],
+  "american indian or alaska native": ["american indian", "alaska native", "alaskan native", "native american", "indigenous"],
+  "native hawaiian or other pacific islander": ["native hawaiian", "pacific islander"],
+  "two or more races": ["two or more", "multiracial", "mixed"],
   "indigenous": ["native", "indigenous", "aboriginal", "first nations"],
   "native american": ["native", "indigenous", "american indian"],
   "mixed": ["two or more", "multiracial", "mixed"],

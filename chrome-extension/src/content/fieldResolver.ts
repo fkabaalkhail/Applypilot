@@ -130,6 +130,13 @@ function refineGenderIdentity(
     const plain = options.filter((o) => !qualified.includes(o));
     return gender ? closestDemographicOption(category, gender, plain) : null;
   }
+  // Only transgender options are qualified ("Female" | "Male" | "Transgender-
+  // Female", Braze; question bank 2026-10-05): a cisgender identity is the
+  // plain gender.
+  if (kind.source.includes("cis") && !qualified.some((o) => kind.test(o))) {
+    const plain = options.filter((o) => !qualified.includes(o));
+    return gender ? closestDemographicOption(category, gender, plain) : null;
+  }
   const sex = /^(female|woman)$/i.test(gender) ? /\b(woman|female)\b/i : /^(male|man)$/i.test(gender) ? /\b(man|male)\b/i : null;
   if (!sex) return undefined;
   const both = qualified.filter((o) => kind.test(o) && sex.test(o));

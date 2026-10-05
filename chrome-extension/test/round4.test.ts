@@ -431,3 +431,24 @@ describe("a salary in the unit asked (StackAdapt, question bank 2026-10-05)", ()
     document.body.innerHTML = "";
   });
 });
+
+describe("EEO answers in other words (question bank 2026-10-05: Chime, Braze)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+
+  it("'Black or African American' is 'Black / Of African descent (…)' (Chime)", async () => {
+    const { closestDemographicOption } = await import("../src/content/demographicMatch");
+    const chime = ["Alaskan Native / American Indian / Indigenous American / Native American (A person having origins in any of the original peoples of North and South America (including Central America), and who maintain tribal affiliation or community attachment.)", "Black / Of African descent (A person having origins in any of the Black racial groups of Africa.)", "East Asian (inclusive of Chinese, Japanese, Korean, Mongolian, Tibetan, and Taiwanese)", "White (A person having origins in any of the original peoples of Europe)", "I don't wish to answer"];
+    expect(closestDemographicOption("eeoRace", "Black or African American", chime)).toBe(chime[1]);
+  });
+
+  it("a cisgender woman among plain and transgender-only options is 'Female' (Braze)", async () => {
+    const { COMPLETE_CANADIAN } = await import("./e2e/profiles.mjs");
+    const braze = ["Agender", "Bigender", "Female", "Genderfluid", "Genderqueer", "Male", "Nonbinary", "Transgender", "Transgender-Female", "Transgender-Male", "I don't wish to answer"];
+    document.body.innerHTML = `<form><div class="field"><label for="g">Voluntary Self-Identification of Gender and Gender Identity (Select one)</label><select id="g"><option value="">Select...</option>${braze.map((o, i) => `<option value="${i}">${o}</option>`).join("")}</select></div></form>`;
+    const { fields } = scanPage(COMPLETE_CANADIAN as never, true);
+    expect(fields.find((f) => fieldEl(f.id)?.id === "g")?.proposedValue).toBe("Female");
+    document.body.innerHTML = "";
+  });
+});

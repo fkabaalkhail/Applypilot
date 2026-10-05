@@ -57,7 +57,7 @@ function render(p: BankPosting): string {
     if (q.type === "textarea") return `<div class="field"><label for="${id}">${label}</label>${desc}<textarea id="${id}" name="${esc(q.name)}"${aria}></textarea></div>`;
     if (q.type === "multi_value_multi_select" && q.options.length) {
       const boxes = q.options.map((o, j) => `<label><input type="checkbox" name="${esc(q.name)}[]" value="${j}"> ${esc(o)}</label>`).join("");
-      return `<fieldset class="field"><legend>${label}</legend>${desc}${boxes}</fieldset>`;
+      return `<fieldset class="field" id="${id}"><legend>${label}</legend>${desc}${boxes}</fieldset>`;
     }
     if (q.options.length) {
       const opts = [`<option value="">Select...</option>`, ...q.options.map((o, j) => `<option value="${j}">${esc(o)}</option>`)].join("");
