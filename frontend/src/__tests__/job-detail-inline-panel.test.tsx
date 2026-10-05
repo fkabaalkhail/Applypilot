@@ -158,18 +158,18 @@ describe("Job Detail Inline Panel - Unit Tests (Task 6.7)", () => {
   });
 
   /**
-   * Test: "Apply with Autofill" and "View Original Post" buttons render
+   * Test: "Apply with Tailrd" and "View Original Post" buttons render
    * Validates: Requirement 3.2
    */
-  it('"Apply with Autofill" and "View Original Post" buttons render (Req 3.2)', async () => {
+  it('"Apply with Tailrd" and "View Original Post" buttons render (Req 3.2)', async () => {
     const { default: JobDetailView } = await vi.importActual<
       typeof import("../components/JobDetailView")
     >("../components/JobDetailView");
 
     renderWithProviders(<JobDetailView job={mockJob as any} onClose={() => {}} />);
 
-    // Check for "Apply with Autofill" button/link
-    const applyButton = screen.getByText(/Apply with Autofill/i);
+    // Check for "Apply with Tailrd" button/link
+    const applyButton = screen.getByText(/Apply with Tailrd/i);
     expect(applyButton).toBeInTheDocument();
 
     // Check for "View Original Post" button/link

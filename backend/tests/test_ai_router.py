@@ -126,7 +126,7 @@ class TestMatchBreakdown:
         ):
             response = client.post(f"/ai/match-breakdown/{job.id}")
             assert response.status_code == 503
-            assert "AI service unavailable" in response.json()["detail"]
+            assert "AI suggestions are unavailable" in response.json()["detail"]
 
     def test_returns_503_when_score_is_unparseable(self, client, db_session):
         """An LLM answer with no parsable score is a retryable 503, not a fake

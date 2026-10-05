@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Tailrd: Job Application Autofill",
+  "name": "Tailrd: Job Application Assistant",
   "version": "0.5.0",
   "description": "Fills job application forms from the profile in your Tailrd account. You always review every answer and submit the form yourself.",
   "minimum_chrome_version": "110",
@@ -12,7 +12,7 @@
     "128": "assets/icon-128.png"
   },
   "action": {
-    "default_title": "Tailrd Autofill",
+    "default_title": "Tailrd",
     "default_icon": {
       "16": "assets/icon-16.png",
       "32": "assets/icon-32.png",

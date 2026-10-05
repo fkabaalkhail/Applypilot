@@ -239,7 +239,7 @@ export default function App() {
               <button className="refer-share-btn refer-share-linkedin" onClick={() => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(referralLink)}`, "_blank")}>
                 <LinkedinLogo size={16} weight="fill" /> LinkedIn
               </button>
-              <button className="refer-share-btn refer-share-twitter" onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Check out Tailrd - AI-powered job search for interns and new grads!")}&url=${encodeURIComponent(referralLink)}`, "_blank")}>
+              <button className="refer-share-btn refer-share-twitter" onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Check out Tailrd - job search help for interns and new grads, with AI used responsibly.")}&url=${encodeURIComponent(referralLink)}`, "_blank")}>
                 <XLogo size={16} weight="fill" /> Twitter
               </button>
             </div>

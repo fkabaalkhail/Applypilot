@@ -399,14 +399,14 @@ describe("Improve flow", () => {
 
     renderDetail();
     fireEvent.click(await screen.findByRole("button", { name: /View full report/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Improve my resume/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Suggest improvements/i }));
 
     expect(await screen.findByText(/Rewrote 3 entries/)).toBeTruthy();
     // The metric the model refused to invent is surfaced separately.
     expect(screen.getByText(/the % failures dropped/)).toBeTruthy();
     expect(api.put).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: /Apply to my resume/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Accept these changes/i }));
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
   });
 });

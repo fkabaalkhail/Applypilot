@@ -20,7 +20,7 @@ export default function Refer() {
   };
 
   const shareTwitter = () => {
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Check out Tailrd - AI-powered job search for interns and new grads!")}&url=${encodeURIComponent(referralLink)}`, "_blank");
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Check out Tailrd - job search help for interns and new grads, with AI used responsibly.")}&url=${encodeURIComponent(referralLink)}`, "_blank");
   };
 
   return (

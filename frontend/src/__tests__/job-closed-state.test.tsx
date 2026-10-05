@@ -80,24 +80,24 @@ describe("JobDetailView closed state", () => {
     mockApi("pending");
     renderWithProviders(<JobDetailView job={{ ...baseJob, listing_status: "removed" }} />);
     expect(screen.getByText("No longer accepting applications")).toBeInTheDocument();
-    const apply = screen.getByRole("button", { name: /Apply with Autofill/i });
+    const apply = screen.getByRole("button", { name: /Apply with Tailrd/i });
     expect(apply).toBeDisabled();
     expect(screen.getByRole("button", { name: /View Original Post/i })).toBeDisabled();
-    expect(screen.queryByRole("link", { name: /Apply with Autofill/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Apply with Tailrd/i })).toBeNull();
   });
 
   it("treats an expired listing as closed too", () => {
     mockApi("pending");
     renderWithProviders(<JobDetailView job={{ ...baseJob, listing_status: "expired" }} />);
     expect(screen.getByText("No longer accepting applications")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Apply with Autofill/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Apply with Tailrd/i })).toBeDisabled();
   });
 
   it("keeps Apply usable while the live check is in flight", () => {
     mockApi("pending");
     renderWithProviders(<JobDetailView job={baseJob} />);
     expect(apiPost).toHaveBeenCalledWith("/jobs/11/check-live");
-    const apply = screen.getByRole("link", { name: /Apply with Autofill/i });
+    const apply = screen.getByRole("link", { name: /Apply with Tailrd/i });
     expect(apply).toHaveAttribute("href", baseJob.url);
     expect(screen.queryByText("No longer accepting applications")).toBeNull();
   });
@@ -109,7 +109,7 @@ describe("JobDetailView closed state", () => {
     await waitFor(() => {
       expect(screen.getByText("No longer accepting applications")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Apply with Autofill/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Apply with Tailrd/i })).toBeDisabled();
     expect(onChange).toHaveBeenCalledWith(11, "removed");
   });
 
@@ -128,7 +128,7 @@ describe("JobDetailView closed state", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(screen.getByRole("link", { name: /Apply with Autofill/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Apply with Tailrd/i })).toBeInTheDocument();
     expect(screen.queryByText("No longer accepting applications")).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -142,7 +142,7 @@ describe("JobDetailView closed state", () => {
       await Promise.resolve();
     });
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", { name: /Apply with Autofill/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Apply with Tailrd/i })).toBeInTheDocument();
   });
 
   it("labels the source from source_platform, not always LinkedIn", () => {
@@ -187,7 +187,7 @@ describe("JobDetailView closed state", () => {
 
     // B is still open, with its own link and text.
     expect(screen.queryByText("No longer accepting applications")).toBeNull();
-    expect(screen.getByRole("link", { name: /Apply with Autofill/i })).toHaveAttribute("href", jobB.url);
+    expect(screen.getByRole("link", { name: /Apply with Tailrd/i })).toHaveAttribute("href", jobB.url);
     expect(screen.queryByText(/Role A posting text/)).toBeNull();
     expect(screen.queryByText("Loading job details...")).toBeNull();
     // A is still reported closed, so the feed drops it.
@@ -266,7 +266,7 @@ describe("Jobs page", () => {
       });
       expect(container.querySelectorAll(".jobs-feed .job-card")).toHaveLength(1);
       expect(container.querySelector(".job-detail-title")?.textContent).toBe("Software Engineer, New Grad");
-      expect(screen.getByRole("button", { name: /Apply with Autofill/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /Apply with Tailrd/i })).toBeDisabled();
     },
     20_000,
   );

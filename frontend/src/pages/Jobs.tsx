@@ -22,7 +22,7 @@ import {
   Users,
   ThumbsDown,
   ShareNetwork,
-  MagicWand,
+  PencilSimple,
   Envelope,
   CaretLeft,
   CaretRight,
@@ -521,18 +521,18 @@ export default function Jobs() {
                       className="btn-ai"
                       onClick={(e) => { e.stopPropagation(); setRewriteJob(aiJob(job)); }}
                     >
-                      <MagicWand size={15} weight="fill" /> Custom Resume
+                      <PencilSimple size={15} weight="fill" /> Suggest Edits
                     </button>
                     <button
                       className="btn-ai"
                       onClick={(e) => { e.stopPropagation(); setCoverJob(aiJob(job)); }}
                     >
-                      <Envelope size={15} weight="fill" /> Cover Letter
+                      <Envelope size={15} weight="fill" /> Cover Letter Ideas
                     </button>
                     {isListingClosed(job.listing_status) ? (
                       // Closed listing: never navigate to its dead link.
                       <button type="button" className="btn-apply" disabled>
-                        APPLY WITH AUTOFILL
+                        APPLY WITH TAILRD
                       </button>
                     ) : (
                       <a
@@ -542,7 +542,7 @@ export default function Jobs() {
                         className="btn-apply"
                         onClick={(e) => onCardApplyClick(e, job)}
                       >
-                        APPLY WITH AUTOFILL
+                        APPLY WITH TAILRD
                       </a>
                     )}
                   </div>

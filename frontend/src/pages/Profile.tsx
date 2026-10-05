@@ -460,7 +460,7 @@ export default function Profile() {
             {profile.linkedin_url && <Chip kind="linkedin" text={profile.linkedin_url} href={profile.linkedin_url} />}
             {profile.other_link && <Chip kind="link" text={profile.other_link} href={profile.other_link} />}
             {!addressLine && !profile.email && !profile.phone && !profile.github_url && !profile.linkedin_url && !profile.other_link && (
-              <p className="profile-empty-text">Add your contact details so applications fill instantly.</p>
+              <p className="profile-empty-text">Add your contact details so Tailrd can fill them in for you.</p>
             )}
           </div>
         )}
@@ -634,9 +634,9 @@ export default function Profile() {
       {/* ── Application answers (screening questions the extension fills) ── */}
       <Section id="screening" title="Application Answers" onEdit={() => toggleEdit("screening")}>
         <p className="profile-section-sub">
-          The answers Tailrd fills into screening questions on job applications. These
-          are the exact words that get submitted. Edit them if an employer's form
-          needs different wording.
+          Your answers to common screening questions. Tailrd only fills in words
+          you've written or approved here. Edit them if an employer's form needs
+          different wording.
         </p>
         {editingSection === "screening" ? (
           <div className="profile-form-grid">
@@ -777,7 +777,7 @@ export default function Profile() {
       {/* ── Equal Employment (EEO self-identification) ── */}
       <Section id="eeo" title="Equal Employment" onEdit={() => toggleEdit("eeo")}>
         <p className="profile-section-sub">
-          Optional self-identification. Only filled into applications when you enable EEO autofill in the extension. Kept private.
+          Optional self-identification. Only filled into applications when you turn this on in the extension. Kept private.
         </p>
         {editingSection === "eeo" ? (
           <EeoEditor eeo={extras.eeo} onChange={(eeo) => setExtras({ ...extras, eeo })} />
@@ -846,7 +846,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function EmptyHint({ hasResume, what }: { hasResume: boolean; what: string }) {
   return (
     <p className="profile-empty-text">
-      {hasResume ? `No ${what} added yet.` : `Upload a resume in Settings to auto-fill your ${what}, or add it manually with the pencil.`}
+      {hasResume ? `No ${what} added yet.` : `Upload a resume in Settings to fill in your ${what}, or add it manually with the pencil.`}
     </p>
   );
 }

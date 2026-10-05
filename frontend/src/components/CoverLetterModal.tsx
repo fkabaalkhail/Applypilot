@@ -15,7 +15,7 @@ const TONES = ["Professional", "Formal", "Enthusiastic", "Concise", "Technical"]
 
 function errorMessage(err: unknown, fallback: string): string {
   const r = (err as { response?: { data?: { detail?: string }; status?: number } })?.response;
-  if (r?.status === 400) return r.data?.detail || "Upload a resume first to generate a cover letter.";
+  if (r?.status === 400) return r.data?.detail || "Upload a resume first to get cover letter ideas.";
   if (r?.status === 503) return "AI is temporarily unavailable. Please try again in a moment.";
   return r?.data?.detail || fallback;
 }
@@ -68,7 +68,7 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
       setDirty(false);
       setSaved(false);
     } catch (err) {
-      setError(errorMessage(err, "Couldn't generate the cover letter. Please try again."));
+      setError(errorMessage(err, "Couldn't gather cover letter ideas. Please try again."));
     } finally {
       setLoading(false);
       setBusyTone(null);
@@ -145,7 +145,7 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
         <div className="ai-modal-head">
           <div className="ai-head-top">
             <button className="ai-modal-close" onClick={onClose} aria-label="Close">✕</button>
-            <span className="ai-modal-title">Generate Cover Letter</span>
+            <span className="ai-modal-title">Cover Letter Ideas</span>
             <span className="ai-modal-sub">{job.title} · {job.company}</span>
           </div>
         </div>
@@ -171,7 +171,7 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
           {loading ? (
             <div className="ai-loading">
               <div className="ai-spinner" />
-              <div className="ai-loading-title">Writing your cover letter…</div>
+              <div className="ai-loading-title">Gathering ideas…</div>
             </div>
           ) : error ? (
             <div className="ai-error-box">
@@ -180,6 +180,10 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
             </div>
           ) : (
             <>
+              <p className="ai-cl-note" style={{ margin: "0 0 10px", fontSize: 13, opacity: 0.8 }}>
+                A starting point built from your résumé and this posting. Rewrite it in your own
+                words before you send it.
+              </p>
               <textarea
                 className="ai-cl-textarea"
                 value={text}
@@ -209,7 +213,7 @@ export default function CoverLetterModal({ job, onClose, generate: generateProp,
 
         <div className="ai-modal-foot">
           <button className="ai-btn ai-btn-ghost ai-foot-left" onClick={() => generate(resumeId)} disabled={busy}>
-            Regenerate
+            Try Again
           </button>
           <button className="ai-btn ai-btn-ghost" onClick={copy} disabled={busy || !text}>{copied ? "Copied!" : "Copy"}</button>
           {canSave && (

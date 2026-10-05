@@ -83,8 +83,8 @@ export default function ExtensionBanner() {
         </span>
         <p className="ext-banner-headline">
           {installed
-            ? "Sign in to the extension to start autofilling"
-            : "Autofill any job application in one click"}
+            ? "Sign in to the extension to fill applications from your profile"
+            : "Fill the repetitive fields from your profile, then review before you submit"}
         </p>
         {installed ? (
           <Link className="ext-banner-cta" to="/extension/connect">

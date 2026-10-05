@@ -29,7 +29,7 @@ export function buildTailorCardHtml(result: TailorResult, selected: Set<string>)
     )
     .join("");
   const kwBlock = result.missingKeywords.length
-    ? `<div class="ap-kw-label">Keywords to weave in</div><div class="ap-kw-row">${chips}</div>`
+    ? `<div class="ap-kw-label">Keywords from the posting you could add</div><div class="ap-kw-row">${chips}</div>`
     : "";
   // Single primary action: open a PDF preview. Regenerate / Download / Attach
   // live INSIDE the preview (see overlay's PDF modal), so the card stays minimal.

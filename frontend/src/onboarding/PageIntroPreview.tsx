@@ -74,7 +74,7 @@ function renderBody(id: PageIntroId) {
           <span className="pgi-line w85 h" />
           <span className="pgi-line w70" />
           <div className="pgi-answer">
-            <span className="pgi-answer-tag">AI answer</span>
+            <span className="pgi-answer-tag">Talking points</span>
             <span className="pgi-line w90" />
             <span className="pgi-line w80" />
           </div>

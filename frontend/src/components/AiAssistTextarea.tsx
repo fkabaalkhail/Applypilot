@@ -85,8 +85,13 @@ export default function AiAssistTextarea({ value, onChange, rows, placeholder, c
         onKeyUp={syncSel}
       />
       {sel && (
-        <div className="assist-bar" onMouseDown={(e) => e.preventDefault()}>
-          <span className="assist-spark">✨</span>
+        <div
+          className="assist-bar"
+          role="toolbar"
+          aria-label="Suggest a version"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <span className="assist-spark" title="Suggest a version">✨</span>
           {busy ? (
             <span className="assist-busy">Working…</span>
           ) : (

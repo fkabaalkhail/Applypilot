@@ -45,7 +45,7 @@ from backend.services.llm import get_llm_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-LLM_503_DETAIL = "AI service unavailable. Please check your Anthropic API key."
+LLM_503_DETAIL = "AI suggestions are unavailable right now. Please try again in a moment."
 
 
 def _resolve_resume(
@@ -394,7 +394,7 @@ async def rewrite_resume(
         user_id=user_id,
         resume_id=resume.id,
         job_id=job_id,
-        label=f"AI · {job.title}"[:120],
+        label=f"Suggestions · {job.title}"[:120],
         source="ai",
         document_json=document.model_dump(),
     )

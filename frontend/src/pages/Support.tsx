@@ -43,8 +43,8 @@ export default function Support() {
           <li>
             <strong>Some fields were left blank.</strong> That&rsquo;s deliberate: Tailrd only
             fills answers it can ground in your profile and never guesses. Add the missing
-            details under <em>Your Autofill Information</em> in the panel and run Autofill
-            again.
+            details under <em>Your profile on this device</em> in the panel and press{" "}
+            <em>Fill from my profile</em> again.
           </li>
           <li>
             <strong>An outdated résumé got attached.</strong> Edits made in the web app are

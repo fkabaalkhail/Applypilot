@@ -1893,7 +1893,7 @@ function initialize(): void {
         return {
           ok: false,
           needsLogin: resp?.needsLogin,
-          reason: resp?.error ?? "Could not tailor your résumé.",
+          reason: resp?.error ?? "Couldn't prepare suggestions.",
         };
       }
       return { ok: true, result: resp.result };
@@ -1942,7 +1942,7 @@ function initialize(): void {
         return {
           ok: false,
           needsLogin: resp?.needsLogin,
-          reason: resp?.error ?? "Could not generate a cover letter.",
+          reason: resp?.error ?? "Couldn't gather cover letter ideas.",
         };
       }
       return { ok: true, text: resp.text };

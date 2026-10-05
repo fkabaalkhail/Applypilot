@@ -49,8 +49,8 @@ export default function Terms() {
 
         <h2>4. AI-generated output</h2>
         <p>
-          The Services use AI to tailor résumés, draft cover letters, and answer
-          application questions. AI output may contain errors. You are
+          The Services use AI to suggest résumé edits and offer talking points for
+          cover letters and application questions. AI output may contain errors. You are
           responsible for reviewing all output before submitting any application,
           and you remain solely responsible for the applications you submit.
         </p>

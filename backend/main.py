@@ -130,9 +130,9 @@ except ValueError:
     MAX_REQUEST_BYTES = 10 * 1024 * 1024
 
 app = FastAPI(
-    title="ApplyPilot API",
+    title="Tailrd API",
     version="0.2.0",
-    description="AI-powered form filling API for the ApplyPilot extension",
+    description="API for the Tailrd web app and extension",
     lifespan=lifespan,
     docs_url="/docs" if _DOCS_ENABLED else None,
     redoc_url="/redoc" if _DOCS_ENABLED else None,

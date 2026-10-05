@@ -87,7 +87,7 @@ export default function Resume() {
       <div className="resume-page-header">
         <div>
           <h1>My Resumes</h1>
-          <p className="resume-page-subtitle">Manage your resumes and get AI-powered analysis for better job matching.</p>
+          <p className="resume-page-subtitle">Manage your resumes and get feedback for better job matching.</p>
         </div>
         <button
           className="resume-add-btn"
@@ -117,7 +117,7 @@ export default function Resume() {
         <div className="resume-empty-state">
           <div className="resume-empty-icon"><i className="fa-regular fa-file-lines"></i></div>
           <h3>No resumes yet</h3>
-          <p>Upload your first resume to get AI-powered analysis and job matching.</p>
+          <p>Upload your first resume to get feedback and job matching.</p>
           <button className="resume-add-btn" onClick={() => setShowUploadModal(true)}>
             <i className="fa-solid fa-plus"></i> Upload Resume
           </button>
@@ -207,7 +207,7 @@ function UploadModal({ onClose, onUploadSuccess }: UploadModalProps) {
           <>
             <div className="upload-modal-icon"><i className="fa-solid fa-cloud-arrow-up"></i></div>
             <h2>Upload Resume</h2>
-            <p>Drop your PDF or DOCX file below for instant AI analysis</p>
+            <p>Drop your PDF or DOCX file below for feedback</p>
             <div
               className={`upload-drop-zone${dragOver ? " drag-over" : ""}`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}

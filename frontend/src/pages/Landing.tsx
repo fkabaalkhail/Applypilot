@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SiteHeader from "../components/site/SiteHeader";
 import SiteFooter from "../components/site/SiteFooter";
@@ -15,185 +15,6 @@ import { TiltCard } from "../components/ui/tilt-card";
 import PricingTiers from "../components/PricingTiers";
 import "./Landing.css";
 
-const TESTIMONIALS = [
-  {
-    stars: 5,
-    text: "I went from applying to 5 jobs a day to 50+. Got 3 interviews in my first week. This tool is a game changer.",
-    name: "Sarah K.",
-    role: "Software Engineer → Google",
-    avatar: "S",
-    photo: "",
-  },
-  {
-    stars: 5,
-    text: "The AI-tailored resume feature alone is worth it. My response rate went from 2% to 15% overnight.",
-    name: "Marcus T.",
-    role: "Data Analyst → Amazon",
-    avatar: "M",
-    photo: "",
-  },
-  {
-    stars: 5,
-    text: "Saved me hours every day. The screening question answers are surprisingly accurate and personalized.",
-    name: "Wissam E.",
-    role: "Software Developer → Ottawa",
-    avatar: "W",
-    photo: "/Wissam_Elmasry_testimonial.jpg",
-  },
-  {
-    stars: 5,
-    text: "Applied to 200+ jobs in a week without lifting a finger. Landed two offers. Absolutely worth it.",
-    name: "James L.",
-    role: "Frontend Developer → Meta",
-    avatar: "J",
-    photo: "",
-  },
-  {
-    stars: 5,
-    text: "The cover letter generation is scarily good. Recruiters actually commented on how tailored my applications were.",
-    name: "Priya N.",
-    role: "UX Designer → Airbnb",
-    avatar: "P",
-    photo: "",
-  },
-];
-
-function TestimonialsCarousel() {
-  const [current, setCurrent] = useState(0);
-  const [animating, setAnimating] = useState(false);
-  const [direction, setDirection] = useState<"left" | "right">("right");
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const currentRef = useRef(current);
-  const animatingRef = useRef(animating);
-
-  // Keep refs in sync so the interval always sees latest values
-  useEffect(() => { currentRef.current = current; }, [current]);
-  useEffect(() => { animatingRef.current = animating; }, [animating]);
-
-  const goTo = (index: number, dir: "left" | "right" = "right") => {
-    if (animatingRef.current) return;
-    setDirection(dir);
-    setAnimating(true);
-    setTimeout(() => {
-      setCurrent(index);
-      setAnimating(false);
-    }, 350);
-  };
-
-  const prev = () => {
-    const idx = (currentRef.current - 1 + TESTIMONIALS.length) % TESTIMONIALS.length;
-    goTo(idx, "left");
-  };
-
-  const next = () => {
-    const idx = (currentRef.current + 1) % TESTIMONIALS.length;
-    goTo(idx, "right");
-  };
-
-  const startTimer = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      const idx = (currentRef.current + 1) % TESTIMONIALS.length;
-      goTo(idx, "right");
-    }, 3000);
-  };
-
-  useEffect(() => {
-    startTimer();
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, []);
-
-  const resetTimer = () => startTimer();
-
-  const t = TESTIMONIALS[current];
-
-  return (
-    <section className="testimonials-section">
-      <div className="testimonials-carousel-inner">
-        {/* Left: heading + controls */}
-        <div className="testimonials-left">
-          <span className="testimonials-badge">★ Trusted by job seekers</span>
-          <h2 className="testimonials-heading">Loved by the community</h2>
-          <p className="testimonials-sub">
-            Don't just take our word for it. See what job seekers have to say about ApplyPilot.
-          </p>
-          <div className="testimonials-controls">
-            <button
-              className="testimonials-arrow"
-              onClick={() => { prev(); resetTimer(); }}
-              aria-label="Previous"
-            >
-              ‹
-            </button>
-            <div className="testimonials-dots">
-              {TESTIMONIALS.map((_, i) => (
-                <button
-                  key={i}
-                  className={`testimonials-dot${i === current ? " active" : ""}`}
-                  onClick={() => { goTo(i, i > current ? "right" : "left"); resetTimer(); }}
-                  aria-label={`Go to testimonial ${i + 1}`}
-                />
-              ))}
-            </div>
-            <button
-              className="testimonials-arrow"
-              onClick={() => { next(); resetTimer(); }}
-              aria-label="Next"
-            >
-              ›
-            </button>
-          </div>
-        </div>
-
-        {/* Right: card stack */}
-        <div className="testimonials-right">
-          {/* Ghost cards behind for depth */}
-          <div className="testimonial-ghost testimonial-ghost-2" />
-          <div className="testimonial-ghost testimonial-ghost-1" />
-
-          {/* Active card */}
-          <div
-            className={`testimonial-card-carousel${animating ? ` slide-out-${direction}` : " slide-in"}`}
-          >
-            <div className="testimonial-stars">
-              {Array.from({ length: t.stars }).map((_, i) => (
-                <span key={i}>★</span>
-              ))}
-            </div>
-            <p className="testimonial-text">"{t.text}"</p>
-            <div className="testimonial-author">
-              <div className="testimonial-avatar">
-                {t.photo ? (
-                  <img
-                    src={t.photo}
-                    alt={t.name}
-                    onError={(e) => {
-                      const el = e.currentTarget as HTMLImageElement;
-                      el.style.display = "none";
-                      const fallback = el.nextElementSibling as HTMLElement;
-                      if (fallback) fallback.style.display = "flex";
-                    }}
-                  />
-                ) : null}
-                <span
-                  className="testimonial-avatar-fallback"
-                  style={{ display: t.photo ? "none" : "flex" }}
-                >
-                  {t.avatar}
-                </span>
-              </div>
-              <div>
-                <div className="testimonial-name">{t.name}</div>
-                <div className="testimonial-role">{t.role}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 const SUCCESS_STORIES = [
   {
     img: "/interview_offer.png",
@@ -209,7 +30,7 @@ const SUCCESS_STORIES = [
     badge: "Offer Received ✓",
     initials: "TR",
     name: "Tristan R., applied for a Software Developer role in Ottawa",
-    quote: '"Got two offers in 10 days. The AI tailoring made all the difference."',
+    quote: "",
   },
   {
     img: "/interview_offer_3.png",
@@ -291,7 +112,7 @@ function SuccessStoryCarousel() {
         <div className="success-story-meta">
           <span className="success-story-name">{story.name}</span>
           <div className="success-story-stars">★★★★★</div>
-          <span className="success-story-quote">{story.quote}</span>
+          {story.quote && <span className="success-story-quote">{story.quote}</span>}
         </div>
       </div>
     </div>
@@ -309,11 +130,11 @@ export default function Landing() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const faqs = [
-    { q: "How is Tailrd different from other job platforms like LinkedIn?", a: "Tailrd uses AI to automatically fill out applications for you, match you with jobs based on your real skills, and tailor your resume for each role, all running locally on your machine for maximum privacy." },
-    { q: "Will Tailrd share my personal information?", a: "Never. Your data stays on your machine. We don't upload your resume, credentials, or personal info to any cloud server. Everything runs locally." },
-    { q: "Is Tailrd free to use?", a: "Yes! You can start with our free tier which includes 10 auto-applies per day. Upgrade to Pro for unlimited applications and advanced AI features." },
-    { q: "How does the auto-apply feature work?", a: "Tailrd uses your Chrome browser with AI to fill out LinkedIn Easy Apply forms automatically, answering screening questions, uploading your resume, and submitting applications while you focus on other things." },
-    { q: "What job platforms does Tailrd support?", a: "Currently we support LinkedIn Easy Apply jobs. Support for Greenhouse, Lever, and other ATS platforms is coming soon." },
+    { q: "How is Tailrd different from other job platforms like LinkedIn?", a: "Tailrd matches you with jobs based on your real skills, fills the repetitive fields of an application from your profile, and offers résumé suggestions and talking points for screening questions and cover letters. You review everything and submit each application yourself. Tailrd never submits for you." },
+    { q: "Will Tailrd share my personal information?", a: "We share it with the service providers that help us run Tailrd and, at your direction, with employers when you submit an application yourself. We do not sell your personal information for money. Our Privacy Policy has the full details." },
+    { q: "Is Tailrd free to use?", a: "Yes! You can start with our free tier, which includes 10 assisted applications per day. Upgrade to Pro for unlimited assisted applications and more AI suggestions." },
+    { q: "How does assisted apply work?", a: "The Tailrd Chrome extension fills the repetitive fields of an application from your profile and attaches your résumé. For screening questions it offers talking points, and you write the answer. You review the whole page and press Submit yourself. Tailrd never submits for you." },
+    { q: "What job platforms does Tailrd support?", a: "The Tailrd Chrome extension works on the application pages of common hiring systems, including Greenhouse, Lever, Workday, Ashby, and Workable. Where a page isn't supported, you can still use your Tailrd profile and suggestions by hand." },
     { q: "I have more questions!", a: "Reach out to us at support@tailrd.app and we'll get back to you within 24 hours." },
   ];
 
@@ -455,7 +276,7 @@ export default function Landing() {
             </motion.p>
             <h1 className="hero-headline">
               <TypewriterText
-                text="Do it with AI"
+                text="Your application, your words."
                 speed={90}
                 delay={800}
                 showCursor={true}
@@ -468,8 +289,8 @@ export default function Landing() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 2.2, duration: 0.6 }}
             >
-              Get matched jobs, autofill applications, tailored resume, and
-              AI-powered answers to screening questions, in less than 1 min!
+              Find roles that fit, fill the repetitive fields from your profile,
+              and get AI suggestions you review, edit, and own.
             </motion.p>
             <motion.div
               className="hero-actions"
@@ -485,7 +306,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Live Auto-Apply Demo: Top Showcase */}
+      {/* Live assisted-apply demo: Top Showcase */}
       <section className="showcase-section showcase-demo-section">
         <div className="showcase-demo-wrapper">
           <motion.div
@@ -495,10 +316,11 @@ export default function Landing() {
             transition={{ duration: 0.7, delay: 2.8, ease: [0.16, 1, 0.3, 1] }}
           >
             <span className="showcase-demo-eyebrow">SEE IT IN ACTION</span>
-            <h2 className="showcase-title">Watch Tailrd Work For You</h2>
+            <h2 className="showcase-title">See how Tailrd works with you</h2>
             <p className="showcase-desc">
-              While you relax, our AI scans job postings, extracts keywords,
-              tailors your resume, and fills applications, all in seconds.
+              Tailrd reads the posting, points out the keywords that matter,
+              fills the repetitive fields from your profile, and leaves every
+              judgment call to you.
             </p>
           </motion.div>
           <motion.div
@@ -538,36 +360,6 @@ export default function Landing() {
               <StaggerItem>
                 <div className="stat-card-light">
                   <div className="stat-icon-light">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                      <circle cx="9" cy="7" r="4"/>
-                      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-                      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                    </svg>
-                  </div>
-                  <div className="stat-info-light">
-                    <span className="stat-number-light"><AnimatedCounter value={3} suffix="× more interviews" /></span>
-                    <span className="stat-label-light">compared to manual applications</span>
-                  </div>
-                </div>
-              </StaggerItem>
-              <StaggerItem>
-                <div className="stat-card-light">
-                  <div className="stat-icon-light">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"/>
-                      <polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                  </div>
-                  <div className="stat-info-light">
-                    <span className="stat-number-light"><AnimatedCounter value={80} suffix="% time saved" /></span>
-                    <span className="stat-label-light">on the average job search</span>
-                  </div>
-                </div>
-              </StaggerItem>
-              <StaggerItem>
-                <div className="stat-card-light">
-                  <div className="stat-icon-light">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5B5BFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                     </svg>
@@ -599,8 +391,8 @@ export default function Landing() {
               </h2>
               <p className="showcase-desc">
                 Our AI reads the job description and your resume side by side,
-                then scores how well you fit, so you only spend time on roles
-                where you actually have a shot.
+                then scores how well you fit, so you decide where to spend
+                your time.
               </p>
               <button className="btn-dark" onClick={() => navigate("/app")}>See My Fit Score</button>
             </AnimatedSection>
@@ -649,14 +441,14 @@ export default function Landing() {
         </section>
       </AnimatedSection>
 
-      {/* Feature Showcase 2: 1-Click Autofill */}
+      {/* Feature Showcase 2: Fill from profile */}
       <AnimatedSection animation="fadeUp">
         <section className="showcase-section showcase-reverse">
           <div className="showcase-content">
             <AnimatedSection className="showcase-text" animation="fadeRight" delay={0.2}>
               <h2 className="showcase-title">
                 <TypewriterText
-                  text="Hands-Free Application Engine"
+                  text="Less retyping, more judgment"
                   speed={45}
                   triggerOnView={true}
                   showCursor={false}
@@ -664,11 +456,11 @@ export default function Landing() {
                 />
               </h2>
               <p className="showcase-desc">
-                Point it at a job posting and walk away. Tailrd fills every field,
-                answers screening questions, and submits. You just review the
-                confirmation email.
+                Tailrd fills the fields your profile already answers, points out
+                what a question is asking, and offers talking points. You write
+                the answers, review the page, and press Submit yourself.
               </p>
-              <button className="btn-dark" onClick={() => navigate("/app")}>Let It Apply For Me</button>
+              <button className="btn-dark" onClick={() => navigate("/app")}>See how it works</button>
             </AnimatedSection>
             <AnimatedSection className="showcase-visual" animation="fadeLeft" delay={0.3}>
               <div className="showcase-card autofill-card">
@@ -687,7 +479,7 @@ export default function Landing() {
                   </div>
                   <div className="autofill-score">80%</div>
                 </div>
-                <button className="autofill-btn">Autofill</button>
+                <button className="autofill-btn">Fill from profile</button>
                 <div className="autofill-credits">8 Remaining Credits</div>
                 <div className="autofill-progress">
                   <div className="autofill-progress-label">
@@ -719,7 +511,7 @@ export default function Landing() {
             <AnimatedSection className="showcase-text" animation="fadeLeft" delay={0.2}>
               <h2 className="showcase-title">
                 <TypewriterText
-                  text="A New Resume for Every Role"
+                  text="Suggestions for every role, decisions by you"
                   speed={45}
                   triggerOnView={true}
                   showCursor={false}
@@ -727,17 +519,17 @@ export default function Landing() {
                 />
               </h2>
               <p className="showcase-desc">
-                Each application gets its own version of your resume, rewritten
-                to mirror the job's language, highlight relevant wins, and sail
-                through ATS filters.
+                For each job, Tailrd suggests edits that mirror the posting's
+                language and surface your relevant wins. You choose which
+                changes stay.
               </p>
               <ul className="showcase-bullets">
-                <li>✓ Mirrors keywords from the posting</li>
-                <li>✓ Reorders sections by relevance</li>
-                <li>✓ Adds metrics the recruiter cares about</li>
-                <li>✓ Passes automated screening tools</li>
+                <li>✓ Points out keywords from the posting</li>
+                <li>✓ Suggests which sections to lead with</li>
+                <li>✓ Flags where a metric would help (you supply the number)</li>
+                <li>✓ You accept or reject every change</li>
               </ul>
-              <button className="btn-dark" onClick={() => navigate("/app")}>Build My Resume</button>
+              <button className="btn-dark" onClick={() => navigate("/app")}>See suggestions</button>
             </AnimatedSection>
             <AnimatedSection className="showcase-visual" animation="fadeRight" delay={0.3}>
               <div className="showcase-card resume-card">
@@ -750,7 +542,7 @@ export default function Landing() {
                   </div>
                 </div>
                 <div className="resume-target-job">
-                  <span className="resume-target-label">Tailored for:</span>
+                  <span className="resume-target-label">Suggestions for:</span>
                   <span className="resume-target-value">Senior Software Engineer at Google</span>
                 </div>
                 <div className="resume-section">
@@ -803,10 +595,10 @@ export default function Landing() {
                   </div>
                 </div>
                 <div className="resume-enhancements">
-                  <span className="enhancement-tag">✦ Summary Enhanced</span>
-                  <span className="enhancement-tag">✦ Relevant Skills Highlighted</span>
-                  <span className="enhancement-tag">✦ Keywords Optimized</span>
-                  <span className="enhancement-tag">✦ Recent Work Experience Enhanced</span>
+                  <span className="enhancement-tag">✦ Summary suggestion</span>
+                  <span className="enhancement-tag">✦ Relevant skills flagged</span>
+                  <span className="enhancement-tag">✦ Keywords from the posting</span>
+                  <span className="enhancement-tag">✦ Recent experience suggestions</span>
                 </div>
               </div>
             </AnimatedSection>
@@ -971,9 +763,6 @@ export default function Landing() {
           </div>
         </section>
       </AnimatedSection>
-
-      {/* Testimonials */}
-      <TestimonialsCarousel />
 
       {/* Success Story */}
       <AnimatedSection animation="fadeUp">

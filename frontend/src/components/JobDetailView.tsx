@@ -536,7 +536,7 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
             // page): keep the actions in place but never navigate.
             <>
               <button type="button" className="btn-apply-detail" disabled>
-                <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
+                <PaperPlaneTilt size={16} weight="fill" /> Apply with Tailrd
               </button>
               <button type="button" className="btn-outline-detail" disabled>
                 <ArrowSquareOut size={16} weight="bold" /> View Original Post
@@ -551,7 +551,7 @@ export default function JobDetailView({ job, onClose, onListingStatusChange }: P
                 className="btn-apply-detail"
                 onClick={onApplyClick}
               >
-                <PaperPlaneTilt size={16} weight="fill" /> Apply with Autofill
+                <PaperPlaneTilt size={16} weight="fill" /> Apply with Tailrd
               </a>
               <a
                 href={applyUrl}

@@ -9,8 +9,8 @@
  *   store-previews/tailrd-2-resume.png
  *   store-previews/tailrd-3-cover-letter.png
  *
- * tailrd-4-dashboard.png is NOT generated here: it was already dash-free, so it
- * is left exactly as shipped rather than re-rendered.
+ * tailrd-4-dashboard.png is NOT generated here. It predates this script and its
+ * copy ("Autofill", "Generate cover letters") is out of date: it needs a rebuild.
  *
  * Same design language as scripts/gen-promo-tiles.mjs (soft white to lavender
  * gradient, heavy near-black headline with one phrase in Tailrd indigo, white
@@ -155,10 +155,9 @@ function autofillHtml(logo) {
 
     <div class="left">
       <div class="brand"><img src="${logo}" alt="" /></div>
-      <h1>Create the account<br/>&amp; <span class="accent">fill the form</span>,<br/>automatically.</h1>
-      <div class="sub">On any application, Tailrd signs you up and completes every field
-      from your profile: work authorization, EEO, and the &ldquo;how did you hear about
-      us?&rdquo; questions too.</div>
+      <h1>Skip the retyping.<br/><span class="accent">Keep the judgment.</span></h1>
+      <div class="sub">Tailrd fills the fields your profile already answers, including work
+      authorization and EEO, and leaves every judgment call to you.</div>
       <div class="foot">Works on every ATS &amp; company career site</div>
       <div class="marks">
         <span style="color:#1f9c6f;font-size:24px;font-weight:700;line-height:1">g</span>
@@ -184,8 +183,8 @@ function autofillHtml(logo) {
         <div><b>Vercel</b><span>Senior Frontend Engineer</span></div>
       </div>
       <div class="pad">
-        <div class="btn">Account Creation &amp; Autofill</div>
-        <div class="cap">18 fields ready to fill on this page</div>
+        <div class="btn">Account Creation &amp; Profile Fill</div>
+        <div class="cap">18 fields your profile can fill</div>
       </div>
       <div class="div"></div>
       <div class="row">
@@ -193,7 +192,7 @@ function autofillHtml(logo) {
              stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/>
         </svg>
-        Your Autofill Information <span class="chev">&#8250;</span>
+        Your profile on this device <span class="chev">&#8250;</span>
       </div>
       <div class="div"></div>
       <div class="row">
@@ -204,7 +203,7 @@ function autofillHtml(logo) {
         Upload Resume
       </div>
       <div class="file">Alex_Rivera_Resume.pdf <span class="chip">Change</span></div>
-      <div class="ghost">&#10022;&nbsp; Tailor résumé for this job</div>
+      <div class="ghost">&#10022;&nbsp; Suggest edits for this job</div>
       <div class="div"></div>
       <div class="row">
         <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6f6c7d"
@@ -214,7 +213,7 @@ function autofillHtml(logo) {
         Cover Letter
       </div>
       <div class="sel">Professional <span class="chev">&#8964;</span></div>
-      <div class="ghost">&#10022;&nbsp; Generate cover letter</div>
+      <div class="ghost">&#10022;&nbsp; Cover letter ideas</div>
       <div class="cardfoot"><a>Open Dashboard</a></div>
     </div>
   </body></html>`;
@@ -258,10 +257,10 @@ function resumeHtml() {
           <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
         </svg>
       </div>
-      <h1>Your résumé,<br/>rewritten to<br/><span class="accent">match the posting</span>.</h1>
-      <div class="sub">Tailrd weaves in the exact skills the job asks for, sharpens your
-      bullet points, and scores the result against the description, then attaches it
-      where you apply.</div>
+      <h1>Suggestions for<br/>this posting.<br/><span class="accent">You choose<br/>what stays</span>.</h1>
+      <div class="sub">Tailrd points out the skills the job asks for, suggests sharper bullet
+      points, and scores the result against the description. You accept or reject
+      every change.</div>
     </div>
 
     <div class="card">
@@ -330,9 +329,9 @@ function coverLetterHtml() {
           <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/>
         </svg>
       </div>
-      <h1>A cover letter<br/><span class="accent">written for this role</span>,<br/>not a template.</h1>
-      <div class="sub">Tailrd drafts it from your résumé and the job posting, in the tone
-      you pick. Read it, tweak a line, then attach or download.</div>
+      <h1>Ideas for this role,<br/><span class="accent">in your own words</span>.</h1>
+      <div class="sub">Tailrd offers talking points from your résumé and the job posting as a
+      starting point. Rewrite it your way, then attach or download.</div>
     </div>
 
     <div class="card">

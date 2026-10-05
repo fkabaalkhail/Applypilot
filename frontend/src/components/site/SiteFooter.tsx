@@ -10,7 +10,7 @@ export default function SiteFooter() {
           <div className="footer-brand">
             <img src="/logo-full.png" alt="Tailrd" className="landing-logo-full" />
           </div>
-          <p className="footer-tagline">AI-powered job applications.<br />Apply smarter, not harder.</p>
+          <p className="footer-tagline">Job applications, with AI used responsibly.<br />You stay the author.</p>
         </div>
         <div className="footer-col">
           <h4>Product</h4>

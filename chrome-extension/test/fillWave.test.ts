@@ -32,16 +32,16 @@ describe("wave block markup", () => {
     expect(el.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("labels itself Autofilling, announced as a status", () => {
+  it("labels itself Filling from your profile, announced as a status", () => {
     const label = wave(mountPanel()).querySelector(".ap-fillwave-label")!;
-    expect(label.textContent).toBe("Autofilling");
+    expect(label.textContent).toBe("Filling from your profile");
     expect(label.getAttribute("role")).toBe("status");
   });
 
-  it("sits directly above Your Autofill Information, so that section and the ones below it are what move", () => {
+  it("sits directly above Your profile on this device, so that section and the ones below it are what move", () => {
     const root = mountPanel();
     const next = wave(root).nextElementSibling!;
-    expect(next.querySelector(".ap-section-title")?.textContent).toBe("Your Autofill Information");
+    expect(next.querySelector(".ap-section-title")?.textContent).toBe("Your profile on this device");
   });
 
   it("draws two waves as inline <svg>, never a data-URI background a strict img-src CSP would block", () => {
@@ -131,8 +131,8 @@ describe("styles", () => {
 });
 
 describe("primary button label", () => {
-  it("reads Autofill", () => {
+  it("reads Fill from my profile", () => {
     const btn = mountPanel().querySelector("#ap-btn-autofill")!;
-    expect(btn.textContent).toBe("Autofill");
+    expect(btn.textContent).toBe("Fill from my profile");
   });
 });

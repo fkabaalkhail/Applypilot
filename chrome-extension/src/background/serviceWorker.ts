@@ -495,7 +495,7 @@ export async function handle(
         return {
           ok: false,
           answers: [],
-          errors: [err instanceof Error ? err.message : "AI fill failed"],
+          errors: [err instanceof Error ? err.message : "Couldn't fill some fields"],
         };
       }
     }
@@ -510,7 +510,7 @@ export async function handle(
         if (err instanceof AuthRequiredError) {
           return { ok: false, needsLogin: true, error: err.message };
         }
-        return { ok: false, error: err instanceof Error ? err.message : "Tailoring failed" };
+        return { ok: false, error: err instanceof Error ? err.message : "Couldn't prepare suggestions." };
       }
     }
 
@@ -554,7 +554,7 @@ export async function handle(
         if (err instanceof AuthRequiredError) {
           return { ok: false, needsLogin: true, error: err.message };
         }
-        return { ok: false, error: err instanceof Error ? err.message : "Cover-letter generation failed" };
+        return { ok: false, error: err instanceof Error ? err.message : "Couldn't gather cover letter ideas." };
       }
     }
 

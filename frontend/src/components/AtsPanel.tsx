@@ -85,7 +85,7 @@ export default function AtsPanel({
         </div>
         {highlightMode === "changed" && (
           <div className="ats-legend">
-            <span className="ats-legend-item"><i className="ats-swatch changed" /> Rewritten / added</span>
+            <span className="ats-legend-item"><i className="ats-swatch changed" /> Suggested</span>
             <span className="ats-legend-item"><i className="ats-swatch verify" /> Verify figure</span>
           </div>
         )}

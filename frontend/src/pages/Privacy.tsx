@@ -36,7 +36,7 @@ export default function Privacy() {
         </p>
         <ul>
           <li>Visit our website at <a href="https://www.tailrd.ca">www.tailrd.ca</a>, or any website of ours that links to this Privacy Policy.</li>
-          <li>Use <strong>Tailrd</strong> and our browser extension to tailor résumés, generate cover letters, match with jobs, and auto-fill applications.</li>
+          <li>Use <strong>Tailrd</strong> and our browser extension to suggest résumé edits, offer cover letter ideas, match you with jobs, and help you fill applications.</li>
           <li>Use our AI features, automation, or external API integrations.</li>
           <li>Engage with us in other related ways, including any sales, marketing, or events.</li>
         </ul>
@@ -199,7 +199,7 @@ export default function Privacy() {
           <p>We use personal information to:</p>
           <ul>
             <li>Provide, operate, and maintain the Service, including creating and managing your account.</li>
-            <li>Tailor résumés, generate cover letters, match you with jobs, and auto-fill applications on your behalf.</li>
+            <li>Suggest résumé edits, offer cover letter ideas, match you with jobs, and help you fill applications.</li>
             <li>Personalize your experience and remember your preferences and saved answers.</li>
             <li>Process payments and manage subscriptions, where applicable.</li>
             <li>Communicate with you, including service messages, product updates, and support responses.</li>
@@ -299,8 +299,9 @@ export default function Privacy() {
         <section id="ai">
           <h2>13. AI features, automation &amp; external API integrations</h2>
           <p>
-            The Service uses artificial-intelligence features to tailor résumés, generate
-            cover letters, answer application questions, and auto-fill forms. To provide these
+            The Service uses artificial-intelligence features to suggest résumé edits, offer
+            cover letter ideas and talking points for application questions, and help you fill
+            forms. To provide these
             features, relevant content you supply (such as résumé text and job descriptions)
             may be processed by AI models and external APIs ([Third-Party Services]). We limit
             what is shared to what is needed to perform the requested task. Automated

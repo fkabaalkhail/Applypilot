@@ -167,7 +167,7 @@ async def analyze_resume(
         report = await llm.analyze_resume_quality(record.raw_text, digest)
     except Exception as e:
         logger.error("AI quality analysis failed: %s", e)
-        raise HTTPException(status_code=502, detail=f"AI quality analysis failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Couldn't analyze this resume: {e}")
 
     record.analysis_report = report.model_dump(mode="json")
     record.updated_at = datetime.datetime.utcnow()
@@ -209,7 +209,7 @@ async def improve_resume(
         result = await llm.improve_resume_structured(original_doc, report)
     except Exception as e:
         logger.error("AI improvement failed: %s", e)
-        raise HTTPException(status_code=502, detail=f"AI improvement failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Couldn't prepare suggestions: {e}")
 
     improved_profile = document_to_profile(result.document, original_profile)
     changes = describe_changes(original_doc, result.document)
@@ -262,7 +262,7 @@ async def download_resume_file(
     if not record.file_blob_url:
         raise HTTPException(
             status_code=404,
-            detail="No original file stored for this resume. Re-upload it to enable auto-upload.",
+            detail="No original file stored for this resume. Re-upload it so Tailrd can attach it.",
         )
 
     content = await blob_storage.download(record.file_blob_url)

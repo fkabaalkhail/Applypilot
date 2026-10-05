@@ -9,19 +9,20 @@ export default function About() {
       <main className="marketing-page">
         <section className="section" style={{ maxWidth: 760, margin: "0 auto" }}>
           <h1 className="section-title">About Tailrd</h1>
-          <p className="section-sub">Apply smarter, not harder.</p>
+          <p className="section-sub">You stay the author.</p>
           <p>
-            Tailrd is an AI-powered job-search assistant built for interns and new
-            grads. It tailors your résumé to each role, generates cover letters,
-            matches you with jobs that fit your real skills, and auto-fills
-            applications across the web, so you spend your time preparing for
-            interviews instead of retyping the same fields.
+            Tailrd is a job-search assistant built for interns and new grads. It
+            matches you with jobs that fit your real skills, fills the repetitive
+            fields of an application from your profile, and uses AI to suggest
+            résumé edits and talking points for screening questions and cover
+            letters. You review, edit, and own every word, so you spend your time
+            on the parts of an application that need you.
           </p>
           <h2 style={{ marginTop: 32 }}>Why we built it</h2>
           <p>
             Early-career job seekers send hundreds of applications, each demanding
             the same tedious data entry and subtle résumé tweaks. We built Tailrd to
-            automate the busywork while keeping you in control of every submission.
+            take care of the busywork while keeping you in control of every submission.
           </p>
           <h2 style={{ marginTop: 32 }}>Privacy first</h2>
           <p>

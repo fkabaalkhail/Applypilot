@@ -127,7 +127,7 @@ export default function ResumeDetail() {
       const res = await api.post(`/resumes/${id}/improve`);
       setImprovement({ profile: res.data.profile, changes: res.data.changes });
     } catch (err: any) {
-      showToast(err.response?.data?.detail || "The rewrite couldn't be completed.", "error");
+      showToast(err.response?.data?.detail || "Couldn't prepare suggestions.", "error");
     } finally {
       setImproving(false);
     }

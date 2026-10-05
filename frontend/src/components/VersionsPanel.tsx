@@ -105,7 +105,7 @@ export default function VersionsPanel({
           <li key={v.id} className="ver-item">
             <div className="ver-meta">
               <span className={`ver-badge ${v.source}`}>{v.source}</span>
-              <span className="ver-label">{v.label || (v.source === "ai" ? "AI version" : "Saved version")}</span>
+              <span className="ver-label">{v.label || (v.source === "ai" ? "Version with AI suggestions" : "Saved version")}</span>
               <span className="ver-time">{timeAgo(v.created_at)}</span>
             </div>
             <button className="ver-restore" onClick={() => onRestore(v.document)}>

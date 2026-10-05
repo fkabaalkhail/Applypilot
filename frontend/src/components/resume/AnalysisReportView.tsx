@@ -185,11 +185,11 @@ export default function AnalysisReportView({
 
       <div className="rd-cta">
         <div>
-          <h3>Let AI apply these fixes</h3>
+          <h3>Review AI suggestions</h3>
           <p>
-            We'll rewrite your bullets against every finding above, keeping your employers,
-            dates, and numbers exactly as they are. You review the changes before anything is
-            saved.
+            Tailrd suggests rewrites for your bullets based on every finding above, keeping your
+            employers, dates, and numbers exactly as they are. You review the suggestions and
+            decide whether they're saved.
           </p>
         </div>
         <div className="rd-cta-actions">
@@ -199,7 +199,7 @@ export default function AnalysisReportView({
             </button>
           )}
           <button className="rd-btn rd-btn-primary rd-btn-lg" onClick={onImprove} disabled={improving}>
-            {improving ? "Rewriting…" : "Improve my resume"}
+            {improving ? "Preparing suggestions…" : "Suggest improvements"}
           </button>
         </div>
       </div>

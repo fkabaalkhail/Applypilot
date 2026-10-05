@@ -113,7 +113,7 @@ function logoColor(name: string): string {
 
 function errorMessage(err: unknown, fallback: string): string {
   const detail = (err as { response?: { data?: { detail?: string }; status?: number } })?.response;
-  if (detail?.status === 400) return detail.data?.detail || "Upload a resume first to use Custom Resume.";
+  if (detail?.status === 400) return detail.data?.detail || "Upload a resume first to get suggestions.";
   if (detail?.status === 503) return "AI is temporarily unavailable. Please try again in a moment.";
   return detail?.data?.detail || fallback;
 }
@@ -300,7 +300,7 @@ export default function CustomResumeModal({
       resetEditedDoc(data.document);
       setEditing(false);
     } catch (err) {
-      setRewriteError(errorMessage(err, "Couldn't generate your resume. Please try again."));
+      setRewriteError(errorMessage(err, "Couldn't prepare suggestions. Please try again."));
     } finally {
       setLoadingRewrite(false);
     }
@@ -332,9 +332,9 @@ export default function CustomResumeModal({
   const matchHeadline = useMemo(() => {
     if (!analysis) return "";
     const l = analysis.match_label.split(" ")[0];
-    if (l === "STRONG") return "Your Resume is a Strong Match. Let's Make It Even Better";
-    if (l === "GOOD") return "Your Resume is a Good Match. Let's Sharpen It";
-    return "Your Resume is a Partial Match. Let's Make It Great";
+    if (l === "STRONG") return "Your Resume is a Strong Match. Here Are a Few Suggestions";
+    if (l === "GOOD") return "Your Resume is a Good Match. Here's What You Could Strengthen";
+    return "Your Resume is a Partial Match. Here's Where to Start";
   }, [analysis]);
 
   return (
@@ -344,7 +344,7 @@ export default function CustomResumeModal({
         <div className="ai-modal-head">
           <div className="ai-head-top">
             <button className="ai-modal-close" onClick={onClose} aria-label="Close">✕</button>
-            <span className="ai-modal-title">Generate Your Custom Resume</span>
+            <span className="ai-modal-title">Suggest Edits for This Job</span>
             <span className="ai-modal-sub">{job.title} · {job.company}</span>
           </div>
           <div className="ai-steps">
@@ -353,11 +353,11 @@ export default function CustomResumeModal({
             </div>
             <div className={`ai-step-line ${step > 1 ? "filled" : ""}`} />
             <div className={`ai-step ${step === 2 ? "active" : step > 2 ? "done" : ""}`}>
-              <span className="ai-step-num">{step > 2 ? "✓" : "2"}</span> Align Your Resume
+              <span className="ai-step-num">{step > 2 ? "✓" : "2"}</span> Pick What to Improve
             </div>
             <div className={`ai-step-line ${step > 2 ? "filled" : ""}`} />
             <div className={`ai-step ${step === 3 ? "active" : ""}`}>
-              <span className="ai-step-num">3</span> Review Your New Resume
+              <span className="ai-step-num">3</span> Review the Suggestions
             </div>
           </div>
         </div>
@@ -462,7 +462,7 @@ export default function CustomResumeModal({
           {/* AI insights row */}
           {analysis.suggestions.length > 0 && (
             <>
-              <div className="ai-cmp-label">AI insights</div>
+              <div className="ai-cmp-label">AI suggestions</div>
               <div className="ai-cmp-cell ai-cmp-wide">
                 <ul className="ai-insights">
                   {analysis.suggestions.slice(0, 4).map((s, i) => <li key={i}>{s}</li>)}
@@ -480,7 +480,7 @@ export default function CustomResumeModal({
     return (
       <div className="ai-align">
         <div>
-          <h3 className="ai-col-title">1. Choose sections to enhance</h3>
+          <h3 className="ai-col-title">1. Choose sections for suggestions</h3>
           <div className="ai-check-list">
             {availableSections.map((s) => {
               const on = sections.has(s);
@@ -548,7 +548,7 @@ export default function CustomResumeModal({
       return (
         <div className="ai-loading">
           <div className="ai-spinner" />
-          <div className="ai-loading-title">Finalizing Your New Resume…</div>
+          <div className="ai-loading-title">Preparing suggestions…</div>
           
         </div>
       );
@@ -595,15 +595,15 @@ export default function CustomResumeModal({
     const next = rewrite.new_overall_score;
     const jumpHeadline =
       next > orig
-        ? `Great! Your score jumped from ${(orig / 10).toFixed(1)} to ${(next / 10).toFixed(1)}`
+        ? `With these suggestions your score goes from ${(orig / 10).toFixed(1)} to ${(next / 10).toFixed(1)}`
         : next === orig
           ? `Your score held strong at ${(next / 10).toFixed(1)}`
-          : "Your resume is now tailored to this role";
+          : "Suggestions ready. Accept what sounds like you.";
 
     const changes: string[] =
       rewrite.changes && rewrite.changes.length
         ? rewrite.changes
-        : ["Tailored your resume to this role"];
+        : ["Suggested edits for this role"];
     const gaps = rewrite.gaps ?? [];
     const figures = rewrite.figures_to_verify ?? [];
 
@@ -706,7 +706,7 @@ export default function CustomResumeModal({
             disabled={!analysis || loadingAnalysis}
             onClick={() => setStep(2)}
           >
-            <Spark /> Improve My Resume for This Job
+            <Spark /> Suggest Edits for This Job
           </button>
         </div>
       );
@@ -720,7 +720,7 @@ export default function CustomResumeModal({
             disabled={sections.size === 0}
             onClick={generate}
           >
-            <Spark /> Generate My New Resume
+            <Spark /> Get Suggestions
           </button>
         </div>
       );
@@ -740,7 +740,7 @@ export default function CustomResumeModal({
     return (
       <div className="ai-modal-foot">
         <button className="ai-btn ai-btn-ghost ai-foot-left" onClick={() => setStep(2)} disabled={loadingRewrite}>← Adjust</button>
-        <button className="ai-btn ai-btn-ghost" onClick={generate} disabled={loadingRewrite}>Regenerate</button>
+        <button className="ai-btn ai-btn-ghost" onClick={generate} disabled={loadingRewrite}>Try Again</button>
         <button className="ai-btn ai-btn-ghost" onClick={copy} disabled={!rewrite}>{copied ? "Copied!" : "Copy"}</button>
         <button className="ai-btn ai-btn-soft" onClick={downloadPdf} disabled={!rewrite}>Download PDF</button>
         <button className="ai-btn ai-btn-soft" onClick={downloadDocxFile} disabled={!rewrite}>Download DOCX</button>

@@ -143,7 +143,7 @@ async def custom_resume_endpoint(
         user_id=user_id,
         resume_id=resume.id,
         job_id=None,
-        label=(f"AI · {body.job_title}"[:120] if body.job_title else "AI · Custom résumé"),
+        label=(f"Suggestions · {body.job_title}"[:120] if body.job_title else "Suggestions · Custom résumé"),
         source="ai",
         document_json=result.document.model_dump(),
     )

@@ -16,7 +16,7 @@ export function buildCoverLetterCardHtml(text: string, insertLabel: string): str
   return (
     `<textarea class="ap-cover-text" id="ap-cover-text" spellcheck="true">${esc(text)}</textarea>` +
     `<div class="ap-tailor-actions">` +
-    `<button class="ap-btn-soft" id="ap-cover-regen" type="button">Regenerate</button>` +
+    `<button class="ap-btn-soft" id="ap-cover-regen" type="button">Try again</button>` +
     `<button class="ap-btn-upload" id="ap-cover-insert" type="button">${esc(insertLabel)}</button>` +
     `<button class="ap-btn-soft" id="ap-cover-copy" type="button">Copy</button>` +
     `<button class="ap-btn-soft" id="ap-cover-download" type="button">Download PDF</button>` +

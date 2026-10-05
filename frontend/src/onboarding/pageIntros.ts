@@ -21,21 +21,21 @@ export const PAGE_INTROS: Record<PageIntroId, PageIntroContent> = {
   },
   resume: {
     eyebrow: "Resume",
-    title: "Tailor your resume for every role",
+    title: "Suggestions for every role",
     description:
-      "Store your base resume and let Tailrd generate a version tuned to each job in seconds, matching the keywords that get you past the ATS.",
+      "Keep your base resume here and get suggested edits for each job, including the keywords the posting looks for.",
   },
   interview: {
     eyebrow: "Interview prep",
-    title: "Walk in ready with AI interview prep",
+    title: "Practice for interviews with AI as your sparring partner",
     description:
-      "Practice with questions generated for the exact roles you're chasing, and sharpen your answers before the real conversation.",
+      "Practice with questions for the roles you're chasing, and sharpen your own answers before the real conversation.",
   },
   profile: {
     eyebrow: "Profile",
     title: "Complete your profile for better matches",
     description:
-      "The details here power your match scores and autofill. Fill them in once and Tailrd uses them to rank jobs and complete applications for you.",
+      "The details here power your match scores. Fill them in once and Tailrd uses them to rank jobs and fill the repetitive fields of your applications.",
   },
 };
 

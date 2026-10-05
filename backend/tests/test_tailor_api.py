@@ -170,7 +170,7 @@ class TestCustomResume:
         saved = db_session.query(ResumeVersion).filter_by(id=data["version_id"]).one()
         assert saved.job_id is None
         assert saved.source == "ai"
-        assert saved.label == "AI · Engineer"
+        assert saved.label == "Suggestions · Engineer"
 
     def test_503_on_llm_connection_error(self, client, db_session, monkeypatch):
         import httpx

@@ -183,7 +183,7 @@ const PAUSE_TEXT: Record<FlowPauseReason, string> = {
   captcha: "solve the captcha to continue",
   "resume-upload": "attach your résumé to continue",
   validation: "fix the highlighted errors to continue",
-  account: "add account credentials in Autofill Information → Account creation, or sign in manually",
+  account: "add account credentials in Your profile on this device → Account creation, or sign in manually",
   verification: "enter the emailed code to continue",
   "unfilled-required": "fill the required fields, or Next page to continue",
 };
@@ -1476,7 +1476,7 @@ export function buildHTML(): string {
 
         <!-- Autofill button -->
         <div class="ap-autofill-section">
-          <button class="ap-btn-autofill" id="ap-btn-autofill" disabled>Autofill</button>
+          <button class="ap-btn-autofill" id="ap-btn-autofill" disabled>Fill from my profile</button>
         </div>
 
         <!-- Banner -->
@@ -1487,7 +1487,7 @@ export function buildHTML(): string {
              sections under it down into the space it needs. -->
         <div class="ap-fillwave" id="ap-fillwave" aria-hidden="true">
           <div class="ap-fillwave-inner">
-            <span class="ap-fillwave-label" role="status">Autofilling</span>
+            <span class="ap-fillwave-label" role="status">Filling from your profile</span>
             <div class="ap-fillwave-stage">${waveLayerHTML("back")}${waveLayerHTML("front")}
             </div>
           </div>
@@ -1498,7 +1498,7 @@ export function buildHTML(): string {
           <div class="ap-section-header" id="ap-section-info">
             <div class="ap-section-left">
               <span class="ap-section-icon">${I_FILE}</span>
-              <span class="ap-section-title">Your Autofill Information</span>
+              <span class="ap-section-title">Your profile on this device</span>
             </div>
             <span class="ap-section-arrow">${I_CHEVRON_RIGHT}</span>
           </div>
@@ -1532,7 +1532,7 @@ export function buildHTML(): string {
           <select class="ap-resume-select" id="ap-resume-select" style="display:none"></select>
           <button class="ap-btn-generate" id="ap-btn-tailor" type="button" disabled>
             ${I_STAR}
-            Generate Custom Resume
+            Suggest edits for this job
           </button>
           <div class="ap-upload-status" id="ap-upload-status"></div>
           <div id="ap-tailor-result"></div>
@@ -1554,7 +1554,7 @@ export function buildHTML(): string {
           </select>
           <button class="ap-btn-generate" id="ap-btn-cover" type="button" disabled>
             ${I_STAR}
-            Generate Cover Letter
+            Cover letter ideas
           </button>
           <div id="ap-cover-result"></div>
         </div>
@@ -1563,7 +1563,7 @@ export function buildHTML(): string {
         <div class="ap-login-view" id="ap-login-view">
           <div class="ap-login-card">
             <h2 class="ap-login-title">Connect your Tailrd account</h2>
-            <p class="ap-muted ap-login-sub">Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters, kept in sync automatically.</p>
+            <p class="ap-muted ap-login-sub">Sign in once on tailrd.ca and the extension fills the repetitive fields of an application from your profile, kept in sync. You review every answer before you submit.</p>
             <div id="ap-login-error" class="ap-error" style="display:none"></div>
             <button id="ap-btn-connect" class="ap-btn-login" type="button">Connect your Tailrd account</button>
             <button id="ap-btn-use-mock" class="ap-btn-mock" type="button">Try with sample data</button>
@@ -1583,12 +1583,12 @@ export function buildHTML(): string {
     <div class="ap-modal-backdrop" id="ap-modal-backdrop">
       <div class="ap-modal">
         <div class="ap-modal-header">
-          <h2>Your Autofill information</h2>
+          <h2>Your profile on this device</h2>
           <button class="ap-modal-close" id="ap-info-close">${I_CLOSE}</button>
         </div>
         <div class="ap-modal-notice">
           <span class="ap-modal-notice-icon">${I_INFO}</span>
-          <span>Your autofill information updates automatically when you <b>change your upload resume</b> or <b>update information</b> in an application form.</span>
+          <span>This information updates automatically when you <b>change your uploaded resume</b> or <b>update information</b> in an application form.</span>
         </div>
         <div class="ap-modal-body">
           <div class="ap-modal-sidebar" id="ap-info-sidebar">
@@ -1614,7 +1614,7 @@ export function buildHTML(): string {
     <div class="ap-modal-backdrop" id="ap-gaps-modal">
       <div class="ap-modal ap-modal-narrow">
         <div class="ap-modal-header">
-          <h2>Questions we couldn't answer</h2>
+          <h2>Questions for you to answer</h2>
           <button class="ap-modal-close" id="ap-gaps-close">${I_CLOSE}</button>
         </div>
         <div class="ap-modal-notice">
@@ -1643,7 +1643,7 @@ export function buildHTML(): string {
         </div>
         <div class="ap-modal-notice">
           <span class="ap-modal-notice-icon">${I_INFO}</span>
-          <span>When autofill creates an account to get past a signup wall, the sign-in it used is saved <b>on this device only</b>. It never syncs and never leaves this browser.</span>
+          <span>When Tailrd creates an account to get past a signup wall, the sign-in it used is saved <b>on this device only</b>. It never syncs and never leaves this browser.</span>
         </div>
         <div class="ap-modal-body">
           <div class="ap-signins-body" id="ap-signins-body"></div>
@@ -1660,7 +1660,7 @@ export function buildHTML(): string {
       <div class="ap-pdf-status" id="ap-pdf-status"></div>
       <iframe class="ap-pdf-frame" id="ap-pdf-frame" title="Résumé preview"></iframe>
       <div class="ap-pdf-actions">
-        <button class="ap-btn-soft ap-btn-icon" id="ap-pdf-regen" type="button">${I_REGEN}Regenerate</button>
+        <button class="ap-btn-soft ap-btn-icon" id="ap-pdf-regen" type="button">${I_REGEN}Try again</button>
         <button class="ap-btn-soft ap-btn-icon" id="ap-pdf-download" type="button">${I_DOWNLOAD}Download PDF</button>
         <button class="ap-btn-upload ap-btn-icon" id="ap-pdf-attach" type="button">${I_PAPERCLIP}Attach to form</button>
       </div>
@@ -1937,7 +1937,7 @@ function showLoginView(expired = false): void {
   if (sub) {
     sub.textContent = expired
       ? "Reconnect to keep syncing your profile and résumés. Your data is still here."
-      : "Sign in once on tailrd.ca and the extension fills applications from your real profile, resumes, and cover letters, kept in sync automatically.";
+      : "Sign in once on tailrd.ca and the extension fills the repetitive fields of an application from your profile, kept in sync. You review every answer before you submit.";
   }
 }
 
@@ -2057,7 +2057,7 @@ function refreshMainView(): void {
   // per-page fill summary above the Continue gate are the feedback surface.
   const canRun = Boolean(overlayState.profile) && !overlayState.busy;
   refs.btnAutofill.disabled = !canRun;
-  refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Autofill";
+  refs.btnAutofill.textContent = overlayState.busy ? "Working\u2026" : "Fill from my profile";
   renderFillWave(overlayState.autofilling);
 
 
@@ -2485,7 +2485,7 @@ async function renderSavedSignins(): Promise<void> {
       <div class="ap-signins-empty">
         <span class="ap-signins-empty-icon">${I_KEY}</span>
         <div class="ap-signins-empty-title">No saved sign-ins yet</div>
-        <div class="ap-signins-empty-sub">Nothing to show yet. The first signup wall autofill gets you past will appear here automatically.</div>
+        <div class="ap-signins-empty-sub">Nothing to show yet. The first signup wall Tailrd gets you past will appear here automatically.</div>
       </div>`;
     return;
   }
@@ -2612,7 +2612,7 @@ function renderResumeSection(): void {
 
   if (resumes.length > 0 && withFile.length === 0) {
     setUploadStatus(
-      "Your resume has no stored file \u2014 re-upload it in the dashboard to enable auto-upload.",
+      "Your resume has no stored file. Re-upload it in the dashboard so Tailrd can attach it.",
       "warn"
     );
   } else if (!hasResumeField()) {
@@ -2695,7 +2695,7 @@ async function doAutofill(): Promise<void> {
     // this drives the ✓ / – checklist to its post-fill state.
     callbacks.onRescan();
   } catch (err) {
-    showBanner(`Autofill failed: ${err instanceof Error ? err.message : "unknown error"}`, "error");
+    showBanner(`Couldn't fill this page: ${err instanceof Error ? err.message : "unknown error"}`, "error");
   } finally {
     overlayState.busy = false;
     overlayState.autofilling = false;
@@ -3059,7 +3059,7 @@ export function infoSectionHTML(
       // sections, so the hint below says so rather than implying they sync.
       const entries = ed.experience ?? p.experience ?? [];
       let html =
-        '<div class="ap-form-hint">Edit any role, add ones your résumé missed, or add your own fields. <strong>These edits stay on this device</strong>: they autofill applications from this browser but do not change your Tailrd profile or show up on the web app. Edit your résumé there to change it everywhere.</div>';
+        '<div class="ap-form-hint">Edit any role, add ones your résumé missed, or add your own fields. <strong>These edits stay on this device</strong>: they fill applications from this browser but do not change your Tailrd profile or show up on the web app. Edit your résumé there to change it everywhere.</div>';
       entries.forEach((e, i) => {
         html += `
           <div class="ap-exp-entry">
@@ -3109,7 +3109,7 @@ export function infoSectionHTML(
       `;
     case "eeo":
       return `
-        <div class="ap-form-hint">Optional self-identification. Only filled when EEO autofill is enabled. Kept private.</div>
+        <div class="ap-form-hint">Optional self-identification. Only filled when EEO filling is enabled. Kept private.</div>
         ${apEeoSelect("gender", "Gender", d.eeo.gender)}
         ${apEeoSelect("race", "Race / Ethnicity", d.eeo.race)}
         ${apEeoSelect("hispanicLatino", "Hispanic or Latino", d.eeo.hispanicLatino)}
@@ -3158,7 +3158,7 @@ function renderSignupForm(form: HTMLElement, p: UserApplicationProfile): void {
   }
   const s = overlayState.signupDraft ?? { email: "", password: "" };
   form.innerHTML = `
-    <div class="ap-form-hint">Some sites (Workday and similar) require an account before you can apply. Autofill creates or signs in to those accounts with the details below, then continues filling. Stored only on this device, never sent to Tailrd or the AI.</div>
+    <div class="ap-form-hint">Some sites (Workday and similar) require an account before you can apply. Tailrd can create or sign in to those accounts with the details below. Stored only on this device, never sent to Tailrd or the AI.</div>
     <div class="ap-form-row">
       <label>Account email</label>
       <input data-signup="email" type="email" value="${esc(s.email)}" placeholder="${esc(p.email || "you@example.com")}" />
@@ -3467,12 +3467,12 @@ function selectedResumeId(): number | null {
 async function doTailor(addKeywords?: string[] | null): Promise<void> {
   if (!refs || !callbacks || overlayState.tailorBusy) return;
   if (!overlayState.profile) {
-    setTailorStatus("Connect your Tailrd account to tailor your résumé.", "warn");
+    setTailorStatus("Connect your Tailrd account to get résumé suggestions.", "warn");
     return;
   }
   overlayState.tailorBusy = true;
   refs.btnTailor.disabled = true;
-  refs.btnTailor.textContent = "Tailoring…";
+  refs.btnTailor.textContent = "Preparing suggestions…";
   try {
     const res = await callbacks.onTailorResume({
       resumeId: selectedResumeId(),
@@ -3480,7 +3480,7 @@ async function doTailor(addKeywords?: string[] | null): Promise<void> {
       addKeywords: addKeywords,
     });
     if (!res.ok || !res.result) {
-      setTailorStatus(res.reason ?? "Couldn't tailor your résumé.", "error");
+      setTailorStatus(res.reason ?? "Couldn't prepare suggestions.", "error");
       return;
     }
     overlayState.tailorResult = res.result;
@@ -3490,14 +3490,14 @@ async function doTailor(addKeywords?: string[] | null): Promise<void> {
     );
     renderTailorResult();
   } catch (err) {
-    setTailorStatus(err instanceof Error ? err.message : "Tailoring failed.", "error");
+    setTailorStatus(err instanceof Error ? err.message : "Couldn't prepare suggestions.", "error");
   } finally {
     overlayState.tailorBusy = false;
     if (refs) {
       updateTailorButtonState();
       refs.btnTailor.textContent = overlayState.tailorResult
-        ? "Re-tailor for this job"
-        : "Tailor my résumé for this job";
+        ? "Suggest again"
+        : "Suggest edits for this job";
     }
   }
 }
@@ -3589,7 +3589,7 @@ function closeTailorPreview(): void {
 /** Regenerate from within the preview, then refresh the rendered PDF. */
 async function regenFromPreview(): Promise<void> {
   if (overlayState.tailorBusy) return;
-  setPdfStatus("Regenerating…", "");
+  setPdfStatus("Preparing…", "");
   await doTailor([...overlayState.tailorKeywords]);
   if (overlayState.tailorResult) await openTailorPreview();
 }
@@ -3644,12 +3644,12 @@ function currentCoverText(): string {
 async function doGenerateCoverLetter(baseText?: string): Promise<void> {
   if (!refs || !callbacks || overlayState.coverLetterBusy) return;
   if (!overlayState.profile) {
-    setCoverStatus("Connect your Tailrd account to generate a cover letter.", "warn");
+    setCoverStatus("Connect your Tailrd account to get cover letter ideas.", "warn");
     return;
   }
   overlayState.coverLetterBusy = true;
   refs.btnCover.disabled = true;
-  refs.btnCover.textContent = baseText ? "Rewriting…" : "Generating…";
+  refs.btnCover.textContent = "Gathering ideas…";
   try {
     const res = await callbacks.onGenerateCoverLetter({
       resumeId: selectedResumeId(),
@@ -3657,20 +3657,20 @@ async function doGenerateCoverLetter(baseText?: string): Promise<void> {
       baseText: baseText ?? null,
     });
     if (!res.ok || typeof res.text !== "string") {
-      setCoverStatus(res.reason ?? "Couldn't generate a cover letter.", "error");
+      setCoverStatus(res.reason ?? "Couldn't gather cover letter ideas.", "error");
       return;
     }
     overlayState.coverLetterText = res.text;
     renderCoverLetterResult();
   } catch (err) {
-    setCoverStatus(err instanceof Error ? err.message : "Generation failed.", "error");
+    setCoverStatus(err instanceof Error ? err.message : "Couldn't gather cover letter ideas.", "error");
   } finally {
     overlayState.coverLetterBusy = false;
     if (refs) {
       updateCoverButtonState();
       refs.btnCover.textContent = overlayState.coverLetterText
-        ? "Regenerate cover letter"
-        : "Generate Cover Letter";
+        ? "New cover letter ideas"
+        : "Cover letter ideas";
     }
   }
 }

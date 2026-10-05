@@ -18,9 +18,9 @@ Submit for review. To rebuild it: from `chrome-extension/`,
 
 **What changes in the dashboard**
 - Version 0.4.0 to 0.5.0.
-- Name: "Tailrd: Job Application Autofill" (0.4.0 had an em dash where the
-  colon is; the manifest lost it in the August sweep). The listing title
-  follows the manifest.
+- Name: "Tailrd: Job Application Assistant" (0.4.0 was "Job Application
+  Autofill" with an em dash; renamed for the responsible-AI positioning). The
+  listing title follows the manifest.
 - Permissions and host permissions: identical to 0.4.0, so existing users see
   no new permission prompt and the update installs silently.
 - Data use: unchanged. Diagnostic capture (see below) is on for one account
@@ -126,7 +126,7 @@ Set both for **Production**, then redeploy (env changes need a redeploy to apply
 
 ## Listing: basic fields
 
-- **Name:** Tailrd: Job Application Autofill
+- **Name:** Tailrd: Job Application Assistant
 - **Summary (132 chars max):**
   `Fills job application forms from the profile in your Tailrd account. You always review every answer and submit the form yourself.`
   (Must match `manifest.json`'s `description`. Keep it free of applicant-tracking-system
@@ -137,7 +137,8 @@ Set both for **Production**, then redeploy (env changes need a redeploy to apply
 - **Screenshots:** `store-previews/tailrd-1-autofill.png … tailrd-4-dashboard.png`
   (4 × 1280×800, already the right size). Screenshots 1-3 regenerate with
   `node scripts/gen-store-screenshots.mjs`; `tailrd-4-dashboard.png` predates that
-  script and is kept as shipped.
+  script and still shows the old copy ("Autofill any application", "Generate
+  cover letters"), so it needs a rebuild before the next upload.
 - **Small promo tile (440×280):** `store-previews/tailrd-promo-small-440x280.png`
 - **Marquee promo tile (1400×560):** `store-previews/tailrd-promo-marquee-1400x560.png`
   (both 24-bit PNG, no alpha; regenerate with `node scripts/gen-promo-tiles.mjs`)
@@ -146,26 +147,27 @@ Set both for **Production**, then redeploy (env changes need a redeploy to apply
   the two suggested edits):
 
 ```
-Tailrd fills job application forms for you: accurately, and always under your control.
+Tailrd helps you fill job applications, and you stay in control of every answer.
+
+It never submits an application by itself. The final Submit is always yours.
+It never invents an answer. Every answer comes from your profile, or the field is left empty.
 
 Applying online means retyping the same details into a new form for every role. Tailrd keeps that information in one profile and puts it into the form in front of you, so you can spend your time on the parts of the application that actually need you.
 
 WHAT IT DOES
 • Recognizes an application form when you open one, on company career sites and on the hiring platforms they run on, and offers to fill it.
-• Fills the fields it can answer from your Tailrd profile: contact details, work history, education, links, work authorization, and screening questions.
+• Fills the fields it can answer from your Tailrd profile: contact details, work history, education, links, work authorization, and screening questions you've already answered in your profile.
 • Works through applications that span several pages. You click once per page; if the site asks you to create an account first, Tailrd fills that step too.
 • Answers dropdowns and multiple-choice questions only with options the form actually offers. If your profile does not answer a question, Tailrd leaves it blank for you to complete.
-• Attaches the résumé from your account, and can generate a résumé or cover letter tailored to the job you are applying for.
+• Attaches the résumé from your account, suggests résumé edits for the job, and offers talking points and ideas for your cover letter.
 
 WHAT IT NEVER DOES
-• It never submits an application by itself. The final Submit is always yours.
-• It never invents an answer. Every answer comes from your profile, or the field is left empty.
 • Demographic (EEO) answers never leave your device: they are stored locally and filled locally.
 
 You need a free Tailrd account (www.tailrd.ca) to sync your profile.
 ```
 
-(The live text has an em dash after "for you"; the copy above uses a colon.)
+(The live text opens with an em dash after "for you"; the copy above replaces that opener.)
 
 > **Do not reintroduce a list of applicant-tracking-system names here.** The v0.4.0
 > draft was rejected under "Spam and Placement in the Store" (ref: Yellow Argon,
@@ -175,7 +177,7 @@ You need a free Tailrd account (www.tailrd.ca) to sync your profile.
 
 ## Privacy tab: permission justifications (paste per field)
 
-- **Single purpose:** Tailrd autofills job-application forms from the user's own
+- **Single purpose:** Tailrd fills job-application forms from the user's own
   Tailrd profile and tracks the applications they choose to submit.
 - **Host permissions (`http://*/*`, `https://*/*`, content script `<all_urls>` / all frames):**
   Job applications are hosted on tens of thousands of company-specific ATS
@@ -286,7 +288,7 @@ SETUP (once)
 
 CORE FUNCTIONALITY (no real application is submitted)
 4. Go to https://www.tailrd.ca/demo-apply (a demo job-application form).
-5. Open the panel (toolbar icon) and click "Autofill".
+5. Open the panel (toolbar icon) and click "Fill from my profile".
 6. Expected: the form fills from the signed-in profile within a few seconds
    (name, email, phone, address, work authorization…), and the resume file
    attaches where an upload field exists. Questions the profile cannot answer
@@ -297,7 +299,7 @@ CORE FUNCTIONALITY (no real application is submitted)
 OPTIONAL: real ATS detection
 Open any public Greenhouse or Lever job posting; the panel detects the
 application form the same way. Please avoid pressing a real employer's final
-Submit button; running Autofill itself is safe.
+Submit button; running Fill from my profile itself is safe.
 
 NOTES
 - AI answers are grounded in the account profile; ungroundable fields stay empty.

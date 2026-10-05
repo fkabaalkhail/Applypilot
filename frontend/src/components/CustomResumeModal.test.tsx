@@ -48,8 +48,8 @@ describe("CustomResumeModal", () => {
     const generate = vi.fn().mockResolvedValue(rewrite);
     render(<CustomResumeModal job={{ title: "SWE", company: "Acme", url: "u" }} onClose={() => {}} analyze={analyze} generate={generate} jobId={null} onAttach={vi.fn()} />);
     // Step 1 → 2 → 3
-    fireEvent.click(await screen.findByRole("button", { name: /Improve My Resume/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Generate My New Resume/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Suggest Edits for This Job/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Get Suggestions/i }));
     await waitFor(() => expect(generate).toHaveBeenCalled());
     expect(await screen.findByRole("button", { name: /Attach to application/i })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Apply Now/i })).toBeNull();
@@ -74,8 +74,8 @@ describe("CustomResumeModal", () => {
         generate={generate}
       />,
     );
-    fireEvent.click(await screen.findByRole("button", { name: /Improve My Resume/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Generate My New Resume/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Suggest Edits for This Job/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Get Suggestions/i }));
     await waitFor(() => expect(generate).toHaveBeenCalled());
     const closed = await screen.findByRole("button", { name: /Posting closed/i });
     expect((closed as HTMLButtonElement).disabled).toBe(true);
@@ -102,8 +102,8 @@ describe("CustomResumeModal", () => {
         generate={generate}
       />,
     );
-    fireEvent.click(await screen.findByRole("button", { name: /Improve My Resume/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Generate My New Resume/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Suggest Edits for This Job/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Get Suggestions/i }));
     const link = await screen.findByRole("link", { name: /Apply Now/i });
     expect(link.getAttribute("href")).toBe("https://live.example/9");
     expect(screen.queryByRole("button", { name: /Posting closed/i })).toBeNull();
@@ -124,8 +124,8 @@ describe("CustomResumeModal", () => {
     };
     const generate = vi.fn().mockResolvedValue(rewrite);
     render(<CustomResumeModal job={{ title: "SWE", company: "Acme", url: "u" }} onClose={() => {}} analyze={analyze} generate={generate} jobId={null} />);
-    fireEvent.click(await screen.findByRole("button", { name: /Improve My Resume/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Generate My New Resume/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Suggest Edits for This Job/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Get Suggestions/i }));
     await waitFor(() => expect(generate).toHaveBeenCalled());
     expect(await screen.findByText(/Gaps to consider/i)).toBeTruthy();
     expect(screen.getByText(/Role requires Kubernetes/i)).toBeTruthy();

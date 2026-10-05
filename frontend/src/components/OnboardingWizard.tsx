@@ -44,7 +44,7 @@ export const WIZARD_STEPS: WizardStep[] = [
     type: "modal",
     position: "center",
     heading: "Welcome to Tailrd",
-    description: "Let us show you how to autofill job applications in seconds.",
+    description: "Here's how Tailrd helps you fill applications, with you reviewing every answer.",
     buttonLabel: "Get Started",
     showBack: false,
   },
@@ -53,8 +53,8 @@ export const WIZARD_STEPS: WizardStep[] = [
     type: "tooltip",
     target: "#autofill-btn",
     position: "bottom",
-    heading: "Click Autofill",
-    description: "Click <purple>Autofill</purple> to see the extension in action.",
+    heading: "Click Fill from profile",
+    description: "Click <purple>Fill from profile</purple> to see the extension in action.",
     buttonLabel: "Next",
     showBack: false,
   },
@@ -63,9 +63,9 @@ export const WIZARD_STEPS: WizardStep[] = [
     type: "tooltip",
     target: "#demo-form-fields",
     position: "right",
-    heading: "Application Filled",
+    heading: "Profile details filled in",
     description:
-      "Just like that, your application has been automatically filled with information from your <purple>Tailrd profile</purple>.",
+      "Your <purple>profile details</purple> are in. Review every field before you continue.",
     buttonLabel: "Next",
     showBack: true,
   },
@@ -76,7 +76,7 @@ export const WIZARD_STEPS: WizardStep[] = [
     position: "top",
     heading: "Custom Questions",
     description:
-      "Fill in any custom application questions and Tailrd will <purple>save</purple> your answers. Your saved answers will then be used to autofill any future job applications with the exact same question.",
+      "Answer the custom questions <purple>in your own words</purple>. Tailrd can offer talking points, but the answer is yours.",
     buttonLabel: "Next",
     showBack: true,
   },
@@ -85,9 +85,9 @@ export const WIZARD_STEPS: WizardStep[] = [
     type: "tooltip",
     target: "#generate-resume-btn",
     position: "bottom",
-    heading: "Tailor Your Resume",
+    heading: "Suggest edits for this job",
     description:
-      "<purple>Tailor</purple> your resume for every job, directly in Tailrd. Our AI analyzes the job description and optimizes your resume to match the keywords and requirements.",
+      "Tailrd points out <purple>keywords and requirements</purple> from the posting and suggests edits. You decide what goes in.",
     buttonLabel: "Next",
     showBack: true,
   },
@@ -96,9 +96,9 @@ export const WIZARD_STEPS: WizardStep[] = [
     type: "tooltip",
     target: "#extension-popup-area",
     position: "left",
-    heading: "AI Generation",
+    heading: "AI suggestions",
     description:
-      "Use <purple>AI</purple> to auto-generate tailored resumes and cover letters. Our AI will analyze the job description you are applying to and generate a tailored resume and cover letter in 1-click.",
+      "Get <purple>suggested résumé edits</purple> and cover letter ideas for the job you're applying to. You review and rewrite them in your own words.",
     buttonLabel: "Next",
     showBack: true,
   },
@@ -859,7 +859,7 @@ export default function OnboardingWizard(): JSX.Element | null {
           maxWidth: "360px",
         }}
       >
-        You're all set! Tailrd is ready to autofill your applications.
+        You're all set! Tailrd is ready to help with your applications.
       </div>
     );
   }

@@ -46,12 +46,11 @@ const JOBS = [
 ];
 
 const PROCESSING_STEPS = [
-  "Extracting ATS keywords...",
-  "Analyzing job requirements...",
-  "Tailoring resume sections...",
-  "Generating cover letter...",
-  "Filling application fields...",
-  "Application ready",
+  "Finding keywords in the posting...",
+  "Suggesting résumé edits...",
+  "Gathering cover letter ideas...",
+  "Filling fields from your profile...",
+  "Ready for your review",
 ];
 
 const COMPANIES = [

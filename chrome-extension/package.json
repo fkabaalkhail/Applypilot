@@ -3,7 +3,7 @@
   "version": "0.5.0",
   "private": true,
   "type": "module",
-  "description": "ApplyPilot Chrome extension that detects job application forms and autofills them from the user's ApplyPilot profile.",
+  "description": "Tailrd Chrome extension: fills the repetitive fields of job applications from your Tailrd profile; you review and submit.",
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",

@@ -29,11 +29,11 @@ export default function ImproveModal({
         {/* The list of changes is unbounded, so it (not the modal) is what
             scrolls. Apply/Discard stay pinned to the bottom of the sheet. */}
         <div className="rd-modal-body">
-          <h2>{applied.length > 0 ? "Review the rewrite" : "No changes needed"}</h2>
+          <h2>{applied.length > 0 ? "Review the suggestions" : "No changes needed"}</h2>
           <p className="rd-prose">
             {applied.length > 0
-              ? "Your employers, titles, dates, and existing numbers are unchanged. Only the wording moved."
-              : "The rewrite didn't find anything to change. Your resume already reads well."}
+              ? "Your employers, titles, dates, and existing numbers stay the same. Only the wording would change."
+              : "No suggestions this time. Your resume already reads well."}
           </p>
 
           {applied.length > 0 && (
@@ -52,7 +52,7 @@ export default function ImproveModal({
               <h2 style={{ fontSize: "1rem", marginTop: "1.5rem" }}>Only you can fill these in</h2>
               <p className="rd-prose">
                 We left a placeholder instead of guessing a number. Replace each one with your real
-                figure after you apply.
+                figure after you accept.
               </p>
               <ul className="rd-modal-changes">
                 {needsInput.map((change, i) => (
@@ -72,7 +72,7 @@ export default function ImproveModal({
           </button>
           {applied.length > 0 && (
             <button className="rd-btn rd-btn-primary" onClick={onApply} disabled={applying}>
-              {applying ? "Applying…" : "Apply to my resume"}
+              {applying ? "Saving…" : "Accept these changes"}
             </button>
           )}
         </div>

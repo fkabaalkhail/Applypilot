@@ -59,8 +59,8 @@ function smallHtml(logo) {
   .wrap { padding: 26px 30px; height: 100%; display: flex; flex-direction: column; }
   .logo { height: 30px; width: auto; align-self: flex-start; }
   h1 {
-    margin-top: 26px;
-    font-size: 46px; line-height: 1.06; font-weight: 800;
+    margin-top: 22px;
+    font-size: 37px; line-height: 1.08; font-weight: 800;
     letter-spacing: -0.022em;
   }
   .foot {
@@ -71,7 +71,7 @@ function smallHtml(logo) {
   </style></head><body>
     <div class="wrap">
       <img class="logo" src="${logo}" alt="" />
-      <h1>Fill every job<br/>application,<br/><span class="accent">automatically.</span></h1>
+      <h1>Your applications,<br/>your words.<br/><span class="accent">Less retyping.</span></h1>
       <div class="foot">Works on 60+ ATS &amp; career sites</div>
     </div>
   </body></html>`;
@@ -142,9 +142,9 @@ function marqueeHtml(logo, logoSmall) {
   </style></head><body>
     <div class="wrap">
       <img class="logo" src="${logo}" alt="" />
-      <h1>Create the account &amp;<br/><span class="accent">fill the form</span>, automatically.</h1>
-      <div class="sub">Tailrd signs you up and completes every field from your profile
-      on Greenhouse, Workday, Lever and 60+ other&nbsp;ATSs.</div>
+      <h1>Skip the retyping.<br/><span class="accent">Keep the judgment.</span></h1>
+      <div class="sub">Tailrd fills the repetitive fields from your profile on Greenhouse,
+      Workday, Lever and 60+ other&nbsp;ATSs. You review and submit.</div>
       <div class="foot">You always review and submit</div>
 
       <div class="card">
@@ -155,15 +155,15 @@ function marqueeHtml(logo, logoSmall) {
           <div><b>Vercel</b><span>Senior Frontend Engineer</span></div>
         </div>
         <div class="pad">
-          <div class="btn">Account Creation &amp; Autofill</div>
-          <div class="cap">18 fields ready to fill on this page</div>
+          <div class="btn">Account Creation &amp; Profile Fill</div>
+          <div class="cap">18 fields your profile can fill</div>
         </div>
         <div class="div"></div>
-        <div class="row">Your Autofill Information <span class="chev">›</span></div>
+        <div class="row">Your profile on this device <span class="chev">›</span></div>
         <div class="div"></div>
         <div class="row">Upload Resume</div>
         <div class="file">Alex_Rivera_Resume.pdf <span class="chip">Change</span></div>
-        <div class="ghost">✦&nbsp; Tailor résumé for this job</div>
+        <div class="ghost">✦&nbsp; Suggest edits for this job</div>
       </div>
     </div>
   </body></html>`;
