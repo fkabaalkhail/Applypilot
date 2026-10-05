@@ -716,6 +716,44 @@ function renderCountry(country: Country, q: QuestionInput, rule: string): Questi
 
 const OUTSIDE_OPTION = /\b(not applicable|n a|none|other|outside|international|non us|not in the|i do not (live|reside)|not a us|foreign|not listed)\b|^na$/;
 
+/** Places under US embargo or sanctions, as export-control questions list them. */
+const SANCTIONED = /\b(cuba|iran|north korea|syria|crimea|donetsk|luhansk|zaporizhzhia|kherson|russia|belarus|venezuela|sudan)\b/;
+
+/**
+ * Export-control lists of embargoed places ("Citizen or permanent resident of
+ * Cuba, Iran, North Korea, or Syria" | … | "None of the above", Databricks;
+ * "Do you reside in … any of the following countries: Cuba, Iran…?", Planet
+ * Labs; question bank 2026-10-05): the applicant's own countries (citizenship,
+ * residence, permanent residence) against every place listed. None named:
+ * "None of the above" / No. One named, or the citizenship unknown: blank.
+ */
+function resolveSanctionedList(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  const opts = (q.options ?? []).filter((o) => o.trim() && !/^(select|choose|please select)/i.test(o.trim()));
+  const listed = opts.filter((o) => SANCTIONED.test(qnorm(o)));
+  const none = opts.filter((o) => /^none( of the above| of these| apply| applies)?\W*$/i.test(o.trim()));
+  const checklist = listed.length > 0 && none.length === 1 && opts.every((o) => o === none[0] || SANCTIONED.test(qnorm(o)));
+  const yesNo = !checklist && SANCTIONED.test(n) && isBooleanQuestion(q) && /\b(any of the following|the following (countries|territories|regions))\b/.test(n);
+  if (!checklist && !yesNo) return null;
+  const residence = isHigh(facts.location.country) ? facts.location.country.value : null;
+  const held = [...facts.workAuth.byCountry.entries()];
+  const citizenOf = held.filter(([, a]) => a.basis === "citizen").map(([cc]) => countryByCode(cc));
+  const prOf = held.filter(([, a]) => a.basis === "permanent_resident").map(([cc]) => countryByCode(cc));
+  // Only the facts the question asks about: "Do you reside in…" needs no
+  // citizenship (Planet Labs).
+  const asked = checklist ? opts.join(" ") : q.label;
+  const asksCitizenship = /\b(citizens?|citizenship|nationals?|nationality|passport)\b/i.test(asked);
+  const asksResidence = /\b(reside|resides|resident|residence|live|living|located|ordinarily)\b/i.test(asked) || !asksCitizenship;
+  if ((asksResidence && !residence) || (asksCitizenship && citizenOf.length === 0)) return abstain("sanctions:unknown");
+  const mine = [...(asksResidence ? [residence, ...prOf] : []), ...(asksCitizenship ? citizenOf : [])].filter((c): c is Country => Boolean(c));
+  const names = (c: Country): string[] => [c.name, ...c.aliases].map(qnorm).filter((w) => w.length > 2);
+  const named = (text: string): boolean => {
+    const t = ` ${qnorm(text)} `;
+    return mine.some((c) => names(c).some((w) => t.includes(` ${w} `)));
+  };
+  if (checklist) return listed.some(named) ? abstain("sanctions:named") : answer(none[0], "sanctions:none");
+  return named(q.label) ? abstain("sanctions:named") : booleanResult(false, q, "sanctions:none");
+}
+
 /**
  * "Do you plan to move out of the state/country in which you currently reside
  * within the next 6-12 months?" over "I have no plans to move at this time"
@@ -1170,6 +1208,20 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
       });
       if (containing.length === 1) return answer(containing[0], "graduation:month-range");
     }
+    // "Earlier than Fall 2026" / "Later than Summer 2027" (Databricks) and
+    // "Already graduated" (Riot; question bank 2026-10-05): open ends,
+    // compared with the whole span the graduation could be in.
+    const first = g.earliest.getUTCFullYear() * 12 + g.earliest.getUTCMonth();
+    const last = g.latest.getUTCFullYear() * 12 + g.latest.getUTCMonth();
+    const open = q.options.filter((o) => {
+      const m = /^(earlier than|before|prior to|later than|after)\b/.exec(qnorm(o));
+      const span = m ? optionMonthSpan(o) : null;
+      if (!m || !span) return false;
+      return /^(earlier|before|prior)/.test(m[1]) ? last < span[0] : first > span[1];
+    });
+    if (open.length === 1) return answer(open[0], "graduation:open-range");
+    const graduated = q.options.filter((o) => /\b(already graduated|graduated already|have already graduated)\b/.test(qnorm(o)));
+    if (graduated.length === 1 && primary.completed === true) return answer(graduated[0], "graduation:already-graduated");
     const withYear = q.options.filter((o) => o.includes(year));
     if (withYear.length === 1) return answer(withYear[0], "graduation:only-option-in-year");
     // A year list without theirs, beside its "Other" (Palantir's 2022-2030
@@ -2178,6 +2230,7 @@ export function resolveQuestion(
 
   const resolved =
     resolveRelocationInstruction(q, raw, facts, profile, ctx) ??
+    resolveSanctionedList(q, n, facts) ??
     resolveWorkAuthorization(q, n, facts, profile, ctx) ??
     resolveUsPersonStatus(q, facts, profile) ??
     resolveLaterResidency(q, n, facts) ??

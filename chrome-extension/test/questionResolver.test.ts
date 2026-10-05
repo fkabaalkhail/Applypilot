@@ -679,3 +679,47 @@ describe("question bank 2026-10-05: education", () => {
     expect(value(ask(result, { kind: "longText" }, US_OPT_ANALYST, US_JOB))).toBe("abstain");
   });
 });
+
+describe("embargoed places, listed (question bank 2026-10-05: Databricks, Planet Labs)", () => {
+  const P = () => import("./e2e/profiles.mjs") as Promise<Record<string, UserApplicationProfile>>;
+  const US_JOB = { jobCountry: "US" as string | null, company: "Acme" };
+  const DATABRICKS = ["Citizen or permanent resident of Cuba, Iran, North Korea, or Syria", "Ordinarily a resident of Cuba, Iran, North Korea, Syria or the Crimea, Donetsk, Luhansk, Zaporizhzhia, or Kherson regions of Ukraine", "Ordinarily a resident of Russia or Belarus and not willing to relocate for a Databricks role", "None of the above"];
+  const LIST = "Please confirm whether any of the below applies to you. Select all that apply. Note: This information will only be used to ensure compliance with U.S. sanctions and export controls.";
+
+  it("a citizen and resident of a country no option names: None of the above", async () => {
+    const { INDIA_NEW_GRAD, BERLIN_STAFF } = await P();
+    const o = { options: DATABRICKS, kind: "multiChoice" as never, controlType: "checkboxGroup" as const };
+    expect(value(ask(LIST, o, INDIA_NEW_GRAD, US_JOB))).toBe("None of the above");
+    expect(value(ask(LIST, o, BERLIN_STAFF, US_JOB))).toBe("None of the above");
+  });
+
+  it("…but never without the citizenship, nor when an option names the applicant's country", async () => {
+    const { US_H1B_SENIOR, INDIA_NEW_GRAD } = await P();
+    const o = { options: DATABRICKS, kind: "multiChoice" as never, controlType: "checkboxGroup" as const };
+    expect(value(ask(LIST, o, US_H1B_SENIOR, US_JOB))).toBe("abstain");
+    const kyiv = { ...INDIA_NEW_GRAD, location: "Kyiv, Ukraine", country: "Ukraine", workAuthorization: "Ukrainian citizen" };
+    expect(value(ask(LIST, o, kyiv as never, US_JOB))).not.toBe("None of the above");
+  });
+
+  it("'Do you reside in … any of the following countries: Cuba, Iran, North Korea, Syria…?' checks every one", async () => {
+    const { INDIA_NEW_GRAD } = await P();
+    const q = "Do you reside in or maintain an established permanent residence in any of the following countries: Cuba, Iran, North Korea, Syria, or the following territories: Crimea, Donetsk, Luhansk?";
+    expect(value(ask(q, { options: YES_NO }, INDIA_NEW_GRAD, US_JOB))).toBe("No");
+  });
+});
+
+describe("graduation options with open ends (question bank 2026-10-05)", () => {
+  const P = () => import("./e2e/profiles.mjs") as Promise<Record<string, UserApplicationProfile>>;
+  const US_JOB = { jobCountry: "US" as string | null, company: "Acme" };
+  it("'Earlier than Fall 2026' for a June 2026 graduate and a 2014 one; 'Already graduated' for a graduate (Databricks, Riot)", async () => {
+    const { INDIA_NEW_GRAD, US_H1B_SENIOR, COMPLETE_CANADIAN } = await P();
+    const databricks = { options: ["Earlier than Fall 2026", "Fall 2026", "Spring 2027", "Later than Summer 2027"], kind: "choice" as const, controlType: "select" as const };
+    expect(value(ask("What is your graduation date?", databricks, INDIA_NEW_GRAD, US_JOB))).toBe("Earlier than Fall 2026");
+    expect(value(ask("What is your graduation date?", databricks, US_H1B_SENIOR, US_JOB))).toBe("Earlier than Fall 2026");
+    expect(value(ask("What is your graduation date?", databricks, COMPLETE_CANADIAN, US_JOB))).toBe("Spring 2027");
+    const riot = { options: ["2028", "2027", "Already graduated"], kind: "choice" as const, controlType: "select" as const };
+    const q = "Please select the year you anticipate graduating from your academic program.";
+    expect(value(ask(q, riot, US_H1B_SENIOR, US_JOB))).toBe("Already graduated");
+    expect(value(ask(q, riot, COMPLETE_CANADIAN, US_JOB))).toBe("2027");
+  });
+});
