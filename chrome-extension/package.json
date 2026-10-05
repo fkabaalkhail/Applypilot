@@ -1,6 +1,6 @@
 {
   "name": "applypilot-chrome-extension",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "ApplyPilot Chrome extension that detects job application forms and autofills them from the user's ApplyPilot profile.",
