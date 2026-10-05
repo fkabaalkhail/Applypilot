@@ -521,6 +521,9 @@ const CATEGORY_SPECS: CategorySpec[] = [
     patterns: [
       { re: /\b(current |present )?(job )?title\b/, weight: 0.9 },
       { re: /\bcurrent (role|position)\b/ },
+      // The whole label only: Dayforce's "Current Job" checkbox in each work
+      // row (live 2026-10-05) went to the AI as "experience".
+      { re: /^current job$/ },
       { re: /\bposition\b/, weight: 0.6 },
     ],
     negative: /\bsalutation\b|\bmr\b|\bmrs\b|\bdegree\b|\bapply(ing)?\b|\bapplied\b|\bdesired\b|\binterested\b|\bsong\b/,

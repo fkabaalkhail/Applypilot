@@ -221,6 +221,16 @@ function controlTypeOf(el: HTMLElement): ControlType | null {
   return null;
 }
 
+/** A dropdown input that names the list it opens, and is not itself declared read-only. */
+function opensList(el: HTMLElement): boolean {
+  if (el.getAttribute("aria-readonly") === "true") return false;
+  return (
+    (el.getAttribute("aria-haspopup") || "").toLowerCase() === "listbox" ||
+    !!el.getAttribute("aria-controls") ||
+    !!el.getAttribute("aria-owns")
+  );
+}
+
 /** Options for a <select>, trimmed for transport. Exported for the Phase-2
  *  re-ask pass, which re-reads options after dependent-dropdown repopulation. */
 export function selectOptions(el: HTMLSelectElement, limit = 60): string[] {
@@ -1111,7 +1121,11 @@ export function scanPage(
     // of the application form, an EN/FR switcher is a real <select> we skip.
     if (isInPageChrome(el)) continue;
     if ((el as HTMLInputElement).disabled) continue;
-    if (el instanceof HTMLInputElement && el.readOnly) continue;
+    // A read-only box is the page's, except a dropdown's: Ant Design's select
+    // without a search box keeps a read-only input as its focus target
+    // (Dayforce's required "How did you hear about this job?", live
+    // 2026-10-05, was never seen).
+    if (el instanceof HTMLInputElement && el.readOnly && !(controlType === "combobox" && opensList(el))) continue;
     // select2 / chosen: the visible widget is a proxy of a hidden native
     // <select> that holds the real options and value. Fill the select (the
     // library follows its change event) and never the proxy or its dropdown.
