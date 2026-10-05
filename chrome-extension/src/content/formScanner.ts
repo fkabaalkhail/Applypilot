@@ -1116,6 +1116,11 @@ export function scanPage(
     // <select> that holds the real options and value. Fill the select (the
     // library follows its change event) and never the proxy or its dropdown.
     if (isEnhancedSelectProxy(el)) continue;
+    // A dropdown's own search box is no field of its own: Paylocity's select
+    // is a box with aria-haspopup="listbox" around a typeahead input, and the
+    // input, scanned too, got "TX" typed in and failed beside the dropdown
+    // that took "Texas" (live 2026-10-05). The box drives it.
+    if (controlType === "text" && el instanceof HTMLInputElement && el.parentElement?.closest('[aria-haspopup="listbox"]')) continue;
     const enhancedSelect = isEnhancedSelect(el);
 
     // Visibility: checkbox/radio/file are often visually hidden behind styled
@@ -1278,8 +1283,13 @@ export function scanPage(
       groupIndex,
       // A picker showing a bare dialing code shows the page's preset (from
       // the visitor's locale, "+44 GB"), not an answer: left as one, the
-      // picker was never selected for the fill.
-      currentValue: category === "phoneCountryCode" && isDialPicker(el) ? undefined : currentValueOf(el, controlType),
+      // picker was never selected for the fill. So does a phone box holding
+      // only the code ("+1", Recruitee, live 2026-10-05: never filled).
+      currentValue:
+        (category === "phoneCountryCode" && isDialPicker(el)) ||
+        (category === "phone" && /^\s*\+\s?\d{1,4}\s*$/.test((el as HTMLInputElement).value ?? ""))
+          ? undefined
+          : currentValueOf(el, controlType),
       ...resolutionFlags(resolved),
       ...(consentTick ? { deterministic: true } : {}),
     });

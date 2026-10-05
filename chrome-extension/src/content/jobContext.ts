@@ -50,13 +50,42 @@ function extractTitle(doc: Document): string {
   return (doc.title || "").trim().slice(0, 200);
 }
 
+/** The JobPosting's hiringOrganization name from the page's JSON-LD, if any. */
+function jsonLdCompany(doc: Document): string {
+  for (const s of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
+    try {
+      const data = JSON.parse(s.textContent ?? "");
+      for (const item of Array.isArray(data) ? data : [data, ...(Array.isArray(data?.["@graph"]) ? data["@graph"] : [])]) {
+        const org = item?.hiringOrganization;
+        const name = typeof org === "string" ? org : org?.name;
+        if (typeof name === "string" && name.trim()) return name.trim();
+      }
+    } catch {
+      // Malformed JSON-LD names nobody.
+    }
+  }
+  return "";
+}
+
 function extractCompany(doc: Document): string {
   const og = doc
     .querySelector('meta[property="og:site_name"]')
     ?.getAttribute("content");
   if (og && og.trim()) return og.trim().slice(0, 120);
-  const named = visibleText(doc.querySelector('[class*="company" i]'));
-  if (named) return named.slice(0, 120);
+  const ld = jsonLdCompany(doc);
+  if (ld) return ld.slice(0, 120);
+  // A name the page keeps for its header, shown or not (Paylocity's
+  // #LayoutLogoName, hidden beside its logo, live 2026-10-05).
+  const kept = (doc.querySelector('[id*="companyname" i], [id*="logoname" i], [class*="company-name" i], [class*="companyname" i]')?.textContent ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (kept && kept.length <= 80) return kept;
+  // The first company-classed element that says something: the first one was
+  // often the logo image, which says nothing.
+  for (const el of Array.from(doc.querySelectorAll('[class*="company" i]'))) {
+    const named = visibleText(el);
+    if (named) return named.slice(0, 120);
+  }
   return "";
 }
 

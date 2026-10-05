@@ -163,7 +163,12 @@ async function selectOne(
   // input must go back to what it held before, so a filter string ("Quebec",
   // a comma-joined skills list) is never left sitting in the field looking
   // like an entered answer.
-  const input = trigger instanceof HTMLInputElement ? trigger : null;
+  // A box around its own search input (Paylocity's select, live 2026-10-05)
+  // is searched through that input.
+  const input =
+    trigger instanceof HTMLInputElement
+      ? trigger
+      : trigger.querySelector<HTMLInputElement>('input[aria-autocomplete="list"], input[aria-autocomplete="both"]');
   const originalText = input?.value ?? "";
   let lastTyped: string | null = null;
   const restoreTyped = (): void => {
@@ -183,7 +188,7 @@ async function selectOne(
     listbox = await waitFor(() => getListbox(trigger), sleep, openWaitMs, pollMs);
   }
   let option = listbox ? findOption(listbox, value, opts.placeHint) : null;
-  if (isTypeahead(trigger) && !option) {
+  if (input && isTypeahead(input) && !option) {
     // Progressively broader filter texts: the full answer; the answer as a
     // search list spells it, without accents or a leading "The"; its leading
     // words, which find the list's own wording; its first word (a
@@ -210,7 +215,7 @@ async function selectOne(
     for (const text of attempts) {
       const preTypeKey = optionsKey(getListbox(trigger));
       lastTyped = text;
-      typeInto(trigger as HTMLInputElement, text);
+      typeInto(input, text);
       const hit = await pollForMatch(trigger, value, text, preTypeKey, sleep, openWaitMs, pollMs, opts.placeHint);
       if (hit) {
         listbox = hit.lb;
@@ -760,10 +765,16 @@ export function readComboboxValue(trigger: HTMLElement): string | undefined {
   ];
   for (const c of candidates) {
     const v = cleanText(c);
-    if (v) return v;
+    if (v && !DISPLAY_PROMPT.test(v)) return v;
   }
   return undefined;
 }
+
+/** What a dropdown shows before anything is chosen: "Select a state",
+ *  "Choose your country…" (Paylocity, live 2026-10-05: read as an answer, the
+ *  State was never selected for the fill). Only for a displayed value: as a
+ *  label, "Select your preferred location" is a real question. */
+const DISPLAY_PROMPT = /^[-\s]*(please\s+)?(select|choose|pick)\b[^.?!:]{0,30}(\.{3}|…)?$/i;
 
 /**
  * The value a div combobox displays as its own text, without the option list

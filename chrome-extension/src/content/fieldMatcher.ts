@@ -19,7 +19,7 @@ import type { ControlType, FieldCategory, ResolveControl, UserApplicationProfile
 import type { FieldSignals } from "./domUtils";
 import { normalize } from "./optionMatch";
 import { degreeRank, isHigh, profileFacts } from "./profileFacts";
-import { countryFromName } from "./geo";
+import { countryFromName, regionFromText } from "./geo";
 
 // Text normalization ("candidate-firstName" → "candidate first name") lives in
 // optionMatch.ts, which the MAIN-world driver shares; re-exported for importers.
@@ -952,8 +952,17 @@ export function resolveProfileValue(
       // The CITY, derived from the address or the location string. Never the
       // whole "Toronto, ON, Canada" string, which is what this used to write.
       return isHigh(loc.city) ? loc.city.value : null;
-    case "addressState":
-      return orNull(profile.addressState) ?? (isHigh(loc.region) ? loc.region.value.name : null);
+    case "addressState": {
+      const stated = orNull(profile.addressState);
+      // A dropdown searched by typing finds "Texas", never "TX" (Paylocity's
+      // State, live 2026-10-05: left on "Select a state").
+      if (stated && (control.controlType === "combobox" || control.controlType === "customDropdown") && !control.options?.length) {
+        const home = countryFromName(profile.country ?? "")?.code;
+        const region = regionFromText(stated, home === "US" || home === "CA" ? home : undefined);
+        if (region) return region.name;
+      }
+      return stated ?? (isHigh(loc.region) ? loc.region.value.name : null);
+    }
     case "postalCode":
       return isHigh(loc.postalCode) ? loc.postalCode.value : null;
     case "country": {

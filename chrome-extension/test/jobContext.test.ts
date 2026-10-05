@@ -32,6 +32,23 @@ describe("extractJobContext", () => {
     expect(ctx.jobDescription).not.toContain("© 2026");
   });
 
+  // Paylocity's application page (live 2026-10-05): the name is a hidden
+  // heading beside the logo, and the only [class*=company] is the logo itself.
+  // Unknown, its "Choice Website" was no longer the company's own site.
+  it("reads a company name the page keeps beside its logo, not the logo", () => {
+    document.body.innerHTML = `
+      <div class="header-title" id="LayoutLogoSection"><a href="https://example.com"><img alt="company logo" class="branding-company-logo" src="/logo.png"></a>
+      <h2 id="LayoutLogoName" style="display: none;">Choice Solutions LLC</h2></div>
+      <h2>Apply with resume</h2>`;
+    expect(extractJobContext(document).company).toBe("Choice Solutions LLC");
+  });
+
+  it("reads the posting's hiring organization from its JSON-LD", () => {
+    document.head.innerHTML = `<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting","title":"DevOps Intern","hiringOrganization":{"@type":"Organization","name":"Choice Solutions"}}</script>`;
+    document.body.innerHTML = `<h1>DevOps Intern</h1>`;
+    expect(extractJobContext(document).company).toBe("Choice Solutions");
+  });
+
   it("never throws and returns empty strings on a bare document", () => {
     const ctx = extractJobContext(document);
     expect(ctx).toEqual({ jobDescription: "", jobTitle: "", company: "" });
