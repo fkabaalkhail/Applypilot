@@ -12,9 +12,13 @@
  * Waymo's own site renders each label with a hash that changes on every load
  * ("First Name (required) a2f147a2"): pinned by the label before it.
  */
-import { BERLIN_STAFF, BOOTCAMP_CAREER_GAP, COMPLETE_CANADIAN, INDIA_NEW_GRAD, US_H1B_SENIOR, US_OPT_ANALYST } from "../profiles.mjs";
+import { BERLIN_STAFF, BOOTCAMP_CAREER_GAP, COMPLETE_CANADIAN, INDIA_NEW_GRAD, US_H1B_SENIOR, US_OPT_ANALYST, US_VETERAN } from "../profiles.mjs";
 
 const live = (c) => ({ mode: "live", trigger: { fillTimeoutMs: 180000 }, expect: {}, ...c });
+
+// Paylocity checks the email with a POST as it is typed (round 3): the lookup
+// submits nothing, so the Paylocity case lets exactly it through.
+const PAYLOCITY_EMAIL_CHECK = [String.raw`^https://recruiting\.paylocity\.com/Recruiting/Jobs/GetEnhancedEmailValidation$`];
 
 const DATE = String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$`;
 
@@ -583,6 +587,214 @@ export default [
       "label:Are you Hispanic/Latino?": "No",
       "label:Please identify your race": "Asian",
       "label:Veteran Status": "I am not a protected veteran",
+    },
+  }),
+  // ------------------------------------------- batch 3: families seen least (2026-10-05)
+  // Not cases, measured 2026-10-05: ADP Workforce Now opens its form behind a
+  // sign-in, and Avature (Pomerleau) behind account creation, neither of which
+  // these runs may do; Eightfold (Qualcomm) shows only a job-alert signup on
+  // the posting; Acuity's SuccessFactors "Postuler maintenant" opens a menu
+  // that leads to an SAP sign-in.
+  live({
+    id: "r4c-recruitee-huawei",
+    ats: "recruitee",
+    profile: COMPLETE_CANADIAN,
+    url: "https://huaweicanada.recruitee.com/o/co-op-engineer-ai-software-engineering",
+    expect: {
+      "label:Full name": "Maya Tremblay",
+      "label:Email address": "maya.tremblay@example.com",
+      "label:Phone number": "+1 416 555 0142",
+      // The page's own language picker: any value is the page's.
+      "label:EN - English, Select a language": { any: true },
+      "radio~Have you enrolled in a Co-op program at your university?": "Yes",
+      "radio~Are you open to work fully onsite?": "Yes",
+      "name=candidate.agreements.0.consent": "checked",
+    },
+  }),
+  live({
+    id: "r4c-paylocity",
+    ats: "paylocity",
+    allowRequests: PAYLOCITY_EMAIL_CHECK,
+    profile: US_VETERAN,
+    url: "https://recruiting.paylocity.com/Recruiting/Jobs/Details/4484980",
+    expect: {
+      "label:First Name (required)": "Marcus",
+      "label:Last Name (required)": "Hill",
+      "label:Preferred First Name": "Marcus",
+      "label:Email Address (required)": "marcus.hill@example.com",
+      "label:Mobile Number (required)": "512-555-0143",
+      "label:Have you applied for a job with us before?": "No",
+      "label:We may use SMS during the hiring process. Do you give us per": "No",
+      "#public-site-address-country-select-wrapper": "United States",
+      "label:Address Line 1": "4120 Duval St",
+      // The page ticks this itself once a résumé is attached.
+      "label:Fill out application with my resume": { any: true },
+      // Paylocity's own select: its menu has no ARIA roles, so State stays as
+      // the page shows it ("Select a state"); see NOTES.
+      "#public-site-address-us-state-select-wrapper": { any: true },
+      "label:City": "Austin",
+      "label:Zip Code": "78751",
+      "label:mm/dd/yyyy": { re: String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$` },
+      "radio~How did you hear about us?": "Choice Website",
+      "label:Have you worked with us before?": "No",
+      "label:School Name (required)": "The University of Texas at Austin",
+      "label:Area of Study": "Computer Science",
+      "label:School Type": "College / University",
+      "label:Did you Graduate?": "Yes",
+      "label:Degree Obtained": "Bachelor",
+    },
+  }),
+  live({
+    id: "r4c-jobvite-acpm",
+    ats: "jobvite",
+    profile: US_OPT_ANALYST,
+    url: "https://jobs.jobvite.com/acpm/job/oXWTAfw6",
+    expect: {
+      "label:First Name": "Ji-woo",
+      "label:Last Name": "Park",
+      "label:Email": "jiwoo.park@example.com",
+      "label:Phone": "+1 617 555 0148",
+      "label:City": "Boston",
+      "label:Country": "United States",
+    },
+  }),
+  live({
+    id: "r4c-dayforce-eclipse",
+    ats: "dayforce",
+    profile: COMPLETE_CANADIAN,
+    url: "https://jobs.dayforcehcm.com/en-US/eclipse/candidateportal/jobs/4132",
+    expect: {
+      "#jobPostingApplication_personalInfo_email": "maya.tremblay@example.com",
+      "label:Confirm Email Address": "maya.tremblay@example.com",
+      "label:First Name": "Maya",
+      "label:Last Name": "Tremblay",
+      "label:LinkedIn Profile": "https://www.linkedin.com/in/maya-tremblay",
+      "label:Home Phone Number": "4165550142",
+      "label:Mobile Phone Number": "4165550142",
+      "#jobPostingApplication_personalInfo_city": "Toronto",
+      "label:Degree": "Bachelor of Applied Science in Mechatronics Engineering",
+      "label:Major": "Mechatronics Engineering",
+      "label:School": "University of Waterloo",
+      "#jobPostingApplication_workHistory_1_title": "Software Engineer Co-op",
+      "#jobPostingApplication_workHistory_1_companyName": "Kinaxis",
+      "#jobPostingApplication_workHistory_0_title": "Software Developer Intern",
+      "#jobPostingApplication_workHistory_0_companyName": "Shopify",
+    },
+  }),
+  live({
+    id: "r4c-bamboo-nexthop",
+    ats: "bamboohr",
+    profile: US_H1B_SENIOR,
+    url: "https://nexthopai.bamboohr.com/careers/64",
+    expect: {
+      "label:First Name": "Thu Hà",
+      "label:Last Name": "Nguyễn",
+      "label:Email": "thuha.nguyen@example.com",
+      "label:Phone": "(206) 555-0131",
+      "label:Address": "1200 Westlake Ave N, Unit 805",
+      "label:City": "Seattle",
+      "label:Postal Code": "98109",
+      "label:Date Available": { re: String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$` },
+      "label:LinkedIn URL": "https://www.linkedin.com/in/thuha-nguyen",
+      // The posting's share box, filled by the page.
+      "label:Link to This Job": { any: true },
+      "label:College/University": "University of Washington",
+    },
+  }),
+  live({
+    id: "r4c-careerpuck-domino",
+    ats: "greenhouse",
+    profile: INDIA_NEW_GRAD,
+    url: "https://app.careerpuck.com/job-board/domino-data-lab/job/7992556?gh_jid=7992556",
+    expect: {
+      "label:First Name": "Ananya",
+      "label:Last Name": "Raghavan",
+      "label:Email": "ananya.raghavan@example.in",
+      "label:Country": "+91",
+      "label:Phone": "+91 98450 12345",
+      "label:Location (City)": "Bengaluru, Karnataka, India",
+      "label:LinkedIn Profile": "https://www.linkedin.com/in/ananya-raghavan",
+      "label:Are you graduating in Spring 2027?": "No",
+      "label:Are you legally authorized to work in the United States?": "No",
+      "label:Will you now or in the future require sponsorship for employ": "Yes",
+      "label:Point of Data Transfer": "Acknowledge/Confirm",
+      "#question_67493783": "Yes",
+      "label:Race": "Decline to self-identify",
+      "label=Veteran Status": "I don’t wish to answer",
+      "label:Please specify": null,
+      "label:Gender": "Decline To Self Identify",
+      "label:Are you Hispanic/Latino?": "Decline To Self Identify",
+      "#veteran_status": "I don't wish to answer",
+    },
+  }),
+  live({
+    id: "r4c-breezy-ninja",
+    ats: "breezy",
+    profile: US_OPT_ANALYST,
+    url: "https://ninjaholdings.breezy.hr/p/12b3ed96c30c-data-engineer-intern",
+    expect: {
+      "label:Full Name": "Ji-woo Park",
+      "label:Email Address": "jiwoo.park@example.com",
+      "name=cPhoneNumber": "+1 617 555 0148",
+      "radio=section_1648044732427_question_0": "Yes",
+      "name=section_1648044732427_question_1": "May 2025",
+      "radio~Are you currently eligible to work in the United States or C": "Yes",
+      "radio~Will you EVER require sponsorship to work in the United Stat": "Yes",
+    },
+  }),
+  live({
+    id: "r4c-pinpoint-franklin",
+    ats: "pinpoint",
+    profile: BOOTCAMP_CAREER_GAP,
+    url: "https://franklin-electric.pinpointhq.com/en/postings/6599b7d3-a9c3-4156-9251-07249e42d998",
+    expect: {
+      "label:First Name": "D'Andre",
+      "label:Last Name": "Jean-Baptiste",
+      "label:Email Address": "dandre.jb@example.com",
+      "label:Phone": "720.555.0164",
+      "label:LinkedIn URL": "https://linkedin.com/in/dandre-jean-baptiste/",
+      "label:Address Line 1": "2750 Welton St",
+      "label:Town": "Denver",
+      "label:Postcode": "80205",
+      // Country is preset from the browser's locale (this machine's: Canada;
+      // a US locale presets the United States) and a value already shown is
+      // never overwritten. Its hidden mirrors read "Select...".
+      "label=Canada": { any: true },
+      "label=Canada#2": { any: true },
+      "label=Select...": { any: true },
+      "label=Select...#2": { any: true },
+      "#application_form_application_answers_attributes_0_text_answer": "No",
+      "radio=application_form[application][answers_attributes][1][boolean_answer]": "No",
+      "radio=application_form[application][answers_attributes][3][boolean_answer]": "No",
+      "radio=application_form[application][answers_attributes][5][boolean_answer]": "Yes",
+      "radio=application_form[application][answers_attributes][6][boolean_answer]": "No",
+      "label:What are your salary expectations (including bonus/commissio": "85000",
+      "radio=application_form[application][answers_attributes][8][boolean_answer]": "No",
+      "label:(Required) Allow us to process your personal information.": "checked",
+    },
+  }),
+  live({
+    id: "r4c-rippling-4ag",
+    ats: "rippling",
+    profile: BERLIN_STAFF,
+    url: "https://ats.rippling.com/4ag/jobs/71d97d10-87f2-4f53-88b7-97f27f392d24",
+    expect: {
+      "label:First name": "Jürgen",
+      "label:Last name": "Weiß",
+      "label:Email": "juergen.weiss@example.de",
+      "#field-24": "He/him/his",
+      "label:Current company": "Zalando SE",
+      "label:Phone number": "3012345678",
+      // The dial-code picker, re-mounted under a new id once set (it was
+      // "+44 GB", the page's preset for this machine's locale).
+      "#field-113": "+49 DE",
+      "label:textbox": "Berlin, Germany",
+      "name=customQuestions.6aac638d4ec72afe293aaa0a.b891223f-c99a-42a0-b06c-c6a62e15bee9": "checked",
+      "label:When would you be available to start the co-op?": { re: String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$` },
+      "label:Expected graduation year?": "2011",
+      "name=customQuestions.6aac638d4ec72afe293aaa0a.804f83dc-4c13-4b29-806b-564208c04b48#2": "checked",
+      "#field-100": "No – I do not consent to receiving text messages",
+      "radio=sms_opt_in": "false",
     },
   }),
 ];
