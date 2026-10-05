@@ -100,6 +100,9 @@ const REQUIREMENT =
 /** A request rather than a requirement ("Will you require relocation
  *  assistance?"): the applicant's to make, never defaulted. */
 const ASSISTANCE = /\b(assistance|package|support|expenses?|benefits?|allowance|reimburs\w*|stipend|bonus|housing)\b/;
+/** Pay and what comes with it: the applicant's to accept, wherever the
+ *  question mentions it. */
+const PAY_TERMS = /\b(compensation|pay|salary|salaries|wages?|hourly rate|benefits?|bonus(es)?|stipend|reimburs\w*)\b/;
 /** "…challenges clearing a background check?": the clean answer is NO. */
 const OBSTACLE = /\b(challenges?|issues?|problems?|concerns?|difficult(y|ies)?|prevent you|preclude|disqualif\w*|impediments?|barriers?|obstacles?|restrictions?|limitations?)\b/;
 
@@ -261,7 +264,10 @@ export function onsiteVerdict(
 }
 
 /** A well-known office city after "our" / "in" (the names are plain words). */
-const OFFICE_CITY = new RegExp(`\\b(?:our|the|their|its|in|at|near|out of)\\s+(${REGION_CITIES.join("|")})\\b(?!,)`, "gi");
+const OFFICE_CITY = new RegExp(
+  `\\b(?:our|the|their|its|in|at|near|out of)\\s+(?:(?:downtown|midtown|uptown|central)\\s+)?(${REGION_CITIES.join("|")})\\b(?!,)`,
+  "gi"
+);
 
 /** A channel named for a brand ("LinkedIn Job Search", "Glassdoor Article"). */
 const NAMED_SOURCE =
@@ -603,7 +609,17 @@ export function resolveDefault(
     if (onsite === "elsewhere") return polar(false, q, "default:in-person-not-relocating");
     if (onsite === "unclear") return null;
   }
-  if (REQUIREMENT.test(n) && !ASSISTANCE.test(n) && (ACK_VERB.test(n) || /^(do|are|will|can|would) you\b/.test(n))) {
+  // A request is one ASKED: "relocation assistance is not provided. Can you
+  // meet this requirement?" (Breezy, live 2026-10-05) asks the requirement.
+  // Pay is the applicant's anywhere in the question ("…aligned with the
+  // compensation package above… Does this align with your pay
+  // expectations?", Nuro).
+  if (
+    REQUIREMENT.test(n) &&
+    !ASSISTANCE.test(askedSentence(q.label)) &&
+    !PAY_TERMS.test(n) &&
+    (ACK_VERB.test(n) || /^(do|are|will|can|would) you\b/.test(n))
+  ) {
     // "Do you have any impediments to traveling internationally?" (Veeva on
     // Lever, live 2026-10-03, answered Yes): an obstacle question's clean answer is No.
     // An obstacle ASKED about ("any impediments", "anticipate challenges"), not

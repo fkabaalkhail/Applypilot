@@ -163,3 +163,34 @@ describe("the school someone attended, from a long list (SharkNinja)", () => {
     expect(ask("BERLIN_STAFF", Q, LIST)).not.toBe("University of Maryland--University College (MD)");
   });
 });
+
+describe("worked WITH us before (Paylocity, live 2026-10-05)", () => {
+  it("is the hiring company's history: No for someone who never worked there", () => {
+    expect(ask("US_VETERAN" as Persona, "Have you worked with us before?", ["--", "Yes", "No"], { jobCountry: "US", company: "Choice Solutions LLC" })).toBe("No");
+  });
+  it("a skill worked with is no employer", () => {
+    expect(ask("US_VETERAN" as Persona, "Have you worked with Kubernetes before?", ["Yes", "No"], { jobCountry: "US", company: "Choice Solutions LLC" })).not.toBe("No");
+  });
+});
+
+describe("batch 3 live pages (2026-10-05)", () => {
+  const BREEZY = "The summer internship is a hybrid schedule based out of our downtown Chicago HQ (in-office 2x/week). Candidates must be local or able to relocate independently - relocation assistance is not provided. Can you meet this requirement?";
+  it("a requirement that mentions no assistance is given still asks the requirement (Breezy)", () => {
+    expect(ask("US_OPT_ANALYST", BREEZY, YES_NO)).toBe("Yes");
+    expect(ask("US_H1B_SENIOR", BREEZY, YES_NO)).toBe("No");
+  });
+  it("asking for assistance stays the applicant's", () => {
+    expect(ask("US_OPT_ANALYST", "Will you require relocation assistance?", YES_NO)).not.toBe("Yes");
+  });
+  it("graduating in a term that is not theirs: No (CareerPuck)", () => {
+    expect(ask("INDIA_NEW_GRAD", "Are you graduating in Spring 2027?", YES_NO)).toBe("No");
+    expect(ask("BERLIN_STAFF", "Are you graduating in Spring 2027?", YES_NO)).toBe("No");
+  });
+});
+
+describe("pay alignment stays the applicant's (Nuro, question bank 2026-10-05)", () => {
+  it("a compensation package the question describes is never accepted for them", () => {
+    const q = "Please confirm that you have read and are aligned with the compensation package above (hourly rate based on shift and experience, discretionary bonus, full benefits, daily meal reimbursement, PTO + company holidays). Does this align with your pay expectations?";
+    expect(ask("US_H1B_SENIOR", q, YES_NO)).not.toBe("Yes");
+  });
+});

@@ -1334,6 +1334,32 @@ const SEASON_MONTHS: Record<string, [number, number]> = { spring: [2, 4], summer
  * "December 2026 - November 2027", "Spring 2027". Winter is left out: it means
  * Dec-Feb in one convention and Jan-Apr in another (Canadian co-op terms).
  */
+/**
+ * "Are you graduating in Spring 2027?" (CareerPuck, live 2026-10-05): Yes when
+ * the graduation falls in that term, No when it falls outside it (a degree
+ * finished before it included), blank when the profile's span (a bare year)
+ * only overlaps it. "By"/"before" a term asks on or before its end.
+ */
+function resolveGraduatingInTerm(q: QuestionInput, facts: ProfileFacts): QuestionResult {
+  if (!isBooleanQuestion(q)) return null;
+  const m = /\b(?:are|will) you (?:be )?graduat\w*\b[^?]*?\b(in|during|by|before)\s+([^?]+)/i.exec(q.label);
+  if (!m) return null;
+  const span = optionMonthSpan(m[2]);
+  if (!span) return null;
+  const g = facts.education.primary?.graduation;
+  if (!g) return abstain("graduation-term:unknown");
+  const first = g.earliest.getUTCFullYear() * 12 + g.earliest.getUTCMonth();
+  const last = g.latest.getUTCFullYear() * 12 + g.latest.getUTCMonth();
+  if (/^(by|before)$/i.test(m[1])) {
+    if (last <= span[1]) return booleanResult(true, q, "graduation-term");
+    if (first > span[1]) return booleanResult(false, q, "graduation-term");
+    return abstain("graduation-term:unclear");
+  }
+  if (last < span[0] || first > span[1]) return booleanResult(false, q, "graduation-term");
+  if (first >= span[0] && last <= span[1]) return booleanResult(true, q, "graduation-term");
+  return abstain("graduation-term:unclear");
+}
+
 export function optionMonthSpan(option: string): [number, number] | null {
   const t = qnorm(option);
   const years = (t.match(/\b(19|20)\d{2}\b/g) ?? []).map(Number);
@@ -1942,7 +1968,9 @@ function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: 
     return booleanResult(worked, q, "former-employee:history-with");
   }
   const shape =
-    /\b(current|former|past|previous|prior)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b|\b(provided|done|performed|did) (any )?(contract |consulting |freelance )?(work|services) for\b/.test(n);
+    // "Have you worked with us before?" (Paylocity, live 2026-10-05); "worked
+    // with" anything else is usually a skill.
+    /\b(current|former|past|previous|prior)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\bworked with us\b|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b|\b(provided|done|performed|did) (any )?(contract |consulting |freelance )?(work|services) for\b/.test(n);
   if (!shape) return null;
   if (/\b(relative|family|friend|spouse|referr|government|federal|military|public sector)\b/.test(n)) return null;
   // The company: a capitalized name in the question ("…employee of ActioNet",
@@ -2448,6 +2476,7 @@ export function resolveQuestion(
     resolvePreviousInternship(q, n, profile) ??
     resolveSchoolSchedule(q, n, facts) ??
     resolveEducationSummary(q, n, facts) ??
+    resolveGraduatingInTerm(q, facts) ??
     resolveGraduation(q, n, facts) ??
     resolveGpa(q, n, profile, facts) ??
     resolveDisciplineAtLevel(q, n, facts) ??

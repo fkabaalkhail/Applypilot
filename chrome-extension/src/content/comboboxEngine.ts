@@ -453,10 +453,16 @@ async function pollForMatch(
       return null; // the filter answered and settled, no match in its final list
     }
     if (!reacted && hasOptions && elapsed >= reactionWindowMs) return null;
-    if (elapsed >= budgetMs) return null;
+    // A place search still empty gets longer: Rippling's Location asks Google
+    // Places, whose script loads on first use, and no suggestion came within
+    // the usual wait (live 2026-10-05: the field was left empty).
+    if (elapsed >= (placeHint && !hasOptions ? Math.max(budgetMs, PLACE_SEARCH_WAIT_MS) : budgetMs)) return null;
     await sleep(pollMs);
   }
 }
+
+/** How long a place search may stay empty before an attempt gives up. */
+const PLACE_SEARCH_WAIT_MS = 4000;
 
 /**
  * Whether a changed list is the filter's answer to `typed`: an option carries

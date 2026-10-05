@@ -1095,6 +1095,54 @@ describe("fillAriaCombobox, a debounced filter behind a re-windowed list", () =>
   });
 });
 
+describe("fillAriaCombobox, a place search that answers slowly", () => {
+  it("waits longer on an empty list for a place's suggestions", async () => {
+    // Rippling's Location (live 2026-10-05) asks Google Places, whose script
+    // loads on first use: no suggestion within the usual wait, so every
+    // attempt gave up and the field was left empty.
+    const input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-haspopup", "listbox");
+    document.body.append(input);
+    input.addEventListener("input", () => {
+      const q = input.value.trim();
+      setTimeout(() => {
+        if (input.value.trim() !== q || !q) return;
+        let lb = document.getElementById("places");
+        if (!lb) {
+          lb = document.createElement("ul");
+          lb.id = "places";
+          lb.setAttribute("role", "listbox");
+          document.body.append(lb);
+          input.setAttribute("aria-controls", "places");
+        }
+        lb.textContent = "";
+        for (const label of ["Berlin, Germany", "Berlin, OH, USA"]) {
+          const li = document.createElement("li");
+          li.setAttribute("role", "option");
+          li.textContent = label;
+          li.addEventListener("click", () => {
+            input.value = label;
+            lb!.remove();
+            input.removeAttribute("aria-controls");
+          });
+          lb.append(li);
+        }
+      }, 600);
+    });
+    const res = await fillAriaCombobox(input, "Berlin, Germany", {
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      openWaitMs: 200,
+      commitWaitMs: 200,
+      pollMs: 20,
+      placeHint: "Berlin, Germany",
+    });
+    expect(res.filled).toBe(true);
+    expect(input.value).toBe("Berlin, Germany");
+  });
+});
+
 describe("comboboxDisplaysValue", () => {
   it("reports an already-committed selection so callers can skip re-driving", async () => {
     const { comboboxDisplaysValue } = await import("../src/content/comboboxEngine");
