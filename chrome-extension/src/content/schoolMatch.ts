@@ -34,11 +34,21 @@ export function snapSchool(options: string[], value: string): string | null {
   if (exact.length > 0) return exact[0];
   const want = schoolWords(value);
   if (want.size === 0) return null;
-  const fits = options.filter((o) => {
+  // An option holding every word of the name ("Imperial College London - ICL")
+  // beats one whose few words are inside it ("University of London" is only
+  // {london}): both fitting, Imperial was "not listed" (Palantir on Lever,
+  // regression 2026-10-05). The looser fit is only for a name longer than
+  // the option ("University of Waterloo, Ontario").
+  const holding = options.filter((o) => {
     const has = schoolWords(o);
-    if (has.size === 0) return false;
-    return [...want].every((w) => has.has(w)) || [...has].every((w) => want.has(w));
+    return has.size > 0 && [...want].every((w) => has.has(w));
   });
+  const fits = holding.length > 0
+    ? holding
+    : options.filter((o) => {
+        const has = schoolWords(o);
+        return has.size > 0 && [...has].every((w) => want.has(w));
+      });
   if (fits.length === 1) return fits[0];
   const same = fits.filter((o) => {
     const has = schoolWords(o);

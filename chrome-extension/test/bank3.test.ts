@@ -208,3 +208,12 @@ describe("referral words that are no referral (Asana)", () => {
     expect(ask("BERLIN_STAFF", "If you were referred for this role, please share the name of the employee that referred you")).toBe("abstain");
   });
 });
+
+describe("a school that carries every word of the name beats a generic one (Palantir, regression 2026-10-05)", () => {
+  it("Imperial College London is not ambiguous beside University of London", async () => {
+    const { snapSchool } = await import("../src/content/schoolMatch");
+    const opts = ["Birkbeck, University of London", "Imperial College London - ICL", "King's College London", "University College London - UCL", "University of London", "Other - School Not Listed"];
+    expect(snapSchool(opts, "Imperial College London")).toBe("Imperial College London - ICL");
+    expect(snapSchool(opts, "University of London")).toBe("University of London");
+  });
+});
