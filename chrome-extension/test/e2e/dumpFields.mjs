@@ -298,9 +298,15 @@ export function dumpFieldsInPage() {
 }
 
 /** Dump every frame of a page, tagging each record with its frame URL. */
+/** A captcha's own frames (hCaptcha's challenge has a language picker): never
+ *  the form, and they appear mid-run, so their controls read as unexpected
+ *  writes (Hermeus on Lever, regression 2026-10-05). */
+const CAPTCHA_FRAME = /^https:\/\/([a-z0-9-]+\.)*(hcaptcha\.com|recaptcha\.net)\/|^https:\/\/www\.google\.com\/recaptcha\/|^https:\/\/challenges\.cloudflare\.com\//i;
+
 export async function dumpAllFrames(page) {
   const all = [];
   for (const frame of page.frames()) {
+    if (CAPTCHA_FRAME.test(frame.url())) continue;
     try {
       const fields = await frame.evaluate(dumpFieldsInPage);
       const where = frame === page.mainFrame() ? "" : frame.url();

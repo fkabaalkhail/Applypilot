@@ -306,6 +306,12 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile): Questi
       const unbranded = hits.filter((o) => !NAMED_SOURCE.test(qn(o)));
       if (hits.length > 1 && unbranded.length === 1) return answer(unbranded[0], "source:stated-board");
     }
+    // A list with no online channel at all (Figma: FigFest | a partnership |
+    // an on-campus event | a virtual event | Other): the job site is "Other".
+    const other = opts.filter((o) => /^other\b/.test(qn(o)));
+    if (other.length === 1 && !opts.some((o) => o !== other[0] && /\b(job|jobs|board|search|posting|online|website|site|internet|web|career|careers|social|linked ?in|indeed|glassdoor)\b/.test(qn(o)))) {
+      return answer(other[0], "source:stated-other");
+    }
     return null;
   }
   // No stated channel: never a campus one, even as the only careers-site

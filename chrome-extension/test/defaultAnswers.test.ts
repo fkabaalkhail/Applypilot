@@ -331,3 +331,11 @@ describe("question bank 2026-10-05: availability, licences, notices", () => {
     expect(value(ask("This is a seasonal position with an expected duration of 90 days. Are you aware this is not a permanent role, and are you still interested in being considered?", { options: YES_NO }))).toBe("Yes");
   });
 });
+
+describe("a stated job site among channels that name none (Figma, regression 2026-10-05)", () => {
+  it("'LinkedIn' among FigFest / a partnership / campus / virtual events / Other is Other", () => {
+    const p = { ...SPARSE_CANADIAN, howDidYouHear: "LinkedIn" };
+    const figma = ["FigFest", "Through a partnership (RTC, ColorStack, or Talentboard)", "On-campus event", "Virtual event", "Other"];
+    expect(value(ask("How did you connect with us?*", { options: figma }, p))).toBe("Other");
+  });
+});
