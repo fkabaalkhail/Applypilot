@@ -24,6 +24,7 @@ import {
   countryByCode,
   countryFromName,
   countryHintForCity,
+  DIAL_CODES,
   geoNorm,
   regionFromText,
   type Country,
@@ -38,6 +39,7 @@ import {
   type ProfileFacts,
 } from "./profileFacts";
 import { matchOption } from "./writeEngine";
+import { dialCodeOf, phoneCountryName } from "./phoneNumber";
 import { resolveDefault } from "./defaultAnswers";
 
 export interface QuestionInput {
@@ -2089,9 +2091,14 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
 function resolvePhoneCode(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
   if (q.category !== "phoneCountryCode" && !/\b(country|dial(ing)?|phone|area) code\b|\bcountry calling\b/.test(n)) return null;
   if (/\barea code\b/.test(n)) return null;
-  const digits = /^\s*\+(\d{1,3})/.exec(profile.phone || "")?.[1] ?? null;
-  const country = isHigh(facts.location.country) ? facts.location.country.value : null;
-  const callingCode = digits ?? (country && (country.code === "US" || country.code === "CA") ? "1" : null);
+  const home = isHigh(facts.location.country) ? facts.location.country.value : null;
+  const phone = (profile.phone || "").trim();
+  // The country the number is written for: "+44 20 …" is the United Kingdom
+  // wherever the applicant lives. It was the home country, which put a
+  // Canadian resident's UK number under Canada's code.
+  const named = phone ? phoneCountryName(phone, home) : home?.name ?? null;
+  const country = named ? countryFromName(named) : null;
+  const callingCode = dialCodeOf(phone) ?? (/^\+/.test(phone) ? null : home ? DIAL_CODES[home.code] ?? null : null);
   if (!q.options || q.options.length === 0) {
     if (q.controlType === "combobox" || q.controlType === "customDropdown") {
       return country ? answer(country.name, "phone-code:country-name") : abstain("phone-code:unknown");

@@ -42,6 +42,7 @@ import { detectFillDriver, isLegacyReactSelect } from "./driverDetect";
 import { DATE_PART_ID_SELECTOR, DATE_PART_SELECTOR } from "./adapters/workdaySelectors";
 import type { FillDriver } from "./mainWorldBridge";
 import { isDeclineText } from "./demographicMatch";
+import { looksLikeDialCodes, nationalNumber } from "./phoneNumber";
 
 /** Live handle for a detected field, never leaves the content script. */
 export interface RuntimeControl {
@@ -1126,7 +1127,13 @@ export function scanPage(
       controlType === "checkbox" ||
       controlType === "radioGroup" ||
       controlType === "file";
-    if (!isVisible(el) && !enhancedSelect && !(relaxed && (isHiddenButLabeled(el) || isUploadAffordance(el)))) continue;
+    if (
+      !isVisible(el) &&
+      !enhancedSelect &&
+      !(relaxed && (isHiddenButLabeled(el) || isUploadAffordance(el)) && hasRenderedProxy(el))
+    ) {
+      continue;
+    }
     // A control inside aria-hidden markup is by definition not part of the form
     // the user sees (react-select's `<input required>` validation twin, screen-
     // reader-excluded duplicates). Styled-replacement natives (checkbox/radio/
@@ -1197,6 +1204,12 @@ export function scanPage(
             ? ariaRadioOptions(el)
             : undefined;
     if (options?.length) ({ category, confidence, sensitive } = consentOptionsOverride({ category, confidence, sensitive }, options));
+    // A dialing-code picker is the phone's code: Rippling's combobox labelled
+    // "Search" showing "+44 GB" (live 2026-10-05), or a list of bare "+49"
+    // codes, which the label beside it made the phone number itself.
+    if ((category === "unknown" || category === "phone") && isDialPicker(el) && blockPartner(el, isPhoneInput)) {
+      ({ category, confidence, sensitive } = { category: "phoneCountryCode", confidence: 0.95, sensitive: false });
+    }
 
     const driver =
       controlType === "combobox" || controlType === "customDropdown"
@@ -1228,6 +1241,11 @@ export function scanPage(
       signals,
     });
     let proposedValue = resolved.value;
+    // Beside its own dialing-code picker, the box takes the national number:
+    // typed whole, "+49 30 12345678" kept its digits under the picker's "+44".
+    if (category === "phone" && proposedValue && blockPartner(el, isDialPicker)) {
+      proposedValue = nationalNumber(proposedValue);
+    }
     // A single checkbox is a boolean control: never write a text value into it.
     // Check clear application consent, skip marketing / ambiguous boxes (→ null,
     // so they're simply not selected rather than counted as failures).
@@ -1258,7 +1276,10 @@ export function scanPage(
       helpText: signals.nearby,
       inputType: signals.typeHint,
       groupIndex,
-      currentValue: currentValueOf(el, controlType),
+      // A picker showing a bare dialing code shows the page's preset (from
+      // the visitor's locale, "+44 GB"), not an answer: left as one, the
+      // picker was never selected for the fill.
+      currentValue: category === "phoneCountryCode" && isDialPicker(el) ? undefined : currentValueOf(el, controlType),
       ...resolutionFlags(resolved),
       ...(consentTick ? { deterministic: true } : {}),
     });
@@ -1422,6 +1443,63 @@ function readsEmptyAsZero(el: HTMLElement, raw: string): boolean {
 
 /** A select's "nothing chosen yet" entry that carries a value of its own. */
 const SELECT_PLACEHOLDER = /^[-–—\s]*(no (answer|selection|response)|none selected|not selected|nothing selected)[-–—\s]*$/i;
+
+/**
+ * A hidden native behind a styled replacement is operable only when the
+ * replacement is on screen, and nothing around it renders when an ancestor is
+ * hidden: a whole unopened tab (Recruitee's "Apply", live 2026-10-05, whose
+ * radios made the flow fill a form nobody could see). The native itself may
+ * be hidden any way it likes.
+ */
+function hasRenderedProxy(el: HTMLElement): boolean {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    if (node.hidden) return false;
+    const style = getComputedStyle(node);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+  }
+  return true;
+}
+
+/** A select or combobox input holding dialing codes ("+44 GB", "+49"). */
+function isDialPicker(el: HTMLElement): boolean {
+  if (el instanceof HTMLSelectElement) {
+    const options = Array.from(el.options, (o) => cleanText(o.textContent));
+    return looksLikeDialCodes(cleanText(el.selectedOptions[0]?.textContent), options);
+  }
+  return el instanceof HTMLInputElement && el.getAttribute("role") === "combobox" && looksLikeDialCodes(el.value, undefined);
+}
+
+const PHONE_WORDS = /\b(phone|mobile|telephone|tel|cell)\b/i;
+
+/** A text box for a phone number, by its type, input mode or names. */
+function isPhoneInput(el: HTMLElement): boolean {
+  if (!(el instanceof HTMLInputElement) || el.getAttribute("role") === "combobox") return false;
+  if (el.type === "tel" || el.getAttribute("inputmode") === "tel" || /^tel/.test(el.autocomplete)) return true;
+  const labelledBy = (el.getAttribute("aria-labelledby") ?? "")
+    .split(/\s+/)
+    .map((id) => (id ? el.ownerDocument.getElementById(id)?.textContent ?? "" : ""))
+    .join(" ");
+  const names = [el.name, el.id, el.placeholder, el.getAttribute("aria-label") ?? "", labelledBy].join(" ");
+  return PHONE_WORDS.test(names.replace(/[_-]+/g, " "));
+}
+
+/**
+ * The control that shares a small block with `el` and passes `want`: the
+ * nearest ancestor holding at most three controls (a picker, its number and
+ * an extension), never a wider section of the form.
+ */
+function blockPartner(el: HTMLElement, want: (c: HTMLElement) => boolean): HTMLElement | null {
+  let node = el.parentElement;
+  for (let depth = 0; depth < 12 && node; depth++, node = node.parentElement) {
+    const controls = Array.from(
+      node.querySelectorAll<HTMLElement>('input:not([type="hidden"]):not([type="file"]), select, textarea')
+    );
+    if (controls.length > 3) return null;
+    const hit = controls.find((c) => c !== el && want(c));
+    if (hit) return hit;
+  }
+  return null;
+}
 
 function currentValueOf(el: HTMLElement, controlType: ControlType): string | undefined {
   if (controlType === "select") {

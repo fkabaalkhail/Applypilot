@@ -920,11 +920,11 @@ export function resolveProfileValue(
       return orNull(profile.email);
     case "phone":
       return orNull(profile.phone);
-    // Workday's phone satellites. Only its adapter classifies these (nothing
-    // generic produces them), and the adapter's resolveAnswer answers both, so
-    // this is the never-reached-in-practice fallback: the dialing prompt takes
-    // the country name ("Canada" → "Canada (+1)"), the device type has no
-    // profile source and is left to the adapter/AI.
+    // The phone satellites. Workday's adapter answers both, and a dialing-code
+    // picker anywhere else is answered by the question rule (resolvePhoneCode,
+    // the number's own country), so this is the never-reached-in-practice
+    // fallback: the dialing prompt takes the country name ("Canada" → "Canada
+    // (+1)"), the device type has no profile source and is left to the adapter/AI.
     case "phoneCountryCode":
       return orNull(profile.country);
     case "phoneDeviceType":
