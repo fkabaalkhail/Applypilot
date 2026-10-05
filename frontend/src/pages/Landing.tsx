@@ -348,10 +348,6 @@ export default function Landing() {
                   className=""
                 />
               </h2>
-              <p className="stats-sub-light">
-                Trusted by over a million job seekers to land interviews faster
-                and cut the time spent searching.
-              </p>
               <button className="btn-dark" onClick={() => navigate("#features")}>
                 See how it works ↗
               </button>

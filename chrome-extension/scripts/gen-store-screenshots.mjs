@@ -8,9 +8,7 @@
  *   store-previews/tailrd-1-autofill.png
  *   store-previews/tailrd-2-resume.png
  *   store-previews/tailrd-3-cover-letter.png
- *
- * tailrd-4-dashboard.png is NOT generated here. It predates this script and its
- * copy ("Autofill", "Generate cover letters") is out of date: it needs a rebuild.
+ *   store-previews/tailrd-4-dashboard.png
  *
  * Same design language as scripts/gen-promo-tiles.mjs (soft white to lavender
  * gradient, heavy near-black headline with one phrase in Tailrd indigo, white
@@ -360,6 +358,147 @@ function coverLetterHtml() {
   </body></html>`;
 }
 
+/* --------------------------------------------------------------- 4: dashboard */
+function dashboardHtml(logo) {
+  const check = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${INDIGO}"
+    stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+  const pin = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a8894" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.5"/></svg>`;
+  const pencil = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${INDIGO}" stroke-width="2.2"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+  const mail = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${INDIGO}" stroke-width="2.2"
+    stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>`;
+  const nav = ["Dashboard", "Resume", "Applications", "Profile", "Interview"];
+  const general = ["Refer &amp; Earn", "Feedback", "Settings"];
+  const bar = (label, pct) => `<div class="bar"><span>${label}</span><i><b style="width:${pct}%"></b></i><em>${pct}%</em></div>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  ${baseCss}
+  h1 { position: absolute; top: 52px; left: 0; right: 0; text-align: center;
+       font-size: 46px; font-weight: 800; letter-spacing: -0.024em; }
+  .chips { position: absolute; top: 126px; left: 120px; right: 120px;
+           display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .chips span { display: flex; align-items: center; gap: 8px; background: #fff;
+    border: 1px solid #dcd7fb; border-radius: 999px; padding: 9px 18px; font-size: 14.5px; color: ${BODY}; }
+  .chips b { color: ${INDIGO}; font-weight: 700; }
+  .app { position: absolute; left: 40px; right: 40px; top: 242px; height: 600px;
+    background: #fff; border-radius: 16px; overflow: hidden; display: flex;
+    box-shadow: 0 24px 60px rgba(35, 28, 80, 0.16), 0 2px 8px rgba(35, 28, 80, 0.06); }
+  .side { width: 230px; border-right: 1px solid ${LINE}; padding: 20px 14px; }
+  .side img { height: 24px; margin: 0 0 22px 8px; }
+  .side .h { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; color: ${FAINT}; margin: 0 0 8px 8px; }
+  .side .it { font-size: 14px; padding: 10px 12px; border-radius: 10px; color: #3a3844; margin-bottom: 2px; }
+  .side .it.on { background: ${HL}; color: ${INDIGO}; font-weight: 600; }
+  .side .gap { height: 18px; }
+  .main { flex: 1; padding: 22px 20px; background: #fcfcfe; }
+  .top { display: flex; align-items: center; justify-content: space-between; }
+  .top h2 { font-size: 20px; font-weight: 500; }
+  .search { width: 190px; border: 1px solid ${LINE}; border-radius: 10px; padding: 10px 12px; font-size: 12px; color: ${FAINT}; background: #fff; }
+  .tabs { display: flex; gap: 22px; margin: 18px 0 14px; font-size: 13px; color: ${BODY}; }
+  .tabs .on { background: ${HL}; color: ${INDIGO}; font-weight: 600; padding: 6px 12px; border-radius: 8px; margin: -6px 0; }
+  .tabs .n { background: ${INDIGO}; color: #fff; border-radius: 999px; font-size: 10px; padding: 1px 7px; margin-left: 6px; }
+  .job { background: #fff; border: 1px solid ${LINE}; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .job.sel { border-color: #cfc6fb; background: #f7f5ff; }
+  .jh { display: flex; gap: 14px; align-items: center; }
+  .lg { width: 42px; height: 42px; border-radius: 10px; border: 1px solid ${LINE}; background: #fff;
+        display: flex; align-items: center; justify-content: center; font-size: 20px; }
+  .jh small { font-size: 11px; color: ${FAINT}; }
+  .jh b { display: block; font-size: 16px; margin: 2px 0; }
+  .jh span { font-size: 12px; color: ${FAINT}; }
+  .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; margin: 12px 0 0; font-size: 12.5px; color: #3a3844; }
+  .facts div { display: flex; gap: 7px; align-items: center; }
+  .acts { display: flex; gap: 8px; align-items: center; border-top: 1px solid ${LINE}; margin-top: 12px; padding-top: 12px; }
+  .acts .ap { font-size: 11px; color: ${FAINT}; margin-right: auto; }
+  .ob { display: flex; align-items: center; gap: 6px; border: 1px solid #cfc6fb; color: ${INDIGO};
+        border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; background: #fff; }
+  .pb { background: ${INDIGO}; color: #fff; border-radius: 999px; padding: 10px 18px; font-size: 12px; font-weight: 700; }
+  .det { width: 370px; border-left: 1px solid ${LINE}; padding: 20px 18px; }
+  .dh { display: flex; gap: 14px; align-items: center; }
+  .dh .lg { width: 48px; height: 48px; font-size: 24px; }
+  .dh b { display: block; font-size: 18px; }
+  .dh span { font-size: 12.5px; color: ${BODY}; font-weight: 600; }
+  .tags { display: flex; gap: 8px; margin: 14px 0; }
+  .tags span { border: 1px solid ${LINE}; border-radius: 999px; font-size: 11.5px; padding: 6px 11px; color: #3a3844; }
+  .tags .pay { background: ${HL}; color: ${INDIGO}; border-color: transparent; font-weight: 600; }
+  .box { border: 1px solid ${LINE}; border-radius: 12px; background: #fafbfd; padding: 14px 16px; margin-bottom: 12px; }
+  .ring { text-align: center; }
+  .ring .lab { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: #17994f; margin-top: 4px; }
+  .box .h { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: ${FAINT}; margin-bottom: 10px; }
+  .bar { display: flex; align-items: center; gap: 10px; font-size: 12.5px; margin-bottom: 9px; color: #3a3844; }
+  .bar span { width: 76px; }
+  .bar i { flex: 1; height: 5px; border-radius: 3px; background: #ecebf4; overflow: hidden; }
+  .bar i b { display: block; height: 100%; background: #c9c1fa; }
+  .bar em { font-style: normal; font-weight: 600; width: 32px; text-align: right; }
+  .sk { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .sk span { background: #eefaf3; color: #17994f; border: 1px solid #cdeedb; border-radius: 999px; font-size: 11px; padding: 4px 10px; }
+  .row2 { display: flex; gap: 10px; }
+  .row2 .ob { border-radius: 999px; padding: 10px 16px; }
+  </style></head><body>
+    <h1>Job searching, with <span class="accent">AI used responsibly</span>.</h1>
+    <div class="chips">
+      <span>${check}<b>Match</b> to roles that fit your skills</span>
+      <span>${check}<b>Fill</b> the repetitive fields from your profile</span>
+      <span>${check}<b>Suggest</b> résumé edits for each job</span>
+      <span>${check}<b>Talking points</b> for cover letters</span>
+    </div>
+    <div class="app">
+      <div class="side">
+        <img src="${logo}" alt="" />
+        <div class="h">MENU</div>
+        ${nav.map((n, i) => `<div class="it${i === 0 ? " on" : ""}">${n}</div>`).join("")}
+        <div class="gap"></div>
+        <div class="h">GENERAL</div>
+        ${general.map((n) => `<div class="it">${n}</div>`).join("")}
+      </div>
+      <div class="main">
+        <div class="top"><h2>Jobs</h2><div class="search">Search by title or company</div></div>
+        <div class="tabs"><span class="on">Recommended<span class="n">248</span></span><span>Saved</span><span>Applied</span></div>
+        <div class="job sel">
+          <div class="jh"><div class="lg">&#9650;</div>
+            <div><small>3h ago</small><b>Senior Frontend Engineer</b><span>Vercel &middot; Developer Tools</span></div></div>
+          <div class="facts">
+            <div>${pin} New York, NY</div><div>Full-time</div>
+            <div>Remote</div><div>Senior</div>
+          </div>
+          <div class="acts">
+            <span class="ap">120+ applicants</span>
+            <span class="ob">${pencil} Suggest Edits</span>
+            <span class="ob">${mail} Cover Letter Ideas</span>
+            <span class="pb">APPLY WITH TAILRD</span>
+          </div>
+        </div>
+        <div class="job">
+          <div class="jh"><div class="lg" style="color:#ff5a5f">&#10070;</div>
+            <div><small>1d ago</small><b>Product Designer</b><span>Airbnb &middot; Travel</span></div></div>
+          <div class="facts">
+            <div>${pin} San Francisco, CA</div><div>Full-time</div>
+            <div>Hybrid</div><div>Mid-level</div>
+          </div>
+        </div>
+      </div>
+      <div class="det">
+        <div class="dh"><div class="lg">&#9650;</div>
+          <div><b>Senior Frontend Engineer</b><span>Vercel &middot; Developer Tools</span></div></div>
+        <div class="tags"><span>New York, NY</span><span>Remote</span><span class="pay">$180k &ndash; $230k</span></div>
+        <div class="box ring">
+          <svg width="84" height="84" viewBox="0 0 84 84">
+            <circle cx="42" cy="42" r="34" fill="none" stroke="#ecebf4" stroke-width="7"/>
+            <circle cx="42" cy="42" r="34" fill="none" stroke="#17994f" stroke-width="7" stroke-linecap="round"
+                    stroke-dasharray="${(2 * Math.PI * 34 * 0.84).toFixed(1)} 999" transform="rotate(-90 42 42)"/>
+            <text x="42" y="49" text-anchor="middle" font-size="21" font-weight="700" fill="${INK}">84%</text>
+          </svg>
+          <div class="lab">STRONG MATCH</div>
+        </div>
+        <div class="box">
+          <div class="h">WHY YOU'RE A MATCH</div>
+          ${bar("Experience", 90)}${bar("Skills", 88)}${bar("Industry", 76)}
+        </div>
+        <div class="sk"><span>React</span><span>TypeScript</span><span>Next.js</span><span>GraphQL</span></div>
+        <div class="row2"><span class="ob">${pencil} Suggest Edits</span><span class="pb">Apply with Tailrd</span></div>
+      </div>
+    </div>
+  </body></html>`;
+}
+
 async function shoot(browser, html, outName) {
   const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 2 });
   await page.setContent(html, { waitUntil: "networkidle" });
@@ -381,4 +520,5 @@ const logo = await logoUri(26);
 await shoot(browser, autofillHtml(logo), "tailrd-1-autofill.png");
 await shoot(browser, resumeHtml(), "tailrd-2-resume.png");
 await shoot(browser, coverLetterHtml(), "tailrd-3-cover-letter.png");
+await shoot(browser, dashboardHtml(logo), "tailrd-4-dashboard.png");
 await browser.close();
