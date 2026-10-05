@@ -275,3 +275,25 @@ describe("question bank 2026-10-05: offices, commutes and moves", () => {
     expect(value(ask(q, o, US_OPT_ANALYST, US_JOB))).toBe("abstain");
   });
 });
+
+describe("question bank 2026-10-05: acknowledgements", () => {
+  it("'I understand that Coinbase may use AI tools…' with its one option 'Yes' is acknowledged", () => {
+    expect(value(ask("I understand that Coinbase may use AI tools to assist in the application and interview process.", { options: ["Yes"] }))).toBe("Yes");
+  });
+  it("…but a pledge about the applicant's own words is theirs: Tailrd may have written them (Canonical)", () => {
+    const q = "During this application process I agree to use only my own words. I understand that plagiarism, the use of AI or other generated content will disqualify my application.";
+    expect(value(ask(q, { options: YES_NO }))).not.toBe("Yes");
+  });
+});
+
+describe("question bank 2026-10-05: a lone option behind a placeholder, and being recorded", () => {
+  it("Riot's E-Verify notice ('…I acknowledge that I have read and understand the E-verify notice') under 'Select...' is acknowledged by anyone", async () => {
+    const { US_H1B_SENIOR } = (await import("./e2e/profiles.mjs")) as Record<string, UserApplicationProfile>;
+    const q = "Riot Games participates in E-Verify and will submit your information to the government for confirmation of your work authorization only after a conditional offer of employment has been made. By submitting an application, I acknowledge that I have read and understand the E-verify notice.";
+    expect(value(ask(q, { options: ["Select...", "Yes"] }, US_H1B_SENIOR, { jobCountry: "US", company: "Riot Games" }))).toBe("Yes");
+  });
+  it("consent to a video recording is the applicant's, even as the only option (Sweetgreen)", () => {
+    const q = "During the interview process, we may collect personal information, including the video recording itself (“sensory data”), your name and other identifiers.";
+    expect(value(ask(q, { options: ["I consent to the video interview process"] }))).toBe("abstain");
+  });
+});

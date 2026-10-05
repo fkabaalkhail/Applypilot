@@ -86,6 +86,9 @@ const CONSENT_OBJECT =
 const DEMOGRAPHIC = /\b(demographic|self ?identif\w*|eeo|equal employment|voluntary (self|disclosure))\b/;
 /** Recording / AI notetaking consent: a preference, not a requirement. */
 const RECORDING = /\b(record(ed|ing)?|transcri\w*|notetak\w*|note tak\w*)\b/;
+/** The APPLICANT is the one recorded or transcribed. */
+const APPLICANT_RECORDED =
+  /\b(we|our team|our interviewers)\b[^.?!]{0,60}\b(record|transcri)\w*|\b(record|transcri)\w* (your|the|my) (interview|video|call|conversation)s?\b|\bvideo recording\b|\binterviews? (being |will be |may be |is |are )?(record|transcri)\w*|\bnotetak\w*|\bnote tak\w*/;
 
 /** A requirement of the posting the applicant accepts by applying. */
 // The third person too: "The candidate acknowledges that…" (Coveo, live 2026-10-05).
@@ -410,7 +413,13 @@ export function resolveDefault(
   // arbitration agreement below.", Anthropic; "Summer 2027" under "Please
   // confirm the season…", Astranis; live 2026-10-03): there is nothing else
   // to answer.
-  if (opts.length === 1 && (ACK_OPTION.test(qn(opts[0])) || /\b(confirm|acknowledge|please read)\b/.test(n)) && !MARKETING.test(qn(opts[0]))) {
+  // So is a first-person statement over a lone "Yes" ("I understand that
+  // Coinbase may use AI tools…", question bank 2026-10-05).
+  // Being recorded stays the applicant's choice here too (Sweetgreen's "the
+  // video recording itself", question bank 2026-10-05); a rule against the
+  // candidate recording (Block's "Recording any part of the interview without
+  // consent is prohibited") is no such consent.
+  if (opts.length === 1 && (ACK_OPTION.test(qn(opts[0])) || /\b(confirm|acknowledge|please read)\b/.test(n) || (/^(i|we) (understand|acknowledge|agree|certify|confirm|accept|have read)\b/.test(n) && /^yes$/i.test(opts[0].trim()))) && !MARKETING.test(qn(opts[0])) && !APPLICANT_RECORDED.test(n)) {
     return answer(opts[0], "default:only-option");
   }
   // SMS consent asked by its options under a field-name label ("Phone": "Yes -

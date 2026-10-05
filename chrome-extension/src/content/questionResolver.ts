@@ -337,7 +337,9 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   // submitting an application, I acknowledge that I have read and understand
   // the E-verify notice", Riot Games; question bank 2026-10-05): no work
   // right is asked. The acknowledgement defaults take it.
-  const only = (q.options ?? []).filter((o) => o.trim());
+  // A "Select..." placeholder is no option (Riot's notice under it was read
+  // as a work-right question, question bank 2026-10-05).
+  const only = (q.options ?? []).filter((o) => o.trim() && !/^(select|choose|please select|select an option|select one|--)/i.test(o.trim()));
   if (only.length === 1 && /\b(i acknowledge|i have read|i understand|acknowledge that)\b/.test(n)) return null;
   // The label says what Yes means: "By selecting 'Yes,' you confirm that you
   // do not require Visa Sponsorship" (Peloton, question bank 2026-10-05: every
