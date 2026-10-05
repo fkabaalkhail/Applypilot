@@ -256,19 +256,31 @@ function withOptionsEvidence(
   current: { category: FieldCategory; confidence: number; sensitive: boolean },
   options: string[]
 ): { category: FieldCategory; confidence: number; sensitive: boolean } {
-  // Options that only consent or refuse ("I consent" | "I do not Consent")
-  // make an acknowledgement, whatever its paragraph mentions: JazzHR's ended
-  // "…a qualified individual with a disability…ADA", was read as the
-  // disability question, and the profile's "No" ticked "I do not Consent"
-  // (Directors Investment Group, live 2026-10-05).
-  const real = options.filter((o) => o.trim());
-  if (current.sensitive && real.length > 0 && real.every(isConsentOption)) {
-    return { category: "unknown", confidence: current.confidence, sensitive: false };
-  }
+  const consent = consentOptionsOverride(current, options);
+  if (consent !== current) return consent;
   const named = categoryOfOptions(options);
   if (!named) return current;
   if (current.category === "unknown") return named;
   if (current.category === named.category && current.confidence < named.confidence) return named;
+  return current;
+}
+
+/**
+ * Options that only consent or refuse ("I consent" | "I do not Consent", "I
+ * agree to these expectations") make an acknowledgement, whatever its
+ * paragraph mentions. JazzHR's ended "…a qualified individual with a
+ * disability…ADA", was read as the disability question, and the profile's
+ * "No" ticked "I do not Consent" (Directors Investment Group, live
+ * 2026-10-05); Block's interview expectations read as a last name.
+ */
+function consentOptionsOverride(
+  current: { category: FieldCategory; confidence: number; sensitive: boolean },
+  options: string[]
+): { category: FieldCategory; confidence: number; sensitive: boolean } {
+  const real = options.filter((o) => o.trim() && !isPlaceholderFiller(o));
+  if (current.category !== "unknown" && real.length > 0 && real.every(isConsentOption)) {
+    return { category: "unknown", confidence: current.confidence, sensitive: false };
+  }
   return current;
 }
 
@@ -1171,7 +1183,7 @@ export function scanPage(
     }
 
     const groupIndex = detectGroupIndex(signals);
-    const { category, confidence, sensitive } = classifyWithAdapter(adapter, { el, signals, controlType });
+    let { category, confidence, sensitive } = classifyWithAdapter(adapter, { el, signals, controlType });
 
     const options =
       el instanceof HTMLSelectElement
@@ -1181,6 +1193,7 @@ export function scanPage(
           : controlType === "ariaRadioGroup"
             ? ariaRadioOptions(el)
             : undefined;
+    if (options?.length) ({ category, confidence, sensitive } = consentOptionsOverride({ category, confidence, sensitive }, options));
 
     const driver =
       controlType === "combobox" || controlType === "customDropdown"

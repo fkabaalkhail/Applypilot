@@ -218,6 +218,29 @@ describe("question bank, status choices and acknowledgements (Greenhouse, 2026-1
   });
 });
 
+describe("Greenhouse batch 2, live 2026-10-05: blanks a stated fact settles", () => {
+  const berlin = { ...SPARSE_CANADIAN, location: "Berlin, Germany", workAuthorization: "German citizen (EU)", authorizedUS: "No", authorizedCanada: "No", requiresSponsorship: "Yes", willingToRelocate: "Yes", howDidYouHear: "Referral" };
+  const seattle = { ...SPARSE_CANADIAN, location: "Seattle, WA", workAuthorization: "H-1B visa (transfer required)", authorizedUS: "Yes", requiresSponsorship: "Yes", willingToRelocate: "No" };
+  const QC = { jobCountry: "CA" as string | null, company: "Coveo" };
+  const CO = { jobCountry: "US" as string | null, company: "Anduril" };
+  const YN = ["Please select", "Yes", "No"];
+
+  it("Coveo: a referral among a referral and a friend; living there or about to move; a background check the candidate 'acknowledges'", () => {
+    const where = ["Career Fair / Salon de l'emploi", "Coveo Employee Referral / Référence d'un employé de Coveo", "Friend or Former Colleague / Ami.e ou ancien.ne collègue", "Glassdoor", "LinkedIn"];
+    expect(value(ask("Where did you hear about Coveo?", { options: where, kind: "choice", controlType: "select" }, berlin, QC))).toBe("Coveo Employee Referral / Référence d'un employé de Coveo");
+    expect(value(ask("I confirm either living or being about to move to the location indicated in the job listing.*", { options: YN, kind: "boolean", controlType: "select" }, berlin, QC))).toBe("Yes");
+    expect(value(ask("I confirm either living or being about to move to the location indicated in the job listing.*", { options: YN, kind: "boolean", controlType: "select" }, seattle, QC))).toBe("No");
+    const check = "The candidate's employment is contingent upon the successful completion of a background check. The candidate acknowledges that any conditional employment offer may be withdrawn following an unsuccessful background check.";
+    expect(value(ask(check, { options: YN, kind: "boolean", controlType: "select" }, berlin, QC))).toBe("Yes");
+  });
+
+  it("Anduril: 'If you are not local to Colorado, are you willing to relocate?' for a Seattle applicant who will not move; 'HISTORY WITH ANDURIL'", () => {
+    expect(value(ask("If you are not local to Colorado, are you willing to relocate?*", { options: YES_NO }, seattle, CO))).toBe("No");
+    expect(value(ask("Are you local to Colorado?", { options: YES_NO }, seattle, CO))).toBe("No");
+    expect(value(ask("HISTORY WITH ANDURIL*", { options: YES_NO }, seattle, CO))).toBe("No");
+  });
+});
+
 describe("conditional questions: the condition first", () => {
   const ACTIONET = ["Select an option...", "Yes", "No", "I am not a current or former government employee"];
   it("a false condition picks the option saying so (ActioNet on Jobvite, live 2026-10-03)", () => {

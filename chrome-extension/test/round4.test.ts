@@ -133,6 +133,44 @@ describe("JazzHR's questionnaire (Directors Investment Group, live 2026-10-05)",
   });
 });
 
+describe("Greenhouse batch 2 and the question bank: what a scan proposes (2026-10-05)", () => {
+  let restore: () => void;
+  beforeAll(() => { restore = stubLayout(); });
+  afterAll(() => restore());
+  const scanOne = async (html: string, profile: object, ctx: { jobCountry: string | null; jobCity?: string | null; company: string }) => {
+    const { setResolveContext } = await import("../src/content/fieldResolver");
+    document.body.innerHTML = `<form>${html}</form>`;
+    setResolveContext({ jobPlaces: null, jobCity: null, ...ctx });
+    const fields = scanPage(profile as never, true).fields;
+    document.body.innerHTML = "";
+    return fields;
+  };
+  const select = (label: string, options: string[]) =>
+    `<div class="field"><label for="s">${label}</label><select id="s"><option value="">Select...</option>${options.map((o, i) => `<option value="${i}">${o}</option>`).join("")}</select></div>`;
+  const text = (label: string) => `<div class="field"><label for="t">${label}</label><input type="text" id="t"></div>`;
+
+  it("a typed signature asking for the full legal name gets the full name, not the last name (Block)", async () => {
+    const { COMPLETE_CANADIAN } = await import("./e2e/profiles.mjs");
+    const label = "I certify that all of the information I have provided is correct and complete and realize that falsification or misrepresentation, including omission, on this or any other personnel record, or in the hiring process, may be grounds for refusal of employment. By signing this Electronic Signature Acknowledgment Online Form, I agree that my electronic signature is the legally binding equivalent to my handwritten signature. Please sign by typing your Full Legal First, Middle Initial, and Last Name*";
+    const [f] = await scanOne(text(label), COMPLETE_CANADIAN, { jobCountry: "CA", company: "Block" });
+    expect(f.category).toBe("fullName");
+    expect(f.proposedValue).toBe("Maya Tremblay");
+  });
+
+  it("an expectations agreement whose only option is 'I agree…' is agreed to, never a name (Block)", async () => {
+    const { COMPLETE_CANADIAN } = await import("./e2e/profiles.mjs");
+    const label = "How we interview: Our hiring process prioritizes authenticity and fairness. Recording any part of the interview without consent is prohibited. Lastly, maintain confidentiality by refraining from sharing any proprietary or trade secret information from previous employers.";
+    const [f] = await scanOne(select(label, ["I agree to these expectations"]), COMPLETE_CANADIAN, { jobCountry: "CA", company: "Block" });
+    expect(f.proposedValue).toBe("I agree to these expectations");
+  });
+
+  it("'Legal Name (if different than above)' stays blank (Cloudflare)", async () => {
+    const { INDIA_NEW_GRAD } = await import("./e2e/profiles.mjs");
+    const [f] = await scanOne(text("Legal Name (if different than above)"), INDIA_NEW_GRAD, { jobCountry: "US", company: "Cloudflare" });
+    expect(f.proposedValue ?? null).toBeNull();
+  });
+});
+
 /** The element a scanned field was registered on. */
 function fieldEl(id: string): HTMLElement | null {
   return document.querySelector(`[data-ap-field="${id}"]`);

@@ -451,6 +451,12 @@ describe("demographic answers the profile does not narrow (Robinhood and Superhu
     expect(scan(LGBTQ, { ...REAL_EEO, sexualOrientation: "Bisexual" })[0].proposedValue).toBe("Yes");
     expect(scan(LGBTQ, { ...REAL_EEO, genderIdentity: "Transgender" })[0].proposedValue).toBe("Yes");
   });
+  it("Canada's '2SLGBTQI+' is the same question (Coveo on Greenhouse, live 2026-10-05)", () => {
+    // "\blgbt" found no word boundary inside "2SLGBTQI+": declined for a
+    // bisexual, transgender applicant.
+    const coveo = radios("Do you identify as a member of the 2SLGBTQI+ community ? / Vous identifiez vous comme membre de la communauté 2ELGBTQI+ ?", "l2", ["Yes / Oui", "No / Non", "Prefer not to say / Je préfère ne pas répondre"]);
+    expect(scan(coveo, { ...REAL_EEO, sexualOrientation: "Bisexual", genderIdentity: "Transgender" })[0].proposedValue).toBe("Yes / Oui");
+  });
 });
 
 describe("a real profile's history (ActioNet, Commvault and Workable, 2026-10-03)", () => {

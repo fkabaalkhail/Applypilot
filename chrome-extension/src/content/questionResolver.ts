@@ -1269,6 +1269,24 @@ function resolveZoneAvailability(q: QuestionInput, n: string, facts: ProfileFact
  * no for one who lives elsewhere and will not.
  */
 function resolveLocalTo(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
+  // "Are you local to Colorado?" (now): where the applicant lives today, by
+  // state, province or country as well as city. "If you are not local to
+  // Colorado, are you willing to relocate?" stayed blank for a Seattle
+  // applicant who will not move (Anduril on Greenhouse, live 2026-10-05).
+  const now = /^(?:are you|you are) (?:currently )?(?:local|located|based|living) (?:to|in|near) (?:the )?([a-z ]+?)(?: area| region)?$/.exec(n);
+  if (now && isBooleanQuestion(q)) {
+    const named = now[1].trim();
+    const region = regionFromText(named);
+    const country = region ? null : countryFromName(named);
+    const home = facts.location;
+    if (region && isHigh(home.region)) {
+      return booleanResult(home.region.value.code === region.code && home.region.value.country === region.country, q, "local:region");
+    }
+    if (country && isHigh(home.country)) return booleanResult(home.country.value.code === country.code, q, "local:country");
+    const city = isHigh(home.city) ? qnorm(home.city.value) : null;
+    if (city && named === city) return booleanResult(true, q, "local:lives-there");
+    return abstain("local:unknown");
+  }
   const m = /\bwill you (?:be|live|reside) (?:local|located|living|based) (?:to|in|near) (?:the )?([a-z ]+?)(?: area| region| office)?(?: for| during| this| next| by| in|$)/.exec(n);
   if (!m || !isBooleanQuestion(q)) return null;
   const named = m[1].trim();
@@ -1507,6 +1525,16 @@ function companiesNamedIn(raw: string): string[] {
 function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: ProfileFacts, ctx: QuestionContext): QuestionResult {
   const history = resolveEmploymentHistoryChoice(q, n, raw, facts);
   if (history) return history;
+  // "HISTORY WITH ANDURIL" [Yes | No] (Anduril on Greenhouse, live
+  // 2026-10-05): a history with the company named, its jobs first.
+  const withCo = /^(?:employment |work |prior |previous )?history with ([A-Za-z][\w&.'-]*(?:\s+[A-Za-z][\w&.'-]*){0,2})$/i.exec(raw.replace(/[\s*✱:?]+$/, "").trim());
+  if (withCo && isBooleanQuestion(q)) {
+    if (facts.employment.employers.length === 0) return abstain("former-employee:no-history");
+    const co = withCo[1];
+    const cur = facts.employment.currentCompany;
+    const worked = Boolean(isHigh(cur) && sameCompany(cur.value, co)) || facts.employment.employers.some((e) => sameCompany(e, co));
+    return booleanResult(worked, q, "former-employee:history-with");
+  }
   const shape =
     /\b(current|former|past|previous|prior)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b|\b(provided|done|performed|did) (any )?(contract |consulting |freelance )?(work|services) for\b/.test(n);
   if (!shape) return null;

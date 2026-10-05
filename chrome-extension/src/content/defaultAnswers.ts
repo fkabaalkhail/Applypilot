@@ -88,10 +88,11 @@ const DEMOGRAPHIC = /\b(demographic|self ?identif\w*|eeo|equal employment|volunt
 const RECORDING = /\b(record(ed|ing)?|transcri\w*|notetak\w*|note tak\w*)\b/;
 
 /** A requirement of the posting the applicant accepts by applying. */
+// The third person too: "The candidate acknowledges that…" (Coveo, live 2026-10-05).
 const ACK_VERB =
-  /\b(acknowledge|agree|understand|confirm|accept|comfortable|okay|ok|willing|able|open|prepared|available|can you|will you be able|are you able|works? for you)\b/;
+  /\b(acknowledges?|agrees?|understands?|confirms?|accepts?|comfortable|okay|ok|willing|able|open|prepared|available|can you|will you be able|are you able|works? for you)\b/;
 const REQUIREMENT =
-  /\b(in ?office|on ?site|in ?person|hybrid|office|commut\w*|travel\w*|relocat\w*|shifts?|weekends?|overtime|nights?|evenings?|holidays?|background (check|screen\w*|investigation)s?|drug (test\w*|screen\w*)|essential (functions|duties)|lift\w*|schedule|days (per|a|each) week|requirement|requirements)\b/;
+  /\b(in ?office|on ?site|in ?person|hybrid|office|commut\w*|travel\w*|relocat\w*|shifts?|weekends?|overtime|nights?|evenings?|holidays?|background (check|screen\w*|investigation)s?|drug (test\w*|screen\w*)|essential (functions|duties)|lift\w*|schedule|days (per|a|each) week|requirement|requirements|move to the location|moving to the location)\b/;
 /** A request rather than a requirement ("Will you require relocation
  *  assistance?"): the applicant's to make, never defaulted. */
 const ASSISTANCE = /\b(assistance|package|support|expenses?|benefits?|allowance|reimburs\w*|stipend|bonus|housing)\b/;
@@ -257,6 +258,11 @@ function chooseSource(q: QuestionInput, profile: UserApplicationProfile): Questi
       if (!said.test(stated)) continue;
       const hit = unique(offered);
       if (hit) return answer(hit, "source:stated");
+      // Several of that kind ("Coveo Employee Referral" | "Friend or Former
+      // Colleague", Coveo, live 2026-10-05): the one naming the stated word.
+      const stem = said.exec(stated)?.[0];
+      const own = stem ? opts.filter((o) => offered.test(qn(o)) && qn(o).includes(stem)) : [];
+      if (own.length === 1) return answer(own[0], "source:stated");
       // Several of that channel ("LinkedIn Company Post" | "LinkedIn Employee
       // Post" | "LinkedIn Job Search", Planet on Greenhouse): a posting found
       // through Tailrd was found through a job search.
@@ -491,7 +497,7 @@ export function resolveDefault(
     // "I'd relocate") need the choice, not a bare yes.
     const located = chooseLocated(q, profile, facts, ctx);
     if (located) return located;
-    const refusesMove = /\brelocat/.test(n) && /^no\b/i.test((profile.willingToRelocate ?? "").trim());
+    const refusesMove = /\brelocat|\b(move|moving) to\b/.test(n) && /^no\b/i.test((profile.willingToRelocate ?? "").trim());
     if (refusesMove) return polar(false, q, "relocation:stated");
     const remoteOnly = /\b(in ?office|on ?site|in ?person|hybrid)\b/.test(n) && /^remote$/i.test((profile.workPreference ?? "").trim());
     if (remoteOnly) return null; // they said remote: the applicant must decide

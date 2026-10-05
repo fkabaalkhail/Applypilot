@@ -83,7 +83,9 @@ export const EEO_DECLINE = "Decline to self-identify";
 
 /** "Do you identify as transgender?": its own question, never an LGBTQ+ one. */
 const TRANS_Q = /\b(identify as|are you|consider yourself( to be)?)( a)? trans(gender)?\b|\btrans(gender)? (identity|status|experience)\b/i;
-const LGBTQ_Q = /\b(lgbt\w*|queer|gay|lesbian|bisexual|sexual orientation)\b/i;
+// "2SLGBTQI+" (Canada) and "2ELGBTQI+" (French) carry no word boundary before
+// "LGBT" (Coveo, live 2026-10-05).
+const LGBTQ_Q = /\b(?:2[se])?lgbt\w*|\b(queer|gay|lesbian|bisexual|sexual orientation)\b/i;
 
 /**
  * Gender identity asked three ways (live 2026-10-03). "Do you identify as
@@ -105,7 +107,7 @@ function refineGenderIdentity(
   // "Do you identify as LGBTQ+?": Yes for a stated orientation or identity
   // that is one; No only when BOTH are stated and neither is. A cisgender
   // identity says nothing about orientation, so it never answers alone.
-  if (category === "eeoOther" && /\blgbt/i.test(label)) {
+  if (category === "eeoOther" && /\b(?:2[se])?lgbt/i.test(label)) {
     const orientation = (profile.eeo?.sexualOrientation ?? "").trim();
     if (/\b(gay|lesbian|bisexual|queer|pansexual)\b/i.test(orientation) || /\btrans(gender)?\b/i.test(identity)) return "Yes";
     if (/^(heterosexual|straight)$/i.test(orientation) && /\bcis(gender)?\b/i.test(identity)) return "No";
@@ -370,6 +372,11 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   // "educationHistory.city.0" got the applicant's city, live 2026-10-03).
   if (source === "category" && APPLICANT_ADDRESS.has(category) && HISTORY_ROW.test(`${signals.nameAttr} ${signals.idAttr}`)) {
     return none(true, "row:not-applicant-address");
+  }
+  // "Legal Name (if different than above)" (Cloudflare on Greenhouse, live
+  // 2026-10-05): the profile has one name, so it is never different.
+  if (source === "category" && (category === "fullName" || category === "firstName" || category === "lastName") && /\bif (it is |its )?different\b/i.test(label)) {
+    return none(true, "name:if-different");
   }
   // Address Line 2 is the unit ("app. 3" of "4520 rue Saint-Denis, app. 3"),
   // never a copy of line 1 (Pinpoint got "1 Washington Sq" twice, live
