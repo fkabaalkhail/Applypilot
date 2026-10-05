@@ -340,6 +340,13 @@ describe("employment history", () => {
     const googler = { ...SPARSE_CANADIAN, experience: [{ company: "Google", title: "Software Engineering Intern", startDate: "2024-05", endDate: "2024-08", description: "" }] };
     expect(value(ask(ALPHABET, { options: ALPHABET_OPTS, kind: "choice", controlType: "select" }, googler))).toBe("Former Alphabet Employee or Intern");
   });
+  it("written, 'Have you ever worked for X? If yes, what was your position…' is No without X in the history (ConsumerAffairs on Workable, live 2026-10-05)", () => {
+    const q = "*Have you ever worked for ConsumerAffairs? If yes, what was your position, and what dates were you employed?";
+    expect(value(ask(q, { kind: "longText", controlType: "textarea" }, SPARSE_CANADIAN, { jobCountry: "US", company: "ConsumerAffairs" }))).toBe("No");
+    // Someone who did work there describes it themselves.
+    const q2 = "Have you ever worked for Shopify? If yes, what was your position, and what dates were you employed?";
+    expect(value(ask(q2, { kind: "longText", controlType: "textarea" }))).not.toBe("No");
+  });
   it("a bare 'current or former employee?' asks about the hiring company (Carvana, live 2026-10-05)", () => {
     const q = "Are you a current or former employee?*";
     expect(value(ask(q, { options: YES_NO }, SPARSE_CANADIAN, { jobCountry: null, company: "Carvana" }))).toBe("No");

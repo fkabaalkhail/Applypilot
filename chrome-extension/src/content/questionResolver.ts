@@ -1535,6 +1535,12 @@ function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: 
         : pick(/\b(neither|none|no|not|never)\b/);
     return v ? answer(v, "former-employee:choice") : abstain("former-employee:no-matching-option");
   }
+  // Written: "Have you ever worked for ConsumerAffairs? If yes, what was your
+  // position…?" (Workable, live 2026-10-05). No such job: "No". One there is
+  // the applicant's to describe.
+  if (!q.options?.length && (q.kind === "text" || q.kind === "longText")) {
+    return isCurrent || isPast ? null : answer("No", "former-employee:never-text");
+  }
   if (!isBooleanQuestion(q)) return null;
   // "Are you a CURRENT employee?" vs "have you EVER worked here?"
   const asksCurrentOnly = /\b(currently|current) (employed|employee|work)\b/.test(n) && !/\b(former|past|previous|ever|or)\b/.test(n);
@@ -1672,7 +1678,9 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
     if (eligible && /\b(active|current|hold|have)\b/.test(n)) return booleanResult(false, q, "clearance");
     return abstain("clearance:unknown");
   }
-  const lang = /\b(speak|fluent|proficient|bilingual|fluency|read and write|written and spoken)\b/.exec(n);
+  // "…others that we may choose to speak with" (ConsumerAffairs on Workable,
+  // live 2026-10-05) is talking to someone, not a language.
+  const lang = /\b(speak(?! (with|to)\b)|fluent|proficient|bilingual|fluency|read and write|written and spoken)\b/.exec(n);
   if (lang) {
     const langs = (profile.languages || "").toLowerCase();
     if (!langs.trim()) return abstain("language:unknown");

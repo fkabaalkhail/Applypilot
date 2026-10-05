@@ -66,6 +66,15 @@ describe("consent the application needs", () => {
   });
 });
 
+describe("a certification is given, whatever words it holds (ConsumerAffairs on Workable, live 2026-10-05)", () => {
+  it("'…others that we may choose to speak with' is no language question", () => {
+    // It abstained as "language:unspecified" and went to the AI.
+    const q =
+      "I certify that the facts set forth in this Application for Employment are true and complete to the best of my knowledge. I understand that if I am employed, false statements, omissions or misrepresentations may result in my dismissal. I authorize the Employer to make an investigation of any of the facts set forth in this application and release the Employer from any liability.***Please note that as part of our application process, final candidates will be asked to arrange personal reference calls with former supervisors, and others that we may choose to speak with.";
+    expect(value(ask(q, { options: ["YES", "NO"], controlType: "radioGroup", kind: "boolean" }))).toBe("YES");
+  });
+});
+
 describe("a requirement followed by WHICH place is no yes or no (FSSI on Workable, live 2026-10-03)", () => {
   const FSSI = "This role requires full-time, onsite work (Monday–Friday). Which location can you reliably commute to?";
   const OFFICES = ["Lincoln, RI", "Orlando, FL", "Neither location"];
