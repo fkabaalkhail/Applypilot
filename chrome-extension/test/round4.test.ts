@@ -355,3 +355,16 @@ describe("react-select before v5 labelled by a <label for> naming no element (Ep
     document.body.innerHTML = "";
   });
 });
+
+describe("a high school diploma is a high school (Epic Games' Degree, live 2026-10-05)", () => {
+  it("'High School Diploma' reads as High School, and snaps to 'High School / Secondary Education'", async () => {
+    // Read as a "Diploma", it matched none of Epic's degree options and the
+    // field stayed blank. A college "Diploma in …" stays a Diploma.
+    const { deriveDegreeLevel } = await import("../src/content/fieldMatcher");
+    expect(deriveDegreeLevel("High School Diploma")).toBe("High School");
+    expect(deriveDegreeLevel("Diploma in Computer Engineering Technology")).toBe("Diploma");
+    const { snapToOption } = await import("../src/content/fieldResolver");
+    const epic = ["Associates", "Autre", "Baccalauréat", "Bachelors", "Diplôme d'études collégiales (DEC)", "Diplôme d'études secondaires (DES)", "Doctorat", "Doctorate", "High School / Secondary Education", "Maîtrise", "Masters", "Other"];
+    expect(snapToOption(epic, deriveDegreeLevel("High School Diploma")!, "degree")).toBe("High School / Secondary Education");
+  });
+});

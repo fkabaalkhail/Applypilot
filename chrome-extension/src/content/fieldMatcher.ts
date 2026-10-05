@@ -844,9 +844,11 @@ const DEGREE_LEVELS: Array<[RegExp, string]> = [
   [/\bmaster(?:'?s)?\b|\bm\.\s?(?:sc?|a|eng)\.?\b|\bmsc\b|\bmeng\b/i, "Master"],
   [/\bbachelor(?:'?s)?\b|\bb\.\s?(?:sc?|a|eng|comm)\.?\b|\bbsc\b|\bbeng\b|\bundergraduate\b/i, "Bachelor"],
   [/\bassociate(?:'?s)?\b/i, "Associate"],
+  // Before "Diploma": a "High School Diploma" is a high school, and read as a
+  // Diploma it matched none of Epic Games' degree options (live 2026-10-05).
+  [/\bhigh school\b|\bsecondary school\b/i, "High School"],
   [/\bdiploma\b/i, "Diploma"],
   [/\bcertificate\b/i, "Certificate"],
-  [/\bhigh school\b|\bsecondary school\b/i, "High School"],
 ];
 
 /**
