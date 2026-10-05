@@ -967,8 +967,14 @@ function initialize(): void {
       // Phase A: deterministic profile fields fill instantly (local fast-path).
       const localStartedAt = performance.now();
       const route = planFillRoute(selected, AUTOFILL_CONFIDENCE_THRESHOLD);
-      const localFill = await fillItems(
-        noteIntent(route.localTargets, { tier: "profile" }), false, signal
+      // A react-datepicker box (Workable's dates) is typed last, after every
+      // dropdown: on Saalex's form, a State chosen after its dates were typed
+      // sent Workable's form into an endless re-render that froze the tab
+      // (live 2026-10-05).
+      const pickerBox = (fieldId: string): boolean => Boolean(registry.get(fieldId)?.el?.closest(".react-datepicker-wrapper"));
+      const lateTargets = route.localTargets.filter((t) => pickerBox(t.fieldId));
+      let localFill = await fillItems(
+        noteIntent(route.localTargets.filter((t) => !pickerBox(t.fieldId)), { tier: "profile" }), false, signal
       );
       phase.localMs = since(localStartedAt);
 
@@ -1056,14 +1062,27 @@ function initialize(): void {
         // by the backend still fill from proposedValue, no regression. A single
         // checkbox with a non-boolean value is excluded: it was routed to the AI
         // precisely because that value can only fail as "Ambiguous checkbox value".
+        // A dropdown whose real options were read and hold no match for the
+        // value is not typed into either: "Ontario" went into Saalex's list of
+        // US states, and touching that list made Workable's form re-render
+        // forever (live 2026-10-05).
         const answered = new Set<string>(plan.simpleTargets.map((t) => t.fieldId));
         const fallbackTargets = route.backendFields
           .filter((f) => !answered.has(f.id) && f.proposedValue !== null)
           .filter((f) => f.controlType !== "checkbox" || isBoolish(f.proposedValue as string))
+          .filter((f) => !(f.controlType === "combobox" && f.options?.length && !matchOption(f.options, (o) => o, (o) => o, f.proposedValue as string)))
           .map((f) => ({ fieldId: f.id, value: f.proposedValue as string }));
         fallbackFill = await fillItems(
           noteIntent(fallbackTargets, { tier: "profile" }), true, signal
         );
+      }
+      if (lateTargets.length > 0 && !signal?.aborted) {
+        const late = await fillItems(noteIntent(lateTargets, { tier: "profile" }), false, signal);
+        localFill = {
+          reports: [...localFill.reports, ...late.reports],
+          outcomes: [...localFill.outcomes, ...late.outcomes],
+          reask: [...localFill.reask, ...late.reask],
+        };
       }
       phase.backendMs = since(backendStartedAt);
       const reaskStartedAt = performance.now();
