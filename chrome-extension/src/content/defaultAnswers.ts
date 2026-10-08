@@ -108,7 +108,10 @@ const REQUIREMENT =
   /\b(in ?office|on ?site|in ?person|hybrid|office|commut\w*|travel\w*|relocat\w*|shifts?|weekends?|overtime|nights?|evenings?|holidays?|background (check|screen\w*|investigation)s?|drug (test\w*|screen\w*)|essential (functions|duties)|lift\w*|schedule|days (per|a|each) week|hours (per|a|each) week|requirement|requirements|move to the location|moving to the location)\b/;
 /** A request rather than a requirement ("Will you require relocation
  *  assistance?"): the applicant's to make, never defaulted. */
-const ASSISTANCE = /\b(assistance|package|support|expenses?|benefits?|allowance|reimburs\w*|stipend|bonus|housing)\b/;
+// "Support" is help only as a noun of it ("relocation support"): "travel as
+// needed to support these activities" (Kobie on Lever, live 2026-10-08) asks
+// the requirement.
+const ASSISTANCE = /\b(assistance|package|(relocation|moving|travel|visa|immigration|financial) support|support (for|with) (your |the )?(relocation|move|moving|visa)|expenses?|benefits?|allowance|reimburs\w*|stipend|bonus|housing)\b/;
 /** Pay and what comes with it: the applicant's to accept, wherever the
  *  question mentions it. */
 const PAY_TERMS = /\b(compensation|pay|salary|salaries|wages?|hourly rate|benefits?|bonus(es)?|stipend|reimburs\w*)\b/;
@@ -673,7 +676,11 @@ export function resolveDefault(
   if (DEMOGRAPHIC.test(n)) return null;
   // Being recorded or transcribed (AI notetakers, Palantir on Lever, live
   // 2026-10-03) is the applicant's own choice: never defaulted, nor the AI's.
-  if (RECORDING.test(n) && (/\b(consent|opt (in|out)|agree)\b/.test(n) || opts.some((o) => /\bconsent\b/i.test(o)))) {
+  // Named by the options alone too: "Candidate Consent Acknowledgment" over
+  // "I agree and consent to the recording and AI summarization of my
+  // interview." (TensorWave on Ashby, live 2026-10-08) went to the AI.
+  const recordingOption = opts.some((o) => RECORDING.test(qn(o)) && /\b(consent|agree|opt (in|out))\b/i.test(o));
+  if ((RECORDING.test(n) && (/\b(consent|opt (in|out)|agree)\b/.test(n) || opts.some((o) => /\bconsent\b/i.test(o)))) || recordingOption) {
     return RECORDING_CONSENT;
   }
   if (CONSENT_VERB.test(n) && CONSENT_OBJECT.test(n) && !RECORDING.test(n)) {
@@ -759,7 +766,10 @@ export function resolveDefault(
     // the page) was Yes from Seattle for someone who will not move. Places
     // named or posted were judged above; with none, it is theirs.
     if (!occasional && /\b(in ?office|on ?site|in ?person|hybrid)\b/.test(n) && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) return null;
-    const remoteOnly = /\b(in ?office|on ?site|in ?person|hybrid)\b/.test(n) && /^remote$/i.test((profile.workPreference ?? "").trim());
+    // Travel now and then is no office work: "…employees may periodically
+    // travel… Are you able and willing to travel as needed?" (Kobie on Lever,
+    // live 2026-10-08) was left to someone who prefers remote work.
+    const remoteOnly = !occasional && /\b(in ?office|on ?site|in ?person|hybrid)\b/.test(n) && /^remote$/i.test((profile.workPreference ?? "").trim());
     if (remoteOnly) return null; // they said remote: the applicant must decide
     return polar(true, q, "default:accepts-requirement");
   }

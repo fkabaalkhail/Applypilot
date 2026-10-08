@@ -402,3 +402,23 @@ describe("Lever bank blanks a stated fact answers", () => {
     expect(ask("US_H1B_SENIOR", q, opts)).toBe("Other");
   });
 });
+
+describe("more of what the Lever and Ashby pages showed", () => {
+  it("periodic travel is no office requirement for someone who prefers remote work (Kobie)", () => {
+    const q = "As a remote-first company, Kobie believes flexibility and meaningful in-person connection can go hand in hand. While travel requirements vary by role, employees may periodically travel for team collaboration, customer meetings, training, and company events, including visits to our headquarters in St. Petersburg, Florida. Are you able and willing to travel as needed to support these activities?";
+    expect(ask("BOOTCAMP_CAREER_GAP", q, ["Yes", "No"], null)).toBe("Yes");
+  });
+  it("a list of races is the race question whatever its label says (Wattpad)", () => {
+    const opts = ["Black", "Indigenous/First Nations/Metis", "Hispanic or Latine", "White", "Pacific Islander", "East Asian", "South Asian", "Southeast Asian", "Middle Eastern", "Prefer not to say"];
+    const a = scanned("Please select an identity (or multiple) that best represents you:", opts, "Toronto, Ontario", "checks");
+    expect(a.COMPLETE_CANADIAN).toBe("White");
+    expect(a.BOOTCAMP_CAREER_GAP).toBe("Black");
+    expect(a.US_H1B_SENIOR).toBeNull();
+  });
+  it("consent to being recorded, named in the options only, is the applicant's and never the AI's (TensorWave)", () => {
+    const opts = ["I agree and consent to the recording and AI summarization of my interview.", "I would like to opt out of interview recording and AI summarization."];
+    const r = resolveQuestion({ label: "Candidate Consent Acknowledgment", controlType: "radioGroup", options: opts, category: "unknown", kind: "choice" }, profileFacts(persona("BOOTCAMP_CAREER_GAP"), TEST_TODAY), persona("BOOTCAMP_CAREER_GAP"), { jobCountry: "US", company: "TensorWave" });
+    expect(r?.status).toBe("abstain");
+    expect(r && "blockBackend" in r ? r.blockBackend : false).toBe(true);
+  });
+});

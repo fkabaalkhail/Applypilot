@@ -319,6 +319,12 @@ function categoryOfOptions(options: string[]): { category: FieldCategory; confid
   const count = (re: RegExp): number => options.filter((o) => re.test(o.toLowerCase())).length;
   if (count(/\bdisabilit(y|ies)\b/) >= 2) return { category: "eeoDisability", confidence: 0.9, sensitive: true };
   if (count(/\bprotected veterans?\b/) >= 2) return { category: "eeoVeteran", confidence: 0.9, sensitive: true };
+  // Races as the options: "Please select an identity (or multiple) that best
+  // represents you:" over Black | White | East Asian | … (Wattpad on Lever,
+  // live 2026-10-08) named no race in its label and went to the AI.
+  if (count(/^(white|black|caucasian|african american|hispanic|latin[oaex]|asian|east asian|south asian|southeast asian|indigenous|native american|pacific islander|middle eastern|arab)\b/) >= 4) {
+    return { category: "eeoRace", confidence: 0.9, sensitive: true };
+  }
   return null;
 }
 
