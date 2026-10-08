@@ -1,0 +1,585 @@
+/* Jobs page right rail. Only exists on wide screens: below 1280px the feed
+   keeps the whole width, exactly as before the rail shipped. */
+
+.jobs-rail {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  .jobs-content-area.has-rail {
+    justify-content: center;
+  }
+
+  .jobs-content-area.has-rail .jobs-feed {
+    margin: 0;
+    flex: 1 1 auto;
+    max-width: 1100px;
+    padding-right: 1.25rem;
+  }
+
+  .jobs-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    flex: 0 0 320px;
+    width: 320px;
+    height: 100%;
+    overflow-y: auto;
+    padding: 1.25rem 2rem 2rem 0;
+    box-sizing: content-box;
+  }
+}
+
+.rail-card {
+  background: var(--bg-white);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 1rem 1.125rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.rail-card-ok {
+  border-color: #c9f0dc;
+  background: linear-gradient(180deg, #f3fcf7 0%, var(--bg-white) 100%);
+}
+
+.rail-card-ok .rail-title svg {
+  color: #12a26b;
+}
+
+.rail-card-promo {
+  background: var(--stripe-mesh-soft);
+  border-color: var(--accent-soft);
+}
+
+.rail-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.rail-title svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.rail-muted {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.rail-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.rail-label {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.rail-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  align-self: flex-start;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.rail-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.rail-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-pill);
+  background: var(--stripe-cta-gradient);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.rail-btn:hover {
+  filter: brightness(1.06);
+}
+
+.rail-resume-name {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ring + copy */
+.rail-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.rail-stat-copy {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.rail-stat-copy strong {
+  color: var(--text);
+}
+
+.rail-ring {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.rail-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.rail-ring-track,
+.rail-ring-fill {
+  fill: none;
+  stroke-width: 9;
+}
+
+.rail-ring-track {
+  stroke: var(--border);
+}
+
+.rail-ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.4s ease;
+}
+
+.rail-ring-value {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Skill chips */
+.rail-gaps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.rail-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.rail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent-light);
+  color: var(--accent-hover);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.rail-chip-count {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Weekly goal */
+.rail-goal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rail-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.rail-stepper button {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.rail-stepper button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.rail-stepper button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rail-mini-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 0;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--border-light);
+}
+
+.rail-mini-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.rail-mini-stats dt {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.rail-mini-stats dd {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Closing-soon list */
+.rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rail-job {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem;
+  margin: 0 -0.4rem;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: content-box;
+}
+
+.rail-job:hover {
+  background: var(--bg-page);
+}
+
+.rail-job-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rail-job-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-job-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
+/* Feed summary */
+.rail-pulse {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: 0.4rem;
+}
+
+.rail-pulse button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-page);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.rail-pulse button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-light);
+}
+
+.rail-pulse button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.rail-pulse strong {
+  font-size: 1.0625rem;
+  color: var(--text);
+}
+
+.rail-pulse span {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.25;
+}
+
+/* Companies */
+.rail-companies {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.rail-company {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.6rem 0.4rem;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-white);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.rail-company:hover {
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-card);
+}
+
+.rail-company-name {
+  max-width: 100%;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-company-count {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+/* Alerts switch */
+.rail-alerts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.rail-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.rail-switch.on {
+  background: var(--accent);
+}
+
+.rail-switch:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.rail-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+}
+
+.rail-switch.on .rail-switch-knob {
+  transform: translateX(16px);
+}
+
+.rail-error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--stripe-ruby);
+}
+
+.rail-footnote {
+  display: flex;
+  gap: 0.35rem;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0 0.25rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.rail-footnote svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--accent-border);
+}
+
+/* Loading */
+.rail-skeleton {
+  height: 150px;
+  background: linear-gradient(90deg, var(--bg-white) 0%, var(--bg-page) 50%, var(--bg-white) 100%);
+  background-size: 200% 100%;
+  animation: rail-shimmer 1.4s ease-in-out infinite;
+}
+
+.rail-skeleton.short {
+  height: 90px;
+}
+
+@keyframes rail-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-skeleton { animation: none; }
+  .rail-ring-fill,
+  .rail-switch,
+  .rail-switch-knob { transition: none; }
+}
+
+/* Card-level "why it matches": résumé skills this posting also asks for. */
+.job-why-match {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.job-why-match svg {
+  color: var(--accent);
+}
+
+.job-why-chip {
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent-light);
+  color: var(--accent-hover);
+  font-weight: 600;
+}
+
+/* Active quick filter from the rail (strong matches / new since visit). */
+.jobs-quick-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.75rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent-light);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-hover);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.jobs-quick-filter button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.jobs-quick-filter button:hover {
+  background: var(--accent-soft);
+}

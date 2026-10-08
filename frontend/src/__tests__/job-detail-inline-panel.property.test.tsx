@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import * as fc from "fast-check";
 import React from "react";
@@ -245,9 +246,11 @@ describe("Feature: job-detail-inline-panel, Property 1: Inline rendering without
     fc.assert(
       fc.property(jobArb, (job) => {
         const { container } = render(
-          <ApplyTrackingProvider>
-            <Jobs />
-          </ApplyTrackingProvider>
+          <MemoryRouter>
+            <ApplyTrackingProvider>
+              <Jobs />
+            </ApplyTrackingProvider>
+          </MemoryRouter>
         );
 
         // Even with the actual component, no overlay should exist

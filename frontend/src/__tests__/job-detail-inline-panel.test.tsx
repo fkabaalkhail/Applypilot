@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { render, screen, cleanup } from "@testing-library/react";
 import React from "react";
 import fs from "fs";
@@ -6,7 +7,11 @@ import path from "path";
 import { ApplyTrackingProvider } from "../context/ApplyTracking";
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<ApplyTrackingProvider>{ui}</ApplyTrackingProvider>);
+  return render(
+    <MemoryRouter>
+      <ApplyTrackingProvider>{ui}</ApplyTrackingProvider>
+    </MemoryRouter>
+  );
 }
 
 /**

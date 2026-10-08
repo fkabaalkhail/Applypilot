@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import JobFilterBar, { JobFilters, normalizeExperienceLevels } from "../components/JobFilterBar";
 import JobDetailView from "../components/JobDetailView";
 import CustomResumeModal, { type AIJob } from "../components/CustomResumeModal";
 import CoverLetterModal from "../components/CoverLetterModal";
+import JobsSidebar, { type SidebarData } from "../components/JobsSidebar";
+import { skillLabel } from "../lib/skillLabel";
 import api from "../auth/api";
 import { useApplyTracking } from "../context/ApplyTracking";
 import CompanyLogo from "../components/CompanyLogo";
@@ -27,6 +29,8 @@ import {
   CaretLeft,
   CaretRight,
   Prohibit,
+  Sparkle,
+  X,
 } from "@phosphor-icons/react";
 
 
@@ -65,6 +69,8 @@ interface Job {
   // active | stale | removed | expired. The feed only lists active and stale
   // rows; removed/expired ones arrive via the Liked tab, deep links, or a live check.
   listing_status?: string | null;
+  // Canonical skill tags extracted at ingest (lowercase, see lib/skillLabel).
+  skills?: string[] | null;
 }
 
 interface Stats {
@@ -88,6 +94,19 @@ function normalizeJob(job: Job): Job {
 }
 
 const FILTER_STORAGE_KEY = "job-aggregator-filters";
+const LAST_VISIT_KEY = "tailrd.jobs.lastVisit";
+
+// A filter the right rail applies; shown as a removable chip above the feed.
+type QuickFilter = { kind: "strong" } | { kind: "new"; since: string } | null;
+
+/** When the user last opened the Jobs page, read once per page load. */
+function readLastVisit(): string | null {
+  try {
+    return localStorage.getItem(LAST_VISIT_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export default function Jobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -104,6 +123,9 @@ export default function Jobs() {
   const [coverJob, setCoverJob] = useState<AIJob | null>(null);
   const [filtersVisible, setFiltersVisible] = useState(true);
   const { registerApplyClick } = useApplyTracking();
+  const [sidebar, setSidebar] = useState<SidebarData | null>(null);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>(null);
+  const [lastVisit] = useState(readLastVisit);
 
   const jobsListRef = useRef<HTMLDivElement>(null);
   const prevSelectedJobRef = useRef<Job | null>(null);
@@ -213,7 +235,33 @@ export default function Jobs() {
   useEffect(() => {
     fetchJobs();
     fetchStats();
-  }, [page, activeTab, filters, aggFilters, search]);
+  }, [page, activeTab, filters, aggFilters, search, quickFilter]);
+
+  // Read the previous visit before stamping this one, so "new since your last
+  // visit" counts from then, not from a moment ago.
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAST_VISIT_KEY, new Date().toISOString());
+    } catch {
+      // Blocked storage: the rail falls back to "the last 24 hours".
+    }
+    fetchSidebar();
+  }, []);
+
+  async function fetchSidebar() {
+    try {
+      const res = await api.get("/jobs/sidebar", {
+        params: lastVisit ? { since: lastVisit } : undefined,
+      });
+      // Guard the shape: a proxy error page or an old backend must not
+      // reach the rail as data.
+      if (res.data && typeof res.data === "object" && "feed" in res.data) setSidebar(res.data);
+    } catch {
+      // The rail is extra; the feed works without it.
+    }
+  }
+
+  const resumeSkills = useMemo(() => new Set(sidebar?.resume_skills ?? []), [sidebar]);
 
   async function fetchJobs() {
     setLoading(true);
@@ -223,6 +271,8 @@ export default function Jobs() {
 
     if (activeTab === "Liked") params.set("saved", "1");
     if (activeTab === "All") params.set("sort", "match");
+    if (quickFilter?.kind === "strong") params.set("strong", "1");
+    if (quickFilter?.kind === "new") params.set("since", quickFilter.since);
     if (filters.source) params.set("source", filters.source);
     if (filters.min_match_score > 0) params.set("min_score", String(filters.min_match_score));
     if (search.trim()) params.set("search", search.trim());
@@ -277,6 +327,7 @@ export default function Jobs() {
     try {
       await api.post(endpoint);
       fetchStats();
+      fetchSidebar();
     } catch (err) {
       // Revert the optimistic change and tell the user it didn't stick.
       setJobs((prev) =>
@@ -337,6 +388,30 @@ export default function Jobs() {
       url: job.url,
       closed: isListingClosed(job.listing_status),
     };
+  }
+
+  // Open a job the rail points at (a saved job closing soon), which is often
+  // not on the current page, so pin it like a deep link.
+  async function openJobById(jobId: number) {
+    try {
+      const res = await api.get(`/jobs/${jobId}`);
+      pinnedJobIdRef.current = res.data?.id ?? jobId;
+      setSelectedJob(normalizeJob(res.data));
+    } catch {
+      // Gone since the rail loaded; nothing to open.
+    }
+  }
+
+  function applyQuickFilter(next: QuickFilter) {
+    setQuickFilter(next);
+    setActiveTab("All");
+    setPage(1);
+    jobsListRef.current?.scrollTo?.({ top: 0 });
+  }
+
+  async function setMatchAlerts(enabled: boolean) {
+    await api.put("/settings", { match_alerts_enabled: enabled });
+    setSidebar((s) => (s ? { ...s, alerts_enabled: enabled } : s));
   }
 
   const TABS = [
@@ -410,6 +485,14 @@ export default function Jobs() {
             <Sliders size={15} weight="bold" />
             {filtersVisible ? "Hide Filters" : "Show Filters"}
           </button>
+          {quickFilter && (
+            <span className="jobs-quick-filter">
+              {quickFilter.kind === "strong" ? "Strong matches only" : "New since your last visit"}
+              <button type="button" onClick={() => applyQuickFilter(null)} aria-label="Clear quick filter">
+                <X size={12} weight="bold" />
+              </button>
+            </span>
+          )}
         </div>
         {filtersVisible && (
           <div data-tour="job-filters">
@@ -422,7 +505,7 @@ export default function Jobs() {
       </div>
 
       {/* Content Area: Job Feed + Detail Panel */}
-      <div className={`jobs-content-area${selectedJob ? " has-detail" : ""}`}>
+      <div className={`jobs-content-area${selectedJob ? " has-detail" : " has-rail"}`}>
         {/* Job Feed */}
         <div className="jobs-feed" data-tour="jobs-list" ref={jobsListRef} tabIndex={-1}>
           {loading && <p className="loading-text">Loading jobs...</p>}
@@ -502,6 +585,22 @@ export default function Jobs() {
                     </div>
                   )}
                 </div>
+
+                {/* Why it matches: résumé skills this posting also asks for */}
+                {(() => {
+                  const shared = (job.skills ?? []).filter((t) => resumeSkills.has(t));
+                  if (shared.length === 0) return null;
+                  return (
+                    <div className="job-why-match">
+                      <Sparkle size={13} weight="fill" />
+                      <span>Matches your résumé:</span>
+                      {shared.slice(0, 4).map((t) => (
+                        <span key={t} className="job-why-chip">{skillLabel(t)}</span>
+                      ))}
+                      {shared.length > 4 && <span>+{shared.length - 4} more</span>}
+                    </div>
+                  );
+                })()}
 
                 {/* Footer */}
                 <div className="job-card-footer" onClick={(e) => e.stopPropagation()}>
@@ -592,6 +691,25 @@ export default function Jobs() {
             </div>
           )}
         </div>
+
+        {!selectedJob && (
+          <JobsSidebar
+            data={sidebar}
+            onShowStrong={() => applyQuickFilter({ kind: "strong" })}
+            onShowNew={(since) => applyQuickFilter({ kind: "new", since })}
+            onShowRemote={() => {
+              applyQuickFilter(null);
+              setAggFilters((f) => ({ ...f, work_type: ["remote"] }));
+              setFiltersVisible(true);
+            }}
+            onCompany={(company) => {
+              applyQuickFilter(null);
+              setSearch(company);
+            }}
+            onOpenJob={openJobById}
+            onAlertsChange={setMatchAlerts}
+          />
+        )}
 
         {/* Inline Job Detail Panel */}
         {selectedJob && (
