@@ -202,6 +202,10 @@ function listedPlaces(doc: Document): string[] {
       if (out.length) break;
     }
   }
+  // A "Location" label and its value: Ashby's "<h2>Location</h2><p>Las Vegas,
+  // Nevada</p>" gave the job's city but listed no place, so "our Las Vegas
+  // office" had no state to compare (TensorWave, live 2026-10-08).
+  if (out.length === 0) labelledValues(doc).forEach(add);
   return out;
 }
 
@@ -251,13 +255,23 @@ const LOCATION_TERM = /^(job |work |office )?locations?\s*:?$/i;
  *  site, live 2026-10-05), `<dt>Location:</dt><dd>Toronto, ON</dd>`. */
 function labelledPlaces(doc: Document): JobPlace[] {
   const out: JobPlace[] = [];
-  for (const term of Array.from(doc.querySelectorAll("strong, b, dt, th, h2, h3, h4, h5, h6, span, div, label"))) {
+  for (const text of labelledValues(doc)) {
     if (out.length >= 4) break;
+    const p = placeOfText(text);
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+/** The text after each "Location" label outside any form. */
+function labelledValues(doc: Document): string[] {
+  const out: string[] = [];
+  for (const term of Array.from(doc.querySelectorAll("strong, b, dt, th, h2, h3, h4, h5, h6, span, div, label"))) {
+    if (out.length >= 8) break;
     if (term.children.length > 0 || !LOCATION_TERM.test((term.textContent || "").trim())) continue;
     if (term.closest("form")) continue; // the applicant's own location box
     const value = term.nextElementSibling;
-    const p = value && !value.closest("form") ? placeOfText(value.textContent || "") : null;
-    if (p) out.push(p);
+    if (value && !value.closest("form")) out.push(value.textContent || "");
   }
   return out;
 }

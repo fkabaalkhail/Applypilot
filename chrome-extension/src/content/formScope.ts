@@ -55,7 +55,38 @@ export function resolveFormScope(entries: ScopeEntry[]): HTMLElement | null {
     const depth = composedAncestors(c).length;
     if (!best || depth > best.depth) best = { el: c, depth };
   }
-  return best?.el ?? null;
+  if (!best) return null;
+  return best.el === lca ? widenToSections(best.el, entries) : best.el;
+}
+
+/** At most this many levels: a row, its section, the form. */
+const MAX_WIDEN = 3;
+
+/**
+ * A form built of sections of one kind can hold every recognized field in its
+ * first section (Ashby: name, email, phone, links), and the scope their
+ * common ancestor drew then cut off every later section with its custom
+ * questions (TensorWave, live 2026-10-08: both Yes/No questions and a consent
+ * radio). An ancestor-drawn scope widens to its parent while a sibling of its
+ * own kind (same tag, a shared class) holds scanned fields. Such a sibling
+ * holds no recognized field (they are all in the scope), so widening only
+ * brings back questions; a widget of another kind beside the form stays out.
+ */
+function widenToSections(scope: HTMLElement, entries: ScopeEntry[]): HTMLElement {
+  let current = scope;
+  for (let level = 0; level < MAX_WIDEN; level++) {
+    const parent = current.parentElement;
+    const doc = current.ownerDocument;
+    if (!parent || parent === doc.body || parent === doc.documentElement) break;
+    const classes = new Set(Array.from(current.classList));
+    if (classes.size === 0) break;
+    const kin = Array.from(parent.children).filter(
+      (c) => c !== current && c.tagName === current.tagName && Array.from(c.classList).some((k) => classes.has(k))
+    ) as HTMLElement[];
+    if (!kin.some((k) => entries.some((e) => composedContains(k, e.el)))) break;
+    current = parent;
+  }
+  return current;
 }
 
 /** Entries kept under `scope`: outside entries are dropped whatever their

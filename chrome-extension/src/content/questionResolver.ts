@@ -1226,17 +1226,43 @@ function resolveLocatedChoice(q: QuestionInput, n: string, facts: ProfileFacts):
   // A preference ("preferred work location", "which office") is not a residence.
   if (/\b(prefer|preferred|desired|willing|office|work location|would you like)\b/.test(n)) return null;
   if (!q.options || q.options.length < 2 || isBooleanOptionSet(q.options)) return null;
-  // The options must be places at the scale we can judge: countries or continents.
-  const placeLike = q.options.filter((o) => countryNamedIn(o) || /\b(north|south|latin|central) america|europe|asia|africa|oceania|emea|apac|latam\b/i.test(o));
-  if (placeLike.length === 0) return null;
   const loc = facts.location;
+  // A state or province named whole among the places: "Where do you currently
+  // live?" over US states and a few countries (Squarespace, Greenhouse bank,
+  // 2026-10-08), blank for everyone while only cities, countries and
+  // continents were matched.
+  const regionOptions = q.options.filter((o) => {
+    const reg = regionFromText(o.trim());
+    return reg !== null && (geoNorm(o) === geoNorm(reg.name) || o.trim() === reg.code);
+  });
+  // The options must be places at the scale we can judge: countries,
+  // continents, or states and provinces.
+  const placeLike = q.options.filter((o) => countryNamedIn(o) || /\b(north|south|latin|central) america|europe|asia|africa|oceania|emea|apac|latam\b/i.test(o));
+  if (placeLike.length === 0 && regionOptions.length < 3) return null;
   if (!isHigh(loc.country)) return abstain("located-choice:unknown");
   const country = loc.country.value;
   const city = isHigh(loc.city) ? geoNorm(loc.city.value) : null;
-  // Most specific first: the city, then the country, then the continent.
+  // Most specific first: the city, then the state, the country, the continent.
   if (city) {
     const byCity = q.options.filter((o) => ` ${geoNorm(o)} `.includes(` ${city} `));
     if (byCity.length === 1) return answer(byCity[0], "located-choice:city");
+  }
+  if (isHigh(loc.region)) {
+    // The state alone ("Washington") or with its country ("US - Washington",
+    // "Canada - Ontario", Dropbox, Greenhouse bank 3): every part of the option
+    // is the applicant's country or region, so "US - Washington, D.C" is not.
+    const r = loc.region.value;
+    const byRegion = q.options.filter((o) => {
+      const parts = o.split(/\s+[-\u2013]\s+|\s*[,/|()]\s*/).map((s) => s.trim()).filter(Boolean);
+      let named = false;
+      for (const part of parts) {
+        const reg = regionFromText(part);
+        if (reg && reg.code === r.code && reg.country === r.country && (geoNorm(part) === geoNorm(reg.name) || part === reg.code)) named = true;
+        else if (countryFromName(part)?.code !== country.code) return false;
+      }
+      return named;
+    });
+    if (byRegion.length === 1) return answer(byRegion[0], "located-choice:region");
   }
   const byCountry = q.options.filter((o) => {
     const c = countryNamedIn(o);
@@ -1251,6 +1277,14 @@ function resolveLocatedChoice(q: QuestionInput, n: string, facts: ProfileFacts):
   const continent = geoNorm(country.continent);
   const byContinent = q.options.filter((o) => geoNorm(o) === continent || geoNorm(o).includes(continent));
   if (byContinent.length === 1) return answer(byContinent[0], "located-choice:continent");
+  // None of the places is the applicant's: the list's own "not listed" option,
+  // when every other option is a place judged above (a metro name such as
+  // "San Francisco Bay Area" could hold the applicant's city, so it stops it).
+  // Never when the list names the applicant's country at all ("Canada -
+  // Alberta" beside a missing Ontario): then they are somewhere listed.
+  const unlisted = q.options.filter((o) => /\bnot listed\b|^other\b|\bnone of the (above|listed)\b/.test(qnorm(o)));
+  const judged = q.options.every((o) => unlisted.includes(o) || regionOptions.includes(o) || placeLike.includes(o));
+  if (unlisted.length === 1 && judged && byCountry.length === 0) return answer(unlisted[0], "located-choice:not-listed");
   return abstain("located-choice:no-matching-option");
 }
 

@@ -19,6 +19,7 @@ import { loadWorkableGuesses, prefilledGuesses, setPageGuesses, workableShortcod
 import type { RuntimeControl } from "../src/content/formScanner";
 import { SPARSE_CANADIAN, TEST_TODAY } from "./fixtures/profiles";
 import { stubLayout } from "./helpers/layout";
+import { detectJobPlace } from "../src/content/jobLocation";
 
 let restore: () => void;
 beforeAll(() => {
@@ -772,5 +773,138 @@ describe("Ashby's Yes/No buttons are a question (every Ashby Boolean field, live
     expect(document.querySelector('button[data-option="no"]')?.getAttribute("aria-pressed")).toBe("true");
     expect(report.ok).toBe(true);
     expect(holdsNoAnswer(control, () => undefined)).toBe(false);
+  });
+});
+
+describe("a form's later sections are part of it (Ashby TensorWave: both Yes/No questions cut off)", () => {
+  // TensorWave's form is one container of two sections. Every field the
+  // scanner recognizes (name, email, phone, links) is in the first, so the
+  // scope their common ancestor drew was that section, and the second one,
+  // with both Yes/No questions and the consent radio, was dropped as outside
+  // the form (live 2026-10-08: the panel listed 9 fields, the page has 12).
+  const ENTRY = (q: string, inner: string) =>
+    `<div class="_fieldEntry_1e3gg_28 ashby-application-form-field-entry"><label class="_heading_f7cvd_52 _label_1e3gg_42 ashby-application-form-question-title" for="${q.length}">${q}</label>${inner}</div>`;
+  const TEXT = (q: string, id: string) => ENTRY(q, `<input id="${id}" type="text" class="_input_80epu_28 ashby-application-form-input-text" name="${id}">`).replace(`for="${q.length}"`, `for="${id}"`);
+  const YESNO = (q: string, name: string) =>
+    ENTRY(q, `<div class="_container_1svni_28 _yesno_1e3gg_148 ashby-application-form-input-yesno"><button class="_option_1svni_32 ashby-application-form-input-yesno-option" aria-pressed="false" data-option="yes">Yes</button><button class="_option_1svni_32 ashby-application-form-input-yesno-option" aria-pressed="false" data-option="no">No</button><input type="checkbox" tabindex="-1" name="${name}"></div>`).replace(`for="${q.length}"`, `for="${name}"`);
+  const PAGE = `
+    <div class="ashby-job-posting-right-pane">
+      <div class="_jobPostingForm_5yu8i_402 ashby-application-form-container">
+        <div class="_section_5yu8i_86 ashby-application-form-section-container">
+          ${TEXT("Name", "_systemfield_name")}${TEXT("Email", "_systemfield_email")}${TEXT("LinkedIn", "li")}${TEXT("GitHub", "gh")}
+        </div>
+        <div class="_section_5yu8i_86 ashby-application-form-section-container">
+          ${YESNO("Will you now or in the future require authorization to work in the United States?", "c123")}
+          ${YESNO("Are you willing to work on-site in our Las Vegas office 5 days a week?", "099d")}
+        </div>
+      </div>
+      <div class="_sidebar_x9 job-alerts"><label for="kw">Keywords</label><input id="kw" type="text"></div>
+    </div>`;
+
+  it("keeps the questions of a sibling section of the same kind, and still drops a widget beside the form", () => {
+    document.body.innerHTML = PAGE;
+    setResolveContext({ jobCountry: "US", jobCity: "Las Vegas", company: "TensorWave" });
+    const { fields } = scanPage(P.BOOTCAMP_CAREER_GAP as UserApplicationProfile, false, null);
+    setResolveContext({ jobCountry: null, jobCity: null, company: "" });
+    const byLabel = new Map(fields.map((f) => [f.label, f.proposedValue]));
+    expect(byLabel.get("Will you now or in the future require authorization to work in the United States?")).toBe("No");
+    expect(byLabel.has("Are you willing to work on-site in our Las Vegas office 5 days a week?")).toBe(true);
+    expect(byLabel.has("Keywords")).toBe(false);
+  });
+
+  it("the posting's labelled Location is a place the in-person questions compare (Las Vegas, from Denver)", () => {
+    // Ashby's left pane: <h2>Location</h2><p>Las Vegas, Nevada</p>. It gave
+    // the job's country and city but no listed place, and "our Las Vegas
+    // office" names a city with no state, so the in-person rule had nothing
+    // to compare and abstained for someone in Denver who will not move.
+    document.body.innerHTML = `
+      <div class="_left_5yu8i_421 ashby-job-posting-left-pane"><div class=" _section_f7cvd_36 "><h2 class="_heading_f7cvd_52 ">Location</h2><p>Las Vegas, Nevada</p></div><div class=" _section_f7cvd_36 "><h2 class="_heading_f7cvd_52 ">Employment Type</h2><p>Full time</p></div></div>
+      ${PAGE}`;
+    const place = detectJobPlace(document);
+    expect(place.places).toEqual(["Las Vegas, NV, United States"]);
+    setResolveContext({ jobCountry: place.country, jobCity: place.city, jobPlaces: place.places ?? null, company: "TensorWave" });
+    const { fields } = scanPage(P.BOOTCAMP_CAREER_GAP as UserApplicationProfile, false, null);
+    setResolveContext({ jobCountry: null, jobCity: null, jobPlaces: null, company: "" });
+    const byLabel = new Map(fields.map((f) => [f.label, f.proposedValue]));
+    expect(byLabel.get("Are you willing to work on-site in our Las Vegas office 5 days a week?")).toBe("No");
+  });
+});
+
+describe("'Where are you currently located?' is the applicant's location (TensorWave, ConductorAI)", () => {
+  // The label alone never matched: "where are you located" did, "currently"
+  // in between did not. It counted only where the box's name said
+  // "_systemfield_location" (the bank's TensorWave and OpenAI); live, Ashby's
+  // location typeahead has no name, and ConductorAI's box is named by an id.
+  it.each([
+    ["Where are you currently located?"],
+    ["Where do you currently live?"],
+    ["Where are you presently based?"],
+  ])("%s", (label) => {
+    document.body.innerHTML = `<form><label for="loc">${label}</label><input id="loc" type="text" name="5bc2dbb7-37f5-46a2-83ab-e52a8177f9be"><label for="em">Email</label><input id="em" type="email" name="email"></form>`;
+    const { fields } = scanPage(P.BOOTCAMP_CAREER_GAP as UserApplicationProfile, false, null);
+    const loc = fields.find((f) => f.label === label);
+    expect(loc?.category).toBe("location");
+    expect(loc?.proposedValue).toMatch(/^Denver\b/);
+  });
+});
+
+describe("'Where do you currently live?' over states and countries (Squarespace, Greenhouse bank 1)", () => {
+  const ask = (persona: UserApplicationProfile, label: string, options: string[]) => {
+    const q: QuestionInput = { label, controlType: "select", options, category: "location", kind: "choice" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "US", company: "Squarespace" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  // The list mixes US states with a few countries and an explicit "not
+  // listed". It was blank for everyone: the rule matched a city, a country
+  // or a continent, never a state, and never took the "not listed" option.
+  const SQSP = ["Arizona", "California", "Colorado", "Connecticut", "Delaware", "Dublin, Ireland", "Florida", "Georgia", "Hawaii", "Ireland", "Kansas", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Missouri", "Netherlands", "New Jersey", "New York", "North Carolina", "Ohio", "Oregon", "Pennsylvania", "Portugal", "Tennessee", "Texas", "Utah", "Poland", "Virginia", "Washington", "Wisconsin", "Other - My state/country is not listed", "United Kingdom"];
+  const Q = "Where do you currently live?";
+  it("a US applicant's own state", () => {
+    expect(ask(P.US_H1B_SENIOR, Q, SQSP)).toBe("Washington");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, Q, SQSP)).toBe("Colorado");
+    expect(ask(P.US_OPT_ANALYST, Q, SQSP)).toBe("Massachusetts");
+  });
+  it("anyone whose state or country is not listed takes the list's own 'not listed'", () => {
+    expect(ask(P.COMPLETE_CANADIAN, Q, SQSP)).toBe("Other - My state/country is not listed");
+    expect(ask(P.BERLIN_STAFF, Q, SQSP)).toBe("Other - My state/country is not listed");
+    expect(ask(P.INDIA_NEW_GRAD, Q, SQSP)).toBe("Other - My state/country is not listed");
+  });
+  it("without a 'not listed' option, an unlisted place stays blank", () => {
+    expect(ask(P.COMPLETE_CANADIAN, Q, SQSP.filter((o) => !/not listed/.test(o)))).toBe("abstain");
+  });
+});
+
+describe("a required mark is not a word of the question (Rhombus Power, Greenhouse bank 3)", () => {
+  // "Where are you currently located? *" in a text area read as six words, so
+  // as a prose prompt, and the city was kept out of it; without the mark it is
+  // five words and a plain question.
+  it("a required text area asking where you are located gets the location", () => {
+    document.body.innerHTML = `<form id="application-form"><div class="field"><label for="q0">Where are you currently located? *</label><textarea id="q0" name="question_31444299003"></textarea></div><div class="field"><label for="q1">Email*</label><input type="text" id="q1" name="email"></div></form>`;
+    const { fields } = scanPage(P.BOOTCAMP_CAREER_GAP as UserApplicationProfile, false, null);
+    expect(fields.find((f) => f.controlType === "textarea")?.proposedValue).toMatch(/^Denver\b/);
+  });
+});
+
+describe("'Country - Region' places (Dropbox's Current Location, Greenhouse bank 3)", () => {
+  const ask = (persona: UserApplicationProfile, label: string, options: string[]) => {
+    const q: QuestionInput = { label, controlType: "select", options, category: "location", kind: "choice" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "US", company: "Dropbox" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  const US = ["Alabama", "California", "Colorado", "Massachusetts", "New York", "Texas", "Washington", "Washington, D.C", "Wisconsin"].map((s) => `US - ${s}`);
+  const CA = ["Alberta", "British Columbia", "Ontario", "Quebec"].map((s) => `Canada - ${s}`);
+  const DBX = ["Australia", ...CA, "United Kingdom", "France", "Germany", "Ireland", "Japan", ...US, "Other Location"];
+  const Q = "Current Location";
+  it("the applicant's own country and region, never a namesake ('Washington, D.C')", () => {
+    expect(ask(P.COMPLETE_CANADIAN, Q, DBX)).toBe("Canada - Ontario");
+    expect(ask(P.US_H1B_SENIOR, Q, DBX)).toBe("US - Washington");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, Q, DBX)).toBe("US - Colorado");
+    expect(ask(P.US_OPT_ANALYST, Q, DBX)).toBe("US - Massachusetts");
+    expect(ask(P.BERLIN_STAFF, Q, DBX)).toBe("Germany");
+    expect(ask(P.INDIA_NEW_GRAD, Q, DBX)).toBe("Other Location");
+  });
+  it("'Other Location' never stands in for a country the list names", () => {
+    // Without Ontario, a Torontonian is in a listed country, not elsewhere.
+    expect(ask(P.COMPLETE_CANADIAN, Q, DBX.filter((o) => o !== "Canada - Ontario"))).toBe("abstain");
   });
 });

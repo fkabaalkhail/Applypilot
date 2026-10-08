@@ -289,7 +289,9 @@ const CATEGORY_SPECS: CategorySpec[] = [
       { re: /\bstate\b|\bprovince\b|\bregion\b/, weight: 0.7 },
       { re: /\bcountry\b/, weight: 0.75 },
       { re: /\bpostal\b|\bzip\b/, weight: 0.7 },
-      { re: /\bwhere (are you|do you) (located|based|live)\b/ },
+      // "Where are you currently located?" (TensorWave, ConductorAI on Ashby,
+      // 2026-10-08): an adverb between never stopped it being the question.
+      { re: /\bwhere (are you|do you) ((currently|presently|now) )?(located|based|live|living|reside|residing)\b/ },
     ],
     negative: /\be ?mail\b|\bip address\b|\bweb ?site\b|\burl\b|\blinked ?in\b|\bgit ?hub\b|\bcountry code\b|\b(dial(ing)?|calling) code\b/,
   },

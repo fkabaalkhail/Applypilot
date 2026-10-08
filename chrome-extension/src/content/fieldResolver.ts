@@ -214,7 +214,9 @@ const SINGLE_LINE_FACTS: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
 
 /** A label that is a prompt for prose rather than the name of a fact. */
 function isProsePrompt(label: string): boolean {
-  const words = (label || "").trim().split(/\s+/).filter(Boolean);
+  // A required mark is no word: "Where are you currently located? *" (Rhombus
+  // Power, Greenhouse bank 3, 2026-10-08) counted six and lost the city.
+  const words = (label || "").replace(/[*\u2731]+/g, " ").trim().split(/\s+/).filter(Boolean);
   if (words.length <= 5) return false;
   // A fact asked WITH an essay is still an essay: "What is your major? Please
   // describe why you feel it is applicable…" got the major alone
