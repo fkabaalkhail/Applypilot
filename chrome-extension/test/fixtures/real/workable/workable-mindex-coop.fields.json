@@ -57,7 +57,7 @@
       "key": "#address",
       "type": "text",
       "label": "*AddressSVGs not supported by this browser.",
-      "value": "Gatineau, Canada",
+      "value": "",
       "visible": true,
       "required": true,
       "disabled": false,
