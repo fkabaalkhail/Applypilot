@@ -91,7 +91,7 @@ const answer = (value: string, rule: string, confidence: Confidence = "high"): Q
  */
 // "region-choice:outside-not-offered": another country's states, the
 // applicant's own not among them; any pick is a guess.
-const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled|school-name:not-enrolled|discipline:no-degree-at-level|f1-status|clearance:level-unknown|high-school:not-in-profile|school-schedule:unknown|conditional-follow-up|phone-extension:not-in-profile|region-choice:outside-not-offered)/;
+const BLOCK_BACKEND_RULES = /^(work-auth|sponsorship|citizenship|age-gate|conditional:does-not-apply|clearance:other-country|graduation:not-enrolled|pursuing:not-enrolled|school-name:not-enrolled|discipline:no-degree-at-level|f1-status|clearance:level-unknown|high-school:not-in-profile|school-schedule:unknown|conditional-follow-up|phone-extension:not-in-profile|region-choice:outside-not-offered|school-level:none)/;
 const abstain = (rule: string): QuestionResult => ({ status: "abstain", rule, blockBackend: BLOCK_BACKEND_RULES.test(rule) });
 
 /** Lowercase, accents stripped, apostrophes dropped, punctuation → space. */
@@ -1758,11 +1758,50 @@ export function optionMonthSpan(option: string): [number, number] | null {
  * Information Systems was written for a Computer Science bachelor, and a
  * bootcamp certificate's track answered for someone with no bachelor's.
  */
+const LAW_DEGREE = /\b(j ?d|juris doctor\w*|ll ?b|ll ?m|bachelor of laws|master of laws|law)\b/;
+const MEDICAL_DEGREE = /\b(m ?d|doctor of medicine|medicine|mbbs)\b/;
+
+/**
+ * A school asked at one level of study: "Undergraduate School", "Graduate
+ * School", "Law School" and its graduation year (Barnes & Thornburg, Ashby
+ * bank 2026-10-08) all got the profile's first school, so a bootcamp stood as
+ * an undergraduate school and every university as a law school. The school,
+ * or year, of the one degree at that level; with none at it, nothing (and
+ * nothing from the AI either).
+ */
+function resolveSchoolAtLevel(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (isBooleanQuestion(q) || (q.options?.length ?? 0) > 0) return null;
+  // Only a label that asks for the school itself, or when it was finished:
+  // "What was your bachelor's university degree result…?" asks the GPA
+  // (Canonical, question bank 2026-10-05).
+  const asked = n.replace(/\b(name|attended|optional|required|if applicable)\b/g, " ").replace(/\s+/g, " ").trim();
+  const m =
+    /(?:^|\b(?:which|what|your|the) )(law|medical|graduate|grad|master s|masters|doctoral|undergraduate|undergrad|bachelor s|bachelors) (school|university|institution|college)(?: (?:graduation )?(year|date))?(?: did you attend)?$/.exec(asked);
+  if (!m) return null;
+  const level = m[1] === "law" ? "law" : m[1] === "medical" ? "medical" : /^(undergraduate|undergrad|bachelor s|bachelors)$/.test(m[1]) ? "undergraduate" : "graduate";
+  const entries = facts.education.entries.filter((e) => {
+    if (level === "law") return LAW_DEGREE.test(qnorm(e.degree));
+    if (level === "medical") return MEDICAL_DEGREE.test(qnorm(e.degree));
+    return level === "graduate" ? (e.rank ?? 0) >= 5 : e.rank === 4;
+  });
+  if (entries.length === 0) {
+    const ranked = facts.education.entries.length > 0 && facts.education.entries.every((e) => e.rank !== null);
+    return abstain(ranked || level === "law" || level === "medical" ? "school-level:none" : "school-level:unknown");
+  }
+  if (entries.length > 1) return abstain("school-level:several");
+  const e = entries[0];
+  if (m[3]) {
+    const year = e.graduation?.earliest.getUTCFullYear();
+    return year ? answer(String(year), "school-level:year") : abstain("school-level:year-unknown");
+  }
+  return e.school ? answer(e.school, "school-level") : abstain("school-level:unknown");
+}
+
 function resolveDisciplineAtLevel(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   if (!/\b(discipline|disciplines|major|majors|field of study|area of study|concentration)\b/.test(n) || isBooleanQuestion(q)) return null;
   const level = /\b(undergrad|undergraduate|bachelor s|bachelors|bachelor)\b/.test(n)
     ? 4
-    : /\b(master s|masters|graduate (degree|school|program|studies)|grad school)\b/.test(n)
+    : /\b(master s|masters|graduate (degree|school|program|studies|major|field|discipline|concentration)|grad school)\b/.test(n)
       ? 5
       : null;
   if (level === null) return null;
@@ -3007,6 +3046,7 @@ export function resolveQuestion(
     resolveCoop(sq, sn, facts) ??
     resolvePreviousInternship(sq, sn, profile) ??
     resolveSchoolSchedule(sq, sn, facts) ??
+    resolveSchoolAtLevel(sq, sn, facts) ??
     resolveEducationSummary(sq, sn, facts) ??
     resolveGraduatingInTerm(sq, facts) ??
     resolveGraduation(sq, sn, facts) ??

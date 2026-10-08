@@ -549,3 +549,33 @@ describe("work-right questions read by what they ask (Ashby question bank, 2026-
     expect(ask(P.US_H1B_SENIOR, q, ["Yes", "No"])).not.toBe("No");
   });
 });
+
+describe("a school asked at one level of study (Barnes & Thornburg on Ashby, question bank 2026-10-08)", () => {
+  // "Law School", "Undergraduate School", "Graduate School" and their majors
+  // all got the profile's first school: a bootcamp as an undergraduate
+  // school, a bachelor's as a graduate school, everyone's university as a
+  // law school, and "Law School Graduation Year" a whole education summary.
+  const ask = (persona: UserApplicationProfile, label: string, category: "school" | "fieldOfStudy" | "graduationYear" = "school") => {
+    const q: QuestionInput = { label, controlType: "text", category, kind: "text" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "US", company: "Barnes & Thornburg" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  it("Undergraduate School is the bachelor's school, never a bootcamp or a master's", () => {
+    expect(ask(P.US_H1B_SENIOR, "Undergraduate School")).toBe("Hanoi University of Science and Technology");
+    expect(ask(P.COMPLETE_CANADIAN, "Undergraduate School")).toBe("University of Waterloo");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, "Undergraduate School")).toBe("abstain");
+  });
+  it("Graduate School and Graduate Major only for a graduate degree", () => {
+    expect(ask(P.US_H1B_SENIOR, "Graduate School")).toBe("University of Washington");
+    expect(ask(P.INDIA_NEW_GRAD, "Graduate School")).toBe("abstain");
+    expect(ask(P.COMPLETE_CANADIAN, "Graduate Major", "fieldOfStudy")).toBe("abstain");
+    expect(ask(P.US_H1B_SENIOR, "Graduate Major", "fieldOfStudy")).toBe("Information Systems");
+  });
+  it("Law School and its year only for a law degree", () => {
+    expect(ask(P.US_H1B_SENIOR, "Law School")).toBe("abstain");
+    expect(ask(P.COMPLETE_CANADIAN, "Law School Graduation Year", "graduationYear")).toBe("abstain");
+    const lawyer = { ...P.US_H1B_SENIOR, education: [{ school: "Georgetown University Law Center", degree: "Juris Doctor (J.D.)", graduationYear: "2019" }, ...P.US_H1B_SENIOR.education] };
+    expect(ask(lawyer, "Law School")).toBe("Georgetown University Law Center");
+    expect(ask(lawyer, "Law School Graduation Year", "graduationYear")).toBe("2019");
+  });
+});
