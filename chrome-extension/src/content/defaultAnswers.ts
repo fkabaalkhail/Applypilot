@@ -169,6 +169,8 @@ function notGovernment(n: string, profile: UserApplicationProfile): boolean | nu
   return !(employee ? gov.employer : gov.official);
 }
 const CRIMINAL = /\b(criminal|convicted|conviction|felony|misdemeanou?r|arrested|charged with|pending charges)\b/;
+/** "Preferred Contact Method", "method of contact", "how would you prefer we contact you". */
+const CONTACT_METHOD = /\b(contact|communication) (method|preference|channel)s?\b|\b(method|means|mode|way) of (contact|communication)\b|\bprefer\w* (we|us|to be) (contact|reach)\w*|\bbest way to (contact|reach) you\b/;
 
 const HOW_HEARD =
   /\bhow (did )?you (first |originally )?(hear|heard|find|found|learn|learned|come across|came across|discover|discovered|connect|connected)\b|\bwhere did you (hear|see|find|learn)\b|\bhow were you (referred|introduced)\b|\b(referral|application|candidate|job) source\b|\bsource of (application|referral)\b|\bhow did you get to know\b/;
@@ -535,6 +537,13 @@ export function resolveDefault(
   // about a record (Workable bank, 2026-10-05: left unaccepted).
   const asked = qn(askedOfStatement(q.label || "", n.split(" ").length));
   if (CRIMINAL.test(asked)) return null;
+  // "Preferred Contact Method" (Email | Mobile Phone | Home Phone; Dayforce,
+  // live 2026-10-05): the email the application gives. A list without one is
+  // the applicant's to choose.
+  if (CONTACT_METHOD.test(n)) {
+    const email = opts.filter((o) => /\be ?mail\b/.test(qn(o)));
+    return email.length === 1 ? answer(email[0], "default:contact-by-email") : null;
+  }
   // "Will you need an accommodation for your interview?" (Netlify, left blank
   // 2026-10-03): No for an applicant who stated no disability. Anyone else
   // answers it themselves. Read on the device; only the No leaves it.

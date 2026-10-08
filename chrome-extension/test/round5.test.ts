@@ -8,6 +8,8 @@ import { scanPage } from "../src/content/formScanner";
 import { AutofillReconciler } from "../src/content/reconciler";
 import { fillAriaCombobox } from "../src/content/comboboxEngine";
 import { revertedFields } from "../src/content/telemetry";
+import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
+import { profileFacts } from "../src/content/profileFacts";
 import { liveControlFor } from "../src/content/staleControl";
 import { loadWorkableGuesses, prefilledGuesses, setPageGuesses, workableShortcode } from "../src/content/pageGuesses";
 import type { RuntimeControl } from "../src/content/formScanner";
@@ -376,5 +378,29 @@ describe("a state read back as its code is the state that was written (Paylocity
     expect(revertedFields([{ fieldId: "s", value: "Texas" }], [{ fieldId: "s", value: "TX" }], new Set(["s"]))).toEqual([]);
     expect(revertedFields([{ fieldId: "s", value: "TX" }], [{ fieldId: "s", value: "Texas" }], new Set(["s"]))).toEqual([]);
     expect(revertedFields([{ fieldId: "s", value: "Texas" }], [{ fieldId: "s", value: "TN" }], new Set(["s"]))).toEqual([{ fieldId: "s", cleared: false }]);
+  });
+});
+
+describe("Dayforce's preferred contact method and dial codes (Eclipse, live 2026-10-05 and 10-08)", () => {
+  const askChoice = (label: string, options: string[]) => {
+    const q: QuestionInput = { label, controlType: "select", options, category: "unknown", kind: "choice" };
+    const r = resolveQuestion(q, profileFacts(SPARSE_CANADIAN, TEST_TODAY), SPARSE_CANADIAN, { jobCountry: "CA", company: "Eclipse" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+
+  it("'Preferred Contact Method' is the email the application gives, when the list offers it", () => {
+    expect(askChoice("Preferred Contact Method", ["Email", "Mobile Phone", "Home Phone"])).toBe("Email");
+    expect(askChoice("How would you prefer we contact you?", ["Phone call", "Text message", "E-mail"])).toBe("E-mail");
+  });
+
+  it("a list without email is left to the applicant", () => {
+    expect(askChoice("Preferred Contact Method", ["Mobile Phone", "Home Phone"])).not.toBe("Mobile Phone");
+    expect(askChoice("Preferred Contact Method", ["Mobile Phone", "Home Phone"])).not.toBe("Home Phone");
+  });
+
+  it("a dial-code picker showing the flag and code of the country written is no revert", () => {
+    expect(revertedFields([{ fieldId: "d", value: "Canada" }], [{ fieldId: "d", value: "🇨🇦 +1" }], new Set(["d"]))).toEqual([]);
+    // The flag decides: +1 is not enough when the flag is another country's.
+    expect(revertedFields([{ fieldId: "d", value: "United States" }], [{ fieldId: "d", value: "🇨🇦 +1" }], new Set(["d"]))).toEqual([{ fieldId: "d", cleared: false }]);
   });
 });

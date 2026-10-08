@@ -674,6 +674,8 @@ export default [
     profile: COMPLETE_CANADIAN,
     url: "https://jobs.dayforcehcm.com/en-US/eclipse/candidateportal/jobs/4132",
     expect: {
+      // Preferred Contact Method: the email the application gives (round 5; went to the AI).
+      "#jobPostingApplication_personalInfo_preferredContactMethod": "Email",
       "#jobPostingApplication_personalInfo_email": "maya.tremblay@example.com",
       "label:Confirm Email Address": "maya.tremblay@example.com",
       "label:First Name": "Maya",
