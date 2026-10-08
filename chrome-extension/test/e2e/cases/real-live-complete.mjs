@@ -347,6 +347,11 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/superhuman%20platform%20inc/e6b917b1-325a-47d0-b267-b279b0efdad0/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08).
+      "yesno~Are you authorized to be employed in the United States?": "No",
+      "yesno~Do you need visa sponsorship?": "Yes",
+      "yesno~Are you currently pursuing a degree in computer science or a": "Yes",
+      "yesno~Do you currently live within 50 miles of one of our Superhum": "No",
       "#_systemfield_name": "Maya Tremblay",
       "name=5b200700-e6f9-40cc-bf21-7be8bbfbe819": "Maya",
       "#_systemfield_email": "maya.tremblay@example.com",
@@ -373,6 +378,12 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/ramp/b39ceb08-a0a7-4f8b-a760-2fb88e209956/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08).
+      // An engineering student is pursuing a Bachelor's in "…Engineering, or
+      // another quantitative field" (was No: read as the PhD alone).
+      "yesno~Are you currently pursuing a Bachelor’s, Master’s, or PhD in": "Yes",
+      "yesno~Are you willing to relocate the greater NYC area for the dur": "Yes",
+      "yesno~Will you now or in the future require sponsorship for an emp": "Yes",
       "#_systemfield_name": "Maya Tremblay",
       "name=51115780-e97b-41a0-9016-97cb5ce7bcae": "Maya",
       "text~Pronouns": "She/Her",
@@ -392,6 +403,9 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/gecko-robotics/c097505b-0a28-4a33-a917-268f463641e8/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08).
+      "yesno~Are you legally authorized to work in the United States for ": "No",
+      "yesno~Will you now or will you in the future require employment vi": "Yes",
       "#_systemfield_name": "Maya Tremblay",
       "name=187cd0e9-cd4f-4be4-9879-ddfdbc3f0856": "Maya",
       "#_systemfield_email": "maya.tremblay@example.com",

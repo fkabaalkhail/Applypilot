@@ -37,6 +37,9 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/superhuman%20platform%20inc/e6b917b1-325a-47d0-b267-b279b0efdad0/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08).
+      "yesno~Are you currently pursuing a degree in computer science or a": "Yes",
+      "yesno~Do you currently live within 50 miles of one of our Superhum": "No",
       "label:Legal Full Name": NAME,
       "label:Preferred First Name": "Maya",
       "label:Email": P.email,
@@ -64,6 +67,9 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/beaconsoftware/be0e101c-faba-41c2-996e-d70e98b9d4ee/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08). The
+      // office is in Toronto, where the applicant lives.
+      "yesno~Are you comfortable working onsite four days a week at one o": "Yes",
       "#_systemfield_name": NAME,
       "label:Email": P.email,
       "label:Phone Number": PHONE,
@@ -81,6 +87,10 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/gecko-robotics/c097505b-0a28-4a33-a917-268f463641e8/application",
     expect: {
+      // "How did you hear about Gecko?" with no source stated: the first of job
+      // board, company site, search engine the list offers (a Tailrd user found it
+      // through an aggregator). Answered since round 5's typeahead reading.
+      "label=Start typing...": "Search Engine",
       "label:Full Legal Name": NAME,
       "label:Preferred Name": "Maya",
       "label:Email": P.email,
@@ -95,6 +105,11 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/ramp/b39ceb08-a0a7-4f8b-a760-2fb88e209956/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08).
+      // Relocating to the posting's city for the internship is its requirement,
+      // accepted by applying (no move refused on the profile).
+      "yesno~Are you currently pursuing a Bachelor’s, Master’s, or PhD in": "Yes",
+      "yesno~Are you willing to relocate the greater NYC area for the dur": "Yes",
       "label:Legal Name": NAME,
       "label:Preferred First Name": "Maya",
       "label:Pronouns": null,
@@ -354,6 +369,9 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/npx/048ca8da-bfb9-4454-8147-ac9497629634/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08).
+      "yesno~Are you legally eligible to work in Canada?": "Yes",
+      "yesno~Are you comfortable with the travel requirements listed in t": "Yes",
       "label:Preferred Full Name": "Maya Tremblay",
       "label:Legal Full Name": "Maya Tremblay",
       "label:Email": "maya.tremblay@example.com",
@@ -367,6 +385,10 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/megazone/e2889469-cf20-4227-bf24-2a6e885f8dca/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08). On
+      // site in Rochester, NY: the posting's requirement, accepted by applying
+      // (no move refused on the profile).
+      "yesno~This role requires working onsite at our facility in Rochest": "Yes",
       "label:Name": "Maya Tremblay",
       "label:Phone": PHONE,
       "label:Email": "maya.tremblay@example.com",

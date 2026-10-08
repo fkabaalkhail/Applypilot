@@ -190,6 +190,9 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/voldex/00b44f87-5b37-47fe-95df-b33a8fe14b56/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08).
+      "yesno~Are you currently authorized to work in the country where yo": "Yes",
+      "yesno~Are you at least 18 years of age?": "Yes",
       "#_systemfield_name": "Maya Tremblay",
       "#_systemfield_email": "maya.tremblay@example.com",
       "label=Start typing...": "Toronto, Ontario, Canada",
@@ -204,15 +207,21 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/grow-therapy/92bfe88a-4c23-48c8-8f7b-4959ab6cd8d8/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08). The
+      // page renamed its custom fields' ids: by label. An April 2027 graduate's
+      // term is not offered ("Winter 2027" was written in the regression): blank.
+      "label:Preferred First Name": "Maya",
+      "label:LinkedIn Profile": "https://www.linkedin.com/in/maya-tremblay",
+      "radio~When is your expected graduation date?": null,
+      "yesno~Are you authorized to work lawfully in the United States?": "No",
+      "yesno~Will you now or in the future require sponsorship for an imm": "Yes",
       "#_systemfield_name": "Maya Tremblay",
-      "name=5fe942c5-7d18-4021-a75e-9e92ddc60d5f": "Maya",
       "#_systemfield_email": "maya.tremblay@example.com",
       "tel~Phone Number": "(416) 555-0142",
       "label=Search schools...": "University of Waterloo",
       "#_systemfield_education_history-degree": orBlank("Bachelor of Applied Science in Mechatronics Engineering"),
       "#_systemfield_education_history-major": "Mechatronics Engineering",
       "#_systemfield_education_history-isCurrent": "checked",
-      "name=17c20780-602a-4959-a6e3-bd6534a7edf8": "https://www.linkedin.com/in/maya-tremblay",
       "radio~This helps us understand how candidates find us an": "LinkedIn",
       "radio~Input gender": "Female",
       "radio~Race": "White (Not Hispanic or Latino)",
@@ -224,6 +233,11 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/the-exploration-company/86270058-8eec-4692-b49d-97ce59fd54ac/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08).
+      // Full time for 12 weeks is the internship's stated requirement (accepted by
+      // applying); paying one's own housing and move is the applicant's (was Yes).
+      "yesno~If selected for the internship, are you able to work full-ti": "Yes",
+      "yesno~If selected, will you be able to provide your own housing, r": null,
       "#_systemfield_name": "Maya Tremblay",
       "#_systemfield_email": "maya.tremblay@example.com",
       "name=6e4c6e02-a6ff-40fb-9477-be1ff1d9ef52": "(416) 555-0142",
