@@ -333,24 +333,11 @@ export default [
       "label:Let the company know": null,
     },
   }),
-  live({
-    id: "live-sr-bosch",
-    ats: "smartrecruiters",
-    url: "https://jobs.smartrecruiters.com/oneclick-ui/company/BoschGroup/publication/70832055-56fb-4b0e-bcd5-a70360ecca4a?dcr_ci=BoschGroup",
-    expect: {
-      "label:First name": "Maya",
-      "label:Last name": "Tremblay",
-      "label:Email*": P.email,
-      "label:Confirm your email": P.email,
-      "label:City": TORONTO,
-      // The phone dial-code picker (a slotted web-component button).
-      "label:Country code": DIAL_CODE_CANADA,
-      "label:Phone number": PHONE,
-      "label:LinkedIn": LINKEDIN,
-      "label:Website": null,
-      "label:Let the company know": null,
-    },
-  }),
+  // live-sr-bosch retired 2026-10-08. The posting is still open, but from this
+  // machine SmartRecruiters puts a bot challenge (it needs a POST, which live
+  // runs block) in front of every page after the first for at least several
+  // minutes: in round 4's two regressions ServiceNow and Bosch each passed once
+  // and failed once, whichever came second. One SmartRecruiters page stays.
   // ------------------------------------------------------------------ BambooHR
   // The posting cases start on the job page and let the extension open the form
   // (a harness click on top of the flow's own toggled the form shut again);
