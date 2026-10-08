@@ -15,6 +15,7 @@ import {
   collectSignals,
   deepQueryAll,
   EXTENSION_UI_HOST_IDS,
+  hiddenFromReaders,
   isHiddenButLabeled,
   isPlaceholderFiller,
   isUploadAffordance,
@@ -1161,7 +1162,8 @@ export function scanPage(
     // the user sees (react-select's `<input required>` validation twin, screen-
     // reader-excluded duplicates). Styled-replacement natives (checkbox/radio/
     // file) legitimately carry aria-hidden, so only strict types are skipped.
-    if (!relaxed && !enhancedSelect && el.closest('[aria-hidden="true"]')) continue;
+    // An open menu's "hide others" mark is not hiding (hiddenFromReaders).
+    if (!relaxed && !enhancedSelect && hiddenFromReaders(el)) continue;
 
     if (el instanceof HTMLInputElement && el.type === "radio") {
       // A name ties a radio group together in the browser; a framework

@@ -120,6 +120,19 @@ function isClipHidden(style: CSSStyleDeclaration): boolean {
 }
 
 /**
+ * Inside markup hidden from screen readers. A popup's "hide others" mark is
+ * not that: the aria-hidden library sets `aria-hidden` with
+ * `data-aria-hidden="true"` on everything outside an open menu and removes
+ * both when it closes, and the user still sees every field it marked. While
+ * Ashby's school menu was open, a scan read the rest of the form as hidden
+ * and lost the second school ("Field no longer found", Superhuman, live
+ * 2026-10-05). A mark wrapping markup that is hidden for good still hides it.
+ */
+export function hiddenFromReaders(node: Element): boolean {
+  return node.closest('[aria-hidden="true"]:not([data-aria-hidden="true"])') !== null;
+}
+
+/**
  * Many ATS visually hide the native input behind a styled replacement
  * (custom checkboxes, drag-and-drop resume zones). Those are still real,
  * fillable controls as long as something labels them.
@@ -312,7 +325,7 @@ const USER_INPUT_SELECTOR =
 /** `block` holds another visible input besides `el` (and outside `el`'s own subtree). */
 function sharesBlockWithOthers(block: HTMLElement, el: HTMLElement): boolean {
   return [...block.querySelectorAll<HTMLElement>(USER_INPUT_SELECTOR)].some(
-    (c) => c !== el && !el.contains(c) && !c.contains(el) && !c.closest('[aria-hidden="true"]') && isVisible(c)
+    (c) => c !== el && !el.contains(c) && !c.contains(el) && !hiddenFromReaders(c) && isVisible(c)
   );
 }
 
@@ -332,7 +345,7 @@ function sharesBlockWithOthers(block: HTMLElement, el: HTMLElement): boolean {
  */
 function blockQuestionText(block: HTMLElement, el: HTMLElement): string {
   const visibleText = (node: Element): string => {
-    if (node.closest('[aria-hidden="true"]')) return "";
+    if (hiddenFromReaders(node)) return "";
     let out = "";
     for (const child of node.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) out += child.textContent ?? "";

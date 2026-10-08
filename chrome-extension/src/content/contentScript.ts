@@ -64,6 +64,7 @@ import { LONG_TEXT, normalize } from "./fieldMatcher";
 import { answersWorthRemembering, planAnswerSaves } from "./answerGaps";
 import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
+import { liveControlFor } from "./staleControl";
 import { defaultSelectedIds, fillSelection, isDefaultSelected } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
 import { detectJobPlace, sanitizeCompany, type JobPlace } from "./jobLocation";
@@ -578,6 +579,13 @@ function initialize(): void {
     };
   }
 
+  /** Rescan once the page is quiet, keeping the reconciler on the fresh controls. */
+  async function rescanSettled(signal?: AbortSignal): Promise<void> {
+    await waitForDomSettle(signal);
+    runScan();
+    engine?.updateRegistry(registry);
+  }
+
   // ---- In-page overlay -------------------------------------------------------
 
   function recognizedCount(fields: DetectedField[]): number {
@@ -602,7 +610,7 @@ function initialize(): void {
     const reask: ReaskCandidate[] = [];
     for (const t of targets) {
       if (signal?.aborted) break; // Stop pressed, don't open more menus
-      const control = registry.get(t.fieldId);
+      const control = await liveControlFor(t.fieldId, (id) => registry.get(id), () => rescanSettled(signal));
       const el = control?.el;
       if (!el) {
         outcomes.push({ fieldId: t.fieldId, ok: false, reason: "Field no longer found. Rescan the page" });
@@ -629,8 +637,9 @@ function initialize(): void {
     const reask: ReaskCandidate[] = [];
     for (const t of targets) {
       if (signal?.aborted) break; // Stop pressed, don't drive more fields
-      const control = registry.get(t.fieldId);
-      if (!control?.driver) { outcomes.push({ fieldId: t.fieldId, ok: false }); continue; }
+      const control = await liveControlFor(t.fieldId, (id) => registry.get(id), () => rescanSettled(signal));
+      if (!control) { outcomes.push({ fieldId: t.fieldId, ok: false, reason: "Field no longer found. Rescan the page" }); continue; }
+      if (!control.driver) { outcomes.push({ fieldId: t.fieldId, ok: false }); continue; }
       // Already displaying this value (an earlier pass, or the user, committed
       // it), driving it again would visibly erase and re-pick the selection.
       if (control.el && comboboxDisplaysValue(control.el, t.value)) {
