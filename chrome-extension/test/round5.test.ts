@@ -670,7 +670,7 @@ describe("U.S. person questions in their other wordings (Ashby question bank, 20
       expect(ask(P.COMPLETE_CANADIAN, label), label.slice(0, 40)).toBe("No");
       expect(ask(P.US_H1B_SENIOR, label), label.slice(0, 40)).toBe("No");
     }
-    expect(ask(P.BERLIN_STAFF, GECKO, ["Yes", "No", "Unsure — I would like Gecko Robotics to review my eligibility"])).toBe("No");
+    expect(ask(P.BERLIN_STAFF, GECKO, ["Yes", "No", "Unsure \u2014 I would like Gecko Robotics to review my eligibility"])).toBe("No");
   });
   it("Snowflake's status list: the U.S. person, or 'a citizen of a different country' when the citizenship is known and not embargoed", () => {
     const SNOW = ["I am a U.S. person", "I am a citizen of Cuba, Iran, North Korea, or Syria AND I am NOT a U.S. person", "None of the above; I am a citizen of a different country"];
