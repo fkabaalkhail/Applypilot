@@ -579,3 +579,75 @@ describe("a school asked at one level of study (Barnes & Thornburg on Ashby, que
     expect(ask(lawyer, "Law School Graduation Year", "graduationYear")).toBe("2019");
   });
 });
+
+describe("Replit's Foster City pair (Ashby question bank, 2026-10-08)", () => {
+  const ask = (persona: UserApplicationProfile, label: string) => {
+    const q: QuestionInput = { label, controlType: "select", options: ["Yes", "No"], category: "unknown", kind: "boolean" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "US", jobCity: "Foster City", company: "Replit" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  it("'work from our Foster City, CA HQ 3 days per week?' is an in-office question: No for someone elsewhere who will not move", () => {
+    const q = "Are you able to work from our Foster City, CA HQ 3 days per week?";
+    expect(ask(P.US_H1B_SENIOR, q)).toBe("No");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, q)).toBe("No");
+    expect(ask(P.COMPLETE_CANADIAN, q)).toBe("Yes");
+  });
+  it("'If not currently in the Bay Area, are you willing to relocate…?' is decided by where the applicant lives", () => {
+    const q = "If not currently in the Bay Area, are you willing to relocate near our Foster City, CA Office?";
+    expect(ask(P.COMPLETE_CANADIAN, q)).toBe("Yes");
+    expect(ask(P.US_H1B_SENIOR, q)).toBe("No");
+    expect(ask(P.US_GREENCARD_STUDENT, q)).not.toBe("Yes");
+  });
+});
+
+describe("a graduation month never matches another month's option (Perchwell, Ashby question bank 2026-10-08)", () => {
+  const PERCHWELL = ["December 2026", "Spring 2027", "December 2027", "Spring 2028", "December 2028", "Other"];
+  const grad = (persona: UserApplicationProfile) => {
+    const q: QuestionInput = { label: "What is your expected graduation year?", controlType: "select", options: PERCHWELL, category: "graduationYear", kind: "choice" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "US", company: "Perchwell" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  it("a June 2026 graduate is not 'December 2026'", () => {
+    expect(grad(P.INDIA_NEW_GRAD)).not.toBe("December 2026");
+  });
+  it("an April 2027 graduate is still 'Spring 2027'", () => {
+    expect(grad(P.COMPLETE_CANADIAN)).toBe("Spring 2027");
+  });
+});
+
+describe("a notice-period list takes the notice stated (Exegy, Ashby question bank 2026-10-08)", () => {
+  const EXEGY = ["Available Immediately", "2 - 4 weeks", "4 - 8 weeks", "8 weeks +"];
+  const notice = (persona: UserApplicationProfile) => {
+    const q: QuestionInput = { label: "What is your notice period to begin working with Exegy?", controlType: "select", options: EXEGY, category: "noticePeriod", kind: "choice" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "CA", company: "Exegy" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  it("two weeks, immediately, three months: by the notice, not by a start date months away", () => {
+    expect(notice(P.COMPLETE_CANADIAN)).toBe("2 - 4 weeks");
+    expect(notice(P.BOOTCAMP_CAREER_GAP)).toBe("Available Immediately");
+    expect(notice(P.INDIA_NEW_GRAD)).toBe("Available Immediately");
+    expect(notice(P.BERLIN_STAFF)).toBe("8 weeks +");
+  });
+});
+
+describe("a bare salary figure is in the applicant's own currency (Float, Ashby question bank 2026-10-08)", () => {
+  const salary = (persona: UserApplicationProfile, label: string) => {
+    const q: QuestionInput = { label, controlType: "text", category: "salary", kind: "number" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "CA", company: "Float" });
+    return r?.status ?? null;
+  };
+  it("a Denver resident's '85000' never goes into a box asking for CAD; a Toronto resident's does", () => {
+    const q = "What annual salary (in CAD) would make you excited to sign an offer for this role?";
+    expect(salary(P.BOOTCAMP_CAREER_GAP, q)).toBe("abstain");
+    expect(salary(P.COMPLETE_CANADIAN, q)).not.toBe("abstain");
+  });
+});
+
+describe("the company's own site named with a connector (Miter, Ashby question bank 2026-10-08)", () => {
+  it("'Miter website or careers page' is Miter's own site for someone who found it there", () => {
+    const MITER = ["Career fair ", "Campus event or club", "Miter employee referral", "LinkedIn/job board", "Miter website or careers page", "Social media", "Recruiter outreach", "Other"];
+    const q: QuestionInput = { label: "How did you hear about this role?", controlType: "select", options: MITER, category: "unknown", kind: "choice" };
+    const r = resolveQuestion(q, profileFacts(P.US_H1B_SENIOR, TEST_TODAY), P.US_H1B_SENIOR, { jobCountry: "US", company: "Miter" });
+    expect(r && r.status === "answer" ? r.value : r?.status).toBe("Miter website or careers page");
+  });
+});

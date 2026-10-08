@@ -1659,7 +1659,10 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     if (open.length === 1) return answer(open[0], "graduation:open-range");
     const graduated = q.options.filter((o) => /\b(already graduated|graduated already|have already graduated)\b/.test(qnorm(o)));
     if (graduated.length === 1 && primary.completed === true) return answer(graduated[0], "graduation:already-graduated");
-    const withYear = q.options.filter((o) => o.includes(year));
+    // With the month known, an option naming another month or term is not
+    // theirs: "December 2026" for a June 2026 graduate (Perchwell, Ashby bank
+    // 2026-10-08).
+    const withYear = q.options.filter((o) => o.includes(year) && (g.precision === "year" || optionMonthSpan(o) === null));
     if (withYear.length === 1) return answer(withYear[0], "graduation:only-option-in-year");
     // A year list without theirs, beside its "Other" (Palantir's 2022-2030
     // for a 2016 graduate, live 2026-10-03): "Other" is the true one.
@@ -1903,6 +1906,9 @@ function durationRange(option: string): [number, number] | null {
   let m: RegExpExecArray | null;
   if ((m = /\b(\d+)\s*(?:to\s+|\s)(\d+)\s*(day|week|month)s?\b/.exec(t))) return [+m[1] * unit(m[3]), +m[2] * unit(m[3])];
   if ((m = /\b(\d+)\s*\+\s*(day|week|month)s?\b/.exec(t))) return [+m[1] * unit(m[2]), Infinity];
+  // "8 weeks +", "8 weeks or more" (Exegy, Ashby bank 2026-10-08): read as
+  // "about 8 weeks", it took a start 53 days away from "4 - 8 weeks".
+  if ((m = /\b(\d+)\s*(day|week|month)s?\s*(\+|or (more|longer)|and (more|above|up))/.exec(t))) return [+m[1] * unit(m[2]), Infinity];
   if ((m = /\b(more than|over|longer than|after|beyond)\s+(\d+)\s*(day|week|month)s?\b/.exec(t))) return [+m[2] * unit(m[3]) + 1, Infinity];
   if ((m = /\b(within|less than|under|up to|no more than)\s+(\d+)\s*(day|week|month)s?\b/.exec(t))) return [0, +m[2] * unit(m[3])];
   if ((m = /\b(\d+)\s*(day|week|month)s?\b/.exec(t))) {
@@ -1923,9 +1929,12 @@ function resolveStartBucket(q: QuestionInput, n: string, facts: ProfileFacts): Q
   if (!/\b(availability|available|start|starting|join|joining|begin)\b/.test(n)) return null;
   const spans = q.options.map((o) => ({ o, r: durationRange(o) })).filter((x): x is { o: string; r: [number, number] } => x.r !== null);
   if (spans.length < 2) return null;
+  // "What is your notice period to begin working with Exegy?" (Ashby bank
+  // 2026-10-08): the notice stated, before the days until a start date.
+  const notice = /\bnotice\b/.test(n) ? facts.availability.noticeDays : null;
   const av = facts.availability.earliestStart;
-  if (!isHigh(av)) return abstain("start-bucket:unknown");
-  const days = Math.max(0, Math.ceil((av.value.getTime() - facts.today.getTime()) / 86400000));
+  if (!(notice && isHigh(notice)) && !isHigh(av)) return abstain("start-bucket:unknown");
+  const days = notice && isHigh(notice) ? Math.max(0, notice.value) : Math.max(0, Math.ceil((av!.value.getTime() - facts.today.getTime()) / 86400000));
   const hits = spans.filter((x) => days >= x.r[0] && days <= x.r[1]).sort((a, b) => a.r[1] - a.r[0] - (b.r[1] - b.r[0]));
   if (hits.length > 0) return answer(hits[0].o, "start-bucket");
   // Between two ranges (11 days: past "Immediately", short of "2 to 4
@@ -1993,7 +2002,11 @@ function statedCurrency(salary: string, home: string | null): string | null {
           : /\bcad\b|\bc\$|\bca\$/.test(s) ? "CAD"
             : /\busd\b|\bus\$/.test(s) ? "USD"
               : /\$/.test(s) && home ? DOLLAR_BY_COUNTRY[home] ?? null
-                : null;
+                // A bare figure is in the applicant's own currency: a Denver
+                // resident's "85000" went into Float's "salary (in CAD)" box
+                // (Ashby bank 2026-10-08).
+                : /^[\d\s,.]+$/.test(s) && home ? CURRENCY_BY_COUNTRY[home] ?? null
+                  : null;
 }
 
 /** The currency a question names ("desired salary (CAD$)"), or null. */
@@ -2798,8 +2811,10 @@ const UNANSWERABLE =
   /\bwho referred\b|\breferred by (whom|who)\b|\b(name|names) of (the |your )?(referr\w*|employee)\b|\bdo you think\b|\bin your opinion\b|\bwhat do you think\b|\bwhy (do|are|did|would) you\b|\bdescribe (a|an)\b|\btell us about (a|an|yourself)\b|\bwhat interests you\b|\bcriminal\b|\bconvicted\b|\bfelony\b/;
 
 /** A follow-up conditioned on an earlier ANSWER. */
+// "If not currently in the Bay Area, …" (Replit, Ashby bank 2026-10-08) is a
+// condition on where the applicant lives (resolveConditional), not a follow-up.
 const FOLLOW_UP =
-  /^if ([a-z] )?(yes|no|so|other|applicable|not|not applicable|you (answered|selected|chose|checked|said|indicated|replied|ticked|heard)|your answer|the answer|any of the above|none of the above|referred|referral)\b/;
+  /^if ([a-z] )?(yes|no|so|other|applicable|not(?! (currently |presently )?(in|located|based|living|residing|near|within)\b)|not applicable|you (answered|selected|chose|checked|said|indicated|replied|ticked|heard)|your answer|the answer|any of the above|none of the above|referred|referral)\b/;
 
 // ---------------------------------------------------------------------------
 // Conditional questions: "If you <condition>, <question>"
@@ -2834,6 +2849,10 @@ function conditionQuestion(condition: string): { question: string; negated: bool
   let i = 1;
   if (first === "you're" || first === "youre") aux = "Are";
   else if (first === "you've" || first === "youve") aux = "Have";
+  // "not currently in the Bay Area" (Replit): the applicant, unsaid.
+  else if (first === "not" && /^((currently|presently) )?(in|located|based|living|residing|near|within)\b/i.test(t.slice(1).join(" "))) {
+    return { question: `Are you ${t.slice(1).join(" ")}?`, negated: true };
+  }
   else if (first === "you") {
     const known = CONDITION_AUX[(t[1] ?? "").toLowerCase().replace(/'/g, "")];
     if (known) {

@@ -206,8 +206,10 @@ const SOURCE_PREFERENCE: RegExp[] = [
 // question bank 2026-10-05: Yes from Seattle for someone who will not move).
 // "Are you comfortable commuting to our office…" (Financeit on Workable,
 // 2026-10-05) was not read as commuting: Yes from Seattle.
+// "…work from our Foster City, CA HQ 3 days per week?" (Replit, Ashby bank
+// 2026-10-08) names no office: a headquarters or campus is one.
 const IN_PERSON =
-  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|working|commute|commuting|report|reporting)\b[^?]{0,60}\b(from|at|in|to|out of)\b[^?]{0,40}\boffices?\b|\b(this|the|that|a daily) commute\b|\b(come|go|be) (in|into|to)\b[^?]{0,40}\boffices?\b/;
+  /\b(in ?office|on ?site|in ?person|hybrid|report to (the|our) office)\b|\b(work|working|commute|commuting|report|reporting)\b[^?]{0,60}\b(from|at|in|to|out of)\b[^?]{0,40}\b(offices?|hq|headquarters|campus)\b|\b(this|the|that|a daily) commute\b|\b(come|go|be) (in|into|to)\b[^?]{0,40}\b(offices?|hq|headquarters|campus)\b/;
 
 /** Being there now and then rather than working there: team gatherings, an
  *  offsite, a few trips a year. Someone who will not relocate can still go. */
@@ -322,7 +324,8 @@ const SOURCE_SYNONYMS: Array<[RegExp, RegExp]> = [
 function ownSite(option: string, company: string): boolean {
   // "Affirm’s Career Site", "Datadog's Careers Page": the possessive is the name.
   const words = (s: string): string[] => qn(s.replace(/['’]s\b/gi, "")).split(" ").filter(Boolean);
-  const SITE = /^(company|corporate|careers?|carrieres?|our|the|official|website|web|site|page|jobs?|emplois?|portal|board|de|du|la|le|des)$/;
+  // Connectors too: "Miter website or careers page" (Ashby bank 2026-10-08).
+  const SITE = /^(company|corporate|careers?|carrieres?|our|the|official|website|web|site|page|jobs?|emplois?|portal|board|de|du|la|le|des|or|and|ou|et)$/;
   const rest = words(option).filter((w) => !SITE.test(w));
   // Every remaining word is the company's ("Appian Careers Website" for
   // "Appian Corporation", "Lucid Careers Page" for "Lucid Motors").
