@@ -422,3 +422,18 @@ describe("more of what the Lever and Ashby pages showed", () => {
     expect(r && "blockBackend" in r ? r.blockBackend : false).toBe(true);
   });
 });
+
+describe("the bank re-run's three slips (2026-10-08)", () => {
+  it("a race follow-up asks only those who chose 'Two or more races' (SoFi)", () => {
+    const opts = ["American Indian or Alaska Native", "Asian", "Black or African American", "Native Hawaiian or Other Pacific Islander", "Hispanic or LatinX", "White"];
+    const a = scanned("If you selected \"Two or more races\", please check all racial categories with which you identify with.", opts, "San Francisco, CA", "checks");
+    for (const who of ALL) expect(a[who]).toBeNull();
+  });
+  it("a trans man's gender is the plain 'Male' when it is offered (Tanium, Hootsuite)", () => {
+    const a = scanned("Gender: What gender do you most closely identify with?", ["Female", "Male", "Non-binary or third gender", "Transgender Female", "Transgender Male", "Not Listed / Other", "Prefer not to answer"], "Seattle, WA");
+    expect(a.BERLIN_STAFF).toBe("Male");
+  });
+  it("working for a partner or reseller is not working for the company (Geotab)", () => {
+    expect(ask("COMPLETE_CANADIAN", "Do you currently work for a partner or reseller of Geotab?", ["Yes", "No"], "CA")).toBeNull();
+  });
+});

@@ -124,7 +124,10 @@ function refineGenderIdentity(
   // A gender question whose options say cis or trans with the gender
   // ("Cisgender Woman" | "Transgender Man", AltaML on Lever, question bank
   // 2026-10-08) is the identity question too.
-  if (category !== "eeoGenderIdentity" && !(category === "eeoGender" && qualified.some((o) => /\b(man|woman|male|female)\b/i.test(o)))) return undefined;
+  // Only when the stated gender is not offered plain: beside "Male", a trans
+  // man's gender is "Male" (Tanium, Hootsuite), as he gave it.
+  const plainOffered = Boolean(gender) && options.some((o) => !qualified.includes(o) && closestDemographicOption("eeoGender", gender, [o]) !== null);
+  if (category !== "eeoGenderIdentity" && !(category === "eeoGender" && !plainOffered && qualified.some((o) => /\b(man|woman|male|female)\b/i.test(o)))) return undefined;
   if (qualified.length === 0) return /\b(male|female|man|woman)\b/i.test(options.join(" ")) && gender ? gender : undefined;
   const kind = /\bcis(gender)?\b/i.test(identity) ? /\bcis(gender)?\b/i : /\btrans(gender)?\b/i.test(identity) ? /\btrans(gender)?\b/i : null;
   // Options split by cis/trans and the profile states neither: "Cisgender

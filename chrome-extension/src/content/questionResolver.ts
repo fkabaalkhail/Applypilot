@@ -2765,7 +2765,11 @@ function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: 
   if (!shape) return null;
   // ("…any of the Crest family of companies", Crest on Lever, live
   // 2026-10-08, is a group of employers, not a relative.)
-  if (/\b(relative|family(?! of (companies|brands|businesses))|friend|spouse|referr\w*|government|federal|military|public sector)\b/.test(n)) return null;
+  // A partner's or reseller's employee is not the company's ("Do you
+  // currently work for a partner or reseller of Geotab?", Greenhouse bank).
+  // (Only "… of <company>": Waymo's "…Alphabet employee, intern, vendor,
+  // contractor…" still asks about Alphabet.)
+  if (/\b(relative|family(?! of (companies|brands|businesses))|friend|spouse|referr\w*|government|federal|military|public sector)\b|\b(partners?|resellers?|vendors?|suppliers?|clients?|customers?|competitors?) (of|to|for)\b/.test(n)) return null;
   // The company: a capitalized name in the question ("…employee of ActioNet",
   // "a Twitch employee", "…of any of the Crest family of companies"), else an
   // explicit pointer at the hiring company ("for us", "this company").

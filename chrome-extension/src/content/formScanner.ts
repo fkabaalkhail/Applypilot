@@ -285,11 +285,12 @@ function ariaRadioOptions(group: HTMLElement): string[] {
  */
 function withOptionsEvidence(
   current: { category: FieldCategory; confidence: number; sensitive: boolean },
-  options: string[]
+  options: string[],
+  label = ""
 ): { category: FieldCategory; confidence: number; sensitive: boolean } {
   const consent = consentOptionsOverride(current, options);
   if (consent !== current) return consent;
-  const named = categoryOfOptions(options);
+  const named = categoryOfOptions(options, label);
   if (!named) return current;
   if (current.category === "unknown") return named;
   if (current.category === named.category && current.confidence < named.confidence) return named;
@@ -315,14 +316,16 @@ function consentOptionsOverride(
   return current;
 }
 
-function categoryOfOptions(options: string[]): { category: FieldCategory; confidence: number; sensitive: boolean } | null {
+function categoryOfOptions(options: string[], label = ""): { category: FieldCategory; confidence: number; sensitive: boolean } | null {
   const count = (re: RegExp): number => options.filter((o) => re.test(o.toLowerCase())).length;
   if (count(/\bdisabilit(y|ies)\b/) >= 2) return { category: "eeoDisability", confidence: 0.9, sensitive: true };
   if (count(/\bprotected veterans?\b/) >= 2) return { category: "eeoVeteran", confidence: 0.9, sensitive: true };
   // Races as the options: "Please select an identity (or multiple) that best
   // represents you:" over Black | White | East Asian | … (Wattpad on Lever,
   // live 2026-10-08) named no race in its label and went to the AI.
-  if (count(/^(white|black|caucasian|african american|hispanic|latin[oaex]|asian|east asian|south asian|southeast asian|indigenous|native american|pacific islander|middle eastern|arab)\b/) >= 4) {
+  // Not a follow-up: "If you selected 'Two or more races', please check all
+  // racial categories…" (SoFi) asks only those who did.
+  if (!/^\s*if\b/i.test(label) && count(/^(white|black|caucasian|african american|hispanic|latin[oaex]|asian|east asian|south asian|southeast asian|indigenous|native american|pacific islander|middle eastern|arab)\b/) >= 4) {
     return { category: "eeoRace", confidence: 0.9, sensitive: true };
   }
   return null;
@@ -1379,7 +1382,7 @@ export function scanPage(
     const groupIndex = detectGroupIndex(signals);
     const options = radios.map(radioOptionLabel).filter(Boolean).slice(0, MAX_GROUP_OPTIONS);
     let { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "radioGroup" });
-    ({ category, confidence, sensitive } = withOptionsEvidence({ category, confidence, sensitive }, options));
+    ({ category, confidence, sensitive } = withOptionsEvidence({ category, confidence, sensitive }, options, signals.label));
 
     registry.set(id, { id, controlType: "radioGroup", radios });
 
@@ -1428,7 +1431,7 @@ export function scanPage(
     let { category, confidence, sensitive } = classifyWithAdapter(adapter, { el: first, signals, controlType: "checkboxGroup" });
     // As for radios: Workday's disability form asks only "Please check one of
     // the boxes below:" over three disability boxes, and stayed unanswered.
-    ({ category, confidence, sensitive } = withOptionsEvidence({ category, confidence, sensitive }, options));
+    ({ category, confidence, sensitive } = withOptionsEvidence({ category, confidence, sensitive }, options, signals.label));
 
     registry.set(id, { id, controlType: "checkboxGroup", checkboxes });
 
