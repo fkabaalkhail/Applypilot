@@ -1584,10 +1584,15 @@ function resolveEducationLevel(q: QuestionInput, n: string, facts: ProfileFacts)
 function resolveEnrollment(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   if (!/\b(currently|presently) (a |an )?(full time |part time )?(student|enrolled|attending|pursuing)\b|\bare you (a |an )?(current )?(full time |part time )?student\b|\benrolled (in|at)\b/.test(n)) return null;
   if (!isBooleanQuestion(q)) return null;
-  // "...enrolled at a Canadian institution" / "...at the University of X":
-  // more than enrollment, leave it.
-  if (/\b(institution|university|college|school) (in|of|located)\b|\bpost secondary institution\b|\bduring\b|\bafter\b|\bthrough\b|\buntil\b/.test(n)) return abstain("enrollment:qualified");
+  // "...during the internship" / "...after graduation": another time, leave it.
+  if (/\bduring\b|\bafter\b|\bthrough\b|\buntil\b/.test(n)) return abstain("enrollment:qualified");
   const e = facts.education.currentlyEnrolled;
+  // "...enrolled at a Canadian institution" / "...attending a college or
+  // university in the US?" (Superhuman, left to the AI): more than
+  // enrollment, unless the applicant is enrolled nowhere.
+  if (/\b(institution|university|college|school) (in|of|located)\b|\bpost secondary institution\b|\b(canadian|american|us|u s|united states) (institution|university|college|school)\b/.test(n)) {
+    return isHigh(e) && !e.value ? booleanResult(false, q, "enrollment:enrolled-nowhere") : abstain("enrollment:qualified");
+  }
   // "…enrolled in an accredited 4-year Bachelor's degree program or have
   // graduated within the past 2 years?" (Samsara, question bank 2026-10-05:
   // a June 2026 graduate said No): enrolled at that level, or finished it

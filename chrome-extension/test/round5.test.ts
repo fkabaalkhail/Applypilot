@@ -722,6 +722,16 @@ describe("blanks the Ashby question bank's profiles answer (2026-10-08)", () => 
     expect(ask(P.US_OPT_ANALYST, q, ONE)).toBe("F-1 Student (STEM OPT)");
     expect(ask(P.BOOTCAMP_CAREER_GAP, q, ONE)).not.toBe("H-1B");
   });
+  it("someone enrolled nowhere is not enrolled at a named place (Superhuman, regression 2026-10-08)", () => {
+    // Left to the AI (down since 08-25): blank for a graduate.
+    const q = "Are you currently attending a college or university in the US?";
+    expect(ask(P.MONTREAL_CHANGER, q, ["Yes", "No"])).toBe("No");
+    expect(ask(P.US_H1B_SENIOR, "Are you currently enrolled at a Canadian institution?", ["Yes", "No"])).toBe("No");
+    // A student's school is somewhere the profile does not say: theirs.
+    expect(["Yes", "No"]).not.toContain(ask(P.COMPLETE_CANADIAN, q, ["Yes", "No"]));
+    // A time named is another question.
+    expect(["Yes", "No"]).not.toContain(ask(P.MONTREAL_CHANGER, "Will you be currently enrolled in school during the internship?", ["Yes", "No"]));
+  });
   it("a visa open to a country's citizens is not the citizen's own status (Waymo, regression 2026-10-08)", () => {
     // Waymo asks which authorization the applicant needs; TN is one a
     // Canadian MAY use (with a degree), not one anybody stated. Round 4 left
