@@ -608,4 +608,23 @@ export default [
       "label:Immuta has my consent to contact me about future job opportu": null,
     },
   }),
+  // ------------------------- batch C: iCIMS and SuccessFactors, exploration
+  // (P2: the families seen least; up to the review page, never Submit, no
+  // account; no pins). Where each stopped, 2026-10-08: every iCIMS posting
+  // shows the job inside a same-origin iframe, and its "Apply for this job
+  // online" is not in the frame the flow runs in ("No application form found
+  // on this page"). SuccessFactors (L3Harris, Acuity) starts an application
+  // with a POST (services/cas/createpayload), which live runs block
+  // ("Couldn't open the application from this page").
+  live({ id: "r5c-icims-schwab", ats: "icims", profile: US_OPT_ANALYST, url: "https://career-schwab.icims.com/jobs/127637/.net-developer/job", nextPages: 2 }),
+  live({ id: "r5c-icims-docusign", ats: "icims", profile: US_H1B_SENIOR, url: "https://uscareers-docusign.icims.com/jobs/30465/software-engineer-intern/job", nextPages: 2 }),
+  live({ id: "r5c-icims-enterprise", ats: "icims", profile: INDIA_NEW_GRAD, url: "https://us-erac.icims.com/jobs/567651/intern---data-engineer-%28efm-it%29%2c-summer-2027/job", nextPages: 2 }),
+  live({ id: "r5c-icims-kinaxis", ats: "icims", profile: COMPLETE_CANADIAN, url: "https://careers-kinaxis.icims.com/jobs/35465/job?mobile=true&needsRedirect=false", nextPages: 2 }),
+  live({ id: "r5c-icims-cookmedical", ats: "icims", profile: US_OPT_ANALYST, url: "https://americas-cookmedical.icims.com/jobs/19550/intern%2c-applied-ai-%26-full-stack-development/job", nextPages: 2 }),
+  live({ id: "r5c-icims-gdms", ats: "icims", profile: BOOTCAMP_CAREER_GAP, url: "https://careers-gdms.icims.com/jobs/75056/embedded-software-engineer-%e2%80%93-entry-level/job", nextPages: 2 }),
+  live({ id: "r5c-icims-hrblock", ats: "icims", profile: US_H1B_SENIOR, url: "https://employees-hrblock.icims.com/jobs/76907/machine-learning-engineer/job", nextPages: 2 }),
+  live({ id: "r5c-icims-bylight", ats: "icims", profile: BOOTCAMP_CAREER_GAP, url: "https://jobs-bylight.icims.com/jobs/11579/software-engineer-i/job", nextPages: 2 }),
+  live({ id: "r5c-sf-l3harris-waterdown", ats: "successfactors", profile: COMPLETE_CANADIAN, url: "https://jobs.l3harris.com/job/Waterdown-Software-Engineering-Co-Op-(Waterdown,-CAN)-ON-L9H-0C5/1432400300/?ats=successfactors", nextPages: 2 }),
+  live({ id: "r5c-sf-l3harris-niagara", ats: "successfactors", profile: COMPLETE_CANADIAN, url: "https://jobs.l3harris.com/job/Niagara-on-the-Lake-Full-Stack-Developer-Co-op-1-ON/1430141300/?ats=successfactors", nextPages: 2 }),
+  live({ id: "r5c-sf-acuity", ats: "successfactors", profile: COMPLETE_CANADIAN, url: "https://careers.acuityinc.com/job/Brossard-Stage-en-d%C3%A9veloppement-micrologicielfirmware-Qu%C3%A9b-J4Y-0C4/1434107300/?ats=successfactors", nextPages: 2 }),
 ];
