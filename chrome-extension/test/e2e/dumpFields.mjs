@@ -244,6 +244,25 @@ export function dumpFieldsInPage() {
         });
         continue;
       }
+      // Ashby's Yes/No: two aria-pressed buttons over a hidden checkbox, which
+      // says only "checked" for Yes. The pressed button is the answer.
+      const yesno = tag === "input" && el.type === "checkbox" ? el.closest(".ashby-application-form-input-yesno") : null;
+      if (yesno) {
+        const buttons = Array.from(yesno.querySelectorAll("button[aria-pressed]"));
+        const pressed = buttons.find((b) => b.getAttribute("aria-pressed") === "true");
+        const entry = yesno.closest(".ashby-application-form-field-entry");
+        const title = entry ? entry.querySelector(".ashby-application-form-question-title") : null;
+        out.push({
+          key: `yesno=${el.name}`,
+          type: "yesno",
+          label: clean(title ? title.textContent : "") || labelOf(el),
+          value: pressed ? clean(pressed.textContent) : "",
+          options: buttons.map((b) => clean(b.textContent)),
+          visible: visible(yesno),
+          required: Boolean(title && /required/.test(String(title.className))),
+        });
+        continue;
+      }
       if (role === "radiogroup") {
         const radios = Array.from(el.querySelectorAll('[role="radio"]'));
         const checked = radios.find((r) => r.getAttribute("aria-checked") === "true");

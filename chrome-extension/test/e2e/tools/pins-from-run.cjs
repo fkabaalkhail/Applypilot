@@ -43,7 +43,7 @@ for (const x of results) {
     const inside = x.after.some((o) => o !== f && norm(o.label).toLowerCase() !== label.toLowerCase() && norm(o.label).toLowerCase().includes(label.toLowerCase()));
     let key = f.key;
     if (label && !GENERIC.test(label) && !dup && !inside && label.length <= 200) {
-      key = f.type === "radio" || f.type === "aria-radiogroup" ? `${f.type}~${label.slice(0, 60)}` : `label:${label.slice(0, 60)}`;
+      key = f.type === "radio" || f.type === "aria-radiogroup" || f.type === "yesno" ? `${f.type}~${label.slice(0, 60)}` : `label:${label.slice(0, 60)}`;
     }
     // Ashby's radio keys carry ids regenerated on every load: by label always.
     if (/^radio=[0-9a-f]{8}-[0-9a-f]{4}-/i.test(key) && label) key = `radio~${label.slice(0, 60)}`;
