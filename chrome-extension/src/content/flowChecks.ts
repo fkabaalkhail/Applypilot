@@ -128,6 +128,9 @@ export function holdsNoAnswer(
   const el = control.el;
   if (!el) return true;
   if (control.controlType === "combobox" || control.controlType === "customDropdown") return !readCombobox(el);
+  // An ARIA group's text is its options' labels, chosen or not: only a
+  // checked radio or a pressed button answers it.
+  if (control.controlType === "ariaRadioGroup") return !el.querySelector('[role="radio"][aria-checked="true"], button[aria-pressed="true"]');
   if (control.controlType === "select") {
     const opt = (el as HTMLSelectElement).selectedOptions[0];
     return !opt || !opt.value;

@@ -71,6 +71,16 @@ export interface ScanResult {
   scopeEl: HTMLElement | null;
 }
 
+/**
+ * Ashby's Boolean question: two buttons with aria-pressed ("Yes", "No") over a
+ * hidden checkbox, in a container with Ashby's public class. The question's
+ * <label for> names the checkbox's name, not an id, so the checkbox alone
+ * read "No" as its label, and no Yes/No question on Ashby (work right,
+ * sponsorship, relocation, U.S. person) was ever answered (live 2026-10-08).
+ * The container is scanned as an ARIA radio group of its buttons.
+ */
+const PRESSED_GROUP = ".ashby-application-form-input-yesno";
+
 const CANDIDATE_SELECTOR = [
   "input",
   "textarea",
@@ -84,6 +94,9 @@ const CANDIDATE_SELECTOR = [
   // ARIA radio groups (react-aria / Radix custom radios, Jobvite, etc.): a
   // role=radiogroup whose role=radio children are divs, not native inputs.
   '[role="radiogroup"]',
+  // Ashby's Yes/No: two aria-pressed buttons over a hidden checkbox (see
+  // PRESSED_GROUP).
+  PRESSED_GROUP,
 ].join(", ");
 
 /** Input types that are never application fields. `password` is intentionally
@@ -200,6 +213,7 @@ function controlTypeOf(el: HTMLElement): ControlType | null {
   // ARIA radio group (role=radio children clicked to select), checked before the
   // generic element fallbacks so it is driven as a choice control, not skipped.
   if (el.getAttribute("role") === "radiogroup") return "ariaRadioGroup";
+  if (el.matches(PRESSED_GROUP)) return "ariaRadioGroup";
   if (el instanceof HTMLInputElement) {
     if (el.type === "password") return "password"; // account sub-flow only
     if (SKIPPED_INPUT_TYPES.has(el.type)) return null;
@@ -249,7 +263,8 @@ export function selectOptions(el: HTMLSelectElement, limit = 60): string[] {
 const MAX_GROUP_OPTIONS = 300;
 
 function ariaRadioOptions(group: HTMLElement): string[] {
-  return Array.from(group.querySelectorAll('[role="radio"]'))
+  const radios = group.querySelectorAll('[role="radio"]');
+  return Array.from(radios.length ? radios : group.querySelectorAll("button[aria-pressed]"))
     .map((r) => cleanText(r.getAttribute("aria-label")) || cleanText(r.textContent))
     .filter((t) => t.length > 0)
     .slice(0, MAX_GROUP_OPTIONS);
@@ -1185,6 +1200,9 @@ export function scanPage(
     // checkbox (no such container, or only one inside it) falls through to
     // the single-control path.
     if (el instanceof HTMLInputElement && el.type === "checkbox") {
+      // Ashby's Yes/No keeps a hidden checkbox under its buttons: the group is
+      // the control (PRESSED_GROUP), the checkbox only its form value.
+      if (el.closest(PRESSED_GROUP)) continue;
       const container = checkboxGroupContainer(el);
       if (container) {
         const group = checkboxGroups.get(container) ?? [];
@@ -1570,7 +1588,7 @@ function currentValueOf(el: HTMLElement, controlType: ControlType): string | und
     return readComboboxValue(el);
   }
   if (controlType === "ariaRadioGroup") {
-    const checked = el.querySelector('[role="radio"][aria-checked="true"]') as HTMLElement | null;
+    const checked = el.querySelector('[role="radio"][aria-checked="true"], button[aria-pressed="true"]') as HTMLElement | null;
     if (!checked) return undefined;
     return (cleanText(checked.getAttribute("aria-label")) || cleanText(checked.textContent)) || undefined;
   }

@@ -9,6 +9,7 @@ import { setResolveContext } from "../src/content/fieldResolver";
 import { AutofillReconciler } from "../src/content/reconciler";
 import { fillAriaCombobox } from "../src/content/comboboxEngine";
 import { revertedFields } from "../src/content/telemetry";
+import { holdsNoAnswer } from "../src/content/flowChecks";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
 import { profileFacts } from "../src/content/profileFacts";
 import * as P from "./e2e/profiles.mjs";
@@ -719,5 +720,57 @@ describe("blanks the Ashby question bank's profiles answer (2026-10-08)", () => 
     expect(ask(P.US_H1B_SENIOR, q, ONE)).toBe("H-1B (Transfer)");
     expect(ask(P.US_OPT_ANALYST, q, ONE)).toBe("F-1 Student (STEM OPT)");
     expect(ask(P.BOOTCAMP_CAREER_GAP, q, ONE)).not.toBe("H-1B");
+  });
+});
+
+describe("Ashby's Yes/No buttons are a question (every Ashby Boolean field, live 2026-10-08)", () => {
+  // An Ashby Boolean question is two buttons with aria-pressed and a hidden
+  // checkbox; its <label for> names the checkbox's NAME, so the checkbox read
+  // "No" as its label and no work-right or sponsorship question on Ashby was
+  // ever answered (TensorWave, Teleskope, Saronic, Replit, Amplitude live).
+  const ENTRY = (q: string, name: string) => `
+    <div class="_fieldEntry_1e3gg_28 ashby-application-form-field-entry" data-field-path="${name}">
+      <label class="_heading_f7cvd_52 _required_f7cvd_91 _label_1e3gg_42 ashby-application-form-question-title" for="${name}">${q}</label>
+      <div class="_container_1svni_28 _yesno_1e3gg_148 ashby-application-form-input-yesno">
+        <button class="_container_pjyt6_1 _option_1svni_32 ashby-application-form-input-yesno-option" aria-pressed="false" data-option="yes">Yes</button>
+        <button class="_container_pjyt6_1 _option_1svni_32 ashby-application-form-input-yesno-option" aria-pressed="false" data-option="no">No</button>
+        <input type="checkbox" class="_input_1svni_78" tabindex="-1" name="${name}">
+      </div>
+    </div>`;
+  // The page's own handler: a button with no type inside the form would
+  // submit it, so Ashby prevents that and flips aria-pressed.
+  const press = (e: Event) => {
+    const b = (e.target as HTMLElement).closest("button[aria-pressed]");
+    if (!b) return;
+    e.preventDefault();
+    for (const other of Array.from(b.parentElement!.querySelectorAll("button[aria-pressed]"))) other.setAttribute("aria-pressed", String(other === b));
+  };
+  beforeEach(() => document.addEventListener("click", press, true));
+  afterEach(() => document.removeEventListener("click", press, true));
+  const Q = "Will you now or in the future require authorization to work in the United States?";
+
+  it("is scanned as one Yes/No question under its own label, never a checkbox called 'No'", () => {
+    document.body.innerHTML = `<form>${ENTRY(Q, "c123fdc7-d598-4076-add5-2ab50fe1e64e")}</form>`;
+    setResolveContext({ jobCountry: "US", jobCity: "Las Vegas", company: "TensorWave" });
+    const { fields } = scanPage(P.BOOTCAMP_CAREER_GAP as UserApplicationProfile, false, null);
+    setResolveContext({ jobCountry: null, jobCity: null, company: "" });
+    expect(fields).toHaveLength(1);
+    expect(fields[0].controlType).toBe("ariaRadioGroup");
+    expect(fields[0].label).toBe(Q);
+    expect(fields[0].options).toEqual(["Yes", "No"]);
+    expect(fields[0].proposedValue).toBe("No");
+  });
+
+  it("is answered by pressing the button, checked by aria-pressed, and empty until then", async () => {
+    document.body.innerHTML = `<form>${ENTRY(Q, "c123fdc7-d598-4076-add5-2ab50fe1e64e")}</form>`;
+    const { fields, registry } = scanPage(P.BOOTCAMP_CAREER_GAP as UserApplicationProfile, false, null);
+    const control = registry.get(fields[0].id)!;
+    expect(holdsNoAnswer(control, () => undefined)).toBe(true);
+    const engine = new AutofillReconciler({ sleep: async () => {}, observe: false });
+    const [report] = await engine.run([{ fieldId: fields[0].id, value: "No" }], registry);
+    engine.dispose();
+    expect(document.querySelector('button[data-option="no"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(report.ok).toBe(true);
+    expect(holdsNoAnswer(control, () => undefined)).toBe(false);
   });
 });

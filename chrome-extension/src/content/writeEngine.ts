@@ -239,7 +239,7 @@ export function verifyControl(control: RuntimeControl, value: string): boolean {
       const group = control.el;
       if (isStale(group)) return false;
       const match = findAriaRadio(group!, value);
-      return Boolean(match) && match!.getAttribute("aria-checked") === "true";
+      return Boolean(match) && isChosen(match!);
     }
     case "file":
     case "customDropdown":
@@ -380,11 +380,17 @@ function writeCheckboxGroup(checkboxes: HTMLInputElement[], value: string): Writ
 }
 
 // ARIA radio groups (role=radiogroup with role=radio divs), selected by clicking
-// the matching radio; the framework flips its aria-checked.
+// the matching radio; the framework flips its aria-checked. Ashby's Yes/No is
+// the same group made of buttons that flip aria-pressed instead.
 function ariaRadiosOf(group: HTMLElement): HTMLElement[] {
-  return Array.from(group.querySelectorAll('[role="radio"]')).filter(
-    (r) => r.getAttribute("aria-disabled") !== "true"
+  const radios = group.querySelectorAll('[role="radio"]');
+  return Array.from(radios.length ? radios : group.querySelectorAll("button[aria-pressed]")).filter(
+    (r) => r.getAttribute("aria-disabled") !== "true" && !(r as HTMLButtonElement).disabled
   ) as HTMLElement[];
+}
+
+function isChosen(option: HTMLElement): boolean {
+  return option.getAttribute("aria-checked") === "true" || option.getAttribute("aria-pressed") === "true";
 }
 
 function findAriaRadio(group: HTMLElement, value: string): HTMLElement | null {
@@ -400,7 +406,7 @@ function writeAriaRadioGroup(group: HTMLElement, value: string): WriteResult {
   if (isStale(group)) return { written: false, reason: STALE };
   const match = findAriaRadio(group, value);
   if (!match) return { written: false, reason: `No option matches "${truncate(value)}"` };
-  if (match.getAttribute("aria-checked") !== "true") match.click();
+  if (!isChosen(match)) match.click();
   return { written: true };
 }
 
