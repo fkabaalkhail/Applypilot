@@ -982,3 +982,36 @@ describe("own housing and travel are no willingness to move, scanned (The Explor
     expect(f.proposedValue).toBe("Yes");
   });
 });
+
+describe("a web component's own label attribute names its field (SmartRecruiters, regression 2026-10-08)", () => {
+  // <spl-input label="First name"> renders its <label> inside its shadow
+  // root. A scan taken before that render (a document observer never sees a
+  // shadow root change) read every field by its id: "first-name-input",
+  // "spl-form-element_10" for City, which went unrecognized and blank.
+  const host = (tag: string, label: string, inputId: string): HTMLElement => {
+    const el = document.createElement(tag);
+    el.setAttribute("label", label);
+    const root = el.attachShadow({ mode: "open" });
+    root.innerHTML = `<div class="field"><input id="${inputId}" type="text"></div>`;
+    return el;
+  };
+  const scan = () => {
+    setResolveContext({ jobCountry: "US", jobCity: null, jobPlaces: null, company: "ServiceNow" });
+    return scanPage(P.COMPLETE_CANADIAN as UserApplicationProfile, true).fields;
+  };
+  it("reads the host's label when the shadow root has none yet", () => {
+    document.body.innerHTML = "<form></form>";
+    const form = document.querySelector("form")!;
+    form.append(host("spl-input", "First name", "first-name-input"), host("spl-autocomplete", "City", "spl-form-element_10"));
+    const fields = scan();
+    expect(fields.map((f) => f.label)).toEqual(["First name", "City"]);
+    expect(fields.map((f) => f.category)).toEqual(["firstName", "addressCity"]);
+  });
+  it("a label the shadow root does hold still wins", () => {
+    document.body.innerHTML = "<form></form>";
+    const el = host("spl-input", "Name", "n1");
+    el.shadowRoot!.innerHTML = `<label for="n1">Last name</label><input id="n1" type="text">`;
+    document.querySelector("form")!.append(el);
+    expect(scan().map((f) => f.label)).toEqual(["Last name"]);
+  });
+});

@@ -560,6 +560,26 @@ export function uploadZoneText(el: HTMLElement): string {
   return widest;
 }
 
+/**
+ * A web component's own label attribute. SmartRecruiters' `<spl-input
+ * label="First name">` renders its <label> inside its shadow root, and a scan
+ * taken before that render (a document observer never sees a shadow root
+ * change) read every field by its id: "first-name-input", and
+ * "spl-form-element_10" for City, which went unrecognized and blank (live
+ * regression 2026-10-08). The nearest host up to two shadow roots out.
+ */
+function shadowHostLabel(el: HTMLElement): string {
+  let node: Node = el;
+  for (let hops = 0; hops < 2; hops++) {
+    const root = node.getRootNode();
+    if (!(root instanceof ShadowRoot)) return "";
+    const own = cleanText(root.host.getAttribute("label"));
+    if (own) return own;
+    node = root.host;
+  }
+  return "";
+}
+
 export function collectSignals(el: HTMLElement): FieldSignals {
   const labelledBy = ariaLabelledByText(el);
   const isFile = el instanceof HTMLInputElement && el.type === "file";
@@ -585,7 +605,8 @@ export function collectSignals(el: HTMLElement): FieldSignals {
   // Greenhouse). Gated on the absence of every real label signal so a widget that
   // *does* declare an aria-label / association is never overridden by a stray
   // neighbouring label.
-  const hasRealLabel = Boolean(assocLabel || hostLabel || labelledBy || hostLabelledBy || ariaLabel);
+  const componentLabel = assocLabel || hostLabel || labelledBy || hostLabelledBy ? "" : shadowHostLabel(el);
+  const hasRealLabel = Boolean(assocLabel || hostLabel || labelledBy || hostLabelledBy || ariaLabel || componentLabel);
   const promotedLabel = isDropdown && !hasRealLabel ? nearby : "";
   // Last resort before the weak signals: the question printed inside the field's
   // own block. Computed only when nothing programmatic named the field, so a
@@ -600,7 +621,7 @@ export function collectSignals(el: HTMLElement): FieldSignals {
         })();
   return {
     label:
-      assocLabel || hostLabel || labelledBy || hostLabelledBy || promotedLabel || blockLabel,
+      assocLabel || hostLabel || labelledBy || hostLabelledBy || componentLabel || promotedLabel || blockLabel,
     ariaLabel: ariaLabel || labelledBy || hostLabelledBy,
     placeholder: cleanText(el.getAttribute("placeholder")),
     nearby,
