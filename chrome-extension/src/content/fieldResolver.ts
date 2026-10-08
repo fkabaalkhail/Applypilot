@@ -568,6 +568,13 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   }
   if (options && options.length > 0 && (CONSTRAINED.has(control.controlType) || control.controlType === "combobox")) {
     if (control.controlType === "checkboxGroup" || control.multi) {
+      // An answer that IS one option's whole text is that option, commas and
+      // all: "Yes, but require relocation" ticked "Yes" too (Vital Lyfe's
+      // checkboxes, Ashby bank 2026-10-08).
+      const key = (s: string | null): string => (s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+      const said = key(value);
+      const whole = options.filter((o) => key(o) === said);
+      if (whole.length === 1) return { value: whole[0], kind, source, rule, deviceAbstained: false };
       const parts = value.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
       const hits = parts.map((p) => snapToOption(options, p, category) ?? (input.sensitive ? closestDemographicOption(category, p, options) : null));
       // One option, once: "No, I do not have a disability" splits on its own

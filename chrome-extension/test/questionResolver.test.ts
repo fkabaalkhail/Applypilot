@@ -392,7 +392,10 @@ describe("residence", () => {
   });
 
   it("another city in the SAME country is a judgment call: abstain", () => {
-    expect(value(ask("Do you live in or near Ottawa?", { options: YES_NO }))).toBe("abstain");
+    // Round 5: two well-known cities in different metros are apart (Toronto
+    // for Ottawa, 450 km); a nearby one the tables do not place stays a call.
+    expect(value(ask("Do you live in or near Ottawa?", { options: YES_NO }))).toBe("No");
+    expect(value(ask("Do you live in or near Hamilton?", { options: YES_NO }))).toBe("abstain");
   });
 
   it("'Where are you located?' with continent options → North America", () => {

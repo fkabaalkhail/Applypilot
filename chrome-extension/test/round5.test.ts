@@ -5,11 +5,14 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { scanPage } from "../src/content/formScanner";
+import { setResolveContext } from "../src/content/fieldResolver";
 import { AutofillReconciler } from "../src/content/reconciler";
 import { fillAriaCombobox } from "../src/content/comboboxEngine";
 import { revertedFields } from "../src/content/telemetry";
 import { resolveQuestion, type QuestionInput } from "../src/content/questionResolver";
 import { profileFacts } from "../src/content/profileFacts";
+import * as P from "./e2e/profiles.mjs";
+import type { UserApplicationProfile } from "../src/shared/types";
 import { liveControlFor } from "../src/content/staleControl";
 import { loadWorkableGuesses, prefilledGuesses, setPageGuesses, workableShortcode } from "../src/content/pageGuesses";
 import type { RuntimeControl } from "../src/content/formScanner";
@@ -425,5 +428,87 @@ describe("a start date between two of the list's ranges takes the later one (Str
     expect(startIn("2026-10-03")).toBe("Immediately");
     expect(startIn("2026-10-24")).toBe("2 to 4 weeks from offer acceptance");
     expect(startIn("2027-03-01")).toBe("12+ weeks from offer acceptance");
+  });
+});
+
+describe("lists that tell living there from moving there (Ashby question bank, 2026-10-08)", () => {
+  // Iambic, Pryzm, Zip, Vital Lyfe (Ashby bank): the first "Yes" was taken for
+  // anyone willing to move, so people in Toronto, Berlin and Bengaluru said
+  // "Yes, I live in San Diego" and "In Boston".
+  const ask = (persona: UserApplicationProfile, label: string, options: string[], ctx: { jobCountry: string; jobCity: string; company: string }) => {
+    const q: QuestionInput = { label, controlType: "select", options, category: "unknown", kind: "choice" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, ctx);
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  const SD = ["Yes, I live in San Diego", "I do not live in San Diego but I am willing to relocate", "No, I do not live in San Diego and am not willing to relocate"];
+  const iambic = { jobCountry: "US", jobCity: "San Diego", company: "Iambic Therapeutics" };
+  it("Iambic: someone elsewhere who will move says so; someone who will not, says that", () => {
+    expect(ask(P.COMPLETE_CANADIAN, "Do you live in San Diego or are you willing to relocate?", SD, iambic)).toBe(SD[1]);
+    expect(ask(P.BERLIN_STAFF, "Do you live in San Diego or are you willing to relocate?", SD, iambic)).toBe(SD[1]);
+    expect(ask(P.US_H1B_SENIOR, "Do you live in San Diego or are you willing to relocate?", SD, iambic)).toBe(SD[2]);
+  });
+  const pryzm = { jobCountry: "US", jobCity: "Boston", company: "Belisar" };
+  const BOS = "This is an on-site position in our Boston office. Are you located in Boston or willing to relocate?";
+  it("Pryzm: 'In Boston' only for someone in Boston", () => {
+    expect(ask(P.US_OPT_ANALYST, BOS, ["In Boston", "Planning to Relocate"], pryzm)).toBe("In Boston");
+    expect(ask(P.COMPLETE_CANADIAN, BOS, ["In Boston", "Planning to Relocate"], pryzm)).toBe("Planning to Relocate");
+    expect(ask(P.US_H1B_SENIOR, BOS, ["In Boston", "Planning to Relocate"], pryzm)).not.toBe("In Boston");
+  });
+  const ZIP = ["Yes and I am local to the San Francisco Bay Area", "Yes but I would need to relocate", "No I am not willing to come into the office"];
+  const zip = { jobCountry: "US", jobCity: "San Francisco", company: "Zip" };
+  it("Zip: a willing mover 'would need to relocate'; a San Jose resident is not decided for them", () => {
+    expect(ask(P.US_OPT_ANALYST, "Are you willing and able to come into our downtown SF office 3 days per week?", ZIP, zip)).toBe(ZIP[1]);
+    expect(ask(P.INDIA_NEW_GRAD, "Are you willing and able to come into our downtown SF office 3 days per week?", ZIP, zip)).toBe(ZIP[1]);
+    expect(ask(P.US_GREENCARD_STUDENT, "Are you willing and able to come into our downtown SF office 3 days per week?", ZIP, zip)).not.toBe(ZIP[1]);
+  });
+  it("Vital Lyfe: a plain Yes beside 'Yes, but require relocation' means no move", () => {
+    const opts = ["Yes", "No", "Yes, but require relocation"];
+    const vl = { jobCountry: "US", jobCity: "Los Angeles", company: "Vital Lyfe" };
+    expect(ask(P.COMPLETE_CANADIAN, "Are you open to working out of our Torrance (LA) Office 5 Days a Week?", opts, vl)).toBe("Yes, but require relocation");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, "Are you open to working out of our Torrance (LA) Office 5 Days a Week?", opts, vl)).toBe("No");
+  });
+  it("Teleskope: 'currently based, or planning to be based in NYC' is Yes for someone moving there", () => {
+    const tk = { jobCountry: "US", jobCity: "New York", company: "Teleskope" };
+    const q = "Are you currently based, or planning to be based in NYC and able to work on-site (hybrid) in the Financial District?";
+    expect(ask(P.COMPLETE_CANADIAN, q, ["Yes", "No"], tk)).toBe("Yes");
+    expect(ask(P.BERLIN_STAFF, q, ["Yes", "No"], tk)).toBe("Yes");
+    expect(ask(P.US_H1B_SENIOR, q, ["Yes", "No"], tk)).toBe("No");
+  });
+});
+
+describe("living there, read across every place and time zone a question names (bank re-run, 2026-10-08)", () => {
+  const ask = (persona: UserApplicationProfile, label: string, options: string[], ctx: { jobCountry: string; jobCity: string; company: string }) => {
+    const q: QuestionInput = { label, controlType: "select", options, category: "unknown", kind: "choice" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, ctx);
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  const MTL_Q = "This position is required to work out of a Lyft Office in Montreal, if you do not reside within the country and within commutable proximity to the office, are you open to relocating?";
+  const MTL = ["I am willing to relocate before starting employment.", "I am not willing to relocate before starting employment.", "I already reside within commutable distance to Montreal and am able to work at an On-site Office."];
+  const lyft = { jobCountry: "CA", jobCity: "Montreal", company: "Lyft" };
+  it("Lyft: Toronto is no commute to Montreal, though Ontario borders Quebec", () => {
+    expect(ask(P.COMPLETE_CANADIAN, MTL_Q, MTL, lyft)).toBe(MTL[0]);
+    expect(ask(P.MONTREAL_CHANGER, MTL_Q, MTL, lyft)).toBe(MTL[2]);
+  });
+  const JERSEY = { ...P.US_H1B_SENIOR, location: "Jersey City, NJ", addressStreet: "", addressCity: "Jersey City", addressState: "NJ", postalCode: "07302" };
+  it("two places named: No only when the applicant is at neither; a neighbouring state is not decided", () => {
+    const mx = { jobCountry: "US", jobCity: "San Francisco", company: "Mixpanel" };
+    const q = "Are you currently located in the San Francisco Bay Area or New York City?";
+    expect(ask(P.US_OPT_ANALYST, q, ["Yes", "No"], mx)).toBe("No");
+    expect(ask(JERSEY, q, ["Yes", "No"], mx)).not.toBe("No");
+  });
+  it("a time zone named beside the place counts: Seattle is in the Pacific time zone", () => {
+    const amp = { jobCountry: "US", jobCity: "San Francisco", company: "Amplitude" };
+    const q = "Are you currently based in the San Francisco Bay Area or within the Pacific time zone?";
+    expect(ask(P.US_H1B_SENIOR, q, ["Yes", "No"], amp)).toBe("Yes");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, q, ["Yes", "No"], amp)).toBe("No");
+  });
+  it("an answer that is one checkbox's whole text is that box alone (Vital Lyfe's checkboxes)", () => {
+    document.body.innerHTML = `<form><fieldset class="field"><legend>Are you open to working out of our Torrance (LA) Office 5 Days a Week?</legend>
+      <label><input type="checkbox" name="q[]" value="0"> Yes</label><label><input type="checkbox" name="q[]" value="1"> No</label>
+      <label><input type="checkbox" name="q[]" value="2"> Yes, but require relocation</label></fieldset></form>`;
+    setResolveContext({ jobCountry: "US", jobCity: "Los Angeles", company: "Vital Lyfe" });
+    const f = scanPage(P.COMPLETE_CANADIAN as UserApplicationProfile, false, null).fields.find((x) => x.controlType === "checkboxGroup");
+    expect(f?.proposedValue).toBe("Yes, but require relocation");
+    setResolveContext({ jobCountry: null, jobCity: null, company: "" });
   });
 });

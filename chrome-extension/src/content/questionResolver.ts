@@ -24,6 +24,9 @@ import {
   countryByCode,
   countryFromName,
   countryHintForCity,
+  regionHintForCity,
+  regionsBorder,
+  sameMetro,
   DIAL_CODES,
   geoNorm,
   regionFromText,
@@ -764,13 +767,28 @@ function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, prof
   }
   if (!RESIDE.test(n) || !APPLICANT_RESIDES.test(n) || !isBooleanQuestion(q)) return null;
   if (/\b(willing|open|able|plan|planning) to (relocate|move)\b/.test(n) && !/\b(live|reside|located|based)\b/.test(n)) return null;
+  // A time zone named ("…the San Francisco Bay Area or within the Pacific time
+  // zone", Amplitude; "…based in the Pacific timezone?", Superhuman; Ashby
+  // bank 2026-10-08): being in it is a Yes; a No also needs the place ruled out.
+  const zone = zoneNamedIn(n);
+  const inZone = zone ? applicantInZone(zone, facts) : null;
+  if (inZone === true) return booleanResult(true, q, "residence:time-zone");
   const place = placeIn(q.label);
-  if (!place) return null;
+  if (!place) {
+    if (!zone) return null;
+    return inZone === false ? booleanResult(false, q, "residence:time-zone") : abstain("residence:time-zone-unknown");
+  }
+  if (zone && inZone === null) return abstain("residence:time-zone-unknown");
   const loc = facts.location;
   const residenceCountry = isHigh(loc.country) ? loc.country.value : null;
   // "…or willing to relocate?", and the other way round: "Are you open to
   // relocating if you're not currently based there?" (Gemini, live 2026-10-05).
-  const relocateClause = /\b(or|if not)\b[^?]*\b(relocat|move)/.test(n) || /\b(relocat\w*|move)\b[^?]*\bif (you re |you are |youre )?not\b/.test(n);
+  // "…currently based, or planning to be based in NYC…" (Teleskope, Ashby
+  // bank 2026-10-08): a planned move is the same clause.
+  const relocateClause =
+    /\b(or|if not)\b[^?]*\b(relocat|move)/.test(n) ||
+    /\b(relocat\w*|move)\b[^?]*\bif (you re |you are |youre )?not\b/.test(n) ||
+    /\bor (planning|plan|intending|intend|expecting|expect) to (be )?(based|located|living|live|reside|residing)\b/.test(n);
   const relocate = polarityOf(profile.willingToRelocate || "");
 
   const yesOrRelocate = (lives: boolean | null, rule: string): QuestionResult => {
@@ -795,11 +813,15 @@ function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, prof
     return abstain("residence-region:unknown");
   }
   // City / metro ("near Seattle", "the NYC area"): the same city is a Yes; a
-  // city in ANOTHER country is a No; another city in the same country is "near"
-  // or not by a judgment we do not make.
-  if (isHigh(loc.city) && geoNorm(loc.city.value) === geoNorm(place.name)) return yesOrRelocate(true, "residence-city");
-  const hinted = countryHintForCity(place.name);
-  if (hinted && residenceCountry && hinted !== residenceCountry.code) return yesOrRelocate(false, "residence-city:other-country");
+  // city in ANOTHER country, or in a state that does not border the
+  // applicant's, is a No; anything closer is "near" or not by a judgment we
+  // do not make (livesAt). Every city named counts ("the San Francisco Bay
+  // Area or New York City", Mixpanel): one is a Yes, a No needs them all.
+  const area = AREA_WORDS.test(n);
+  const named = placesIn(q.label).filter((p) => p.kind === "city");
+  const verdicts = (named.length > 0 ? named : [place]).map((p) => livesAt(p, facts, area));
+  if (verdicts.some((v) => v.lives === true)) return yesOrRelocate(true, "residence-city");
+  if (verdicts.every((v) => v.lives === false)) return yesOrRelocate(false, `residence-${verdicts[0].why}`);
   // "…based near our New York City, NY office. Are you open to relocating if
   // you're not currently based there?" (Gemini, live 2026-10-05): someone who
   // will move says Yes either way, and the label's own state settles "near"
@@ -811,6 +833,119 @@ function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, prof
     return yesOrRelocate(false, "residence-city:other-region");
   }
   return abstain("residence-city:unknown");
+}
+
+type NamedPlace = NonNullable<ReturnType<typeof placeIn>>;
+
+/**
+ * Whether the applicant lives at a place a question names. The same city,
+ * state or country: true. Another country, or a state that does not border
+ * the applicant's: false. Anything closer is a judgment ("near") we do not
+ * make: null. A neighbouring state can be the same metro (Jersey City for
+ * New York, Gatineau for Ottawa).
+ */
+function livesAt(place: NamedPlace, facts: ProfileFacts, area = false): { lives: boolean | null; why: string } {
+  const loc = facts.location;
+  const country = isHigh(loc.country) ? loc.country.value : null;
+  const region = isHigh(loc.region) ? loc.region.value : null;
+  if (place.kind === "country") return { lives: country ? country.code === place.code : null, why: "country" };
+  if (place.kind === "region") {
+    if (region) return { lives: region.code === place.code && region.country === place.country, why: "region" };
+    return { lives: country && country.code !== place.country ? false : null, why: "region:other-country" };
+  }
+  if (isHigh(loc.city) && geoNorm(loc.city.value) === geoNorm(place.name)) return { lives: true, why: "city" };
+  const placeCountry = countryHintForCity(place.name);
+  if (placeCountry && country && placeCountry !== country.code) return { lives: false, why: "city:other-country" };
+  const placeRegion = regionHintForCity(place.name);
+  if (placeRegion && region && placeRegion !== region.code && !regionsBorder(placeRegion, region.code)) return { lives: false, why: "city:other-region" };
+  // Two cities this file knows: another metro is elsewhere (Toronto for a
+  // Montreal office), the same metro is that area ("…the Bay Area", San Jose).
+  const metro = isHigh(loc.city) ? sameMetro(loc.city.value, place.name) : null;
+  if (metro === false) return { lives: false, why: "city:other-city" };
+  if (metro === true && area) return { lives: true, why: "city:same-metro" };
+  return { lives: null, why: "city:unknown" };
+}
+
+/** Words that make a city its area ("the NYC area", "near Seattle", "commutable distance"). */
+const AREA_WORDS = /\b(area|region|metro|greater|near|nearby|vicinity|commut\w*|proximity|within)\b/;
+
+/** Every place a label names, first mention first (see placeIn). */
+function placesIn(label: string): NamedPlace[] {
+  const out: NamedPlace[] = [];
+  const seen = new Set<string>();
+  const add = (p: NamedPlace): void => {
+    const key = JSON.stringify(p);
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(p);
+    }
+  };
+  const first = placeIn(label);
+  if (first) add(first);
+  const n = ` ${geoNorm(label)} `;
+  for (const [alias, city] of Object.entries(METRO_ALIASES)) if (n.includes(` ${alias} `)) add({ kind: "city", name: city });
+  for (const city of KNOWN_CITIES) if (n.includes(` ${city} `)) add({ kind: "city", name: city });
+  return out;
+}
+
+/** A North American time zone a question names ("the Pacific time zone"). */
+function zoneNamedIn(n: string): string | null {
+  return /\b(pacific|mountain|central|eastern|atlantic|newfoundland) (standard )?(time ?zone|timezone|time)\b/.exec(n)?.[1] ?? null;
+}
+
+/** Whether the applicant lives in a North American time zone: by state or
+ *  province; anyone in another country is in none of them. */
+function applicantInZone(zone: string, facts: ProfileFacts): boolean | null {
+  const region = isHigh(facts.location.region) ? facts.location.region.value : null;
+  if (region) {
+    const theirs = ZONE_OF_REGION[region.country + "-" + region.code];
+    return theirs ? theirs === zone : null;
+  }
+  const country = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+  return country && country !== "US" && country !== "CA" && country !== "MX" ? false : null;
+}
+
+/** An option that says the applicant must move: "Planning to Relocate", "Yes
+ *  but I would need to relocate", "…but I am willing to relocate". */
+const MOVE_OPTION = /\b(willing|open|planning|plan|ready|happy|able|prepared) to (relocate|move)\b|\bwould (need|have) to (relocate|move)\b|\b(require|requires|need|needs) (relocation|to relocate)\b/;
+const NO_MOVE = /\b(not|never|unable|unwilling)( be)?( (willing|able|open|planning|prepared|ready))? to (relocate|move)\b|\bunwilling\b/;
+/** An option that says the applicant already lives there: "Yes, I live in
+ *  San Diego", "In Boston", "…I am local to the San Francisco Bay Area". */
+const LOCAL_OPTION = /\b(i|we) (currently |already )?(live|reside) (in|near|within)\b|\bi am (currently |already )?(local|located|based|living) (in|to|near|within)\b|\blocal (to|in)\b|^local\b|^in [a-z]|\balready (live|living|located|based)\b/;
+/** Who pays for the move is the applicant's to choose ("Ready to move
+ *  (Self-Funded)" beside "Relocation Assistance Required", Niantic). */
+const MOVE_TERMS = /\b(assistance|package|support|reimburs\w*|stipend|self ?funded|expense)\b/;
+
+/**
+ * A list that tells living at the office from moving there from neither:
+ * "Yes, I live in San Diego" | "I do not live in San Diego but I am willing to
+ * relocate" | "No, …" (Iambic), "In Boston" | "Planning to Relocate" (Pryzm),
+ * "Yes" | "No" | "Yes, but require relocation" (Vital Lyfe). Anyone willing
+ * to move got the first Yes: people in Toronto, Berlin and Bengaluru said
+ * they lived in San Diego (Ashby question bank, 2026-10-08). The place is the
+ * one the local option or the question names, else the job's city.
+ */
+function resolveLocalOrRelocate(q: QuestionInput, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
+  const opts = (q.options ?? []).filter((o) => o.trim()).map((o) => ({ o, t: qnorm(o) }));
+  if (opts.length < 2 || opts.some((x) => MOVE_TERMS.test(x.t))) return null;
+  const move = opts.filter((x) => MOVE_OPTION.test(x.t) && !NO_MOVE.test(x.t));
+  if (move.length !== 1) return null;
+  let local = opts.filter((x) => x !== move[0] && LOCAL_OPTION.test(x.t) && !/\b(do not|dont|don t|not) (currently )?(live|reside|located|based|local)\b/.test(x.t));
+  // A plain Yes beside "Yes, but require relocation" is the Yes without a move.
+  if (local.length === 0) local = opts.filter((x) => x !== move[0] && /^yes\W*$/.test(x.t));
+  if (local.length !== 1) return null;
+  const no = opts.filter((x) => x !== move[0] && x !== local[0] && optionPolarity(x.o) === false);
+  const place: NamedPlace | null = placeIn(local[0].o) ?? placeIn(q.label) ?? (ctx.jobCity ? { kind: "city", name: ctx.jobCity } : null);
+  if (!place) return abstain("local-or-move:no-place");
+  let { lives } = livesAt(place, facts, AREA_WORDS.test(`${local[0].t} ${qnorm(q.label)}`));
+  const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
+  if (lives === null && ctx.jobCountry && home && home !== ctx.jobCountry) lives = false;
+  if (lives === true) return answer(local[0].o, "local-or-move:lives-there");
+  if (lives === null) return abstain("local-or-move:unknown");
+  const willing = polarityOf(profile.willingToRelocate || "");
+  if (willing === true) return answer(move[0].o, "local-or-move:moving");
+  if (willing === false) return no.length === 1 ? answer(no[0].o, "local-or-move:staying") : abstain("local-or-move:no-staying-option");
+  return abstain("local-or-move:relocation-unknown");
 }
 
 // ----- Places as choices ------------------------------------------------------
@@ -2789,6 +2924,7 @@ export function resolveQuestion(
     resolveCitizenship(sq, sn, facts, ctx) ??
     resolveAge(sq, sn, facts) ??
     resolveSchoolMembership(sq, sn, facts) ??
+    resolveLocalOrRelocate(sq, facts, profile, ctx) ??
     resolveMovePlan(sq, sn, profile) ??
     resolveResidence(sq, sn, facts, profile) ??
     resolveRegionChoice(sq, sn, facts) ??

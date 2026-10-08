@@ -239,6 +239,55 @@ export function regionHintForCity(city: string): string | null {
   return CITY_REGION[geoNorm(city)] ?? null;
 }
 
+/** US states (and DC) and Canadian provinces that share a border. */
+const BORDERS = new Set(
+  (
+    "AL-FL AL-GA AL-MS AL-TN AZ-CA AZ-CO AZ-NM AZ-NV AZ-UT AR-LA AR-MO AR-MS AR-OK AR-TN AR-TX CA-NV CA-OR " +
+    "CO-KS CO-NE CO-NM CO-OK CO-UT CO-WY CT-MA CT-NY CT-RI DE-MD DE-NJ DE-PA DC-MD DC-VA FL-GA GA-NC GA-SC " +
+    "GA-TN ID-MT ID-NV ID-OR ID-UT ID-WA ID-WY IL-IN IL-IA IL-KY IL-MO IL-WI IN-KY IN-MI IN-OH IA-MN IA-MO " +
+    "IA-NE IA-SD IA-WI KS-MO KS-NE KS-OK KY-MO KY-OH KY-TN KY-VA KY-WV LA-MS LA-TX ME-NH MD-PA MD-VA MD-WV " +
+    "MA-NH MA-NY MA-RI MA-VT MI-OH MI-WI MN-ND MN-SD MN-WI MS-TN MO-NE MO-OK MO-TN MT-ND MT-SD MT-WY NE-SD " +
+    "NE-WY NV-OR NV-UT NH-VT NJ-NY NJ-PA NM-OK NM-TX NM-UT NY-PA NY-VT NC-SC NC-TN NC-VA ND-SD OH-PA OH-WV " +
+    "OK-TX OR-WA PA-WV SD-WY TN-VA UT-WY VA-WV " +
+    "BC-AB AB-SK SK-MB MB-ON ON-QC QC-NB QC-NL NB-NS NB-PE NS-PE BC-YT BC-NT AB-NT SK-NT MB-NU YT-NT NT-NU"
+  )
+    .split(" ")
+    .flatMap((pair) => {
+      const [a, b] = pair.split("-");
+      return [`${a}-${b}`, `${b}-${a}`];
+    })
+);
+
+/** Two states or provinces that border each other: a metro can straddle the
+ *  line (Jersey City for New York, Gatineau for Ottawa), so a neighbour is
+ *  never "elsewhere" on its own. Codes, as in US_STATES / CA_PROVINCES. */
+export function regionsBorder(a: string, b: string): boolean {
+  return BORDERS.has(`${a.toUpperCase()}-${b.toUpperCase()}`);
+}
+
+/** The well-known cities above that share a metro area. */
+const METROS: string[][] = [
+  ["san francisco", "san jose", "palo alto", "mountain view", "menlo park", "sunnyvale", "bay area"],
+  ["seattle", "redmond", "bellevue"],
+  ["toronto", "mississauga", "markham", "gta"],
+  ["new york", "new york city", "nyc"],
+];
+
+/**
+ * Whether two places are the same metro area, when both are cities this file
+ * knows: true for the same city or metro (San Jose and Palo Alto), false for
+ * two known cities apart (Toronto and Montreal: Ontario borders Quebec, yet
+ * no one commutes between them), null when either is unknown (Jersey City).
+ */
+export function sameMetro(a: string, b: string): boolean | null {
+  const x = geoNorm(a);
+  const y = geoNorm(b);
+  if (x === y) return true;
+  const known = (c: string): boolean => c in CITY_REGION || METROS.some((m) => m.includes(c));
+  if (!known(x) || !known(y)) return null;
+  return METROS.some((m) => m.includes(x) && m.includes(y));
+}
+
 /** The cities above, longest first, for scanning question text. */
 export const REGION_CITIES: string[] = Object.keys(CITY_REGION).sort((a, b) => b.length - a.length);
 

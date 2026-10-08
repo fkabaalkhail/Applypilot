@@ -16,6 +16,7 @@ Results land in `test/e2e/results/` (git-ignored, kept on this machine).
 | `regress.mjs [--only id] [--size 13]` | The whole pinned suite in batches (about 2.5 h headful), then the failing cases. |
 | `freeze-probe.mjs <case id>` | A page that never finishes: streams the page's inputs and the extension's log, then pauses the frozen page in the debugger and prints the stack (`FREEZE_MS`, `PROFILE`, `LOCK`). |
 | `qbank-workable.mjs <accounts> <out.json>` | A Workable question bank from its public GET form endpoint, for `test/qbank.test.ts` (with `QBANK_URL` on a Workable host). |
+| `qbank-ashby.mjs <board,board,...> <out.json> [jobsPerBoard]` | An Ashby question bank: the public posting API (GET) lists a board's jobs, each form comes from the page's own `ApiJobPosting` GraphQL query (never a mutation). Run with `QBANK_URL` on jobs.ashbyhq.com. |
 | `qbank-review.cjs <bank-out.json>` | One line per distinct bank question with every persona's answer. |
 | `qbank-diff.cjs <old-out.json> <new-out.json> [label regex]` | Every bank answer that changed between two runs, grouped by question. Copy `<bank>-out.json` aside before a re-run, then read every line. |
 
