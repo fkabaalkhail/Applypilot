@@ -364,7 +364,12 @@ function coerceToKind(value: string, kind: AnswerKind): string | null {
 export function resolveField(input: FieldResolveInput): FieldResolution {
   const r = resolveFieldValue(input);
   const dateFormat = dateFormatFor(input.el, input.signals.typeHint, input.signals.placeholder);
-  if (!dateFormat) return r;
+  if (!dateFormat) {
+    // A signature box that shows no format takes today month first, as the
+    // US forms that ask for one write it (Lever's disability form "Date").
+    if (input.category === "signatureDate" && r.value) return { ...r, value: fitDate(r.value, "MM/DD/YYYY") ?? r.value };
+    return r;
+  }
   if (r.value === null) return { ...r, dateFormat };
   const value = fitDate(r.value, dateFormat);
   if (value === null) {

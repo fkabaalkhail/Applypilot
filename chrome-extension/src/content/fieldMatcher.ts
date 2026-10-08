@@ -1150,9 +1150,13 @@ export function resolveProfileValue(
     case "eeoOther":
       return null;
     case "signatureDate": {
+      // Today, written without an order to misread: a box that shows its
+      // format re-emits it in that format (fieldResolver). Month first, it
+      // was read day first by Workable's "DD/MM/YYYY" boxes: 8 October went
+      // in as 10 August (Saalex, live 2026-10-08).
       const d = new Date();
       const pad = (n: number): string => String(n).padStart(2, "0");
-      return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     }
 
     // Account signup password: never resolved from the profile; it is written

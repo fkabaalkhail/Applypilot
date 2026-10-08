@@ -3,11 +3,12 @@
  * test is a write a live page got wrong, or a blank a stated fact answers;
  * labels and markup are verbatim from the live pages.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { scanPage } from "../src/content/formScanner";
 import { liveControlFor } from "../src/content/staleControl";
-import type { RuntimeControl } from "../src/shared/types";
-import { SPARSE_CANADIAN } from "./fixtures/profiles";
+import { loadWorkableGuesses, prefilledGuesses, setPageGuesses, workableShortcode } from "../src/content/pageGuesses";
+import type { RuntimeControl } from "../src/content/formScanner";
+import { SPARSE_CANADIAN, TEST_TODAY } from "./fixtures/profiles";
 import { stubLayout } from "./helpers/layout";
 
 let restore: () => void;
@@ -125,5 +126,121 @@ describe("a dropdown the last scan lost is looked up again before it fails", () 
     const got = await liveControlFor("g1", () => ({ id: "g1", controlType: "radioGroup", radios: [radio] }), async () => void rescans++);
     expect(got?.radios?.[0]).toBe(radio);
     expect(rescans).toBe(0);
+  });
+});
+
+describe("Workable's Address guessed from the visitor's location is the page's guess (Saalex, DISA)", () => {
+  // Workable's public form JSON (GET /api/v1/jobs/<code>/form, Saalex, live
+  // 2026-10-08) serves the Address it guessed from the requester's IP, and
+  // the page puts that value in the box. The city here is made up.
+  const FORM_JSON = [
+    {
+      name: "Personal information",
+      fields: [
+        { id: "firstname", required: true, label: "First name", type: "text" },
+        {
+          id: "address",
+          required: true,
+          label: "Address",
+          helper: "Include your city, region, and country, so that employers can easily manage your application.",
+          type: "text",
+          value: "Springfield, United States",
+          prefilledByLocation: true,
+        },
+        { id: "phone", required: false, label: "Phone", type: "phone", value: "" },
+      ],
+    },
+  ];
+  const WORKABLE_ADDRESS = (value: string) => `
+    <form>
+      <div class="styles--3IYUq styles--3JEd1"><label class="styles--3aPac"><span class="styles--1-9tY"><span><span class="styles--QTMDv styles--2TdGW" id="address_label"><strong class="styles--2kqW6">Address</strong></span></span></span>
+        <div data-role="illustrated-input" class="styles--1tBNa"><div class="styles--3qHIU"><input aria-required="true" id="address" data-ui="address" name="address" aria-labelledby="address_label" aria-describedby="address_helper" required="" type="text" class="styles--2e9Cp" dir="auto" value="${value}"></div></div></label>
+        <div class="styles--2v-7u"><div class="styles--1VNPc"><span class="styles--f-uLT" id="address_helper">Include your city, region, and country, so that employers can easily manage your application.</span></div></div>
+      </div>
+    </form>`;
+  afterEach(() => setPageGuesses(new Map()));
+
+  it("reads the guessed values from the form JSON, and only those", () => {
+    expect([...prefilledGuesses(FORM_JSON).entries()]).toEqual([["address", "Springfield, United States"]]);
+    expect(prefilledGuesses({ unexpected: true }).size).toBe(0);
+  });
+
+  it("finds the posting's code in Workable's application addresses", () => {
+    expect(workableShortcode("https://apply.workable.com/saalex/j/2534F09970/apply/")).toBe("2534F09970");
+    expect(workableShortcode("https://apply.workable.com/j/2534F09970/apply")).toBe("2534F09970");
+    expect(workableShortcode("https://boards.greenhouse.io/acme/jobs/123")).toBeNull();
+  });
+
+  it("a box still holding the page's guess is empty to the fill, which writes the profile's location", () => {
+    setPageGuesses(prefilledGuesses(FORM_JSON));
+    document.body.innerHTML = WORKABLE_ADDRESS("Springfield, United States");
+    const { fields } = scanPage(SPARSE_CANADIAN, false, null);
+    const address = fields.find((f) => f.label === "Address");
+    expect(address?.currentValue).toBeUndefined();
+    expect(address?.proposedValue).toMatch(/Toronto/);
+  });
+
+  it("an Address the person typed is theirs, kept", () => {
+    setPageGuesses(prefilledGuesses(FORM_JSON));
+    document.body.innerHTML = WORKABLE_ADDRESS("Lyon, France");
+    const { fields } = scanPage(SPARSE_CANADIAN, false, null);
+    expect(fields.find((f) => f.label === "Address")?.currentValue).toBe("Lyon, France");
+  });
+
+  it("without the form JSON (another site, or the read failed) a filled box stays as it is", () => {
+    document.body.innerHTML = WORKABLE_ADDRESS("Springfield, United States");
+    const { fields } = scanPage(SPARSE_CANADIAN, false, null);
+    expect(fields.find((f) => f.label === "Address")?.currentValue).toBe("Springfield, United States");
+  });
+
+  it("loads the guesses with one GET of the posting's form, and none when it fails", async () => {
+    const asked: string[] = [];
+    await loadWorkableGuesses("https://apply.workable.com/saalex/j/2534F09970/apply/", async (url: string) => {
+      asked.push(url);
+      return { ok: true, json: async () => FORM_JSON } as Response;
+    });
+    expect(asked).toEqual(["https://apply.workable.com/api/v1/jobs/2534F09970/form"]);
+    document.body.innerHTML = WORKABLE_ADDRESS("Springfield, United States");
+    expect(scanPage(SPARSE_CANADIAN, false, null).fields.find((f) => f.label === "Address")?.currentValue).toBeUndefined();
+
+    setPageGuesses(new Map());
+    await loadWorkableGuesses("https://apply.workable.com/saalex/j/2534F09970/apply/", async () => {
+      throw new Error("offline");
+    });
+    expect(scanPage(SPARSE_CANADIAN, false, null).fields.find((f) => f.label === "Address")?.currentValue).toBe("Springfield, United States");
+  });
+});
+
+describe("today's date in a signature box is written in the box's own format (Saalex on Workable)", () => {
+  // Saalex's react-datepicker boxes show "DD/MM/YYYY" (the browser's en-GB
+  // locale). Today went in month-first and the box read it day-first: on
+  // 2026-10-08 the signature dates said 10 August (live; round 4's pins had
+  // recorded "May" for 5 October the same way).
+  const SIGNATURE_BOX = (placeholder: string) => `
+    <form>
+      <label for="sig"><strong>*</strong>Authorization Signature Date:</label>
+      <div class="react-datepicker-wrapper"><div class="react-datepicker__input-container">
+        <input id="sig" type="text" name="CA_31168" inputmode="tel" placeholder="${placeholder}" />
+      </div></div>
+    </form>`;
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(TEST_TODAY); // 2026-10-03
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const proposed = (placeholder: string) => {
+    document.body.innerHTML = SIGNATURE_BOX(placeholder);
+    return scanPage(SPARSE_CANADIAN, false, null).fields.find((f) => f.category === "signatureDate")?.proposedValue;
+  };
+
+  it("day first where the box shows DD/MM/YYYY", () => {
+    expect(proposed("DD/MM/YYYY")).toBe("03/10/2026");
+  });
+  it("month first where it shows MM/DD/YYYY", () => {
+    expect(proposed("MM/DD/YYYY")).toBe("10/03/2026");
+  });
+  it("year first where it shows YYYY-MM-DD", () => {
+    expect(proposed("YYYY-MM-DD")).toBe("2026-10-03");
   });
 });
