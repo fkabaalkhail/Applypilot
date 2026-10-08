@@ -80,6 +80,12 @@ function extractCompany(doc: Document): string {
   // no longer theirs).
   const titled = /^\s*job application for .+ at (.+?)\s*$/i.exec(doc.title || "");
   if (titled) return titled[1].slice(0, 120);
+  // A header logo's alt names it: Lever's <img alt="Palantir Technologies
+  // logo"> (live 2026-10-08: unknown, "Palantir Website" was not the
+  // company's own site and "Other" was chosen for a stated company website).
+  const logoAlt = doc.querySelector('.main-header-logo img[alt], header img[alt$="logo" i], [class*="header" i] [class*="logo" i] img[alt$="logo" i]')?.getAttribute("alt") ?? "";
+  const fromLogo = logoAlt.replace(/\s*\blogo\s*$/i, "").replace(/\s+/g, " ").trim();
+  if (fromLogo && fromLogo.length <= 80 && !/^(company|home|careers?|jobs?)$/i.test(fromLogo)) return fromLogo;
   // A name the page keeps for its header, shown or not (Paylocity's
   // #LayoutLogoName, hidden beside its logo, live 2026-10-05).
   const kept = (doc.querySelector('[id*="companyname" i], [id*="logoname" i], [class*="company-name" i], [class*="companyname" i]')?.textContent ?? "")

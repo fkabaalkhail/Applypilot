@@ -34,6 +34,10 @@ const GOVERNMENT_HISTORY: QuestionResult = { status: "abstain", rule: "default:g
 const RECORDING_CONSENT: QuestionResult = { status: "abstain", rule: "default:recording-consent", blockBackend: true };
 /** Who referred the applicant: theirs to write, never a guess. */
 const REFERRER_UNKNOWN: QuestionResult = { status: "abstain", rule: "default:referrer-unknown", blockBackend: true };
+/** Who wrote the application, or whether an AI helped: Tailrd may have. */
+const AUTHORSHIP =
+  /\b(this|the|my|your) application\b[^.?]{0,40}\b(myself|yourself|by a person|by a human|personally|on my own)\b|\bcompleted by a (person|human)\b|\b(used|using|use) an? (ai|artificial intelligence) tool\b|\bai (generated|assisted|written)\b/;
+const AUTHORSHIP_THEIRS: QuestionResult = { status: "abstain", rule: "default:authorship", blockBackend: true };
 /** Needing an accommodation, for anyone who has not stated "no disability". */
 const ACCOMMODATION_THEIRS: QuestionResult = { status: "abstain", rule: "default:accommodation-theirs", blockBackend: true };
 
@@ -180,7 +184,9 @@ const CONTACT_METHOD = /\b(contact|communication) (method|preference|channel)s?\
 const HOW_HEARD =
   // "Where did you first see this position?" (Iambic), "How'd you hear about
   // Range?" (Ashby bank 2026-10-08).
-  /\bhow (did )?you (first |originally )?(hear|heard|find|found|learn|learned|come across|came across|discover|discovered|connect|connected)\b|\bwhere did you (first |originally )?(hear|see|find|learn|come across|discover)\b|\bhowd you (first )?(hear|find|learn|discover)\b|\bhow were you (referred|introduced)\b|\b(referral|application|candidate|job) source\b|\bsource of (application|referral)\b|\bhow did you get to know\b/;
+  /\bhow (did )?you (first |originally )?(hear|heard|find|found|learn|learned|come across|came across|discover|discovered|connect|connected)\b|\bwhere did you (first |originally )?(hear|see|find|learn|come across|discover)\b|\bhowd you (first )?(hear|find|learn|discover)\b|\bhow were you (referred|introduced)\b|\b(referral|application|candidate|job) source\b|\bsource of (application|referral)\b|\bhow did you get to know\b|\b(which|what) (job |career )?(site|board|website|platform)\b[^?]{0,30}\b(see|saw|find|found|hear|heard|learn|discover)\b/;
+// ("From which job site did you see this posting?", Data Lab on Lever, live
+// 2026-10-08, the last alternative.)
 
 /** Channels a "how did you hear" list offers; three or more in an unlabeled
  *  question ("Select One", Hermeus on Lever) make it that question. */
@@ -607,6 +613,11 @@ export function resolveDefault(
   }
 
   if (PRIOR_APPLICATION.test(n)) return polar(false, q, "default:no-prior-application");
+  // Who completed the application is never ours to pledge (decision 6 of
+  // round 4): "…to ensure each application is completed by a person. Please
+  // select 'I confirm I am completing this application myself'" (Kobie on
+  // Lever, live 2026-10-08) went to the AI.
+  if (AUTHORSHIP.test(`${n} ${qn(opts.join(" "))}`)) return AUTHORSHIP_THEIRS;
   // "…Are you aware this is not a permanent role, and are you still
   // interested in being considered?" (Glossier, question bank 2026-10-05):
   // applying says so.

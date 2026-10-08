@@ -1120,11 +1120,25 @@ function resolveLocalOrRelocate(q: QuestionInput, facts: ProfileFacts, profile: 
   let local = opts.filter((x) => x !== move[0] && LOCAL_OPTION.test(x.t) && !/\b(do not|dont|don t|not) (currently )?(live|reside|located|based|local)\b/.test(x.t));
   // A plain Yes beside "Yes, but require relocation" is the Yes without a move.
   if (local.length === 0) local = opts.filter((x) => x !== move[0] && /^yes\W*$/.test(x.t));
+  // Living there twice over, on site or remote only ("I currently live in one
+  // of those cities AND I am willing to work on-site." | "…, but I am only
+  // open to remote opportunities.", Artera on Lever, live 2026-10-08): the
+  // remote one only for someone who said remote.
+  if (local.length > 1) {
+    const remote = /^remote$/i.test((profile.workPreference ?? "").trim());
+    const onlyRemote = (x: { t: string }): boolean => /\b(only (open to|interested in) remote|remote only|only remote)\b/.test(x.t);
+    local = local.filter((x) => onlyRemote(x) === remote);
+  }
   if (local.length !== 1) return null;
-  const no = opts.filter((x) => x !== move[0] && x !== local[0] && optionPolarity(x.o) === false);
-  const place: NamedPlace | null = placeIn(local[0].o) ?? placeIn(q.label) ?? (ctx.jobCity ? { kind: "city", name: ctx.jobCity } : null);
-  if (!place) return abstain("local-or-move:no-place");
-  let { lives } = livesAt(place, facts, AREA_WORDS.test(`${local[0].t} ${qnorm(q.label)}`));
+  const no = opts.filter((x) => x !== move[0] && x !== local[0] && optionPolarity(x.o) === false && !LOCAL_OPTION.test(x.t));
+  // Every place named counts: "…Santa Barbara, Kansas City, or the Seattle
+  // metropolitan area" is a Yes for Seattle.
+  const named = placesIn(local[0].o).length ? placesIn(local[0].o) : placesIn(q.label);
+  const places: NamedPlace[] = named.length ? named : ctx.jobCity ? [{ kind: "city", name: ctx.jobCity }] : [];
+  if (places.length === 0) return abstain("local-or-move:no-place");
+  const area = AREA_WORDS.test(`${local[0].t} ${qnorm(q.label)}`);
+  const verdicts = places.map((p) => livesAt(p, facts, area).lives);
+  let lives: boolean | null = verdicts.some((v) => v === true) ? true : verdicts.every((v) => v === false) ? false : null;
   const home = isHigh(facts.location.country) ? facts.location.country.value.code : null;
   if (lives === null && ctx.jobCountry && home && home !== ctx.jobCountry) lives = false;
   if (lives === true) return answer(local[0].o, "local-or-move:lives-there");
@@ -2715,13 +2729,15 @@ function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: 
     // "Are you an internal employee of Flourish Research…?" (Workable bank).
     /\b(current|former|past|previous|prior|internal|existing)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\bworked with us\b|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b|\b(provided|done|performed|did) (any )?(contract |consulting |freelance )?(work|services) for\b/.test(n);
   if (!shape) return null;
-  if (/\b(relative|family|friend|spouse|referr|government|federal|military|public sector)\b/.test(n)) return null;
+  // ("…any of the Crest family of companies", Crest on Lever, live
+  // 2026-10-08, is a group of employers, not a relative.)
+  if (/\b(relative|family(?! of (companies|brands|businesses))|friend|spouse|referr\w*|government|federal|military|public sector)\b/.test(n)) return null;
   // The company: a capitalized name in the question ("…employee of ActioNet",
-  // "a Twitch employee"), else an explicit pointer at the hiring company ("for
-  // us", "this company"). Anything else ("worked at a startup") names no
-  // company we can check.
+  // "a Twitch employee", "…of any of the Crest family of companies"), else an
+  // explicit pointer at the hiring company ("for us", "this company").
+  // Anything else ("worked at a startup") names no company we can check.
   const named =
-    /\b(?:of|by|for|at)\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,3})/.exec(raw) ??
+    /\b(?:of|by|for|at)\s+(?:any of\s+)?(?:the\s+)?([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,3})/.exec(raw) ??
     // "a current MongoDB employee" (MongoDB's embedded form, live 2026-10-03):
     // a qualifier may sit between the article and the name, or two ("a
     // current or former Alphabet employee", Waymo, live 2026-10-05).
@@ -3217,6 +3233,15 @@ export function resolveQuestion(
   if (told && q.options?.length) {
     const hit = q.options.filter((o) => o.trim().toLowerCase() === told[1].toLowerCase());
     if (hit.length === 1) return answer(hit[0], "attention-check");
+  }
+  // By its place: "To confirm you carefully read instructions, please select
+  // the SECOND option below" (Kobie on Lever, live 2026-10-08).
+  const nth = /\b(?:choose|select|pick|mark|check|click)\s+the\s+(first|second|third|fourth|fifth|sixth|last)\s+(?:option|answer|choice)\b/i.exec(raw);
+  if (nth && q.options?.length) {
+    const place = ["first", "second", "third", "fourth", "fifth", "sixth"].indexOf(nth[1].toLowerCase());
+    const real = q.options.filter((o) => o.trim());
+    const pick = nth[1].toLowerCase() === "last" ? real[real.length - 1] : real[place];
+    if (pick) return answer(pick, "attention-check");
   }
   // "If necessary, are you willing to relocate? (Please check YES if you
   // already live in the Lincoln, NE area.)" (RentVision on Workable,

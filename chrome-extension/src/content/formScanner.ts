@@ -376,12 +376,37 @@ function questionAboveOptions(members: HTMLInputElement[]): string {
     }
     const t = cleanText(text);
     if (t && t.length <= 300 && !optionText.has(t) && !isPlaceholderFiller(t)) return t;
+    // Longer: a question with its description (Lever's <div class="text">
+    // Question?</div><p class="description">…</p>, eqbank's "racialized
+    // person"), or a question a paragraph long (Kobie's 30 states). The
+    // block's first part is the question (live 2026-10-08: both were labelled
+    // with the input's name).
+    if (t.length > 300) {
+      for (const child of Array.from(node.children)) {
+        if (members.some((m) => child.contains(m))) continue;
+        if (child.querySelector(OTHER_FIELD_SELECTOR) || child.matches(OTHER_FIELD_SELECTOR)) continue;
+        const head = firstTextPart(child);
+        if (head && !optionText.has(head) && !isPlaceholderFiller(head)) return head;
+      }
+    }
     // Another control's block: stop before borrowing a neighbour's question.
     if (node.parentElement && Array.from(node.parentElement.querySelectorAll(OTHER_FIELD_SELECTOR)).some((c) => !members.includes(c as HTMLInputElement) && !node!.contains(c))) {
       break;
     }
   }
   return "";
+}
+
+/** A block's first part with text, up to a paragraph long: its own text when
+ *  it has no element inside, else its first child with text. */
+function firstTextPart(el: Element, depth = 0): string {
+  const own = cleanText(el.textContent);
+  if (!own) return "";
+  const kids = Array.from(el.children).filter((c) => cleanText(c.textContent));
+  // Text of its own beside the children ("Question? <span>✱</span>"): the whole.
+  const loose = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim());
+  if (kids.length === 0 || loose || depth >= 3) return own.length <= 800 ? own : "";
+  return firstTextPart(kids[0], depth + 1);
 }
 
 /** Inputs a user fills in (choices included); hidden mirrors and buttons are not. */

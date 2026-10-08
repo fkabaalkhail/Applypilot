@@ -450,7 +450,9 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   const minorityAsked = /\bracialized\b|\bvisible minorit(y|ies)\b/i.test(label.split("?")[0]) || (options ?? []).some((o) => /^visible minorit/i.test(o.trim()));
   if (minorityAsked && options && options.length > 1) {
     const v = visibleMinorityOption(profile, options);
-    return v === null ? none(true, "eeo:visible-minority-unknown") : { value: v, kind, source: "category", deviceAbstained: false, rule: "eeo:visible-minority" };
+    // A rule's answer, selected on its own evidence: Wattpad's list is
+    // otherwise an unknown field, and stayed unselected live (2026-10-08).
+    return v === null ? none(true, "eeo:visible-minority-unknown") : { value: v, kind, source: "question", deviceAbstained: false, rule: "eeo:visible-minority" };
   }
 
   // 2. Question shapes. EEO answers are the user's own words and are matched

@@ -280,3 +280,87 @@ describe("the fixes' edges, from re-running every bank", () => {
     expect(r?.rule).not.toBe("default:accommodation-theirs");
   });
 });
+
+describe("Lever's long questions keep their label (eqbank, Kobie, live 2026-10-08)", () => {
+  // <div class="application-label"><div class="text">Question?</div><p
+  // class="description">…</p></div>: the question and its definition ran past
+  // 300 characters, and so did Kobie's list of 30 states with no definition.
+  // Both were labelled with the input's name, and no rule saw them.
+  const RADIOS = (name: string, opts: string[]) =>
+    `<div class="application-field full-width required-field"><ul data-qa="multiple-choice">${opts.map((o) => `<li><label><input type="radio" name="${name}" value="${esc(o)}" required="required" /><span class="application-answer-alternative">${esc(o)}</span></label></li>`).join("")}</ul></div>`;
+  const RACIALIZED = `<li class="application-question"><div class="application-label full-width multiple-choice"><div class="text">Do you self-identify as a racialized person?</div><p class="description">Racialized persons - For the purposes of employment equity, members of such groups in Canada are persons other than Indigenous or Aboriginal People, who are non-Caucasian in race or non-white in colour, regardless of place of birth or citizenship. This includes (but is not limited to): • Black (including African, Caribbean, North American etc.) • Latin American/Hispanic (including Indigenous persons from Central and South America) • East Asian (e.g., Chinese, Japanese, Korean) • South Asian (e.g., Indian, Pakistani, Sri Lankan, etc.) • Southeast Asian (e.g.Filipino, Laotian, Vietnamese, etc.) • Middle Eastern (e.g., Syrian, Afghani, Iranian, etc.) • Persons of Mixed Origin</p></div>${RADIOS("surveysResponses[54d5][responses][field3]", ["Yes", "No", "Prefer not to say"])}</li>`;
+  const STATES_Q = "Kobie operates in the following states. Are you currently located in one of these states? Colorado, Connecticut, District of Columbia, Florida, Georgia, Illinois, Indiana, Louisiana, Maryland, Massachusetts, Michigan, Minnesota, Mississippi, Missouri, Nevada, New Jersey, New Mexico, New York, North Carolina, Ohio, Oklahoma, Oregon, Pennsylvania, Rhode Island, South Carolina, Tennessee, Texas, Vermont, Virginia, Wisconsin";
+  const STATES = `<li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">${STATES_Q}<span class="required">\u2731</span></div></div>${RADIOS("cards[6617][field10]", ["Yes, I'm currently authorized to work and located in one of Kobie's operational states", "No, I'm located outside Kobie's operational states"])}</div></li>`;
+  const page = (inner: string) => `<form id="application-form"><div class="section application-form"><ul>
+    <li class="application-question"><label><div class="application-label">Full name<span class="required">\u2731</span></div><div class="application-field"><input type="text" name="name"></div></label></li>
+    <li class="application-question"><label><div class="application-label">Email<span class="required">\u2731</span></div><div class="application-field"><input type="email" name="email"></div></label></li>
+    ${inner}</ul></div></form>`;
+
+  it("a question with its description is labelled by the question", () => {
+    document.body.innerHTML = page(RACIALIZED);
+    const { fields } = scanPage(persona("US_H1B_SENIOR"), true, null);
+    const f = fields.find((x) => x.controlType === "radioGroup");
+    expect(f?.label).toBe("Do you self-identify as a racialized person?");
+    expect(f?.proposedValue).toBe("Yes");
+  });
+  it("a question a paragraph long is labelled whole", () => {
+    document.body.innerHTML = page(STATES);
+    const { fields } = scanPage(persona("BOOTCAMP_CAREER_GAP"), true, null);
+    const f = fields.find((x) => x.controlType === "radioGroup");
+    expect(f?.label.startsWith("Kobie operates in the following states.")).toBe(true);
+    expect(f?.proposedValue).toBe("Yes, I'm currently authorized to work and located in one of Kobie's operational states");
+  });
+});
+
+describe("the company named by the header logo (Palantir on Lever, live 2026-10-08)", () => {
+  // Lever pages carry no og:site_name, no JSON-LD and no "at <Company>"
+  // title; the company is the logo's alt. Unknown, "Palantir Website" was
+  // not the company's own site, and "Other" was chosen for a stated
+  // "Company website".
+  it("reads 'Palantir Technologies' from the logo's alt", async () => {
+    const { extractJobIdentity } = await import("../src/content/jobContext");
+    document.title = "Palantir Technologies - Data Engineer - Talent Acquisition Operations";
+    document.body.innerHTML = `<div class="main-header page-full-width section-wrapper"><div class="main-header-content page-centered narrow-section page-full-width"><a class="main-header-logo" href="https://jobs.lever.co/palantir"><img alt="Palantir Technologies logo" src="https://example.com/logo.png"></a></div></div><div class="posting-headline"><h2>Data Engineer</h2></div>`;
+    expect(extractJobIdentity(document).company).toBe("Palantir Technologies");
+  });
+});
+
+describe("live-only gaps on the Lever pages (2026-10-08)", () => {
+  it("'From which job site did you see this posting?' is the how-did-you-hear question (Data Lab)", () => {
+    const opts = ["Indeed", "LinkedIN", "University", "Glassdoor", "Zip Recruiter", "Referral", "Search Engine", "Other"];
+    expect(ask("COMPLETE_CANADIAN", "From which job site did you see this posting?", opts)).toBe("LinkedIN");
+    expect(ask("BERLIN_STAFF", "From which job site did you see this posting?", opts)).toBe("Referral");
+  });
+  it("a headquarters is an office to move to (SEP)", () => {
+    const q = "SEP headquarters is in Westfield, IN. We believe we do our best work together - so, this is not a remote role. Are you able to work from our Westfield, IN headquarters 5 days a week?";
+    expect(ask("US_OPT_ANALYST", q, ["Yes", "No"], "US", "Westfield")).toBe("Yes");
+    expect(ask("US_H1B_SENIOR", q, ["Yes", "No"], "US", "Westfield")).toBe("No");
+  });
+  it("'Are you a previous employee of any of the Crest family of companies?' is No for no history there", () => {
+    expect(ask("US_H1B_SENIOR", "Are you a previous employee of any of the Crest family of companies?", ["Yes", "No"])).toBe("No");
+  });
+  it("a pledge about who completed the application is never answered, nor sent to the AI (Kobie)", () => {
+    const q = "We include this question to ensure each application is completed by a person. Please select \"I confirm I am completing this application myself\"";
+    const opts = ["I used an AI tool or automated service to complete this application", "I confirm I am completing this application myself", "I had someone else complete this application"];
+    const r = resolveQuestion({ label: q, controlType: "select", options: opts, category: "unknown", kind: "choice" }, profileFacts(persona("BOOTCAMP_CAREER_GAP"), TEST_TODAY), persona("BOOTCAMP_CAREER_GAP"), { jobCountry: "US", company: "Kobie" });
+    expect(r?.status).toBe("abstain");
+    expect(r && "blockBackend" in r ? r.blockBackend : false).toBe(true);
+  });
+  it("Artera's four relocation options: on site where one lives, moving, or neither", () => {
+    const q = "Are you currently based in, or willing to relocate to, Santa Barbara, Kansas City, or the Seattle metropolitan area for an onsite role?";
+    const opts = ["I currently live in one of those cities AND I am willing to work on-site.", "I currently live in one of those cities, but I am only open to remote opportunities.", "I am willing to relocate to one of those cities AND I am willing to work on-site", "I am not located in one of those cities and I am not willing to relocate"];
+    expect(ask("US_H1B_SENIOR", q, opts)).toBe(opts[0]);
+    expect(ask("BERLIN_STAFF", q, opts)).toBe(opts[2]);
+    expect(ask("BOOTCAMP_CAREER_GAP", q, opts)).toBe(opts[3]);
+  });
+  it("an attention check by its place: 'select the SECOND option below' (Kobie)", () => {
+    expect(ask("COMPLETE_CANADIAN", "To confirm you carefully read instructions, please select the SECOND option below", ["OPTION 1", "OPTION 2", "OPTION 3", "OPTION 4"])).toBe("OPTION 2");
+  });
+});
+
+describe("a referral by an employee of a family of companies is still a referral (Crest)", () => {
+  it("'Were you referred by a current employee of the Crest Family of Companies?' (stated Referral)", () => {
+    expect(ask("BERLIN_STAFF", "Were you referred by a current employee of the Crest Family of Companies?", ["Yes", "No"])).toBe("Yes");
+    expect(ask("US_H1B_SENIOR", "Were you referred by a current employee of the Crest Family of Companies?", ["Yes", "No"])).toBe("No");
+  });
+});
