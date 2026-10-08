@@ -184,15 +184,7 @@ export default [
       "#question_69506866": "Yes",
     },
   }),
-  live({
-    id: "live-fresh-ashby-greenboard",
-    ats: "ashby",
-    url: "https://jobs.ashbyhq.com/greenboard/e5deef5b-8667-48d7-be48-a0b6616eaba5/application",
-    expect: {
-      "#_systemfield_name": "Maya Tremblay",
-      "#_systemfield_email": "maya.tremblay@example.com",
-    },
-  }),
+  // live-fresh-ashby-greenboard retired 2026-10-08: the posting closed (Ashby's posting API no longer lists it).
   live({
     id: "live-fresh-ashby-voldex",
     ats: "ashby",
@@ -266,22 +258,7 @@ export default [
       "radio~Veteran Status": "I am not a protected veteran",
     },
   }),
-  live({
-    id: "live-fresh-ashby-nttdata",
-    ats: "ashby",
-    url: "https://jobs.ashbyhq.com/ntt-data-aivista/75f9f312-1cf9-4141-b352-60cb2fac8fe9/application",
-    expect: {
-      "#_systemfield_name": "Maya Tremblay",
-      "text~First Name": "Maya",
-      "text~Last Name": "Tremblay",
-      "#_systemfield_email": "maya.tremblay@example.com",
-      "tel~Phone Number": "(416) 555-0142",
-      "name=37a70c9b-7d19-488c-9d9d-e64cc7ea6045": "https://www.linkedin.com/in/maya-tremblay",
-      "radio~Are you able to work out of the office in either t": "Yes",
-      "name=723381c8-fdfc-4a00-bbe2-a39539c783b4": "Toronto, ON, Canada",
-      "radio~Are you currently an advanced PhD candidate (or eq": "No",
-    },
-  }),
+  // live-fresh-ashby-nttdata retired 2026-10-08: the posting closed (Ashby's posting API no longer lists it).
   live({
     id: "live-fresh-lever-neighbor",
     ats: "lever",

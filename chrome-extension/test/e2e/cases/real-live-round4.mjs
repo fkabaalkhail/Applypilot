@@ -100,6 +100,9 @@ export default [
     profile: COMPLETE_CANADIAN,
     url: "https://job-boards.greenhouse.io/astranis/jobs/4704826006",
     expect: {
+      // The page reworded its SMS consent (2026-10-08; was "By selecting YES, I
+      // consent to receive recruiting SMS messages"): still never opted in.
+      "#question_8652504006": "No",
       "label:First Name": "Maya",
       "label:Last Name": "Tremblay",
       "label:Email": "maya.tremblay@example.com",
@@ -121,7 +124,6 @@ export default [
       "label:At Astranis, we value in-person collaboration and a strong w": "Yes",
       "label:How did you hear about Astranis?": "LinkedIn",
       "label:LinkedIn Profile": "https://www.linkedin.com/in/maya-tremblay",
-      "label:By selecting YES, I consent to receive recruiting SMS messag": "No",
       "label:Gender": "Female",
       "label:Are you Hispanic/Latino?": "No",
       "label:Please identify your race": "White",
@@ -158,42 +160,9 @@ export default [
   live({ id: "r4a-sr-sbt", ats: "smartrecruiters", profile: US_OPT_ANALYST, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/SBTGlobalInc/publication/7e5a69d6-3dc3-41be-9f8f-c50fbe914dff?dcr_ci=SBTGlobalInc" }),
   live({ id: "r4a-sr-sosi", ats: "smartrecruiters", profile: BOOTCAMP_CAREER_GAP, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/SOSi1/publication/20d59ff9-6d62-497c-99b3-5273596a0d8d?dcr_ci=SOSi1" }),
   live({ id: "r4a-sr-veolia", ats: "smartrecruiters", profile: BERLIN_STAFF, url: "https://jobs.smartrecruiters.com/oneclick-ui/company/VeoliaEnvironnementSA/publication/bc95e909-65ec-45af-91ca-54a99990664b?dcr_ci=VeoliaEnvironnementSA" }),
-  live({
-    id: "r4a-jazz-dig",
-    ats: "jazzhr",
-    profile: US_H1B_SENIOR,
-    url: "https://funeraldirectorslifeinsurancecompany.applytojob.com/apply/tllnE4Dmtz/Data-Analyst-ABILENE-TX",
-    expect: {
-      "label:First Name": "Thu Hà",
-      "label:Last Name": "Nguyễn",
-      "label:Email Address": "thuha.nguyen@example.com",
-      "label:Phone": "(206) 555-0131",
-      "#resumator-address-value": "1200 Westlake Ave N, Unit 805",
-      "label:City": "Seattle",
-      "label:State/Province": "WA",
-      "label:Postal": "98109",
-      "label:Are you willing to relocate?": "No",
-      "label:Are you 18 years of age or older?": "Yes",
-      "label:LinkedIn Profile URL:": "https://www.linkedin.com/in/thuha-nguyen",
-      "label:Desired salary": "$185,000",
-      "label:Earliest start date?": { re: String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$` },
-      "label:Education: Institution Name?": "University of Washington",
-      "#resumator-questionnaire-q1340188": "Information Systems",
-      "#resumator-questionnaire-q1340189": "Hanoi University of Science and Technology",
-      "#resumator-questionnaire-q1340192": "Computer Science",
-      "label:Employment: Employer Name?": "Expedia Group",
-      "#resumator-questionnaire-q1340194": "Senior Data Engineer",
-      "#resumator-questionnaire-q1340201": "Redfin",
-      "#resumator-questionnaire-q1340202": "Senior Data Engineer",
-      "label:What date are you available for work?": { re: String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$` },
-      "label:Are you able to meet the attendance requirements of the posi": "Yes",
-      "label:If yes, please explain. If no please answer \"not applicable\"": null,
-      "label:Summarize any training, skills, licenses, certificates and/o": "Python, Spark, Airflow, SQL",
-      "#resumator-checkbox-1340219-1": "checked",
-      "label:I do not Consent": null,
-      "#resumator-sms-consent": null,
-    },
-  }),
+  // r4a-jazz-dig retired 2026-10-08: the posting closed (its page answers 410
+  // Gone and holds no form). Its answers stay pinned by the unit test on the
+  // saved page in round4.test.ts (fixtures/real/jazzhr/jazzhr-dig-analyst.html).
   live({
     id: "r4a-breezy-qblock",
     ats: "breezy",
@@ -233,6 +202,8 @@ export default [
     profile: BOOTCAMP_CAREER_GAP,
     url: "https://apply.workable.com/consumeraffairs-1/j/0544C1F4F8/apply/",
     expect: {
+      // Workable guessed this machine's location; the profile's replaces it (round 5).
+      "#address": "Denver, CO",
       "label:*First name": "D'Andre",
       "label:*Last name": "Jean-Baptiste",
       "label:*Email": "dandre.jb@example.com",
@@ -444,38 +415,8 @@ export default [
       "radio~Veteran Status⁠*⁠:": "No",
     },
   }),
-  live({
-    id: "r4b-gh-duolingo",
-    ats: "greenhouse",
-    profile: BOOTCAMP_CAREER_GAP,
-    url: "https://careers.duolingo.com/jobs/8806187002?gh_jid=8806187002",
-    expect: {
-      "#first_name": "D'Andre",
-      "label:Last Name": "Jean-Baptiste",
-      "#email": "dandre.jb@example.com",
-      "label:Phone": "720.555.0164",
-      "label:Preferred First Name": "D'Andre",
-      "label:How do you pronounce your name? (e.g., 'An-na' or 'Ah-na')": null,
-      "label=Yes": "Yes",
-      "label:Do you have a Duolingo account? If yes, what is your usernam": null,
-      "label:Other": "Other",
-      "label:LinkedIn Profile": "https://linkedin.com/in/dandre-jean-baptiste/",
-      "label:Website": "https://dandre.codes",
-      "label=Yes#2": "Yes",
-      "label=No": "No",
-      "label=No#2": "No",
-      "label=End date month*": null,
-      "#educations[0].end_date.year": null,
-      "label=End date month*#2": null,
-      "#educations[1].end_date.year": null,
-      "label=Man": "Man",
-      "label:Black or of African descent": "Black or of African descent",
-      "label:I don't wish to answer": "I don't wish to answer",
-      "label=No#3": "No",
-      "label=Yes#3": "Yes",
-      "label:No, I am not a veteran or active member": "No, I am not a veteran or active member",
-    },
-  }),
+  // r4b-gh-duolingo retired 2026-10-08: the posting closed (Greenhouse's job API
+  // answers 404 and the page holds no form).
   live({
     id: "r4b-gh-gemini",
     ats: "greenhouse",
@@ -1162,6 +1103,6 @@ export default [
 
 /** The pages a fix touched, re-run after the fixes (ids are their batch's). */
 export const VERIFY = [
-  "r4a-jazz-dig", "r4a-wk-consumeraffairs", "r4b-gh-anduril", "r4b-gh-coveo", "r4b-gh-cloudflare", "r4b-gh-duolingo",
+  "r4a-wk-consumeraffairs", "r4b-gh-anduril", "r4b-gh-coveo", "r4b-gh-cloudflare",
   "r4b-gh-gemini", "r4b-gh-afs", "r4b-gh-doordash", "r4b-gh-gitlab", "r4b-gh-epic", "r4b-gh-c3",
 ];

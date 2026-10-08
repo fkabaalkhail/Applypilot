@@ -29,7 +29,10 @@ const HOST_PAGE = `<!doctype html>
 </body>
 </html>`;
 
-export default [
+// live-gh-oneimaging-embedded retired 2026-10-08: the posting closed
+// (Greenhouse's job API answers 404). r4r-embed-waymo still runs a live
+// Greenhouse embed; point this host page at an open posting to restore it.
+export const RETIRED = [
   {
     ...base,
     id: "live-gh-oneimaging-embedded",
@@ -37,3 +40,5 @@ export default [
     html: HOST_PAGE,
   },
 ];
+
+export default [];

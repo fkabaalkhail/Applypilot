@@ -465,38 +465,7 @@ export default [
       "label:Veteran Status": "I don't wish to answer",
     },
   }),
-  live({
-    id: "live-heldout2-gh-robinhood",
-    ats: "greenhouse",
-    url: "https://boards.greenhouse.io/robinhood/jobs/8214142?gh_jid=8214142",
-    expect: {
-      "label:First Name": "Maya",
-      "label:Last Name": "Tremblay",
-      "label:Email": "maya.tremblay@example.com",
-      "#country": DIAL_CODE_CANADA,
-      "label:Phone": PHONE,
-      "label:Location (City)": TORONTO,
-      // Greenhouse's async School react-select sometimes ignores the first
-      // interaction in combined runs (seen without the extension too): blank, never wrong.
-      "label:School": orBlank("University of Waterloo"),
-      "label:Degree": "Bachelor's Degree",
-      "label:End date year": "2027",
-      "label:LinkedIn Profile": "https://www.linkedin.com/in/maya-tremblay",
-      "label:Have you ever worked for Robinhood as an employee, intern or": "I have never worked at Robinhood",
-      "label:Are you legally work authorized to work in the US?": null,
-      "label:Will you now (or in the future) require visa sponsorship in ": null,
-      "label:What is your gender identity?": "I don't wish to answer",
-      "label:What is your race or ethnicity?": "I don't wish to answer",
-      "label:What is your disability status?": "I don't wish to answer",
-      "label:Do you identify as part of the LGBTQ+ community?": "I don't wish to answer",
-      // Was TICKED: a demographic-data consent for an applicant who answered no
-      // demographic question (classified eeoOther, so it passed the gate).
-      "label:By checking this box, I consent to Robinhood collecting, sto": "checked",
-      "#question_69285315": "No",
-      "#question_69285317": "No",
-      "label=What is your military status?*": "I don't wish to answer",
-    },
-  }),
+  // live-heldout2-gh-robinhood retired 2026-10-08: the posting closed (Greenhouse's job API answers 404).
   live({
     id: "live-heldout2-lever-zoox",
     ats: "lever",
