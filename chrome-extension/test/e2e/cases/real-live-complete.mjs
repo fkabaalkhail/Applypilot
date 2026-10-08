@@ -199,7 +199,8 @@ export default [
       "#question_17440926008": "relocating",
       "#question_17440927008": "No",
       "#question_18372903008": "I will read the arbitration agreement below.",
-      "#question_18375168008": "I understand and agree to the terms of the Agreement to Arbitrate set forth above.",
+      // Agreeing to arbitrate is the applicant's alone (decision 51, round 5).
+      "#question_18375168008": null,
       "#gender": "Female",
       "#hispanic_ethnicity": "No",
       "#race": "White",

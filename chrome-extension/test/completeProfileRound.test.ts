@@ -140,8 +140,10 @@ describe("channels, acknowledgements, opt-outs", () => {
   });
   it("a required list whose only option acknowledges (Anthropic's arbitration agreement)", () => {
     expect(value(ask("Please read the arbitration agreement below*", { options: ["I will read the arbitration agreement below."] }))).toBe("I will read the arbitration agreement below.");
+    // Agreeing to it is the applicant's alone, never ours or the AI's
+    // (decision 51, round 5); reading it gives nothing up.
     const agree = "I understand and agree to the terms of the Agreement to Arbitrate set forth above.";
-    expect(value(ask("Agreement to Arbitrate*", { options: [agree] }))).toBe(agree);
+    expect(value(ask("Agreement to Arbitrate*", { options: [agree] }))).toBe("abstain");
   });
   it("a titled policy with Yes / No is consent (Anthropic 'AI Policy for Application')", () => {
     expect(value(ask("AI Policy for Application*", { options: YES_NO }))).toBe("Yes");

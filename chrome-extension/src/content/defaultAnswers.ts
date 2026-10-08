@@ -40,6 +40,16 @@ const AUTHORSHIP =
 const AUTHORSHIP_THEIRS: QuestionResult = { status: "abstain", rule: "default:authorship", blockBackend: true };
 /** Needing an accommodation, for anyone who has not stated "no disability". */
 const ACCOMMODATION_THEIRS: QuestionResult = { status: "abstain", rule: "default:accommodation-theirs", blockBackend: true };
+/**
+ * Giving up the right to sue: agreeing to arbitrate, or waiving a jury trial
+ * or a class action (decision 51). Receiving the agreement, or reading it,
+ * gives nothing up ("Please confirm receipt of … US Arbitration Agreement.",
+ * Coinbase; "I will read the arbitration agreement below.", Anthropic).
+ * Matched on normalized words, so the windows count words.
+ */
+const WAIVES_RIGHTS =
+  /\b(agree|agrees|agreed|agreeing|accept|accepts|accepted|consent|consents|bound)\b(?: \w+){0,25} arbitrat\w*|\barbitrat\w*(?: \w+){0,25} (agree|agrees|agreed|accept|accepts|accepted|bound)\b|\bwaiv\w*(?: \w+){0,8} (jury|class|collective|right to sue)\b|\b(jury trial|class action|collective action)s?(?: \w+){0,6} waiv\w*/;
+const RIGHTS_THEIRS: QuestionResult = { status: "abstain", rule: "default:waives-rights", blockBackend: true };
 
 /** Lowercase words (mirrors questionResolver.qnorm, kept local to avoid an import cycle). */
 const qn = (text: string): string =>
@@ -555,6 +565,10 @@ export function resolveDefault(
   // name." (Lever, question bank 2026-10-08) got the applicant's own name.
   if (!choiceLike && /\breferred (by|you|for)\b|\breferral\b|\breferrer\b|\bwho referred\b|\brefer(red)? you\b|\bwere you referred\b/.test(n) && /\breferr|\bemployee\b|\bfriend\b/.test(qn(profile.howDidYouHear ?? ""))) return REFERRER_UNKNOWN;
   if (!choiceLike) return unencumberedText(q, n, profile);
+  // Agreeing to arbitrate is the applicant's alone, never ours or the AI's:
+  // Roblox's, Asana's and Anthropic's agreements were accepted while Block's
+  // and sweetgreen's were left blank (question bank 2026-10-08).
+  if (WAIVES_RIGHTS.test(`${n} ${qn(opts.join(" "))}`)) return RIGHTS_THEIRS;
   // A long statement is judged by what it asks: SSCI's certification mentions
   // "a consumer credit report or criminal records check" and asks nothing
   // about a record (Workable bank, 2026-10-05: left unaccepted).

@@ -460,7 +460,8 @@ export default [
       "label:Will you now or will you in the future require employment vi": null,
       "label:What is the address from which you plan on working? If you w": orBlank("Toronto, ON, Canada"),
       "label:Please read the arbitration agreement below": "I will read the arbitration agreement below.",
-      "label:Agreement to Arbitrate": "I understand and agree to the terms of the Agreement to Arbitrate set forth above.",
+      // Agreeing to arbitrate is the applicant's alone (decision 51, round 5).
+      "label:Agreement to Arbitrate": null,
       "label:Gender": "Decline To Self Identify",
       "label:Are you Hispanic/Latino?": "Decline To Self Identify",
       "label:Veteran Status": "I don't wish to answer",

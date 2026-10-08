@@ -520,7 +520,8 @@ export default [
       "label:What is the address from which you plan on working? If you w": "Austin, TX",
       "label:Have you ever interviewed at Anthropic before?": "No",
       "label:Please read the arbitration agreement below": "I will read the arbitration agreement below.",
-      "label:Agreement to Arbitrate": "I understand and agree to the terms of the Agreement to Arbitrate set forth above.",
+      // Agreeing to arbitrate is the applicant's alone (decision 51, round 5).
+      "label:Agreement to Arbitrate": null,
       "label:Gender": "Male",
       "label:Are you Hispanic/Latino?": "No",
       "label:Please identify your race": "Black or African American",

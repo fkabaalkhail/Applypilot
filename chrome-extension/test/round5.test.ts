@@ -1015,3 +1015,42 @@ describe("a web component's own label attribute names its field (SmartRecruiters
     expect(scan().map((f) => f.label)).toEqual(["Last name"]);
   });
 });
+
+describe("agreeing to arbitrate is the applicant's (decision 51, 2026-10-08)", () => {
+  // Giving up the right to sue (arbitration, a jury trial, a class action)
+  // is the applicant's to accept, and never the AI's. The banks showed both:
+  // Block's and sweetgreen's agreements were left blank, Anthropic's,
+  // Roblox's and Asana's accepted. Acknowledging receipt, or that one will
+  // read it, gives nothing up; neither does an application certification.
+  const scanOne = (label: string, options: string[]) => {
+    const opts = options.map((o) => `<option>${o}</option>`).join("");
+    document.body.innerHTML = `<form><div class="field"><label for="q1">${label}</label><select id="q1"><option value="">Select...</option>${opts}</select></div></form>`;
+    setResolveContext({ jobCountry: "US", jobCity: null, jobPlaces: null, company: "Acme" });
+    const [f] = scanPage(P.COMPLETE_CANADIAN as UserApplicationProfile, true).fields;
+    return f;
+  };
+  it("an arbitration agreement is left blank, and kept from the AI", () => {
+    const roblox = scanOne("Please review and acknowledge Roblox's Candidate Arbitration Agreement", [
+      "I acknowledge that I received and had the opportunity to review Roblox's Candidate Arbitration Agreement, and I agree to be bound by its terms.",
+    ]);
+    expect(roblox.proposedValue ?? null).toBeNull();
+    expect(roblox.deviceAbstained).toBe(true);
+    const anthropic = scanOne("Agreement to Arbitrate", ["I understand and agree to the terms of the Agreement to Arbitrate set forth above."]);
+    expect(anthropic.proposedValue ?? null).toBeNull();
+    const asana = scanOne(
+      "By agreeing here: (1) I certify that the information I provided to Asana in connection with my application for employment is accurate and truthful; and (2) I acknowledge and agree that I have carefully read the mutual Applicant Arbitration Agreement set out below and agree to be bound by it",
+      ["Yes", "No"]
+    );
+    expect(asana.proposedValue ?? null).toBeNull();
+  });
+  it("so is a lone box agreeing to it", () => {
+    document.body.innerHTML = `<form><label><input type="checkbox" id="c1"> I have read and agree to the Mutual Arbitration Agreement, including the waiver of class actions.</label></form>`;
+    setResolveContext({ jobCountry: "US", jobCity: null, jobPlaces: null, company: "Acme" });
+    const [f] = scanPage(P.COMPLETE_CANADIAN as UserApplicationProfile, true).fields;
+    expect(f.proposedValue === "yes").toBe(false);
+  });
+  it("receiving it, or reading it, gives nothing up", () => {
+    expect(scanOne("Please read the arbitration agreement below", ["I will read the arbitration agreement below."]).proposedValue).toBe("I will read the arbitration agreement below.");
+    expect(scanOne("Please confirm receipt of the above linked Global Data Privacy Notice and US Arbitration Agreement.", ["Confirmed"]).proposedValue).toBe("Confirmed");
+  });
+});
