@@ -119,8 +119,12 @@ function refineGenderIdentity(
     if (/\btrans(gender)?\b/i.test(identity)) return "Yes";
     return undefined;
   }
-  if (category !== "eeoGenderIdentity" || !options?.length) return undefined;
+  if (!options?.length) return undefined;
   const qualified = options.filter((o) => /\b(cis|trans)(gender)?\b/i.test(o));
+  // A gender question whose options say cis or trans with the gender
+  // ("Cisgender Woman" | "Transgender Man", AltaML on Lever, question bank
+  // 2026-10-08) is the identity question too.
+  if (category !== "eeoGenderIdentity" && !(category === "eeoGender" && qualified.some((o) => /\b(man|woman|male|female)\b/i.test(o)))) return undefined;
   if (qualified.length === 0) return /\b(male|female|man|woman)\b/i.test(options.join(" ")) && gender ? gender : undefined;
   const kind = /\bcis(gender)?\b/i.test(identity) ? /\bcis(gender)?\b/i : /\btrans(gender)?\b/i.test(identity) ? /\btrans(gender)?\b/i : null;
   // Options split by cis/trans and the profile states neither: "Cisgender
@@ -510,6 +514,13 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   // has one name: nothing to add.
   if (source === "category" && (category === "fullName" || category === "firstName" || category === "lastName") && /\b(do not|don ?t|no) need to (respond|answer|fill)\b|\bleave (this|it) blank\b/i.test(label) && /\bpreferred\b/i.test(label)) {
     return none(true, "name:preferred-same");
+  }
+  // The whole name asked under a first-name label: "Legal Full Name (First
+  // Name, Middle Name & Last Name)" (ERG on Lever, question bank 2026-10-08)
+  // got the first name alone.
+  if (source === "category" && (category === "firstName" || category === "lastName") && (/\bfull (legal )?name\b/i.test(label) || (/\bfirst\b/i.test(label) && /\blast\b/i.test(label) && !/\bpreferred\b/i.test(label)))) {
+    const full = [profile.firstName, profile.lastName].map((s) => (s ?? "").trim()).filter(Boolean).join(" ");
+    if (full) value = full;
   }
   // "In what City, State and Zip are you currently residing?" (Box) and
   // "…city and state… (e.g. San Jose, CA)" (Zscaler) got the city alone;

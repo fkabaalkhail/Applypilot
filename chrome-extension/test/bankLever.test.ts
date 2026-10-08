@@ -364,3 +364,41 @@ describe("a referral by an employee of a family of companies is still a referral
     expect(ask("US_H1B_SENIOR", "Were you referred by a current employee of the Crest Family of Companies?", ["Yes", "No"])).toBe("No");
   });
 });
+
+describe("Lever bank blanks a stated fact answers", () => {
+  it("'I am not a U.S. veteran' is the never-served option (Gopuff)", () => {
+    const a = scanned("Are you a veteran?", ["I identify as a U.S. veteran", "I am not a U.S. veteran", "Prefer not to answer"], "New York, NY");
+    expect(a.COMPLETE_CANADIAN).toBe("I am not a U.S. veteran");
+    expect(a.US_H1B_SENIOR).toBe("I am not a U.S. veteran");
+  });
+  it("'Caucasian' is White (AltaML)", () => {
+    const a = scanned("I identify my ethnicity as", ["Caucasian", "Hispanic, Latino, or Spanish origin", "African American", "Asian", "Indigenous Peoples, First Nations, Inuit, Metis", "Middle Eastern or North African", "Prefer not to disclose"], "Toronto, ON", "checks");
+    expect(a.COMPLETE_CANADIAN).toBe("Caucasian");
+  });
+  it("gender options qualified by cis / trans take both stated facts (AltaML)", () => {
+    const opts = ["Cisgender Man", "Cisgender Woman", "Transgender Man", "Transgender Woman", "Non-Binary", "Two-Spirit"];
+    const a = scanned("What gender do you identify as?", opts, "Toronto, ON");
+    expect(a.COMPLETE_CANADIAN).toBe("Cisgender Woman");
+    expect(a.BERLIN_STAFF).toBe("Transgender Man");
+    expect(a.US_OPT_ANALYST).toBe("Cisgender Man");
+  });
+  it("'Legal Full Name (First Name, Middle Name & Last Name)' is the full name (ERG)", () => {
+    const a = scanned("Legal Full Name (First Name, Middle Name & Last Name)", [], "Durham, NC");
+    expect(a.COMPLETE_CANADIAN).toBe("Maya Tremblay");
+  });
+  it("'Do you currently work for Gopuff?' is No for someone who works elsewhere", () => {
+    expect(ask("COMPLETE_CANADIAN", "Do you currently work for Gopuff?", ["Yes", "No"])).toBe("No");
+  });
+  it("a bulleted list of U.S.-person statuses over Yes / No (Woven by Toyota)", () => {
+    const q = "Are you one of the following: \u2022 U.S. Citizen or National. \u2022 U.S. Lawful Permanent Resident. \u2022 Person granted Refugee status in the United States. \u2022 Person granted Asylum in the United States.";
+    expect(ask("BOOTCAMP_CAREER_GAP", q, ["Yes", "No"])).toBe("Yes");
+    expect(ask("US_H1B_SENIOR", q, ["Yes", "No"])).toBe("No");
+    expect(ask("COMPLETE_CANADIAN", q, ["Yes", "No"])).toBe("No");
+  });
+  it("a U.S.-person list as options (Shield AI)", () => {
+    const q = "This position may require access to information and technology that is subject to export controls, such as EAR. Are you any of the following?";
+    const opts = ["A United States Citizen", "A lawful permanent resident of the United States (i.e. Greencard holder)", "A protected individual", "Other"];
+    expect(ask("BOOTCAMP_CAREER_GAP", q, opts)).toBe("A United States Citizen");
+    expect(ask("US_H1B_SENIOR", q, opts)).toBe("Other");
+  });
+});

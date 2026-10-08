@@ -2528,7 +2528,9 @@ function resolveRelocationChoice(q: QuestionInput, n: string, profile: UserAppli
  * "Other" / "None of the above" / "Foreign person" option. A citizen or
  * permanent resident of the US picks theirs; anything else stays blank.
  */
-const US_STATUS_OPTION = /\b(u ?s citizen|citizen of the united states|national of the united states|u ?s national|lawful permanent resident|permanent resident of the u|green card|refugee|asylee|daca|u ?s person|foreign person)\b/;
+// "A United States Citizen" | … | "A protected individual" | "Other" (Shield
+// AI on Lever, question bank 2026-10-08).
+const US_STATUS_OPTION = /\b(u ?s citizen|united states citizen|citizen of the united states|national of the united states|u ?s national|lawful permanent resident|permanent resident of the u|green card|refugee|asylee|protected individual|daca|u ?s person|foreign person)\b/;
 const NONE = /^(\(?[a-z]\)?\s+)?other\b|\bnone of the above\b|\bforeign person\b|\bnot a u ?s (person|citizen)\b/;
 function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: UserApplicationProfile, fullLabel: string = q.label): QuestionResult {
   // "Are you a “U.S. person” as defined under applicable U.S. export-control
@@ -2548,7 +2550,9 @@ function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: U
   const asksPerson =
     /\b(are you|is the applicant) an? (u ?s|united states) person\b/.test(ln) ||
     /\bqualif(y|ies) as an? (u ?s|united states) person\b/.test(ln) ||
-    (terms >= 2 && /\b(designations?|statuses|criteria|categories) (apply|applies) to you\b|\bfall (into|under|within) one of\b|\bmeet one of\b/.test(ln)) ||
+    // "Are you one of the following: • U.S. Citizen or National. • …" (Woven
+    // by Toyota on Lever, question bank 2026-10-08).
+    (terms >= 2 && /\b(designations?|statuses|criteria|categories) (apply|applies) to you\b|\bfall (into|under|within) one of\b|\bmeet one of\b|\bare you (one|any) of the following\b/.test(ln)) ||
     (terms >= 2 && /\b(u ?s|united states) persons?\b/.test(whole) && /\b(include|includes|is defined|are defined|means)\b/.test(whole));
   const yesNo = isBooleanQuestion(q) || ((q.options ?? []).some((o) => optionPolarity(o) === true) && (q.options ?? []).some((o) => optionPolarity(o) === false));
   if (asksPerson && yesNo) {
@@ -2727,7 +2731,8 @@ function resolveFormerEmployee(q: QuestionInput, n: string, raw: string, facts: 
     // "Have you worked with us before?" (Paylocity, live 2026-10-05); "worked
     // with" anything else is usually a skill.
     // "Are you an internal employee of Flourish Research…?" (Workable bank).
-    /\b(current|former|past|previous|prior|internal|existing)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\bworked with us\b|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b|\b(provided|done|performed|did) (any )?(contract |consulting |freelance )?(work|services) for\b/.test(n);
+    /\b(current|former|past|previous|prior|internal|existing)(ly)?\b[^?]*\b(employee|employed|worked|contractor)\b|\bworked (for|at) (us|\w+)|\bworked with us\b|\b(ever|previously) (been )?(employed|worked)\b|\bemployed by\b|\b(provided|done|performed|did) (any )?(contract |consulting |freelance )?(work|services) for\b|\b(currently|presently) work (for|at)\b/.test(n);
+  // ("Do you currently work for Gopuff?", Lever bank 2026-10-08, the last.)
   if (!shape) return null;
   // ("…any of the Crest family of companies", Crest on Lever, live
   // 2026-10-08, is a group of employers, not a relative.)

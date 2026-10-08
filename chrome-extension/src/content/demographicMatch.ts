@@ -40,6 +40,8 @@ const RACE: Record<string, string[]> = {
   "east asian": ["asian", "east asian"],
   "desi": ["asian", "south asian"],
   "caucasian": ["white", "caucasian"],
+  // "Caucasian" alone in the list (AltaML on Lever, question bank 2026-10-08).
+  "white": ["white", "caucasian", "european"],
   "black": ["black", "african american", "african"],
   "african american": ["black", "african american", "african"],
   // The US categories' own names, which other lists word differently
@@ -125,7 +127,8 @@ function veteranClaim(text: string): VeteranClaim {
   if (/\b(non|un) ?protected veterans?\b/.test(t)) return "veteran-unprotected";
   if (/\bnot (a )?protected veterans?\b|\bnot protected\b/.test(t)) return "not-protected";
   if (/\bprotected veterans?\b/.test(t)) return "protected";
-  if (/\bnever served\b|\bno military (service|experience)\b|\bnot (a |an )?veterans?\b|\bnon ?veterans?\b/.test(t)) return "never-served";
+  // "I am not a U.S. veteran" (Gopuff on Lever, question bank 2026-10-08).
+  if (/\bnever served\b|\bno military (service|experience)\b|\bnot (a |an )?(u s |us |american )?veterans?\b|\bnon ?veterans?\b/.test(t)) return "never-served";
   if (/\bactive duty\b|\bnational guard\b|\breserves?\b|\bcurrently serving\b/.test(t)) return "serving";
   if (/\bveterans?\b|\bserved\b/.test(t) && !/\b(not|no|never)\b/.test(t)) return "veteran";
   return null;
