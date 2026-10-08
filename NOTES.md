@@ -253,6 +253,13 @@ Question banks (each also a unit test, in `round5.test.ts` and
     profile should leave requirements blank too.
 50. A web component's own `label` attribute names its field when nothing
     else does (SmartRecruiters' `<spl-input label="First name">`).
+51. Agreeing to arbitrate, or waiving a jury trial or a class action, is the
+    applicant's alone: left blank, never sent to the AI (Anthropic, Roblox,
+    Asana, Block, sweetgreen). Receiving such an agreement or reading it
+    gives nothing up and stays answered (Coinbase, Anthropic's "I will
+    read"), and so does an application certification, release for
+    reference checks and at-will clause included (National Journal):
+    nobody can apply without it.
 
 ## 7. Regression
 
@@ -290,41 +297,37 @@ Wattpad, and **all 19 pinned cases that enter through an Apply button**
 (BambooHR, Rippling, Dayforce, Breezy, Pinpoint, Oracle, Recruitee,
 Paylocity, Jobvite, Epic): every one passes.
 
-Checks on the last commit: 1,976 unit tests pass (1 skipped: the opt-in
-question bank), typecheck clean, build, `scan-smoke` passed. I did not run
-CI's backend or frontend checks (nothing outside the extension changed, and
-nothing is being pushed).
+Before the push to main, CI's checks ran locally, on the branch and again
+merged with main (26f6310: the jobs right rail and the local match
+scorer): backend pytest on SQLite, 2,749 passed on the branch and 2,777
+merged; extension typecheck, build, scan-smoke and 1,979 unit tests (1
+skipped: the opt-in question bank); frontend tsc and vite build.
 
-## 8. Needs you / needs manual verification
+## 8. Decided, and what still needs a person
 
-**Your decisions**
-1. **Upload 0.5.0?** Still not uploaded (I uploaded nothing). The zip
-   predates round 5: a release with tonight's fixes needs a new zip.
-2. **`EXTENSION_ALLOWED_IDS` on Vercel** (both ids): I did not check or
-   change any Vercel setting.
-3. **Legal waivers.** Still the lone-acknowledgement rule: National
-   Journal's terms (with an at-will clause and a liability release) are
-   now Yes by it. Say if lone waivers should stay blank everywhere.
-4. **Does OpenAI work now?** Nothing used it tonight; what is left to the
+**Decided (you answered, or asked me to choose; 2026-10-08)**
+1. **No new Store zip for now** (yours). 0.5.0 stays unuploaded and
+   predates round 5.
+2. **`EXTENSION_ALLOWED_IDS` is set on Vercel** (yours): Store installs
+   can connect.
+3. **Legal waivers:** decision 51. Arbitration agreements and jury or
+   class-action waivers are left blank and kept from the AI; application
+   certifications stay accepted. Anthropic's three pinned pages re-run
+   live with the agreement blank: all pass.
+4. **OpenAI:** no change. Nothing tonight needed it; what is left to the
    AI (essays, "May we contact your employer?", Barnes' degree types)
-   stays blank while it is down.
-5. **Two committed Workable page fixtures** (`test/fixtures/real/workable/
-   workable-financeit-ds.html`, `workable-mindex-coop.html`, from an
-   earlier round) hold the Address Workable guessed for this machine.
-   Scrub them? History keeps it either way.
-6. **A bare salary figure is the home currency** (decision 32): a Toronto
-   resident's "95000" is CAD. Right?
-7. The brief's first P3 item was cut off ("…ng edits"): tell me what it was.
-8. **A posting's requirements for a profile that says nothing** (decision
-   49): relocating for Ramp's internship, on site in Rochester, travel as
-   needed are Yes unless the profile refuses them. Keep that, or leave them
-   blank until the profile says?
-9. **SuccessFactors in live runs:** its Apply sends one POST
-   (`/services/cas/createpayload/`, the request a person's click sends; by
-   its name it hands the job over to the apply page, but I have not checked
-   what it stores). Live runs block every POST, so SuccessFactors' form
-   cannot be explored. Allow that exact endpoint in `allowRequests` for
-   those pages, or leave SuccessFactors to a manual check?
+   stays blank while billing is down and fills again once it works.
+5. **The two Workable fixtures:** scrubbed (0649b67); the git history
+   still holds the old value.
+6. **A bare salary figure is the home currency:** kept (decision 32).
+7. **The brief's cut-off first P3 item:** unknown; dropped.
+8. **A posting's requirements for a silent profile:** kept (decision 49).
+   Applying for the posting says as much, a stated "willing to relocate:
+   No" still overrides it, and the applicant reviews every page before
+   submitting.
+9. **SuccessFactors' POST:** stays blocked. Live runs send no POST to an
+   employer's site whose effect I cannot vouch for; SuccessFactors' form
+   is a manual check.
 
 **Not verified live, or still open**
 - **ServiceNow on SmartRecruiters** (the suite's one SmartRecruiters
