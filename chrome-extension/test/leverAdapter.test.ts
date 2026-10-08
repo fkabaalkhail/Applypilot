@@ -1,5 +1,5 @@
 // chrome-extension/test/leverAdapter.test.ts
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { leverAdapter, pickLocationSuggestion } from "../src/content/adapters/lever";
 import type { FieldContext, FillContext } from "../src/content/adapters/types";
 import type { RuntimeControl } from "../src/content/formScanner";
@@ -82,7 +82,7 @@ describe("leverAdapter location typeahead", () => {
  * clicks Lever's own suggestion.
  */
 describe("leverAdapter location typeahead (live markup)", () => {
-  function mountLiveLocation(suggestionsFor: (q: string) => string[]) {
+  function mountLiveLocation(suggestionsFor: (q: string) => string[], delayMs = 50) {
     const wrap = document.createElement("li");
     wrap.className = "application-question";
     wrap.innerHTML =
@@ -108,7 +108,7 @@ describe("leverAdapter location typeahead (live markup)", () => {
           });
           results.append(d);
         }
-      }, 50);
+      }, delayMs);
     });
     return { input, hidden };
   }
@@ -126,6 +126,21 @@ describe("leverAdapter location typeahead (live markup)", () => {
     expect(result.filled).toBe(true);
     expect(input.value).toBe("Toronto, Ontario, Canada");
     expect(JSON.parse(hidden.value).name).toBe("Toronto, Ontario, Canada");
+  });
+
+  it("waits out a slow search (SEP and Wattpad live, 2026-10-08: the list came after the wait)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { input, hidden } = mountLiveLocation((q) => (q.toLowerCase().startsWith("boston") ? ["Boston, MA, USA"] : []), 5000);
+      const pending = leverAdapter.fillOperation!(fillCtx(input, "Boston, MA, USA"))!;
+      await vi.advanceTimersByTimeAsync(9000);
+      const result = await pending;
+      expect(result.filled).toBe(true);
+      expect(input.value).toBe("Boston, MA, USA");
+      expect(JSON.parse(hidden.value).name).toBe("Boston, MA, USA");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("refuses an ambiguous list rather than pick the wrong Toronto", async () => {

@@ -37,6 +37,8 @@ function setInput(el: HTMLInputElement, value: string): void {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+/** How long Lever's location search may take to list suggestions. */
+const SUGGESTION_WAIT_MS = 8000;
 /** Type like a user: key events around a native-setter write + input event,
  *  which is what Lever's typeahead listens to before it searches. */
 function typeLikeUser(input: HTMLInputElement, text: string): void {
@@ -76,7 +78,9 @@ async function fillLeverLocation(input: HTMLInputElement, value: string): Promis
   if (results) {
     const query = value.split(",")[0].trim();
     typeLikeUser(input, query);
-    for (let waited = 0; waited < 4000; waited += 100) {
+    // Lever's search can take several seconds: 4 s cleared the city on SEP
+    // and Wattpad once each (live, 2026-10-08), their lists arriving later.
+    for (let waited = 0; waited < SUGGESTION_WAIT_MS; waited += 100) {
       await sleep(100);
       const items = Array.from(results.children).filter((c) => (c.textContent || "").trim()) as HTMLElement[];
       if (items.length === 0) continue;
