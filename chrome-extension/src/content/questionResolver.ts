@@ -266,7 +266,7 @@ const ASKS_RIGHT =
 /** Asks whether the work right is NEEDED ("do you require work authorization?",
  *  "will you need a work permit…"): the inverse of having it. */
 const NEEDS_RIGHT =
-  /\b(do|does|will|would|shall) you\b.{0,20}\b(require|need)\b.{0,30}\b(work authori[sz]ation|authori[sz]ation to work|work permit|work visa|employment authori[sz]ation)\b/;
+  /\b(do|does|will|would|shall) you\b.{0,32}\b(require|need)\b.{0,30}\b(work authori[sz]ation|authori[sz]ation to work|work permit|work visa|employment authori[sz]ation)\b/;
 /** Asks WHICH sponsorship or visa, not whether: no profile answer states it. */
 const SPONSOR_TYPE = /\b(what|which) (type of |kind of |form of )?(visa )?(sponsorship|visa|work permit)\b|\b(type|kind|form) of (visa |work )?(sponsorship|visa|permit)\b/;
 // Up to two kinds before it: "without employment visa sponsorship" (OnLogic,
@@ -361,6 +361,20 @@ const VISA_NAMES: [RegExp, RegExp][] = [
  * Yes saying it is not listed. A need with no visa stated picks none.
  */
 function chooseSponsorshipOption(options: string[], need: boolean, stated: string, now: boolean | null): string | null {
+  // By what each option says, before its leading word: "No, I do not
+  // currently require sponsorship, but I will require sponsorship in the
+  // future." is a need that starts later (Trulioo, Ashby bank 2026-10-08:
+  // the OPT holder took "Yes, I currently require sponsorship").
+  const said = options.filter((o) => o.trim()).map((o) => ({ o, t: qnorm(o) }));
+  const later = said.filter((x) => /\b(will|would|may)\b[^,;]{0,30}\b(require|need)\b[^,;]{0,40}\b(future|later)\b/.test(x.t) && /\bnot (currently|now)\b|\bno\b/.test(x.t));
+  const never = said.filter((x) => /\b(not|never)\b[^,;]{0,30}\b(require|need)\b[^,;]{0,40}\b(now|currently)\b[^,;]{0,10}\b(or|nor)\b[^,;]{0,15}\b(future|ever|later)\b/.test(x.t));
+  if (later.length === 1 && never.length === 1) {
+    if (!need) return never[0].o;
+    if (now === false) return later[0].o;
+    const current = said.filter((x) => x !== later[0] && x !== never[0] && optionPolarity(x.o) === true);
+    if (now === true && current.length === 1) return current[0].o;
+    return null;
+  }
   const side = options.filter((o) => o.trim() && optionPolarity(o) === need);
   if (side.length === 1) return side[0];
   if (!need || side.length === 0) return null;
@@ -431,6 +445,20 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   if (hasSponsor && SPONSOR_TYPE.test(n) && !isBooleanQuestion(q)) return abstain("sponsorship:type-unknown");
   const country = targetCountry(q, ctx, facts);
   const residence = residenceOf(facts);
+
+  // "Are you prevented from lawfully becoming employed in the US because of
+  // visa or immigration status?" (Barnes & Thornburg, Ashby bank 2026-10-08):
+  // the inverse of the right, never "do you need sponsorship?" (the OPT
+  // holder, authorized today, said Yes). A visa tied to one employer (H-1B)
+  // is the applicant's to judge.
+  if (/\b(prevented|barred|prohibited|precluded) from (lawfully |legally )?(becoming |being )?(employed|working|employment)\b/.test(n) && (isBooleanQuestion(q) || isYesNoDropdown(q, n))) {
+    const a = authorizedIn(facts.workAuth, country, residence);
+    if (!isHigh(a)) return abstain("work-auth-prevented:unknown");
+    if (a.value === false) return booleanResult(true, q, "work-auth-prevented");
+    const basis = country ? facts.workAuth.byCountry.get(country)?.basis : undefined;
+    if (basis === "citizen" || basis === "permanent_resident" || basis === "student") return booleanResult(false, q, "work-auth-prevented");
+    return abstain("work-auth-prevented:employer-tied");
+  }
 
   // "Permanent work authorization", "without restriction(s)": a citizen's or
   // permanent resident's right. A visa holder's (H-1B, OPT, a work permit) is
@@ -519,6 +547,15 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   // read as "are you authorized?", a Canadian on a US job answered No (and a
   // US citizen would have answered Yes).
   if (!hasSponsor && NEEDS_RIGHT.test(n) && !ASKS_RIGHT.test(n)) {
+    // "Will you now or in the future require authorization to work in the
+    // United States?" (TensorWave, Ashby bank 2026-10-08; "now or in the
+    // future" had put it out of reach and it was read as "are you
+    // authorized?", backwards): a right that ends (OPT) or is tied to an
+    // employer (H-1B) is needed again, which is the sponsorship need.
+    if (/\b(future|ever|later)\b/.test(n) && (isBooleanQuestion(q) || isYesNoDropdown(q, n))) {
+      const s = needsSponsorshipIn(facts.workAuth, country, residence);
+      if (isHigh(s)) return booleanResult(s.value, q, "work-auth-needed:future");
+    }
     const a = authorizedIn(facts.workAuth, country, residence);
     if (!isHigh(a)) return abstain("work-auth-needed:unknown");
     if (isBooleanQuestion(q) || isYesNoDropdown(q, n)) return booleanResult(!a.value, q, "work-auth-needed");
@@ -544,7 +581,12 @@ function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFac
   }
   // A status choice ("What is your work authorization status?"), or free text.
   if (q.options && q.options.length > 0) {
-    return resolveStatusChoice(q, facts, country) ?? resolveAuthorizationStatement(q, facts, country, residence) ?? abstain("work-auth-status:unknown");
+    return (
+      resolveCountryEligibility(q, facts, residence) ??
+      resolveStatusChoice(q, facts, country) ??
+      resolveAuthorizationStatement(q, facts, country, residence) ??
+      abstain("work-auth-status:unknown")
+    );
   }
   if (q.kind === "text" || q.kind === "longText") {
     const stated = profile.workAuthorization?.trim();
@@ -611,6 +653,31 @@ function resolveAuthorizationStatement(q: QuestionInput, facts: ProfileFacts, co
     // "Yes, no restriction." beside "Yes, but I will need sponsorship…" (Datadog).
     one((o) => o.pol === true && !/\bsponsor/.test(o.n) && !/\b(present|current) employer only\b/.test(o.n));
   return pick ? answer(pick, "work-auth-statement:any-employer") : null;
+}
+
+/**
+ * "Are you legally eligible to work in Canada or the USA?" [Yes - … in Canada |
+ * Yes - … in the USA | No - … in Canada or the USA] (Trulioo, Ashby bank
+ * 2026-10-08): each Yes names its country. The one where the applicant may
+ * work; the No when they may work in none of them. Read for the job's country
+ * alone, a Canadian citizen said No.
+ */
+function resolveCountryEligibility(q: QuestionInput, facts: ProfileFacts, residence: string | null): QuestionResult {
+  // Only the shape that asks it: the question names two or more countries
+  // with "or", and each Yes names a different one of them (SpaceX's "…for any
+  // employer" / "…for my present employer only" both name the US).
+  const asked = countriesNamedIn(q.label);
+  if (asked.length < 2 || !/\bor\b/.test(qnorm(q.label))) return null;
+  const opts = (q.options ?? []).filter((o) => o.trim()).map((o) => ({ raw: o, pol: optionPolarity(o), places: countriesNamedIn(o) }));
+  const yes = opts.filter((o) => o.pol === true && o.places.length === 1 && asked.includes(o.places[0]));
+  if (yes.length < 2 || new Set(yes.map((o) => o.places[0])).size !== yes.length) return null;
+  const may = yes.map((o) => ({ o, a: authorizedIn(facts.workAuth, o.places[0], residence) }));
+  const can = may.filter((x) => isHigh(x.a) && x.a.value === true);
+  if (can.length === 1) return answer(can[0].o.raw, "work-auth:country-option");
+  if (can.length > 1) return abstain("work-auth:country-option-several");
+  const no = opts.filter((o) => o.pol === false);
+  if (no.length === 1 && may.every((x) => isHigh(x.a) && x.a.value === false)) return answer(no[0].raw, "work-auth:country-option-none");
+  return abstain("work-auth:country-option-unknown");
 }
 
 /** A citizenship / status option for a status choice question. */

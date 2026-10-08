@@ -512,3 +512,40 @@ describe("living there, read across every place and time zone a question names (
     setResolveContext({ jobCountry: null, jobCity: null, company: "" });
   });
 });
+
+describe("work-right questions read by what they ask (Ashby question bank, 2026-10-08)", () => {
+  const ask = (persona: UserApplicationProfile, label: string, options: string[], jobCountry = "US") => {
+    const q: QuestionInput = { label, controlType: "select", options, category: "unknown", kind: options.length === 2 && options[0] === "Yes" ? "boolean" : "choice" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry, company: "Acme" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  it("'Will you now or in the future require authorization to work in the US?' is a need, not a right (TensorWave)", () => {
+    const q = "Will you now or in the future require authorization to work in the United States?";
+    expect(ask(P.COMPLETE_CANADIAN, q, ["Yes", "No"])).toBe("Yes");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, q, ["Yes", "No"])).toBe("No");
+    expect(ask(P.US_OPT_ANALYST, q, ["Yes", "No"])).toBe("Yes");
+    expect(ask(P.US_H1B_SENIOR, q, ["Yes", "No"])).toBe("Yes");
+    expect(ask(P.INDIA_NEW_GRAD, q, ["Yes", "No"])).toBe("Yes");
+  });
+  const TRULIOO = ["Yes, I currently require sponsorship", "No, I do not currently require sponsorship, but I will require sponsorship in the future.", "No, I do not require sponsorship now or in the future."];
+  it("Trulioo's three sponsorship options: now, only later, never", () => {
+    const q = "Will you now or in the future require Trulioo to sponsor your employment authorization to work in this location?";
+    expect(ask(P.US_H1B_SENIOR, q, TRULIOO)).toBe(TRULIOO[0]);
+    expect(ask(P.US_OPT_ANALYST, q, TRULIOO)).toBe(TRULIOO[1]);
+    expect(ask(P.BOOTCAMP_CAREER_GAP, q, TRULIOO)).toBe(TRULIOO[2]);
+  });
+  const ELIGIBLE = ["Yes - I am legally eligible to work in Canada", "Yes - I am legally eligible to work in the USA", "No - I am not legally eligible to work in Canada or the USA"];
+  it("'eligible to work in Canada or the USA?' takes the country the applicant may work in", () => {
+    const q = "Are you legally eligible to work in Canada or the USA?";
+    expect(ask(P.COMPLETE_CANADIAN, q, ELIGIBLE)).toBe(ELIGIBLE[0]);
+    expect(ask(P.BOOTCAMP_CAREER_GAP, q, ELIGIBLE)).toBe(ELIGIBLE[1]);
+    expect(ask(P.BERLIN_STAFF, q, ELIGIBLE)).toBe(ELIGIBLE[2]);
+  });
+  it("'prevented from lawfully becoming employed in the US' is the inverse of the right, never 'needs sponsorship' (Barnes & Thornburg)", () => {
+    const q = "Are you prevented from lawfully becoming employed in the US because of visa or immigration status? (Proof of citizenship or immigration status will be required upon employment)";
+    expect(ask(P.COMPLETE_CANADIAN, q, ["Yes", "No"])).toBe("Yes");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, q, ["Yes", "No"])).toBe("No");
+    expect(ask(P.US_OPT_ANALYST, q, ["Yes", "No"])).toBe("No");
+    expect(ask(P.US_H1B_SENIOR, q, ["Yes", "No"])).not.toBe("No");
+  });
+});
