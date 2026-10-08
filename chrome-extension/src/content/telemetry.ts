@@ -36,7 +36,7 @@
 import { redactCaptureValue } from "./domCapture";
 import { placeOf } from "./placeMatch";
 import { optionPolarity } from "./answerKind";
-import { countryFromName, DIAL_CODES } from "./geo";
+import { countryFromName, DIAL_CODES, regionFromText } from "./geo";
 import { matchOption } from "./optionMatch";
 import { parseDateSpan } from "./profileFacts";
 import type {
@@ -160,6 +160,11 @@ function sameValue(written: string, observed: string): boolean {
   // "2027-01-04" (Paylocity, live 2026-10-03).
   const day = isoDay(written);
   if (day && day === isoDay(observed)) return true;
+  // A state chosen by name shows its code: "Texas" reads back "TX"
+  // (Paylocity's State list, live 2026-10-08).
+  const regionW = regionFromText(written);
+  const regionO = regionW ? regionFromText(observed, regionW.country) : null;
+  if (regionW && regionO && regionW.code === regionO.code && regionW.country === regionO.country) return true;
   // A place typeahead keeps its own spelling of the place typed: "Montréal,
   // QC" became "Montreal, Quebec, Canada" (Superhuman on Ashby, live 2026-10-03).
   if (written.includes(",") && observed.includes(",")) {

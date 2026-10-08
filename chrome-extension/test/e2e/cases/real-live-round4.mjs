@@ -639,9 +639,9 @@ export default [
       "label:Address Line 1": "4120 Duval St",
       // The page ticks this itself once a résumé is attached.
       "label:Fill out application with my resume": { any: true },
-      // Paylocity's own select: its menu has no ARIA roles, so State stays as
-      // the page shows it ("Select a state"); see NOTES.
-      "#public-site-address-us-state-select-wrapper": { any: true },
+      // Paylocity's own select: a menu of role-less rows listing state codes,
+      // searched by the code (round 5; it stayed "Select a state" before).
+      "#public-site-address-us-state-select-wrapper": "TX",
       "label:City": "Austin",
       "label:Zip Code": "78751",
       "label:mm/dd/yyyy": { re: String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$` },

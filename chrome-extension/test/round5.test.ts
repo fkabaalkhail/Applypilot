@@ -5,6 +5,9 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { scanPage } from "../src/content/formScanner";
+import { AutofillReconciler } from "../src/content/reconciler";
+import { fillAriaCombobox } from "../src/content/comboboxEngine";
+import { revertedFields } from "../src/content/telemetry";
 import { liveControlFor } from "../src/content/staleControl";
 import { loadWorkableGuesses, prefilledGuesses, setPageGuesses, workableShortcode } from "../src/content/pageGuesses";
 import type { RuntimeControl } from "../src/content/formScanner";
@@ -242,5 +245,136 @@ describe("today's date in a signature box is written in the box's own format (Sa
   });
   it("year first where it shows YYYY-MM-DD", () => {
     expect(proposed("YYYY-MM-DD")).toBe("2026-10-03");
+  });
+});
+
+describe("a radio the page re-renders when chosen still counts as chosen (Paylocity's How did you hear)", () => {
+  // Choosing an option replaces that radio's element (Paylocity, live
+  // 2026-10-08: the old one detached, a new one checked). The registry's
+  // copy of the group lacked the chosen option, the check read it unchosen,
+  // and the retry reported "No option matches" for an answer the page held.
+  const option = (value: string) => `
+    <label class="css-1hpmm7n" aria-labelledby="${value}-for-labelledby"><div class="css-k008qs"><div class="css-1v994a0">
+      <input class="css-ingxr6" aria-checked="false" label="${value}" name="info.howDidYouHearAboutUs" type="radio" value="${value}">
+    </div><div class="css-0" id="${value}-for-labelledby">${value}</div></div></label>`;
+  const PAYLOCITY_HEAR = `
+    <form>
+      <label class="css-asocq5" for="info.howDidYouHearAboutUs"><span class="radio">How did you hear about us?</span>
+        <div aria-required="true" role="radiogroup" data-automation-id="info.howDidYouHearAboutUs">
+          ${["Online Job Board (LinkedIn, Indeed, etc.)", "Choice Website", "Friend or Family Member", "Other"].map(option).join("")}
+        </div>
+      </label>
+    </form>`;
+  const rerenderOnChoose = (e: Event) => {
+    const r = e.target as HTMLInputElement;
+    if (!(r instanceof HTMLInputElement) || r.type !== "radio") return;
+    const wrap = r.parentElement as HTMLElement;
+    queueMicrotask(() => {
+      const fresh = wrap.cloneNode(true) as HTMLElement;
+      const box = fresh.querySelector("input") as HTMLInputElement;
+      box.checked = true;
+      box.setAttribute("aria-checked", "true");
+      wrap.replaceWith(fresh);
+    });
+  };
+  afterEach(() => document.removeEventListener("click", rerenderOnChoose, true));
+
+  it("the answer the page holds is reported filled, not 'No option matches'", async () => {
+    document.body.innerHTML = PAYLOCITY_HEAR;
+    document.addEventListener("click", rerenderOnChoose, true);
+    const { fields, registry } = scanPage(SPARSE_CANADIAN, false, null);
+    const hear = fields.find((f) => f.controlType === "radioGroup");
+    expect(hear?.options).toContain("Choice Website");
+    const engine = new AutofillReconciler({ sleep: async () => {}, observe: false });
+    const [report] = await engine.run([{ fieldId: hear!.id, value: "Choice Website" }], registry);
+    engine.dispose();
+    expect((document.querySelector('input[value="Choice Website"]') as HTMLInputElement).checked).toBe(true);
+    expect(report.reason).toBeUndefined();
+    expect(report.ok).toBe(true);
+  });
+});
+
+describe("Paylocity's own State select, as the live widget behaves (Choice Solutions, 2026-10-08)", () => {
+  // Measured live: a click on the box only focuses its search input; ArrowDown
+  // or typing opens the menu; the menu (the box's aria-owns) is a virtualized
+  // list of role-less div.ListItemEven / div.ListItemOdd rows, eight rendered
+  // at a time; it lists state CODES and filters them by prefix ("Tex" finds
+  // "No Results Found"). Round 4's replica opened on click, had ARIA roles and
+  // full names, and filled while the live page stayed on "Select a state".
+  const CODES = ["AL", "AK", "AR", "AS", "AZ", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "TN", "TX", "UT"];
+  function pctyLive(): HTMLElement {
+    document.body.innerHTML = `
+      <form><label class="css-asocq5" for="st"><span>State</span>
+        <div class="pcty-input-select-full-container css-1zb4bw" id="st-wrap" aria-expanded="false" aria-haspopup="listbox" aria-owns="st-list" required="">
+          <div class="pcty-input-select-input-container css-cw0yvh"><div class="css-6jkhxl" id="st-action"></div>
+            <div class="css-n6sh4p"><div class="input-select-input-single-value css-1jybxfd">Select a state</div>
+              <div class="pcty-input-select__input css-1je6tb3"><input aria-autocomplete="list" class="css-8nrzws" id="st" maxlength="250" type="text" value=""></div></div></div>
+          <div class="css-1mj2ldx" aria-hidden="true"><div><span class="pcty-input-select__indicator-separator"></span><div class="pcty-input-select__dropdown-icon" aria-hidden="true" tabindex="0"></div></div></div>
+        </div></label></form>`;
+    const wrap = document.getElementById("st-wrap")!;
+    const input = document.getElementById("st") as HTMLInputElement;
+    const display = wrap.querySelector(".input-select-input-single-value")!;
+    const render = (): void => {
+      document.getElementById("st-list")?.remove();
+      const q = input.value.trim().toLowerCase();
+      const hits = CODES.filter((c) => c.toLowerCase().startsWith(q)).slice(0, 8);
+      const box = document.createElement("div");
+      box.id = "st-list";
+      box.tabIndex = -1;
+      box.innerHTML = `<div class="css-1ftq1i8 pcty-input-select__menu-list"><div style="height: 280px; width: 100%;"></div></div>`;
+      const inner = box.querySelector("div > div") as HTMLElement;
+      (hits.length ? hits : ["No Results Found"]).forEach((label, i) => {
+        const row = document.createElement("div");
+        row.className = `${i % 2 ? "ListItemOdd" : "ListItemEven"} css-1duv7c3`;
+        row.textContent = label;
+        if (hits.length) {
+          row.addEventListener("click", () => {
+            display.textContent = label;
+            input.value = "";
+            wrap.setAttribute("aria-expanded", "false");
+            document.getElementById("st-list")?.remove();
+          });
+        }
+        inner.append(row);
+      });
+      document.body.append(box);
+      wrap.setAttribute("aria-expanded", "true");
+    };
+    wrap.addEventListener("click", () => input.focus());
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") render();
+    });
+    input.addEventListener("input", render);
+    return wrap;
+  }
+  const fast = { sleep: async () => {}, openWaitMs: 200, commitWaitMs: 200, pollMs: 10 };
+
+  it("a state named in full is found by its code and chosen", async () => {
+    const wrap = pctyLive();
+    const res = await fillAriaCombobox(wrap, "Texas", fast);
+    expect(res).toMatchObject({ filled: true });
+    expect(wrap.querySelector(".input-select-input-single-value")?.textContent).toBe("TX");
+  });
+
+  it("a state given as its code is chosen", async () => {
+    const wrap = pctyLive();
+    expect(await fillAriaCombobox(wrap, "TX", fast)).toMatchObject({ filled: true });
+    expect(wrap.querySelector(".input-select-input-single-value")?.textContent).toBe("TX");
+  });
+
+  it("a place the list does not hold is a miss that leaves the box as it was", async () => {
+    const wrap = pctyLive();
+    const res = await fillAriaCombobox(wrap, "Ontario", fast);
+    expect(res.filled).toBe(false);
+    expect(wrap.querySelector(".input-select-input-single-value")?.textContent).toBe("Select a state");
+    expect((document.getElementById("st") as HTMLInputElement).value).toBe("");
+  });
+});
+
+describe("a state read back as its code is the state that was written (Paylocity's State)", () => {
+  it("'Texas' showing as 'TX' is no revert, and another state still is", () => {
+    expect(revertedFields([{ fieldId: "s", value: "Texas" }], [{ fieldId: "s", value: "TX" }], new Set(["s"]))).toEqual([]);
+    expect(revertedFields([{ fieldId: "s", value: "TX" }], [{ fieldId: "s", value: "Texas" }], new Set(["s"]))).toEqual([]);
+    expect(revertedFields([{ fieldId: "s", value: "Texas" }], [{ fieldId: "s", value: "TN" }], new Set(["s"]))).toEqual([{ fieldId: "s", cleared: false }]);
   });
 });

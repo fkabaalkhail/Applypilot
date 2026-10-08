@@ -142,8 +142,26 @@ function writeCheckbox(el: HTMLInputElement, value: string): WriteResult {
   return { written: true };
 }
 
-function writeRadioGroup(radios: HTMLInputElement[], value: string): WriteResult {
+/**
+ * The group's radios as the page has them now. A page may re-render the
+ * option a click chose: Paylocity replaces the chosen radio's element (live
+ * 2026-10-08), so the scanned group lacked the answer it held and the retry
+ * reported "No option matches". A named group is read again from the page
+ * when any of its radios has left it.
+ */
+function liveRadios(radios: HTMLInputElement[]): HTMLInputElement[] {
   const live = radios.filter((r) => r.isConnected);
+  if (live.length === radios.length) return live;
+  const name = radios.find((r) => r.name)?.name;
+  if (!name) return live;
+  const anchor = live[0];
+  const root: ParentNode = anchor?.form ?? (anchor?.getRootNode() as ParentNode | undefined) ?? radios[0].ownerDocument;
+  const fresh = Array.from(root.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter((r) => r.name === name);
+  return fresh.length > 0 ? fresh : live;
+}
+
+function writeRadioGroup(radios: HTMLInputElement[], value: string): WriteResult {
+  const live = liveRadios(radios);
   if (live.length === 0) return { written: false, reason: STALE };
   const match = matchRadio(live, value);
   if (!match) return { written: false, reason: `No option matches "${truncate(value)}"` };
@@ -201,7 +219,7 @@ export function verifyControl(control: RuntimeControl, value: string): boolean {
       return desired !== null && el!.checked === desired;
     }
     case "radioGroup": {
-      const live = (control.radios ?? []).filter((r) => r.isConnected);
+      const live = liveRadios(control.radios ?? []);
       if (live.length === 0) return false;
       const match = matchRadio(live, value);
       return Boolean(match) && match!.checked;

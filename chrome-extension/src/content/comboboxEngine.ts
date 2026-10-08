@@ -210,6 +210,14 @@ async function selectOne(
     };
     add(value);
     add(plain);
+    // A state or province is searched by its code too, and a code by its
+    // name: Paylocity's State list filters codes by prefix, and "Texas"
+    // found nothing there (live 2026-10-08).
+    const region = regionFromText(value);
+    if (region) {
+      add(region.code);
+      add(region.name);
+    }
     if (words.length >= 4) add(leadingWords(words));
     if (firstWord.length >= 3) add(firstWord);
     attempts.push("");
@@ -546,7 +554,30 @@ function optionsIn(listbox: HTMLElement): HTMLElement[] {
       if (assigned.shadowRoot) for (const o of deepQueryAll(assigned.shadowRoot, '[role="option"]')) out.add(o);
     }
   }
+  // A menu with no ARIA roles at all, which getListbox only accepts from a
+  // container the trigger names itself.
+  if (out.size === 0 && listbox.getAttribute("role") !== "listbox") return rolelessRows(listbox);
   return [...out];
+}
+
+/** What a list shows in place of options. */
+const NO_RESULTS = /^(no (results|options|matches|items)( found)?|nothing found|loading)\W*$/i;
+
+/**
+ * The rows of a menu that has no ARIA roles. Paylocity's select names its
+ * menu with aria-owns, and the menu is a virtualized list of plain
+ * div.ListItemEven / div.ListItemOdd rows (live 2026-10-08): the engine saw
+ * no listbox and reported the State dropdown as one it could not open. The
+ * rows are the innermost elements whose class says item or option, with text.
+ */
+function rolelessRows(container: HTMLElement): HTMLElement[] {
+  if (container.querySelector('[role="option"], [role="listbox"]')) return [];
+  const ROW = '[class*="item" i], [class*="option" i]';
+  return Array.from(container.querySelectorAll<HTMLElement>(ROW)).filter((el) => {
+    if (el.querySelector(ROW)) return false;
+    const text = cleanText(el.textContent);
+    return text !== "" && !NO_RESULTS.test(text);
+  });
 }
 
 /** Locate the open listbox: prefer the one the combobox points at (it may be
@@ -563,6 +594,8 @@ function getListbox(trigger: HTMLElement): HTMLElement | null {
     if (!el) continue;
     const lb = (el.getAttribute("role") === "listbox" ? el : el.querySelector('[role="listbox"]')) as HTMLElement | null;
     if (lb && isVisible(lb) && hasOptions(lb)) return lb;
+    // A named menu with no ARIA roles (Paylocity's): its rows are the options.
+    if (!lb && isVisible(el) && rolelessRows(el).length > 0) return el;
   }
   // A trigger that NAMES its listbox (aria-owns / aria-controls) must only ever
   // use THAT listbox, never a neighbour's. SAP SuccessFactors renders each
