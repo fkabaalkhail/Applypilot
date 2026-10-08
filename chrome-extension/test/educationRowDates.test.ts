@@ -255,4 +255,27 @@ describe("Ashby's education rows are told apart by position (Superhuman, live 20
     expect(school?.proposedValue).toBe("Concordia University");
     expect(school?.groupIndex ?? null).toBeNull();
   });
+
+  // Once Ashby's Yes/No questions were scanned (round 5), Superhuman's "Are
+  // you currently attending a college or university in the US?" read as a
+  // School field and "…pursuing a degree in computer science…" as a Degree
+  // one: three schools, not two identical copies, so no row was told apart
+  // and BOTH rows took the most recent school, degree and major (live
+  // regression 2026-10-08: "Concordia University" twice).
+  it("a school or degree question beside the rows is not a row", () => {
+    const YESNO = (q: string, name: string) =>
+      `<div class="_fieldEntry ashby-application-form-field-entry" data-field-path="${name}"><label class="_heading ashby-application-form-question-title" for="${name}">${q}</label><div class="_yesno ashby-application-form-input-yesno"><button class="ashby-application-form-input-yesno-option" aria-pressed="false">Yes</button><button class="ashby-application-form-input-yesno-option" aria-pressed="false">No</button><input type="checkbox" tabindex="-1" name="${name}"></div></div>`;
+    const questions =
+      YESNO("Are you currently attending a college or university in the US?", "f3a1") +
+      YESNO("Are you currently pursuing a degree in computer science or another related field?", "da27");
+    document.body.innerHTML = ASHBY_HISTORY(2).replace('<div class="ashby-application-form-section-container">', `<div class="ashby-application-form-section-container">${questions}`);
+    const fields = scanPage({ ...SPARSE_CANADIAN, education: OLDEST_FIRST }, false).fields;
+    const at = (el: Element) => fields.find((x) => el.getAttribute("data-ap-field") === x.id);
+    const rows = Array.from(document.querySelectorAll(".ashby-application-form-input-education-entry"));
+    const school = rows.map((row) => at(row.querySelector("input[role=combobox]")!));
+    const degree = rows.map((row) => at(row.querySelector("input[id$=-degree]")!));
+    expect(school.map((f) => f?.proposedValue)).toEqual(["Université de Montréal", "Concordia University"]);
+    expect(degree.map((f) => f?.proposedValue)).toEqual(["Baccalauréat en psychologie", "Certificate in Computer Science"]);
+    expect(school.map((f) => f?.groupIndex)).toEqual([0, 1]);
+  });
 });

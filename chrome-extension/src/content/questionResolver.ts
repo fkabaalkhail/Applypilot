@@ -427,7 +427,11 @@ function resolveVisaStatusList(q: QuestionInput, facts: ProfileFacts, profile: U
     if (low.some((t) => /\bnot (currently )?(authori[sz]ed|eligible)\b/.test(t))) return null;
     const citizen = [...facts.workAuth.byCountry.entries()].filter(([c, a]) => a.basis === "citizen" && c !== "US").map(([c]) => c);
     if (citizen.length !== 1) return null;
-    const hits = opts.filter((o) => /\bcitizens?\b/i.test(o) && countriesNamedIn(o).includes(citizen[0]));
+    // "Canadian or Mexican Citizen (TN Visa)" names the applicant; "TN
+    // (Applicable for citizens of Canada or Mexico)" names a visa a citizen
+    // MAY use (Waymo), which nobody stated.
+    const openTo = /\b(applicable|available|open|valid|limited|restricted|only)\s+(for|to)\s+(citizens?|nationals?)\b/i;
+    const hits = opts.filter((o) => /\bcitizens?\b/i.test(o) && !openTo.test(o) && countriesNamedIn(o).includes(citizen[0]));
     return hits.length === 1 ? answer(hits[0], "visa-list:citizenship") : null;
   }
   const named = mine[1];

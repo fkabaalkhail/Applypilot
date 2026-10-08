@@ -722,6 +722,18 @@ describe("blanks the Ashby question bank's profiles answer (2026-10-08)", () => 
     expect(ask(P.US_OPT_ANALYST, q, ONE)).toBe("F-1 Student (STEM OPT)");
     expect(ask(P.BOOTCAMP_CAREER_GAP, q, ONE)).not.toBe("H-1B");
   });
+  it("a visa open to a country's citizens is not the citizen's own status (Waymo, regression 2026-10-08)", () => {
+    // Waymo asks which authorization the applicant needs; TN is one a
+    // Canadian MAY use (with a degree), not one anybody stated. Round 4 left
+    // it blank; the citizenship reading picked TN for a Canadian student.
+    const WAYMO = ["CPT", "OPT", "TN (Applicable for citizens of Canada or Mexico)", "J-1", "Other", "I don't know", "Not applicable"];
+    const kind = "If yes, what kind? (If you do not require work authorization sponsorship please select Not Applicable.)";
+    expect(WAYMO).not.toContain(ask(P.COMPLETE_CANADIAN, kind, WAYMO));
+    expect(ask(P.US_OPT_ANALYST, kind, WAYMO)).toBe("OPT");
+    // An option that names the applicant by citizenship still stands.
+    const VL = ["US Citizen", "US Permanent Resident", "Canadian or Mexican Citizen (TN Visa)", "STEM OPT", "Non-US Person with work Authorization w/ H1B, H-4"];
+    expect(ask(P.COMPLETE_CANADIAN, "What's your citizenship / employment eligibility?", VL)).toBe(VL[2]);
+  });
 });
 
 describe("Ashby's Yes/No buttons are a question (every Ashby Boolean field, live 2026-10-08)", () => {

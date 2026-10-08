@@ -704,13 +704,22 @@ function assignRowsByPosition(
   for (const anchors of ROW_ANCHORS) {
     const loose = fields.filter((f) => f.groupIndex == null && rowCategories.has(f.category) && elOf(f));
     for (const anchor of anchors) {
-      const copies = loose.filter((f) => f.category === anchor);
-      if (copies.length < 2) continue;
       const signature = (f: DetectedField): string => {
         const el = elOf(f) as HTMLElement;
         return [f.controlType, f.label.trim().toLowerCase(), el.id, el.getAttribute("name") ?? "", el.getAttribute("placeholder") ?? ""].join("|");
       };
-      if (new Set(copies.map(signature)).size !== 1) continue;
+      // The copies are the anchor's identical repeats. A lone question of the
+      // same kind beside the rows (Superhuman's Yes/No "Are you currently
+      // attending a college or university in the US?") is no copy.
+      const bySignature = new Map<string, DetectedField[]>();
+      for (const f of loose) {
+        if (f.category !== anchor) continue;
+        const key = signature(f);
+        bySignature.set(key, [...(bySignature.get(key) ?? []), f]);
+      }
+      const repeated = [...bySignature.values()].filter((group) => group.length >= 2);
+      if (repeated.length !== 1) continue;
+      const copies = repeated[0];
       const anchorEls = copies.map((f) => elOf(f) as HTMLElement);
       const regions = anchorEls.map((a) => {
         let region = a;
