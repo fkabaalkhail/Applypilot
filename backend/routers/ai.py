@@ -11,13 +11,15 @@ import datetime
 import logging
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ScrapedJob, ResumeProfileDB, ResumeVersion, CoverLetter
 from backend.auth.dependencies import get_verified_user_id, verify_cron_secret
-from backend.services.usage_limiter import llm_guard
+from backend.services.usage_limiter import enforce_llm_limits, llm_guard
+from backend.services.llm_cost import set_cost_user
+from backend.services.local_match import scoring_mode
 from backend.services.match_notifier import sweep_match_alerts
 from backend.schemas.match import MatchBreakdown, FitAnalysis
 from backend.schemas.ai import (
@@ -36,7 +38,7 @@ from backend.schemas.ai import (
 )
 from backend.services.profile_version import bump_profile_version
 from backend.schemas.resume_document import ResumeDocument
-from backend.services.match_engine import MatchEngine
+from backend.services.match_engine import MatchEngine, score_to_label
 from backend.services.resume_tailor import ResumeTailor
 from backend.services.cover_letter import CoverLetterGenerator
 from backend.services.resume_document import db_record_to_document, document_to_text
@@ -121,14 +123,73 @@ def _persist_active_cover_letter(
     bump_profile_version(db, user_id)
 
 
+async def _breakdown_user(
+    request: Request,
+    user_id: int = Depends(get_verified_user_id),
+    db: Session = Depends(get_db),
+) -> int:
+    """llm_guard only when the breakdown actually calls the LLM. The local
+    scorer is free, so opening jobs must not use up the user's daily AI limit."""
+    if scoring_mode() == "ai":
+        enforce_llm_limits(db, request, user_id)
+        set_cost_user(user_id)
+    return user_id
+
+
+def _local_breakdown(db: Session, user_id: int, job: ScrapedJob) -> MatchBreakdown:
+    """The free breakdown: local sub-scores, plus the banked overall score when
+    one exists (an LLM-confirmed score wins), so the panel matches the card."""
+    from backend.db.models import JobMatchScore
+    from backend.services import jobs_sidebar, local_match
+
+    profile = jobs_sidebar.scoring_resume(db, user_id)
+    if profile is None:
+        raise HTTPException(status_code=400, detail="No resume found. Upload one first.")
+    match = local_match.score(local_match.resume_signals(profile), local_match.job_signals_for(job))
+    banked = (
+        db.query(JobMatchScore.score)
+        .filter(
+            JobMatchScore.user_id == user_id,
+            JobMatchScore.job_id == job.id,
+            JobMatchScore.resume_fingerprint.in_(local_match.current_fingerprints(profile.raw_text)),
+        )
+        .scalar()
+    )
+    if banked is None:
+        local_match.bank_local_scores(db, user_id, profile, [job.id])
+    overall = banked if banked is not None else match.overall
+
+    strengths, weaknesses = [], []
+    if match.matched_skills:
+        shown = ", ".join(local_match.display_skill(t) for t in match.matched_skills[:6])
+        strengths.append(f"Your resume shows {shown}, which this posting asks for.")
+    if match.missing_skills:
+        shown = ", ".join(local_match.display_skill(t) for t in match.missing_skills[:6])
+        weaknesses.append(f"The posting also mentions {shown}, which your resume doesn't show.")
+    return MatchBreakdown(
+        overall_score=overall,
+        experience_score=match.experience_score,
+        skill_score=match.skill_score,
+        industry_score=match.role_score,
+        match_label=score_to_label(overall),
+        strengths=strengths,
+        weaknesses=weaknesses,
+    )
+
+
 @router.post("/match-breakdown/{job_id}", response_model=MatchBreakdown)
 async def match_breakdown(
     job_id: int,
-    user_id: int = Depends(llm_guard),
+    user_id: int = Depends(_breakdown_user),
     db: Session = Depends(get_db),
 ):
-    """Compute match score breakdown for a job."""
+    """Compute match score breakdown for a job.
+
+    Free by default (services/local_match.py). MATCH_SCORING=ai restores the
+    per-open LLM breakdown."""
     job = _get_job(job_id, db)
+    if scoring_mode() == "local":
+        return _local_breakdown(db, user_id, job)
     resume_text = _get_resume_text(db, user_id)
 
     description = job.description or ""

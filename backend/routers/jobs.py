@@ -4,6 +4,7 @@ Job listing endpoints (data only, no bot automation).
 GET  /jobs, list scraped jobs with filters
 GET  /jobs/{id}, get a single job (a hidden duplicate answers with its visible twin)
 GET  /jobs/stats, aggregate stats
+GET  /jobs/sidebar, the Jobs page right rail (progress, match snapshot, ...)
 GET  /jobs/logo/{sha}.png, a self-hosted company logo (public, immutable)
 POST /jobs/{id}/check-live, re-verify a listing when a user opens it
 POST /jobs/{id}/save, save a job
@@ -55,7 +56,7 @@ from backend.services.cross_source_dedup import (
     normalize_title,
     stands_in_for_twins,
 )
-from backend.services import legacy_urls, platform_liveness
+from backend.services import jobs_sidebar, legacy_urls, platform_liveness
 from backend.services.listing_freshness import (
     CLOSED_LISTING_STATUSES,
     HIDDEN_LISTING_STATUSES,
@@ -83,10 +84,15 @@ def _overlay_saved(db: Session, jobs: list[ScrapedJob], user_id: Optional[int]) 
             .all()
         )
         saved_ids = {row[0] for row in rows}
+    # The global match_score column is a single-user leftover (0 on every row);
+    # the real numbers are per user, banked by the match sweep.
+    scores = jobs_sidebar.user_match_scores(db, user_id, [j.id for j in jobs])
     results = []
     for job in jobs:
         out = ScrapedJobOut.model_validate(job)
         out.saved = 1 if job.id in saved_ids else 0
+        if job.id in scores:
+            out.match_score = scores[job.id]
         out.url = legacy_urls.apply_url(out.url)
         results.append(out)
     return results
@@ -159,12 +165,17 @@ def list_jobs(
     experience_level: Optional[str] = None,
     date_posted: Optional[str] = None,
     sort: Optional[str] = None,
+    strong: Optional[int] = None,
+    since: Optional[datetime.datetime] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     user_id: Optional[int] = Depends(get_optional_user_id),
     db: Session = Depends(get_db),
 ):
-    """List scraped jobs, optionally filtered by status, match score, source, country, work_type, etc."""
+    """List scraped jobs, optionally filtered by status, match score, source, country, work_type, etc.
+
+    ``strong=1`` keeps only the user's strong matches (their own banked score,
+    best first); ``since`` keeps jobs first seen at or after that time."""
     from backend.services.job_filters import (
         date_posted_cutoff,
         expand_experience_filter_values,
@@ -268,6 +279,42 @@ def list_jobs(
                 ScrapedJob.experience_level.in_(expand_experience_filter_values(level_values))
             )
 
+    if since is not None:
+        if since.tzinfo is not None:
+            since = since.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        q = q.filter(func.coalesce(ScrapedJob.first_seen_at, ScrapedJob.scraped_at) >= since)
+
+    # The user's own score (LLM-confirmed or free local), for strong=1 and for
+    # sort=match. The global scraped_jobs.match_score is 0 on every row.
+    from backend.db.models import JobMatchScore
+    from backend.services.local_match import current_fingerprints
+
+    user_score = None
+    profile = (
+        jobs_sidebar.scoring_resume(db, user_id)
+        if user_id is not None and (strong or sort == "match")
+        else None
+    )
+    if strong:
+        if profile is None:
+            return []
+        q = q.join(JobMatchScore, JobMatchScore.job_id == ScrapedJob.id).filter(
+            JobMatchScore.user_id == user_id,
+            JobMatchScore.resume_fingerprint.in_(current_fingerprints(profile.raw_text)),
+            JobMatchScore.score >= jobs_sidebar.STRONG_MATCH,
+        )
+        user_score = JobMatchScore.score
+    elif profile is not None:
+        q = q.outerjoin(
+            JobMatchScore,
+            and_(
+                JobMatchScore.job_id == ScrapedJob.id,
+                JobMatchScore.user_id == user_id,
+                JobMatchScore.resume_fingerprint.in_(current_fingerprints(profile.raw_text)),
+            ),
+        )
+        user_score = JobMatchScore.score
+
     effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
     cutoff = date_posted_cutoff(date_posted or "")
     if cutoff is not None:
@@ -275,7 +322,14 @@ def list_jobs(
 
     # id tiebreaker: bulk inserts share timestamps, and ties without a total
     # order make pagination unstable (the same job shows up on two pages).
-    if sort == "match":
+    if user_score is not None:
+        # Unscored jobs last; ties (and the unscored) newest first.
+        q = q.order_by(
+            func.coalesce(user_score, -1).desc(),
+            effective_date.desc().nullslast(),
+            ScrapedJob.id.desc(),
+        )
+    elif sort == "match":
         q = q.order_by(
             ScrapedJob.match_score.desc(),
             effective_date.desc().nullslast(),
@@ -1032,6 +1086,20 @@ def job_stats(
     }
 
 
+@router.get("/sidebar")
+def jobs_sidebar_data(
+    since: Optional[datetime.datetime] = None,
+    user_id: Optional[int] = Depends(get_optional_user_id),
+    db: Session = Depends(get_db),
+):
+    """Everything the Jobs page's right rail shows: resume match snapshot,
+    weekly progress, saved jobs closing soon, feed summary, top companies,
+    autofill totals and the match-alert setting. Read-only, no LLM calls."""
+    if since is not None and since.tzinfo is not None:
+        since = since.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return jobs_sidebar.build_sidebar(db, user_id, since=since)
+
+
 @router.get("/applications", response_model=list[ApplicationOut])
 def list_applications(
     user_id: int = Depends(get_verified_user_id),
@@ -1650,7 +1718,8 @@ async def structure_description(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Parse a job description into structured sections using Claude AI. Cached in DB."""
+    """Structured sections for a posting: the cached parse if one exists, else
+    an LLM parse when JOB_STRUCTURE_AI is on (off by default: zero cost)."""
     import json
     from backend.services.llm import get_llm_service
 
@@ -1674,6 +1743,15 @@ async def structure_description(
                 return cached
         except (json.JSONDecodeError, TypeError):
             pass
+
+    # The web app already parses the posting client-side the moment it opens;
+    # this LLM pass only polishes that, at a paid call per job. Off unless
+    # JOB_STRUCTURE_AI is set, and an empty answer tells the client to keep its
+    # own parse.
+    import os
+
+    if (os.getenv("JOB_STRUCTURE_AI") or "").strip().lower() not in ("1", "true", "yes", "on"):
+        return {"sections": [], "skills": list(job.skills or []), "source": "client"}
 
     llm = get_llm_service()
 

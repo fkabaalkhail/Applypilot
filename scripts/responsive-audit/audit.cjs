@@ -99,6 +99,7 @@ function stubFor(pathname, method, userOverrides, empty) {
   if (p === "/auth/extension/authorize") return json({ code: "stubcode" });
 
   if (p === "/jobs/stats") return json(F.stats);
+  if (p === "/jobs/sidebar") return json(F.sidebar);
   // A state can ask for the collection to come back empty: the empty state is the
   // first screen every new user sees, so it gets audited like any other screen.
   if (p === "/jobs/applications") return json(empty ? [] : F.applications);

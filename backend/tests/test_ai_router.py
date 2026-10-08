@@ -23,6 +23,13 @@ from backend.db.models import ScrapedJob, ResumeProfileDB
 from backend.auth.dependencies import get_current_user_id, get_verified_user_id
 from backend.routers import ai
 
+
+@pytest.fixture(autouse=True)
+def _legacy_llm_scoring(monkeypatch):
+    # These tests pin the per-job LLM scoring path, which is now opt-in
+    # (MATCH_SCORING=ai); the free local path has its own tests.
+    monkeypatch.setenv("MATCH_SCORING", "ai")
+
 # Create a test-specific app with only the AI router (avoids production lifespan issues)
 TEST_DATABASE_URL = "sqlite:///./test_ai_router.db"
 test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})

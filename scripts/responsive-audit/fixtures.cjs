@@ -489,9 +489,39 @@ const feedbackItems = [
 
 const feedback = { items: feedbackItems, total: 128 };
 
+// GET /jobs/sidebar, the Jobs page right rail. Worst case: long names everywhere.
+const sidebar = {
+  resume: {
+    id: 42, name: "Software Engineering Resume, Fall 2026 (tailored for backend roles)",
+    scored_jobs: 339, avg_match: 64, strong_matches: 23, gap_pool_size: 120,
+  },
+  resume_skills: ["python", "typescript", "react", "fastapi", "postgresql", "docker", "aws"],
+  skill_gaps: [
+    { skill: "kubernetes", job_count: 41 },
+    { skill: "machine learning", job_count: 27 },
+    { skill: "terraform", job_count: 12 },
+  ],
+  progress: { week_start: "2026-10-05T00:00:00Z", applied_week: 4, applied_total: 37, saved_week: 6, interviews: 2 },
+  closing_soon: [
+    { id: 1, title: LONG_TITLE, company: LONG_COMPANY, company_logo: "", company_domain: "", company_url: "", age_days: 9, reason: "stale" },
+    { id: 2, title: "Software Engineer, New Grad", company: "Shopify", company_logo: "", company_domain: "shopify.com", company_url: "", age_days: 26, reason: "old" },
+  ],
+  feed: { total: 4373, new_since: 1284, since: "2026-10-07T00:00:00Z", remote: 512, strong_matches: 23 },
+  top_companies: [
+    { company: LONG_COMPANY, count: 14, company_logo: "", company_domain: "", company_url: "" },
+    { company: "Shopify", count: 9, company_logo: "", company_domain: "shopify.com", company_url: "" },
+    { company: "RBC", count: 7, company_logo: "", company_domain: "rbc.com", company_url: "" },
+    { company: "Wealthsimple", count: 5, company_logo: "", company_domain: "wealthsimple.com", company_url: "" },
+  ],
+  top_companies_basis: "matches",
+  autofill: { fields_filled: 1234, passes: 41 },
+  alerts_enabled: true,
+};
+
 module.exports = {
   user,
   feedback,
+  sidebar,
   jobs,
   stats,
   profile,

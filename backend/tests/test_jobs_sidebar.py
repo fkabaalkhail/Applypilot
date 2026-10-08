@@ -1,0 +1,295 @@
+"""
+Tests for GET /jobs/sidebar and the per-user score overlay / strong filter on
+GET /jobs. Isolated SQLite app (never the Neon lifespan), safe standalone.
+"""
+
+import datetime
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from backend.auth.dependencies import get_optional_user_id
+from backend.db.database import Base, get_db
+from backend.db.models import (
+    ApplicationRecord,
+    ApplicationStatus,
+    AutofillReport,
+    JobMatchScore,
+    ResumeProfileDB,
+    ScrapedJob,
+    User,
+    UserSavedJob,
+    UserSettings,
+)
+from backend.routers.jobs import router as jobs_router
+from backend.services.jobs_sidebar import build_sidebar
+from backend.services.match_notifier import _resume_fingerprint
+
+TEST_DATABASE_URL = "sqlite:///./test_jobs_sidebar.db"
+engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+USER = 1
+RESUME_TEXT = "Software engineer. Python, React, SQL, Docker. Built REST APIs."
+NOW = datetime.datetime(2026, 10, 8, 12, 0, 0)  # a Thursday
+
+app = FastAPI()
+app.include_router(jobs_router, prefix="/jobs")
+
+
+@pytest.fixture(autouse=True)
+def setup_db():
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture
+def db():
+    s = SessionLocal()
+    try:
+        yield s
+    finally:
+        s.close()
+
+
+@pytest.fixture
+def client(db):
+    def _db():
+        yield db
+
+    async def _user():
+        return USER
+
+    app.dependency_overrides[get_db] = _db
+    app.dependency_overrides[get_optional_user_id] = _user
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+_n = 0
+
+
+def job(db, **kw):
+    global _n
+    _n += 1
+    row = ScrapedJob(
+        title=kw.pop("title", f"Engineer {_n}"),
+        company=kw.pop("company", "Acme"),
+        url=f"https://example.com/{_n}",
+        scraped_at=kw.pop("scraped_at", NOW - datetime.timedelta(days=2)),
+        listing_status=kw.pop("listing_status", "active"),
+        **kw,
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def resume(db, text=RESUME_TEXT):
+    db.add(User(id=USER, email="u@example.com"))
+    r = ResumeProfileDB(user_id=USER, name="Main CV", raw_text=text, skills=["Kubernetes"])
+    db.add(r)
+    db.commit()
+    return r
+
+
+def score(db, job_row, value, text=RESUME_TEXT):
+    db.add(JobMatchScore(
+        user_id=USER, job_id=job_row.id, score=value, resume_fingerprint=_resume_fingerprint(text)
+    ))
+    db.commit()
+
+
+def test_anonymous_gets_feed_and_companies_only(db):
+    job(db, company="Acme")
+    job(db, company="Acme", work_type="remote")
+    job(db, company="Beta")
+    data = build_sidebar(db, None, now=NOW)
+    assert data["resume"] is None and data["progress"] is None
+    assert data["feed"]["total"] == 3
+    assert data["feed"]["remote"] == 1
+    assert data["feed"]["strong_matches"] is None
+    assert data["top_companies"][0] == {
+        "company": "Acme", "count": 2, "company_logo": "", "company_domain": "", "company_url": "",
+    }
+    assert data["top_companies_basis"] == "open"
+
+
+def test_resume_snapshot_uses_only_current_fingerprint(db):
+    resume(db)
+    a, b, c = job(db), job(db), job(db)
+    score(db, a, 90)
+    score(db, b, 70)
+    score(db, c, 99, text="an older resume")  # stale score must not count
+    data = build_sidebar(db, USER, now=NOW)
+    assert data["resume"]["name"] == "Main CV"
+    assert data["resume"]["scored_jobs"] == 2
+    assert data["resume"]["avg_match"] == 80
+    assert data["resume"]["strong_matches"] == 1
+    assert data["feed"]["strong_matches"] == 1
+    # Taxonomy tags from the text, plus a declared skill that is in the taxonomy.
+    assert {"python", "react", "sql", "docker", "kubernetes"} <= set(data["resume_skills"])
+
+
+def test_skill_gaps_come_from_good_fit_jobs_and_skip_owned_skills(db):
+    resume(db)
+    for _ in range(3):
+        j = job(db, skills=["python", "aws", "terraform"])
+        score(db, j, 85)
+    j = job(db, skills=["python", "aws", "go"])
+    score(db, j, 75)
+    j = job(db, skills=["rust", "rust"])
+    score(db, j, 40)  # below the pool bar
+    gaps = build_sidebar(db, USER, now=NOW)["skill_gaps"]
+    assert [g["skill"] for g in gaps][:2] == ["aws", "terraform"]
+    assert gaps[0]["job_count"] == 4
+    assert all(g["skill"] not in {"python", "rust"} for g in gaps)
+    assert all(g["job_count"] >= 2 for g in gaps)
+
+
+def test_implied_skills_are_never_reported_missing(db):
+    resume(db, text="Built services in PostgreSQL and Next.js.")
+    for _ in range(3):
+        score(db, job(db, skills=["sql", "javascript", "react", "aws"]), 90,
+              text="Built services in PostgreSQL and Next.js.")
+    data = build_sidebar(db, USER, now=NOW)
+    assert {"sql", "javascript", "react"} <= set(data["resume_skills"])
+    assert [g["skill"] for g in data["skill_gaps"]] == ["aws"]
+
+
+def test_skill_gap_fallback_skips_untagged_rows(db):
+    resume(db)
+    for _ in range(3):
+        job(db, skills=["python", "react", "graphql"])
+    for _ in range(5):
+        job(db, skills=[])  # untagged rows must not crowd out the scan
+    gaps = build_sidebar(db, USER, now=NOW)["skill_gaps"]
+    assert [g["skill"] for g in gaps] == ["graphql"]
+
+
+def test_skill_gap_fallback_pool_for_unscored_user(db):
+    resume(db)
+    for _ in range(3):
+        job(db, skills=["python", "react", "graphql"])
+    job(db, skills=["haskell"])  # shares nothing with the resume
+    gaps = build_sidebar(db, USER, now=NOW)["skill_gaps"]
+    assert [g["skill"] for g in gaps] == ["graphql"]
+
+
+def test_progress_counts_this_week_only(db):
+    resume(db)
+    monday = datetime.datetime(2026, 10, 5, 9, 0)
+    db.add_all([
+        ApplicationRecord(user_id=USER, company="A", role="r", applied_at=monday),
+        ApplicationRecord(user_id=USER, company="B", role="r", applied_at=NOW),
+        ApplicationRecord(user_id=USER, company="C", role="r", applied_at=monday - datetime.timedelta(days=1)),
+        ApplicationRecord(user_id=USER, company="D", role="r", applied_at=NOW, status=ApplicationStatus.FAILED),
+        ApplicationRecord(user_id=USER, company="E", role="r", applied_at=monday - datetime.timedelta(days=9),
+                          status=ApplicationStatus.INTERVIEWING),
+    ])
+    db.commit()
+    p = build_sidebar(db, USER, now=NOW)["progress"]
+    assert p["applied_week"] == 2
+    assert p["applied_total"] == 4
+    assert p["interviews"] == 1
+    assert p["week_start"] == "2026-10-05T00:00:00Z"
+
+
+def test_closing_soon_saved_stale_or_old_and_not_applied(db):
+    resume(db)
+    stale = job(db, title="Stale", listing_status="stale")
+    old = job(db, title="Old", posted_date=NOW - datetime.timedelta(days=30))
+    fresh = job(db, title="Fresh", posted_date=NOW - datetime.timedelta(days=3))
+    dead = job(db, title="Dead", listing_status="removed", posted_date=NOW - datetime.timedelta(days=40))
+    applied = job(db, title="Applied", listing_status="stale")
+    for j in (stale, old, fresh, dead, applied):
+        db.add(UserSavedJob(user_id=USER, job_id=j.id))
+    db.add(ApplicationRecord(user_id=USER, company="x", role="y", job_id=applied.id))
+    db.commit()
+    closing = build_sidebar(db, USER, now=NOW)["closing_soon"]
+    assert [c["title"] for c in closing] == ["Stale", "Old"]
+    assert closing[0]["reason"] == "stale"
+    assert closing[1]["reason"] == "old" and closing[1]["age_days"] == 30
+
+
+def test_new_since_window_is_clamped_to_two_weeks(db):
+    job(db, scraped_at=NOW - datetime.timedelta(hours=3))
+    job(db, scraped_at=NOW - datetime.timedelta(days=5))
+    job(db, scraped_at=NOW - datetime.timedelta(days=30))
+    assert build_sidebar(db, None, since=NOW - datetime.timedelta(hours=6), now=NOW)["feed"]["new_since"] == 1
+    assert build_sidebar(db, None, since=NOW - datetime.timedelta(days=365), now=NOW)["feed"]["new_since"] == 2
+    # No since: the last 24 hours.
+    assert build_sidebar(db, None, now=NOW)["feed"]["new_since"] == 1
+
+
+def test_autofill_totals_and_alert_setting(db):
+    resume(db)
+    db.add_all([
+        AutofillReport(user_id=USER, host="a", filled=12),
+        AutofillReport(user_id=USER, host="b", filled=7),
+        AutofillReport(user_id=2, host="c", filled=99),
+    ])
+    db.commit()
+    data = build_sidebar(db, USER, now=NOW)
+    assert data["autofill"] == {"fields_filled": 19, "passes": 2}
+    assert data["alerts_enabled"] is True  # no settings row = default on
+    db.add(UserSettings(user_id=USER, match_alerts_enabled=False))
+    db.commit()
+    assert build_sidebar(db, USER, now=NOW)["alerts_enabled"] is False
+
+
+def test_top_companies_by_good_fit_roles_when_scored(db):
+    resume(db)
+    for company, scores in [("Big", [50, 50, 50, 50]), ("Fit", [90, 80]), ("Mid", [75]), ("Low", [72])]:
+        for v in scores:
+            score(db, job(db, company=company), v)
+    data = build_sidebar(db, USER, now=NOW)
+    assert data["top_companies_basis"] == "matches"
+    assert [c["company"] for c in data["top_companies"]] == ["Fit", "Low", "Mid"]
+
+
+def test_endpoint_and_list_overlay_and_strong_filter(client, db):
+    resume(db)
+    a = job(db, title="Great")
+    b = job(db, title="Okay")
+    job(db, title="Unscored")
+    score(db, a, 88)
+    score(db, b, 60)
+
+    r = client.get("/jobs/sidebar")
+    assert r.status_code == 200, r.text
+    assert r.json()["resume"]["strong_matches"] == 1
+
+    by_title = {j["title"]: j["match_score"] for j in client.get("/jobs").json()}
+    assert by_title["Great"] == 88 and by_title["Okay"] == 60
+    # Not reached by the sweep yet: scored locally on the spot, for free.
+    assert by_title["Unscored"] > 0
+
+    strong = client.get("/jobs", params={"strong": 1}).json()
+    assert [j["title"] for j in strong] == ["Great"]
+
+
+def test_sort_match_orders_by_the_users_own_score(client, db):
+    resume(db)
+    # Inserted oldest-to-newest so date order (Unscored, Okay, Great) is the
+    # exact reverse of score order.
+    great = job(db, title="Great")
+    okay = job(db, title="Okay")
+    job(db, title="Unscored")
+    score(db, okay, 60)
+    score(db, great, 88)
+    titles = [j["title"] for j in client.get("/jobs", params={"sort": "match"}).json()]
+    assert titles == ["Great", "Okay", "Unscored"]
+
+
+def test_list_since_filter(client, db):
+    job(db, title="New", scraped_at=NOW - datetime.timedelta(hours=1))
+    job(db, title="Older", scraped_at=NOW - datetime.timedelta(days=3))
+    since = (NOW - datetime.timedelta(hours=2)).isoformat() + "Z"
+    titles = [j["title"] for j in client.get("/jobs", params={"since": since}).json()]
+    assert titles == ["New"]

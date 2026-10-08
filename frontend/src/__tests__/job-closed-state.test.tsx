@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { ApplyTrackingProvider } from "../context/ApplyTracking";
@@ -25,7 +26,11 @@ vi.mock("../components/JobFilterBar", () => ({
 }));
 
 function renderWithProviders(ui: ReactElement) {
-  return render(<ApplyTrackingProvider>{ui}</ApplyTrackingProvider>);
+  return render(
+    <MemoryRouter>
+      <ApplyTrackingProvider>{ui}</ApplyTrackingProvider>
+    </MemoryRouter>
+  );
 }
 
 const baseJob = {

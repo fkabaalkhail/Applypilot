@@ -26,6 +26,7 @@ from backend.db.models import (
 from backend.services.alert_unsubscribe import unsubscribe_url
 from backend.services.email_service import clean_company_name, email_service
 from backend.services.listing_freshness import LISTING_ACTIVE, LISTING_STALE
+from backend.services.local_match import scoring_mode
 from backend.services.logo_cache import LOGO_PATH_PREFIX, logo_quality
 
 logger = logging.getLogger(__name__)
@@ -398,6 +399,117 @@ def notify_high_matches(
     return len(fresh)
 
 
+def ai_confirmations_per_day() -> int:
+    """LLM confirmations per user per UTC day in local mode (0 = never call
+    the LLM: matching is then entirely free). Default 3 = at most ~$0.0015 per
+    user per day at gpt-4o-mini prices."""
+    return max(0, _env_int("MATCH_AI_DAILY_PER_USER", 3))
+
+
+def ai_confirm_min_score() -> int:
+    """Local score a job needs before it is worth an LLM confirmation."""
+    return _env_int("MATCH_AI_CONFIRM_MIN", 70)
+
+
+async def _score_user_local(
+    db: Session,
+    engine,
+    user_id: int,
+    profile,
+    window,
+    threshold: int,
+    started: float,
+    scoring_budget_s: int,
+    llm_blocked: bool,
+) -> dict:
+    """Local-mode sweep for one user.
+
+    1. Score every window job locally (free; already-current scores skipped).
+    2. Spend at most ai_confirmations_per_day() LLM calls today confirming the
+       best local candidates, best first. A confirmed score overwrites the
+       local one for that (user, job).
+    3. Return what may be emailed: LLM-confirmed scores at or above the
+       threshold, or, when confirmation is off or the LLM is unreachable,
+       local scores at or above it.
+    """
+    from backend.services.local_match import ai_fingerprint, bank_local_scores, local_fingerprint
+    from backend.services.openai_service import LLMAccountError
+
+    out = {"local_scored": 0, "ai_confirmed": 0, "errors": 0,
+           "llm_unavailable": None, "budget_spent": False, "sendable": []}
+    window_ids = [row[0] for row in db.query(window.c.id).all()]
+    if not window_ids:
+        return out
+    out["local_scored"] = len(bank_local_scores(db, user_id, profile, window_ids))
+
+    ai_fp = ai_fingerprint(profile.raw_text)
+    local_fp = local_fingerprint(profile.raw_text)
+    per_day = ai_confirmations_per_day()
+    day_start = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    used_today = (
+        db.query(func.count(JobMatchScore.id))
+        .filter(
+            JobMatchScore.user_id == user_id,
+            JobMatchScore.resume_fingerprint == ai_fp,
+            JobMatchScore.scored_at >= day_start,
+        )
+        .scalar()
+    ) or 0
+    allowance = max(0, per_day - used_today)
+
+    if allowance and not llm_blocked:
+        candidates = (
+            db.query(JobMatchScore.job_id)
+            .filter(
+                JobMatchScore.user_id == user_id,
+                JobMatchScore.job_id.in_(window_ids),
+                JobMatchScore.resume_fingerprint == local_fp,
+                JobMatchScore.score >= ai_confirm_min_score(),
+            )
+            .order_by(JobMatchScore.score.desc(), JobMatchScore.job_id.desc())
+            .limit(allowance)
+            .all()
+        )
+        ids = [row[0] for row in candidates]
+        descriptions = dict(
+            db.query(ScrapedJob.id, ScrapedJob.description).filter(ScrapedJob.id.in_(ids)).all()
+        ) if ids else {}
+        for job_id in ids:
+            if scoring_budget_s > 0 and _now() - started >= scoring_budget_s:
+                out["budget_spent"] = True
+                break
+            try:
+                breakdown = await engine.compute_breakdown(profile.raw_text, descriptions.get(job_id) or "")
+            except LLMAccountError as exc:
+                out["llm_unavailable"] = str(exc)[:200]
+                logger.error("match-alert sweep: OpenAI refused the account, local scores only: %s", exc)
+                break
+            except Exception as exc:
+                out["errors"] += 1
+                logger.warning("match-alert sweep: confirming job %s for user %s failed: %s: %s",
+                               job_id, user_id, type(exc).__name__, exc)
+                continue
+            _remember_score(db, user_id, job_id, breakdown.overall_score, ai_fp)
+            out["ai_confirmed"] += 1
+
+    # Local scores may be emailed only when nothing will confirm them.
+    trust_local = per_day == 0 or llm_blocked or out["llm_unavailable"] is not None
+    fps = [ai_fp, local_fp] if trust_local else [ai_fp]
+    rows = (
+        db.query(ScrapedJob, JobMatchScore.score)
+        .join(JobMatchScore, JobMatchScore.job_id == ScrapedJob.id)
+        .filter(
+            JobMatchScore.user_id == user_id,
+            JobMatchScore.job_id.in_(window_ids),
+            JobMatchScore.resume_fingerprint.in_(fps),
+            JobMatchScore.score >= threshold,
+        )
+        .all()
+    )
+    out["sendable"] = [(job, sc) for job, sc in rows]
+    return out
+
+
 async def sweep_match_alerts(
     db: Session,
     max_users: Optional[int] = None,
@@ -432,8 +544,14 @@ async def sweep_match_alerts(
 
     if max_users is None:
         max_users = _env_int("CRON_MATCH_MAX_USERS", 25)
+    local_mode = scoring_mode() == "local"
     if jobs_per_user is None:
-        jobs_per_user = _env_int("CRON_MATCH_JOBS_PER_USER", 15)
+        # Local scoring is free, so its window can be wide; the LLM window
+        # stays small because every job in it is a paid call.
+        # 2,000 covers the whole live catalogue (~5k visible, newest first) in
+        # a few runs; steady state is only the new arrivals, since current
+        # scores are skipped and each job's terms are computed once, ever.
+        jobs_per_user = _env_int("CRON_MATCH_JOBS_PER_USER", 2000 if local_mode else 15)
     # Wall-clock box for LLM scoring. cron-poll runs this sweep last, after
     # polling and enrichment, under Vercel's 300 s ceiling, and one call during
     # a transient OpenAI incident can sit through 45 s of 429 backoff (5xx:
@@ -510,6 +628,7 @@ async def sweep_match_alerts(
             )
 
     users_scanned = 0
+    ai_confirmed = 0
     users_notified = 0
     jobs_notified = 0
     jobs_scored = 0
@@ -573,6 +692,24 @@ async def sweep_match_alerts(
             .limit(jobs_per_user)
             .subquery()
         )
+        if local_mode:
+            outcome = await _score_user_local(
+                db, engine, user.id, profile, window, threshold,
+                started, scoring_budget_s, llm_unavailable or budget_spent,
+            )
+            jobs_scored += outcome["local_scored"]
+            ai_confirmed += outcome["ai_confirmed"]
+            scoring_errors += outcome["errors"]
+            if outcome["llm_unavailable"]:
+                llm_unavailable = outcome["llm_unavailable"]
+            if outcome["budget_spent"]:
+                budget_spent = True
+            sent = notify_high_matches(db, user.id, outcome["sendable"])
+            if sent:
+                users_notified += 1
+                jobs_notified += sent
+            continue
+
         # Fetch full rows only for window jobs this run can actually use:
         # unscored ones (they go to the LLM) and cached strong matches (they
         # may be emailed). A job already scored below threshold for this same
@@ -672,6 +809,8 @@ async def sweep_match_alerts(
         "jobs_scored": jobs_scored,
         "scoring_errors": scoring_errors,
         "scoring_budget_spent": budget_spent,
+        "scoring_mode": "local" if local_mode else "ai",
+        "ai_confirmed": ai_confirmed,
     }
     if llm_unavailable:
         summary["error"] = llm_unavailable
