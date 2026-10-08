@@ -1,3 +1,321 @@
+# Round 5: the open bugs, Ashby's Yes/No, two new question banks (2026-10-08, night)
+
+Branch `night/autofill-round5` (worktree `.worktrees/autofill-round5`),
+from main at 0992cd4 (round 4 and the phase 1 wording). Local only: NOT
+pushed, NOT deployed, nothing uploaded. Nothing was submitted anywhere:
+every live run blocks non-GET requests (GraphQL queries aside), and no
+account was created on a real site.
+
+The biggest find: **no Yes/No question on any Ashby form had ever been
+answered.** Ashby draws them as two buttons over a hidden checkbox, and the
+scanner saw only the checkbox, labelled "No". Work right, sponsorship,
+relocation, office days, U.S. person: blank on every Ashby application
+until tonight.
+
+## 1. Real users first
+
+Prod `autofill_reports` (read-only SELECT, branch main): **no reports since
+2026-10-05.** The newest is still 2026-10-03 15:15 UTC (checked at the
+start of the night and again at 06:25). Prod `security_events` shows no
+extension sign-in since 2026-09-28, and none rejected. So P0 had no new
+real fills to turn into cases; the night went to round 4's open bugs and
+new ground.
+
+## 2. The open bugs from round 4
+
+| bug | cause | now | verified |
+| --- | --- | --- | --- |
+| a. Ashby's second school "Field no longer found" (Superhuman) | While a school typeahead is open, Floating UI marks every other field block `aria-hidden` (with `data-aria-hidden`); a rescan then saw 12 of 25 fields | The library's marks are not hiding. A dropdown whose control has gone is looked up again after the page settles | live: menu open, 25 fields stay 25 (old build: 12) |
+| b. Workable Saalex freeze: does a person changing the State freeze it too? | | No. Three runs (a person alone; the extension, then a person, twice), each changing the State twice after the dates were in: no freeze | live probe |
+| c. Workable's Address from the visitor's IP | Workable's form JSON serves its guess with `prefilledByLocation: true`, and the fill never overwrites a value | A box still holding exactly the guess is empty to the fill and gets the profile's location; a box the person changed is theirs | live, both ways; 20 Workable pins now read the persona's location |
+| d. Paylocity's State, and "How did you hear" reported "No option matches" | State: a click only focuses the search box; ArrowDown or typing opens a virtualized list of role-less rows of state codes. The radio: choosing an option replaces its element | Role-less rows are read and a state is searched by its code; a named radio group is read again when one of its radios has left | live: State TX, "2 steps filled (19 ok)" (was 17 ok, 2 need attention) |
+| e. Dayforce's Preferred Contact Method | went to the AI | the email the application gives, when the list offers it | live, pinned. Start dates stay blank (decision 28, month-only dates) |
+| f. BambooHR Armstrong; Bosch and ServiceNow on SmartRecruiters | Armstrong loaded and passed all four cases (59/59): round 4's misses were the page. SmartRecruiters challenges every page after the first from this machine | Armstrong stays; Bosch retired so the suite's one SmartRecruiters page can pass first | live |
+
+Found on the way: **today's date in the box's own format.** Saalex's date
+boxes show DD/MM/YYYY (an en-GB browser): 8 October went in as 10 August,
+and round 4's pins had let 10 May stand for 5 October. Today is now
+re-emitted in each box's format, and pins check it against the run's date
+(`{ today: "DD/MM/YYYY" }`).
+
+## 3. New ground: two question banks, then their pages live
+
+Round 4's method: blind run first, every answer read, a failing test
+before each fix, every bank re-run after each fix and every changed answer
+read, then the bank's own pages live.
+
+| bank | source (GET only) | postings | questions | answers read |
+| --- | --- | --- | --- | --- |
+| Ashby | the public posting API lists a board's jobs; each form from the page's own `ApiJobPosting` GraphQL query (never a mutation) | 69 (the Ashby boards in prod `scraped_jobs`) | 818 | 4,908 |
+| Lever | the public postings API; each posting's own `/apply` page as served | 55 (the 52 Lever boards in prod) | 1,122 | 6,732 |
+
+With round 4's four banks: six banks, 47,418 answers, all re-run after
+every fix tonight. New tools: `tools/qbank-ashby.mjs`,
+`tools/qbank-lever.mjs`, `tools/qbank-diff.cjs` (every answer that changed
+between two runs).
+
+Then each bank's own pages live, each posting with the persona one of its
+questions got wrong: 13 Ashby postings (`r5a-*`) and 13 Lever postings
+(`r5b-*`), every write read, then pinned (150 and 230 checks).
+The live runs found what the banks could not:
+
+- **Ashby's Yes/No buttons** (above), and **a form's later sections**
+  dropped when every field the scanner recognizes sits in the first one
+  (TensorWave: both Yes/No questions cut off as "outside the form").
+- **Long Lever questions lost their label**: a question with its
+  description, or a paragraph long, ran past 300 characters and was named
+  by its input (`surveysResponses[…][field3]`), so no rule saw it.
+- **Lever's company** is only in its header logo's alt; unknown, the
+  company's own careers-site option ("Palantir Website") was not its own.
+
+Not built: a **Jobvite** bank (its apply page loads the form by XHR from
+an API that needs a browser capture first; prod has 3 live Jobvite
+postings) and a **SmartRecruiters** bank (the posting page and its API sit
+behind the bot challenge from this machine).
+
+**iCIMS and SuccessFactors, the families seen least** (P2), on 11 open
+postings (`r5c-*` in `real-live-round5.mjs`, no pins, up to two next
+pages): **none reached an application form, and nothing was written.**
+Each started on the posting's own job page, as a user arriving from Tailrd
+would. On all eight iCIMS pages and both L3Harris (SuccessFactors) pages the
+panel had to be opened by hand, found no field, and never opened the
+application; on Acuity (SuccessFactors, in French) it clicked "Postuler
+maintenant" and reached SuccessFactors' email gate ("Saisir le courriel
+pour démarrer le processus"), which needs an account (none created).
+(Each run waited out its three minutes: the harness records the flow's last
+message only when it begins "Step", "Done" or "Autofill flow stopped", so a
+stop such as "No application form found on this page" looked like a hang.
+Being checked with the page logs after the final regression.)
+
+## 4. Wrong answers fixed
+
+Live pages (the value written, and now):
+
+| page | question | wrote | now |
+| --- | --- | --- | --- |
+| Ashby, every posting (live: Iambic, Pryzm, Zip, Teleskope, TensorWave, Barnes, Replit, Base Power, Saronic, Snowflake, Amplitude) | every Yes/No question | nothing | answered by the rules |
+| Ashby TensorWave | the form's second section | dropped as outside the form | scanned |
+| Ashby TensorWave | "Where are you currently located?" (Ashby's location box) | blank | the location |
+| Workable Saalex | signature dates | 10 August for 8 October | today, DD/MM/YYYY |
+| Workable (20 postings) | Address | the page's guess from this machine's location | the persona's location |
+| Paylocity | State | "Select a state" | TX |
+| Lever eqbank | "Do you self-identify as a racialized person?" (an Asian persona) | labelled by its input name, blank | Yes |
+| Lever Kobie | "Are you currently located in one of these states? Colorado, …" (Denver) | labelled by its input name, blank | Yes |
+| Lever Palantir | how did you hear (stated "Company website") | Other | Palantir Website |
+| Lever Wattpad | "Please select an identity that best represents you:" (White, cisgender, straight) | never selected | I don't identify as a minority |
+| Ashby Superhuman (regression) | the two education rows (a Montreal career changer) | Concordia University, its certificate and major, in both rows | each row its own: Université de Montréal, then Concordia |
+| Greenhouse Waymo (regression) | "If yes, what kind?" (a Canadian student) | TN (Applicable for citizens of Canada or Mexico) | blank, as in round 4 |
+| Ashby Ramp (regression, 3 cases) | "pursuing a Bachelor's, Master's, or PhD in … Engineering, or another quantitative field?" (engineering students) | No (read as the PhD alone) | Yes |
+| Ashby Grow Therapy (regression) | expected graduation, an April 2027 graduate (no spring 2027 offered) | Winter 2027 | blank |
+| Ashby The Exploration Company (regression) | "…provide your own housing, relocation, and transportation to the internship site?" | Yes (from the willingness to move) | blank, the applicant's |
+
+Question banks (each also a unit test, in `round5.test.ts` and
+`bankLever.test.ts`):
+
+| company | question | wrote | now |
+| --- | --- | --- | --- |
+| Iambic, Pryzm, Vital Lyfe (Ashby) | live there, or willing to relocate (Toronto, Berlin, Bengaluru, willing) | "Yes, I live in San Diego"; "In Boston"; "Yes, but require relocation" never chosen | the move option |
+| TensorWave (Ashby) | "Will you now or in the future require authorization to work in the United States?" | backwards for everyone | Yes for anyone needing sponsorship, No for a citizen |
+| Trulioo (Ashby) | sponsorship now / only later / never | OPT: "now"; a citizen's "never" never chosen | read by when |
+| Trulioo (Ashby) | "legally eligible to work in Canada or the USA?" (Canadian) | "not eligible in Canada or the USA" | "…eligible to work in Canada" |
+| Barnes & Thornburg (Ashby) | "prevented from lawfully becoming employed in the US…?" (OPT) | Yes | No |
+| Barnes & Thornburg (Ashby) | Law School, Undergraduate School, Graduate School, Graduate Major | the first school for each | that degree's school, or blank |
+| Replit (Ashby) | Foster City HQ 3 days a week (non-movers elsewhere) | Yes | No |
+| Perchwell, Lyft, Verkada, Klaviyo | graduation periods | another month's (June 2026 took December 2026) | the month's own |
+| Exegy (Ashby) | notice-period list | the days to a start date | the notice stated |
+| Float, A Thinking Ape | salary in CAD boxes (a Denver resident's 85000) | written | blank |
+| Gecko, Reflect Orbital, Saronic, Cowboy Space, Snowflake, Woven, Shield AI | U.S. person, in other wordings and lists | blank | Yes for a citizen or permanent resident, No / Other otherwise |
+| Wattpad (Lever) | "Do you require workplace accommodations due to a mental health condition? (Whether work from home or in-office)" | **Yes from everyone willing to move** (read as an office requirement) | No for those who state no disability; blank otherwise, kept from the AI |
+| Wattpad (Lever) | accommodations "due to a physical disability" (a persona with a disability) | Yes (from the disability status) | blank, theirs |
+| Data Lab (Lever) | "Are you local to the Germantown, MD office (within 25 miles)" | Yes for all | No for all |
+| SEP (Lever) | "Does your work authorization now, or will it in the future, involve CPT or OPT?" (H-1B; US citizen) | Yes | No |
+| SEP (Lever) | sponsorship options (OPT; citizen) | "I require sponsorship … at this time"; blank | "…not right now, but will…"; "I do not and will not…" |
+| SEP (Lever) | "what city will you be working from?" (movers) | their current city | blank |
+| eqbank (Lever) | "racialized person?" (Black, Asian personas) | No (read as the Hispanic question) | Yes |
+| Spotify (Lever) | a UK ethnicity list (German, French-Canadian; Black; Asian) | "White: Irish"; "Black/Black British: African"; blank | the group's "Any other …" option |
+| Palantir (Lever) | university, a University of Washington graduate | Washington College | blank (listed per campus) |
+| National Journal (Lever) | "At which institution did you earn your highest degree?" | The Master's College | University of Washington / Northeastern University |
+| Fullscript (Lever) | experience "…implementing RBAC and MFA…" | Yes for master's holders, No for others (MFA, a Master of Fine Arts) | blank |
+| Data Lab (Lever) | experience with Direct Marketing Campaigns | No for all (a marketing opt-out) | blank |
+| Wintermute (Lever) | years in desktop or IT support roles (software careers) | 1-2 years; 5+ years | blank |
+| FiscalNote (Lever) | notice list (3 months; 4 weeks; immediately) | 3-4 weeks; 4+ weeks; blank | 4+ weeks; 3-4 weeks; None/Immediate |
+| Kobie (Lever) | located in one of these states (Colorado, Massachusetts residents) | No ("Georgia" read as the country) | Yes |
+| Artera (Lever) | "Were you referred…? If so, please provide their first and last name." | the applicant's own name | blank |
+| Zoox (Lever) | "I am aware that this is a hybrid role… Foster City, CA." (non-movers) | No | Yes |
+| Zoox (Lever) | preferred first and last name ("…you do not need to respond") | the first name | blank |
+| ERG (Lever) | "Legal Full Name (First Name, Middle Name & Last Name)" | the first name, then blank | the full name |
+| Match Group (Lever) | how heard (stated Referral) | Employee Presentation | Other |
+| Immuta (Lever) | "If you answered Yes or Unsure… details" (citizen) | US Citizen | blank (the status for those who need sponsorship) |
+| Crest, FiscalNote, Riot | a whole address | the city line, or no country | the whole address, with the country abroad |
+| Larian (Lever) | on site at a studio the page does not name (a non-mover) | Yes | blank |
+| Renaissance (Greenhouse bank 3) | "referred by a current employee of the company?" (stated Referral) | No (since round 4) | Yes |
+| UASI (Greenhouse bank 2) | "Do you live locally in Cincinnati, OH and…" (movers) | Yes | No |
+
+## 5. Blanks now answered
+
+- **Every Yes/No question on Ashby**, and Ashby's later form sections.
+- Places: "Where are you currently located?"; "Where do you currently live?"
+  over states and countries (Squarespace); "Country - Region" lists
+  (Dropbox, Intercom; never "US - Washington, D.C" for Washington state);
+  a "not listed" option when neither state nor country is listed; a state
+  list in the label (Kobie); "able to be located in Jacksonville, FL" for
+  movers (RF Smart); Artera's live-there / move / neither.
+- "Current or most recent employer", "Where have you most recently
+  worked?" (a job that has ended); visa status lists by the applicant's own
+  visa (Base Power, Vital Lyfe, OnePay, Doximity; Waymo's for an OPT
+  holder).
+- Enrollment at a named place for someone enrolled nowhere: "Are you
+  currently attending a college or university in the US?" (Superhuman),
+  "…a university in Canada?" (Lyft): No for graduates.
+- How you heard: "Where did you first see this position?", "How'd you
+  hear…", "From which job site did you see this posting?" (Data Lab).
+- Employers: "filed an application with us before?", "previous employee of
+  any of the Crest family of companies", "Do you currently work for
+  Gopuff?", Copper River's "Family of Companies".
+- Start dates: "On what date would you be available to work"; "require
+  sponorship" (sic) is sponsorship.
+- EEO: "I am not a U.S. veteran" (Gopuff); "Caucasian" (AltaML); "Cisgender
+  Woman" / "Transgender Man" options (AltaML); race lists named only by
+  their options (Wattpad, Faire, Doximity); "racialized person" (eqbank);
+  Wattpad's minority list.
+- Sponsorship details for those who need sponsorship (Immuta, Calm).
+- Kobie's attention check by place ("select the SECOND option"), its
+  periodic travel for someone who prefers remote work, Canonical's yearly
+  meetups for the same.
+- Dayforce's Preferred Contact Method.
+
+## 6. Decisions (one rule each, each easy to reverse)
+
+29. An open menu's "hide others" marks (`data-aria-hidden`) never hide a
+    field.
+30. A box still showing exactly the page's location guess (Workable's
+    `prefilledByLocation`) is empty to the fill.
+31. Today's date is written in the box's own format; with none shown,
+    month first.
+32. A bare salary figure is in the applicant's own currency.
+33. A form's later sections of the same kind are part of the form.
+34. A school's kind is part of its name ("University of X" is not "X
+    College"); a school listed only per campus is never "not listed", and
+    the campus is the applicant's.
+35. Needing an accommodation (interview or workplace) is No only for
+    someone who states no disability; anyone else answers it, never the AI.
+36. A visible minority ("racialized person") is any stated race but White;
+    Indigenous peoples and two or more races are not decided; "not a
+    minority" is never chosen beside "nonvisible minority" for someone
+    LGBTQ+ or with a disability.
+37. A grouped ethnicity list ("White: Irish") takes the stated group's "any
+    other" option, never a subgroup nobody stated.
+38. A gender list with cis / trans options takes both stated facts only
+    when the stated gender is not offered plain ("Male" beside "Transgender
+    Male" is "Male").
+39. A first-person statement of awareness over Yes / No is Yes, unless it
+    also promises something.
+40. Where one will work from is not where one lives now; on site at a place
+    nobody named, for someone who will not move, is theirs.
+41. Paying for one's own housing or move is the applicant's to answer, like
+    relocation assistance.
+42. Who completed the application, or whether an AI helped: never answered,
+    never sent to the AI (round 4's decision 6, now on the device).
+43. Kept: No to non-competes (your day-session decision 1, "unencumbered"),
+    also where "other restrictive covenants" are named. This sits uneasily
+    with decision 27 (NDAs are common); say if those should be yours.
+44. A graduation term in winter is never chosen from the year alone (an
+    April 2027 graduate is not "Winter 2027").
+45. "Pursuing a degree in X or a related field": a degree in progress
+    outside the sciences and engineering is the applicant's to judge.
+46. Working for a partner, vendor, client or competitor of the company is
+    not working for the company.
+47. A visa a country's citizens may use ("TN (Applicable for citizens of
+    Canada or Mexico)") is not the citizen's status; an option that names
+    the applicant by citizenship ("Canadian or Mexican Citizen (TN Visa)")
+    is.
+48. Someone enrolled nowhere is not enrolled at a named place; where a
+    student's school is, the profile does not say, so that stays theirs.
+49. Kept (an earlier round's rule, newly visible on Ashby's Yes/No): a
+    posting's own requirement is accepted by applying unless the profile
+    refuses it: relocating to New York for Ramp's internship, on site in
+    Rochester for MegaZone, travel as needed for NPX, all Yes for a profile
+    that says nothing about moving. An open-ended "Are you open to
+    relocation?" stays blank without a stated answer. Say if a silent
+    profile should leave requirements blank too.
+50. A web component's own `label` attribute names its field when nothing
+    else does (SmartRecruiters' `<spl-input label="First name">`).
+
+## 7. Regression
+
+Every pinned live case (201), in 16 batches of 13, headful, on the build of
+c144207 (04:48): **168 passed, 33 failed.** Every failure was read:
+
+| cause | cases | what now |
+| --- | --- | --- |
+| the posting closed (Greenhouse's job API 404: Robinhood x3, OneImaging x2, D2L, Duolingo; Ashby's API no longer lists it: Greenboard, NTT Data; Pinpoint redirects home: IDT; JazzHR 410 Gone: Directors Investment Group) | 11 (8 postings) | retired, each with a comment saying why |
+| the git-ignored sample PDF was missing from the worktree | 1 | copied in; passes |
+| answers the cases never had: Ashby's Yes/No questions, Lever survey questions now labelled, Workable's Address now the profile's | 11 | each read against its persona, then pinned |
+| wrong answers | 7 (5 bugs) | fixed, a failing test first: both of Superhuman's education rows took Concordia; Waymo's "If yes, what kind?" took TN; Ramp's degree question (3 cases); Grow Therapy's winter term; The Exploration Company's own housing |
+| the page changed: Astranis reworded its SMS consent | 1 | re-pinned (still No) |
+| Databricks' Degree dropdown did not open once | 1 | passed on re-run (25/25) |
+| SmartRecruiters ServiceNow read every label as its id; City stayed blank | 1 | fallback added, not verified live (section 8) |
+
+(Grow Therapy also renamed its custom fields' ids and Waymo's phone widget
+stopped adding +1: both re-pinned.)
+
+Then, on the final build, every failing case still open, every round-5
+page and every new pin, re-run in six runs of 13 or fewer (r5re-A..F) and
+read: **46 distinct pinned cases, every one passing** once its new answers
+were read and pinned (the 13 round-5 Ashby pages, 12 of the 13 Lever pages,
+and the 21 regression failures still open, all but ServiceNow).
+
+**The final regression, on the final build** (190 pinned cases after the
+retirements, 15 batches of 13, started 07:41): running as this is written;
+its result replaces this paragraph when it ends.
+
+## 8. Needs you / needs manual verification
+
+**Your decisions**
+1. **Upload 0.5.0?** Still not uploaded (I uploaded nothing). The zip
+   predates round 5: a release with tonight's fixes needs a new zip.
+2. **`EXTENSION_ALLOWED_IDS` on Vercel** (both ids): I did not check or
+   change any Vercel setting.
+3. **Legal waivers.** Still the lone-acknowledgement rule: National
+   Journal's terms (with an at-will clause and a liability release) are
+   now Yes by it. Say if lone waivers should stay blank everywhere.
+4. **Does OpenAI work now?** Nothing used it tonight; what is left to the
+   AI (essays, "May we contact your employer?", Barnes' degree types)
+   stays blank while it is down.
+5. **Two committed Workable page fixtures** (`test/fixtures/real/workable/
+   workable-financeit-ds.html`, `workable-mindex-coop.html`, from an
+   earlier round) hold the Address Workable guessed for this machine.
+   Scrub them? History keeps it either way.
+6. **A bare salary figure is the home currency** (decision 32): a Toronto
+   resident's "95000" is CAD. Right?
+7. The brief's first P3 item was cut off ("…ng edits"): tell me what it was.
+8. **A posting's requirements for a profile that says nothing** (decision
+   49): relocating for Ramp's internship, on site in Rochester, travel as
+   needed are Yes unless the profile refuses them. Keep that, or leave them
+   blank until the profile says?
+
+**Not verified live, or still open**
+- **ServiceNow on SmartRecruiters** (the suite's one SmartRecruiters
+  page): the fix that reads a web component's own `label` attribute
+  (1161e4b) is unit-tested, and the test reproduces the regression's ids
+  exactly, but it is not verified live. SmartRecruiters served a DataDome
+  CAPTCHA to both follow-up probes from this machine. After a quiet spell,
+  run `live-sr-servicenow` alone (it must be the first SmartRecruiters page
+  of the session) and check that City is filled.
+- **Wattpad's location typeahead and Databricks' Degree dropdown** each
+  missed once tonight and passed on every other run: page timing, most
+  likely. Watch them in the next regression.
+- **Waymo's phone widget** stopped adding +1 tonight; the pin now accepts
+  either form. The value written is the same as before.
+- **OneImaging's embed host page** (`real-live-embedded.mjs`) has no open
+  posting to frame; Waymo still runs a live Greenhouse embed. Point it at
+  an open posting to restore the second embed case.
+- **Not built:** Jobvite and SmartRecruiters question banks (section 3).
+  **Not explored:** Taleo (no active Taleo posting in prod `scraped_jobs`
+  tonight).
+- **Batch C** (iCIMS, SuccessFactors): why each flow stopped where it did
+  (section 3), from the page logs.
+
 # Round 4: real users first, then new ground (2026-10-04, night)
 
 Branch `night/autofill-round4`, from main at 775ff09. Local only: NOT pushed,
