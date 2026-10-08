@@ -2332,11 +2332,28 @@ function resolveRelocationChoice(q: QuestionInput, n: string, profile: UserAppli
  */
 const US_STATUS_OPTION = /\b(u ?s citizen|citizen of the united states|national of the united states|u ?s national|lawful permanent resident|permanent resident of the u|green card|refugee|asylee|daca|u ?s person|foreign person)\b/;
 const NONE = /^(\(?[a-z]\)?\s+)?other\b|\bnone of the above\b|\bforeign person\b|\bnot a u ?s (person|citizen)\b/;
-function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
+function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: UserApplicationProfile, fullLabel: string = q.label): QuestionResult {
   // "Are you a “U.S. person” as defined under applicable U.S. export-control
   // regulations…?" with Yes / No (Jeffrey M. Consulting on Workable,
   // 2026-10-05): a citizen or permanent resident is; a visa is not.
-  if (/\b(are you|is the applicant) an? (u ?s|united states) person\b/.test(qnorm(q.label)) && isBooleanQuestion(q)) {
+  // Other wordings over Yes / No (Ashby bank 2026-10-08): "Do you currently
+  // qualify as a U.S. person…?" (Gecko), "Do any of the following
+  // designations apply to you: U.S. citizen…, lawful permanent resident…?"
+  // (Reflect Orbital), "…please confirm whether you fall into one of the
+  // three statuses above" (Saronic), and a bare definition of "U.S. Persons"
+  // (Cowboy Space's ITAR note). A third "Unsure" option leaves it a yes/no.
+  // A long statement is asked by its last sentence; the statuses it lists
+  // come before it (Saronic), so they are counted in the whole label.
+  const ln = qnorm(q.label);
+  const whole = qnorm(fullLabel);
+  const terms = [/\bu ?s citizens?\b|\bcitizens? of the united states\b/, /\bpermanent residents?\b|\bgreen card\b/, /\brefugees?\b/, /\basylees?\b/].filter((t) => t.test(whole)).length;
+  const asksPerson =
+    /\b(are you|is the applicant) an? (u ?s|united states) person\b/.test(ln) ||
+    /\bqualif(y|ies) as an? (u ?s|united states) person\b/.test(ln) ||
+    (terms >= 2 && /\b(designations?|statuses|criteria|categories) (apply|applies) to you\b|\bfall (into|under|within) one of\b|\bmeet one of\b/.test(ln)) ||
+    (terms >= 2 && /\b(u ?s|united states) persons?\b/.test(whole) && /\b(include|includes|is defined|are defined|means)\b/.test(whole));
+  const yesNo = isBooleanQuestion(q) || ((q.options ?? []).some((o) => optionPolarity(o) === true) && (q.options ?? []).some((o) => optionPolarity(o) === false));
+  if (asksPerson && yesNo) {
     const us = facts.workAuth.byCountry.get("US");
     if (us?.authorized === false) return booleanResult(false, q, "us-person:not-authorized");
     if (us?.basis === "citizen" || us?.basis === "permanent_resident") return booleanResult(true, q, "us-person");
@@ -2352,7 +2369,17 @@ function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: U
   // person (Hermeus, regression 2026-10-05).
   const DENIES = /\bnot (a |an )?(u ?s |united states )?(citizens?|nationals?|persons?|permanent residents?|lawful|green card)\b/;
   const pick = (re: RegExp): QuestionResult => {
-    const hits = opts.filter((o) => re.test(qnorm(o)) && (re === NONE || !DENIES.test(qnorm(o))));
+    let hits = opts.filter((o) => re.test(qnorm(o)) && (re === NONE || !DENIES.test(qnorm(o))));
+    // "I am a citizen of Cuba, Iran, North Korea, or Syria AND I am NOT a U.S.
+    // person" beside "None of the above; I am a citizen of a different
+    // country" (Snowflake, Ashby bank 2026-10-08): the first only for those
+    // citizens, the second only with the citizenship known.
+    if (re === NONE && hits.length > 1) {
+      const citizenships = [...facts.workAuth.byCountry.entries()].filter(([, a]) => a.basis === "citizen").map(([c]) => c);
+      if (citizenships.length === 0) return abstain("us-person-status:citizenship-unknown");
+      const embargoed = citizenships.some((c) => ["CU", "IR", "KP", "SY"].includes(c));
+      hits = hits.filter((o) => /\b(cuba|iran|north korea|syria)\b/.test(qnorm(o)) === embargoed);
+    }
     return hits.length === 1 ? answer(hits[0], "us-person-status") : abstain("us-person-status:no-matching-option");
   };
   if (us?.authorized === false) return pick(NONE);
@@ -2364,8 +2391,9 @@ function resolveUsPersonStatus(q: QuestionInput, facts: ProfileFacts, profile: U
     return pick(NONE);
   }
   // "A United States citizen or national" (Anduril; question bank 2, 2026-10-05).
-  if (us?.basis === "citizen") return pick(/\bu ?s citizen\b|\bunited states citizen\b|\bcitizen (or national )?of the united states\b|^u ?s person\b/);
-  if (us?.basis === "permanent_resident") return pick(/\blawful permanent resident\b|\bgreen card\b/);
+  // "I am a U.S. person" is a citizen's and a permanent resident's (Snowflake).
+  if (us?.basis === "citizen") return pick(/\bu ?s citizen\b|\bunited states citizen\b|\bcitizen (or national )?of the united states\b|^u ?s person\b|^i am an? u ?s person$/);
+  if (us?.basis === "permanent_resident") return pick(/\blawful permanent resident\b|\bgreen card\b|^i am an? u ?s person$/);
   return abstain("us-person-status:unknown");
 }
 
@@ -3044,7 +3072,7 @@ export function resolveQuestion(
     resolveRelocationInstruction(q, raw, facts, profile, ctx) ??
     resolveSanctionedList(q, n, facts) ??
     (unnoted !== raw ? resolveWorkAuthorization({ ...q, label: unnoted }, qnorm(unnoted), facts, profile, ctx) : resolveWorkAuthorization(q, n, facts, profile, ctx)) ??
-    resolveUsPersonStatus(sq, facts, profile) ??
+    resolveUsPersonStatus(sq, facts, profile, q.label) ??
     resolveLaterResidency(sq, sn, facts) ??
     resolveCitizenship(sq, sn, facts, ctx) ??
     resolveAge(sq, sn, facts) ??

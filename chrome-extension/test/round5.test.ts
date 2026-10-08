@@ -651,3 +651,30 @@ describe("the company's own site named with a connector (Miter, Ashby question b
     expect(r && r.status === "answer" ? r.value : r?.status).toBe("Miter website or careers page");
   });
 });
+
+describe("U.S. person questions in their other wordings (Ashby question bank, 2026-10-08)", () => {
+  const ask = (persona: UserApplicationProfile, label: string, options = ["Yes", "No"]) => {
+    const q: QuestionInput = { label, controlType: "select", options, category: "unknown", kind: options.length === 2 ? "boolean" : "choice" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "US", company: "Acme" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  const SARONIC = "The individual performing this role will need to access material that legally requires “U.S. Person” status. A “U.S. Person” must meet ONE of the following three criteria: 1) A U.S. citizen, 2) A legal permanent resident (also known as a green card holder), OR 3) A refugee or successful asylee (someone who has completed the asylum process and formally received a grant of asylum). To ensure eligibility for this role, please confirm whether you fall into one of the three statuses above.";
+  const GECKO = "This role requires access to export-controlled technical data, U.S. Government systems, and customer facilities subject to U.S.-person access requirements. For purposes of this role, a “U.S. person” is a U.S. citizen or national, lawful permanent resident, refugee, asylee, or another protected individual as defined by 8 U.S.C. § 1324b(a)(3). Do you currently qualify as a U.S. person under this definition?";
+  const REFLECT = "Do any of the following designations apply to you: U.S. citizen or national, U.S. lawful permanent resident (aka green card holder), Refugee under 8 U.S.C. § 1157, or Asylee under 8 U.S.C. § 1158?";
+  const COWBOY = "As defined in the ITAR, “U.S. Persons” include U.S. citizens, lawful permanent residents (i.e., Green Card holders), and certain protected individuals (e.g., refugees/asylees, American Samoans). Please consult with a knowledgeable advisor if you are unsure whether you are a “U.S. Person.”";
+  it("a citizen is one; a Canadian, a German or a visa holder is not", () => {
+    for (const label of [SARONIC, GECKO, REFLECT, COWBOY]) {
+      expect(ask(P.BOOTCAMP_CAREER_GAP, label), label.slice(0, 40)).toBe("Yes");
+      expect(ask(P.COMPLETE_CANADIAN, label), label.slice(0, 40)).toBe("No");
+      expect(ask(P.US_H1B_SENIOR, label), label.slice(0, 40)).toBe("No");
+    }
+    expect(ask(P.BERLIN_STAFF, GECKO, ["Yes", "No", "Unsure — I would like Gecko Robotics to review my eligibility"])).toBe("No");
+  });
+  it("Snowflake's status list: the U.S. person, or 'a citizen of a different country' when the citizenship is known and not embargoed", () => {
+    const SNOW = ["I am a U.S. person", "I am a citizen of Cuba, Iran, North Korea, or Syria AND I am NOT a U.S. person", "None of the above; I am a citizen of a different country"];
+    const q = "A “U.S. person” is a citizen, legal permanent resident, or legal temporary resident (i.e., a refugee or asylee) of the United States. Which of the following best describes your “U.S. person” status?";
+    expect(ask(P.BOOTCAMP_CAREER_GAP, q, SNOW)).toBe(SNOW[0]);
+    expect(ask(P.COMPLETE_CANADIAN, q, SNOW)).toBe(SNOW[2]);
+    expect(ask(P.INDIA_NEW_GRAD, q, SNOW)).toBe(SNOW[2]);
+  });
+});
