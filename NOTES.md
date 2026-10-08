@@ -77,15 +77,26 @@ behind the bot challenge from this machine).
 postings (`r5c-*` in `real-live-round5.mjs`, no pins, up to two next
 pages): **none reached an application form, and nothing was written.**
 Each started on the posting's own job page, as a user arriving from Tailrd
-would. On all eight iCIMS pages and both L3Harris (SuccessFactors) pages the
-panel had to be opened by hand, found no field, and never opened the
-application; on Acuity (SuccessFactors, in French) it clicked "Postuler
-maintenant" and reached SuccessFactors' email gate ("Saisir le courriel
-pour démarrer le processus"), which needs an account (none created).
-(Each run waited out its three minutes: the harness records the flow's last
-message only when it begins "Step", "Done" or "Autofill flow stopped", so a
-stop such as "No application form found on this page" looked like a hang.
-Being checked with the page logs after the final regression.)
+would, and on none did the panel open by itself (no form, no ATS match on
+a job page); the run opened it.
+
+- **iCIMS (8 postings):** every one shows the job inside a same-origin
+  iframe (`…/job?in_iframe=1`), and its "Apply for this job online" lives
+  there. The flow looks for an Apply button only in the frame it runs in,
+  so it ended "No application form found on this page". (Its wording was
+  missed too; fixed, but that fix could not show live, since the button was
+  never in the flow's frame.) Behind it, an earlier round's page capture
+  found iCIMS's candidate login by email, before any form.
+- **SuccessFactors (L3Harris x2, Acuity):** L3Harris' "Apply now »" was
+  missed (the arrow broke the anchored match; fixed). Now both L3Harris
+  pages and Acuity click their Apply, but SuccessFactors starts the
+  application with a POST (`/services/cas/createpayload/`), which every
+  live run blocks, so the page never changes: "Couldn't open the
+  application from this page".
+
+The harness itself hid all this at first: it waited out three minutes per
+page because it only recognized a stop that began "Autofill flow stopped",
+so "No application form found…" looked like a hang. Fixed (65b564b).
 
 ## 4. Wrong answers fixed
 
@@ -108,6 +119,8 @@ Live pages (the value written, and now):
 | Ashby Ramp (regression, 3 cases) | "pursuing a Bachelor's, Master's, or PhD in … Engineering, or another quantitative field?" (engineering students) | No (read as the PhD alone) | Yes |
 | Ashby Grow Therapy (regression) | expected graduation, an April 2027 graduate (no spring 2027 offered) | Winter 2027 | blank |
 | Ashby The Exploration Company (regression) | "…provide your own housing, relocation, and transportation to the internship site?" | Yes (from the willingness to move) | blank, the applicant's |
+| Lever SEP, Wattpad (regression) | "Current location" while Lever's search was slow | cleared after 4 s (once each) | waits up to 8 s for the list |
+| SuccessFactors L3Harris (batch C) | the job page's "Apply now »" | not found: "No application form found on this page" | clicked (the next step is a POST, see section 3) |
 
 Question banks (each also a unit test, in `round5.test.ts` and
 `bankLever.test.ts`):
@@ -259,15 +272,28 @@ c144207 (04:48): **168 passed, 33 failed.** Every failure was read:
 (Grow Therapy also renamed its custom fields' ids and Waymo's phone widget
 stopped adding +1: both re-pinned.)
 
-Then, on the final build, every failing case still open, every round-5
-page and every new pin, re-run in six runs of 13 or fewer (r5re-A..F) and
+Then every failing case still open, every round-5 page and every new pin
+were re-run on the fixed build in six runs of 13 or fewer (r5re-A..F) and
 read: **46 distinct pinned cases, every one passing** once its new answers
 were read and pinned (the 13 round-5 Ashby pages, 12 of the 13 Lever pages,
 and the 21 regression failures still open, all but ServiceNow).
 
-**The final regression, on the final build** (190 pinned cases after the
-retirements, 15 batches of 13, started 07:41): running as this is written;
-its result replaces this paragraph when it ends.
+**The final regression** (190 pinned cases after the retirements, 15
+batches of 13, on the build with every fix through 1161e4b): **189
+passed.** The one failure was SEP's "Current location": Lever's search was
+slow and the adapter gave up after 4 s, as on Wattpad once earlier. Fixed
+(it waits 8 s); both pages pass since. ServiceNow passed 12/12.
+
+Three fixes landed after it (the Lever wait; iCIMS's and L3Harris' Apply
+wording), so everything they touch was re-run on the last build: SEP and
+Wattpad, and **all 19 pinned cases that enter through an Apply button**
+(BambooHR, Rippling, Dayforce, Breezy, Pinpoint, Oracle, Recruitee,
+Paylocity, Jobvite, Epic): every one passes.
+
+Checks on the last commit: 1,976 unit tests pass (1 skipped: the opt-in
+question bank), typecheck clean, build, `scan-smoke` passed. I did not run
+CI's backend or frontend checks (nothing outside the extension changed, and
+nothing is being pushed).
 
 ## 8. Needs you / needs manual verification
 
@@ -293,15 +319,21 @@ its result replaces this paragraph when it ends.
    49): relocating for Ramp's internship, on site in Rochester, travel as
    needed are Yes unless the profile refuses them. Keep that, or leave them
    blank until the profile says?
+9. **SuccessFactors in live runs:** its Apply sends one POST
+   (`/services/cas/createpayload/`, the request a person's click sends; by
+   its name it hands the job over to the apply page, but I have not checked
+   what it stores). Live runs block every POST, so SuccessFactors' form
+   cannot be explored. Allow that exact endpoint in `allowRequests` for
+   those pages, or leave SuccessFactors to a manual check?
 
 **Not verified live, or still open**
 - **ServiceNow on SmartRecruiters** (the suite's one SmartRecruiters
-  page): the fix that reads a web component's own `label` attribute
-  (1161e4b) is unit-tested, and the test reproduces the regression's ids
-  exactly, but it is not verified live. SmartRecruiters served a DataDome
-  CAPTCHA to both follow-up probes from this machine. After a quiet spell,
-  run `live-sr-servicenow` alone (it must be the first SmartRecruiters page
-  of the session) and check that City is filled.
+  page): it passed 12/12 in the final regression, but with its labels
+  read the ordinary way ("First name*"), so the fallback that reads a web
+  component's own `label` attribute (1161e4b) never fired. It is
+  unit-tested (the test reproduces the regression's ids exactly), not
+  verified live; SmartRecruiters served a DataDome CAPTCHA to both of my
+  probes in between.
 - **Wattpad's location typeahead and Databricks' Degree dropdown** each
   missed once tonight and passed on every other run: page timing, most
   likely. Watch them in the next regression.
@@ -313,8 +345,12 @@ its result replaces this paragraph when it ends.
 - **Not built:** Jobvite and SmartRecruiters question banks (section 3).
   **Not explored:** Taleo (no active Taleo posting in prod `scraped_jobs`
   tonight).
-- **Batch C** (iCIMS, SuccessFactors): why each flow stopped where it did
-  (section 3), from the page logs.
+- **iCIMS job pages:** the flow needs to look for the Apply button in a
+  same-origin child frame too (every iCIMS posting tonight); behind it is
+  most likely a candidate login (an account wall). Not built tonight; the
+  wording fix (212f0c5) is unit-tested only.
+- **SuccessFactors:** the Apply click now lands (L3Harris, Acuity), but the
+  next step is a POST that live runs block, so its form stays unexplored.
 
 # Round 4: real users first, then new ground (2026-10-04, night)
 
