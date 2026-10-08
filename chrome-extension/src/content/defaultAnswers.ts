@@ -34,6 +34,8 @@ const GOVERNMENT_HISTORY: QuestionResult = { status: "abstain", rule: "default:g
 const RECORDING_CONSENT: QuestionResult = { status: "abstain", rule: "default:recording-consent", blockBackend: true };
 /** Who referred the applicant: theirs to write, never a guess. */
 const REFERRER_UNKNOWN: QuestionResult = { status: "abstain", rule: "default:referrer-unknown", blockBackend: true };
+/** Needing an accommodation, for anyone who has not stated "no disability". */
+const ACCOMMODATION_THEIRS: QuestionResult = { status: "abstain", rule: "default:accommodation-theirs", blockBackend: true };
 
 /** Lowercase words (mirrors questionResolver.qnorm, kept local to avoid an import cycle). */
 const qn = (text: string): string =>
@@ -106,6 +108,9 @@ const ASSISTANCE = /\b(assistance|package|support|expenses?|benefits?|allowance|
 /** Pay and what comes with it: the applicant's to accept, wherever the
  *  question mentions it. */
 const PAY_TERMS = /\b(compensation|pay|salary|salaries|wages?|hourly rate|benefits?|bonus(es)?|stipend|reimburs\w*)\b/;
+/** A question about the applicant's history, never a requirement or an opt-in. */
+const EXPERIENCE_ASKED =
+  /\b(do|did) you have\b[^?]{0,20}\bexperience\b|\bhave you (ever )?(had|gained|managed|led|worked)\b|\bexperience (in|with|managing|leading|supporting|developing|working)\b/;
 /** "…challenges clearing a background check?": the clean answer is NO. */
 const OBSTACLE = /\b(challenges?|issues?|problems?|concerns?|difficult(y|ies)?|prevent you|preclude|disqualif\w*|impediments?|barriers?|obstacles?|restrictions?|limitations?)\b/;
 
@@ -307,7 +312,9 @@ const SOURCE_SYNONYMS: Array<[RegExp, RegExp]> = [
   [/\breferr\w*|\bemployee\b|\bfriend\b/, /\breferr\w*|\bfriend\b|\bknow someone\b|\bsomeone (who|that) works\b|\b(connection|contact)s? (in|at|within) the company\b/],
   // Then an unqualified "Appian Employee" (heard from one); a current, former
   // or ex- employee is the applicant, and a "LinkedIn Employee Post" a channel.
-  [/\breferr\w*|\bemployee\b|\bfriend\b/, /^(?!.*\b(former|current|ex|previous|past|alumni|alumnus|post|posting|linked ?in)\b).*\bemployees?\b/],
+  // An employees' event is a channel, not a referral: "Employee Presentation"
+  // for a stated referral (Match Group on Lever, question bank 2026-10-08).
+  [/\breferr\w*|\bemployee\b|\bfriend\b/, /^(?!.*\b(former|current|ex|previous|past|alumni|alumnus|post|posting|linked ?in|presentations?|events?|blog|webinars?|panels?|talks?|stories|story|spotlights?|testimonials?|newsletters?)\b).*\bemployees?\b/],
   [/\b(career|job) fair\b|\buniversity\b|\bcampus\b|\bschool\b|\bcollege\b/, /\b(career|job) fair\b|\buniversity\b|\bcampus\b|\bschool\b|\bcollege\b|\bco ?op\b/],
   // "Social media" is no particular platform: "Twitter" for it was a guess
   // (Twilio, Gusto's "Facebook"; question bank 2026-10-05). A platform
@@ -535,7 +542,9 @@ export function resolveDefault(
   // typed for "If you were referred by a current employee, what is the
   // employee's full name?" (Renaissance; question bank 2026-10-05).
   // ("the name you would like to be referred to as" is no referral, Asana.)
-  if (!choiceLike && /\breferred (by|you|for)\b|\breferral\b|\breferrer\b|\bwho referred\b|\brefer(red)? you\b/.test(n) && /\breferr|\bemployee\b|\bfriend\b/.test(qn(profile.howDidYouHear ?? ""))) return REFERRER_UNKNOWN;
+  // "Were you referred to Artera? If so, please provide their first and last
+  // name." (Lever, question bank 2026-10-08) got the applicant's own name.
+  if (!choiceLike && /\breferred (by|you|for)\b|\breferral\b|\breferrer\b|\bwho referred\b|\brefer(red)? you\b|\bwere you referred\b/.test(n) && /\breferr|\bemployee\b|\bfriend\b/.test(qn(profile.howDidYouHear ?? ""))) return REFERRER_UNKNOWN;
   if (!choiceLike) return unencumberedText(q, n, profile);
   // A long statement is judged by what it asks: SSCI's certification mentions
   // "a consumer credit report or criminal records check" and asks nothing
@@ -556,8 +565,15 @@ export function resolveDefault(
   // question about the applicant (JazzHR's ended with an ADA sentence, and its
   // "accommodation" read as this rule: "I do not Consent", live 2026-10-05).
   const consentOnly = opts.length > 0 && opts.every(isConsentOption);
-  if (!consentOnly && /\baccommodations?\b/.test(n) && /\b(need|require|request)\w*\b/.test(n) && /\b(interview|hiring|application|recruit\w*)\b/.test(n)) {
-    return /^no\b|\bdo not have\b|\bdont have\b/.test(qn(profile.eeo?.disabilityStatus ?? "")) ? polar(false, q, "default:no-accommodation") : null;
+  // At work too: "Do you require workplace accommodations due to a mental
+  // health condition? (Whether work from home or in-office)" (Wattpad on
+  // Lever, question bank 2026-10-08) read as an in-office requirement, and
+  // everyone willing to move said Yes. Anyone who has not stated "no
+  // disability" answers it themselves, and the AI never does.
+  // Asked, not mentioned: a statement's "I agree to request a reasonable
+  // accommodation … if one is necessary" (National Journal's terms) asks nothing.
+  if (!consentOnly && /\b(do|will|would|may|are) you\b[^?]{0,80}\b(need|require|request)\w*\b[^?]{0,80}\baccommodations?\b/.test(n) && /\b(interview|hiring|application|recruit\w*|workplace|disabilit\w*|medical|health|condition|impairment)\b/.test(n) && !/\b(housing|lodging|hotel|apartment)\b/.test(n)) {
+    return /^no\b|\bdo not have\b|\bdont have\b/.test(qn(profile.eeo?.disabilityStatus ?? "")) ? polar(false, q, "default:no-accommodation") : ACCOMMODATION_THEIRS;
   }
   // A required list whose ONLY option is an acknowledgement ("I will read the
   // arbitration agreement below.", Anthropic; "Summer 2027" under "Please
@@ -580,7 +596,10 @@ export function resolveDefault(
 
   // "Join the talent community and sign up for job alerts" (Waymo, live
   // 2026-10-05) is a subscription, whatever else it keeps on file.
-  if (MARKETING.test(n) && (!FUTURE_ROLES.test(n) || /\b(sign up|subscribe|job alerts?|newsletters?|mailing list)\b/.test(n))) {
+  // Experience in marketing is no opt-in: "Do you have experience with Direct
+  // Marketing Campaigns?" was No for everyone (Data Lab on Lever, question
+  // bank 2026-10-08).
+  if (MARKETING.test(n) && !EXPERIENCE_ASKED.test(n) && (!FUTURE_ROLES.test(n) || /\b(sign up|subscribe|job alerts?|newsletters?|mailing list)\b/.test(n))) {
     return polar(false, q, "default:marketing-opt-out");
   }
   if (FUTURE_ROLES.test(n) && /\b(consider|keep|retain|share|contact|notify|would you like|interested)\b/.test(n)) {
@@ -664,6 +683,16 @@ export function resolveDefault(
   // and so did Mindex's Rochester, New York (live 2026-10-03).
   // Occasional presence is not in-person work: "attend team gatherings a few
   // times a year" is travel, which someone who will not move can still do.
+  // A statement of awareness over Yes / No is acknowledged: "I am aware that
+  // this is a hybrid role, with 3 days in office expectation, based out of
+  // Foster City, CA." (Zoox on Lever, question bank 2026-10-08) was read as
+  // an in-office question, and No for anyone who will not move.
+  // A promise inside it is no awareness: "I understand that this role is in
+  // either Phoenix, AZ or Atlanta, GA and I am willing to participate in a
+  // hybrid…" (Samsara) is the in-person question below.
+  if (/^(i am|i m|im) (now )?aware\b|^i (understand|acknowledge|recognize)\b/.test(n) && !/\b(i|i m|i am) (also )?(willing|able|available|commit\w*|agree|plan|intend)\b|\bi (can|will|would)\b/.test(n) && !/\?/.test(q.label) && opts.length === 2 && opts.every((o) => /^(yes|no)$/i.test(o.trim()))) {
+    return polar(true, q, "default:aware");
+  }
   const occasional = OCCASIONAL_PRESENCE.test(n) && !REGULAR_PRESENCE.test(n);
   // A requirement followed by a question asking WHICH ("…onsite work. Which
   // location can you reliably commute to?", FSSI on Workable, live
@@ -699,7 +728,7 @@ export function resolveDefault(
     REQUIREMENT.test(n) &&
     !ASSISTANCE.test(askedSentence(q.label)) &&
     !PAY_TERMS.test(n) &&
-    !/\b(do|did) you have\b[^?]{0,20}\bexperience\b|\bhave you (ever )?(had|gained|managed|led|worked)\b|\bexperience (in|with|managing|leading|supporting|developing|working)\b/.test(n) &&
+    !EXPERIENCE_ASKED.test(n) &&
     (ACK_VERB.test(n) || /^(do|are|will|can|would) you\b/.test(n))
   ) {
     // "Do you have any impediments to traveling internationally?" (Veeva on
@@ -713,6 +742,12 @@ export function resolveDefault(
     if (located) return located;
     const refusesMove = /\brelocat|\b(move|moving) to\b/.test(n) && /^no\b/i.test((profile.willingToRelocate ?? "").trim());
     if (refusesMove) return polar(false, q, "relocation:stated");
+    // In person where nobody said: "This position is onsite in the studio
+    // location listed in the posting. Are you willing to work onsite in that
+    // location?" (Larian on Lever, question bank 2026-10-08, its place not on
+    // the page) was Yes from Seattle for someone who will not move. Places
+    // named or posted were judged above; with none, it is theirs.
+    if (!occasional && /\b(in ?office|on ?site|in ?person|hybrid)\b/.test(n) && /^no\b/i.test((profile.willingToRelocate ?? "").trim())) return null;
     const remoteOnly = /\b(in ?office|on ?site|in ?person|hybrid)\b/.test(n) && /^remote$/i.test((profile.workPreference ?? "").trim());
     if (remoteOnly) return null; // they said remote: the applicant must decide
     return polar(true, q, "default:accepts-requirement");

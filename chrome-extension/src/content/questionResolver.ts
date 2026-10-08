@@ -44,7 +44,7 @@ import {
 import { matchOption } from "./writeEngine";
 import { dialCodeOf, phoneCountryName } from "./phoneNumber";
 import { deriveFieldOfStudy } from "./fieldMatcher";
-import { snapSchool } from "./schoolMatch";
+import { schoolOffered, snapSchool } from "./schoolMatch";
 import { onsiteVerdict, resolveDefault } from "./defaultAnswers";
 import { STATEMENT_WORDS, askedOfStatement } from "./statementText";
 
@@ -367,12 +367,25 @@ function chooseSponsorshipOption(options: string[], need: boolean, stated: strin
   // future." is a need that starts later (Trulioo, Ashby bank 2026-10-08:
   // the OPT holder took "Yes, I currently require sponsorship").
   const said = options.filter((o) => o.trim()).map((o) => ({ o, t: qnorm(o) }));
-  const later = said.filter((x) => /\b(will|would|may)\b[^,;]{0,30}\b(require|need)\b[^,;]{0,40}\b(future|later)\b/.test(x.t) && /\bnot (currently|now)\b|\bno\b/.test(x.t));
-  const never = said.filter((x) => /\b(not|never)\b[^,;]{0,30}\b(require|need)\b[^,;]{0,40}\b(now|currently)\b[^,;]{0,10}\b(or|nor)\b[^,;]{0,15}\b(future|ever|later)\b/.test(x.t));
+  // "I do not require sponsorship right now, but will at some point in the
+  // future" and "I do not and will not require sponsorship at any point in
+  // the future" (SEP on Lever, question bank 2026-10-08) too.
+  const later = said.filter(
+    (x) =>
+      (/\b(will|would|may)\b[^,;]{0,30}\b(require|need)\b[^,;]{0,40}\b(future|later)\b/.test(x.t) && /\bnot (currently|now)\b|\bno\b/.test(x.t)) ||
+      /\b(not|no)\b[^;]{0,40}\b(now|currently|at this time)\b[^;]{0,20}\bbut\b[^;]{0,20}\b(will|would|may)\b[^;]{0,50}\b(future|later)\b/.test(x.t)
+  );
+  const never = said.filter(
+    (x) =>
+      /\b(not|never)\b[^,;]{0,30}\b(require|need)\b[^,;]{0,40}\b(now|currently)\b[^,;]{0,10}\b(or|nor)\b[^,;]{0,15}\b(future|ever|later)\b/.test(x.t) ||
+      /\b(do not|dont) and will not (require|need)\b|\bwill (not|never) (ever )?(require|need)\b[^;]{0,50}\b(any point|any time|ever)\b/.test(x.t)
+  );
   if (later.length === 1 && never.length === 1) {
     if (!need) return never[0].o;
     if (now === false) return later[0].o;
-    const current = said.filter((x) => x !== later[0] && x !== never[0] && optionPolarity(x.o) === true);
+    // The need now: an option that asks for it, beside "in the process of
+    // obtaining permanent work authorization" (SEP).
+    const current = said.filter((x) => x !== later[0] && x !== never[0] && /\b(require|need)\b/.test(x.t) && !/\b(not|never)\b/.test(x.t));
     if (now === true && current.length === 1) return current[0].o;
     return null;
   }
@@ -840,7 +853,9 @@ function resolveCitizenship(q: QuestionInput, n: string, facts: ProfileFacts, ct
 // qualifying U.S. institution" is no residence (Duolingo, live 2026-10-05:
 // answered Yes as "are you in the US?"): never "in a/an" something.
 // French too: "Résidez-vous actuellement au Canada?" (Mila on Workable, 2026-10-05).
-const RESIDE = /\b(live|living|reside|residing|resident|located|based|currently in(?! an? )|located within|within commuting distance|residez|resider|habitez|habiter)\b/;
+// "Are you local to the Germantown, MD office (within 25 miles)" (Data Lab on
+// Lever, question bank 2026-10-08) is where one lives, not a requirement.
+const RESIDE = /\b(live|living|reside|residing|resident|located|based|currently in(?! an? )|located within|within commuting distance|local to|residez|resider|habitez|habiter)\b/;
 
 const METRO_ALIASES: Record<string, string> = { nyc: "new york", gta: "toronto", "bay area": "san francisco", sf: "san francisco" };
 
@@ -850,7 +865,7 @@ const METRO_ALIASES: Record<string, string> = { nyc: "new york", gta: "toronto",
  * rather than by parsing its grammar: real labels interleave the place with
  * clauses ("based in or planning to relocate to the NYC area and able to…").
  */
-function placeIn(label: string): { kind: "country"; code: string } | { kind: "region"; code: string; country: string } | { kind: "city"; name: string } | null {
+function placeIn(label: string): { kind: "country"; code: string } | { kind: "region"; code: string; country: string } | { kind: "city"; name: string; region?: { code: string; country: string } } | null {
   const country = countryNamedIn(label);
   if (country && country !== "this-country") return { kind: "country", code: country.code };
   const n = ` ${geoNorm(label)} `;
@@ -870,6 +885,32 @@ function placeIn(label: string): { kind: "country"; code: string } | { kind: "re
   for (const city of KNOWN_CITIES) {
     if (n.includes(` ${city} `)) return { kind: "city", name: city };
   }
+  return cityWithRegion(label);
+}
+
+/** Every US state and Canadian province a label names in full, in order. */
+function regionsNamedIn(label: string): Array<{ code: string; country: string; key: string }> {
+  const n = ` ${geoNorm(label)} `;
+  const out: Array<{ code: string; country: string; key: string }> = [];
+  for (const r of [...US_STATES_LIST, ...CA_PROVINCES_LIST]) {
+    for (const name of [r.name, ...(r.aliases ?? [])]) {
+      const key = geoNorm(name);
+      if (key === "new york" && /\bnew york city\b|\bnyc\b/.test(n)) continue;
+      if (key === "washington" && /\bwashington d ?c\b/.test(n)) continue;
+      if (n.includes(` ${key} `) && !out.some((o) => o.code === r.code && o.country === r.country)) out.push({ code: r.code, country: r.country, key });
+    }
+  }
+  return out;
+}
+
+/** A city this file does not know, written with its state or province code:
+ *  "the Germantown, MD office" (Data Lab on Lever, question bank 2026-10-08).
+ *  Only a real US or Canadian code after the comma. */
+function cityWithRegion(label: string): { kind: "city"; name: string; region: { code: string; country: string } } | null {
+  for (const m of label.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}),\s*([A-Z]{2})\b/g)) {
+    const region = regionFromText(m[2], "US") ?? regionFromText(m[2], "CA");
+    if (region && region.code === m[2]) return { kind: "city", name: m[1], region: { code: region.code, country: region.country } };
+  }
   return null;
 }
 
@@ -879,7 +920,7 @@ function placeIn(label: string): { kind: "country"; code: string } | { kind: "re
  *  2026-10-03), and so did "Are you able to commute … the New York HQ office
  *  (located at …)" (Peloton, question bank 2026-10-05). */
 const APPLICANT_RESIDES =
-  /\b(do|are|have|did) you\b(?:(?!\b(?:office|offices|headquarters|hq|campus|building|facility)\b)[^?]){0,60}?\b(live|living|reside|residing|located|based|resident|currently in(?! an? ))\b|\bare you (a |an )?(current )?resident\b|\byour (current )?(location|residence|city of residence|place of residence)\b|\bwhere (do|are) you\b|\b(residez|habitez) vous\b/;
+  /\b(do|are|have|did) you\b(?:(?!\b(?:office|offices|headquarters|hq|campus|building|facility)\b)[^?]){0,60}?\b(live|living|reside|residing|located|based|resident|currently in(?! an? ))\b|\bare you (a |an )?(current )?resident\b|\bare you (currently )?local to\b|\byour (current )?(location|residence|city of residence|place of residence)\b|\bwhere (do|are) you\b|\b(residez|habitez) vous\b/;
 
 function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
   // "By selecting 'Yes,' you confirm that you currently reside in the New
@@ -913,10 +954,14 @@ function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, prof
   // relocating if you're not currently based there?" (Gemini, live 2026-10-05).
   // "…currently based, or planning to be based in NYC…" (Teleskope, Ashby
   // bank 2026-10-08): a planned move is the same clause.
+  // Being ABLE to be somewhere is moving there for someone who would: "Are
+  // you able to be located in Jacksonville, FL in summer 2026?" (RF Smart,
+  // Greenhouse bank 2) was No for everyone willing to move.
   const relocateClause =
     /\b(or|if not)\b[^?]*\b(relocat|move)/.test(n) ||
     /\b(relocat\w*|move)\b[^?]*\bif (you re |you are |youre )?not\b/.test(n) ||
-    /\bor (planning|plan|intending|intend|expecting|expect) to (be )?(based|located|living|live|reside|residing)\b/.test(n);
+    /\bor (planning|plan|intending|intend|expecting|expect) to (be )?(based|located|living|live|reside|residing)\b/.test(n) ||
+    /\b(able|willing|prepared|open) to be (located|based)\b/.test(n);
   const relocate = polarityOf(profile.willingToRelocate || "");
 
   const yesOrRelocate = (lives: boolean | null, rule: string): QuestionResult => {
@@ -929,6 +974,20 @@ function resolveResidence(q: QuestionInput, n: string, facts: ProfileFacts, prof
     return booleanResult(false, q, rule);
   };
 
+  // A list of states and no city: "Kobie operates in the following states.
+  // Are you currently located in one of these states? Colorado, Connecticut,
+  // District of Columbia, Florida, Georgia, …" (Lever, question bank
+  // 2026-10-08) read "Georgia" as the country, and a Colorado resident said No.
+  const states = regionsNamedIn(q.label);
+  // ("New York" in such a list is the state, not the city.)
+  if (states.length >= 2 && !placesIn(q.label).some((p) => p.kind === "city" && !states.some((s) => s.key === geoNorm(p.name)))) {
+    if (isHigh(loc.region)) {
+      const r = loc.region.value;
+      return yesOrRelocate(states.some((s) => s.code === r.code && s.country === r.country), "residence-states");
+    }
+    if (residenceCountry && !states.some((s) => s.country === residenceCountry.code)) return yesOrRelocate(false, "residence-states:other-country");
+    return abstain("residence-states:unknown");
+  }
   if (place.kind === "country") {
     if (!residenceCountry) return abstain("residence-country:unknown");
     return yesOrRelocate(residenceCountry.code === place.code, "residence-country");
@@ -982,9 +1041,9 @@ function livesAt(place: NamedPlace, facts: ProfileFacts, area = false): { lives:
     return { lives: country && country.code !== place.country ? false : null, why: "region:other-country" };
   }
   if (isHigh(loc.city) && geoNorm(loc.city.value) === geoNorm(place.name)) return { lives: true, why: "city" };
-  const placeCountry = countryHintForCity(place.name);
+  const placeCountry = countryHintForCity(place.name) ?? place.region?.country ?? null;
   if (placeCountry && country && placeCountry !== country.code) return { lives: false, why: "city:other-country" };
-  const placeRegion = regionHintForCity(place.name);
+  const placeRegion = regionHintForCity(place.name) ?? place.region?.code ?? null;
   if (placeRegion && region && placeRegion !== region.code && !regionsBorder(placeRegion, region.code)) return { lives: false, why: "city:other-region" };
   // Two cities this file knows: another metro is elsewhere (Toronto for a
   // Montreal office), the same metro is that area ("…the Bay Area", San Jose).
@@ -1390,8 +1449,10 @@ function resolveYearsOfExperience(q: QuestionInput, n: string, facts: ProfileFac
       return abstain("years-experience:domain-unproven");
     }
     // A specialty inside the field ("fullstack", "front end", "mobile") is
-    // proven only by titles that name it.
-    const specialty = /\b(full ?stack|front ?end|back ?end|mobile|ios|android|embedded|devops|machine learning|security|cloud|qa)\b/.exec(phrase);
+    // proven only by titles that name it. Support work too: "experience in
+    // desktop or IT support roles" got a software career's years (Wintermute
+    // on Lever, question bank 2026-10-08).
+    const specialty = /\b(full ?stack|front ?end|back ?end|mobile|ios|android|embedded|devops|machine learning|security|cloud|qa|support|help ?desk|desktop)\b/.exec(phrase);
     if (specialty && !titles.every((t) => new RegExp(`\\b${specialty[1].replace(/ /g, " ?")}\\b`, "i").test(t.toLowerCase().replace(/-/g, " ")))) {
       return abstain("years-experience:specialty-unproven");
     }
@@ -1445,8 +1506,12 @@ function resolveEducationLevel(q: QuestionInput, n: string, facts: ProfileFacts)
   // requirements, a bachelor's degree minimum?" too (Avalore, Credence on
   // Workable, 2026-10-05: blank, and Yes for a student and a bootcamp
   // graduate as an accepted requirement).
+  // Experience is no degree: "Do you have experience working with
+  // authentication protocols… implementing RBAC and MFA…?" (Fullscript on
+  // Lever, question bank 2026-10-08) read MFA as a Master of Fine Arts.
+  const experience = /\bexperience\b/.test(n) && !/\b(degree|diploma)\b/.test(n);
   const asked =
-    /\b(do you (currently |presently |already )?(have|hold|possess)|have you (completed|obtained|earned|received|attained)|did you (complete|earn|obtain))\b|\bdo you meet (the |our |this )?(e\w*cation(al)?|degree|academic) (requirements?|qualifications?|criteria)\b/.test(n)
+    !experience && /\b(do you (currently |presently |already )?(have|hold|possess)|have you (completed|obtained|earned|received|attained)|did you (complete|earn|obtain))\b|\bdo you meet (the |our |this )?(e\w*cation(al)?|degree|academic) (requirements?|qualifications?|criteria)\b/.test(n)
       ? /\b(hs|high school|secondary school|ged)\b/.test(n) ? 1 : degreeRank(n) ?? optionRank(n)
       : null;
   if (asked && isBooleanQuestion(q)) {
@@ -1464,6 +1529,10 @@ function resolveEducationLevel(q: QuestionInput, n: string, facts: ProfileFacts)
     return abstain("degree-held:unknown");
   }
   if (!LEVEL_Q.test(n)) return null;
+  // The school of a degree is no level: "At which institution did you earn
+  // your highest degree?" took "The Master's College" from a list of schools
+  // (National Journal on Lever, question bank 2026-10-08).
+  if (/\b(which|what) (institution|school|university|college)\b|\b(name of|where did you) (the |your )?(institution|school|university|college|earn|get|receive|obtain|complete)\b/.test(n)) return null;
   const completedAsked = /\b(completed|attained|obtained|achieved|earned)\b/.test(n);
   // "What is your current degree program or highest level of education?"
   // (Enfos on Workable, 2026-10-05): a degree in progress answers it.
@@ -1548,13 +1617,30 @@ function resolveEnrollment(q: QuestionInput, n: string, facts: ProfileFacts): Qu
  */
 function resolveF1Status(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
   if (!/\bf ?1\b/.test(n) || !/\b(are|were) you\b/.test(n) || !isBooleanQuestion(q)) return null;
+  const f1 = holdsF1Status(profile);
+  return f1 === null ? abstain("f1-status:unknown") : booleanResult(f1, q, "f1-status");
+}
+
+/** F-1, OPT or CPT stated: true; any other status stated: false. */
+function holdsF1Status(profile: UserApplicationProfile): boolean | null {
   const auth = qnorm(profile.workAuthorization ?? "");
-  if (!auth) return abstain("f1-status:unknown");
-  if (/\bf ?1\b|\b(opt|cpt)\b|\bstudent visa\b/.test(auth)) return booleanResult(true, q, "f1-status");
-  if (/\bcitizen|\bpermanent resident\b|\bgreen card\b|\bh ?1 ?b\b|\btn\b|\bl ?1\b|\be ?3\b|\bo ?1\b|\bh ?4\b|\bj ?1\b|\bpgwp\b|\bwork permit\b|\brefugee\b|\basylee\b/.test(auth)) {
-    return booleanResult(false, q, "f1-status");
-  }
-  return abstain("f1-status:unknown");
+  if (!auth) return null;
+  if (/\bf ?1\b|\b(opt|cpt)\b|\bstudent visa\b/.test(auth)) return true;
+  if (/\bcitizen|\bpermanent resident\b|\bgreen card\b|\bh ?1 ?b\b|\btn\b|\bl ?1\b|\be ?3\b|\bo ?1\b|\bh ?4\b|\bj ?1\b|\bpgwp\b|\bwork permit\b|\brefugee\b|\basylee\b/.test(auth)) return false;
+  return null;
+}
+
+/**
+ * "Does your work authorization now, or will it in the future, involve CPT
+ * (Curricular Practical Training) or OPT (Optional Practical Training)?" (SEP
+ * on Lever, question bank 2026-10-08) was read as "are you authorized?", and
+ * an H-1B holder and a citizen said Yes. CPT and OPT are an F-1 student's.
+ */
+function resolvePracticalTraining(q: QuestionInput, n: string, profile: UserApplicationProfile): QuestionResult {
+  if (!/\b(cpt|opt|curricular practical training|optional practical training)\b/.test(n) || !isBooleanQuestion(q)) return null;
+  if (!/\b(involve|involves|include|includes|based on|rely on|relies on|through|pursuant to|under)\b/.test(n)) return null;
+  const f1 = holdsF1Status(profile);
+  return f1 === null ? abstain("practical-training:unknown") : booleanResult(f1, q, "practical-training");
 }
 
 /** A job title in technical work: engineering, software, data, research. */
@@ -2021,7 +2107,10 @@ function durationRange(option: string): [number, number] | null {
  */
 function resolveStartBucket(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
   if (!q.options || q.options.length < 2) return null;
-  if (!/\b(availability|available|start|starting|join|joining|begin)\b/.test(n)) return null;
+  // A notice list too, by days: "If you receive an offer, how much notice
+  // would you need…?" (FiscalNote on Lever, question bank 2026-10-08) matched
+  // its options by text, "3 months" took "3-4 weeks".
+  if (!/\b(availability|available|start|starting|join|joining|begin|notice)\b/.test(n)) return null;
   const spans = q.options.map((o) => ({ o, r: durationRange(o) })).filter((x): x is { o: string; r: [number, number] } => x.r !== null);
   if (spans.length < 2) return null;
   // "What is your notice period to begin working with Exegy?" (Ashby bank
@@ -2524,6 +2613,14 @@ function resolveSchoolName(q: QuestionInput, n: string, facts: ProfileFacts): Qu
   } else if (/\bcurrently attend(ing)?\b|currently enrolled|\b(do|will) you attend\b|\b(school|university|college|institution) you attend\b|\bare you attending\b/.test(n)) {
     entry = entries.find((e) => e.completed === false) ?? null;
     if (!entry) return abstain("school-name:not-enrolled");
+  } else if (/\bhighest (degree|level|qualification)\b/.test(n)) {
+    // "At which institution did you earn your highest degree?" (National
+    // Journal on Lever): the school of the highest degree finished, which a
+    // later certificate does not replace.
+    const done = entries.filter((e) => e.completed === true && e.rank !== null);
+    const top = Math.max(...done.map((e) => e.rank ?? 0));
+    const best = done.filter((e) => e.rank === top);
+    entry = best.length === 1 ? best[0] : null;
   } else if (/\bundergrad/.test(n)) {
     const bachelors = entries.filter((e) => e.rank === 4);
     entry = bachelors.length === 1 ? bachelors[0] : null;
@@ -2542,6 +2639,9 @@ function resolveSchoolName(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     if (hit) return answer(hit, "school-name");
     // A full list (a native select) without the school: its own "not listed"
     // option. A search box's loaded options are only what matched the search.
+    // A school listed once per campus is listed: which campus is theirs
+    // (Palantir on Lever: University of Washington - Seattle | - Bothell).
+    if (schoolOffered(q.options, entry.school)) return abstain("school-name:which-campus");
     if (q.controlType === "select") {
       const unlisted = q.options.filter((o) => /\bnot (listed|in (the|this) list|found)\b|\bunlisted\b/i.test(o));
       if (unlisted.length === 1) return answer(unlisted[0], "school-name:not-listed");
@@ -3080,7 +3180,10 @@ export function resolveQuestion(
   // what they ask depends on an answer we did not give. A condition on the
   // APPLICANT ("If you are currently enrolled…, what is your GPA?") is an
   // ordinary question (Shield AI on Lever, live 2026-10-03).
-  if (FOLLOW_UP.test(n) || /^if\s*['"“‘]/i.test(raw) || /^(other|if other|other please (specify|explain|describe)|please specify)$/.test(n)) {
+  // "Optional: If you answered Yes or Unsure, can you provide further
+  // details…" (Immuta on Lever, question bank 2026-10-08) is one too: a
+  // citizen's "US Citizen" was written in it.
+  if (FOLLOW_UP.test(n) || FOLLOW_UP.test(n.replace(/^optional /, "")) || /^if\s*['"“‘]/i.test(raw) || /^(other|if other|other please (specify|explain|describe)|please specify)$/.test(n)) {
     // "If no, will you require sponsorship in the future?" (Hermeus on Lever,
     // live 2026-10-03) is a question of its own after the condition: answered
     // when the profile settles it, whatever was answered before it.
@@ -3093,6 +3196,16 @@ export function resolveQuestion(
     // status…" (OnePay, Ashby bank 2026-10-08): a status list answers itself.
     const status = resolveVisaStatusList(q, facts, profile);
     if (status?.status === "answer") return status;
+    // "Optional: If you answered Yes or Unsure, can you provide further
+    // details about the sponsorship or work authorization support you may
+    // need…" (Immuta on Lever, question bank 2026-10-08): the Yes is the
+    // sponsorship need. Someone who needs it writes their status; nobody else
+    // is asked (a citizen's "US Citizen" was written).
+    if ((q.kind === "text" || q.kind === "longText") && !q.options?.length && /^if you (answered|selected|chose|said|indicated) yes\b/.test(n.replace(/^optional /, "")) && /\bsponsor/.test(n)) {
+      const need = needsSponsorshipIn(facts.workAuth, ctx.jobCountry ?? null, residenceOf(facts));
+      const stated = (profile.workAuthorization ?? "").trim();
+      if (isHigh(need) && need.value === true && stated) return answer(stated, "conditional:sponsorship-detail");
+    }
     return abstain("conditional-follow-up");
   }
   const conditional = resolveConditional(q, raw, facts, profile, ctx);
@@ -3171,6 +3284,7 @@ export function resolveQuestion(
     resolveRelocationInstruction(q, raw, facts, profile, ctx) ??
     resolveSanctionedList(q, n, facts) ??
     resolveVisaStatusList(q, facts, profile) ??
+    resolvePracticalTraining(sq, sn, profile) ??
     (unnoted !== raw ? resolveWorkAuthorization({ ...q, label: unnoted }, qnorm(unnoted), facts, profile, ctx) : resolveWorkAuthorization(q, n, facts, profile, ctx)) ??
     resolveUsPersonStatus(sq, facts, profile, q.label) ??
     resolveLaterResidency(sq, sn, facts) ??

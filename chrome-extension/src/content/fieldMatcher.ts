@@ -122,6 +122,10 @@ const CATEGORY_SPECS: CategorySpec[] = [
     category: "eeoDisability",
     sensitive: true,
     patterns: [{ re: /\bdisabilit(y|ies)\b/ }, { re: /\bdisabled\b/ }, { re: /\bhandicap\b/ }],
+    // Needing an accommodation is no disability status: "Do you require
+    // workplace accommodations due to a physical disability…?" took Yes from
+    // the status (Wattpad on Lever, question bank 2026-10-08).
+    negative: /\b(do|will|would) you (need|require|request)\b[^?]{0,60}\baccommodat/,
   },
   {
     category: "eeoSexualOrientation",

@@ -25,7 +25,7 @@ import { resolveQuestion, type QuestionContext, type QuestionInput, type Questio
 import { countryFromName } from "./geo";
 import { snapSchool } from "./schoolMatch";
 import { placeOf } from "./placeMatch";
-import { closestDemographicOption, declineOption, hispanicRaceOption, veteranOption } from "./demographicMatch";
+import { closestDemographicOption, declineOption, groupedEthnicityOption, hispanicRaceOption, veteranOption } from "./demographicMatch";
 import { matchOption } from "./writeEngine";
 
 export interface FieldResolveInput {
@@ -272,9 +272,17 @@ function composedAddress(label: string, profile: UserApplicationProfile): string
   // One part of a split address ("Home Address Line 1", "Home Address City",
   // SoFi) is that part; only a label asking for the WHOLE address gets it.
   const part = /\b(line ?\d|apt|apartment|unit|suite|city|state|province|zip|postal|cep|country|street (1|2))\b/i.test(label);
-  if (!part && (/\b(full|complete) (home |mailing |street |residential )?address\b/i.test(label) || /^\s*what is your (current |home |mailing |permanent |residential )*address\b/i.test(label)) && !/\be-?mail\b/i.test(label)) {
+  // The street with the rest asked along: "What is your street address?
+  // Please also include your city, state, and zip code." (Crest on Lever,
+  // question bank 2026-10-08) got the city line without the street; and
+  // "your complete current residential address" (FiscalNote) the city alone.
+  const withRest = /\bstreet address\b/i.test(label) && /\b(include|including|with|along with|as well as)\b[^?.]{0,30}\bcity\b/i.test(label);
+  if ((withRest || (!part && (/\b(full|complete) (current |home |mailing |street |residential |permanent )*address\b/i.test(label) || /^\s*what is your (current |home |mailing |permanent |residential )*address\b/i.test(label)))) && !/\be-?mail\b/i.test(label)) {
     if (!street || !city) return null;
-    return [street, city, [region, postal].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    // Outside North America the country is part of it ("Torstraße 109,
+    // Berlin, 10119" lacked Germany).
+    const country = isHigh(loc.country) && loc.country.value.code !== "US" && loc.country.value.code !== "CA" ? loc.country.value.name : null;
+    return [street, city, [region, postal].filter(Boolean).join(" "), country].filter(Boolean).join(", ");
   }
   if (/\bcity\b[^?]{0,20}\b(state|province|region)\b/i.test(label)) {
     if (!city || !region || (zip && !postal)) return null;
@@ -359,6 +367,37 @@ function coerceToKind(value: string, kind: AnswerKind): string | null {
 }
 
 /**
+ * A visible minority (Canada's "racialized person") from the stated race:
+ * any race but White is one, White is not; Indigenous peoples are counted
+ * apart, and two or more races are not decided. Nothing stated, or declined:
+ * the list's own decline option.
+ */
+function visibleMinorityOption(profile: UserApplicationProfile, options: string[]): string | null {
+  const race = (profile.eeo?.race ?? "").toLowerCase();
+  const hispanic = /^yes\b/i.test((profile.eeo?.hispanicLatino ?? "").trim());
+  const decline = options.find((o) => /\b(prefer not|decline|do not wish|don.t wish|choose not|rather not)\b/i.test(o)) ?? null;
+  if ((!race.trim() && !hispanic) || /\b(prefer not|decline|not (to )?(say|disclose|answer)|do not wish)\b/.test(race)) return decline;
+  const minority = hispanic || /\b(black|african|asian|hispanic|latin|middle eastern|arab|north african|pacific islander|native hawaiian)\b/.test(race)
+    ? true
+    : /\b(white|caucasian|european)\b/.test(race) && !/\b(indigenous|first nations|metis|inuit|aboriginal|american indian|alaska native|native american|two or more|mixed|multiracial)\b/.test(race)
+      ? false
+      : null;
+  if (minority === null) return null;
+  // "Nonvisible minority" beside it (Wattpad): someone LGBTQ+ or with a
+  // disability may be one, so "I don't identify as a minority (Visible or
+  // Nonvisible)" is not theirs to be given.
+  const eeo = profile.eeo;
+  const nonvisible =
+    /\b(gay|lesbian|bisexual|queer|pansexual|asexual)\b/i.test(eeo?.sexualOrientation ?? "") ||
+    /\btrans/i.test(eeo?.genderIdentity ?? "") ||
+    /^yes\b/i.test((eeo?.disabilityStatus ?? "").trim());
+  if (!minority && nonvisible && options.some((o) => /\bnon ?-?visible minorit/i.test(o))) return null;
+  const yes = options.find((o) => /^yes\b/i.test(o.trim())) ?? options.find((o) => /^visible minorit/i.test(o.trim()));
+  const no = options.find((o) => /^no\b/i.test(o.trim())) ?? options.find((o) => /\b(not|don.t|do not) identify as (a )?(visible )?minorit/i.test(o));
+  return (minority ? yes : no) ?? null;
+}
+
+/**
  * A date control (dateControl.ts) takes only a whole date in its own format:
  * the value is re-emitted in that format, or the field stays blank when it
  * lacks a part (a graduation YEAR for a day-precise picker).
@@ -400,6 +439,18 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   if (kind === "file" || kind === "password" || PASS_THROUGH.has(category)) {
     const v = resolveAnswerWithAdapter(input.adapter, category, profile, control, input.fillEEO, input.el);
     return { value: v, kind, source: v === null ? "none" : "category", deviceAbstained: false };
+  }
+  // Canada's employment-equity "racialized person" / "visible minority"
+  // question is about race: "Do you self-identify as a racialized person?
+  // …Latin American/Hispanic…" (eqbank on Lever, question bank 2026-10-08)
+  // was read as the Hispanic question, No for a Black and two Asian
+  // applicants. Wattpad's list names it in its options. Only the label's
+  // first question counts: eqbank's disability question goes on "Visible
+  // Minority Persons - People experience disabilities…".
+  const minorityAsked = /\bracialized\b|\bvisible minorit(y|ies)\b/i.test(label.split("?")[0]) || (options ?? []).some((o) => /^visible minorit/i.test(o.trim()));
+  if (minorityAsked && options && options.length > 1) {
+    const v = visibleMinorityOption(profile, options);
+    return v === null ? none(true, "eeo:visible-minority-unknown") : { value: v, kind, source: "category", deviceAbstained: false, rule: "eeo:visible-minority" };
   }
 
   // 2. Question shapes. EEO answers are the user's own words and are matched
@@ -450,6 +501,13 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   // 2026-10-05): the profile has one name, so it is never different.
   if (source === "category" && (category === "fullName" || category === "firstName" || category === "lastName") && /\bif (it is |its )?different\b/i.test(label)) {
     return none(true, "name:if-different");
+  }
+  // "What is your preferred first name and last name? If your legal first and
+  // last name is your preferred name, you do not need to respond." (Zoox on
+  // Lever, question bank 2026-10-08) got the first name alone. The profile
+  // has one name: nothing to add.
+  if (source === "category" && (category === "fullName" || category === "firstName" || category === "lastName") && /\b(do not|don ?t|no) need to (respond|answer|fill)\b|\bleave (this|it) blank\b/i.test(label) && /\bpreferred\b/i.test(label)) {
+    return none(true, "name:preferred-same");
   }
   // "In what City, State and Zip are you currently residing?" (Box) and
   // "…city and state… (e.g. San Jose, CA)" (Zscaler) got the city alone;
@@ -549,6 +607,13 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
   if (source === "category" && (category === "location" || category === "addressCity") && /\bpreferred (office|work|working|job)? ?location\b|\bpreferred office\b|\bwhich (of our )?offices?\b/i.test(label) && !/\b(closest|nearest|close to|near)\b/i.test(label)) {
     return none(false, "wrong-kind:office-preference");
   }
+  // Where the job will be done is not where one lives now: "If you are
+  // accepted for this in-person position, what city will you be working
+  // from?" got Toronto from someone who would move (SEP on Lever, question
+  // bank 2026-10-08).
+  if (source === "category" && (category === "location" || category === "addressCity") && /\b(will|would) you (be )?(work|working|based|located|reporting)( from| out of| in)?\b/i.test(label)) {
+    return none(false, "wrong-kind:future-work-place");
+  }
   // Experience of one kind is not the work history: "Do you have any SaaS or
   // software sales experience?" (Hootsuite), "…any experience you have within
   // sport?" (Hudl), "…your experience in product marketing" (Wikimedia).
@@ -586,6 +651,13 @@ function resolveFieldValue(input: FieldResolveInput): FieldResolution {
       if (ok.length === 0) return none(false, "no-confident-option");
       return { value: ok.join(", "), kind, source, rule, deviceAbstained: false };
     }
+    // A list grouped "White: Irish" / "White: Any other White background" (the
+    // UK census): the stated group's own "any other", never a subgroup
+    // nobody stated (Spotify on Lever, question bank 2026-10-08: "White:
+    // Irish" for a German).
+    const grouped = input.sensitive && (category === "eeoRace" || category === "eeoHispanic") ? groupedEthnicityOption(value, options) : undefined;
+    if (grouped === null) return none(false, "eeo:grouped-subgroup-unknown");
+    if (grouped !== undefined) return { value: grouped, kind, source, rule: "eeo:grouped", deviceAbstained: false };
     // A demographic answer in other words ("Female" among Man / Woman, Ashby):
     // the on-device demographic matcher knows the synonyms.
     const snapped = snapToOption(options, value, category) ?? (input.sensitive ? closestDemographicOption(category, value, options) : null);

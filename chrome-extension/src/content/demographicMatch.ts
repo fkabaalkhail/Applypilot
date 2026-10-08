@@ -189,6 +189,44 @@ export function hispanicRaceOption(hispanic: string, options: string[]): string 
   return hits.length === 1 ? hits[0] : null;
 }
 
+/** The group a stated race belongs to on a grouped list, by its words. */
+const RACE_GROUPS: Array<[RegExp, string]> = [
+  [/\b(white|caucasian|european)\b/, "white"],
+  [/\b(black|african)\b/, "black"],
+  [/\b(asian|chinese|indian|pakistani|bangladeshi|korean|japanese|vietnamese|filipino)\b/, "asian"],
+  [/\b(two or more|mixed|multiracial|biracial)\b/, "mixed"],
+];
+/** A race named only by its group, as US forms record it: no subgroup in it
+ *  ("African" inside "Black or African American" is the group's name). */
+const GROUP_ONLY = /^(white|caucasian|black|african american|black or african american|asian|two or more races|mixed|multiracial|biracial)$/;
+
+/**
+ * An ethnicity list grouped "Group: subgroup" (the UK census: "White: Irish",
+ * "White: Any other White background", "Asian/Asian British: Chinese"). A
+ * race stated by its group alone takes the group's "any other" option; a
+ * subgroup is chosen only when the stated race names it ("White Irish").
+ * "White: Irish" was chosen for a German (Spotify on Lever, question bank
+ * 2026-10-08). undefined: not such a list, or no group of it is the
+ * applicant's; null: no single option to take.
+ */
+export function groupedEthnicityOption(value: string, options: string[]): string | null | undefined {
+  const grouped = options
+    .map((raw) => ({ raw, m: /^([^:]{2,40}):\s*(.+)$/.exec(raw.trim()) }))
+    .filter((x): x is { raw: string; m: RegExpExecArray } => x.m !== null);
+  if (grouped.length < 4) return undefined;
+  const v = norm(value);
+  const group = RACE_GROUPS.find(([re]) => re.test(v))?.[1];
+  if (!group) return undefined;
+  const mine = grouped.filter((x) => hasWords(norm(x.m[1]), group));
+  if (mine.length < 2) return undefined;
+  if (!GROUP_ONLY.test(v)) {
+    const sub = mine.filter((x) => !/\bany other\b/.test(norm(x.m[2])) && hasWords(v, norm(x.m[2])));
+    if (sub.length === 1) return sub[0].raw;
+  }
+  const other = mine.filter((x) => /\bany other\b/.test(norm(x.m[2])));
+  return other.length === 1 ? other[0].raw : null;
+}
+
 /** An option that declines to answer ("Decline to answer", "Prefer not to say"). */
 export function isDeclineText(text: string): boolean {
   const t = norm(text);
