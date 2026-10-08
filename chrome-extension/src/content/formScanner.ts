@@ -25,6 +25,7 @@ import {
   type FieldSignals,
 } from "./domUtils";
 import { isConsentOption } from "./answerKind";
+import { holdsPageGuess } from "./pageGuesses";
 import { isCaptchaField } from "./captcha";
 import { isConsentField } from "./consent";
 import { isInPageChrome } from "./pageChrome";
@@ -1307,10 +1308,13 @@ export function scanPage(
       // A picker showing a bare dialing code shows the page's preset (from
       // the visitor's locale, "+44 GB"), not an answer: left as one, the
       // picker was never selected for the fill. So does a phone box holding
-      // only the code ("+1", Recruitee, live 2026-10-05: never filled).
+      // only the code ("+1", Recruitee, live 2026-10-05: never filled). So
+      // does a box still showing what the page guessed from the visitor's
+      // location (Workable's Address, pageGuesses.ts).
       currentValue:
         (category === "phoneCountryCode" && isDialPicker(el)) ||
-        (category === "phone" && /^\s*\+\s?\d{1,4}\s*$/.test((el as HTMLInputElement).value ?? ""))
+        (category === "phone" && /^\s*\+\s?\d{1,4}\s*$/.test((el as HTMLInputElement).value ?? "")) ||
+        holdsPageGuess(el)
           ? undefined
           : currentValueOf(el, controlType),
       ...resolutionFlags(resolved),

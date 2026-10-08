@@ -65,6 +65,7 @@ import { answersWorthRemembering, planAnswerSaves } from "./answerGaps";
 import { customFieldAnswers, getExtras } from "./autofillExtras";
 import { AutofillReconciler, type FieldReport } from "./reconciler";
 import { liveControlFor } from "./staleControl";
+import { loadWorkableGuesses, workableShortcode } from "./pageGuesses";
 import { defaultSelectedIds, fillSelection, isDefaultSelected } from "../shared/selection";
 import { extractJobContext, extractJobIdentity } from "./jobContext";
 import { detectJobPlace, sanitizeCompany, type JobPlace } from "./jobLocation";
@@ -586,6 +587,24 @@ function initialize(): void {
     engine?.updateRegistry(registry);
   }
 
+  // What the page guessed from the visitor's location (Workable's Address,
+  // pageGuesses.ts): read once per posting, then rescanned so the panel
+  // offers the box.
+  let pageGuessesFor = "";
+  let pageGuessesLoad: Promise<void> = Promise.resolve();
+  function ensurePageGuesses(): Promise<void> {
+    const code = workableShortcode(location.href);
+    if (!code || code === pageGuessesFor) return pageGuessesLoad;
+    pageGuessesFor = code;
+    pageGuessesLoad = loadWorkableGuesses(location.href).then(() => {
+      if (lastFields.length === 0) return;
+      runScan();
+      engine?.updateRegistry(registry);
+      reportFields();
+    });
+    return pageGuessesLoad;
+  }
+
   // ---- In-page overlay -------------------------------------------------------
 
   function recognizedCount(fields: DetectedField[]): number {
@@ -897,6 +916,7 @@ function initialize(): void {
       await waitForDomSettle(signal);
       if (signal?.aborted) return { ok: 0, fail: 0, total: 0 };
       await ensureJobPlace();
+      await Promise.race([ensurePageGuesses(), new Promise((resolve) => setTimeout(resolve, 2500))]);
       runScan();
       // A form an "Apply" click opens can still sit hidden while the site loads
       // (hiddenForm.ts). On the page the flow's entry click just opened, or on a
@@ -2188,6 +2208,7 @@ function initialize(): void {
     captureJobDescription();
     ensureObserver();
     void loadOverrides();
+    void ensurePageGuesses();
     void probeFlowHint();
     if (isTopFrame) {
       maybeShowOrUpdateOverlay();
