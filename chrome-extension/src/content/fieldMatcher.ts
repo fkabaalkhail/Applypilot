@@ -411,6 +411,9 @@ const CATEGORY_SPECS: CategorySpec[] = [
       // "If chosen for the role, how soon are you able to start?" (Kaizen on
       // JazzHR, live 2026-10-03, left for the AI).
       { re: /\bhow soon (are|would|will) you (be )?(able|available) to (start|begin|join)\b/ },
+      // "On what date would you be available to work" (Barnes & Thornburg,
+      // Ashby bank 2026-10-08).
+      { re: /\bwhat date (would|could|can|will) you (be )?(available|able) to (start|begin|work|join|commence)\b/ },
     ],
     // Never a birth date, and never an employment-history row's own start date.
     negative: /\bbirth\b|\bemployment start\b|\bprevious\b|\bmost recent (job|role|position|employer)\b/,

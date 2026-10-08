@@ -257,7 +257,8 @@ function isAbleToWorkInCountry(n: string, raw: string): boolean {
  *  2026-10-05) is about conferences, not a visa. */
 // "…require TWG Global to file a petition or application for employment-based
 // status on your behalf…" (Workable bank, 2026-10-05) is sponsorship too.
-const SPONSOR = /\bsponsor(ship|ing)?\b|\bsponsored\b(?! (conferences?|events?|programs?|programmes?|hackathons?|organi[sz]ations?|communit(y|ies)|groups?|clubs?|scholarships?|teams?|content|posts?)\b)|\b(visa|immigration) (status|support|assistance|transfer)\b|\bh ?1 ?b\b|\bfile (a |an )?(visa |immigration )?petition\b|\bemployment ?based (immigration )?status\b/;
+// "require sponorship" (sic, Cohere on Ashby, 2026-10-08) is still sponsorship.
+const SPONSOR = /\bsponsor(ship|ing)?\b|\bspon(or|ser)ship\b|\bsponsored\b(?! (conferences?|events?|programs?|programmes?|hackathons?|organi[sz]ations?|communit(y|ies)|groups?|clubs?|scholarships?|teams?|content|posts?)\b)|\b(visa|immigration) (status|support|assistance|transfer)\b|\bh ?1 ?b\b|\bfile (a |an )?(visa |immigration )?petition\b|\bemployment ?based (immigration )?status\b/;
 /** Asks whether sponsorship is NEEDED ("will you require / do you need … sponsorship"). */
 const REQUIRES_SPONSOR = /\b(require|requires|requiring|need|needs|needing)\b[^?]{0,60}\b(sponsor|petition)/;
 /** Asks for the work RIGHT itself ("are you legally authorized…", "do you have the right to work…"). */
@@ -389,6 +390,66 @@ function chooseSponsorshipOption(options: string[], need: boolean, stated: strin
   if (named.length > 0) return named.length === 1 ? named[0] : null;
   const unlisted = side.filter((o) => /\bnot (one of|listed|among)\b|\b(an|any )?other\b|\bnone of\b/.test(o.toLowerCase()));
   return unlisted.length === 1 ? unlisted[0] : null;
+}
+
+/**
+ * A list of visa statuses: "I currently hold an H-1B visa and would need a
+ * transfer to Base" | "I currently hold STEM OPT and will require H-1B
+ * sponsorship in the future" | … (Base Power), "STEM OPT" | "Non-US Person
+ * with work Authorization w/ H1B, H-4" (Vital Lyfe), "H-1B" | "H-1B
+ * (Transfer)" | "F-1 Student (STEM OPT)" (OnePay); Ashby bank 2026-10-08, all
+ * blank. The option for the visa the applicant holds, by their own
+ * statement; a visa named only as a need ("will require H-1B sponsorship",
+ * "require initial H-1B") is not held. A citizen of another country takes
+ * the option naming that citizenship, where nothing says "not authorized".
+ */
+function resolveVisaStatusList(q: QuestionInput, facts: ProfileFacts, profile: UserApplicationProfile): QuestionResult {
+  const opts = (q.options ?? []).filter((o) => o.trim());
+  if (opts.length < 3 || isBooleanQuestion(q)) return null;
+  const low = opts.map((o) => o.toLowerCase());
+  if (low.filter((t) => VISA_NAMES.some(([, named]) => named.test(t))).length < 2) return null;
+  const stated = (profile.workAuthorization || "").toLowerCase();
+  const mine = VISA_NAMES.find(([own]) => own.test(stated));
+  if (!mine) {
+    if (low.some((t) => /\bnot (currently )?(authori[sz]ed|eligible)\b/.test(t))) return null;
+    const citizen = [...facts.workAuth.byCountry.entries()].filter(([c, a]) => a.basis === "citizen" && c !== "US").map(([c]) => c);
+    if (citizen.length !== 1) return null;
+    const hits = opts.filter((o) => /\bcitizens?\b/i.test(o) && countriesNamedIn(o).includes(citizen[0]));
+    return hits.length === 1 ? answer(hits[0], "visa-list:citizenship") : null;
+  }
+  const named = mine[1];
+  const held = (t: string): boolean => {
+    const m = named.exec(t);
+    if (!m) return false;
+    const before = t.slice(0, m.index);
+    if (/\b(require|requires|requiring|need|needs|initial|new|future)\b[^.]{0,25}$/.test(before)) return false;
+    return m.index <= 2 || t.split(/\s+/).length <= 4 || /(?:\b(hold|holding|have|having|on|with|currently)\b|\bw\/)[^.]{0,20}$/.test(before);
+  };
+  let hits = opts.filter((o) => held(o.toLowerCase()));
+  for (const word of [/\bstem\b/, /\btransfer\b/]) {
+    if (hits.length < 2) break;
+    const mineHas = word.test(stated);
+    const narrowed = hits.filter((o) => word.test(o.toLowerCase()) === mineHas);
+    if (narrowed.length > 0) hits = narrowed;
+  }
+  return hits.length === 1 ? answer(hits[0], "visa-list") : null;
+}
+
+/**
+ * "Current or most recent employer", "Current/Last Company", "Where have you
+ * most recently worked?" (Rivian, Plaid, Harvey, Snowflake; Ashby bank
+ * 2026-10-08): a job that has ended counts. Only a running one was taken, so
+ * a career gap left the company blank beside the title it filled. "Previous
+ * employer" is the one before the current: not this.
+ */
+function resolveRecentEmployer(q: QuestionInput, n: string, facts: ProfileFacts): QuestionResult {
+  if (isBooleanQuestion(q) || (q.options?.length ?? 0) > 0) return null;
+  const asks =
+    /\b(current or (most )?recent|current (or )?last|current or latest|current most recent|most recent|latest|last) (employer|company|organi[sz]ation)\b/.test(n) ||
+    /\bwhere (have|did) you (most recently|last) work(ed)?\b/.test(n);
+  if (!asks) return null;
+  if (isHigh(facts.employment.currentCompany)) return answer(facts.employment.currentCompany.value, "recent-employer:current");
+  return isHigh(facts.employment.mostRecentCompany) ? answer(facts.employment.mostRecentCompany.value, "recent-employer") : null;
 }
 
 function resolveWorkAuthorization(q: QuestionInput, n: string, facts: ProfileFacts, profile: UserApplicationProfile, ctx: QuestionContext): QuestionResult {
@@ -2994,6 +3055,10 @@ export function resolveQuestion(
       const inner = resolveQuestion({ ...q, label: m[1] }, facts, profile, ctx);
       if (inner?.status === "answer") return inner;
     }
+    // "If you answered “Yes” above, please select your current immigration
+    // status…" (OnePay, Ashby bank 2026-10-08): a status list answers itself.
+    const status = resolveVisaStatusList(q, facts, profile);
+    if (status?.status === "answer") return status;
     return abstain("conditional-follow-up");
   }
   const conditional = resolveConditional(q, raw, facts, profile, ctx);
@@ -3071,6 +3136,7 @@ export function resolveQuestion(
   const resolved =
     resolveRelocationInstruction(q, raw, facts, profile, ctx) ??
     resolveSanctionedList(q, n, facts) ??
+    resolveVisaStatusList(q, facts, profile) ??
     (unnoted !== raw ? resolveWorkAuthorization({ ...q, label: unnoted }, qnorm(unnoted), facts, profile, ctx) : resolveWorkAuthorization(q, n, facts, profile, ctx)) ??
     resolveUsPersonStatus(sq, facts, profile, q.label) ??
     resolveLaterResidency(sq, sn, facts) ??
@@ -3083,6 +3149,7 @@ export function resolveQuestion(
     resolveRegionChoice(sq, sn, facts) ??
     resolveLocatedChoice(sq, sn, facts) ??
     resolveFormerEmployee(sq, sn, sq.label, facts, ctx) ??
+    resolveRecentEmployer(sq, sn, facts) ??
     resolveCurrentlyEmployed(sq, sn, facts) ??
     resolveYearsOfExperience(sq, sn, facts) ??
     resolvePursuedDegree(sq, sn, facts) ??

@@ -678,3 +678,46 @@ describe("U.S. person questions in their other wordings (Ashby question bank, 20
     expect(ask(P.INDIA_NEW_GRAD, q, SNOW)).toBe(SNOW[2]);
   });
 });
+
+describe("blanks the Ashby question bank's profiles answer (2026-10-08)", () => {
+  const ask = (persona: UserApplicationProfile, label: string, options: string[] = [], category = "unknown", kind?: "boolean" | "choice" | "text") => {
+    const q: QuestionInput = { label, controlType: options.length ? "select" : "text", options, category: category as QuestionInput["category"], kind: kind ?? (options.length === 2 && options[0] === "Yes" ? "boolean" : options.length ? "choice" : "text") };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "US", company: "Iambic Therapeutics" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  it("'Where did you first see this position?' and 'How'd you hear about Range?' are the how-did-you-hear question", () => {
+    const IAMBIC = ["Iambic Website", "Indeed", "LinkedIn Job Listing", "LinkedIn Post", "Referral", "ZipRecruiter", "Other"];
+    expect(ask(P.COMPLETE_CANADIAN, "Where did you first see this position?", IAMBIC)).toBe("LinkedIn Job Listing");
+    expect(ask(P.US_H1B_SENIOR, "Where did you first see this position?", IAMBIC)).toBe("Iambic Website");
+    expect(ask(P.COMPLETE_CANADIAN, "How'd you hear about Range?", ["LinkedIn", "BuiltIn", "Network", "Google search", "Next Play", "Other"])).toBe("LinkedIn");
+  });
+  it("'Have you ever filed an application with us before?' is a prior application: No", () => {
+    expect(ask(P.COMPLETE_CANADIAN, "Have you ever  filed an application with us before?", ["Yes", "No"])).toBe("No");
+  });
+  it("'require sponorship' (sic) to work in the country you reside in is the sponsorship question", () => {
+    const q = "Do you, now or in the future, require sponorship to work in the country you currently reside in?";
+    expect(ask(P.COMPLETE_CANADIAN, q, ["Yes", "No"])).toBe("No");
+    expect(ask(P.US_H1B_SENIOR, q, ["Yes", "No"])).toBe("Yes");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, q, ["Yes", "No"])).toBe("No");
+  });
+  it("'Current or most recent employer' takes a job that has ended", () => {
+    expect(ask(P.BOOTCAMP_CAREER_GAP, "Current or most recent employer", [], "currentCompany")).toBe("Ibotta");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, "Current/Last Company", [], "currentCompany")).toBe("Ibotta");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, "Where have you most recently worked?")).toBe("Ibotta");
+    expect(ask(P.COMPLETE_CANADIAN, "Current or most recent employer", [], "currentCompany")).toBe("Kinaxis");
+  });
+  it("visa status lists take the applicant's own visa", () => {
+    const BASE = ["I am a U.S. citizen or permanent resident (Green Card holder)", "I currently hold an H-1B visa and would need a transfer to Base", "I hold a TN visa and can work for Base with a new employer petition, or I am a Canadian Citizen eligible for a TN1A visa under the USCMA", "I am an Australian citizen and eligible for an E-3 visa", "I currently hold OPT and will require H-1B sponsorship in the future", "I currently hold STEM OPT and will require H-1B sponsorship in the future", "I am authorized to work in the U.S. under CPT (Curricular Practical Training) for the duration of my academic program", "I require initial H-1B sponsorship to work for Base now", "I require another type of visa sponsorship to work for Base now", "I am not currently authorized to work in the U.S."];
+    expect(ask(P.US_H1B_SENIOR, "Are you legally authorized to work in the U.S.?", BASE)).toBe(BASE[1]);
+    expect(ask(P.US_OPT_ANALYST, "Are you legally authorized to work in the U.S.?", BASE)).toBe(BASE[5]);
+    const VL = ["US Citizen", "US Permanent Resident", "Canadian or Mexican Citizen (TN Visa)", "STEM OPT", "Non-US Person with work Authorization w/ H1B, H-4", "O-1 Visa - Non-US Person with work Authorization"];
+    expect(ask(P.US_OPT_ANALYST, "What's your citizenship / employment eligibility?", VL)).toBe("STEM OPT");
+    expect(ask(P.US_H1B_SENIOR, "What's your citizenship / employment eligibility?", VL)).toBe(VL[4]);
+    expect(ask(P.COMPLETE_CANADIAN, "What's your citizenship / employment eligibility?", VL)).toBe(VL[2]);
+    const ONE = ["F-1 Student (OPT)", "F-1 Student (STEM OPT)", "F-1 Student (CPT)", "H-1B", "H-1B (Transfer)", "TN", "L-1", "E-3", "Asylee/Refugee", "Adjustment of Status Pending"];
+    const q = "If you answered “Yes” above, please select your current immigration status from the dropdown below.";
+    expect(ask(P.US_H1B_SENIOR, q, ONE)).toBe("H-1B (Transfer)");
+    expect(ask(P.US_OPT_ANALYST, q, ONE)).toBe("F-1 Student (STEM OPT)");
+    expect(ask(P.BOOTCAMP_CAREER_GAP, q, ONE)).not.toBe("H-1B");
+  });
+});

@@ -110,7 +110,7 @@ const PAY_TERMS = /\b(compensation|pay|salary|salaries|wages?|hourly rate|benefi
 const OBSTACLE = /\b(challenges?|issues?|problems?|concerns?|difficult(y|ies)?|prevent you|preclude|disqualif\w*|impediments?|barriers?|obstacles?|restrictions?|limitations?)\b/;
 
 const PRIOR_APPLICATION =
-  /\b(have|did) you (ever |previously |already )?(applied|interviewed|submitted (an )?application)\b|\bpreviously (applied|interviewed)\b|\bapplied (here|before|previously)\b|\binterviewed (here|before|with us)\b/;
+  /\b(have|did) you (ever |previously |already )?(applied|interviewed|submitted (an )?application|filed (an )?application)\b|\bpreviously (applied|interviewed)\b|\bapplied (here|before|previously)\b|\binterviewed (here|before|with us)\b/;
 /** "Were you referred by an employee?" (a yes/no; WHO referred stays unanswerable). */
 const REFERRED = /\b(were|was) you referred\b|\bwere you referred by\b|\breferred by (a|an|any) (current )?(employee|staff|team member|friend)\b|\bemployee referral\b/;
 const RELATIVES =
@@ -173,7 +173,9 @@ const CRIMINAL = /\b(criminal|convicted|conviction|felony|misdemeanou?r|arrested
 const CONTACT_METHOD = /\b(contact|communication) (method|preference|channel)s?\b|\b(method|means|mode|way) of (contact|communication)\b|\bprefer\w* (we|us|to be) (contact|reach)\w*|\bbest way to (contact|reach) you\b/;
 
 const HOW_HEARD =
-  /\bhow (did )?you (first |originally )?(hear|heard|find|found|learn|learned|come across|came across|discover|discovered|connect|connected)\b|\bwhere did you (hear|see|find|learn)\b|\bhow were you (referred|introduced)\b|\b(referral|application|candidate|job) source\b|\bsource of (application|referral)\b|\bhow did you get to know\b/;
+  // "Where did you first see this position?" (Iambic), "How'd you hear about
+  // Range?" (Ashby bank 2026-10-08).
+  /\bhow (did )?you (first |originally )?(hear|heard|find|found|learn|learned|come across|came across|discover|discovered|connect|connected)\b|\bwhere did you (first |originally )?(hear|see|find|learn|come across|discover)\b|\bhowd you (first )?(hear|find|learn|discover)\b|\bhow were you (referred|introduced)\b|\b(referral|application|candidate|job) source\b|\bsource of (application|referral)\b|\bhow did you get to know\b/;
 
 /** Channels a "how did you hear" list offers; three or more in an unlabeled
  *  question ("Select One", Hermeus on Lever) make it that question. */
