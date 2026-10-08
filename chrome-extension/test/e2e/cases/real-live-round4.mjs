@@ -69,8 +69,9 @@ export default [
       "#form_first_name_7_0_0": "Maya",
       "#form_last_name_7_0_1": "Tremblay",
       "#form_email_7_0_2": "maya.tremblay@example.com",
-      // The widget adds the country code (was reported "did not stick").
-      "label:Phone Number (required)": "+14165550142",
+      // The widget added the country code in round 4 (was reported "did not
+      // stick"); since 2026-10-08 it keeps the number as written: either form.
+      "label:Phone Number (required)": { re: "^(\\+14165550142|\\(416\\) 555-0142)$" },
       "label:Website": "https://mayatremblay.dev",
       "label:LinkedIn Profile": "https://www.linkedin.com/in/maya-tremblay",
       "label:How did you hear about this opportunity?": "LinkedIn",

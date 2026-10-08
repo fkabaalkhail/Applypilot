@@ -151,6 +151,11 @@ export default [
     ats: "lever",
     url: "https://jobs.lever.co/eqbank/eefb3fa3-a55b-4bfd-b1b2-5419f35c7703/apply",
     expect: {
+      // "…a racialized person?" and "…a person with a disability?", labelled
+      // since round 5 (a question with its description): no race or disability
+      // stated, so the page's decline, as for Gender Identity.
+      "radio=surveysResponses[54d5f494-8f40-45ec-a0d4-736d5c1eac87][responses][field2]": "Prefer not to say",
+      "radio=surveysResponses[54d5f494-8f40-45ec-a0d4-736d5c1eac87][responses][field3]": "Prefer not to say",
       "name=name": NAME,
       "name=email": P.email,
       "name=phone": PHONE,

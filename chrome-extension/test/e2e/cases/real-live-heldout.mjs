@@ -408,6 +408,10 @@ export default [
     ats: "ashby",
     url: "https://jobs.ashbyhq.com/bree/42fe78c1-e73f-4918-bf71-776b8142112b/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08): a
+      // Toronto applicant, a Toronto office.
+      "yesno~Are you located in the Greater Toronto Area, within commutin": "Yes",
+      "yesno~Are you able to come in office 3x per week (Mon, Wed, Thurs)": "Yes",
       "label:Name": "Maya Tremblay",
       "label:Email": "maya.tremblay@example.com",
       "label:What is your expectation for total annual cash compensation ": null,

@@ -359,6 +359,8 @@ export default [
     profile: COMPLETE_CANADIAN,
     url: lever("wattpad", "27d282b1-1d8e-4aa7-9886-e48e897edd2f"),
     expect: {
+      // The race list named only by its options, now read as one: White.
+      "name=surveysResponses[833af20f-2bcb-452d-9d12-c211b8a6459a][responses][field2]#4": "checked",
       "label:Full name": "Maya Tremblay",
       "label:She/her": "checked",
       "label:Email": "maya.tremblay@example.com",
@@ -415,6 +417,10 @@ export default [
     profile: BOOTCAMP_CAREER_GAP,
     url: lever("kobie", "53ebf458-2156-4d6d-a11e-aa42eccc95ae"),
     expect: {
+      // "…employees may periodically travel… Are you able and willing to travel
+      // as needed?": travel now and then is no office work, so a preference for
+      // remote work does not leave it blank.
+      "radio=cards[6617eacd-1f0d-4b8d-bf60-820d9157fe9d][field9]": "Yes",
       "label:Full name": "D'Andre Jean-Baptiste",
       "label:Email": "dandre.jb@example.com",
       "label:Phone": "720.555.0164",

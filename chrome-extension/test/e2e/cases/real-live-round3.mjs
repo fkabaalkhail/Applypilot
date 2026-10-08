@@ -390,6 +390,15 @@ export default [
     profile: MONTREAL_CHANGER,
     url: "https://jobs.ashbyhq.com/superhuman%20platform%20inc/e6b917b1-325a-47d0-b267-b279b0efdad0/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08). The
+      // posting's hubs are in the US; a graduate attends no college anywhere. Once
+      // these were scanned, "attending a college…" read as a School field and both
+      // education rows took Concordia (regression 2026-10-08, fixed).
+      "yesno~Are you authorized to be employed in the United States?": "No",
+      "yesno~Do you need visa sponsorship?": "Yes",
+      "yesno~Are you currently attending a college or university in the U": "No",
+      "yesno~Are you currently pursuing a degree in computer science or a": "No",
+      "yesno~Do you currently live within 50 miles of one of our Superhum": "No",
       "label:Legal Full Name": "Alex Côté-Tremblay",
       "label:Preferred First Name": "Alex",
       "label:Email": "alex.cote@example.ca",
@@ -677,6 +686,11 @@ export default [
     profile: US_GREENCARD_STUDENT,
     url: "https://jobs.ashbyhq.com/ramp/b39ceb08-a0a7-4f8b-a760-2fb88e209956/application",
     expect: {
+      // Ashby's Yes/No questions, answered since round 5 (read 2026-10-08): a
+      // Software Engineering student with a green card, willing to move.
+      "yesno~Are you currently pursuing a Bachelor’s, Master’s, or PhD in": "Yes",
+      "yesno~Are you willing to relocate the greater NYC area for the dur": "Yes",
+      "yesno~Will you now or in the future require sponsorship for an emp": "No",
       "label:Legal Name": "Mei Lin",
       "label:Preferred First Name": "Mei",
       "label:Pronouns": "She/Her",
