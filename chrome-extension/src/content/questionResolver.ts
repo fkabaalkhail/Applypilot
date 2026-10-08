@@ -1604,8 +1604,20 @@ function resolveEnrollment(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     }
     return abstain("enrollment:unknown");
   }
+  // A field named with it ("…in Data Science, Computer Science, …,
+  // Engineering, or another quantitative field", Ramp; "…in computer science
+  // or another related field", Superhuman): a degree in progress outside the
+  // sciences and engineering is the applicant's to judge.
+  if (/\b(related|relevant|quantitative|technical|stem|similar|scientific) (field|discipline|area|major|program)s?\b/.test(n)) {
+    const current = facts.education.entries.filter((x) => x.completed === false);
+    if (current.length > 0 && !current.some((x) => STEM_DEGREE.test(qnorm(x.degree)))) return abstain("enrollment:field-unproven");
+  }
   // "…enrolled in a PhD program…?" asks about THAT level (Neighbor on Lever,
-  // live 2026-10-03: "Yes" for a bachelor's student).
+  // live 2026-10-03: "Yes" for a bachelor's student). Several levels named
+  // are any of them: "pursuing a Bachelor's, Master's, or PhD in…" (Ramp on
+  // Ashby, live 2026-10-08) was read as the PhD alone, No for a bachelor's.
+  const levels = degreeLevelsNamed(n);
+  if (levels.length > 1) return programAtLevel(q, levels, facts, "enrollment:level");
   const level = degreeLevelAsked(n);
   if (level !== null) return programAtLevel(q, level, facts, "enrollment:level");
   // "…currently enrolled in OR have graduated from a university?": either one.
@@ -1718,8 +1730,22 @@ function degreeLevelAsked(n: string): number | null {
   return null;
 }
 
-/** Is the applicant in a program at that level right now? From the rows in progress. */
-function programAtLevel(q: QuestionInput, level: number, facts: ProfileFacts, rule: string): QuestionResult {
+/** Every degree level a label names (bachelor's 4, master's 5, doctorate 6). */
+function degreeLevelsNamed(n: string): number[] {
+  const out: number[] = [];
+  if (/\b(bachelors?|undergraduate)\b/.test(n)) out.push(4);
+  if (/\b(masters?|mba)\b/.test(n)) out.push(5);
+  if (/\b(phd|ph d|doctoral|doctorate)\b/.test(n)) out.push(6);
+  return out;
+}
+
+/** A degree in the sciences, engineering or mathematics, by its own words. */
+const STEM_DEGREE =
+  /\b(engineering|engineer|computer|computing|comput\w*|software|science|sciences|scientist|math\w*|physics|statistics|statistical|data|economics|econometrics|informatics|information systems|electrical|mechanical|mechatronics|chemistry|chemical|biology|bioinformatics|technology|basc|bsc|beng|btech|msc|meng)\b/;
+
+/** Is the applicant in a program at that level (or one of those levels) right now? From the rows in progress. */
+function programAtLevel(q: QuestionInput, level: number | number[], facts: ProfileFacts, rule: string): QuestionResult {
+  const want = Array.isArray(level) ? level : [level];
   const inProgress = facts.education.entries.filter((x) => x.completed === false);
   if (inProgress.length === 0) {
     return isHigh(facts.education.currentlyEnrolled) && facts.education.currentlyEnrolled.value === false
@@ -1727,7 +1753,7 @@ function programAtLevel(q: QuestionInput, level: number, facts: ProfileFacts, ru
       : abstain(rule + ":unknown");
   }
   if (inProgress.some((x) => x.rank === null)) return abstain(rule + ":unknown");
-  return booleanResult(inProgress.some((x) => x.rank === level), q, rule);
+  return booleanResult(inProgress.some((x) => x.rank !== null && want.includes(x.rank)), q, rule);
 }
 
 /**
@@ -1857,7 +1883,10 @@ function resolveGraduation(q: QuestionInput, n: string, facts: ProfileFacts): Qu
     // With the month known, an option naming another month or term is not
     // theirs: "December 2026" for a June 2026 graduate (Perchwell, Ashby bank
     // 2026-10-08).
-    const withYear = q.options.filter((o) => o.includes(year) && (g.precision === "year" || optionMonthSpan(o) === null));
+    // A winter term is no month we can place (December, or January to
+    // March): "Winter 2027" was the April 2027 graduate's on the year alone
+    // (Grow Therapy on Ashby, live 2026-10-08).
+    const withYear = q.options.filter((o) => o.includes(year) && (g.precision === "year" || (optionMonthSpan(o) === null && !/\bwinter\b/i.test(o))));
     if (withYear.length === 1) return answer(withYear[0], "graduation:only-option-in-year");
     // A year list without theirs, beside its "Other" (Palantir's 2022-2030
     // for a 2016 graduate, live 2026-10-03): "Other" is the true one.
@@ -2945,7 +2974,11 @@ function resolveStatedFacts(q: QuestionInput, n: string, profile: UserApplicatio
     }
     return null;
   }
-  if (/\b(willing|open|able|prepared) to (relocate|move)\b|\brelocat(e|ion)\b/.test(n) && !/\b(assistance|package|support|expenses?|benefits?|allowance|reimburse)\b/.test(n)) {
+  // Paying for it is no willingness to move: "…able to provide your own
+  // housing, relocation, and transportation to the internship site?" (The
+  // Exploration Company on Ashby, live 2026-10-08) is the applicant's, like
+  // relocation assistance (the day session's decision 2).
+  if (/\b(willing|open|able|prepared) to (relocate|move)\b|\brelocat(e|ion)\b/.test(n) && !/\b(assistance|package|support|expenses?|benefits?|allowance|reimburse|own (housing|relocation|transportation|travel)|housing|at your own (cost|expense))\b/.test(n)) {
     if (/\b(live|reside|located|based)\b/.test(n)) return null; // residence shape owns it
     return statedBoolean(q, profile.willingToRelocate, "relocation");
   }

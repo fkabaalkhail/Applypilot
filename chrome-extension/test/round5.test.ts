@@ -908,3 +908,27 @@ describe("'Country - Region' places (Dropbox's Current Location, Greenhouse bank
     expect(ask(P.COMPLETE_CANADIAN, Q, DBX.filter((o) => o !== "Canada - Ontario"))).toBe("abstain");
   });
 });
+
+describe("Ashby's Yes/No questions answered for the first time, read in the regression (2026-10-08)", () => {
+  const ask = (persona: UserApplicationProfile, label: string, options: string[]) => {
+    const q: QuestionInput = { label, controlType: "radioGroup", options, category: "unknown", kind: options.length === 2 ? "boolean" : "choice" };
+    const r = resolveQuestion(q, profileFacts(persona, TEST_TODAY), persona, { jobCountry: "US", company: "Acme" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+  it("several levels named are any of them (Ramp: a bachelor's student said No to 'Bachelor's, Master's, or PhD')", () => {
+    const q = "Are you currently pursuing a Bachelor’s, Master’s, or PhD in Data Science, Computer Science, Math, Physics, Economics, Statistics, Engineering, or another quantitative field?";
+    expect(ask(P.COMPLETE_CANADIAN as UserApplicationProfile, q, ["Yes", "No"])).toBe("Yes");
+  });
+  it("a field named with the degree: outside the sciences and engineering it is the applicant's", () => {
+    const arts = { ...(P.COMPLETE_CANADIAN as UserApplicationProfile), education: [{ school: "University of Toronto", degree: "Bachelor of Arts in History", graduationYear: "2027" }], expectedGraduation: "2027-04" };
+    expect(ask(arts, "Are you currently pursuing a degree in computer science or another related field?", ["Yes", "No"])).toBe("abstain");
+  });
+  it("a winter term is no month to place an April graduation in (Grow Therapy)", () => {
+    const opts = ["Winter 2027", "Spring 2028", "Winter 2028", "Spring 2029", "Winter 2029", "Spring 2030", "Winter 2030", "I have already graduated"];
+    expect(ask(P.COMPLETE_CANADIAN as UserApplicationProfile, "When is your expected graduation date?", opts)).not.toBe("Winter 2027");
+  });
+  it("paying for one's own housing and move is no willingness to move (The Exploration Company)", () => {
+    const q = "If selected, will you be able to provide your own housing, relocation, and transportation to the internship site?";
+    expect(ask(P.COMPLETE_CANADIAN as UserApplicationProfile, q, ["Yes", "No"])).not.toBe("Yes");
+  });
+});
