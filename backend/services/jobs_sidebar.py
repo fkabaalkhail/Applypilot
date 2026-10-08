@@ -1,8 +1,8 @@
 """
 Everything the Jobs page's right-hand rail shows, in one read-only pass.
 
-No LLM calls: match numbers come from scores the cron sweep already banked in
-``job_match_scores``, and skill gaps compare the same curated taxonomy
+No LLM calls: match numbers come from scores banked in ``job_match_scores``
+(free local scores, services/local_match.py, or LLM-confirmed ones), and skill gaps compare the same curated taxonomy
 (structured_extraction.extract_skills) on both sides, the job's stored tags
 against tags extracted from the resume text. Nothing here writes.
 
@@ -11,6 +11,7 @@ Scores are only trusted while the resume they were computed from is unchanged
 """
 
 import datetime
+import logging
 from collections import Counter
 from typing import Optional
 
@@ -28,8 +29,15 @@ from backend.db.models import (
     UserSettings,
 )
 from backend.services.listing_freshness import HIDDEN_LISTING_STATUSES
-from backend.services.match_notifier import DEFAULT_THRESHOLD, _resume_fingerprint
-from backend.services.structured_extraction import _SKILL_SYNONYMS, extract_skills
+from backend.services.local_match import (
+    bank_local_scores,
+    current_fingerprints,
+    scoring_mode,
+    skill_tags,
+)
+from backend.services.match_notifier import DEFAULT_THRESHOLD
+
+logger = logging.getLogger(__name__)
 
 STRONG_MATCH = DEFAULT_THRESHOLD  # 80, the same bar the alert emails use
 GAP_POOL_MIN_SCORE = 70
@@ -41,22 +49,6 @@ MAX_CLOSING = 3
 MAX_COMPANIES = 6
 # Tags too generic to tell someone to "add to your resume".
 _GAP_SKIP = {"agile", "scrum", "kanban", "git", "rest", "ui", "ux", "qa", "excel", "lean"}
-
-
-# Knowing the left implies the right, so a resume that lists PostgreSQL is
-# never told it is "missing" SQL.
-_IMPLIES: dict[str, tuple[str, ...]] = {
-    "postgresql": ("sql",), "mysql": ("sql",), "sqlite": ("sql",), "oracle": ("sql",),
-    "snowflake": ("sql",), "bigquery": ("sql",),
-    "typescript": ("javascript",), "react": ("javascript",), "vue": ("javascript",),
-    "angular": ("javascript",), "svelte": ("javascript",), "node.js": ("javascript",),
-    "next.js": ("react", "javascript"), "react native": ("react", "javascript"),
-    "express": ("node.js", "javascript"),
-    "django": ("python",), "flask": ("python",), "fastapi": ("python",),
-    "pandas": ("python",), "numpy": ("python",), "pytorch": ("python",),
-    "scikit-learn": ("python",), "spring": ("java",), "rails": ("ruby",),
-    "kubernetes": ("docker",), "helm": ("kubernetes",),
-}
 
 
 def visible_job_filter():
@@ -96,46 +88,46 @@ def scoring_resume(db: Session, user_id: int) -> Optional[ResumeProfileDB]:
     )
 
 
-def current_scores_query(db: Session, user_id: int, fingerprint: str):
+def current_scores_query(db: Session, user_id: int, fingerprints: list[str]):
+    """Scores that are current for this resume: LLM-confirmed or local."""
     return db.query(JobMatchScore).filter(
         JobMatchScore.user_id == user_id,
-        JobMatchScore.resume_fingerprint == fingerprint,
+        JobMatchScore.resume_fingerprint.in_(fingerprints),
     )
 
 
 def user_match_scores(db: Session, user_id: Optional[int], job_ids: list[int]) -> dict[int, int]:
-    """{job_id: score} for the user's current resume, for overlaying on cards."""
+    """{job_id: score} for the user's current resume, for overlaying on cards.
+
+    Jobs the sweep hasn't reached yet are scored locally on the spot (free, and
+    banked, so it happens once), so a new user sees badges on their first page.
+    """
     if user_id is None or not job_ids:
         return {}
     profile = scoring_resume(db, user_id)
     if profile is None:
         return {}
     rows = (
-        current_scores_query(db, user_id, _resume_fingerprint(profile.raw_text))
+        current_scores_query(db, user_id, current_fingerprints(profile.raw_text))
         .with_entities(JobMatchScore.job_id, JobMatchScore.score)
         .filter(JobMatchScore.job_id.in_(job_ids))
         .all()
     )
-    return {job_id: score for job_id, score in rows}
+    scores = {job_id: score for job_id, score in rows}
+    missing = [j for j in job_ids if j not in scores]
+    if missing and scoring_mode() == "local":
+        try:
+            scores.update(bank_local_scores(db, user_id, profile, missing))
+        except Exception:
+            # Badges are a nicety; a scoring hiccup must never break the feed.
+            db.rollback()
+            logger.exception("local match scoring failed for user %s", user_id)
+    return scores
 
 
 def resume_skill_tags(profile: ResumeProfileDB) -> list[str]:
     """Canonical taxonomy tags the resume shows, in the jobs' vocabulary."""
-    tags = extract_skills("", profile.raw_text or "")
-    seen = set(tags)
-    for raw in profile.skills or []:
-        if not isinstance(raw, str):
-            continue
-        key = raw.strip().lower()
-        if key in _SKILL_SYNONYMS and key not in seen:
-            seen.add(key)
-            tags.append(key)
-    for tag in list(tags):
-        for implied in _IMPLIES.get(tag, ()):
-            if implied not in seen:
-                seen.add(implied)
-                tags.append(implied)
-    return tags
+    return skill_tags(profile.raw_text or "", profile.skills or [])
 
 
 def _start_of_week(now: datetime.datetime) -> datetime.datetime:
@@ -157,10 +149,10 @@ def _resume_section(
     if profile is None:
         return None, [], []
 
-    fingerprint = _resume_fingerprint(profile.raw_text)
+    fingerprints = current_fingerprints(profile.raw_text)
     visible = visible_job_filter()
     scored = (
-        current_scores_query(db, user_id, fingerprint)
+        current_scores_query(db, user_id, fingerprints)
         .join(ScrapedJob, ScrapedJob.id == JobMatchScore.job_id)
         .filter(visible)
     )
@@ -180,7 +172,7 @@ def _resume_section(
         .join(JobMatchScore, JobMatchScore.job_id == ScrapedJob.id)
         .filter(
             JobMatchScore.user_id == user_id,
-            JobMatchScore.resume_fingerprint == fingerprint,
+            JobMatchScore.resume_fingerprint.in_(fingerprints),
             JobMatchScore.score >= GAP_POOL_MIN_SCORE,
             visible,
             ScrapedJob.skills.isnot(None),
@@ -305,7 +297,7 @@ def _closing_section(db: Session, user_id: int, now: datetime.datetime) -> list[
 
 
 def _feed_section(
-    db: Session, user_id: Optional[int], since: datetime.datetime, fingerprint: Optional[str]
+    db: Session, user_id: Optional[int], since: datetime.datetime, fingerprints: Optional[list[str]]
 ) -> dict:
     visible = visible_job_filter()
     first_seen = func.coalesce(ScrapedJob.first_seen_at, ScrapedJob.scraped_at)
@@ -313,9 +305,9 @@ def _feed_section(
     new_since = db.query(ScrapedJob).filter(visible, first_seen >= since).count()
     remote = db.query(ScrapedJob).filter(visible, ScrapedJob.work_type == "remote").count()
     strong = None
-    if user_id is not None and fingerprint is not None:
+    if user_id is not None and fingerprints:
         strong = (
-            current_scores_query(db, user_id, fingerprint)
+            current_scores_query(db, user_id, fingerprints)
             .join(ScrapedJob, ScrapedJob.id == JobMatchScore.job_id)
             .filter(visible, JobMatchScore.score >= STRONG_MATCH)
             .count()
@@ -330,7 +322,7 @@ def _feed_section(
 
 
 def _companies_section(
-    db: Session, user_id: Optional[int], fingerprint: Optional[str]
+    db: Session, user_id: Optional[int], fingerprints: Optional[list[str]]
 ) -> tuple[list[dict], str]:
     """Companies with the most open roles for this user.
 
@@ -339,12 +331,12 @@ def _companies_section(
     """
     visible = visible_job_filter()
     q = db.query(ScrapedJob.company, func.count(ScrapedJob.id).label("n")).filter(visible)
-    if user_id is not None and fingerprint is not None:
+    if user_id is not None and fingerprints:
         scored = (
             q.join(JobMatchScore, JobMatchScore.job_id == ScrapedJob.id)
             .filter(
                 JobMatchScore.user_id == user_id,
-                JobMatchScore.resume_fingerprint == fingerprint,
+                JobMatchScore.resume_fingerprint.in_(fingerprints),
                 JobMatchScore.score >= GAP_POOL_MIN_SCORE,
             )
             .group_by(ScrapedJob.company)
@@ -416,26 +408,26 @@ def build_sidebar(
 
     resume = gaps = None
     skills: list[str] = []
-    fingerprint = None
+    fingerprints: Optional[list[str]] = None
     progress = closing = autofill = None
     alerts = None
     if user_id is not None:
         profile = scoring_resume(db, user_id)
         resume, gaps, skills = _resume_section(db, user_id, profile)
-        fingerprint = _resume_fingerprint(profile.raw_text) if profile else None
+        fingerprints = current_fingerprints(profile.raw_text) if profile else None
         progress = _progress_section(db, user_id, now)
         closing = _closing_section(db, user_id, now)
         autofill = _autofill_section(db, user_id)
         alerts = _alerts_enabled(db, user_id)
 
-    companies, basis = _companies_section(db, user_id, fingerprint)
+    companies, basis = _companies_section(db, user_id, fingerprints)
     return {
         "resume": resume,
         "resume_skills": skills,
         "skill_gaps": gaps or [],
         "progress": progress,
         "closing_soon": closing or [],
-        "feed": _feed_section(db, user_id, since, fingerprint),
+        "feed": _feed_section(db, user_id, since, fingerprints),
         "top_companies": companies,
         "top_companies_basis": basis,
         "autofill": autofill,

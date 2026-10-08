@@ -266,10 +266,25 @@ def test_endpoint_and_list_overlay_and_strong_filter(client, db):
     assert r.json()["resume"]["strong_matches"] == 1
 
     by_title = {j["title"]: j["match_score"] for j in client.get("/jobs").json()}
-    assert by_title == {"Great": 88, "Okay": 60, "Unscored": 0}
+    assert by_title["Great"] == 88 and by_title["Okay"] == 60
+    # Not reached by the sweep yet: scored locally on the spot, for free.
+    assert by_title["Unscored"] > 0
 
     strong = client.get("/jobs", params={"strong": 1}).json()
     assert [j["title"] for j in strong] == ["Great"]
+
+
+def test_sort_match_orders_by_the_users_own_score(client, db):
+    resume(db)
+    # Inserted oldest-to-newest so date order (Unscored, Okay, Great) is the
+    # exact reverse of score order.
+    great = job(db, title="Great")
+    okay = job(db, title="Okay")
+    job(db, title="Unscored")
+    score(db, okay, 60)
+    score(db, great, 88)
+    titles = [j["title"] for j in client.get("/jobs", params={"sort": "match"}).json()]
+    assert titles == ["Great", "Okay", "Unscored"]
 
 
 def test_list_since_filter(client, db):

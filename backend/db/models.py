@@ -195,6 +195,9 @@ class ScrapedJob(Base):
     employment_type = Column(String, default="")  # full_time | part_time | contract | internship
     visa_sponsorship = Column(String, default="unknown")  # yes | no | unknown
     skills = Column(JSON, nullable=True)  # extracted skill tags, capped list
+    # Local match scorer input, computed once per job: {"v": 1, "top": [...],
+    # "tags": [...]}. NULL = not computed yet. migrations/add_job_match_terms.py
+    match_terms = Column(JSON, nullable=True)
 
 
 class PendingQuestion(Base):

@@ -11,6 +11,13 @@ from backend.services import match_notifier
 from backend.services.email_service import EmailService
 
 
+@pytest.fixture(autouse=True)
+def _legacy_llm_scoring(monkeypatch):
+    # These tests pin the per-job LLM scoring path, which is now opt-in
+    # (MATCH_SCORING=ai); the free local path has its own tests.
+    monkeypatch.setenv("MATCH_SCORING", "ai")
+
+
 # ─── Email HTML builder ──────────────────────────────────────────────────────
 
 def _sample_jobs():

@@ -457,6 +457,28 @@ async def upload_resume(
     )
 
     async def _score_top_jobs():
+        from backend.services.local_match import bank_local_scores, scoring_mode
+
+        if scoring_mode() == "local":
+            # Free: score the newest visible jobs locally so the feed shows
+            # this resume's matches right away. Alerts are left to the sweep,
+            # which confirms the best candidates before emailing.
+            try:
+                from backend.services.jobs_sidebar import visible_job_filter
+
+                ids = [
+                    row[0]
+                    for row in db.query(ScrapedJob.id)
+                    .filter(visible_job_filter())
+                    .order_by(ScrapedJob.id.desc())
+                    .limit(300)
+                    .all()
+                ]
+                bank_local_scores(db, user_id, db_profile, ids)
+            except Exception:
+                logger.exception("Local match scoring after resume upload failed")
+            return
+
         try:
             engine = MatchEngine(db)
             jobs_to_score = (

@@ -284,20 +284,36 @@ def list_jobs(
             since = since.astimezone(datetime.timezone.utc).replace(tzinfo=None)
         q = q.filter(func.coalesce(ScrapedJob.first_seen_at, ScrapedJob.scraped_at) >= since)
 
-    strong_score = None
+    # The user's own score (LLM-confirmed or free local), for strong=1 and for
+    # sort=match. The global scraped_jobs.match_score is 0 on every row.
+    from backend.db.models import JobMatchScore
+    from backend.services.local_match import current_fingerprints
+
+    user_score = None
+    profile = (
+        jobs_sidebar.scoring_resume(db, user_id)
+        if user_id is not None and (strong or sort == "match")
+        else None
+    )
     if strong:
-        profile = jobs_sidebar.scoring_resume(db, user_id) if user_id is not None else None
         if profile is None:
             return []
-        from backend.db.models import JobMatchScore
-        from backend.services.match_notifier import _resume_fingerprint
-
         q = q.join(JobMatchScore, JobMatchScore.job_id == ScrapedJob.id).filter(
             JobMatchScore.user_id == user_id,
-            JobMatchScore.resume_fingerprint == _resume_fingerprint(profile.raw_text),
+            JobMatchScore.resume_fingerprint.in_(current_fingerprints(profile.raw_text)),
             JobMatchScore.score >= jobs_sidebar.STRONG_MATCH,
         )
-        strong_score = JobMatchScore.score
+        user_score = JobMatchScore.score
+    elif profile is not None:
+        q = q.outerjoin(
+            JobMatchScore,
+            and_(
+                JobMatchScore.job_id == ScrapedJob.id,
+                JobMatchScore.user_id == user_id,
+                JobMatchScore.resume_fingerprint.in_(current_fingerprints(profile.raw_text)),
+            ),
+        )
+        user_score = JobMatchScore.score
 
     effective_date = func.coalesce(ScrapedJob.posted_date, ScrapedJob.scraped_at)
     cutoff = date_posted_cutoff(date_posted or "")
@@ -306,8 +322,13 @@ def list_jobs(
 
     # id tiebreaker: bulk inserts share timestamps, and ties without a total
     # order make pagination unstable (the same job shows up on two pages).
-    if strong_score is not None:
-        q = q.order_by(strong_score.desc(), effective_date.desc().nullslast(), ScrapedJob.id.desc())
+    if user_score is not None:
+        # Unscored jobs last; ties (and the unscored) newest first.
+        q = q.order_by(
+            func.coalesce(user_score, -1).desc(),
+            effective_date.desc().nullslast(),
+            ScrapedJob.id.desc(),
+        )
     elif sort == "match":
         q = q.order_by(
             ScrapedJob.match_score.desc(),
@@ -1697,7 +1718,8 @@ async def structure_description(
     user_id: int = Depends(get_verified_user_id),
     db: Session = Depends(get_db),
 ):
-    """Parse a job description into structured sections using Claude AI. Cached in DB."""
+    """Structured sections for a posting: the cached parse if one exists, else
+    an LLM parse when JOB_STRUCTURE_AI is on (off by default: zero cost)."""
     import json
     from backend.services.llm import get_llm_service
 
@@ -1721,6 +1743,15 @@ async def structure_description(
                 return cached
         except (json.JSONDecodeError, TypeError):
             pass
+
+    # The web app already parses the posting client-side the moment it opens;
+    # this LLM pass only polishes that, at a paid call per job. Off unless
+    # JOB_STRUCTURE_AI is set, and an empty answer tells the client to keep its
+    # own parse.
+    import os
+
+    if (os.getenv("JOB_STRUCTURE_AI") or "").strip().lower() not in ("1", "true", "yes", "on"):
+        return {"sections": [], "skills": list(job.skills or []), "source": "client"}
 
     llm = get_llm_service()
 

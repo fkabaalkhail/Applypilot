@@ -23,6 +23,13 @@ from backend.db.models import (
 from backend.services import match_notifier
 
 
+@pytest.fixture(autouse=True)
+def _legacy_llm_scoring(monkeypatch):
+    # These tests pin the per-job LLM scoring path, which is now opt-in
+    # (MATCH_SCORING=ai); the free local path has its own tests.
+    monkeypatch.setenv("MATCH_SCORING", "ai")
+
+
 @pytest.fixture
 def swept_user(db_session):
     """A verified user with a resume, i.e. one the cron sweep will score."""
