@@ -130,6 +130,16 @@ export async function installRouting(ctx, { apiUrl, pages, mode, assets = new Ma
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * The flow is waiting for the user, or has ended: a parked beat ("paused…",
+ * "Done.…", a Next-page gate), or any last beat that is not a "Step N" one,
+ * since a stop names its own reason ("No application form found on this
+ * page"). Matching only "Autofill flow stopped" made every such stop look like
+ * a hang that waited out the whole timeout (round 5 batch C).
+ */
+const PARKED = /\b(paused|done\.|review and submit|review this page|then next page|waiting for|stopped)\b/i;
+const flowParked = (beat) => PARKED.test(beat) || (beat !== "" && !/^Step \d/.test(beat));
+
 async function overlayState(page) {
   return page
     .evaluate(() => {
@@ -222,7 +232,6 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
   // it is waiting for the user, which is when the page is final.
   const deadline = Date.now() + fillTimeoutMs;
   const clickedAt = Date.now();
-  const PARKED = /\b(paused|done\.|review and submit|review this page|then next page|waiting for|stopped)\b/i;
   let sawBusy = false;
   let idleSince = 0;
   while (Date.now() < deadline) {
@@ -234,7 +243,7 @@ export async function triggerAutofill(page, sw, api, { mountWaitMs = 8000, fillT
     }
     const newBeats = panel.beats.slice(beatsBefore);
     const lastBeat = newBeats[newBeats.length - 1] ?? "";
-    const parked = PARKED.test(lastBeat);
+    const parked = flowParked(lastBeat);
     const busy = /working/i.test(st.text);
     if (!busy) idleSince = idleSince || Date.now();
     else idleSince = 0;
@@ -277,13 +286,12 @@ export async function continueToNextPage(page, api, { timeoutMs = 120000 } = {})
   const telemetryBefore = api.state.telemetry.length;
   const urlBefore = page.url();
   await gate.click({ timeout: 10000 });
-  const PARKED = /\b(paused|done\.|review and submit|review this page|then next page|waiting for|stopped)\b/i;
   const deadline = Date.now() + timeoutMs;
   let parked = false;
   while (Date.now() < deadline) {
     const newBeats = panel.beats.slice(beatsBefore);
     const st = await overlayState(page);
-    if (PARKED.test(newBeats[newBeats.length - 1] ?? "") && !/working/i.test(st.text)) {
+    if (flowParked(newBeats[newBeats.length - 1] ?? "") && !/working/i.test(st.text)) {
       parked = true;
       break;
     }
@@ -315,7 +323,9 @@ export async function runCase(env, testCase) {
   page.__panel = panel;
   page.on("console", (m) => {
     const t = m.text();
-    if (/^\[Tailrd\] (Step \d|Done|Autofill flow stopped)/.test(t)) panel.beats.push(t.slice(9, 200));
+    // Every flow beat (the overlay's progress line is the only bare
+    // "[Tailrd] " log): a stop names its own reason.
+    if (/^\[Tailrd\] /.test(t)) panel.beats.push(t.slice(9, 200));
     const beat = /refreshMainView selected=\s*(\d+)\s+of fields=\s*(\d+)/.exec(t);
     if (beat) {
       const selected = Number(beat[1]);
@@ -388,7 +398,8 @@ export async function runCase(env, testCase) {
       if (!step) break;
       step.after = await dumpAllFrames(page);
       nextPages.push(step);
-      if (/\b(done\.|review and submit|stopped)\b/i.test(step.beats[step.beats.length - 1] ?? "")) break;
+      const last = step.beats[step.beats.length - 1] ?? "";
+      if (/\b(done\.|review and submit|stopped)\b/i.test(last) || (last !== "" && !/^Step \d/.test(last))) break;
     }
     return { before, after, trace, blocked: [...blocked], console: consoleLines, screenshot, state, nextPages };
   } finally {
