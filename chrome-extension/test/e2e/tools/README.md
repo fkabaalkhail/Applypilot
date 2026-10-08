@@ -17,6 +17,7 @@ Results land in `test/e2e/results/` (git-ignored, kept on this machine).
 | `freeze-probe.mjs <case id>` | A page that never finishes: streams the page's inputs and the extension's log, then pauses the frozen page in the debugger and prints the stack (`FREEZE_MS`, `PROFILE`, `LOCK`). |
 | `qbank-workable.mjs <accounts> <out.json>` | A Workable question bank from its public GET form endpoint, for `test/qbank.test.ts` (with `QBANK_URL` on a Workable host). |
 | `qbank-review.cjs <bank-out.json>` | One line per distinct bank question with every persona's answer. |
+| `qbank-diff.cjs <old-out.json> <new-out.json> [label regex]` | Every bank answer that changed between two runs, grouped by question. Copy `<bank>-out.json` aside before a re-run, then read every line. |
 
 `run.mjs --filter` takes substrings of case ids, ATS names, or `=<id>` for one
 exact case.

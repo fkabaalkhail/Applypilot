@@ -404,3 +404,26 @@ describe("Dayforce's preferred contact method and dial codes (Eclipse, live 2026
     expect(revertedFields([{ fieldId: "d", value: "United States" }], [{ fieldId: "d", value: "🇨🇦 +1" }], new Set(["d"]))).toEqual([{ fieldId: "d", cleared: false }]);
   });
 });
+
+describe("a start date between two of the list's ranges takes the later one (Striveworks, question bank)", () => {
+  // "What is your earliest available start date…?" with ranges from offer
+  // acceptance. Available in 11 days fell between "Immediately" (a week) and
+  // "2 to 4 weeks" and was left blank (bank re-run 2026-10-08). The later
+  // range is still true; an earlier one would promise a start they cannot make.
+  const STRIVEWORKS = ["Immediately", "2 to 4 weeks from offer acceptance", "4-8 weeks from offer acceptance", "8-12 weeks from offer acceptance", "12+ weeks from offer acceptance"];
+  const startIn = (isoDate: string) => {
+    const profile = { ...SPARSE_CANADIAN, earliestStartDate: isoDate };
+    const q: QuestionInput = { label: "What is your earliest available start date for full-time employment in Austin, Texas?", controlType: "select", options: STRIVEWORKS, category: "unknown", kind: "choice" };
+    const r = resolveQuestion(q, profileFacts(profile, TEST_TODAY), profile, { jobCountry: "US", company: "Striveworks" });
+    return r && r.status === "answer" ? r.value : (r?.status ?? null);
+  };
+
+  it("11 days away: '2 to 4 weeks', never 'Immediately'", () => {
+    expect(startIn("2026-10-14")).toBe("2 to 4 weeks from offer acceptance");
+  });
+  it("a range that holds the days still wins", () => {
+    expect(startIn("2026-10-03")).toBe("Immediately");
+    expect(startIn("2026-10-24")).toBe("2 to 4 weeks from offer acceptance");
+    expect(startIn("2027-03-01")).toBe("12+ weeks from offer acceptance");
+  });
+});

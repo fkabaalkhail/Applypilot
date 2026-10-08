@@ -1686,7 +1686,12 @@ function resolveStartBucket(q: QuestionInput, n: string, facts: ProfileFacts): Q
   if (!isHigh(av)) return abstain("start-bucket:unknown");
   const days = Math.max(0, Math.ceil((av.value.getTime() - facts.today.getTime()) / 86400000));
   const hits = spans.filter((x) => days >= x.r[0] && days <= x.r[1]).sort((a, b) => a.r[1] - a.r[0] - (b.r[1] - b.r[0]));
-  return hits.length > 0 ? answer(hits[0].o, "start-bucket") : abstain("start-bucket:no-matching-option");
+  if (hits.length > 0) return answer(hits[0].o, "start-bucket");
+  // Between two ranges (11 days: past "Immediately", short of "2 to 4
+  // weeks"; Striveworks, question bank 2026-10-08): the next later range is
+  // still true, an earlier one would promise a start they cannot make.
+  const later = spans.filter((x) => x.r[0] > days).sort((a, b) => a.r[0] - b.r[0]);
+  return later.length > 0 ? answer(later[0].o, "start-bucket:next-later") : abstain("start-bucket:no-matching-option");
 }
 
 /** Time zones by region; a state split between zones is left out (not guessed). */
