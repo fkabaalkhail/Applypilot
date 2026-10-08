@@ -104,6 +104,17 @@ describe("findApplyEntry", () => {
     expect(findApplyEntry(document, null)?.el.id).toBe("guest");
   });
 
+  it("knows iCIMS's 'Apply for this job online' (round 5 batch C: never opened)", () => {
+    // Every iCIMS posting tonight showed the job with this link and the flow
+    // found no entry: the anchored text stopped at "job".
+    document.body.innerHTML = `
+      <p>Apply online by Friday if you can.</p>
+      <a class="iCIMS_ApplyOnlineButton iCIMS_PrimaryButton" id="go" href="https://careers-x.icims.com/jobs/1/job/login?mode=apply">Apply for this job online</a>`;
+    expect(findApplyEntry(document, null)?.el.id).toBe("go");
+    document.body.innerHTML = `<button id="go">Apply online</button>`;
+    expect(findApplyEntry(document, null)?.el.id).toBe("go");
+  });
+
   it("knows the French Apply of a Jobvite posting, never Apply later", () => {
     document.body.innerHTML = `
       <a class="jv-button jv-button-apply-later" href="mailto:?subject=Postuler">Postuler plus tard</a>
