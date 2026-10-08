@@ -115,6 +115,16 @@ describe("findApplyEntry", () => {
     expect(findApplyEntry(document, null)?.el.id).toBe("go");
   });
 
+  it("reads past a decorative arrow: 'Apply now »' (L3Harris on SuccessFactors, round 5 batch C)", () => {
+    document.body.innerHTML = `
+      <a class="btn btn-primary apply dialogApplyBtn" id="go" href="/talentcommunity/apply/1432400300/?locale=en_US">Apply now »</a>`;
+    expect(findApplyEntry(document, null)?.el.id).toBe("go");
+    for (const text of ["Apply ›", "Apply now →", "Postuler maintenant »"]) {
+      document.body.innerHTML = `<a id="go" href="/apply">${text}</a>`;
+      expect(findApplyEntry(document, null)?.el.id).toBe("go");
+    }
+  });
+
   it("knows the French Apply of a Jobvite posting, never Apply later", () => {
     document.body.innerHTML = `
       <a class="jv-button jv-button-apply-later" href="mailto:?subject=Postuler">Postuler plus tard</a>

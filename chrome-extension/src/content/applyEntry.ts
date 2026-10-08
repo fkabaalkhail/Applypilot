@@ -35,6 +35,9 @@ const ENTRY_APPLY_RE =
   /^(apply( now| online)?!?|apply (for|to) (this )?(job|position|role|opening)( online)?|easy apply|postuler( maintenant)?|poser (sa|ma|votre) candidature|candidater( maintenant)?)$/i;
 /** Resume-an-application verbs (Workday shows these when a draft exists). */
 const ENTRY_CONTINUE_RE = /^(continue application|continue your application|start( your)? application)$/i;
+/** Arrows and chevrons that decorate a button's text: "Apply now »" (L3Harris
+ *  on SuccessFactors, round 5 batch C) never matched the anchored Apply. */
+const TRAILING_DECOR = /[\s>\u00bb\u203a\u2192\u2794\u25b6\u276f]+$/u;
 /** Chooser options that bypass the manual form, never click these. */
 const ENTRY_EXCLUDE_RE = /autofill with resume|use my last application|apply with (linkedin|indeed|seek)/i;
 
@@ -63,7 +66,9 @@ function entryTexts(el: HTMLElement): string[] {
     cleanText(el.getAttribute("aria-label")),
     cleanText(el.textContent),
     cleanText((el as HTMLInputElement).value ?? ""),
-  ].filter((t) => t && t.length <= 40);
+  ]
+    .map((t) => t.replace(TRAILING_DECOR, ""))
+    .filter((t) => t && t.length <= 40);
   return [...new Set(texts)];
 }
 
