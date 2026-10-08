@@ -377,7 +377,11 @@ const CATEGORY_SPECS: CategorySpec[] = [
     ],
     // "Do you require relocation assistance?" is a benefits question, not a
     // willingness one, answering it "Yes" from a willingness answer is wrong.
-    negative: /\brelocation (assistance|package|support|expenses?|benefits?|allowance|reimbursement)\b/,
+    // Paying one's own way is the applicant's too: "…provide your own housing,
+    // relocation, and transportation to the internship site?" took Yes from
+    // the willingness (The Exploration Company on Ashby, live 2026-10-08).
+    negative:
+      /\brelocation (assistance|package|support|expenses?|benefits?|allowance|reimbursement)\b|\bown (housing|relocation|transportation|travel|moving|move)\b|\bat (your|their|my|one s) own (cost|expense)\b|\b(pay|paying|cover|covering|fund|funding) (for )?(your |the )?(own )?(relocation|move|moving|housing)\b/,
   },
   {
     category: "workPreference",

@@ -954,3 +954,31 @@ describe("Ashby's Yes/No questions answered for the first time, read in the regr
     expect(ask(P.COMPLETE_CANADIAN as UserApplicationProfile, q, ["Yes", "No"])).not.toBe("Yes");
   });
 });
+
+describe("own housing and travel are no willingness to move, scanned (The Exploration Company, re-run 2026-10-08)", () => {
+  // The question-path test above passed while the live page still wrote Yes:
+  // "relocation" in the label made the field a willing-to-relocate one, and
+  // that category answered from the profile before any rule read the rest.
+  it("the field is no willing-to-relocate one, and stays blank", () => {
+    const q = "If selected, will you be able to provide your own housing, relocation, and transportation to the internship site?";
+    document.body.innerHTML = `<form><div class="field"><label for="q1">${q}</label><select id="q1"><option value="">Select...</option><option>Yes</option><option>No</option></select></div></form>`;
+    setResolveContext({ jobCountry: "US", jobCity: null, jobPlaces: null, company: "The Exploration Company" });
+    const [f] = scanPage(P.COMPLETE_CANADIAN as UserApplicationProfile, true).fields;
+    expect(f.category).not.toBe("willingToRelocate");
+    expect(f.proposedValue ?? null).toBeNull();
+  });
+  it("relocation at one's own expense is the applicant's too", () => {
+    const q = "Are you willing to relocate to Austin, TX at your own expense?";
+    document.body.innerHTML = `<form><div class="field"><label for="q1">${q}</label><select id="q1"><option value="">Select...</option><option>Yes</option><option>No</option></select></div></form>`;
+    setResolveContext({ jobCountry: "US", jobCity: "Austin", jobPlaces: null, company: "Acme" });
+    const [f] = scanPage(P.COMPLETE_CANADIAN as UserApplicationProfile, true).fields;
+    expect(f.proposedValue ?? null).toBeNull();
+  });
+  it("a plain willingness to relocate still answers from the profile", () => {
+    document.body.innerHTML = `<form><div class="field"><label for="q1">Are you willing to relocate?</label><select id="q1"><option value="">Select...</option><option>Yes</option><option>No</option></select></div></form>`;
+    setResolveContext({ jobCountry: "US", jobCity: null, jobPlaces: null, company: "Acme" });
+    const [f] = scanPage(P.COMPLETE_CANADIAN as UserApplicationProfile, true).fields;
+    expect(f.category).toBe("willingToRelocate");
+    expect(f.proposedValue).toBe("Yes");
+  });
+});
