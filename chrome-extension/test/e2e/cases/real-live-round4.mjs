@@ -825,6 +825,8 @@ export default [
     profile: COMPLETE_CANADIAN,
     url: "https://apply.workable.com/saalex/j/2534F09970/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Toronto, ON, Canada",
       "label:*First name": "Maya",
       "label:*Last name": "Tremblay",
       "label:*Email": "maya.tremblay@example.com",
@@ -867,16 +869,12 @@ export default [
       "label:*Latest Employer Name:": "Kinaxis",
       "label:*Job Title": "Software Engineer Co-op",
       "#CA_31124": null,
-      "name=CA_31168": { re: String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$` },
-      "label=SVGs not supported by this browser.#5": "May",
-      "label=SVGs not supported by this browser.#6": "May",
-      "label=SVGs not supported by this browser.#7": "2026",
-      "label=SVGs not supported by this browser.#8": "2026",
-      "name=CA_31169": { re: String.raw`^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{2} [A-Z][a-z]{2} \d{4})$` },
-      "label=SVGs not supported by this browser.#9": "May",
-      "label=SVGs not supported by this browser.#10": "May",
-      "label=SVGs not supported by this browser.#11": "2026",
-      "label=SVGs not supported by this browser.#12": "2026",
+      // Today, in the boxes' own "DD/MM/YYYY" (this machine's en-GB locale).
+      // Round 4 pinned "any date" plus these boxes' calendars showing May:
+      // 10 May for 5 October. Those two calendars no longer show after the
+      // fill (the first date's still does, #1 to #4).
+      "name=CA_31168": { today: "DD/MM/YYYY" },
+      "name=CA_31169": { today: "DD/MM/YYYY" },
       "ariaradio=Do you currently hold an active security clearance?": "SVGs not supported by this browser.",
       "radio=CA_31125": "SVGs not supported by this browser.No",
       "ariaradio=If so, what level clearance do you currently hold?": null,
@@ -899,6 +897,13 @@ export default [
     profile: US_H1B_SENIOR,
     url: "https://apply.workable.com/credence/j/567BE44BCB/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced (round 5); two clearance questions
+      // the posting added since round 4: an H-1B holder with no clearance.
+      "#address": "Seattle, WA",
+      "ariaradio=Are you a U.S. citizen and able to obtain and maintain a Sec": "NO",
+      "radio=QA_12574377": "NO",
+      "ariaradio=Do you currently hold an active Secret security clearance?": "NO",
+      "radio=QA_12575264": "NO",
       "label:*First name": "Thu Hà",
       "label:*Last name": "Nguyễn",
       "label:*Email": "thuha.nguyen@example.com",
@@ -949,6 +954,8 @@ export default [
     profile: BOOTCAMP_CAREER_GAP,
     url: "https://apply.workable.com/disa-technologies/j/13BE492B4E/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Denver, CO",
       "label:*First name": "D'Andre",
       "label:*Last name": "Jean-Baptiste",
       "label:*Email": "dandre.jb@example.com",
@@ -1032,6 +1039,8 @@ export default [
     profile: US_H1B_SENIOR,
     url: "https://apply.workable.com/opendatajobs/j/AF18B22AC8/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Seattle, WA",
       "label:*First name": "Thu Hà",
       "label:*Last name": "Nguyễn",
       "label:*Email": "thuha.nguyen@example.com",
@@ -1050,29 +1059,17 @@ export default [
       "#QA_12535950": "https://www.linkedin.com/in/thuha-nguyen",
     },
   }),
-  live({
-    id: "r4d-wk-rentvision",
-    ats: "workable",
-    profile: COMPLETE_CANADIAN,
-    url: "https://apply.workable.com/rentvision/j/0F1C7992BF/apply/",
-    expect: {
-      "label:*First name": "Maya",
-      "label:*Last name": "Tremblay",
-      "label:*Email": "maya.tremblay@example.com",
-      "label:Phone": "416-555-0142",
-      "label:*How did you hear about this opportunity?LinkedIn": "LinkedIn",
-      "ariaradio=This position is in Lincoln, Nebraska. If necessary, are you": "YES",
-      "radio=QA_12489859": "YES",
-      "ariaradio=This position is not currently available for H-1B visa spons": "NO",
-      "radio=QA_12489860": "NO",
-    },
-  }),
+  // r4d-wk-rentvision retired 2026-10-08: the posting closed (its form answers
+  // 404 and the account lists no jobs). Its two answers stay pinned by unit
+  // tests in bankWorkable.test.ts (Lincoln relocation, the Fall 2027 school).
   live({
     id: "r4d-wk-ssci",
     ats: "workable",
     profile: BERLIN_STAFF,
     url: "https://apply.workable.com/ssci/j/814C367409/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Berlin, Germany",
       "label:*First name": "Jürgen",
       "label:*Last name": "Weiß",
       "label:*Email": "juergen.weiss@example.de",
@@ -1108,6 +1105,8 @@ export default [
     profile: BOOTCAMP_CAREER_GAP,
     url: "https://apply.workable.com/jeffreym-consulting/j/F7EEE4968A/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Denver, CO",
       "label:*First name": "D'Andre",
       "label:*Last name": "Jean-Baptiste",
       "label:*Email": "dandre.jb@example.com",
@@ -1144,6 +1143,8 @@ export default [
     profile: US_H1B_SENIOR,
     url: "https://apply.workable.com/financeit/j/D3CF97088A/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Seattle, WA",
       "label:*First name": "Thu Hà",
       "label:*Last name": "Nguyễn",
       "label:*Email": "thuha.nguyen@example.com",

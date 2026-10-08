@@ -435,6 +435,8 @@ export default [
     ats: "workable",
     url: "https://apply.workable.com/mindex/j/84B10DB922/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Toronto, ON, Canada",
       // Round 3: the row holds her running co-op (Kinaxis), so "I currently work
       // here"; a co-op from January does not fit a start in May 2027.
       "name=current": "checked",

@@ -377,6 +377,8 @@ export default [
     ats: "workable",
     url: "https://apply.workable.com/raveaerospace/j/739753C003/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Toronto, ON, Canada",
       // Round 3: the row holds her running co-op (Kinaxis): "I currently work here".
       "name=current": "checked",
       "#firstname": "Maya",
@@ -401,6 +403,8 @@ export default [
     ats: "workable",
     url: "https://apply.workable.com/fssi/j/A5198D6F63/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Toronto, ON, Canada",
       // Round 3: the row holds her running co-op (Kinaxis): "I currently work here".
       "name=current": "checked",
       "#firstname": "Maya",

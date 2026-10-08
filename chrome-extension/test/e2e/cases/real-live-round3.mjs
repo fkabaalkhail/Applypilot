@@ -358,6 +358,8 @@ export default [
     profile: UK_SENIOR,
     url: "https://apply.workable.com/syntiant/j/11DDC0AC87/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "London, United Kingdom",
       "label:*First name": "Siobhán",
       "label:*Last name": "O'Neill",
       "label:*Email": "siobhan.oneill@example.co.uk",
@@ -405,8 +407,8 @@ export default [
       "#input_CA_48127_input": "Yes",
       "name=CA_48127": "494547",
       // Workable fills Address from the visitor's location: the page's guess,
-      // never ours, and never written down here.
-      "#address": { ifPresent: { re: "^" } },
+      // replaced with the profile's location (round 5).
+      "#address": { ifPresent: "San Jose, CA" },
     },
   }),
   live({
@@ -696,6 +698,8 @@ export default [
     profile: US_VETERAN,
     url: "https://apply.workable.com/mindex/j/84B10DB922/apply/",
     expect: {
+      // Workable's IP guess for Address is replaced with the profile's location (round 5).
+      "#address": "Austin, TX",
       "label:*First name": "Marcus",
       "label:*Last name": "Hill",
       "label:*Email": "marcus.hill@example.com",

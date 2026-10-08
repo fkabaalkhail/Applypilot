@@ -30,7 +30,7 @@ for (const r of saved.results) {
   if (!c || Object.keys(c.expect ?? {}).length === 0) continue; // exploration cases have no expectations
   // Framework-state cases read the app's own state at run time; the saved JSON
   // does not keep it, so their verdict is the run's own.
-  const ev = c.stateSelector ? r.ev : evaluateCase(c, { before: r.before, after: r.after, trace: r.trace });
+  const ev = c.stateSelector ? r.ev : evaluateCase(c, { before: r.before, after: r.after, trace: r.trace, at: saved.at });
   n++;
   pass += ev.pass;
   total += ev.total;

@@ -269,9 +269,9 @@ export default [
       "#email": P.email,
       "#headline": null,
       "#input_phone": PHONE,
-      // Workable pre-fills Address from the visitor's IP geolocation; a
-      // non-empty field is never overwritten.
-      "#address": { unchanged: true },
+      // Workable guesses Address from the visitor's IP; the guess is replaced
+      // with the profile's location (round 5).
+      "#address": "Toronto, ON, Canada",
       "#cover_letter": null,
       "label:Salary Range": null,
       "radio=QA_12563770": null,
@@ -300,9 +300,9 @@ export default [
       "#lastname": "Tremblay",
       "#email": P.email,
       "#input_phone": PHONE,
-      // Workable pre-fills Address from the visitor's IP geolocation; a
-      // non-empty field is never overwritten.
-      "#address": { unchanged: true },
+      // Workable guesses Address from the visitor's IP; the guess is replaced
+      // with the profile's location (round 5).
+      "#address": "Toronto, ON, Canada",
       "#summary": null,
       "#cover_letter": null,
       "label:salary expectations": null,

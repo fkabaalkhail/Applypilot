@@ -26,8 +26,9 @@ export default [
       "#email": US_F1_STUDENT.email,
       "#headline": null,
       "#input_phone": { re: "617\\D*555\\D*0199" },
-      // Workable pre-fills Address from IP geolocation; never overwritten.
-      "#address": { unchanged: true },
+      // Workable guesses Address from the visitor's IP; the guess is replaced
+      // with the profile's address (round 5).
+      "#address": "Cambridge, MA, United States",
       "#cover_letter": null,
       "label:Salary Range": null,
       // Round 3: a co-op takes enrolled students, and her master's finished in

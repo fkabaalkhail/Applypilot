@@ -12,6 +12,9 @@
  *   { any: true }      any non-empty value
  *   { oneOf: [...] }   normalized equality with one of these
  *   { unchanged: true} must hold exactly what it held before the fill
+ *   { today: "DD/MM/YYYY" } the run's date in that format (also MM/DD/YYYY,
+ *                      YYYY-MM-DD): a pattern for "a date" let round 4 pin
+ *                      10 May for 5 October
  *
  * Keys: the dump's own key ("#id", "name=x", "radio=x", "auto=x"), or
  * "label:<text>" to match the first field whose label contains <text>, or
@@ -42,9 +45,19 @@ function findRecord(records, key) {
   return records.find((r) => r.key === key) ?? null;
 }
 
-function matches(expected, actual, beforeValue) {
+/** `at` (the run's own date, local time) written in `format`. */
+function formatDay(format, at) {
+  const p = (n) => String(n).padStart(2, "0");
+  const [y, m, d] = [at.getFullYear(), p(at.getMonth() + 1), p(at.getDate())];
+  if (format === "DD/MM/YYYY") return `${d}/${m}/${y}`;
+  if (format === "MM/DD/YYYY") return `${m}/${d}/${y}`;
+  return `${y}-${m}-${d}`;
+}
+
+function matches(expected, actual, beforeValue, runAt = new Date()) {
   if (expected === null) return norm(actual) === "";
   if (typeof expected === "string") return norm(actual) === norm(expected);
+  if (expected.today) return norm(actual) === norm(formatDay(expected.today, runAt));
   if (expected.re) {
     try {
       return new RegExp(expected.re, "i").test(String(actual ?? ""));
@@ -65,11 +78,14 @@ function describe(expected) {
   if (expected.any) return "(any value)";
   if (expected.oneOf) return `oneOf ${JSON.stringify(expected.oneOf)}`;
   if (expected.unchanged) return "(unchanged)";
+  if (expected.today) return `(today, ${expected.today})`;
   return JSON.stringify(expected);
 }
 
 export function evaluateCase(testCase, result) {
   const rows = [];
+  // A saved run is re-scored against the day it ran, not the day it is read.
+  const runAt = result.at ? new Date(result.at) : new Date();
   const usedKeys = new Set();
   const beforeByKey = new Map(result.before.map((r) => [`${r.frame}|${r.key}`, r]));
   const expectations = testCase.expect ?? {};
@@ -90,7 +106,7 @@ export function evaluateCase(testCase, result) {
       hits.forEach((rec, i) => {
         usedKeys.add(`${rec.frame}|${rec.key}`);
         const before = beforeByKey.get(`${rec.frame}|${rec.key}`)?.value ?? "";
-        const ok = matches(expected, rec.value, before);
+        const ok = matches(expected, rec.value, before, runAt);
         rows.push({ key: `${key}#${i + 1}`, status: ok ? "PASS" : "FAIL", kind: expected === null ? "abstain" : "fill", expected: describe(expected), actual: rec.value, label: rec.label, type: rec.type });
       });
       continue;
@@ -102,7 +118,7 @@ export function evaluateCase(testCase, result) {
     }
     usedKeys.add(`${rec.frame}|${rec.key}`);
     const before = beforeByKey.get(`${rec.frame}|${rec.key}`)?.value ?? "";
-    const ok = matches(expected, rec.value, before);
+    const ok = matches(expected, rec.value, before, runAt);
     rows.push({
       key,
       status: ok ? "PASS" : "FAIL",
