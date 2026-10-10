@@ -85,16 +85,18 @@ palette) is a separate colour and is not a logo colour.
 
 ### Stroke weight by rendered size
 
-The component picks weights from the icon size. The artwork's own weights are the large-size tier;
-smaller tiers scale both weights by the spec's 1.4 / 1.5 / 1.8 / 2.2 ramp.
+The component picks weights from the icon size. The artwork's own weights are the large-size tier.
+Below it, each tier keeps the plane's lines at roughly one device pixel or more: thinner strokes
+antialias into a washed-out, grainy line on 1x screens (a test enforces this).
 
 | Rendered size | Ring | Plane and trail |
 | --- | --- | --- |
 | 64 px and up | 1.73 | 1.10 |
-| 32 to 63 px | 1.85 | 1.18 |
-| 24 to 31 px | 2.22 | 1.41 |
-| 20 to 23 px | 2.72 | 1.73 |
-| under 20 px | the favicon construction | |
+| 48 to 63 px | 2.10 | 1.35 |
+| 32 to 47 px | 2.60 | 1.75 |
+| 24 to 31 px | 2.80 | 1.90 |
+| 20 to 23 px | 3.20 | 2.20 |
+| under 20 px | 3.60 | 2.60 |
 
 The standalone SVGs carry the artwork weights (1.73 / 1.10).
 
@@ -104,9 +106,10 @@ The standalone SVGs carry the artwork weights (1.73 / 1.10).
   The ring's footprint sets the scale (64% of the canvas), then the plane is optically centred.
   Stroke 1.91: the spec's heavier "2.6 of 1.5" applied to the measured weight; a flat 2.6 clogs the
   keel. Rounded tile radius 22.37%; a full-bleed version ships for platforms that mask it themselves.
-- **Favicon.** `#6247E5` tile (radius 20%), the plane as two filled panels split along the centre
-  crease, no ring, no trail. The 16 px frame uses a wider crease (2.5 units instead of 1.5) so the
-  fold survives at one pixel. `favicon.svg` lightens the tile to `#8B7BF0` in dark mode.
+- **Favicon and extension toolbar icons.** The real mark (ring, plane and trail) on a transparent
+  ground, cropped to the ring, with strokes hinted per size (`ICON_STROKES`: 16 px 3.6/2.6, 32 px
+  2.8/1.9, 48 px 2.1/1.35, 128 px the artwork weights). `favicon.svg` uses the 16 px weights and
+  lightens the mark to `#8B7BF0` in dark mode so it reads on dark tab strips.
 
 ## Variants
 
@@ -118,7 +121,7 @@ The standalone SVGs carry the artwork weights (1.73 / 1.10).
 | `mono-white` | `#FFFFFF` | `#FFFFFF` | Over photos, over the brand purple, dark merch |
 | `currentColor` | inherits | inherits | Buttons, disabled states, hover colour shifts |
 | `appIcon` | `#FFFFFF` on `#6247E5` | | iOS, Android, PWA, desktop |
-| favicon | `#FFFFFF` on `#6247E5` | | 32 px and under |
+| favicon | `#6247E5` (`#8B7BF0` in dark mode) | | browser tab, extension toolbar |
 
 ## Using it in the app
 
@@ -144,7 +147,7 @@ would draw a white wordmark on a white header for anyone whose OS is in dark mod
 
 **Clear space.** Keep 0.25 S clear on all four sides of any lockup.
 
-**Minimum sizes.** Mark 20 px (below that the component switches to the favicon construction).
+**Minimum sizes.** Mark 16 px (strokes are hinted heavier at small sizes).
 Horizontal lockup 90 px wide. Stacked lockup 64 px wide.
 
 **Never:**
@@ -174,11 +177,12 @@ frontend/
   brand/                      this file, preview.html, png/ (@1x @2x @3x of every lockup x theme,
                               app icon sizes), email-signature@2x.png, social-avatar-400.png,
                               tailrd-app-icon-full-bleed.svg
-  scripts/brand/build-brand.mjs
+  scripts/brand/build-brand.mjs  also writes chrome-extension/assets/icon-*.png and
+                                 chrome-extension/src/content/brandLogo.ts (inline SVG for the panel)
 ```
 
 `public/logo-full.png` and `public/logo-icon.png` stay: transactional emails
-(`backend/services/email_service.py`) and the extension's logo script still read them.
+(`backend/services/email_service.py`) still link to `logo-full.png`.
 
 The path data is pinned by `src/__tests__/brand-logo.test.tsx`, and
 `src/__tests__/brand-assets.test.ts` checks the generated files. If the artwork ever changes on

@@ -72,18 +72,18 @@ export const MARK = {
 
 /**
  * Optical compensation by rendered size (px). The source weights are the
- * large-size tier; smaller tiers scale both weights by the spec's 1.4 / 1.5 /
- * 1.8 / 2.2 ramp so thin strokes do not vanish.
+ * large-size tier. Below it, each tier keeps the plane's lines at roughly one
+ * device pixel or more (and the ring about 1.5x that): thinner strokes
+ * antialias into a washed-out, grainy line on 1x screens.
  */
 export const STROKE_RAMP: ReadonlyArray<{ minSize: number; ring: number; detail: number }> = [
   { minSize: 64, ring: 1.73, detail: 1.1 },
-  { minSize: 32, ring: 1.85, detail: 1.18 },
-  { minSize: 24, ring: 2.22, detail: 1.41 },
-  { minSize: 20, ring: 2.72, detail: 1.73 },
+  { minSize: 48, ring: 2.1, detail: 1.35 },
+  { minSize: 32, ring: 2.6, detail: 1.75 },
+  { minSize: 24, ring: 2.8, detail: 1.9 },
+  { minSize: 20, ring: 3.2, detail: 2.2 },
+  { minSize: 0, ring: 3.6, detail: 2.6 },
 ];
-
-/** Below this size the outlined mark turns to mush: render the favicon construction instead. */
-export const MARK_MIN_SIZE = 20;
 
 export function strokesFor(size: number): { ring: number; detail: number } {
   const tier = STROKE_RAMP.find((t) => size >= t.minSize) ?? STROKE_RAMP[STROKE_RAMP.length - 1];
@@ -133,18 +133,24 @@ export const LOCKUP = {
 } as const;
 
 /**
- * Favicon construction (spec section 5): purple rounded square (radius 20%), the
- * plane as two filled panels split along the centre crease, no ring, no trail.
+ * The browser favicon and extension toolbar icons are the real mark on a
+ * transparent ground (no tile), cropped to the ring so it fills the icon, with
+ * strokes hinted per pixel size.
  */
-export const FAVICON = {
-  radius: 9.6,
-  /** 1.5-unit crease: the SVG favicon and the 32/48px frames. */
-  panels: ["M37.17 12.39L9.12 22.11L16.26 27.2L18.17 36.2L24.27 30.98L20.37 28.37Z", "M38.35 13.34L21.65 29.22L30.76 35.32Z"],
-  /** Hinted for 16px: a 2.5-unit crease, so the fold survives as a visible line at one pixel. */
-  panels16: ["M36.03 12.79L9.12 22.11L16.26 27.2L18.17 36.2L24.66 30.64L20.32 27.73Z", "M37.99 14.37L22.45 29.16L30.93 34.83Z"],
-  /** The rounded square as a path, so the panels can be knocked out of it with evenodd. */
-  square: "M9.6 0L38.4 0A9.6 9.6 0 0 1 48 9.6L48 38.4A9.6 9.6 0 0 1 38.4 48L9.6 48A9.6 9.6 0 0 1 0 38.4L0 9.6A9.6 9.6 0 0 1 9.6 0Z",
-} as const;
+export const ICON_STROKES: Readonly<Record<number, { ring: number; detail: number }>> = {
+  16: { ring: 3.6, detail: 2.6 },
+  32: { ring: 2.8, detail: 1.9 },
+  48: { ring: 2.1, detail: 1.35 },
+  128: { ring: 1.73, detail: 1.1 },
+};
+
+/** viewBox cropped to the ring's outer edge plus a hair of padding, for a given ring stroke. */
+export function iconViewBox(ring: number): string {
+  const pad = ring / 2 + 0.2;
+  const o = Math.round((2.5 - pad) * 100) / 100;
+  const s = Math.round((43 + 2 * pad) * 100) / 100;
+  return `${o} ${o} ${s} ${s}`;
+}
 
 /**
  * App icon (spec section 5): white plane and trail on solid primary, no ring.

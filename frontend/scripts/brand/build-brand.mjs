@@ -9,6 +9,7 @@
  *   src/assets/brand/*.svg   standalone SVGs: role="img" + <title>, attributes only, no width/height
  *   public/                  favicon.svg (adaptive), favicon.ico, PNG icons, og-image.png, site.webmanifest
  *   brand/                   handoff PNGs (@1x/@2x/@3x), email signature, social avatar, preview.html
+ *   ../chrome-extension/     assets/icon-{16,32,48,128}.png and src/content/brandLogo.ts (inline SVG)
  *
  * PNGs are rendered by Chromium through the Playwright install that ships with
  * chrome-extension/ (run `npm install` there first if it is missing).
@@ -20,12 +21,13 @@ import { fileURLToPath } from "node:url";
 import {
   APP_ICON,
   BRAND_COLORS,
-  FAVICON,
+  ICON_STROKES,
   LOCKUP,
   MARK,
   STROKE_RAMP,
   THEME_COLORS,
   WORDMARK,
+  iconViewBox,
   strokesFor,
 } from "../../src/components/brand/logo.constants.ts";
 
@@ -35,6 +37,7 @@ const REPO = path.resolve(FRONTEND, "..");
 const OUT_SVG = path.join(FRONTEND, "src", "assets", "brand");
 const OUT_PUBLIC = path.join(FRONTEND, "public");
 const OUT_BRAND = path.join(FRONTEND, "brand");
+const EXT = path.join(REPO, "chrome-extension");
 
 const args = process.argv.slice(2);
 const svgOnly = args.includes("--svg-only");
@@ -145,27 +148,34 @@ function appIconSvg({ fullBleed = false } = {}) {
   );
 }
 
-function faviconSvg({ adaptive = false, panels = FAVICON.panels } = {}) {
-  // public/favicon.svg carries a colour-scheme media query (the one SVG allowed a <style>).
-  const tile = adaptive
-    ? [
-        `<style>`,
-        `  .tile { fill: ${BRAND_COLORS.primary}; }`,
-        `  @media (prefers-color-scheme: dark) { .tile { fill: ${BRAND_COLORS.primaryDarkMode}; } }`,
-        `</style>`,
-        `<rect class="tile" width="48" height="48" rx="${FAVICON.radius}"/>`,
-      ]
-    : [`<rect width="48" height="48" rx="${FAVICON.radius}" fill="${BRAND_COLORS.primary}"/>`];
-  return svgDoc(
-    MARK.viewBox,
-    [
-      ...tile,
-      `<!-- The plane as two filled panels split along the centre crease; no ring, no trail. -->`,
-      ...panels.map((d) => `<path fill="#FFFFFF" d="${d}"/>`),
-    ],
-    `Tailrd favicon${adaptive ? ": lighter tile in dark mode" : ""}.`,
-  );
+/**
+ * The real mark as an icon: no tile, transparent ground, viewBox cropped to the ring,
+ * strokes hinted for the pixel size. `adaptive` (public/favicon.svg, the one SVG
+ * allowed a <style>) lightens the mark in dark mode so it reads on dark tab strips.
+ */
+function iconSvg(px, { adaptive = false } = {}) {
+  const strokes = ICON_STROKES[px] ?? ICON_STROKES[32];
+  let lines = markLines(BRAND_COLORS.primary, strokes);
+  if (adaptive) {
+    lines = [
+      `<style>`,
+      `  .mark { stroke: ${BRAND_COLORS.primary}; }`,
+      `  @media (prefers-color-scheme: dark) { .mark { stroke: ${BRAND_COLORS.primaryDarkMode}; } }`,
+      `</style>`,
+      ...lines.map((l, i) => (i === 0 ? l.replace(`stroke="${BRAND_COLORS.primary}"`, 'class="mark"') : l)),
+    ];
+  }
+  return svgDoc(iconViewBox(strokes.ring), lines, `Tailrd icon, hinted for ${px}px${adaptive ? "; lighter in dark mode" : ""}.`);
 }
+
+/** One-line SVG with the comments and <title> stripped, for inlining in another document. */
+const compact = (svg) =>
+  svg
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<title>[^<]*<\/title>/, "")
+    .replace(/\s+/g, " ")
+    .replace(/>\s+</g, "><")
+    .trim();
 
 // ------------------------------------------------------------------ write SVGs
 
@@ -188,7 +198,31 @@ const svgFiles = {
 };
 for (const [name, svg] of Object.entries(svgFiles)) writeFileSync(path.join(OUT_SVG, name), svg);
 writeFileSync(path.join(OUT_BRAND, "tailrd-app-icon-full-bleed.svg"), appIconSvg({ fullBleed: true }));
-writeFileSync(path.join(OUT_PUBLIC, "favicon.svg"), faviconSvg({ adaptive: true }));
+writeFileSync(path.join(OUT_PUBLIC, "favicon.svg"), iconSvg(16, { adaptive: true }));
+
+// The extension panel inlines the logo as SVG in its shadow root: crisp at any
+// device pixel ratio, and unaffected by a host page's img-src CSP.
+const extLockup = compact(lockupSvg("horizontal", "light", strokesFor(26))).replace(
+  '<svg xmlns="http://www.w3.org/2000/svg"',
+  '<svg xmlns="http://www.w3.org/2000/svg" class="ap-brand-lockup" aria-label="Tailrd"',
+);
+const extMark = compact(lockupSvg("mark", "light", strokesFor(28)))
+  .replace('<svg xmlns="http://www.w3.org/2000/svg"', '<svg xmlns="http://www.w3.org/2000/svg" class="ap-edge-mark" aria-hidden="true"')
+  .replace(' role="img"', "");
+writeFileSync(
+  path.join(EXT, "src", "content", "brandLogo.ts"),
+  `// AUTO-GENERATED from frontend/src/components/brand/logo.constants.ts by
+// frontend/scripts/brand/build-brand.mjs; do not hand-edit.
+
+/** Horizontal lockup for the panel header (strokes hinted for its 26px height). */
+export const BRAND_LOCKUP_SVG =
+  ${JSON.stringify(extLockup)};
+
+/** The mark alone, for the collapsed-state edge tab (strokes hinted for 28px). */
+export const BRAND_MARK_SVG =
+  ${JSON.stringify(extMark)};
+`,
+);
 console.log(`wrote ${Object.keys(svgFiles).length} SVGs to src/assets/brand, favicon.svg, brand/tailrd-app-icon-full-bleed.svg`);
 
 // ------------------------------------------------------------------- manifest
@@ -218,9 +252,6 @@ writeFileSync(
 
 const ramp = [16, 20, 24, 32, 48, 64, 128];
 function rampSvg(size) {
-  if (size < 20) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="${size}" height="${size}"><path fill-rule="evenodd" fill="${BRAND_COLORS.primary}" d="${FAVICON.square + FAVICON.panels16.join("")}"/></svg>`;
-  }
   return lockupSvg("mark", "light", strokesFor(size)).replace('role="img"', `width="${size}" height="${size}" role="img"`);
 }
 const cell = (svg, bg, w) =>
@@ -254,10 +285,10 @@ ${cell(lockupSvg(v, "mono-white"), BRAND_COLORS.primary, v === "horizontal" ? 22
 <div class="row">
 ${cell(appIconSvg(), BRAND_COLORS.surface, 110)}
 ${cell(appIconSvg({ fullBleed: true }), BRAND_COLORS.surface, 110)}
-${cell(faviconSvg(), BRAND_COLORS.surface, 110)}
-${cell(faviconSvg(), BRAND_COLORS.surfaceDark, 110)}
+${cell(iconSvg(48), BRAND_COLORS.surface, 110)}
+${cell(iconSvg(48), BRAND_COLORS.surfaceDark, 110)}
 </div>
-<h2>size ramp (stroke tiers: ${STROKE_RAMP.map((t) => `${t.minSize}px+ ${t.ring}/${t.detail}`).join(", ")}; below 20px the favicon construction)</h2>
+<h2>size ramp (stroke tiers: ${STROKE_RAMP.map((t) => `${t.minSize}px+ ${t.ring}/${t.detail}`).join(", ")})</h2>
 <div class="row ramp">
 ${ramp.map((s) => `<figure style="background:#fff"><div>${rampSvg(s)}<div style="text-align:center;font-size:11px;margin-top:6px">${s}px</div></div></figure>`).join("\n")}
 </div>
@@ -304,15 +335,14 @@ const size = (variant, S) => {
 };
 
 // public/ icons
-const favLight = faviconSvg();
 const appRounded = appIconSvg();
 const appBleed = appIconSvg({ fullBleed: true });
 const icoSizes = [16, 32, 48];
 const icoPngs = [];
-// The 16px frame uses the hinted panels (wider crease) so the fold survives at one pixel.
-for (const s of icoSizes) icoPngs.push(await png(s === 16 ? faviconSvg({ panels: FAVICON.panels16 }) : favLight, s, s));
+// Each frame is the real mark with strokes hinted for that size.
+for (const s of icoSizes) icoPngs.push(await png(iconSvg(s), s, s));
 writeFileSync(path.join(OUT_PUBLIC, "favicon.ico"), ico(icoSizes, icoPngs));
-writeFileSync(path.join(OUT_PUBLIC, "favicon-96x96.png"), await png(favLight, 96, 96));
+writeFileSync(path.join(OUT_PUBLIC, "favicon-96x96.png"), await png(iconSvg(128), 96, 96));
 writeFileSync(path.join(OUT_PUBLIC, "apple-touch-icon.png"), await png(appBleed, 180, 180, { background: BRAND_COLORS.primary }));
 writeFileSync(path.join(OUT_PUBLIC, "icon-192.png"), await png(appRounded, 192, 192));
 writeFileSync(path.join(OUT_PUBLIC, "icon-512.png"), await png(appRounded, 512, 512));
@@ -324,6 +354,10 @@ if (ogTitle) {
   writeFileSync(path.join(OUT_BRAND, "og", `og-${slug}.png`), await ogImage(ogTitle));
 }
 console.log("wrote public/ favicon.ico, favicon-96x96.png, apple-touch-icon.png, icon-192/512(-maskable).png, og-image.png");
+
+// chrome-extension toolbar icons: the real mark, strokes hinted per size
+for (const s of [16, 32, 48, 128]) writeFileSync(path.join(EXT, "assets", `icon-${s}.png`), await png(iconSvg(s), s, s));
+console.log("wrote chrome-extension/assets/icon-{16,32,48,128}.png and src/content/brandLogo.ts");
 
 // brand/ handoff PNGs: every lockup x theme at @1x (64px icon) / @2x / @3x
 mkdirSync(path.join(OUT_BRAND, "png"), { recursive: true });

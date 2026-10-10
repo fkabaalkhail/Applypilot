@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { APP_ICON, BRAND_COLORS, FAVICON, MARK } from "./logo.constants";
+import { APP_ICON, BRAND_COLORS, MARK } from "./logo.constants";
 
 // The fallbacks keep the mark coloured even if brand.css has not loaded.
 const MARK_COLOR = "var(--tailrd-logo-mark, #6247E5)";
@@ -39,15 +39,6 @@ export function MarkGraphic({ ring, detail, animate = false, dashClassName, dash
       </g>
     </g>
   );
-}
-
-/**
- * Below 20px the outlined mark turns to mush, so the mark renders the favicon
- * construction instead: a rounded square with the plane knocked out of it.
- * The knockout (evenodd) shows whatever is behind, so it works in every theme.
- */
-export function SmallMarkGraphic() {
-  return <path fillRule="evenodd" d={FAVICON.square + FAVICON.panels16.join("")} style={{ fill: MARK_COLOR }} />;
 }
 
 /** The app icon: white plane and trail on solid primary. Fixed colours in every theme. */

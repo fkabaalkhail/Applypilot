@@ -1,7 +1,7 @@
 import { forwardRef, useId, type CSSProperties, type SVGProps } from "react";
 import "./brand.css";
-import { LOCKUP, MARK_MIN_SIZE, strokesFor, themeVars, type LogoTheme, type LogoVariant } from "./logo.constants";
-import { AppIconGraphic, MarkGraphic, SmallMarkGraphic } from "./LogoMark";
+import { LOCKUP, strokesFor, themeVars, type LogoTheme, type LogoVariant } from "./logo.constants";
+import { AppIconGraphic, MarkGraphic } from "./LogoMark";
 import { WordmarkGraphic } from "./Wordmark";
 
 export interface LogoProps extends Omit<SVGProps<SVGSVGElement>, "ref" | "children" | "width" | "height" | "viewBox"> {
@@ -64,7 +64,7 @@ export const Logo = forwardRef<SVGSVGElement, LogoProps>(function Logo(
       {...rest}
     >
       {!decorative && <title id={titleId}>{title}</title>}
-      {variant === "mark" && (size < MARK_MIN_SIZE ? <SmallMarkGraphic /> : mark)}
+      {variant === "mark" && mark}
       {variant === "horizontal" && (
         <>
           {mark}

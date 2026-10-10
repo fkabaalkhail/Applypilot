@@ -1,7 +1,7 @@
 import { createRef } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { FAVICON, Logo, LogoSpinner, MARK, WORDMARK, strokesFor } from "../components/brand";
+import { Logo, LogoSpinner, MARK, WORDMARK, strokesFor } from "../components/brand";
 
 // The mark and lettering are a measured fit to the source artwork. These pins
 // make any change deliberate: update them only together with the brand assets
@@ -86,18 +86,23 @@ describe("<Logo />", () => {
     };
     expect(weights(128)).toEqual(["1.73", "1.1"]);
     expect(weights(64)).toEqual(["1.73", "1.1"]);
-    expect(weights(48)).toEqual(["1.85", "1.18"]);
-    expect(weights(32)).toEqual(["1.85", "1.18"]);
-    expect(weights(24)).toEqual(["2.22", "1.41"]);
-    expect(weights(20)).toEqual(["2.72", "1.73"]);
-    expect(strokesFor(12)).toEqual({ ring: 2.72, detail: 1.73 });
+    expect(weights(48)).toEqual(["2.1", "1.35"]);
+    expect(weights(32)).toEqual(["2.6", "1.75"]);
+    expect(weights(24)).toEqual(["2.8", "1.9"]);
+    expect(weights(20)).toEqual(["3.2", "2.2"]);
+    expect(weights(16)).toEqual(["3.6", "2.6"]);
   });
 
-  it("switches to the favicon construction below 20px", () => {
+  it("keeps the plane's lines at about one device pixel or more at every small size", () => {
+    for (const size of [16, 20, 24, 28, 32, 44, 48, 63]) {
+      expect(strokesFor(size).detail * (size / 48)).toBeGreaterThanOrEqual(0.86);
+    }
+  });
+
+  it("draws the real mark, ring and all, even at 16px", () => {
     const { container } = render(<Logo variant="mark" size={16} />);
-    expect(container.querySelector(`path[d="${MARK.ring}"]`)).toBeNull();
-    const knockout = container.querySelector("path[fill-rule='evenodd']")!;
-    expect(knockout.getAttribute("d")).toBe(FAVICON.square + FAVICON.panels16.join(""));
+    expect(container.querySelector(`path[d="${MARK.ring}"]`)).not.toBeNull();
+    expect(container.querySelectorAll("path")).toHaveLength(1 + 1 + MARK.folds.length + MARK.trail.length);
   });
 
   it("sets explicit theme colours inline and leaves auto to the stylesheet", () => {
